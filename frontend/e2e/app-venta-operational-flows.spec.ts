@@ -271,13 +271,20 @@ test.describe("APP VENTA operational flows", () => {
     const marker = `E2E APARCADA ${Date.now()}`;
     await openSale(page);
     await addProductWithKeyboard(page, product);
-    await page.getByRole("button", { name: /Ventas aparcadas/ }).click();
+    await page.keyboard.press("Control+O");
+    const commentDialog = page.getByRole("dialog", { name: /Comentario interno de la venta/i });
+    await commentDialog.getByLabel("Comentario").fill(marker);
+    await commentDialog.getByRole("button", { name: "Guardar" }).click();
+    await page.keyboard.press("Control+G");
+    await expect(page.locator(".sale-ticket-lines.sale-empty-state")).toHaveText("Sin venta iniciada");
+
+    await page.keyboard.press("Control+G");
     const dialog = page.getByRole("dialog", { name: "Ventas aparcadas" });
-    await dialog.getByLabel("Comentario de la venta").fill(marker);
-    await dialog.getByRole("button", { name: "Aparcar venta actual" }).click();
     await expect(dialog.getByText(marker)).toBeVisible();
 
-    await dialog.getByRole("button", { name: `Recuperar ${marker}` }).click();
+    const list = dialog.getByRole("listbox");
+    await list.focus();
+    await page.keyboard.press("Enter");
     await expect(page.locator(".sale-ticket-line", { hasText: product.name })).toBeVisible();
     await expect(dialog).toBeHidden();
     await expect.poll(async () => {

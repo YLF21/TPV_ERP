@@ -365,6 +365,38 @@ class ControlAlertDetectionServiceTest {
     }
 
     @Test
+    void recordsIndividualAndBulkParkedSaleDeletionDetails() {
+        when(organization.currentStore()).thenReturn(store);
+        var rule = new ControlRule(store.getId(), ControlAlertType.PARKED_SALE_DELETED,
+                true, Map.of(), user.getId(), NOW);
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.PARKED_SALE_DELETED)).thenReturn(List.of(rule));
+        var operationId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var snapshots = List.of(
+                new ControlAlertDetectionService.ParkedSaleDeletionSnapshot(
+                        UUID.randomUUID(), NOW.minusSeconds(60), "Mesa 1",
+                        new BigDecimal("12.10")),
+                new ControlAlertDetectionService.ParkedSaleDeletionSnapshot(
+                        UUID.randomUUID(), NOW, null, new BigDecimal("8.20")));
+
+        service.detectParkedSalesDeleted(
+                operationId, snapshots, true, terminalId,
+                user.getId(), user.getUserName(), false, authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.PARKED_SALE_DELETED);
+        assertThat(event.getValue().getSourceId()).isEqualTo(operationId);
+        assertThat(event.getValue().getData())
+                .containsEntry("bulk", true)
+                .containsEntry("deletedCount", 2)
+                .containsEntry("total", new BigDecimal("20.30"))
+                .containsEntry("authorizerName", user.getUserName());
+        assertThat(event.getValue().getData().get("sales")).asList().hasSize(2);
+    }
+
+    @Test
     void createsOnlyOneAlertWhenConsecutiveDeletionThresholdIsReached() {
         when(organization.currentStore()).thenReturn(store);
         var rule = new ControlRule(store.getId(), ControlAlertType.CONSECUTIVE_LINE_DELETIONS,

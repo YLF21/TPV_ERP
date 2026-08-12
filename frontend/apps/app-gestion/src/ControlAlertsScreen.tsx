@@ -1139,6 +1139,12 @@ function alertSummary(alert: ControlAlert, t: Translator): string {
       authorizer: alertDataText(alert, "authorizerName") || "—"
     });
   }
+  if (alert.type === "PARKED_SALE_DELETED") {
+    return interpolate(t("gestion.controlAlerts.summaryParkedSaleDeleted"), {
+      count: formatUnknownNumber(data.deletedCount),
+      authorizer: alertDataText(alert, "authorizerName") || alert.userName || "—",
+    });
+  }
   const lines = Array.isArray(data.lines) ? data.lines : [];
   return interpolate(t("gestion.controlAlerts.summarySaleCleared"), { count: String(typeof data.lineCount === "number" ? data.lineCount : lines.length), total: formatUnknownNumber(data.total) });
 }

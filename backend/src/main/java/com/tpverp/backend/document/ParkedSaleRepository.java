@@ -19,4 +19,8 @@ public interface ParkedSaleRepository extends JpaRepository<ParkedSale, UUID> {
             @Param("id") UUID id, @Param("storeId") UUID storeId);
 
     List<ParkedSale> findAllByTiendaIdOrderByCreadoEnDesc(UUID tiendaId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select sale from ParkedSale sale where sale.tiendaId = :storeId order by sale.creadoEn desc")
+    List<ParkedSale> findAllLockedByStoreId(@Param("storeId") UUID storeId);
 }

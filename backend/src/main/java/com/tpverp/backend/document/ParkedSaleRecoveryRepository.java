@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
+import java.util.Collection;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -16,6 +17,9 @@ public interface ParkedSaleRecoveryRepository
 
     Optional<ParkedSaleRecovery> findByParkedSaleIdAndStoreIdAndCompanyId(
             UUID parkedSaleId, UUID storeId, UUID companyId);
+
+    boolean existsByParkedSaleIdInAndStoreIdAndCompanyId(
+            Collection<UUID> parkedSaleIds, UUID storeId, UUID companyId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

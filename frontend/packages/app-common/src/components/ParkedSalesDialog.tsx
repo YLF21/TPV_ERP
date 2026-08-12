@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
@@ -8,14 +8,8 @@ import {
   saleOperationCredentials,
   type SaleOperationAuthorization,
 } from "../sale/operationSecurity";
-import {
-  saleMutationCredentialsRequired,
-  saleWithOperationAuthorizations,
-  type SaleMutationAuthorizationRequirement,
-  type SaleMutationOperationAuthorizations,
-} from "../sale/saleMutationAuthorizations";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
-import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDialog";
+import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 export type ParkedSaleSummary = {
   id: string;
@@ -60,13 +54,8 @@ type Props = {
   token?: string;
   locale: LocaleCode;
   currentUsername?: string;
-  currentSale: unknown;
-  printMode?: SalePrintMode;
-  canPark: boolean;
-  saleMutationAuthorizations?: readonly SaleMutationAuthorizationRequirement[];
-  deletionAuthorization?: SaleOperationAuthorization;
+  canManageSales: boolean;
   onClose: () => void;
-  onParked: () => void;
   onRecovered: (sale: OpenedParkedSale) => void | Promise<void>;
 };
 
@@ -74,79 +63,80 @@ export function ParkedSalesDialog({
   token,
   locale,
   currentUsername = "",
-  currentSale,
-  printMode = "DEFAULT",
-  canPark,
-  saleMutationAuthorizations = [],
-  deletionAuthorization = {
-    mode: "DIRECT",
-    requireUsername: false,
-    requirePassword: false,
-  },
+  canManageSales,
   onClose,
-  onParked,
   onRecovered,
 }: Props) {
   const t = createTranslator(locale);
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const singleCancelRef = useRef<HTMLButtonElement>(null);
+  const singleConfirmRef = useRef<HTMLButtonElement>(null);
+  const singleDialogRef = useRef<HTMLElement>(null);
+  const deleteAllDialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef("");
   const [sales, setSales] = useState<ParkedSaleSummary[]>([]);
-  const [comment, setComment] = useState("");
+  const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState("");
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [authorizerUsername, setAuthorizerUsername] = useState("");
   const [authorizerPassword, setAuthorizerPassword] = useState("");
   const [error, setError] = useState("");
-  const [parkAuthorizationOpen, setParkAuthorizationOpen] = useState(false);
-  const requiredParkCredentials = saleMutationCredentialsRequired(
-    saleMutationAuthorizations,
-  );
+  const selectedSale = sales.find((sale) => sale.id === selectedId) ?? null;
+  const pendingDeleteSale = sales.find((sale) => sale.id === pendingDeleteId) ?? null;
+  const bulkAuthorization = useMemo<SaleOperationAuthorization>(() => canManageSales
+    ? { mode: "CURRENT_PASSWORD", requireUsername: false, requirePassword: true }
+    : { mode: "DELEGATED", requireUsername: true, requirePassword: true }, [canManageSales]);
 
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => { busyRef.current = busyId; }, [busyId]);
+  useEffect(() => dialogRef.current
+    ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
+    : undefined, []);
+  useEffect(() => pendingDeleteId && singleDialogRef.current
+    ? activateModalFocusTrap(
+      singleDialogRef.current as unknown as ModalFocusRoot,
+      document,
+      { restoreFocus: false },
+    ) : undefined, [pendingDeleteId]);
+  useEffect(() => deleteAllOpen && deleteAllDialogRef.current
+    ? activateModalFocusTrap(
+      deleteAllDialogRef.current as unknown as ModalFocusRoot,
+      document,
+      { restoreFocus: false },
+    ) : undefined, [deleteAllOpen]);
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
-    const focusable = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex='-1'])"
-    ) ?? []).filter((element) => !element.hidden);
-    const handleKey = (event: KeyboardEvent) => {
+    function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape" && !busyRef.current) {
         event.preventDefault();
-        closeRef.current();
-        return;
+        if (pendingDeleteId) setPendingDeleteId("");
+        else if (deleteAllOpen) closeDeleteAll();
+        else closeRef.current();
       }
-      if (event.key !== "Tab") return;
-      const items = focusable();
-      if (items.length === 0) return;
-      const first = items[0]; const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault(); last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault(); first.focus();
-      }
-    };
+    }
     document.addEventListener("keydown", handleKey);
-    queueMicrotask(() => {
-      const preferred = dialogRef.current?.querySelector<HTMLElement>("input:not([disabled])");
-      (preferred ?? focusable()[0])?.focus();
-    });
     return () => {
       document.removeEventListener("keydown", handleKey);
       previousFocus?.focus();
     };
-  }, []);
+  }, [deleteAllOpen, pendingDeleteId]);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      setSales(await apiRequest<ParkedSaleSummary[]>("/parked-sales", { token }));
+      const loaded = await apiRequest<ParkedSaleSummary[]>("/parked-sales", { token });
+      setSales(loaded);
+      setSelectedId((current) => loaded.some((sale) => sale.id === current)
+        ? current : loaded[0]?.id ?? "");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("parkedSales.error.load"));
     } finally {
@@ -155,46 +145,11 @@ export function ParkedSalesDialog({
   }
 
   useEffect(() => { void load(); }, [token]);
-
-  async function parkCurrent(
-    operationAuthorizations: SaleMutationOperationAuthorizations = {},
-  ) {
-    if (!canPark || busyId) return;
-    setBusyId("new");
-    setError("");
-    try {
-      await apiRequest("/parked-sales/from-pos", {
-        token,
-        method: "POST",
-        body: {
-          sale: saleWithOperationAuthorizations(
-            currentSale as object,
-            operationAuthorizations,
-          ),
-          comment: comment.trim() || null,
-          printMode,
-        }
-      });
-      setParkAuthorizationOpen(false);
-      setComment("");
-      onParked();
-      await load();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("parkedSales.error.park"));
-    } finally {
-      setBusyId("");
+  useEffect(() => {
+    if (!loading && sales.length > 0 && !pendingDeleteId && !deleteAllOpen) {
+      queueMicrotask(() => listRef.current?.focus());
     }
-  }
-
-  function requestParkCurrent() {
-    if (!canPark || busyId) return;
-    if (requiredParkCredentials.length > 0) {
-      setError("");
-      setParkAuthorizationOpen(true);
-      return;
-    }
-    void parkCurrent();
-  }
+  }, [loading, sales.length, pendingDeleteId, deleteAllOpen]);
 
   async function recover(id: string) {
     if (busyId) return;
@@ -206,17 +161,19 @@ export function ParkedSalesDialog({
         || globalThis.crypto?.randomUUID?.()
         || `${Date.now()}-${Math.random().toString(16).slice(2)}-4000-8000-${Math.random().toString(16).slice(2)}`;
       localStorage.setItem(storageKey, recoveryId);
-      const recovery = await apiRequest<ParkedSaleRecovery>(`/parked-sales/${encodeURIComponent(id)}/recoveries`, {
-        token,
-        method: "POST",
-        body: { recoveryId }
-      });
+      const recovery = await apiRequest<ParkedSaleRecovery>(
+        `/parked-sales/${encodeURIComponent(id)}/recoveries`,
+        { token, method: "POST", body: { recoveryId } },
+      );
       if (recovery.status === "CLAIMED") {
         await onRecovered(recovery.sale);
-        await apiRequest(`/parked-sales/${encodeURIComponent(id)}/recoveries/${encodeURIComponent(recoveryId)}/acknowledge`, { token, method: "POST" });
+        await apiRequest(
+          `/parked-sales/${encodeURIComponent(id)}/recoveries/${encodeURIComponent(recoveryId)}/acknowledge`,
+          { token, method: "POST" },
+        );
       }
       localStorage.removeItem(storageKey);
-      setSales((current) => current.filter((sale) => sale.id !== id));
+      onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("parkedSales.error.recover"));
     } finally {
@@ -224,134 +181,213 @@ export function ParkedSalesDialog({
     }
   }
 
-  async function remove(id: string) {
-    if (busyId) return;
-    if (!saleOperationAuthorizationComplete(
-      deletionAuthorization,
-      authorizerUsername,
-      authorizerPassword,
-    )) return;
+  async function removeOne() {
+    if (!pendingDeleteSale || busyId) return;
+    const id = pendingDeleteSale.id;
     setBusyId(id);
     setError("");
     try {
       await apiRequest(`/parked-sales/${encodeURIComponent(id)}/deletions`, {
         token,
         method: "POST",
-        body: saleOperationCredentials(
-          deletionAuthorization,
-          authorizerUsername,
-          authorizerPassword,
-        ),
       });
-      setSales((current) => current.filter((sale) => sale.id !== id));
+      const remaining = sales.filter((sale) => sale.id !== id);
+      const deletedIndex = sales.findIndex((sale) => sale.id === id);
+      setSales(remaining);
+      setSelectedId(remaining[Math.min(deletedIndex, remaining.length - 1)]?.id ?? "");
       setPendingDeleteId("");
-      setAuthorizerUsername("");
-      setAuthorizerPassword("");
+      queueMicrotask(() => listRef.current?.focus());
     } catch (reason) {
-      setAuthorizerPassword("");
       setError(reason instanceof Error ? reason.message : t("parkedSales.error.delete"));
     } finally {
       setBusyId("");
     }
   }
 
+  async function removeAll() {
+    if (busyId || !saleOperationAuthorizationComplete(
+      bulkAuthorization,
+      authorizerUsername,
+      authorizerPassword,
+    )) return;
+    setBusyId("all");
+    setError("");
+    try {
+      await apiRequest("/parked-sales/deletions", {
+        token,
+        method: "POST",
+        body: saleOperationCredentials(
+          bulkAuthorization,
+          authorizerUsername,
+          authorizerPassword,
+        ),
+      });
+      setSales([]);
+      setSelectedId("");
+      closeDeleteAll();
+      queueMicrotask(() => listRef.current?.focus());
+    } catch (reason) {
+      setAuthorizerPassword("");
+      setError(reason instanceof Error ? reason.message : t("parkedSales.error.deleteAll"));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  function closeDeleteAll() {
+    setDeleteAllOpen(false);
+    setAuthorizerUsername("");
+    setAuthorizerPassword("");
+  }
+
+  function handleListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (busyId || pendingDeleteId || deleteAllOpen || sales.length === 0) return;
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const current = Math.max(0, sales.findIndex((sale) => sale.id === selectedId));
+      const next = Math.min(sales.length - 1, Math.max(
+        0,
+        current + (event.key === "ArrowDown" ? 1 : -1),
+      ));
+      setSelectedId(sales[next].id);
+      return;
+    }
+    if (event.key === "Enter" && selectedSale
+        && !(event.target instanceof HTMLButtonElement)) {
+      event.preventDefault();
+      void recover(selectedSale.id);
+    }
+  }
+
+  function handleSingleDeleteKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat || (event.key !== "ArrowRight" && event.key !== "ArrowLeft")) return;
+    event.preventDefault();
+    if (event.key === "ArrowRight") singleConfirmRef.current?.focus();
+    else singleCancelRef.current?.focus();
+  }
+
   return (
     <div className="sale-action-overlay" role="presentation">
-      <section ref={dialogRef} className="sale-action-dialog wide parked-sales-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} aria-busy={Boolean(busyId)}>
-        <header><div><h2 id={titleId}>{t("parkedSales.title")}</h2><p id={descriptionId}>{t("parkedSales.description")}</p></div><button type="button" aria-label={`${t("common.close")} ${t("parkedSales.title")}`} disabled={Boolean(busyId)} onClick={onClose}>×</button></header>
-        <div className="parked-sale-create">
-          <label><span>{t("parkedSales.comment")}</span><input value={comment} onChange={(event) => setComment(event.target.value)} placeholder={t("parkedSales.commentPlaceholder")} /></label>
-          <button type="button" className="primary" disabled={!canPark || Boolean(busyId)} onClick={requestParkCurrent}>
-            {t("parkedSales.parkCurrent")}
-          </button>
-        </div>
-        {!canPark && <p className="parked-sales-empty-hint" role="status">{t("parkedSales.nothingToPark")}</p>}
+      <section
+        ref={dialogRef}
+        className="sale-action-dialog wide parked-sales-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        aria-busy={Boolean(busyId)}
+        aria-hidden={pendingDeleteSale || deleteAllOpen ? true : undefined}
+      >
+        <header>
+          <div>
+            <h2 id={titleId}>{t("parkedSales.title")}</h2>
+            <p id={descriptionId}>{t("parkedSales.listDescription")}</p>
+          </div>
+          <button type="button" aria-label={`${t("common.close")} ${t("parkedSales.title")}`} disabled={Boolean(busyId)} onClick={onClose}>×</button>
+        </header>
+        <p className="parked-sales-keyboard-hint">{t("parkedSales.keyboardHint")}</p>
         {error && <p className="sale-action-error" role="alert">{error}</p>}
-        <div className="parked-sales-list">
+        <div
+          ref={listRef}
+          className="parked-sales-list"
+          role="listbox"
+          aria-label={t("parkedSales.title")}
+          tabIndex={sales.length > 0 ? 0 : -1}
+          onKeyDown={handleListKeyDown}
+        >
           {loading && <p>{t("parkedSales.loading")}</p>}
-          {!loading && sales.length === 0 && <div className="parked-sales-empty"><strong>{t("parkedSales.empty")}</strong><span>{t("parkedSales.emptyHint")}</span><button type="button" onClick={() => void load()}>{t("parkedSales.reload")}</button></div>}
-          {sales.map((sale) => (
-            <article key={sale.id}>
-              <div><strong>{sale.comment?.trim() || t("parkedSales.untitled")}</strong><span>{new Date(sale.createdAt).toLocaleString(locale)}</span></div>
-              <b>{new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(Number(sale.total))}</b>
-              <button type="button" aria-label={`${t("parkedSales.recover")} ${sale.comment?.trim() || t("parkedSales.untitled")}`} disabled={Boolean(busyId)} onClick={() => void recover(sale.id)}>{t("parkedSales.recover")}</button>
-              <button
-                type="button"
-                aria-label={`${t("parkedSales.delete")} ${sale.comment?.trim() || t("parkedSales.untitled")}`}
-                className="danger"
-                disabled={Boolean(busyId)}
-                onClick={() => {
-                  if (deletionAuthorization.mode === "DIRECT") {
-                    void remove(sale.id);
-                    return;
-                  }
-                  setPendingDeleteId(sale.id);
-                  setAuthorizerUsername("");
-                  setAuthorizerPassword("");
-                  setError("");
-                }}
+          {!loading && sales.length === 0 && (
+            <div className="parked-sales-empty">
+              <strong>{t("parkedSales.empty")}</strong>
+              <span>{t("parkedSales.emptyHint")}</span>
+              <button type="button" onClick={() => void load()}>{t("parkedSales.reload")}</button>
+            </div>
+          )}
+          {sales.map((sale) => {
+            const label = sale.comment?.trim() || t("parkedSales.untitled");
+            return (
+              <article
+                key={sale.id}
+                role="option"
+                aria-selected={sale.id === selectedId}
+                className={sale.id === selectedId ? "selected" : ""}
+                onClick={() => setSelectedId(sale.id)}
+                onDoubleClick={() => void recover(sale.id)}
               >
-                {t("parkedSales.delete")}
-              </button>
-              {pendingDeleteId === sale.id && (
-                <div className="parked-sale-delete-authorization">
-                  <SaleOperationAuthorizationFields
-                    locale={locale}
-                    currentUsername={currentUsername}
-                    authorization={deletionAuthorization}
-                    username={authorizerUsername}
-                    password={authorizerPassword}
-                    disabled={Boolean(busyId)}
-                    autoFocus
-                    onUsernameChange={setAuthorizerUsername}
-                    onPasswordChange={setAuthorizerPassword}
-                  />
-                  <div className="sale-action-buttons">
-                    <button
-                      type="button"
-                      disabled={Boolean(busyId)}
-                      onClick={() => {
-                        setPendingDeleteId("");
-                        setAuthorizerUsername("");
-                        setAuthorizerPassword("");
-                      }}
-                    >
-                      {t("common.cancel")}
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(
-                        deletionAuthorization,
-                        authorizerUsername,
-                        authorizerPassword,
-                      )}
-                      onClick={() => void remove(sale.id)}
-                    >
-                      {t("parkedSales.delete")}
-                    </button>
-                  </div>
+                <div>
+                  <strong>{label}</strong>
+                  <span>{new Date(sale.createdAt).toLocaleString(locale)}</span>
                 </div>
-              )}
-            </article>
-          ))}
+                <b>{new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(Number(sale.total))}</b>
+                <button
+                  type="button"
+                  aria-label={`${t("parkedSales.delete")} ${label}`}
+                  className="danger"
+                  disabled={Boolean(busyId)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedId(sale.id);
+                    setPendingDeleteId(sale.id);
+                    setError("");
+                  }}
+                >{t("parkedSales.delete")}</button>
+              </article>
+            );
+          })}
         </div>
-        <footer><button type="button" disabled={Boolean(busyId)} onClick={onClose}>{t("common.close")}</button></footer>
+        <footer className="parked-sales-footer">
+          <button type="button" className="danger" disabled={sales.length === 0 || Boolean(busyId)} onClick={() => { setDeleteAllOpen(true); setError(""); }}>
+            {t("parkedSales.deleteAll")}
+          </button>
+          <button type="button" disabled={Boolean(busyId)} onClick={onClose}>{t("common.close")}</button>
+        </footer>
       </section>
-      <SaleMutationAuthorizationDialog
-        open={parkAuthorizationOpen}
-        locale={locale}
-        currentUsername={currentUsername}
-        requirements={requiredParkCredentials}
-        busy={busyId === "new"}
-        error={parkAuthorizationOpen ? error : ""}
-        onCancel={() => {
-          if (busyId) return;
-          setParkAuthorizationOpen(false);
-          setError("");
-        }}
-        onConfirm={(authorizations) => void parkCurrent(authorizations)}
-      />
+
+      {pendingDeleteSale && (
+        <section
+          ref={singleDialogRef}
+          className="sale-action-dialog sale-clear-sale-dialog parked-sale-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("parkedSales.deleteTitle")}
+          onKeyDown={handleSingleDeleteKeyDown}
+        >
+          <header><h2>{t("parkedSales.deleteTitle")}</h2></header>
+          <div className="sale-clear-sale-warning" role="note">
+            <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
+            <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteConfirm")}</p></div>
+          </div>
+          <div className="sale-action-buttons sale-clear-sale-actions">
+            <button ref={singleCancelRef} autoFocus type="button" disabled={Boolean(busyId)} onClick={() => setPendingDeleteId("")}>{t("common.cancel")}</button>
+            <button ref={singleConfirmRef} type="button" className="danger" disabled={Boolean(busyId)} onClick={() => void removeOne()}>{t("parkedSales.delete")}</button>
+          </div>
+        </section>
+      )}
+
+      {deleteAllOpen && (
+        <section ref={deleteAllDialogRef} className="sale-action-dialog parked-sales-delete-all-dialog" role="dialog" aria-modal="true" aria-label={t("parkedSales.deleteAllTitle")}>
+          <header><h2>{t("parkedSales.deleteAllTitle")}</h2></header>
+          <div className="sale-clear-sale-warning" role="note">
+            <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
+            <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteAllConfirm")}</p></div>
+          </div>
+          <SaleOperationAuthorizationFields
+            locale={locale}
+            currentUsername={currentUsername}
+            authorization={bulkAuthorization}
+            username={authorizerUsername}
+            password={authorizerPassword}
+            disabled={Boolean(busyId)}
+            autoFocus
+            onUsernameChange={setAuthorizerUsername}
+            onPasswordChange={setAuthorizerPassword}
+          />
+          <div className="sale-action-buttons">
+            <button type="button" disabled={Boolean(busyId)} onClick={closeDeleteAll}>{t("common.cancel")}</button>
+            <button type="button" className="danger" disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(bulkAuthorization, authorizerUsername, authorizerPassword)} onClick={() => void removeAll()}>{t("parkedSales.deleteAll")}</button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

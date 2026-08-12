@@ -11,14 +11,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
-import com.tpverp.backend.security.sales.SaleOperationCode;
-import com.tpverp.backend.security.sales.SaleOperationSecurityService;
+import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -27,6 +28,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,7 +51,11 @@ class ParkedSaleServiceTest {
     @Mock
     private CurrentOrganization organization;
     @Mock
-    private SaleOperationSecurityService operationSecurity;
+    private OperationalPermissionAuthorizationService permissionAuthorizations;
+    @Mock
+    private ControlAlertDetectionService controlAlerts;
+    @Mock
+    private CurrentTerminal currentTerminal;
     @Mock
     private AuditService audit;
     @Mock
@@ -73,19 +79,14 @@ class ParkedSaleServiceTest {
                 company,
                 "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
-        when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentStore()).thenReturn(store);
         lenient().when(organization.currentCompany()).thenReturn(company);
         lenient().when(organization.currentUser(any())).thenReturn(user);
-        lenient().when(operationSecurity.authorize(
-                        org.mockito.ArgumentMatchers.eq(
-                                SaleOperationCode.DELETE_PARKED_SALE),
-                        any(),
-                        any(),
-                        any()))
-                .thenReturn(new Authorization(user, user, false));
+        lenient().when(currentTerminal.terminalId(any())).thenReturn(UUID.randomUUID());
         service = new ParkedSaleService(
-                repository, recoveries, organization, operationSecurity, audit,
-                Clock.fixed(NOW, ZoneOffset.UTC), mutationAuthorizations);
+                repository, recoveries, organization, audit,
+                Clock.fixed(NOW, ZoneOffset.UTC), mutationAuthorizations,
+                permissionAuthorizations, controlAlerts, currentTerminal);
     }
 
     @Test
@@ -117,15 +118,18 @@ class ParkedSaleServiceTest {
 
         when(repository.findLockedByIdAndStoreId(parked.getId(), store.getId()))
                 .thenReturn(Optional.of(parked));
-        service.delete(parked.getId(), null, null, auth());
+        service.delete(parked.getId(), auth());
         verify(repository).delete(parked);
         verify(repository).flush();
-        verify(operationSecurity).authorize(
-                org.mockito.ArgumentMatchers.eq(
-                        SaleOperationCode.DELETE_PARKED_SALE),
-                org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.any());
+        verify(permissionAuthorizations, never()).authorizeWithPassword(
+                any(), any(), any(), any());
+        verify(controlAlerts).detectParkedSalesDeleted(
+                org.mockito.ArgumentMatchers.eq(parked.getId()),
+                org.mockito.ArgumentMatchers.argThat(items -> items.size() == 1),
+                org.mockito.ArgumentMatchers.eq(false),
+                any(), org.mockito.ArgumentMatchers.eq(user.getId()),
+                org.mockito.ArgumentMatchers.eq(user.getUserName()),
+                org.mockito.ArgumentMatchers.eq(false), any());
         @SuppressWarnings("unchecked")
         var details = ArgumentCaptor.forClass(Map.class);
         verify(audit).record(
@@ -139,25 +143,78 @@ class ParkedSaleServiceTest {
     }
 
     @Test
-    void deniedDeletionPolicyKeepsParkedSale() {
-        var parked = org.mockito.Mockito.mock(ParkedSale.class);
-        var id = UUID.randomUUID();
-        when(repository.findLockedByIdAndStoreId(id, store.getId()))
-                .thenReturn(Optional.of(parked));
-        when(operationSecurity.authorize(
-                        org.mockito.ArgumentMatchers.eq(
-                                SaleOperationCode.DELETE_PARKED_SALE),
+    void deniedBulkDeletionPolicyKeepsEveryParkedSale() {
+        when(permissionAuthorizations.authorizeWithPassword(
+                        org.mockito.ArgumentMatchers.eq(Set.of("GESTION_VENTAS")),
                         org.mockito.ArgumentMatchers.isNull(),
                         org.mockito.ArgumentMatchers.eq("wrong"),
-                        org.mockito.ArgumentMatchers.any()))
+                        any()))
                 .thenThrow(new AccessDeniedException("denied"));
 
         assertThatThrownBy(() ->
-                service.delete(id, null, "wrong", auth()))
+                service.deleteAll(null, "wrong", auth()))
                 .isInstanceOf(AccessDeniedException.class);
 
-        verify(repository, never()).delete(any());
+        verify(repository, never()).findAllLockedByStoreId(any());
+        verify(repository, never()).deleteAll(any());
         verify(audit, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void deletesAllParkedSalesAtomicallyAfterManagementAuthorization() {
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var first = service.park(command(UUID.randomUUID()), "Mesa 1", auth());
+        var second = service.park(command(UUID.randomUUID()), "Mesa 2", auth());
+        when(permissionAuthorizations.authorizeWithPassword(
+                org.mockito.ArgumentMatchers.eq(Set.of("GESTION_VENTAS")),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq("secret"),
+                any())).thenReturn(new Authorization(user, user, false));
+        when(repository.findAllLockedByStoreId(store.getId()))
+                .thenReturn(List.of(first, second));
+        when(recoveries.existsByParkedSaleIdInAndStoreIdAndCompanyId(
+                any(), org.mockito.ArgumentMatchers.eq(store.getId()),
+                org.mockito.ArgumentMatchers.eq(company.getId()))).thenReturn(false);
+
+        assertThat(service.deleteAll(null, "secret", auth())).isEqualTo(2);
+
+        verify(repository).deleteAll(List.of(first, second));
+        verify(repository).flush();
+        verify(controlAlerts).detectParkedSalesDeleted(
+                any(), org.mockito.ArgumentMatchers.argThat(items -> items.size() == 2),
+                org.mockito.ArgumentMatchers.eq(true), any(),
+                org.mockito.ArgumentMatchers.eq(user.getId()),
+                org.mockito.ArgumentMatchers.eq(user.getUserName()),
+                org.mockito.ArgumentMatchers.eq(false), any());
+    }
+
+    @Test
+    void bulkDeletionLeavesEverySaleWhenOneRecoveryIsAlreadyClaimed() {
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var first = service.park(command(UUID.randomUUID()), "Mesa 1", auth());
+        var second = service.park(command(UUID.randomUUID()), "Mesa 2", auth());
+        when(permissionAuthorizations.authorizeWithPassword(
+                org.mockito.ArgumentMatchers.eq(Set.of("GESTION_VENTAS")),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq("secret"),
+                any())).thenReturn(new Authorization(user, user, false));
+        when(repository.findAllLockedByStoreId(store.getId()))
+                .thenReturn(List.of(first, second));
+        when(recoveries.existsByParkedSaleIdInAndStoreIdAndCompanyId(
+                any(), org.mockito.ArgumentMatchers.eq(store.getId()),
+                org.mockito.ArgumentMatchers.eq(company.getId()))).thenReturn(true);
+
+        assertThatThrownBy(() -> service.deleteAll(null, "secret", auth()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("parked_sale_recovery_already_claimed");
+
+        verify(repository, never()).deleteAll(any());
+        verify(repository, never()).flush();
+        verify(audit, never()).record(
+                org.mockito.ArgumentMatchers.eq("PARKED_SALES_DELETED"), any(), any());
+        verify(controlAlerts, never()).detectParkedSalesDeleted(
+                any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any());
     }
 
     @Test

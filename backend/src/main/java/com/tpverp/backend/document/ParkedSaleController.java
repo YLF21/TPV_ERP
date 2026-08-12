@@ -3,6 +3,7 @@ package com.tpverp.backend.document;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
@@ -82,13 +83,19 @@ public class ParkedSaleController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS') or hasAuthority('VENTA')")
     public void delete(
             @PathVariable UUID id,
-            @Valid @RequestBody DeleteRequest request,
             Authentication authentication) {
-        service.delete(
-                id,
+        service.delete(id, authentication);
+    }
+
+    @PostMapping("/deletions")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS') or hasAuthority('VENTA')")
+    public DeleteAllResponse deleteAll(
+            @Valid @RequestBody DeleteAllRequest request,
+            Authentication authentication) {
+        return new DeleteAllResponse(service.deleteAll(
                 request.authorizerUsername(),
                 request.authorizerPassword(),
-                authentication);
+                authentication));
     }
 
     public record ParkRequest(
@@ -111,15 +118,17 @@ public class ParkedSaleController {
 
     public record RecoveryRequest(@NotNull UUID recoveryId) {}
 
-    public record DeleteRequest(
+    public record DeleteAllRequest(
             @Size(max = 128) String authorizerUsername,
             @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-            @Size(max = 128) String authorizerPassword) {
+            @NotBlank @Size(max = 128) String authorizerPassword) {
 
         @Override
         public String toString() {
-            return "DeleteRequest[authorizerUsername=" + authorizerUsername
+            return "DeleteAllRequest[authorizerUsername=" + authorizerUsername
                     + ", authorizerPassword=<redacted>]";
         }
     }
+
+    public record DeleteAllResponse(int deletedCount) {}
 }

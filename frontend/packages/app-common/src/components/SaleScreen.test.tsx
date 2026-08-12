@@ -2376,6 +2376,69 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
   });
 
+  it("parks directly with Ctrl+G and preserves the cart customer and comment", async () => {
+    let parkedRequest: Record<string, unknown> | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.includes("/customers/sale-options/search")) {
+        return new Response(JSON.stringify([customers[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/parked-sales/from-pos")) {
+        parkedRequest = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ id: "parked-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+
+    fireEvent.keyDown(window, { key: "End" });
+    const customerDialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    await within(customerDialog).findByRole("button", { name: /Cliente Pruebas/ });
+    fireEvent.keyDown(customerDialog, { key: "Insert" });
+    fireEvent.keyDown(window, { key: "o", ctrlKey: true });
+    const commentDialog = await screen.findByRole("dialog", { name: "Comentario interno de la venta" });
+    fireEvent.change(within(commentDialog).getByRole("textbox", { name: "Comentario" }), {
+      target: { value: "Recoger a las 18:00" },
+    });
+    fireEvent.click(within(commentDialog).getByRole("button", { name: "Guardar" }));
+
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
+
+    await waitFor(() => expect(parkedRequest).not.toBeNull());
+    expect(parkedRequest).toMatchObject({
+      comment: "Recoger a las 18:00",
+      sale: {
+        customerId: customers[0].id,
+        internalComment: "Recoger a las 18:00",
+        lines: [expect.objectContaining({ productId: products[0].id })],
+      },
+    });
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
+    expect(screen.queryByRole("dialog", { name: "Ventas aparcadas" })).not.toBeInTheDocument();
+  });
+
   it("supports F5 creation, Ctrl+F7 editing and Enter debt collection from the customer list", async () => {
     const customer = {
       ...customers[0],

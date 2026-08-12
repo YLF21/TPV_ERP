@@ -12,7 +12,8 @@ export const controlAlertTypes = [
   "MANUAL_NEGATIVE_QUANTITY",
   "REFUND_POLICY_OVERRIDE",
   "CASH_DRAWER_OPENED",
-  "PRODUCT_CATALOG_MODIFIED"
+  "PRODUCT_CATALOG_MODIFIED",
+  "PARKED_SALE_DELETED"
 ] as const;
 
 export const controlAlertStatuses = ["NEW", "REVIEWED", "CLOSED", "DISMISSED"] as const;

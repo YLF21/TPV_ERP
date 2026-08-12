@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { ParkedSalesDialog } from "./ParkedSalesDialog";
@@ -17,6 +10,7 @@ vi.mock("../api/client", () => ({ apiRequest: vi.fn() }));
 
 const request = vi.mocked(apiRequest);
 const summary = { id: "parked-1", createdAt: "2026-07-21T10:00:00Z", comment: "Mesa 1", total: "12.10" };
+const secondSummary = { id: "parked-2", createdAt: "2026-07-21T10:05:00Z", comment: "Mesa 2", total: "8.20" };
 const opened = { document: { lineas: [{ productoId: "product-1", cantidad: 1, descuento: 0 }] }, comment: "Mesa 1" };
 const recovery = { recoveryId: "recovery-1", parkedSaleId: "parked-1", status: "CLAIMED", sale: opened } as const;
 const storageKey = "tpverp:parked-sale-recovery:parked-1";
@@ -32,17 +26,16 @@ function show(overrides: Partial<Parameters<typeof ParkedSalesDialog>[0]> = {}) 
   return render(<ParkedSalesDialog
     token="token"
     locale="es"
-    currentSale={{}}
-    canPark
+    currentUsername="cashier"
+    canManageSales={false}
     onClose={vi.fn()}
-    onParked={vi.fn()}
     onRecovered={vi.fn()}
     {...overrides}
   />);
 }
 
 describe("ParkedSalesDialog", () => {
-  it("acknowledges the claim only after the sale was restored locally", async () => {
+  it("recovers the selected sale with Enter and acknowledges only after local restoration", async () => {
     request
       .mockResolvedValueOnce([summary])
       .mockResolvedValueOnce(recovery)
@@ -50,30 +43,53 @@ describe("ParkedSalesDialog", () => {
     const recovered = vi.fn().mockResolvedValue(undefined);
     show({ onRecovered: recovered });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Recuperar Mesa 1" }));
+    const list = await screen.findByRole("listbox", { name: "Ventas aparcadas" });
+    await waitFor(() => expect(list).toHaveFocus());
+    fireEvent.keyDown(list, { key: "Enter" });
 
     await waitFor(() => expect(recovered).toHaveBeenCalledWith(opened));
-    await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/parked-sales/parked-1/recoveries/recovery-1/acknowledge",
-      { token: "token", method: "POST" }
-    ));
     expect(request).toHaveBeenCalledWith(
       "/parked-sales/parked-1/recoveries",
-      { token: "token", method: "POST", body: { recoveryId: "recovery-1" } }
+      { token: "token", method: "POST", body: { recoveryId: "recovery-1" } },
+    );
+    expect(request).toHaveBeenCalledWith(
+      "/parked-sales/parked-1/recoveries/recovery-1/acknowledge",
+      { token: "token", method: "POST" },
     );
     expect(request.mock.invocationCallOrder[1]).toBeLessThan(recovered.mock.invocationCallOrder[0]);
     expect(recovered.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[2]);
     expect(localStorage.getItem(storageKey)).toBeNull();
   });
 
-  it("keeps the recovery claim and parked sale visible when local restoration fails", async () => {
+  it("navigates with arrows and opens the highlighted sale", async () => {
+    const secondOpened = { ...opened, comment: "Mesa 2" };
     request
-      .mockResolvedValueOnce([summary])
-      .mockResolvedValueOnce(recovery);
+      .mockResolvedValueOnce([summary, secondSummary])
+      .mockResolvedValueOnce({ ...recovery, parkedSaleId: "parked-2", sale: secondOpened })
+      .mockResolvedValueOnce({});
+    const recovered = vi.fn().mockResolvedValue(undefined);
+    show({ onRecovered: recovered });
+
+    const list = await screen.findByRole("listbox");
+    await screen.findByRole("option", { name: /Mesa 2/ });
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: /Mesa 2/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(list, { key: "Enter" });
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/parked-sales/parked-2/recoveries",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(recovered).toHaveBeenCalledWith(secondOpened);
+  });
+
+  it("keeps the claim and parked sale visible when local restoration fails", async () => {
+    request.mockResolvedValueOnce([summary]).mockResolvedValueOnce(recovery);
     const recovered = vi.fn().mockRejectedValue(new Error("No se pudo reconstruir"));
     show({ onRecovered: recovered });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Recuperar Mesa 1" }));
+    const list = await screen.findByRole("listbox");
+    fireEvent.keyDown(list, { key: "Enter" });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo reconstruir");
     expect(request).toHaveBeenCalledTimes(2);
@@ -81,117 +97,59 @@ describe("ParkedSalesDialog", () => {
     expect(localStorage.getItem(storageKey)).toBe("recovery-1");
   });
 
-  it("replays an acknowledged recovery without rebuilding the cart twice", async () => {
-    request
-      .mockResolvedValueOnce([summary])
-      .mockResolvedValueOnce({ ...recovery, status: "ACKNOWLEDGED" });
-    const recovered = vi.fn();
-    show({ onRecovered: recovered });
+  it("deletes one sale after a Ctrl+F4-style warning without credentials", async () => {
+    request.mockResolvedValueOnce([summary]).mockResolvedValueOnce(undefined);
+    show();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Recuperar Mesa 1" }));
-
-    await waitFor(() => expect(screen.queryByText("Mesa 1")).not.toBeInTheDocument());
-    expect(recovered).not.toHaveBeenCalled();
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(localStorage.getItem(storageKey)).toBeNull();
-  });
-
-  it("traps focus, closes with Escape and restores the previous focus", async () => {
-    request.mockResolvedValueOnce([]);
-    const opener = document.createElement("button");
-    opener.textContent = "Abrir ventas aparcadas";
-    document.body.append(opener);
-    opener.focus();
-    const close = vi.fn();
-    const view = show({ onClose: close });
-
-    await waitFor(() => expect(screen.getByPlaceholderText("Mesa, cliente o referencia")).toHaveFocus());
-    const headerClose = screen.getByRole("button", { name: "Cerrar Ventas aparcadas" });
-    const footerClose = screen.getByRole("button", { name: "Cerrar" });
-    headerClose.focus();
-    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
-    expect(footerClose).toHaveFocus();
-    fireEvent.keyDown(document, { key: "Tab" });
-    expect(headerClose).toHaveFocus();
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(close).toHaveBeenCalledOnce();
-    view.unmount();
-    expect(opener).toHaveFocus();
-    opener.remove();
-  });
-
-  it("explains the empty state and allows reloading it", async () => {
-    request.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    show({ canPark: false });
-
-    expect(await screen.findByText("No hay ventas aparcadas.")).toBeInTheDocument();
-    expect(screen.getByText(/Aparca un ticket en curso/)).toBeInTheDocument();
-    expect(screen.getByText(/Añade al menos un producto/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Volver a cargar" }));
-    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
-  });
-
-  it("sends protected sale credentials only in the immediate park request", async () => {
-    const currentSale = {
-      customerId: null,
-      lines: [{ productId: "product-1", quantity: -1, discount: 0 }],
-    };
-    request.mockResolvedValueOnce([]).mockResolvedValueOnce({}).mockResolvedValueOnce([]);
-    show({
-      currentSale,
-      saleMutationAuthorizations: [{
-        code: "MANUAL_RETURN_WITHOUT_TICKET",
-        label: "Devolución manual",
-        authorization: {
-          mode: "DELEGATED",
-          requireUsername: true,
-          requirePassword: true,
-        },
-      }],
-    });
-
-    fireEvent.click(await screen.findByRole("button", {
-      name: "Aparcar venta actual",
-    }));
-    const authorization = await screen.findByRole("dialog", {
-      name: "Autorización de la venta",
-    });
-    fireEvent.change(
-      within(authorization).getByRole("textbox", {
-        name: "Usuario autorizador",
-      }),
-      { target: { value: "manager" } },
-    );
-    fireEvent.change(
-      within(authorization).getByLabelText("Contraseña del autorizador"),
-      { target: { value: "secret" } },
-    );
-    fireEvent.click(within(authorization).getByRole("button", {
-      name: "Confirmar y continuar",
-    }));
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar Mesa 1" }));
+    const confirmation = screen.getByRole("dialog", { name: "Eliminar venta guardada" });
+    const cancel = within(confirmation).getByRole("button", { name: "Cancelar" });
+    const remove = within(confirmation).getByRole("button", { name: "Eliminar" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(confirmation, { key: "ArrowRight" });
+    expect(remove).toHaveFocus();
+    fireEvent.click(remove);
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/parked-sales/from-pos",
+      "/parked-sales/parked-1/deletions",
+      { token: "token", method: "POST" },
+    ));
+    await waitFor(() => expect(screen.queryByText("Mesa 1")).not.toBeInTheDocument());
+  });
+
+  it("requires only the current manager password to delete all", async () => {
+    request.mockResolvedValueOnce([summary]).mockResolvedValueOnce({ deletedCount: 1 });
+    show({ canManageSales: true, currentUsername: "manager" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar todo" }));
+    const dialog = screen.getByRole("dialog", { name: "Eliminar todas las ventas guardadas" });
+    expect(within(dialog).queryByRole("textbox", { name: /Usuario autorizador/ })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/contraseña/i), { target: { value: "secret" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar todo" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/parked-sales/deletions",
+      { token: "token", method: "POST", body: { authorizerPassword: "secret" } },
+    ));
+  });
+
+  it("allows delegated management authorization for delete all", async () => {
+    request.mockResolvedValueOnce([summary]).mockResolvedValueOnce({ deletedCount: 1 });
+    show({ canManageSales: false });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar todo" }));
+    const dialog = screen.getByRole("dialog", { name: "Eliminar todas las ventas guardadas" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: /Usuario autorizador/ }), { target: { value: "manager" } });
+    fireEvent.change(within(dialog).getByLabelText(/contraseña/i), { target: { value: "secret" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar todo" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/parked-sales/deletions",
       {
         token: "token",
         method: "POST",
-        body: {
-          sale: {
-            ...currentSale,
-            operationAuthorizations: {
-              MANUAL_RETURN_WITHOUT_TICKET: {
-                authorizerUsername: "manager",
-                authorizerPassword: "secret",
-              },
-            },
-          },
-          comment: null,
-          printMode: "DEFAULT",
-        },
+        body: { authorizerUsername: "manager", authorizerPassword: "secret" },
       },
     ));
-    expect(currentSale).not.toHaveProperty("operationAuthorizations");
-    expect(localStorage.getItem(storageKey)).toBe("recovery-1");
   });
 });

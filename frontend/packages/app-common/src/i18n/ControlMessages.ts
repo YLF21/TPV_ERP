@@ -18,6 +18,7 @@ const es = {
   summaryManualNegative: "Devoluci\u00f3n manual registrada con {count} l\u00edneas negativas.", summaryCashDrawer: "Apertura manual del caj\u00f3n autorizada por {authorizer}.",
   summaryRefundPolicyOverride: "Devoluci\u00f3n monetaria excepcional de {amount} mediante {method}. Autorizada por {authorizer}.",
   summaryProductModified: "Producto {product} modificado desde APP VENTA. Autorizado por {authorizer}.",
+  summaryParkedSaleDeleted: "Ventas guardadas eliminadas: {count}. Autorización: {authorizer}.",
   autoRefresh: "Actualización automática", autoRefreshOff: "Desactivada", newNotice: "Hay {count} alertas nuevas desde la última actualización.", dismissNotice: "Cerrar aviso", pendingIndicator: "Resumen de alertas pendientes",
   analyticsEyebrow: "Resumen del periodo", analyticsTitle: "Panel analítico", overdueAfter: "Pendiente durante", pendingCount: "Pendientes", overdueCount: "Fuera de plazo",
   byStatus: "Por estado", byType: "Por tipo", byUser: "Por usuario", byTerminal: "Por terminal", analyticsEmpty: "Sin datos", analyticsUnavailable: "No disponible",
@@ -42,6 +43,7 @@ const en = {
   summaryManualNegative: "Manual return recorded with {count} negative lines.", summaryCashDrawer: "Manual cash drawer opening authorized by {authorizer}.",
   summaryRefundPolicyOverride: "Exceptional monetary refund of {amount} using {method}. Authorized by {authorizer}.",
   summaryProductModified: "Product {product} modified from APP VENTA. Authorized by {authorizer}.",
+  summaryParkedSaleDeleted: "Parked sales deleted: {count}. Authorization: {authorizer}.",
   autoRefresh: "Automatic refresh", autoRefreshOff: "Off", newNotice: "{count} new alerts arrived since the last refresh.", dismissNotice: "Dismiss notification", pendingIndicator: "Pending alerts summary",
   analyticsEyebrow: "Period summary", analyticsTitle: "Analytics panel", overdueAfter: "Pending for", pendingCount: "Pending", overdueCount: "Overdue",
   byStatus: "By status", byType: "By type", byUser: "By user", byTerminal: "By terminal", analyticsEmpty: "No data", analyticsUnavailable: "Unavailable",
@@ -66,6 +68,7 @@ const zh = {
   summaryManualNegative: "\u5df2\u8bb0\u5f55\u5305\u542b {count} \u4e2a\u8d1f\u6570\u884c\u7684\u624b\u52a8\u9000\u8d27\u3002", summaryCashDrawer: "\u7531 {authorizer} \u6388\u6743\u624b\u52a8\u6253\u5f00\u94b1\u7bb1\u3002",
   summaryRefundPolicyOverride: "\u4f8b\u5916\u9000\u6b3e {amount}\uff0c\u65b9\u5f0f\uff1a{method}\uff0c\u6388\u6743\u4eba\uff1a{authorizer}\u3002",
   summaryProductModified: "\u5546\u54c1 {product} \u5df2\u4ece APP VENTA \u4fee\u6539\uff0c\u6388\u6743\u4eba\uff1a{authorizer}\u3002",
+  summaryParkedSaleDeleted: "\u5df2\u5220\u9664\u7684\u6682\u5b58\u9500\u552e\uff1a{count}\u3002\u6388\u6743\u4eba\uff1a{authorizer}\u3002",
   autoRefresh: "\u81ea\u52a8\u5237\u65b0", autoRefreshOff: "\u5173\u95ed", newNotice: "\u81ea\u4e0a\u6b21\u5237\u65b0\u4ee5\u6765\u6709 {count} \u6761\u65b0\u8b66\u62a5\u3002", dismissNotice: "\u5173\u95ed\u901a\u77e5", pendingIndicator: "\u5f85\u5904\u7406\u8b66\u62a5\u6458\u8981",
   analyticsEyebrow: "\u671f\u95f4\u6458\u8981", analyticsTitle: "\u5206\u6790\u9762\u677f", overdueAfter: "\u5f85\u5904\u7406\u65f6\u957f", pendingCount: "\u5f85\u5904\u7406", overdueCount: "\u5df2\u903e\u671f",
   byStatus: "\u6309\u72b6\u6001", byType: "\u6309\u7c7b\u578b", byUser: "\u6309\u7528\u6237", byTerminal: "\u6309\u7ec8\u7aef", analyticsEmpty: "\u65e0\u6570\u636e", analyticsUnavailable: "\u4e0d\u53ef\u7528",
@@ -77,19 +80,19 @@ const localeValues = { es, en, zh } as const;
 const fixed = {
   es: {
     actions: ["Marcar revisada", "Cerrar alerta", "Descartar alerta"], columns: ["Fecha y hora", "Empleado", "Terminal", "Venta / ticket", "Detalle", "Estado"],
-    statuses: ["Nueva", "Revisada", "Cerrada", "Descartada"], types: ["Eliminaci\u00f3n completa de carrito", "Eliminaci\u00f3n de l\u00edneas consecutivas", "Cambio manual de precio superior al porcentaje", "Cambio manual de precio", "Descuento manual superior al porcentaje", "Descuento manual aplicado a producto", "Anulaci\u00f3n de ticket", "Venta de producto desactivado", "Devoluci\u00f3n manual sin ticket", "Devoluci\u00f3n monetaria contra la pol\u00edtica", "Apertura manual del caj\u00f3n", "Modificaci\u00f3n de producto desde venta"],
+    statuses: ["Nueva", "Revisada", "Cerrada", "Descartada"], types: ["Eliminaci\u00f3n completa de carrito", "Eliminaci\u00f3n de l\u00edneas consecutivas", "Cambio manual de precio superior al porcentaje", "Cambio manual de precio", "Descuento manual superior al porcentaje", "Descuento manual aplicado a producto", "Anulaci\u00f3n de ticket", "Venta de producto desactivado", "Devoluci\u00f3n manual sin ticket", "Devoluci\u00f3n monetaria contra la pol\u00edtica", "Apertura manual del caj\u00f3n", "Modificaci\u00f3n de producto desde venta", "Eliminaci\u00f3n de venta guardada"],
     rule: ["Reglas de alertas", "Reglas configuradas", "Nueva regla", "No hay reglas configuradas", "Modificar regla", "Crear regla", "Tipo de control", "Porcentaje l\u00edmite", "Este tipo no necesita par\u00e1metros adicionales.", "Activa", "Inactiva", "Activar", "Desactivar", "No se pudo guardar o actualizar la regla"],
     document: ["Estado", "Fecha", "Cliente", "Producto", "Cantidad", "Precio", "Descuento", "Total", "Pagos", "Subtotal", "Impuestos"]
   },
   en: {
     actions: ["Mark reviewed", "Close alert", "Dismiss alert"], columns: ["Date and time", "Employee", "Terminal", "Sale / ticket", "Details", "Status"],
-    statuses: ["New", "Reviewed", "Closed", "Dismissed"], types: ["Full cart deletion", "Consecutive line deletion", "Manual price change above percentage", "Manual price change", "Manual discount above percentage", "Manual product discount", "Ticket cancelled", "Inactive product sold", "Manual return without ticket", "Monetary refund against policy", "Manual cash drawer opening", "Product modified from sale"],
+    statuses: ["New", "Reviewed", "Closed", "Dismissed"], types: ["Full cart deletion", "Consecutive line deletion", "Manual price change above percentage", "Manual price change", "Manual discount above percentage", "Manual product discount", "Ticket cancelled", "Inactive product sold", "Manual return without ticket", "Monetary refund against policy", "Manual cash drawer opening", "Product modified from sale", "Parked sale deletion"],
     rule: ["Alert rules", "Configured rules", "New rule", "No rules configured", "Edit rule", "Create rule", "Control type", "Percentage limit", "This type requires no additional parameters.", "Active", "Inactive", "Activate", "Deactivate", "The rule could not be saved or updated"],
     document: ["Status", "Date", "Customer", "Product", "Quantity", "Price", "Discount", "Total", "Payments", "Subtotal", "Tax"]
   },
   zh: {
     actions: ["\u6807\u8bb0\u5df2\u5ba1\u6838", "\u5173\u95ed\u8b66\u62a5", "\u5ffd\u7565\u8b66\u62a5"], columns: ["\u65e5\u671f\u548c\u65f6\u95f4", "\u5458\u5de5", "\u7ec8\u7aef", "\u9500\u552e / \u5c0f\u7968", "\u8be6\u60c5", "\u72b6\u6001"],
-    statuses: ["\u65b0\u5efa", "\u5df2\u5ba1\u6838", "\u5df2\u5173\u95ed", "\u5df2\u5ffd\u7565"], types: ["\u5220\u9664\u6574\u4e2a\u8d2d\u7269\u8f66", "\u8fde\u7eed\u5220\u9664\u884c", "\u624b\u52a8\u6539\u4ef7\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u6539\u4ef7", "\u624b\u52a8\u6298\u6263\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u5546\u54c1\u6298\u6263", "\u5c0f\u7968\u5df2\u53d6\u6d88", "\u552e\u51fa\u5df2\u505c\u7528\u5546\u54c1", "\u65e0\u5c0f\u7968\u624b\u52a8\u9000\u8d27", "\u8fdd\u53cd\u653f\u7b56\u7684\u91d1\u989d\u9000\u6b3e", "\u624b\u52a8\u6253\u5f00\u94b1\u7bb1", "\u4ece\u9500\u552e\u4fee\u6539\u5546\u54c1"],
+    statuses: ["\u65b0\u5efa", "\u5df2\u5ba1\u6838", "\u5df2\u5173\u95ed", "\u5df2\u5ffd\u7565"], types: ["\u5220\u9664\u6574\u4e2a\u8d2d\u7269\u8f66", "\u8fde\u7eed\u5220\u9664\u884c", "\u624b\u52a8\u6539\u4ef7\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u6539\u4ef7", "\u624b\u52a8\u6298\u6263\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u5546\u54c1\u6298\u6263", "\u5c0f\u7968\u5df2\u53d6\u6d88", "\u552e\u51fa\u5df2\u505c\u7528\u5546\u54c1", "\u65e0\u5c0f\u7968\u624b\u52a8\u9000\u8d27", "\u8fdd\u53cd\u653f\u7b56\u7684\u91d1\u989d\u9000\u6b3e", "\u624b\u52a8\u6253\u5f00\u94b1\u7bb1", "\u4ece\u9500\u552e\u4fee\u6539\u5546\u54c1", "\u5220\u9664\u6682\u5b58\u9500\u552e"],
     rule: ["\u8b66\u62a5\u89c4\u5219", "\u5df2\u914d\u7f6e\u89c4\u5219", "\u65b0\u5efa\u89c4\u5219", "\u5c1a\u672a\u914d\u7f6e\u89c4\u5219", "\u7f16\u8f91\u89c4\u5219", "\u521b\u5efa\u89c4\u5219", "\u63a7\u5236\u7c7b\u578b", "\u767e\u5206\u6bd4\u9650\u5236", "\u6b64\u7c7b\u578b\u65e0\u9700\u5176\u4ed6\u53c2\u6570\u3002", "\u542f\u7528", "\u505c\u7528", "\u542f\u7528", "\u505c\u7528", "\u65e0\u6cd5\u4fdd\u5b58\u6216\u66f4\u65b0\u89c4\u5219"],
     document: ["\u72b6\u6001", "\u65e5\u671f", "\u5ba2\u6237", "\u5546\u54c1", "\u6570\u91cf", "\u4ef7\u683c", "\u6298\u6263", "\u5408\u8ba1", "\u652f\u4ed8", "\u5c0f\u8ba1", "\u7a0e\u989d"]
   }
@@ -105,7 +108,7 @@ export function controlMessages(locale: LocaleCode): Record<string, string> {
   ["NEW", "REVIEWED", "CLOSED", "DISMISSED"].forEach((key, index) => { result[`gestion.controlAlerts.status.${key}`] = data.statuses[index]; });
   const priorities = locale === "es" ? ["Informativa", "Media", "Alta", "Cr\u00edtica"] : locale === "en" ? ["Informational", "Medium", "High", "Critical"] : ["\u4fe1\u606f", "\u4e2d", "\u9ad8", "\u7d27\u6025"];
   ["INFORMATIONAL", "MEDIUM", "HIGH", "CRITICAL"].forEach((key, index) => { result[`gestion.controlAlerts.priority.${key}`] = priorities[index]; });
-  ["SALE_SCREEN_CLEARED", "CONSECUTIVE_LINE_DELETIONS", "MANUAL_PRICE_CHANGE_OVER_PERCENT", "MANUAL_PRICE_CHANGED", "MANUAL_DISCOUNT_OVER_PERCENT", "PRODUCT_DISCOUNT_APPLIED", "TICKET_CANCELLED", "INACTIVE_PRODUCT_SOLD", "MANUAL_NEGATIVE_QUANTITY", "REFUND_POLICY_OVERRIDE", "CASH_DRAWER_OPENED", "PRODUCT_CATALOG_MODIFIED"].forEach((key, index) => { result[`gestion.controlAlerts.type.${key}`] = data.types[index]; });
+  ["SALE_SCREEN_CLEARED", "CONSECUTIVE_LINE_DELETIONS", "MANUAL_PRICE_CHANGE_OVER_PERCENT", "MANUAL_PRICE_CHANGED", "MANUAL_DISCOUNT_OVER_PERCENT", "PRODUCT_DISCOUNT_APPLIED", "TICKET_CANCELLED", "INACTIVE_PRODUCT_SOLD", "MANUAL_NEGATIVE_QUANTITY", "REFUND_POLICY_OVERRIDE", "CASH_DRAWER_OPENED", "PRODUCT_CATALOG_MODIFIED", "PARKED_SALE_DELETED"].forEach((key, index) => { result[`gestion.controlAlerts.type.${key}`] = data.types[index]; });
   ["title", "list", "new", "empty", "edit", "create", "type", "threshold", "noConfig", "active", "inactive", "activate", "deactivate", "error"].forEach((key, index) => { result[`gestion.controlRules.${key}`] = data.rule[index]; });
   result["gestion.controlRules.name"] = locale === "es" ? "Nombre" : locale === "en" ? "Name" : "\u540d\u79f0";
   const ruleExtra = locale === "es" ? {

@@ -124,7 +124,9 @@ import {
 } from "../sale/operationSecurity";
 import {
   detectSaleMutationOperations,
+  saleMutationCredentialsRequired,
   saleMutationAuthorizationRequirements,
+  saleWithOperationAuthorizations,
   type DetectedSaleMutationOperation,
   type SaleMutationAuthorizationRequirement,
   type SaleMutationOperationAuthorizations,
@@ -1625,6 +1627,9 @@ export function SaleScreen({
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
+  const [parkedSaleSaving, setParkedSaleSaving] = useState(false);
+  const [parkedSaleAuthorizationOpen, setParkedSaleAuthorizationOpen] = useState(false);
+  const [parkedSaleError, setParkedSaleError] = useState("");
   const [ticketCancellationMode, setTicketCancellationMode] =
     useState<"LAST" | "BY_NUMBER" | null>(null);
   const [ticketInvoiceOpen, setTicketInvoiceOpen] = useState(false);
@@ -1829,11 +1834,6 @@ export function SaleScreen({
   const ticketInvoiceAuthorization = findSaleOperationAuthorization(
     operationSecurity,
     "CONVERT_TICKET_TO_INVOICE",
-    session.permissions,
-  );
-  const parkedSaleDeletionAuthorization = findSaleOperationAuthorization(
-    operationSecurity,
-    "DELETE_PARKED_SALE",
     session.permissions,
   );
   const paymentTerminalVoidAuthorization = findSaleOperationAuthorization(
@@ -3612,6 +3612,58 @@ export function SaleScreen({
     queueMicrotask(() => searchInputRef.current?.focus());
   }
 
+  async function parkCurrentSale(
+    operationAuthorizations: SaleMutationOperationAuthorizations = {},
+  ) {
+    if (lines.length === 0 || paymentLocked || parkedSaleSaving
+        || saleMutationSecurityUnavailable || previousTicketImportBatch) return;
+    setParkedSaleSaving(true);
+    setParkedSaleError("");
+    try {
+      await apiRequest("/parked-sales/from-pos", {
+        token: session.accessToken,
+        method: "POST",
+        body: {
+          sale: saleWithOperationAuthorizations(
+            cashSaleRequest(),
+            operationAuthorizations,
+          ),
+          comment: saleComment.trim() || null,
+          printMode: salePrintMode,
+        },
+      });
+      setParkedSaleAuthorizationOpen(false);
+      clearCurrentSale();
+      setShortcutStatus(t("parkedSales.saved"));
+      queueMicrotask(() => searchInputRef.current?.focus());
+    } catch (reason) {
+      const message = reason instanceof Error
+        ? reason.message : t("parkedSales.error.park");
+      setParkedSaleError(message);
+      if (!parkedSaleAuthorizationOpen) setShortcutStatus(message);
+    } finally {
+      setParkedSaleSaving(false);
+    }
+  }
+
+  function runParkSaleCommand() {
+    if (lines.length === 0) {
+      setParkedSalesOpen(true);
+      return;
+    }
+    if (!saleMutationAuthorizations) {
+      reportOperationSecurityUnavailable();
+      return;
+    }
+    const requiredCredentials = saleMutationCredentialsRequired(saleMutationAuthorizations);
+    if (requiredCredentials.length > 0) {
+      setParkedSaleError("");
+      setParkedSaleAuthorizationOpen(true);
+      return;
+    }
+    void parkCurrentSale();
+  }
+
   function savePrintMethod(mode: SalePrintMode) {
     setSalePrintMode(mode);
     setActionDialog(null);
@@ -4044,7 +4096,8 @@ export function SaleScreen({
       case "customer":
         return paymentLocked || Boolean(previousTicketImportBatch);
       case "park-sale":
-        return paymentLocked || Boolean(previousTicketImportBatch);
+        return paymentLocked || parkedSaleSaving || Boolean(previousTicketImportBatch)
+          || (lines.length > 0 && saleMutationSecurityUnavailable);
       case "sale-comment":
       case "print-method":
       case "next-units":
@@ -4177,7 +4230,7 @@ export function SaleScreen({
         openCustomerDialog();
         break;
       case "park-sale":
-        setParkedSalesOpen(true);
+        runParkSaleCommand();
         break;
       case "sale-comment":
         openSaleComment();
@@ -4407,7 +4460,7 @@ export function SaleScreen({
         { type: "separator", id: "document-separator-1" },
         {
           type: "action", id: "park-sale", label: commandLabels.parkSale, shortcut: "Ctrl+G",
-          disabled: paymentLocked,
+          disabled: saleCommandDisabled("park-sale"),
           onSelect: () => executeSaleCommand("park-sale"),
         },
         { type: "separator", id: "document-separator-2" },
@@ -5629,21 +5682,28 @@ export function SaleScreen({
           token={session.accessToken}
           locale={locale}
           currentUsername={session.username}
-          currentSale={cashSaleRequest()}
-          printMode={salePrintMode}
-          canPark={lines.length > 0 && !paymentLocked && !authoritativeQuoteLoading
-            && !authoritativeQuoteError && !saleMutationSecurityUnavailable}
-          saleMutationAuthorizations={saleMutationAuthorizations ?? []}
-          deletionAuthorization={parkedSaleDeletionAuthorization ?? {
-            mode: "DELEGATED",
-            requireUsername: true,
-            requirePassword: true,
-          }}
+          canManageSales={hasPermission(session, "ADMIN")
+            || hasPermission(session, "GESTION_VENTAS")}
           onClose={() => setParkedSalesOpen(false)}
-          onParked={clearCurrentSale}
           onRecovered={recoverParkedSale}
         />
       )}
+
+      <SaleMutationAuthorizationDialog
+        open={parkedSaleAuthorizationOpen}
+        locale={locale}
+        currentUsername={session.username}
+        requirements={saleMutationCredentialsRequired(saleMutationAuthorizations ?? [])}
+        busy={parkedSaleSaving}
+        error={parkedSaleError}
+        onCancel={() => {
+          if (parkedSaleSaving) return;
+          setParkedSaleAuthorizationOpen(false);
+          setParkedSaleError("");
+          queueMicrotask(() => searchInputRef.current?.focus());
+        }}
+        onConfirm={(authorizations) => void parkCurrentSale(authorizations)}
+      />
 
       {ticketCancellationMode && (
         <SaleTicketCancellationDialog
