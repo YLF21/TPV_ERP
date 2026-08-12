@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
@@ -70,16 +71,28 @@ import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
 import { SaleProductInformationDialog } from "./SaleProductInformationDialog";
 import { SaleProductSearchDialog } from "./SaleProductSearchDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import {
   SalesDocumentDraftDialog,
   type SalesDocumentDraftDetail,
 } from "./SalesDocumentDraftDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { userCanManageStockProducts } from "./stockAccess";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 type DocumentType = "FACTURA_VENTA" | "ALBARAN_VENTA";
 type CheckoutMode = "CONFIRM_PENDING" | "CONFIRM_AND_PAY";
 type LineEditAction = "temporaryName" | "temporaryPrice";
+type SalesDocumentLineColumnKey =
+  | "code"
+  | "name"
+  | "quantity"
+  | "price"
+  | "discount"
+  | "total";
 type WarehouseOption = {
   id: string;
   active?: boolean;
@@ -95,6 +108,23 @@ type Props = {
 };
 
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+
+const salesDocumentLineTableKey = "sales-document.lines.v1";
+const salesDocumentLineColumnDefinitions = [
+  { key: "code", defaultWidth: 150, minWidth: 72 },
+  { key: "name", defaultWidth: 360, minWidth: 140 },
+  { key: "quantity", defaultWidth: 90, minWidth: 64 },
+  { key: "price", defaultWidth: 110, minWidth: 72 },
+  { key: "discount", defaultWidth: 110, minWidth: 76 },
+  { key: "total", defaultWidth: 120, minWidth: 76 },
+] as const satisfies readonly TableColumnDefinition<SalesDocumentLineColumnKey>[];
+
+const salesDocumentNumericColumns = new Set<SalesDocumentLineColumnKey>([
+  "quantity",
+  "price",
+  "discount",
+  "total",
+]);
 
 function localDate() {
   return addLocalDays(new Date(), 0);
@@ -207,11 +237,43 @@ export function SalesDocumentScreen({
   const customerDialogRef = useRef<HTMLElement>(null);
   const lineEditDialogRef = useRef<HTMLElement>(null);
   const lineEditInputRef = useRef<HTMLInputElement>(null);
+  const lineTableLayout = useTableLayoutPreference({
+    app: "venta",
+    username: session.username,
+    accessToken: session.accessToken,
+    tableKey: salesDocumentLineTableKey,
+    definitions: salesDocumentLineColumnDefinitions,
+  });
+  const lineTableSorting = useTableSortPreference({
+    app: "venta",
+    username: session.username,
+    tableKey: salesDocumentLineTableKey,
+    columns: salesDocumentLineColumnDefinitions.map((column) => column.key),
+    defaultSort: null,
+  });
   const dueDate = importedDueDate ?? (customer
     ? addLocalDays(new Date(`${issueDate}T12:00:00`), Math.max(0, customer.paymentTermDays ?? 30))
     : issueDate);
   const effectiveDraftId = editingDraft?.id ?? recovery?.sourceDocumentId ?? null;
   const activeMember = customer?.activeMember === true;
+  const visibleLineColumns = visibleTableColumns(lineTableLayout.layout);
+  const lineTableWidth = visibleLineColumns.reduce(
+    (totalWidth, column) => totalWidth + column.width,
+    0,
+  );
+  const sortedLines = useMemo(() => sortTableRows(
+    lines,
+    lineTableSorting.sort,
+    (line, column) => {
+      if (column === "code") return line.product.code ?? line.product.barcode;
+      if (column === "name") return line.temporaryName ?? line.product.name;
+      if (column === "quantity") return line.quantity;
+      if (column === "price") return saleLineUnitPrice(line, activeMember);
+      if (column === "discount") return effectiveSaleLineDiscount(line);
+      return saleLineSubtotal(line, activeMember);
+    },
+    locale,
+  ), [activeMember, lineTableSorting.sort, lines, locale]);
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
   const fallbackTotal = saleTotal(lines, activeMember);
   const total = quotedTotal ?? fallbackTotal;
@@ -729,7 +791,7 @@ export function SalesDocumentScreen({
   }
 
   function removeLine(lineId: string) {
-    setSelectedLineId(selectedProductAfterRemoval(lines, lineId));
+    setSelectedLineId(selectedProductAfterRemoval(sortedLines, lineId));
     setLines((current) => current.filter((line) => saleCartLineIdentity(line) !== lineId));
     invalidate();
   }
@@ -1072,7 +1134,7 @@ export function SalesDocumentScreen({
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (lines.length === 0) return;
         setSelectedLineId(saleLineSelectionAfterArrow(
-          lines,
+          sortedLines,
           selectedLineId,
           event.key,
         ));
@@ -1099,8 +1161,65 @@ export function SalesDocumentScreen({
     recovery,
     saving,
     selectedLineId,
+    sortedLines,
     temporaryPriceChangeAuthorization,
   ]);
+
+  function lineColumnLabel(column: SalesDocumentLineColumnKey) {
+    if (column === "code") return t("sale.searchDialog.code");
+    if (column === "name") return t("sale.searchDialog.name");
+    if (column === "quantity") return t("sale.main.quantity");
+    if (column === "price") return t("sale.searchDialog.price");
+    if (column === "discount") return t("sale.main.discount");
+    return t("sale.main.total");
+  }
+
+  function renderLineCell(line: SaleLine, column: SalesDocumentLineColumnKey) {
+    const numeric = salesDocumentNumericColumns.has(column);
+    const className = [
+      numeric ? "sales-document-line-number" : "",
+      column === "name" ? "sales-document-line-name" : "",
+      column === "discount" ? "sales-document-discount" : "",
+      column === "total" ? "sales-document-line-total" : "",
+    ].filter(Boolean).join(" ");
+    let content: ReactNode;
+    if (column === "code") {
+      content = line.product.code ?? line.product.barcode ?? "\u2014";
+    } else if (column === "name") {
+      content = line.temporaryName ?? line.product.name ?? t("sale.main.unnamedProduct");
+    } else if (column === "quantity") {
+      content = interfaceMode === "TOUCH" ? (
+        <div className="sales-document-quantity">
+          <button
+            type="button"
+            aria-label={`${t("sale.main.quantity")} -1`}
+            disabled={line.quantity <= productQuantityStep(line.product.productType)}
+            onClick={() => updateQuantity(
+              saleCartLineIdentity(line),
+              -productQuantityStep(line.product.productType),
+            )}
+          >{"\u2212"}</button>
+          <b>{formatQuantityValue(line.quantity, locale)}</b>
+          <button
+            type="button"
+            aria-label={`${t("sale.main.quantity")} +1`}
+            disabled={line.quantity >= 9999}
+            onClick={() => updateQuantity(
+              saleCartLineIdentity(line),
+              productQuantityStep(line.product.productType),
+            )}
+          >+</button>
+        </div>
+      ) : formatQuantityValue(line.quantity, locale);
+    } else if (column === "price") {
+      content = formatMoney(saleLineUnitPrice(line, activeMember), locale);
+    } else if (column === "discount") {
+      content = formatPercentage(effectiveSaleLineDiscount(line), locale);
+    } else {
+      content = formatMoney(saleLineSubtotal(line, activeMember), locale);
+    }
+    return <td className={className} data-column-key={column} key={column}>{content}</td>;
+  }
 
   async function saveDraft(
     saleMutations: SaleMutationOperationAuthorizations = {},
@@ -1153,6 +1272,9 @@ export function SalesDocumentScreen({
 
   function startCheckout(mode: CheckoutMode) {
     if (!ready) return;
+    // A previous draft save may have reached the backend even when its HTTP response
+    // was lost. Never reuse that operation identity for the subsequent confirmation.
+    setCheckoutId(uuid());
     setCheckoutMode(mode);
   }
 
@@ -1206,60 +1328,70 @@ export function SalesDocumentScreen({
             <h2>{t("salesDocument.lines")}</h2>
             <span>{lines.length}</span>
           </header>
-          <div className="sales-document-line-head" aria-hidden="true">
-            <span>{t("sale.searchDialog.code")}</span>
-            <span>{t("sale.searchDialog.name")}</span>
-            <span>{t("sale.main.quantity")}</span>
-            <span>{t("sale.searchDialog.price")}</span>
-            <span>{t("sale.main.discount")}</span>
-            <span>{t("sale.main.total")}</span>
-          </div>
           <div className="sales-document-lines">
-            {lines.length === 0 && <p>{t("salesDocument.empty")}</p>}
-            {lines.map((line) => (
-              <article
-                key={saleCartLineIdentity(line)}
-                className={selectedLineId === saleCartLineIdentity(line) ? "selected" : undefined}
-                aria-selected={selectedLineId === saleCartLineIdentity(line)}
-                onClick={() => setSelectedLineId(saleCartLineIdentity(line))}
-              >
-                <span>{line.product.code ?? line.product.barcode ?? "\u2014"}</span>
-                <strong>{line.temporaryName
-                  ?? line.product.name ?? t("sale.main.unnamedProduct")}</strong>
-                {interfaceMode === "TOUCH" ? (
-                  <div className="sales-document-quantity">
-                    <button
-                      type="button"
-                      aria-label={`${t("sale.main.quantity")} -1`}
-                      disabled={line.quantity <= productQuantityStep(line.product.productType)}
-                      onClick={() => updateQuantity(
-                        saleCartLineIdentity(line),
-                        -productQuantityStep(line.product.productType),
-                      )}
-                    >{"\u2212"}</button>
-                    <b>{formatQuantityValue(line.quantity, locale)}</b>
-                    <button
-                      type="button"
-                      aria-label={`${t("sale.main.quantity")} +1`}
-                      disabled={line.quantity >= 9999}
-                      onClick={() => updateQuantity(
-                        saleCartLineIdentity(line),
-                        productQuantityStep(line.product.productType),
-                      )}
-                    >+</button>
-                  </div>
-                ) : (
-                  <b className="sales-document-quantity-value">
-                    {formatQuantityValue(line.quantity, locale)}
-                  </b>
+            <table
+              className="sales-document-lines-table"
+              aria-label={t("salesDocument.lines")}
+              style={{ width: `max(100%, ${lineTableWidth}px)` }}
+            >
+              <colgroup>
+                {visibleLineColumns.map((column) => (
+                  <col
+                    data-column-key={column.key}
+                    key={column.key}
+                    style={{ width: column.width }}
+                  />
+                ))}
+              </colgroup>
+              <thead>
+                <tr className="sales-document-line-head">
+                  {visibleLineColumns.map((column) => (
+                    <TableLayoutHeaderCell
+                      column={column}
+                      key={column.key}
+                      className={salesDocumentNumericColumns.has(column.key)
+                        ? "sales-document-line-number" : ""}
+                      sortDirection={lineTableSorting.sort?.column === column.key
+                        ? lineTableSorting.sort.direction : null}
+                      sortLabel={`${t("party.sortBy")} ${lineColumnLabel(column.key)}`}
+                      onSort={lineTableSorting.toggleSort}
+                      resizeLabel={`${t("stock.columns.resize")} ${lineColumnLabel(column.key)}`}
+                      onReorder={lineTableLayout.reorderColumns}
+                      onMove={lineTableLayout.moveColumn}
+                      onResize={lineTableLayout.resizeColumn}
+                    >
+                      {lineColumnLabel(column.key)}
+                    </TableLayoutHeaderCell>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedLines.length === 0 && (
+                  <tr className="sales-document-lines-empty">
+                    <td colSpan={visibleLineColumns.length}>{t("salesDocument.empty")}</td>
+                  </tr>
                 )}
-                <span>{formatMoney(saleLineUnitPrice(line, activeMember), locale)}</span>
-                <span className="sales-document-discount">
-                  {formatPercentage(effectiveSaleLineDiscount(line), locale)}
-                </span>
-                <b>{formatMoney(saleLineSubtotal(line, activeMember), locale)}</b>
-              </article>
-            ))}
+                {sortedLines.map((line) => {
+                  const lineId = saleCartLineIdentity(line);
+                  return (
+                    <tr
+                      key={lineId}
+                      className={selectedLineId === lineId ? "selected" : undefined}
+                      aria-selected={selectedLineId === lineId}
+                      data-sales-document-line-id={lineId}
+                      onClick={() => setSelectedLineId(lineId)}
+                    >
+                      {visibleLineColumns.map((column) => renderLineCell(line, column.key))}
+                    </tr>
+                  );
+                })}
+                <tr className="sales-document-lines-filler" aria-hidden="true">
+                  {visibleLineColumns.map((column) => (
+                    <td data-column-key={column.key} key={column.key} />
+                  ))}
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 

@@ -397,6 +397,181 @@ describe("SalesDocumentScreen", () => {
     expect(await screen.findByText("Borrador guardado")).toBeInTheDocument();
   });
 
+  it("starts checkout with a new id after a draft save response is lost", async () => {
+    const draftSaveBodies: Array<{ checkoutId: string }> = [];
+    const checkoutBodies: Array<{ checkoutId: string; completionMode: string }> = [];
+    apiRequest.mockImplementation((path: string, options?: {
+      method?: string;
+      body?: unknown;
+    }) => {
+      if (path === "/sales/operation-security") {
+        return Promise.resolve(documentOperationSecurity);
+      }
+      if (path === "/terminal-configuration/payment") {
+        return Promise.resolve({
+          rules: { cardManualEnabled: true, integratedCardEnabled: false },
+          configuration: { provider: "NONE", enabled: false },
+        });
+      }
+      if (path === "/products/sale") return Promise.resolve([{
+        id: "product-1",
+        code: "P-001",
+        name: "Producto fiscal",
+        salePrice: 22.10,
+        active: true,
+        taxesIncluded: true,
+        taxRegime: "IVA",
+        taxPercentage: 21,
+      }]);
+      if (path === "/customers/sale-options") return Promise.resolve([{
+        id: "customer-1",
+        clientId: "C-001",
+        fiscalName: "Cliente Fiscal SL",
+        documentNumber: "B11111111",
+        paymentTermDays: 30,
+      }]);
+      if (path === "/warehouses") return Promise.resolve([{
+        id: "warehouse-1",
+        active: true,
+        defaultWarehouse: true,
+      }]);
+      if (path === "/payment-methods") return Promise.resolve([{
+        id: "cash-method",
+        name: "EFECTIVO",
+        active: true,
+      }]);
+      if (path.endsWith("/quote")) {
+        return Promise.resolve({
+          total: "22.10",
+          credit: {
+            enabled: true,
+            blocked: false,
+            outstandingDebt: "0.00",
+            overdueDebt: "0.00",
+            limit: null,
+            availableCredit: null,
+          },
+        });
+      }
+      if (path === "/pos/sales-document-checkouts" && options?.method !== "PUT") {
+        const body = options?.body as { checkoutId: string; completionMode: string };
+        if (body.completionMode === "DRAFT") {
+          draftSaveBodies.push(body);
+          return Promise.reject(new Error("Respuesta del guardado perdida"));
+        }
+        checkoutBodies.push(body);
+        return Promise.resolve({
+          document: { id: "invoice-1", numero: "FV-001-26-000001" },
+          printDocument: null,
+        });
+      }
+      return Promise.reject(new Error(`unexpected request ${path}`));
+    });
+
+    render(<SalesDocumentScreen
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+    />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /seleccionar cliente/i }));
+    fireEvent.doubleClick(within(screen.getByRole("dialog", {
+      name: /seleccionar cliente/i,
+    })).getByRole("option", { name: /cliente fiscal sl/i }));
+    const quickEntry = screen.getByLabelText(/entrada.*c.digo/i);
+    fireEvent.change(quickEntry, { target: { value: "P-001" } });
+    fireEvent.submit(quickEntry.closest("form")!);
+
+    const save = screen.getByRole("button", { name: "Guardar borrador" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    expect(await screen.findByText("Respuesta del guardado perdida")).toBeVisible();
+    expect(draftSaveBodies).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /confirmar y cobrar/i }));
+    const payment = await screen.findByRole("dialog", { name: "COBRO" });
+    await waitFor(() => expect(within(payment).getByRole("button", {
+      name: "ACEPTAR",
+    })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "F8" });
+    await waitFor(() => expect(within(payment).getByRole("button", {
+      name: /pendiente/i,
+    })).toHaveClass("selected"));
+    fireEvent.click(within(payment).getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(checkoutBodies).toHaveLength(1));
+    expect(checkoutBodies[0]).toMatchObject({ completionMode: "CONFIRM_PENDING" });
+    expect(checkoutBodies[0].checkoutId).not.toBe(draftSaveBodies[0].checkoutId);
+  });
+
+  it("sorts, reorders, resizes and aligns the document line columns", async () => {
+    configureDocumentApi([{
+      id: "product-z",
+      code: "P-002",
+      name: "Producto zeta",
+      salePrice: 2,
+      active: true,
+      taxesIncluded: true,
+      taxRegime: "IVA",
+      taxPercentage: 21,
+    }, {
+      id: "product-a",
+      code: "P-001",
+      name: "Producto alfa",
+      salePrice: 1,
+      active: true,
+      taxesIncluded: true,
+      taxRegime: "IVA",
+      taxPercentage: 21,
+    }]);
+
+    render(<SalesDocumentScreen
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+    />);
+
+    const quickEntry = await screen.findByLabelText(/entrada.*c.digo/i);
+    for (const code of ["P-002", "P-001"]) {
+      fireEvent.change(quickEntry, { target: { value: code } });
+      fireEvent.submit(quickEntry.closest("form")!);
+    }
+
+    const table = screen.getByRole("table", { name: /l.neas del documento/i });
+    const lineRows = () => Array.from(
+      table.querySelectorAll<HTMLTableRowElement>("tbody tr[data-sales-document-line-id]"),
+    );
+    expect(lineRows()[0]).toHaveTextContent("Producto zeta");
+    expect(lineRows()[1]).toHaveTextContent("Producto alfa");
+
+    fireEvent.click(within(table).getByRole("button", { name: "Ordenar por Nombre" }));
+    expect(lineRows()[0]).toHaveTextContent("Producto alfa");
+    expect(lineRows()[1]).toHaveTextContent("Producto zeta");
+
+    const quantityHeader = within(table).getByRole("columnheader", { name: /cantidad/i });
+    fireEvent.keyDown(quantityHeader, { key: "ArrowLeft", ctrlKey: true });
+    expect(Array.from(table.querySelectorAll("thead th"), (header) => (
+      header.getAttribute("data-column-key")
+    )).slice(0, 3)).toEqual(["code", "quantity", "name"]);
+    expect(Array.from(lineRows()[0].cells, (cell) => (
+      cell.getAttribute("data-column-key")
+    )).slice(0, 3)).toEqual(["code", "quantity", "name"]);
+
+    const codeResizer = within(table).getByRole("button", {
+      name: "Modificar ancho Código",
+    });
+    fireEvent.keyDown(codeResizer, { key: "ArrowRight" });
+    expect(table.querySelector('col[data-column-key="code"]')).toHaveStyle({ width: "158px" });
+
+    const firstLine = lineRows()[0];
+    expect(firstLine.querySelector('[data-column-key="code"]'))
+      .not.toHaveClass("sales-document-line-number");
+    for (const column of ["quantity", "price", "discount", "total"]) {
+      expect(firstLine.querySelector(`[data-column-key="${column}"]`))
+        .toHaveClass("sales-document-line-number");
+    }
+  });
+
   it("supports the operational SaleScreen shortcuts in the Ctrl+F document window", async () => {
     configureDocumentApi([{
       id: "product-1",
@@ -468,7 +643,7 @@ describe("SalesDocumentScreen", () => {
 
     fireEvent.change(quickEntry, { target: { value: "P-001" } });
     fireEvent.submit(quickEntry.closest("form")!);
-    let firstLine = screen.getByText("Producto uno").closest("article") as HTMLElement;
+    let firstLine = screen.getByText("Producto uno").closest("tr") as HTMLElement;
     expect(firstLine).toHaveClass("selected");
     expect(within(firstLine).queryByRole("button", { name: /cantidad/i }))
       .not.toBeInTheDocument();
@@ -493,7 +668,7 @@ describe("SalesDocumentScreen", () => {
     expect(screen.getByText(/^Cantidad: 2$/)).toBeVisible();
     fireEvent.change(quickEntry, { target: { value: "P-002" } });
     fireEvent.submit(quickEntry.closest("form")!);
-    const secondLine = screen.getByText("Producto dos").closest("article") as HTMLElement;
+    const secondLine = screen.getByText("Producto dos").closest("tr") as HTMLElement;
     expect(within(secondLine).getByText("2")).toBeInTheDocument();
     expect(secondLine).toHaveClass("selected");
     fireEvent.keyDown(window, { key: "ArrowUp" });
@@ -504,7 +679,7 @@ describe("SalesDocumentScreen", () => {
     expect(screen.getByText(/^Cantidad: 2 paquetes$/)).toBeVisible();
     fireEvent.change(quickEntry, { target: { value: "P-003" } });
     fireEvent.submit(quickEntry.closest("form")!);
-    const packageLine = screen.getByText("Producto por paquete").closest("article") as HTMLElement;
+    const packageLine = screen.getByText("Producto por paquete").closest("tr") as HTMLElement;
     expect(within(packageLine).getByText("12")).toBeInTheDocument();
 
     fireEvent.change(quickEntry, { target: { value: "Producto" } });
@@ -585,7 +760,7 @@ describe("SalesDocumentScreen", () => {
 
     fireEvent.change(quickEntry, { target: { value: "8" } });
     fireEvent.keyDown(quickEntry, { key: "PageUp" });
-    let line = screen.getByText("Producto fiscal").closest("article") as HTMLElement;
+    let line = screen.getByText("Producto fiscal").closest("tr") as HTMLElement;
     expect(within(line).getByText("8,00")).toBeVisible();
     expect(within(line).getByText("20 %")).toBeVisible();
 
@@ -600,7 +775,7 @@ describe("SalesDocumentScreen", () => {
       target: { value: "Nombre documental" },
     });
     fireEvent.click(within(nameDialog).getByRole("button", { name: "Guardar" }));
-    line = screen.getByText("Nombre documental").closest("article") as HTMLElement;
+    line = screen.getByText("Nombre documental").closest("tr") as HTMLElement;
 
     fireEvent.keyDown(window, { key: "PageUp", ctrlKey: true });
     const priceDialog = screen.getByRole("dialog", { name: /cambiar precio/i });

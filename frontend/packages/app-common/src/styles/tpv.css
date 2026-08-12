@@ -20813,7 +20813,7 @@ textarea:focus,
 
 .sales-document-lines-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .sales-document-lines-panel > header {
@@ -20840,62 +20840,105 @@ textarea:focus,
   font-weight: 800;
 }
 
-.sales-document-line-head,
-.sales-document-lines > article {
-  display: grid;
-  grid-template-columns: minmax(105px, 0.8fr) minmax(220px, 2fr) 90px 105px 105px 110px;
-  align-items: center;
-  gap: 8px;
+.sales-document-lines {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
-.sales-document-line-head {
-  min-height: 34px;
+.sales-document-lines-table {
+  height: 100%;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  color: #10233f;
+  font-size: 13px;
+}
+
+.sales-document-lines-table thead {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+}
+
+.sales-document-lines-table th {
+  height: 34px;
+  overflow: hidden;
   padding: 0 10px;
-  border-bottom: 1px solid #b9c5d1;
+  border-right: 1px solid #55708f;
+  border-bottom: 1px solid #0b284a;
   background: #183f6b;
   color: #fff;
   font-size: 11px;
   font-weight: 750;
+  letter-spacing: 0.02em;
+  text-align: left;
   text-transform: uppercase;
 }
 
-.sales-document-lines {
-  min-height: 0;
-  overflow: auto;
+.sales-document-lines-table th:last-child,
+.sales-document-lines-table td:last-child {
+  border-right: 0;
 }
 
-.sales-document-lines > p {
-  margin: 48px auto;
+.sales-document-lines-table td {
+  height: 52px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 5px 10px;
+  border-right: 1px solid #d2dce6;
+  border-bottom: 1px solid #dde3ea;
+  background: #fff;
+  vertical-align: middle;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sales-document-lines-table tbody tr:nth-child(even):not(.sales-document-lines-filler) td {
+  background: #f8fafc;
+}
+
+.sales-document-lines-table tbody tr.selected td {
+  background: #dbe9f7;
+}
+
+.sales-document-lines-table tbody tr.selected td:first-child {
+  box-shadow: inset 4px 0 #2365a5;
+}
+
+.sales-document-lines-table .sales-document-line-name,
+.sales-document-lines-table .sales-document-line-total {
+  font-weight: 800;
+}
+
+.sales-document-lines-table .sales-document-line-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sales-document-lines-table th.sales-document-line-number .table-layout-sort-button {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.sales-document-lines-empty td {
+  height: auto;
+  padding: 48px 12px;
   color: #657588;
   text-align: center;
 }
 
-.sales-document-lines > article {
-  min-height: 52px;
-  padding: 5px 10px;
-  border-bottom: 1px solid #dde3ea;
+.sales-document-lines-filler {
+  height: 100%;
+  pointer-events: none;
 }
 
-.sales-document-lines > article:nth-child(even) {
-  background: #f8fafc;
-}
-
-.sales-document-lines > article.selected {
-  background: #dbe9f7;
-  box-shadow: inset 4px 0 #2365a5;
-}
-
-.sales-document-lines > article.selected:nth-child(even) {
-  background: #dbe9f7;
-}
-
-.sales-document-lines > article > span,
-.sales-document-lines > article > b,
-.sales-document-lines > article > strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sales-document-lines-filler td {
+  height: auto;
+  padding: 0;
+  border-bottom: 0;
+  background: #fff;
 }
 
 .sales-document-quantity button {
@@ -21431,10 +21474,6 @@ textarea:focus,
     grid-template-columns: minmax(0, 1fr) 310px;
   }
 
-  .sales-document-line-head,
-  .sales-document-lines > article {
-    grid-template-columns: 100px minmax(170px, 2fr) 82px 90px 88px 95px;
-  }
 }
 
 /* Terminal-scoped sale presentation */
