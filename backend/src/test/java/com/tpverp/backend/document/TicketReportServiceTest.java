@@ -60,6 +60,7 @@ class TicketReportServiceTest {
             assertThat(view.customerName()).isEqualTo("CLIENTE CINCO");
             assertThat(view.invoiceNumber()).isEqualTo("FV-2026-00042");
             assertThat(view.lifecycleStatus()).isEqualTo(TicketReportLifecycleStatus.RETURNED);
+            assertThat(view.effectiveTotal()).isEqualByComparingTo("0.00");
             assertThat(view.estado()).isEqualTo(DocumentStatus.CONFIRMADO);
         });
     }
@@ -82,6 +83,7 @@ class TicketReportServiceTest {
             assertThat(view.refundMethods()).containsExactly(
                     RefundTenderType.CASH, RefundTenderType.CARD);
             assertThat(view.paymentMethods()).isEmpty();
+            assertThat(view.effectiveTotal()).isEqualByComparingTo("-25.00");
         });
     }
 
@@ -111,8 +113,26 @@ class TicketReportServiceTest {
                 .thenReturn(List.of(metadata));
 
         assertThat(fixture.service().list(500, null).items()).singleElement()
-                .extracting(TicketReportView::lifecycleStatus)
-                .isEqualTo(TicketReportLifecycleStatus.PARTIALLY_RETURNED);
+                .satisfies(view -> {
+                    assertThat(view.lifecycleStatus())
+                            .isEqualTo(TicketReportLifecycleStatus.PARTIALLY_RETURNED);
+                    assertThat(view.effectiveTotal()).isEqualByComparingTo("60.00");
+                });
+    }
+
+    @Test
+    void excludesCancelledTicketsFromTheEffectiveTotal() {
+        var fixture = fixture(new BigDecimal("100.00"));
+        when(fixture.ticket().getEstado()).thenReturn(DocumentStatus.ANULADO);
+        when(fixture.customers().findByCompanyIdAndIdIn(
+                eq(fixture.companyId()), anyCollection())).thenReturn(List.of());
+
+        assertThat(fixture.service().list(500, null).items()).singleElement()
+                .satisfies(view -> {
+                    assertThat(view.lifecycleStatus())
+                            .isEqualTo(TicketReportLifecycleStatus.CANCELLED);
+                    assertThat(view.effectiveTotal()).isEqualByComparingTo("0.00");
+                });
     }
 
     private static Fixture fixture(BigDecimal total) {

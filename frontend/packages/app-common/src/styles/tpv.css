@@ -14059,6 +14059,55 @@ body,
   color: var(--tpv-v3-navy, #082d5b);
 }
 
+.table-layout-header-controls {
+  display: flex;
+  align-items: center;
+  width: calc(100% + 20px);
+  min-width: 0;
+  margin: -9px -10px;
+  padding-right: 15px;
+  box-sizing: border-box;
+}
+
+.table-layout-header-controls .table-layout-sort-button {
+  flex: 1 1 auto;
+  width: auto;
+  margin: 0;
+  padding: 9px 4px 9px 10px;
+}
+
+.table-layout-header-action {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: 2px;
+}
+
+.report-customer-display-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .58);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.report-customer-display-toggle:hover,
+.report-customer-display-toggle:focus-visible {
+  border-color: #fff;
+  background: #fff;
+  color: var(--tpv-v3-navy, #082d5b);
+  outline: none;
+}
+
 .table-layout-sort-button:hover,
 .table-layout-sort-button:focus-visible {
   background: rgba(255, 255, 255, .12);

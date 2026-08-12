@@ -56,4 +56,25 @@ describe("TableLayoutHeaderCell sorting", () => {
     fireEvent.keyDown(header, { key: "ArrowLeft", ctrlKey: true });
     expect(onMove).toHaveBeenCalledWith("total", -1);
   });
+
+  it("renders a compact header action beside the sort control without nesting buttons", () => {
+    const onAction = vi.fn();
+    const { container } = render(
+      <table><thead><tr><TableLayoutHeaderCell
+        column={{ key: "customer", width: 180, visible: true }}
+        sortDirection={null}
+        sortLabel="Ordenar cliente"
+        onSort={vi.fn()}
+        headerAction={<button type="button" onClick={onAction}>N</button>}
+        resizeLabel="Cambiar ancho de cliente"
+        onReorder={vi.fn()}
+        onMove={vi.fn()}
+        onResize={vi.fn()}
+      >Cliente</TableLayoutHeaderCell></tr></thead></table>
+    );
+
+    expect(container.querySelector("button button")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "N" }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
 });

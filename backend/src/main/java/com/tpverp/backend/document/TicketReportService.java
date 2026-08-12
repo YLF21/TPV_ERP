@@ -84,12 +84,13 @@ public class TicketReportService {
             var attribution = attributionIndex.getOrDefault(
                     ticket.getId(), DocumentAttributionResolver.Attribution.empty(ticket));
             var invoice = invoiceIndex.get(ticket.getId());
-            var lifecycle = lifecycleStatus(
+            var lifecycle = lifecycleSummary(
                     ticket, invoice, rectificationIndex, metadataIndex);
             return new TicketReportView(
                     ticket.getId(), ticket.getTipo(), ticket.getEstado(), ticket.getNumero(),
                     ticket.getFecha(), ticket.getBaseTotal(), ticket.getImpuestoTotal(),
-                    ticket.getTotal(), ticket.getDescuentoGlobal(), ticket.getClienteId(),
+                    ticket.getTotal(), lifecycle.effectiveTotal(),
+                    ticket.getDescuentoGlobal(), ticket.getClienteId(),
                     customer == null ? "" : customer.getClientId(),
                     customer == null ? "" : Objects.toString(customer.getFiscalName(), ""),
                     attribution.userId(), attribution.userName(),
@@ -97,7 +98,7 @@ public class TicketReportService {
                     paymentMethods(ticket),
                     refundMethodIndex.getOrDefault(ticket.getId(), List.of()),
                     invoice == null ? "" : Objects.toString(invoice.getDocumentNumber(), ""),
-                    lifecycle, ticket.getComentarioInterno());
+                    lifecycle.status(), ticket.getComentarioInterno());
         }).toList();
 
         return new PagedResult<>(items,
@@ -178,16 +179,18 @@ public class TicketReportService {
                 LinkedHashMap::new));
     }
 
-    private static TicketReportLifecycleStatus lifecycleStatus(
+    private static LifecycleSummary lifecycleSummary(
             CommercialDocument ticket,
             DocumentRelationRepository.RelatedDocument invoice,
             Map<UUID, List<DocumentRelationRepository.RelatedDocument>> rectifications,
             Map<UUID, SalesInvoiceRectification> metadata) {
         if (ticket.getEstado() == DocumentStatus.ANULADO) {
-            return TicketReportLifecycleStatus.CANCELLED;
+            return new LifecycleSummary(
+                    TicketReportLifecycleStatus.CANCELLED, BigDecimal.ZERO);
         }
         if (ticket.getTotal().signum() < 0) {
-            return TicketReportLifecycleStatus.RETURNED;
+            return new LifecycleSummary(
+                    TicketReportLifecycleStatus.RETURNED, Money.euros(ticket.getTotal()));
         }
 
         var sourceId = invoice == null ? ticket.getId() : invoice.getDocumentId();
@@ -202,13 +205,19 @@ public class TicketReportService {
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (returned.signum() > 0) {
-            return returned.compareTo(Money.euros(sourceTotal).abs()) >= 0
+            var status = returned.compareTo(Money.euros(sourceTotal).abs()) >= 0
                     ? TicketReportLifecycleStatus.RETURNED
                     : TicketReportLifecycleStatus.PARTIALLY_RETURNED;
+            var effectiveTotal = invoice == null
+                    ? Money.euros(ticket.getTotal())
+                    : Money.euros(ticket.getTotal().subtract(returned)).max(BigDecimal.ZERO);
+            return new LifecycleSummary(status, effectiveTotal);
         }
-        return invoice == null
-                ? TicketReportLifecycleStatus.CONFIRMED
-                : TicketReportLifecycleStatus.INVOICED;
+        return new LifecycleSummary(
+                invoice == null
+                        ? TicketReportLifecycleStatus.CONFIRMED
+                        : TicketReportLifecycleStatus.INVOICED,
+                Money.euros(ticket.getTotal()));
     }
 
     private static boolean isStockAffectingInvoiceRectification(
@@ -254,5 +263,10 @@ public class TicketReportService {
     }
 
     private record Cursor(LocalDate date, Instant occurredAt, String id) {
+    }
+
+    private record LifecycleSummary(
+            TicketReportLifecycleStatus status,
+            BigDecimal effectiveTotal) {
     }
 }

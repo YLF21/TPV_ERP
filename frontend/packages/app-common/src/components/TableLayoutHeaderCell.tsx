@@ -17,6 +17,7 @@ type TableLayoutHeaderCellProps<Key extends string> = {
   sortDirection?: TableSortDirection | null;
   sortLabel?: string;
   onSort?: (columnKey: Key) => void;
+  headerAction?: ReactNode;
   resizeLabel: string;
   onReorder: (draggedKey: Key, targetKey: Key) => void;
   onMove: (columnKey: Key, direction: TableColumnMoveDirection) => void;
@@ -34,6 +35,7 @@ export function TableLayoutHeaderCell<Key extends string>({
   sortDirection,
   sortLabel,
   onSort,
+  headerAction,
   resizeLabel,
   onReorder,
   onMove,
@@ -128,7 +130,20 @@ export function TableLayoutHeaderCell<Key extends string>({
         }
       }
     },
-    onSort ? (
+    headerAction ? (
+      <div className="table-layout-header-controls">
+        {onSort ? (
+          <TableSortButton
+            direction={sortDirection}
+            label={sortLabel ?? String(children)}
+            onSort={() => onSort(column.key)}
+          >
+            {children}
+          </TableSortButton>
+        ) : wrapLabel ? <span className="table-layout-header-label">{children}</span> : children}
+        <span className="table-layout-header-action">{headerAction}</span>
+      </div>
+    ) : onSort ? (
       <TableSortButton
         direction={sortDirection}
         label={sortLabel ?? String(children)}

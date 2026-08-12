@@ -333,6 +333,7 @@ type DocumentView = {
   pendiente?: number | string;
   descuentoGlobal?: number | string;
   total?: number | string;
+  effectiveTotal?: number | string;
   numTicket?: string | null;
   origenStock?: boolean;
   clienteId?: string | null;
@@ -689,8 +690,23 @@ type SavedReportView = {
   layout: TableLayout<string>;
 };
 
+type TicketCustomerDisplayMode = "code" | "name";
+
 const reportSavedViewsStorageKey = (app: AppKind, username: string) =>
   `tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:report-views`;
+
+const ticketCustomerDisplayStorageKey = (app: AppKind, username: string) =>
+  `tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:ticket-customer-display`;
+
+function readTicketCustomerDisplayMode(app: AppKind, username: string): TicketCustomerDisplayMode {
+  try {
+    return localStorage.getItem(ticketCustomerDisplayStorageKey(app, username)) === "name"
+      ? "name"
+      : "code";
+  } catch {
+    return "code";
+  }
+}
 
 const emptyFilters: ReportFilters = {
   dateFrom: "",
@@ -1016,7 +1032,11 @@ function rowMatchesSearch(row: Record<string, string>, search: string, translate
   return haystack.includes(needle);
 }
 
-function buildFilteredTotals(sample: ReportSample, rows: Array<Record<string, string>>) {
+function buildFilteredTotals(
+  reportKey: string,
+  sample: ReportSample,
+  rows: Array<Record<string, string>>
+) {
   return Object.fromEntries(
     Object.keys(sample.totals).map((attribute) => {
       const originalValue = sample.totals[attribute];
@@ -1024,7 +1044,12 @@ function buildFilteredTotals(sample: ReportSample, rows: Array<Record<string, st
         return [attribute, originalValue];
       }
       if (["total", "pending", "invoicedTicketTotal", "base", "tax", "discount"].includes(attribute)) {
-        return [attribute, formatAmount(rows.reduce((sum, row) => sum + parseAmount(row[attribute] ?? ""), 0))];
+        return [attribute, formatAmount(rows.reduce((sum, row) => {
+          const value = reportKey === "salesReport.tickets" && attribute === "total"
+            ? row.__effectiveTotal ?? row.total ?? ""
+            : row[attribute] ?? "";
+          return sum + parseAmount(value);
+        }, 0))];
       }
       if (["tickets", "invoice", "productCount"].includes(attribute)) {
         return [attribute, formatWholeNumber(rows.reduce((sum, row) => sum + parseAmount(row[attribute] ?? ""), 0))];
@@ -1422,7 +1447,8 @@ export function buildDocumentReports(
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
-    total: formatAmount(Number(document.total ?? 0))
+    total: formatAmount(Number(document.total ?? 0)),
+    __effectiveTotal: formatAmount(Number(document.effectiveTotal ?? document.total ?? 0))
   }));
   const invoiceRows = invoices.filter(isSalesDocument).map((document) => ({
     __documentId: document.id || "",
@@ -1636,14 +1662,26 @@ function buildDailySalesRows(
   return Array.from(grouped.values()).sort((left, right) => parseReportDate(left.date).localeCompare(parseReportDate(right.date)));
 }
 
-function buildInvoicedTicketTotal(reportKey: string, rows: Array<Record<string, string>>, totals: Record<string, string>) {
+function buildInvoicedTicketTotal(reportKey: string, totals: Record<string, string>) {
   if (reportKey === "salesReport.dailySales") {
     return totals.invoicedTicketTotal ?? "";
   }
-  if (reportKey === "salesReport.tickets") {
-    return formatAmount(rows.reduce((sum, row) => sum + (row.invoiced ? parseAmount(row.total ?? "") : 0), 0));
-  }
   return "";
+}
+
+export function buildTicketReportCounters(rows: Array<Record<string, string>>) {
+  return rows.reduce((summary, row) => {
+    if (row.status === "salesReport.status.ticketCancelled") {
+      summary.cancelled += 1;
+    }
+    if (
+      row.status === "salesReport.status.invoiced"
+      || row.status === "salesReport.status.partiallyReturned"
+    ) {
+      summary.invoiced += 1;
+    }
+    return summary;
+  }, { invoiced: 0, cancelled: 0 });
 }
 
 function filterOptionsFromRows(rows: Array<Record<string, string>>, attribute: string, translate: (key: string) => string): FilterOption[] {
@@ -1806,6 +1844,9 @@ export function SalesReportScreen({
   const [savedViewName, setSavedViewName] = useState("");
   const [selectedSavedViewId, setSelectedSavedViewId] = useState("");
   const [sortByReport, setSortByReport] = useState<Record<string, ReportSort | null>>({});
+  const [ticketCustomerDisplayMode, setTicketCustomerDisplayMode] = useState<TicketCustomerDisplayMode>(() =>
+    readTicketCustomerDisplayMode(app, session.username)
+  );
   const printMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
@@ -1883,10 +1924,14 @@ export function SalesReportScreen({
     : visibleTableColumns(selectedReportTableLayout.layout);
   const reportTableWidth = visibleColumnLayout.reduce((width, column) => width + column.width, 0);
   const matchingRows = sample.rows.filter((row) => rowMatchesFilters(row, filters) && rowMatchesSearch(row, reportSearch, t));
+  const displayedRows = selectedReport === "salesReport.tickets" && ticketCustomerDisplayMode === "name"
+    ? matchingRows.map((row) => ({ ...row, customer: row.customerName || row.customer }))
+    : matchingRows;
   const activeSort = sortByReport[selectedReport] ?? null;
-  const filteredRows = sortReportRows(matchingRows, activeSort, locale);
-  const filteredTotals = buildFilteredTotals(sample, filteredRows);
-  const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredRows, filteredTotals);
+  const filteredRows = sortReportRows(displayedRows, activeSort, locale);
+  const filteredTotals = buildFilteredTotals(selectedReport, sample, filteredRows);
+  const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredTotals);
+  const ticketCounters = buildTicketReportCounters(filteredRows);
   const warehouseReconciliation = (() => {
     const inputs = (reports["salesReport.inputWarehouse"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
     const outputs = (reports["salesReport.warehouseOutputs"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
@@ -1944,6 +1989,17 @@ export function SalesReportScreen({
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ticketCustomerDisplayStorageKey(app, session.username),
+        ticketCustomerDisplayMode
+      );
+    } catch {
+      // The preference is optional when local storage is unavailable.
+    }
+  }, [app, session.username, ticketCustomerDisplayMode]);
 
   useEffect(() => {
     if (reportNotice?.kind !== "success") return;
@@ -3574,6 +3630,26 @@ export function SalesReportScreen({
                           sortDirection={activeSort?.attribute === column.key ? activeSort.direction : null}
                           sortLabel={`${t(reportAttributeLabelKey(selectedReport, column.key))} ${t("salesReport.sort")}`}
                           onSort={() => toggleSort(column.key)}
+                          headerAction={selectedReport === "salesReport.tickets" && column.key === "customer" ? (
+                            <button
+                              type="button"
+                              className="report-customer-display-toggle"
+                              draggable={false}
+                              aria-label={t(ticketCustomerDisplayMode === "code"
+                                ? "salesReport.customerDisplay.showName"
+                                : "salesReport.customerDisplay.showCode")}
+                              title={t(ticketCustomerDisplayMode === "code"
+                                ? "salesReport.customerDisplay.showName"
+                                : "salesReport.customerDisplay.showCode")}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setTicketCustomerDisplayMode((current) => current === "code" ? "name" : "code");
+                              }}
+                            >
+                              {ticketCustomerDisplayMode === "code" ? "N" : "C"}
+                            </button>
+                          ) : undefined}
                           resizeLabel={`${t("stock.columns.resize")} ${t(reportAttributeLabelKey(selectedReport, column.key))}`}
                           onReorder={(draggedKey, targetKey) => {
                             if (draggedKey !== "total" && targetKey !== "total") {
@@ -3655,6 +3731,12 @@ export function SalesReportScreen({
                 <span>{`${t("salesReport.visibleLines")}: ${filteredRows.length}`}</span>
                 {invoicedTicketTotal && (
                   <strong>{`${t("salesReport.invoicedTicketTotal")}: ${formatReportDisplayValue("invoicedTicketTotal", invoicedTicketTotal, locale)}`}</strong>
+                )}
+                {selectedReport === "salesReport.tickets" && (
+                  <>
+                    <strong>{`${t("salesReport.invoicedTicketCount")}: ${ticketCounters.invoiced}`}</strong>
+                    <strong>{`${t("salesReport.cancelledTicketCount")}: ${ticketCounters.cancelled}`}</strong>
+                  </>
                 )}
                 <strong className="report-main-total">
                   {`${t(reportAttributeLabelKey(selectedReport, "total"))}: ${formatReportDisplayValue("total", filteredTotals.total ?? "0.00", locale)}`}

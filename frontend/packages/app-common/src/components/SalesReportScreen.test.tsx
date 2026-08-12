@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDocumentReports,
   buildReportColumnDefinitions,
+  buildTicketReportCounters,
   canCancelSelectedTicket,
   canConfirmSalesInvoiceRectification,
   canConvertSelectedTicketToInvoice,
@@ -79,6 +80,7 @@ function createTableLayoutController(
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
 });
 
 describe("SalesReportScreen", () => {
@@ -182,7 +184,40 @@ describe("SalesReportScreen", () => {
           numero: "T-001",
           numTicket: "T-001",
           fecha: today,
-          total: "12.10"
+          total: "12.10",
+          effectiveTotal: "12.10",
+          customerCode: "C-0005",
+          customerName: "Cliente Cinco",
+          lifecycleStatus: "CONFIRMED"
+        }, {
+          id: "ticket-returned",
+          tipo: "TICKET",
+          estado: "CONFIRMADO",
+          numero: "T-RETURNED",
+          fecha: today,
+          total: "1000000.00",
+          effectiveTotal: "0.00",
+          invoiceNumber: "FV-RETURNED",
+          lifecycleStatus: "RETURNED"
+        }, {
+          id: "ticket-invoiced",
+          tipo: "TICKET",
+          estado: "CONFIRMADO",
+          numero: "T-INVOICED",
+          fecha: today,
+          total: "20.00",
+          effectiveTotal: "20.00",
+          invoiceNumber: "FV-ACTIVE",
+          lifecycleStatus: "INVOICED"
+        }, {
+          id: "ticket-cancelled",
+          tipo: "TICKET",
+          estado: "ANULADO",
+          numero: "T-CANCELLED",
+          fecha: today,
+          total: "50.00",
+          effectiveTotal: "0.00",
+          lifecycleStatus: "CANCELLED"
         }], nextCursor: null, hasMore: false });
       }
       if (path === "/warehouses") return Promise.resolve([]);
@@ -208,11 +243,28 @@ describe("SalesReportScreen", () => {
     expect(convertButton).toBeDisabled();
     expect(cancelButton).toBeDisabled();
     await waitFor(() => expect(container.querySelector("tbody tr")).not.toBeNull());
+    expect(screen.getByText("Tickets facturados: 1")).toBeVisible();
+    expect(screen.getByText("Tickets anulados: 1")).toBeVisible();
+    expect(screen.getByText(/Total:.*32,10/)).toBeVisible();
+    expect(screen.getByText("C-0005")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar nombre del cliente" }));
+    expect(screen.getByText("Cliente Cinco")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Mostrar código del cliente" })).toBeVisible();
+    expect(localStorage.getItem("tpv-erp:venta:user:admin:ticket-customer-display")).toBe("name");
     expect(container.querySelector('th[data-column-key="total"]')).toHaveClass("report-column-numeric");
     expect(container.querySelector('td[data-column-key="total"]')).toHaveClass("report-column-numeric");
     fireEvent.click(container.querySelector("tbody tr")!);
     await waitFor(() => expect(convertButton).toBeEnabled());
     expect(cancelButton).toBeEnabled();
+  });
+
+  it("counts active invoiced and cancelled tickets without treating full returns as invoiced", () => {
+    expect(buildTicketReportCounters([
+      { status: "salesReport.status.invoiced" },
+      { status: "salesReport.status.partiallyReturned" },
+      { status: "salesReport.status.returned" },
+      { status: "salesReport.status.ticketCancelled" }
+    ])).toEqual({ invoiced: 2, cancelled: 1 });
   });
 
   it("ordena importes y alterna periodos rápidos de forma determinista", () => {
