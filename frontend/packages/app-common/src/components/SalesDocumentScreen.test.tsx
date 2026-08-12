@@ -187,6 +187,13 @@ describe("SalesDocumentScreen", () => {
       />,
     );
 
+    const topbar = document.querySelector<HTMLElement>(".sales-document-topbar")!;
+    expect(within(topbar).getByText("APP VENTA")).toHaveClass("sales-document-app-badge");
+    expect(within(topbar).getByRole("heading", { name: "Venta documental" })).toBeVisible();
+    expect(within(topbar).getByRole("button", { name: "Factura" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByText("Añade productos por código o abre el buscador.")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /seleccionar cliente/i }));
     const customerDialog = screen.getByRole("dialog", { name: /seleccionar cliente/i });

@@ -18,4 +18,13 @@ describe("desktop navigation security", () => {
     expect(source).toContain("restrictNavigation(mainWindow, trustedAppOrigin)");
     expect(source).toContain("restrictNavigation(salesDocumentWindow, trustedAppOrigin)");
   });
+
+  it("opens the sales document workspace in fullscreen mode", () => {
+    const windowStart = source.indexOf("salesDocumentWindow = new BrowserWindow({");
+    const preferencesStart = source.indexOf("webPreferences:", windowStart);
+
+    expect(windowStart).toBeGreaterThan(-1);
+    expect(preferencesStart).toBeGreaterThan(windowStart);
+    expect(source.slice(windowStart, preferencesStart)).toContain("fullscreen: true");
+  });
 });

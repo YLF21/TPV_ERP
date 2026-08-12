@@ -2267,6 +2267,7 @@ describe("SaleScreen", () => {
     const commentDialog = await screen.findByRole("dialog", {
       name: "Comentario interno de la venta",
     });
+    expect(commentDialog).toHaveClass("sale-business-dialog", "sale-comment-dialog");
     fireEvent.change(within(commentDialog).getByRole("textbox", { name: "Comentario" }), {
       target: { value: "Entregar en almacén interior" },
     });
@@ -2293,7 +2294,20 @@ describe("SaleScreen", () => {
     const clearLines = await screen.findByRole("dialog", {
       name: "Eliminar todos los artículos",
     });
-    fireEvent.click(within(clearLines).getByRole("button", { name: "Eliminar artículos" }));
+    expect(clearLines).toHaveClass(
+      "sale-business-dialog",
+      "sale-clear-sale-dialog",
+      "sale-clear-lines-dialog",
+    );
+    expect(within(clearLines).getByText("Esta acción no se puede deshacer.")).toBeVisible();
+    const cancelClearLines = within(clearLines).getByRole("button", { name: "Cancelar" });
+    const confirmClearLines = within(clearLines).getByRole("button", { name: "Eliminar artículos" });
+    await waitFor(() => expect(cancelClearLines).toHaveFocus());
+    fireEvent.keyDown(cancelClearLines, { key: "ArrowRight" });
+    expect(confirmClearLines).toHaveFocus();
+    fireEvent.keyDown(confirmClearLines, { key: "ArrowLeft" });
+    expect(cancelClearLines).toHaveFocus();
+    fireEvent.click(confirmClearLines);
     expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
     expect(checkoutProps.current?.sale?.internalComment).toBe(
       "Entregar en almacén interior",
@@ -2307,7 +2321,7 @@ describe("SaleScreen", () => {
     const clearSale = await screen.findByRole("dialog", {
       name: "Eliminar venta actual",
     });
-    expect(clearSale).toHaveClass("sale-clear-sale-dialog");
+    expect(clearSale).toHaveClass("sale-business-dialog", "sale-clear-sale-dialog");
     expect(within(clearSale).getByText("Esta acción no se puede deshacer.")).toBeVisible();
     const cancelClearSale = within(clearSale).getByRole("button", { name: "Cancelar" });
     const confirmClearSale = within(clearSale).getByRole("button", { name: "Eliminar venta" });

@@ -1654,6 +1654,8 @@ export function SaleScreen({
   const temporaryPriceInputRef = useRef<HTMLInputElement>(null);
   const clearSaleCancelButtonRef = useRef<HTMLButtonElement>(null);
   const clearSaleConfirmButtonRef = useRef<HTMLButtonElement>(null);
+  const clearLinesCancelButtonRef = useRef<HTMLButtonElement>(null);
+  const clearLinesConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const removeConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const cashSubmissionRef = useRef(false);
   const cashOpeningRef = useRef({ current: false, generation: 0 });
@@ -3240,6 +3242,14 @@ export function SaleScreen({
     event.stopPropagation();
     if (event.key === "ArrowRight") clearSaleConfirmButtonRef.current?.focus();
     else clearSaleCancelButtonRef.current?.focus();
+  }
+
+  function handleClearLinesKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat || (event.key !== "ArrowRight" && event.key !== "ArrowLeft")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "ArrowRight") clearLinesConfirmButtonRef.current?.focus();
+    else clearLinesCancelButtonRef.current?.focus();
   }
 
   function submitSearch() {
@@ -5236,6 +5246,7 @@ export function SaleScreen({
           title={t("sale.comment.title")}
           closeLabel={t("sale.dialog.close")}
           onClose={() => setActionDialog(null)}
+          className="sale-business-dialog sale-comment-dialog"
         >
           <form
             className="sale-action-form"
@@ -5262,9 +5273,9 @@ export function SaleScreen({
               {t("sale.comment.hint")} {commentInput.length}/500
             </small>
             {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
-            <div className="sale-action-buttons">
+            <div className="sale-action-buttons sale-business-dialog-actions">
               <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit">{t("sale.dialog.save")}</button>
+              <button type="submit" className="primary">{t("sale.dialog.save")}</button>
             </div>
           </form>
         </SaleActionDialog>
@@ -5277,7 +5288,7 @@ export function SaleScreen({
           onClose={() => setActionDialog(null)}
           onKeyDown={handleClearSaleKeyDown}
           initialFocusRef={clearSaleCancelButtonRef}
-          className="sale-clear-sale-dialog"
+          className="sale-business-dialog sale-clear-sale-dialog"
         >
           <div className="sale-clear-sale-warning" role="note">
             <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
@@ -5298,12 +5309,20 @@ export function SaleScreen({
           title={t("sale.clearLines.title")}
           closeLabel={t("sale.dialog.close")}
           onClose={() => setActionDialog(null)}
-          onConfirm={clearSaleLines}
+          onKeyDown={handleClearLinesKeyDown}
+          initialFocusRef={clearLinesCancelButtonRef}
+          className="sale-business-dialog sale-clear-sale-dialog sale-clear-lines-dialog"
         >
-          <p>{t("sale.clearLines.confirm")}</p>
-          <div className="sale-action-buttons">
-            <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-            <button type="button" className="danger" onClick={clearSaleLines}>{t("sale.clearLines.action")}</button>
+          <div className="sale-clear-sale-warning" role="note">
+            <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
+            <div>
+              <strong>{t("sale.clearSale.warning")}</strong>
+              <p>{t("sale.clearLines.confirm")}</p>
+            </div>
+          </div>
+          <div className="sale-action-buttons sale-clear-sale-actions">
+            <button ref={clearLinesCancelButtonRef} type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+            <button ref={clearLinesConfirmButtonRef} type="button" className="danger" onClick={clearSaleLines}>{t("sale.clearLines.action")}</button>
           </div>
         </SaleActionDialog>
       )}
@@ -5886,8 +5905,14 @@ function SaleActionDialog({
     const root = dialogRef.current;
     if (!root) return;
     const deactivate = activateModalFocusTrap(root as unknown as ModalFocusRoot, document);
-    initialFocusRef?.current?.focus();
-    return deactivate;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) initialFocusRef?.current?.focus();
+    });
+    return () => {
+      active = false;
+      deactivate();
+    };
   }, [initialFocusRef]);
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {

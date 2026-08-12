@@ -171,6 +171,7 @@ function createSalesDocumentWindow(bootstrap) {
   }
   salesDocumentWindow = new BrowserWindow({
     title: `${appName} - Factura / Albaran`,
+    fullscreen: true,
     width: 1380,
     height: 860,
     minWidth: 1050,

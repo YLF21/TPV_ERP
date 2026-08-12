@@ -270,7 +270,7 @@ export function ParkedSalesDialog({
     <div className="sale-action-overlay" role="presentation">
       <section
         ref={dialogRef}
-        className="sale-action-dialog wide parked-sales-dialog"
+        className="sale-action-dialog sale-business-dialog wide parked-sales-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -335,7 +335,7 @@ export function ParkedSalesDialog({
             );
           })}
         </div>
-        <footer className="parked-sales-footer">
+        <footer className="parked-sales-footer sale-business-dialog-actions">
           <button type="button" className="danger" disabled={sales.length === 0 || Boolean(busyId)} onClick={() => { setDeleteAllOpen(true); setError(""); }}>
             {t("parkedSales.deleteAll")}
           </button>
@@ -346,7 +346,7 @@ export function ParkedSalesDialog({
       {pendingDeleteSale && (
         <section
           ref={singleDialogRef}
-          className="sale-action-dialog sale-clear-sale-dialog parked-sale-confirm-dialog"
+          className="sale-action-dialog sale-business-dialog sale-clear-sale-dialog parked-sale-confirm-dialog"
           role="dialog"
           aria-modal="true"
           aria-label={t("parkedSales.deleteTitle")}
@@ -365,7 +365,7 @@ export function ParkedSalesDialog({
       )}
 
       {deleteAllOpen && (
-        <section ref={deleteAllDialogRef} className="sale-action-dialog parked-sales-delete-all-dialog" role="dialog" aria-modal="true" aria-label={t("parkedSales.deleteAllTitle")}>
+        <section ref={deleteAllDialogRef} className="sale-action-dialog sale-business-dialog parked-sales-delete-all-dialog" role="dialog" aria-modal="true" aria-label={t("parkedSales.deleteAllTitle")}>
           <header><h2>{t("parkedSales.deleteAllTitle")}</h2></header>
           <div className="sale-clear-sale-warning" role="note">
             <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
@@ -382,7 +382,7 @@ export function ParkedSalesDialog({
             onUsernameChange={setAuthorizerUsername}
             onPasswordChange={setAuthorizerPassword}
           />
-          <div className="sale-action-buttons">
+          <div className="sale-action-buttons sale-business-dialog-actions">
             <button type="button" disabled={Boolean(busyId)} onClick={closeDeleteAll}>{t("common.cancel")}</button>
             <button type="button" className="danger" disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(bulkAuthorization, authorizerUsername, authorizerPassword)} onClick={() => void removeAll()}>{t("parkedSales.deleteAll")}</button>
           </div>

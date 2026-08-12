@@ -43,6 +43,8 @@ describe("ParkedSalesDialog", () => {
     const recovered = vi.fn().mockResolvedValue(undefined);
     show({ onRecovered: recovered });
 
+    expect(await screen.findByRole("dialog", { name: "Ventas aparcadas" }))
+      .toHaveClass("sale-business-dialog", "parked-sales-dialog");
     const list = await screen.findByRole("listbox", { name: "Ventas aparcadas" });
     await waitFor(() => expect(list).toHaveFocus());
     fireEvent.keyDown(list, { key: "Enter" });
@@ -103,6 +105,7 @@ describe("ParkedSalesDialog", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Eliminar Mesa 1" }));
     const confirmation = screen.getByRole("dialog", { name: "Eliminar venta guardada" });
+    expect(confirmation).toHaveClass("sale-business-dialog", "sale-clear-sale-dialog");
     const cancel = within(confirmation).getByRole("button", { name: "Cancelar" });
     const remove = within(confirmation).getByRole("button", { name: "Eliminar" });
     expect(cancel).toHaveFocus();
@@ -121,8 +124,11 @@ describe("ParkedSalesDialog", () => {
     request.mockResolvedValueOnce([summary]).mockResolvedValueOnce({ deletedCount: 1 });
     show({ canManageSales: true, currentUsername: "manager" });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Eliminar todo" }));
+    const deleteAll = await screen.findByRole("button", { name: "Eliminar todo" });
+    await waitFor(() => expect(deleteAll).toBeEnabled());
+    fireEvent.click(deleteAll);
     const dialog = screen.getByRole("dialog", { name: "Eliminar todas las ventas guardadas" });
+    expect(dialog).toHaveClass("sale-business-dialog", "parked-sales-delete-all-dialog");
     expect(within(dialog).queryByRole("textbox", { name: /Usuario autorizador/ })).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText(/contraseña/i), { target: { value: "secret" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar todo" }));
@@ -137,7 +143,9 @@ describe("ParkedSalesDialog", () => {
     request.mockResolvedValueOnce([summary]).mockResolvedValueOnce({ deletedCount: 1 });
     show({ canManageSales: false });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Eliminar todo" }));
+    const deleteAll = await screen.findByRole("button", { name: "Eliminar todo" });
+    await waitFor(() => expect(deleteAll).toBeEnabled());
+    fireEvent.click(deleteAll);
     const dialog = screen.getByRole("dialog", { name: "Eliminar todas las ventas guardadas" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: /Usuario autorizador/ }), { target: { value: "manager" } });
     fireEvent.change(within(dialog).getByLabelText(/contraseña/i), { target: { value: "secret" } });
