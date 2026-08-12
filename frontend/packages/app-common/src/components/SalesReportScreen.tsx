@@ -3857,7 +3857,6 @@ export function SalesReportScreen({
               )}
             </section>
             <footer>
-              <small>{documentPreviewRow.__documentId || documentPreviewRow.__warehouseDocumentId}</small>
               {documentPreviewPrintMessage && (
                 <span className="report-document-print-message" role="status">{documentPreviewPrintMessage}</span>
               )}

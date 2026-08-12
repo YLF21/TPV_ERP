@@ -1229,6 +1229,7 @@ describe("SalesReportScreen", () => {
     expect(screen.getByText("CAF-001")).toBeVisible();
     expect(screen.getByText("Café de prueba")).toBeVisible();
     expect(screen.queryByText("P-INPUT")).not.toBeInTheDocument();
+    expect(screen.queryByText("input-1")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Exportar Excel" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Imprimir copia" })).toBeVisible();
     expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/^\/documents\//), expect.anything());
