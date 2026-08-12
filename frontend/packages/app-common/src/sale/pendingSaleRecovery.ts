@@ -8,6 +8,7 @@ export type PendingSaleRecoveryEnvelope = {
   terminalCode: string;
   customer: { id: string; name: string };
   draft: PendingSaleDraft;
+  sourceDocumentId?: string;
   quoteCents: number;
   quoteReady: true;
   payments: PendingPaymentAllocation[];
@@ -75,6 +76,8 @@ export function extractRecoveryIdentifiers(raw: string) {
 
 function identityMatches(envelope: PendingSaleRecoveryEnvelope) {
   if (envelope.customer.id !== envelope.draft.customerId) return false;
+  if ((envelope.sourceDocumentId === undefined)
+    !== (envelope.draft.draftVersion === undefined)) return false;
   return envelope.payments.every((payment) => payment.kind !== "INTEGRATED_CARD" || (
     payment.id === envelope.draft.checkoutId && payment.operationId === envelope.draft.checkoutId
   ));
@@ -87,6 +90,7 @@ function validEnvelopeShape(value: unknown): value is PendingSaleRecoveryEnvelop
   if (!safePositiveInteger(value.quoteCents) || value.quoteReady !== true) return false;
   if (typeof value.savedAt !== "string" || !Number.isFinite(Date.parse(value.savedAt))) return false;
   if (value.createAttempted !== undefined && typeof value.createAttempted !== "boolean") return false;
+  if (value.sourceDocumentId !== undefined && !nonBlank(value.sourceDocumentId)) return false;
   if (!Array.isArray(value.payments) || !value.payments.every(validAllocation)) return false;
   if (new Set(value.payments.map((payment) => payment.id)).size !== value.payments.length) return false;
   let allocatedCents = 0;
@@ -105,6 +109,7 @@ function validDraft(value: unknown): value is PendingSaleDraft {
     && (typeof value.internalComment !== "string" || value.internalComment.length > 500)) return false;
   if (value.printMode !== undefined
     && !["DEFAULT", "TICKET_PRINTER", "A4_PRINTER", "PDF", "NONE"].includes(String(value.printMode))) return false;
+  if (value.draftVersion !== undefined && !safeNonNegativeInteger(value.draftVersion)) return false;
   if (value.creditOverride !== undefined
     && (!isRecord(value.creditOverride) || !nonBlank(value.creditOverride.reason) || value.creditOverride.reason.length > 500)) return false;
   return Array.isArray(value.lines) && value.lines.length > 0 && value.lines.every((line) => {

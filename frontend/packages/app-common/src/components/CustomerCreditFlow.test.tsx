@@ -112,14 +112,16 @@ describe("customer credit full flow", () => {
         request={collectionRequest as never}
         printReceipt={receiptPrint as never}
         onCancel={vi.fn()}
+        onPayment={paid}
         onPaid={paid}
       />);
       await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
-      fireEvent.change(screen.getByLabelText("Importe a cobrar"), { target: { value: amount } });
-      fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
-      fireEvent.change(screen.getByLabelText("Referencia"), { target: { value: `TR-${amount}` } });
-      fireEvent.click(screen.getByRole("button", { name: "Confirmar transferencia" }));
-      await waitFor(() => expect(paid).toHaveBeenCalledWith(receivable));
+      const amountInput = screen.getByLabelText("IMPORTE / RECIBIDO");
+      await waitFor(() => expect(amountInput).toBeEnabled());
+      fireEvent.change(amountInput, { target: { value: amount } });
+      fireEvent.change(screen.getByLabelText("Nº DOCUMENTO"), { target: { value: `TR-${amount}` } });
+      fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+      await waitFor(() => expect(paid).toHaveBeenCalledWith(receivable, undefined));
       cleanup();
     };
 

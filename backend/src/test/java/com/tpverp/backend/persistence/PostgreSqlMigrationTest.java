@@ -209,10 +209,126 @@ class PostgreSqlMigrationTest {
             verifyDeferredFiscalTriggers(url, user, password, schema);
             verifyImmutableFiscalRecords(url, user, password, schema);
             verifyDocumentOperationalAttribution(url, user, password, schema);
+            verifyPendingSaleCheckoutSupportsDraftLifecycle(
+                    url, user, password, schema);
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
                     Statement statement = connection.createStatement()) {
                 statement.execute("drop schema if exists " + schema + " cascade");
+            }
+        }
+    }
+
+    private static void verifyPendingSaleCheckoutSupportsDraftLifecycle(
+            String url, String user, String password, String schema) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet constraints = statement.executeQuery("""
+                    select count(*)
+                    from information_schema.table_constraints
+                    where constraint_schema = '%s'
+                      and table_name = 'customer_pending_sale_checkout'
+                      and constraint_name =
+                          'customer_pending_sale_checkout_document_id_key'
+                    """.formatted(schema))) {
+            assertThat(constraints.next()).isTrue();
+            assertThat(constraints.getInt(1)).isZero();
+        }
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet index = statement.executeQuery("""
+                    select indexdef
+                    from pg_indexes
+                    where schemaname = '%s'
+                      and indexname =
+                          'idx_customer_pending_sale_checkout_document'
+                    """.formatted(schema))) {
+            assertThat(index.next()).isTrue();
+            assertThat(index.getString("indexdef").toLowerCase())
+                    .contains("customer_pending_sale_checkout")
+                    .contains("(document_id)")
+                    .doesNotContain("unique");
+        }
+
+        UUID companyId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID terminalId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
+                    values ('%2$s', 'B00000144', 'Checkout lifecycle', '{
+                        "linea1":"Calle Uno",
+                        "ciudad":"Las Palmas",
+                        "codigoPostal":"35001",
+                        "provincia":"Las Palmas",
+                        "pais":"ES"
+                    }')
+                    """.formatted(schema, companyId));
+            statement.executeUpdate("""
+                    insert into %1$s.tienda (
+                        id, empresa_id, nombre, direccion, address_normalized_hash,
+                        timezone, moneda, locale, codigo_tienda)
+                    values (
+                        '%2$s', '%3$s', 'Tienda checkout', '{
+                            "linea1":"Calle Uno",
+                            "ciudad":"Las Palmas",
+                            "codigoPostal":"35001",
+                            "provincia":"Las Palmas",
+                            "pais":"ES"
+                        }', 'CHECKOUT-LIFECYCLE', 'Atlantic/Canary', 'EUR', 'es-ES', '144')
+                    """.formatted(schema, storeId, companyId));
+            statement.executeUpdate("""
+                    insert into %1$s.terminal (
+                        id, tienda_id, nombre, tipo, credential_hash)
+                    values ('%2$s', '%3$s', 'TPV checkout', 'TERMINAL_VENTA', 'hash')
+                    """.formatted(schema, terminalId, storeId));
+            statement.executeUpdate("""
+                    insert into %1$s.rol (id, tienda_id, nombre)
+                    values ('%2$s', '%3$s', 'SELLER')
+                    """.formatted(schema, roleId, storeId));
+            statement.executeUpdate("""
+                    insert into %1$s.usuario (
+                        id, tienda_id, nombre, user_name, password_hash, rol_id)
+                    values ('%2$s', '%3$s', 'SELLER', 'Seller', 'hash', '%4$s')
+                    """.formatted(schema, userId, storeId, roleId));
+            statement.executeUpdate("""
+                    insert into %1$s.almacen (id, tienda_id, nombre, predeterminado)
+                    values ('%2$s', '%3$s', 'GENERAL', true)
+                    """.formatted(schema, warehouseId, storeId));
+            statement.executeUpdate("""
+                    insert into %1$s.documento (
+                        id, tienda_id, almacen_id, tipo, estado, fecha,
+                        creado_en, creado_por, total)
+                    values (
+                        '%2$s', '%3$s', '%4$s', 'FACTURA_VENTA', 'BORRADOR',
+                        current_date, now(), '%5$s', 5.70)
+                    """.formatted(schema, documentId, storeId, warehouseId, userId));
+            statement.executeUpdate("""
+                    insert into %1$s.customer_pending_sale_checkout (
+                        id, checkout_id, terminal_id, store_id, user_id,
+                        request_hash, document_id, created_at, completed_at,
+                        processing_owner, processing_lease_until)
+                    values
+                        ('%2$s', '%3$s', '%4$s', '%5$s', '%6$s', repeat('a', 64),
+                         '%7$s', now(), now(), '%2$s', now()),
+                        ('%8$s', '%9$s', '%4$s', '%5$s', '%6$s', repeat('b', 64),
+                         '%7$s', now(), now(), '%8$s', now())
+                    """.formatted(
+                    schema,
+                    UUID.randomUUID(), UUID.randomUUID(), terminalId, storeId,
+                    userId, documentId, UUID.randomUUID(), UUID.randomUUID()));
+            try (ResultSet rows = statement.executeQuery("""
+                    select count(*)
+                    from %s.customer_pending_sale_checkout
+                    where document_id = '%s'
+                    """.formatted(schema, documentId))) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getInt(1)).isEqualTo(2);
             }
         }
     }

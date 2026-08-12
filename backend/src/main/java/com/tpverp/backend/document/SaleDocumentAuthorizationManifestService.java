@@ -6,6 +6,7 @@ import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -53,18 +54,27 @@ public class SaleDocumentAuthorizationManifestService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public Validation validate(CommercialDocument document) {
+        return findValidation(document)
+                .orElseThrow(GenericSaleConfirmationBlockedException::new);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Validation> findValidation(CommercialDocument document) {
         requireDraftInCurrentStore(document);
         var manifest = manifests.findForUpdate(
-                        document.getId(), document.getTiendaId())
-                .orElseThrow(GenericSaleConfirmationBlockedException::new);
-        if (!manifest.matches(fingerprints.fingerprint(document))) {
+                        document.getId(), document.getTiendaId());
+        if (manifest.isEmpty()) {
+            return Optional.empty();
+        }
+        var persisted = manifest.orElseThrow();
+        if (!persisted.matches(fingerprints.fingerprint(document))) {
             throw GenericSaleConfirmationBlockedException.mismatch();
         }
-        var storedVersions = manifest.getPolicyVersions();
+        var storedVersions = persisted.getPolicyVersions();
         var policyChanged = storedVersions.entrySet().stream().anyMatch(entry ->
                 operationSecurity.resolve(entry.getKey()).version()
                         != entry.getValue());
-        return new Validation(storedVersions.keySet(), policyChanged);
+        return Optional.of(new Validation(storedVersions.keySet(), policyChanged));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -80,6 +90,24 @@ public class SaleDocumentAuthorizationManifestService {
                 fingerprints.fingerprint(document),
                 proof.policyVersions(),
                 clock.instant());
+        manifests.saveAndFlush(manifest);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void replace(
+            CommercialDocument document,
+            SaleDocumentMutationAuthorizationService.AuthorizationProof proof) {
+        requireDraftInCurrentStore(document);
+        Objects.requireNonNull(proof, "proof");
+        var manifest = manifests.findForUpdate(
+                        document.getId(), document.getTiendaId())
+                .orElse(null);
+        if (manifest == null) {
+            record(document, proof);
+            return;
+        }
+        manifest.replaceAfterAuthorization(
+                fingerprints.fingerprint(document), proof.policyVersions(), clock.instant());
         manifests.saveAndFlush(manifest);
     }
 

@@ -129,6 +129,7 @@ type SalesDocumentBootstrap = {
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
+  interfaceMode: SaleInterfaceMode;
 };
 
 let salesDocumentBootstrapPromise: Promise<SalesDocumentBootstrap | null> | null = null;
@@ -519,6 +520,7 @@ export function App() {
                   locale,
                   session,
                   terminalContext,
+                  interfaceMode: saleInterfaceMode,
                 }).then((result) => {
                   if (!result.ok) {
                     setAppNotice(locale === "en"

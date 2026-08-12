@@ -101,7 +101,8 @@ public class CustomerPendingSaleController {
             @Size(max = 128) String authorizerPassword,
             @Size(max = 32)
             @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
-                    operationAuthorizations) {
+                    operationAuthorizations,
+            @jakarta.validation.constraints.Min(0) Long draftVersion) {
 
         public CreateRequest {
             operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
@@ -115,8 +116,32 @@ public class CustomerPendingSaleController {
                     + ", type=" + type
                     + ", customerId=" + customerId
                     + ", completionMode=" + completionMode
+                    + ", draftVersion=" + draftVersion
                     + ", authorizerUsername=" + authorizerUsername
                     + ", authorizerPassword=<redacted>]";
+        }
+
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal,
+                CreditOverride creditOverride,
+                SalesDocumentCompletionMode completionMode,
+                String internalComment,
+                String authorizerUsername,
+                String authorizerPassword,
+                Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, creditOverride,
+                    completionMode, internalComment, authorizerUsername,
+                    authorizerPassword, operationAuthorizations, null);
         }
 
         public CreateRequest(
@@ -138,7 +163,7 @@ public class CustomerPendingSaleController {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
                     completionMode, internalComment, authorizerUsername,
-                    authorizerPassword, Map.of());
+                    authorizerPassword, Map.of(), null);
         }
 
         public CreateRequest(
@@ -157,7 +182,7 @@ public class CustomerPendingSaleController {
                 String internalComment) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
-                    completionMode, internalComment, null, null, Map.of());
+                    completionMode, internalComment, null, null, Map.of(), null);
         }
 
         public CreateRequest(
@@ -175,7 +200,7 @@ public class CustomerPendingSaleController {
                 SalesDocumentCompletionMode completionMode) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
-                    completionMode, null, null, null, Map.of());
+                    completionMode, null, null, null, Map.of(), null);
         }
 
         public CreateRequest(
@@ -192,7 +217,7 @@ public class CustomerPendingSaleController {
                 CreditOverride creditOverride) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
-                    null, null, null, null, Map.of());
+                    null, null, null, null, Map.of(), null);
         }
 
         public CreateRequest(
@@ -208,7 +233,7 @@ public class CustomerPendingSaleController {
                 BigDecimal quotedTotal) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, null,
-                    null, null, null, null, Map.of());
+                    null, null, null, null, Map.of(), null);
         }
 
         DocumentCommand toCommand() {

@@ -35,6 +35,7 @@ export type PendingSaleDraft = {
   completionMode?: "DRAFT" | "CONFIRM_PENDING" | "CONFIRM_AND_PAY";
   internalComment?: string;
   printMode?: SalePrintMode;
+  draftVersion?: number;
 };
 
 export type PendingPaymentAllocation = {

@@ -72,6 +72,20 @@ public interface DocumentRelationRepository
             @Param("storeId") UUID storeId,
             @Param("asOfDate") java.time.LocalDate asOfDate);
 
+    @Query("""
+            select relation.documento.id from DocumentRelation relation
+            where relation.documento.tiendaId = :storeId
+              and relation.documento.fecha = :date
+              and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+              and relation.documento.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+              and relation.documento.estado not in (
+                com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                com.tpverp.backend.document.DocumentStatus.ANULADO)
+            """)
+    Set<UUID> findDerivedSalesInvoiceIds(
+            @Param("storeId") UUID storeId,
+            @Param("date") java.time.LocalDate date);
+
     interface RelatedDocument {
         UUID getOriginId();
 

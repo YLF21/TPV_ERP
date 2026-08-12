@@ -38,6 +38,7 @@ type Props = {
   printReceipt?: typeof printCustomerReceivablePaymentReceipt;
   request?: Request;
   onCancel: () => void;
+  onPayment?: (value: CustomerReceivable, retryPrint?: () => Promise<unknown>) => void;
   onPaid: (value: CustomerReceivable, retryPrint?: () => Promise<unknown>) => void;
 };
 
@@ -105,10 +106,16 @@ export function CustomerReceivablePaymentDialog({
   printReceipt = printCustomerReceivablePaymentReceipt,
   request = apiRequest,
   onCancel,
+  onPayment,
   onPaid,
 }: Props) {
   const t = createTranslator(locale);
-  const pendingCents = Math.round(Number(receivable.pendingTotal) * 100);
+  const [activeReceivable, setActiveReceivable] = useState(receivable);
+  const [openingPendingCents, setOpeningPendingCents] = useState(
+    Math.round(Number(receivable.pendingTotal) * 100),
+  );
+  const [recordedAllocations, setRecordedAllocations] = useState<PaymentAllocation[]>([]);
+  const pendingCents = Math.round(Number(activeReceivable.pendingTotal) * 100);
   const [methods, setMethods] = useState<{
     cash?: Method;
     card?: Method;
@@ -120,7 +127,7 @@ export function CustomerReceivablePaymentDialog({
   const [error, setError] = useState("");
   const [cashCompletion, setCashCompletion] = useState<CashCompletion | null>(null);
   const mounted = useRef(true);
-  const storageKey = receivablePaymentAttemptKey(terminalCode, receivable.documentId);
+  const storageKey = receivablePaymentAttemptKey(terminalCode, activeReceivable.documentId);
   const standardKey = `${storageKey}.standard`;
   const [standardAttempt, setStandardAttempt] = useState<StandardAttempt | null>(() => {
     try {
@@ -138,8 +145,15 @@ export function CustomerReceivablePaymentDialog({
       return null;
     }
   });
-  const collectable = receivable.status !== "PAGADO" && pendingCents > 0;
+  const collectable = activeReceivable.status !== "PAGADO" && pendingCents > 0;
   const unsafeCard = cardAttempt != null && !finalCardFailure(cardAttempt);
+
+  useEffect(() => {
+    if (receivable.documentId === activeReceivable.documentId) return;
+    setActiveReceivable(receivable);
+    setOpeningPendingCents(Math.round(Number(receivable.pendingTotal) * 100));
+    setRecordedAllocations([]);
+  }, [activeReceivable.documentId, receivable]);
 
   useEffect(() => {
     mounted.current = true;
@@ -177,9 +191,28 @@ export function CustomerReceivablePaymentDialog({
 
   async function postPayment(item: Record<string, unknown>) {
     return request<PaymentMutationResult>(
-      `/customer-receivables/${receivable.documentId}/payments`,
+      `/customer-receivables/${activeReceivable.documentId}/payments`,
       { token, body: { pagos: [item] } },
     );
+  }
+
+  function publishPayment(
+    value: CustomerReceivable,
+    retryPrint?: () => Promise<unknown>,
+  ) {
+    setActiveReceivable(value);
+    if (value.status === "PAGADO" || Number(value.pendingTotal) <= 0) {
+      onPaid(value, retryPrint);
+    } else {
+      onPayment?.(value, retryPrint);
+    }
+  }
+
+  function rememberAllocation(allocation: PaymentAllocation) {
+    setRecordedAllocations((current) => current.some((candidate) =>
+      candidate.idempotencyKey === allocation.idempotencyKey)
+      ? current
+      : [...current, allocation]);
   }
 
   async function printResult(result: PaymentMutationResult) {
@@ -192,7 +225,7 @@ export function CustomerReceivablePaymentDialog({
         retryPrint = retry;
       }
     }
-    if (mounted.current) onPaid(result.receivable, retryPrint);
+    if (mounted.current) publishPayment(result.receivable, retryPrint);
   }
 
   async function printCashCompletion(completion: CashCompletion) {
@@ -249,6 +282,18 @@ export function CustomerReceivablePaymentDialog({
       globalThis.localStorage?.removeItem(standardKey);
       setStandardAttempt(null);
       setBusy(false);
+      rememberAllocation({
+        kind: kind === "cash" ? "CASH" : kind === "card" ? "MANUAL_CARD" : "TRANSFER",
+        amountCents: Math.round(Number(item.importe) * 100),
+        deliveredCents: item.entregado == null
+          ? undefined : Math.round(Number(item.entregado) * 100),
+        changeCents: item.cambio == null
+          ? undefined : Math.round(Number(item.cambio) * 100),
+        reference: item.reference ? String(item.reference) : undefined,
+        transferDate: item.transferDate ? String(item.transferDate) : undefined,
+        idempotencyKey: requestId,
+        status: "APPROVED",
+      });
       if (kind === "cash") {
         const confirmedCents = Math.round(Number(result.paymentReceipt.amount) * 100);
         const receivedCents = input?.deliveredCents ?? confirmedCents;
@@ -286,6 +331,14 @@ export function CustomerReceivablePaymentDialog({
     globalThis.localStorage?.removeItem(storageKey);
     setCardAttempt(null);
     setBusy(false);
+    rememberAllocation({
+      kind: "INTEGRATED_CARD",
+      amountCents: Math.round(Number(attempt.amount) * 100),
+      provider: providers[0],
+      idempotencyKey: attempt.paymentId,
+      operationId: attempt.paymentId,
+      status: "APPROVED",
+    });
     await printResult(result);
   }
 
@@ -318,7 +371,7 @@ export function CustomerReceivablePaymentDialog({
       setCardAttempt(attempt);
       if (attempt.status !== "APPROVED") {
         const terminal = await request<{ status: string; finalOutcome?: boolean }>(
-          `/customer-receivables/${receivable.documentId}/card-charges`,
+          `/customer-receivables/${activeReceivable.documentId}/card-charges`,
           { token, body: { paymentId: attempt.paymentId, amount: attempt.amount } },
         );
         attempt = {
@@ -360,7 +413,7 @@ export function CustomerReceivablePaymentDialog({
     setError("");
     try {
       const terminal = await request<{ status: string; finalOutcome?: boolean }>(
-        `/customer-receivables/${receivable.documentId}/card-charges/${cardAttempt.paymentId}/query`,
+        `/customer-receivables/${activeReceivable.documentId}/card-charges/${cardAttempt.paymentId}/query`,
         { method: "POST", token },
       );
       const next = {
@@ -421,13 +474,12 @@ export function CustomerReceivablePaymentDialog({
   }, [cardAttempt, providers, standardAttempt, t]);
 
   const session = useMemo<PaymentSession>(() => ({
-    id: `receivable-${receivable.documentId}`,
-    totalCents: pendingCents,
+    id: `receivable-${activeReceivable.documentId}`,
+    totalCents: openingPendingCents,
     direction: "SALE",
-    status: allocations.some((allocation) => allocation.status === "APPROVED"
-      && allocation.amountCents >= pendingCents) ? "COVERED" : "COLLECTING",
-    allocations,
-  }), [allocations, pendingCents, receivable.documentId]);
+    status: pendingCents === 0 ? "COVERED" : "COLLECTING",
+    allocations: [...recordedAllocations, ...allocations],
+  }), [activeReceivable.documentId, allocations, openingPendingCents, pendingCents, recordedAllocations]);
 
   if (cashCompletion) return <CashPaymentResultDialog
     locale={locale}
@@ -439,7 +491,11 @@ export function CustomerReceivablePaymentDialog({
     onRetryPrint={cashCompletion.printStatus === "FAILED"
       ? () => void printCashCompletion(cashCompletion)
       : undefined}
-    onFinish={() => onPaid(cashCompletion.receivable)}
+    onFinish={() => {
+      const completed = cashCompletion.receivable;
+      setCashCompletion(null);
+      publishPayment(completed);
+    }}
   />;
 
   return <PaymentAllocationPanel

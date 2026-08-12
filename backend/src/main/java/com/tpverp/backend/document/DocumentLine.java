@@ -65,6 +65,10 @@ public class DocumentLine {
     private String codigo;
     @Column(name = "codigo_barras", length = 128)
     private String codigoBarras;
+    @Column(name = "nombre_temporal_override", nullable = false)
+    private boolean temporaryNameOverride;
+    @Column(name = "precio_temporal_override", nullable = false)
+    private boolean temporaryPriceOverride;
     @Column(nullable = false)
     private String nombre;
     @Column(length = 16)
@@ -489,6 +493,23 @@ public class DocumentLine {
 
     public String getCodigoBarras() {
         return codigoBarras;
+    }
+
+    public boolean isTemporaryNameOverride() {
+        return temporaryNameOverride;
+    }
+
+    public boolean isTemporaryPriceOverride() {
+        return temporaryPriceOverride;
+    }
+
+    void assignTemporaryOverrides(boolean nameOverride, boolean priceOverride) {
+        if (lineType != DocumentLineType.PRODUCT && (nameOverride || priceOverride)) {
+            throw new IllegalArgumentException(
+                    "solo una linea de producto admite modificaciones temporales");
+        }
+        temporaryNameOverride = nameOverride;
+        temporaryPriceOverride = priceOverride;
     }
 
     public String getNombre() {

@@ -85,6 +85,7 @@ describe("CustomerReceivablePaymentDialog", () => {
   });
 
   it("accepts a manual card payment when no integrated terminal is configured", async () => {
+    const onPayment = vi.fn();
     const onPaid = vi.fn();
     const request = vi.fn(async (path: string) => {
       if (path === "/payment-methods") return methods;
@@ -101,6 +102,7 @@ describe("CustomerReceivablePaymentDialog", () => {
       terminalCode="01"
       request={request as any}
       onCancel={vi.fn()}
+      onPayment={onPayment}
       onPaid={onPaid}
     />);
 
@@ -109,7 +111,9 @@ describe("CustomerReceivablePaymentDialog", () => {
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
-    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(paymentResult.receivable, undefined));
+    await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
+    expect(onPaid).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "COBRO" })).toBeVisible();
     expect((request.mock.calls as any[]).some(([path]) => path.endsWith("/card-charges"))).toBe(false);
     const payment = (request.mock.calls as any[]).find(([path]) => path.endsWith("/payments"))?.[1].body.pagos[0];
     expect(payment).toMatchObject({
@@ -121,6 +125,7 @@ describe("CustomerReceivablePaymentDialog", () => {
   });
 
   it("registers a partial transfer with its optional transfer date and stable request id", async () => {
+    const onPayment = vi.fn();
     const onPaid = vi.fn();
     const request = configuredRequest();
     render(<CustomerReceivablePaymentDialog
@@ -129,6 +134,7 @@ describe("CustomerReceivablePaymentDialog", () => {
       terminalCode="01"
       request={request as any}
       onCancel={vi.fn()}
+      onPayment={onPayment}
       onPaid={onPaid}
     />);
 
@@ -140,7 +146,9 @@ describe("CustomerReceivablePaymentDialog", () => {
     fireEvent.change(transferDate, { target: { value: "2026-08-10" } });
     fireEvent.keyDown(transferDate, { key: "Enter" });
 
-    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(paymentResult.receivable, undefined));
+    await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
+    expect(onPaid).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "COBRO" })).toBeVisible();
     const paymentCall = (request.mock.calls as any[]).find(([path]) => path.endsWith("/payments"));
     expect(paymentCall?.[1].body.pagos[0]).toMatchObject({
       metodoPagoId: "transfer",
@@ -149,6 +157,67 @@ describe("CustomerReceivablePaymentDialog", () => {
       transferDate: "2026-08-10",
       requestId: expect.any(String),
     });
+  });
+
+  it("keeps a pending-debt checkout open after a partial payment and closes only when fully paid", async () => {
+    const onPayment = vi.fn();
+    const onPaid = vi.fn();
+    let paymentCalls = 0;
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return methods;
+      if (path === "/terminal-configuration/payment") return {
+        rules: { cardManualEnabled: true, integratedCardEnabled: false },
+        configuration: { provider: "", enabled: false },
+      };
+      if (path.endsWith("/payments")) {
+        paymentCalls += 1;
+        return paymentCalls === 1
+          ? paymentResult
+          : {
+              receivable: {
+                ...receivable,
+                paidTotal: "100.00",
+                pendingTotal: "0.00",
+                status: "PAGADO",
+              },
+              paymentReceipt: {
+                ...transferReceipt,
+                paymentId: "payment-2",
+                method: "TARJETA",
+                amount: "55.00",
+                remaining: "0.00",
+              },
+            };
+      }
+      throw new Error(path);
+    });
+    render(<CustomerReceivablePaymentDialog
+      receivable={receivable}
+      token="token"
+      terminalCode="01"
+      request={request as any}
+      onCancel={vi.fn()}
+      onPayment={onPayment}
+      onPaid={onPaid}
+    />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
+    fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
+    expect(onPaid).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("55,00"));
+    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "PAGADO", pendingTotal: "0.00" }),
+      undefined,
+    ));
+    expect(onPayment).toHaveBeenCalledTimes(1);
+    expect(paymentCalls).toBe(2);
   });
 
   it("limits the optional transfer date input to today", async () => {
@@ -169,6 +238,7 @@ describe("CustomerReceivablePaymentDialog", () => {
   });
 
   it("records cash through checkout and keeps the completion acknowledgement", async () => {
+    const onPayment = vi.fn();
     const onPaid = vi.fn();
     const cashReceipt = {
       kind: "PAYMENT_RECEIPT",
@@ -189,6 +259,7 @@ describe("CustomerReceivablePaymentDialog", () => {
       terminalCode="01"
       request={request as any}
       onCancel={vi.fn()}
+      onPayment={onPayment}
       onPaid={onPaid}
     />);
 
@@ -207,7 +278,9 @@ describe("CustomerReceivablePaymentDialog", () => {
       cambio: "0.00",
     });
     fireEvent.keyDown(document.body, { key: "Enter" });
-    expect(onPaid).toHaveBeenCalledWith(paymentResult.receivable);
+    expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined);
+    expect(onPaid).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "COBRO" })).toBeVisible();
   });
 
   it("keeps the same card operation id through approval and document payment", async () => {
@@ -247,6 +320,7 @@ describe("CustomerReceivablePaymentDialog", () => {
   });
 
   it("recovers an uncertain card charge with the retained operation id", async () => {
+    const onPayment = vi.fn();
     const onPaid = vi.fn();
     const request = vi.fn(async (path: string) => {
       if (path === "/payment-methods") return methods;
@@ -262,6 +336,7 @@ describe("CustomerReceivablePaymentDialog", () => {
       terminalCode="01"
       request={request as any}
       onCancel={vi.fn()}
+      onPayment={onPayment}
       onPaid={onPaid}
     />);
 
@@ -275,7 +350,8 @@ describe("CustomerReceivablePaymentDialog", () => {
     });
     fireEvent.click(await screen.findByRole("button", { name: "Consultar estado" }));
 
-    await waitFor(() => expect(onPaid).toHaveBeenCalled());
+    await waitFor(() => expect(onPayment).toHaveBeenCalled());
+    expect(onPaid).not.toHaveBeenCalled();
     expect((request.mock.calls as any[]).some(([path]) =>
       path === `/customer-receivables/doc-1/card-charges/${retained.paymentId}/query`)).toBe(true);
     const payment = (request.mock.calls as any[]).find(([path]) => path.endsWith("/payments"))?.[1].body.pagos[0];

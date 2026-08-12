@@ -65,6 +65,42 @@ class TicketPrintViewTest {
     }
 
     @Test
+    void printsAConfirmedReceivableTicketWhileItIsPendingPartialOrPaid() {
+        var companyId = UUID.randomUUID();
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 12), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE, "P-1", "Producto",
+                null, BigDecimal.TEN, BigDecimal.ZERO, true,
+                "IVA", new BigDecimal("21")));
+        document.setParties(UUID.randomUUID(), null, null);
+        document.markTicketReceivable();
+        document.confirm("001-260812-000001", UUID.randomUUID(),
+                Instant.parse("2026-08-12T12:00:00Z"), false);
+
+        assertThat(document.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
+        assertThat(TicketPrintView.from(document).total()).isEqualByComparingTo("10.00");
+
+        var cash = new PaymentMethod(companyId, "EFECTIVO", true);
+        document.addPayment(new DocumentPayment(
+                document, cash, 1, new BigDecimal("4.00"), true,
+                new BigDecimal("4.00"), BigDecimal.ZERO,
+                Instant.parse("2026-08-12T12:01:00Z")));
+        document.updatePaymentStatus();
+        assertThat(document.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
+        assertThat(TicketPrintView.from(document).payments()).hasSize(1);
+
+        document.addPayment(new DocumentPayment(
+                document, cash, 2, new BigDecimal("6.00"), false,
+                new BigDecimal("6.00"), BigDecimal.ZERO,
+                Instant.parse("2026-08-12T12:02:00Z")));
+        document.updatePaymentStatus();
+        assertThat(document.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+        assertThat(TicketPrintView.from(document).payments()).hasSize(2);
+    }
+
+    @Test
     void printsF11OnceInTheSummaryInsteadOfAsFiscalAllocationLines() {
         var document = new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,

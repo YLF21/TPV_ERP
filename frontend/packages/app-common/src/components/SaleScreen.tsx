@@ -1647,6 +1647,8 @@ export function SaleScreen({
   const discountInputRef = useRef<HTMLInputElement>(null);
   const temporaryNameInputRef = useRef<HTMLInputElement>(null);
   const temporaryPriceInputRef = useRef<HTMLInputElement>(null);
+  const clearSaleCancelButtonRef = useRef<HTMLButtonElement>(null);
+  const clearSaleConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const removeConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const cashSubmissionRef = useRef(false);
   const cashOpeningRef = useRef({ current: false, generation: 0 });
@@ -3230,6 +3232,14 @@ export function SaleScreen({
     event.stopPropagation();
     if (event.key === "Enter") confirmRemoveLine();
     else setActionDialog(null);
+  }
+
+  function handleClearSaleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat || (event.key !== "ArrowRight" && event.key !== "ArrowLeft")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "ArrowRight") clearSaleConfirmButtonRef.current?.focus();
+    else clearSaleCancelButtonRef.current?.focus();
   }
 
   function submitSearch() {
@@ -5212,12 +5222,20 @@ export function SaleScreen({
           title={t("sale.clearSale.title")}
           closeLabel={t("sale.dialog.close")}
           onClose={() => setActionDialog(null)}
-          onConfirm={clearSaleFromCommand}
+          onKeyDown={handleClearSaleKeyDown}
+          initialFocusRef={clearSaleCancelButtonRef}
+          className="sale-clear-sale-dialog"
         >
-          <p>{t("sale.clearSale.confirm")}</p>
-          <div className="sale-action-buttons">
-            <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-            <button type="button" className="danger" onClick={clearSaleFromCommand}>{t("sale.clearSale.action")}</button>
+          <div className="sale-clear-sale-warning" role="note">
+            <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
+            <div>
+              <strong>{t("sale.clearSale.warning")}</strong>
+              <p>{t("sale.clearSale.confirm")}</p>
+            </div>
+          </div>
+          <div className="sale-action-buttons sale-clear-sale-actions">
+            <button ref={clearSaleCancelButtonRef} type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+            <button ref={clearSaleConfirmButtonRef} type="button" className="danger" onClick={clearSaleFromCommand}>{t("sale.clearSale.action")}</button>
           </div>
         </SaleActionDialog>
       )}

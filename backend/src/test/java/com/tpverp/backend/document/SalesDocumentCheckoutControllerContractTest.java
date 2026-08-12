@@ -75,6 +75,36 @@ class SalesDocumentCheckoutControllerContractTest {
                 .hasMessage("sales_document_checkout_permission_required");
     }
 
+    @Test
+    void confirmedDocumentRemainsSuccessfulWhenPrintPreparationFails() {
+        var service = org.mockito.Mockito.mock(CustomerPendingSaleService.class);
+        var printing = org.mockito.Mockito.mock(CustomerReceivablePrintService.class);
+        var views = org.mockito.Mockito.mock(DocumentViewAssembler.class);
+        var document = org.mockito.Mockito.mock(CommercialDocument.class);
+        var view = org.mockito.Mockito.mock(DocumentView.class);
+        var documentId = java.util.UUID.randomUUID();
+        var request = withMode(
+                CustomerPendingSaleControllerContractTestRequest.request(),
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_PENDING);
+        var authentication = org.springframework.security.authentication
+                .UsernamePasswordAuthenticationToken.authenticated(
+                        "admin", "credentials",
+                        java.util.List.of(new org.springframework.security.core.authority
+                                .SimpleGrantedAuthority("ROLE_ADMIN")));
+        org.mockito.Mockito.when(service.createDocument(request, authentication))
+                .thenReturn(document);
+        org.mockito.Mockito.when(document.getId()).thenReturn(documentId);
+        org.mockito.Mockito.when(views.documentView(document)).thenReturn(view);
+        org.mockito.Mockito.when(printing.document(documentId))
+                .thenThrow(new IllegalStateException("invoice_jasper_render_failed"));
+
+        var result = new SalesDocumentCheckoutController(service, printing, views)
+                .create(request, authentication);
+
+        assertThat(result.document()).isSameAs(view);
+        assertThat(result.printDocument()).isNull();
+    }
+
     private static void assertEndpoint(String name, Class<?> requestType, String path)
             throws Exception {
         Method method = SalesDocumentCheckoutController.class.getDeclaredMethod(

@@ -527,6 +527,7 @@ describe("CustomerPendingSaleDialog", () => {
     const confirm = await screen.findByRole("button", {
       name: /confirmar venta pendiente/i,
     });
+    await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
     const authorization = screen.getByRole("dialog", {
       name: /autorizaci.*venta/i,
@@ -1445,7 +1446,323 @@ describe("CustomerPendingSaleDialog", () => {
     const request = vi.fn().mockResolvedValueOnce({ total: "121.00" })
       .mockResolvedValueOnce({ receivable: { documentId: "doc-1" }, printDocument: authoritative });
     render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}} request={request} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printDocument={vi.fn().mockResolvedValue({ status: "FAILED", technicalMessage: "printer offline" })} onCancel={vi.fn()} onSuccess={onSuccess} />);
-    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    const confirmButton = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
+    await waitFor(() => expect((confirmButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(confirmButton);
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({ documentId: "doc-1" }, expect.any(Function)));
+  });
+
+  it("uses the normal checkout panel and confirms a Ctrl+F document paid in cash", async () => {
+    const onSuccess = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({
+        document: { id: "invoice-1", numero: "FV-1" },
+        printDocument: {},
+      });
+    const view = render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
+      endpointBase="/pos/sales-document-checkouts"
+      paymentMethods={{ cash: "cash-method" }}
+      allowPayments
+      standardCheckout
+      allowPendingCompletion
+      interfaceMode="KEYBOARD"
+      request={request}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+
+    const checkout = await screen.findByRole("dialog", { name: "COBRO" });
+    expect(screen.queryByRole("heading", { name: /confirmar y cobrar documento/i })).not.toBeInTheDocument();
+    expect(within(checkout).queryByRole("button", { name: /Vale/ })).not.toBeInTheDocument();
+    const amount = view.container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    await waitFor(() => {
+      expect(amount.disabled).toBe(false);
+      expect(amount.value).toBe("10,00");
+    });
+    expect(within(checkout).getByRole("button", { name: /Pendiente/ })).toBeEnabled();
+    fireEvent.keyDown(amount, { key: "Enter" });
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({
+      documentId: "invoice-1",
+      documentNumber: "FV-1",
+    }));
+    expect(request).toHaveBeenNthCalledWith(2, "/pos/sales-document-checkouts", expect.objectContaining({
+      body: expect.objectContaining({
+        completionMode: "CONFIRM_AND_PAY",
+        payments: [expect.objectContaining({
+          methodId: "cash-method",
+          amount: "10.00",
+          delivered: "10.00",
+          change: "0.00",
+        })],
+      }),
+    }));
+  });
+
+  it("confirms and pays an imported Ctrl+F draft through its own endpoint", async () => {
+    const onSuccess = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({
+        document: { id: "draft-2", numero: "FV-2" },
+        printDocument: {},
+      });
+    const view = render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{
+        ...draft,
+        type: "FACTURA_VENTA",
+        completionMode: "CONFIRM_AND_PAY",
+        draftVersion: 7,
+      }}
+      endpointBase="/pos/sales-document-drafts/draft-2"
+      sourceDocumentId="draft-2"
+      paymentMethods={{ cash: "cash-method" }}
+      allowPayments
+      standardCheckout
+      allowPendingCompletion
+      interfaceMode="KEYBOARD"
+      request={request}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+
+    await screen.findByRole("dialog", { name: "COBRO" });
+    const amount = view.container.querySelector<HTMLInputElement>(
+      ".sale-checkout-entry > label input",
+    )!;
+    await waitFor(() => expect(amount.value).toBe("10,00"));
+    fireEvent.keyDown(amount, { key: "Enter" });
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({
+      documentId: "draft-2",
+      documentNumber: "FV-2",
+    }));
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      "/pos/sales-document-drafts/draft-2/quote",
+      expect.objectContaining({
+        body: expect.objectContaining({ draftVersion: 7 }),
+      }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "/pos/sales-document-drafts/draft-2",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          draftVersion: 7,
+          completionMode: "CONFIRM_AND_PAY",
+        }),
+      }),
+    );
+  });
+
+  it("keeps Ctrl+F checkout open after a partial cash payment and closes after card completes it", async () => {
+    const onSuccess = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "20.00" })
+      .mockResolvedValueOnce({
+        document: { id: "invoice-split", numero: "FV-SPLIT" },
+        printDocument: {},
+      });
+    const view = render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
+      endpointBase="/pos/sales-document-checkouts"
+      paymentMethods={{ cash: "cash-method", card: "card-method" }}
+      cardPaymentMode="MANUAL"
+      allowPayments
+      standardCheckout
+      allowPendingCompletion
+      request={request}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+
+    await screen.findByRole("dialog", { name: "COBRO" });
+    const amount = view.container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    await waitFor(() => expect(amount.value).toBe("20,00"));
+    fireEvent.change(amount, { target: { value: "10,00" } });
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(amount.value).toBe("10,00"));
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(onSuccess).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Tarjeta/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({
+      documentId: "invoice-split",
+      documentNumber: "FV-SPLIT",
+    }));
+    expect(request.mock.calls[1][1].body.payments).toEqual([
+      expect.objectContaining({ methodId: "cash-method", amount: "10.00" }),
+      expect.objectContaining({ methodId: "card-method", amount: "10.00" }),
+    ]);
+  });
+
+  it("allows a partial Ctrl+F payment before confirming the remaining amount as pending", async () => {
+    const onSuccess = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "20.00" })
+      .mockResolvedValueOnce({
+        document: { id: "invoice-pending", numero: "FV-PENDING" },
+        printDocument: {},
+      });
+    const view = render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
+      endpointBase="/pos/sales-document-checkouts"
+      paymentMethods={{
+        cash: "cash-method",
+        card: "card-method",
+        transfer: "transfer-method",
+      }}
+      cardPaymentMode="MANUAL"
+      allowPayments
+      standardCheckout
+      allowPendingCompletion
+      request={request}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+
+    await screen.findByRole("dialog", { name: "COBRO" });
+    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Transferencia/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Pendiente/ })).toBeEnabled();
+    const amount = view.container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    await waitFor(() => expect(amount.value).toBe("20,00"));
+    fireEvent.click(screen.getByRole("button", { name: /Efectivo/ }));
+    fireEvent.change(amount, { target: { value: "10,00" } });
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(amount.value).toBe("10,00"));
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /Pendiente/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({
+      documentId: "invoice-pending",
+      documentNumber: "FV-PENDING",
+    }));
+    expect(request.mock.calls[1][1].body).toMatchObject({
+      completionMode: "CONFIRM_PENDING",
+      payments: [expect.objectContaining({ methodId: "cash-method", amount: "10.00" })],
+    });
+  });
+
+  it("requests the configured pending-sale authorization from the unified Ctrl+F checkout", async () => {
+    const onSuccess = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "20.00" })
+      .mockResolvedValueOnce({
+        document: { id: "invoice-authorized-pending", numero: "FV-AUTH-PENDING" },
+        printDocument: {},
+      });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      currentUsername="operador"
+      draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
+      endpointBase="/pos/sales-document-checkouts"
+      paymentMethods={{ cash: "cash-method" }}
+      allowPayments
+      standardCheckout
+      allowPendingCompletion
+      createPendingAuthorization={{
+        mode: "DELEGATED",
+        requireUsername: true,
+        requirePassword: true,
+      }}
+      request={request}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+
+    await screen.findByRole("dialog", { name: "COBRO" });
+    fireEvent.click(screen.getByRole("button", { name: /Pendiente/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    const authorization = screen.getByRole("dialog", { name: /autorizaci.*cobro/i });
+    fireEvent.change(within(authorization).getByRole("textbox", {
+      name: /usuario autorizador/i,
+    }), { target: { value: "supervisor" } });
+    fireEvent.change(within(authorization).getByLabelText(/contrase.*autorizador/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(within(authorization).getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(request.mock.calls[1][1].body).toMatchObject({
+      completionMode: "CONFIRM_PENDING",
+      payments: [],
+      authorizerUsername: "supervisor",
+      authorizerPassword: "secret",
+    });
+  });
+
+  it("unblocks a recovered Ctrl+F pending confirmation only through its idempotent retry", async () => {
+    const recoveredDraft: PendingSaleDraft = {
+      ...draft,
+      checkoutId: "checkout-recovered-pending",
+      type: "FACTURA_VENTA",
+      completionMode: "CONFIRM_PENDING",
+    };
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 2,
+      phase: "READY_TO_CREATE",
+      terminalCode: "T-1",
+      customer: { id: recoveredDraft.customerId, name: "Cliente" },
+      draft: recoveredDraft,
+      quoteCents: 2_210,
+      quoteReady: true,
+      payments: [],
+      createAttempted: true,
+      savedAt: "2026-08-12T12:07:24.744Z",
+    };
+    const onSuccess = vi.fn();
+    const request = vi.fn().mockResolvedValue({
+      document: { id: "invoice-recovered", numero: "FV-RECOVERED" },
+      printDocument: null,
+    });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={recoveredDraft}
+      recovery={recovery}
+      endpointBase="/pos/sales-document-checkouts"
+      paymentMethods={{ cash: "cash-method" }}
+      allowPayments
+      standardCheckout
+      allowPendingCompletion
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }}
+      request={request}
+      onPersistRecovery={vi.fn()}
+      onClearRecovery={vi.fn()}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /mismo intento.*sin duplicarlo/i,
+    );
+    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
+    const retry = screen.getByRole("button", { name: "REINTENTAR CONFIRMACIÓN" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({
+      documentId: "invoice-recovered",
+      documentNumber: "FV-RECOVERED",
+    }));
+    expect(request).toHaveBeenCalledOnce();
+    expect(request.mock.calls[0][1].body).toMatchObject({
+      checkoutId: "checkout-recovered-pending",
+      completionMode: "CONFIRM_PENDING",
+      payments: [],
+    });
   });
 });

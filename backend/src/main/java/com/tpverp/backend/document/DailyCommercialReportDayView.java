@@ -11,5 +11,8 @@ public record DailyCommercialReportDayView(
         BigDecimal newPending,
         BigDecimal priorDebtCollected,
         BigDecimal refunds,
-        BigDecimal cashInflow) {
+        BigDecimal cashInflow,
+        long ticketCount,
+        long invoiceCount,
+        BigDecimal salesTotal) {
 }

@@ -3,7 +3,10 @@ package com.tpverp.backend.document;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
 import com.tpverp.backend.security.application.PermissionChecks;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -15,6 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/pos/sales-document-checkouts")
 public class SalesDocumentCheckoutController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+            SalesDocumentCheckoutController.class);
 
     private static final String ACCESS =
             "hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS',"
@@ -68,8 +74,22 @@ public class SalesDocumentCheckoutController {
         var document = service.createDocument(request, authentication);
         var printable = request.completionMode()
                 == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
-                ? null : printing.document(document.getId());
+                ? null : preparePrintDocument(printing, document.getId());
         return new Result(views.documentView(document), printable);
+    }
+
+    static CustomerReceivablePrintService.CommercialDocumentPrint preparePrintDocument(
+            CustomerReceivablePrintService printing,
+            UUID documentId) {
+        try {
+            return printing.document(documentId);
+        } catch (RuntimeException failure) {
+            // The document mutation has already committed. A printer/template failure must not
+            // turn a confirmed sale into an apparently failed sale or encourage a duplicate retry.
+            LOGGER.error("Could not prepare print data for confirmed document {}", documentId,
+                    failure);
+            return null;
+        }
     }
 
     private static void requireCompletionMode(

@@ -27,7 +27,7 @@ public class CustomerPendingSaleCheckout {
     private UUID userId;
     @Column(name = "request_hash", nullable = false, length = 64)
     private String requestHash;
-    @Column(name = "document_id", unique = true)
+    @Column(name = "document_id")
     private UUID documentId;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

@@ -94,6 +94,15 @@ public class SaleDocumentAuthorizationManifest {
         updatedAt = Objects.requireNonNull(now, "now");
     }
 
+    public void replaceAfterAuthorization(
+            String fingerprint,
+            Map<SaleOperationCode, Long> versions,
+            Instant now) {
+        huella = fingerprint(fingerprint);
+        replacePolicyVersions(versions);
+        updatedAt = Objects.requireNonNull(now, "now");
+    }
+
     public UUID getDocumentId() {
         return documentId;
     }

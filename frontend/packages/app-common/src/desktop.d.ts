@@ -1,6 +1,7 @@
 import type { HardwareBridge } from "./hardware/hardware";
 import type { LocaleCode, TerminalContext, UserSession } from "./types";
 import type { SaleOperationAuthorization } from "./sale/operationSecurity";
+import type { SaleInterfaceMode } from "./components/saleInterfacePreferences";
 
 type DesktopResult = { ok: true; canceled?: boolean; filePath?: string } | { ok: false; code: string; message: string };
 
@@ -17,11 +18,13 @@ declare global {
           locale: LocaleCode;
           session: UserSession;
           terminalContext: TerminalContext;
+          interfaceMode: SaleInterfaceMode;
         }) => Promise<DesktopResult & { focused?: boolean }>;
         consumeBootstrap: () => Promise<{
           locale: LocaleCode;
           session: UserSession;
           terminalContext: TerminalContext;
+          interfaceMode: SaleInterfaceMode;
         } | null>;
         close: () => Promise<DesktopResult>;
       };

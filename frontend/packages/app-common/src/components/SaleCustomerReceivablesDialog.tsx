@@ -179,6 +179,10 @@ export function SaleCustomerReceivablesDialog({
       terminalContext={terminalContext}
       request={request}
       onCancel={() => setPayment(null)}
+      onPayment={(updated) => {
+        setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row));
+        setPayment(updated);
+      }}
       onPaid={(updated) => {
         setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row));
         setPayment(null);

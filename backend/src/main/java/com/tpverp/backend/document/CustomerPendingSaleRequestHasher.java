@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.UUID;
 
 final class CustomerPendingSaleRequestHasher {
 
@@ -14,15 +15,28 @@ final class CustomerPendingSaleRequestHasher {
     static String hash(
             CustomerPendingSaleController.CreateRequest request,
             BigDecimal authoritativeTotal) {
+        return hash(request, authoritativeTotal, null);
+    }
+
+    static String hash(
+            CustomerPendingSaleController.CreateRequest request,
+            BigDecimal authoritativeTotal,
+            UUID sourceDraftId) {
         var hasSerialNumbers = request.lines() != null && request.lines().stream()
                 .anyMatch(line -> line.serialNumbers() != null && !line.serialNumbers().isEmpty());
         var hasInternalComment = request.internalComment() != null
                 && !request.internalComment().isBlank();
-        var canonical = new Canonical().add(hasInternalComment
-                        ? "v5-internal-comment"
-                        : hasSerialNumbers
-                        ? request.completionMode() == null ? "v4-serials" : "v4-sales-document-serials"
-                        : request.completionMode() == null ? "v2" : "v3-sales-document")
+        var canonical = new Canonical();
+        if (sourceDraftId != null) {
+            canonical.add("v1-existing-sales-document-draft")
+                    .add(sourceDraftId)
+                    .add(request.draftVersion());
+        }
+        canonical.add(hasInternalComment
+                ? "v5-internal-comment"
+                : hasSerialNumbers
+                ? request.completionMode() == null ? "v4-serials" : "v4-sales-document-serials"
+                : request.completionMode() == null ? "v2" : "v3-sales-document")
                 .add(request.checkoutId()).add(request.type()).add(request.customerId())
                 .add(request.dueDate()).add(request.warehouseId()).add(request.date())
                 .add(decimal(request.globalDiscount()))

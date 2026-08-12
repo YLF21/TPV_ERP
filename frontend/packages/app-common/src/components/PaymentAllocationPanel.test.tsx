@@ -64,6 +64,58 @@ describe("PaymentAllocationPanel", () => {
     }, { finalizeWhenCovered: true });
   });
 
+  it("accepts a partial amount and leaves finalization to the checkout owner", () => {
+    const onAdd = vi.fn();
+    const onAccept = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      acceptSubmitsCurrent
+      onAdd={onAdd}
+      onAccept={onAccept}
+      onQuery={vi.fn()}
+    />);
+
+    fireEvent.change(
+      container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!,
+      { target: { value: "5,00" } },
+    );
+    fireEvent.click(within(container).getByRole("button", { name: "ACEPTAR" }));
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "CASH",
+      amountCents: 500,
+      deliveredCents: 500,
+      changeCents: 0,
+    }, { finalizeWhenCovered: true });
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it("allows the remaining payment after an approved integrated-card partial", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [session.allocations[0]] }}
+      providers={["PAYTEF"]}
+      manualCardEnabled
+      acceptSubmitsCurrent
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    const accept = within(container).getByRole("button", { name: "ACEPTAR" });
+    expect((accept as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(accept);
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "CASH",
+      amountCents: 700,
+    }), { finalizeWhenCovered: true });
+    expect(within(container).getAllByRole("button", { name: "CANCELAR" })
+      .every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
   it("offers cash, card and a new voucher for refunds without sale-only methods", () => {
     const onAdd = vi.fn();
     const { container } = render(<PaymentAllocationPanel
@@ -548,6 +600,67 @@ describe("PaymentAllocationPanel", () => {
 
     expect(hasLockedIntegratedPayment(lockedSession.allocations)).toBe(true);
     expect((within(container).getByRole("button", { name: /Eliminar pagos/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(container).getAllByRole("button", { name: "CANCELAR" })
+      .every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("allows only the safe final accept retry after an approved integrated document payment", () => {
+    const onAccept = vi.fn();
+    const lockedCoveredSession: PaymentSession = {
+      ...session,
+      totalCents: 500,
+      status: "COVERED",
+      allocations: [session.allocations[0]],
+    };
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={lockedCoveredSession} providers={["PAYTEF"]}
+      manualCardEnabled allowAdd={false} acceptSubmitsCurrent
+      acceptWithLockedIntegratedPayment
+      onAdd={vi.fn()} onQuery={vi.fn()} onClear={vi.fn()} onClose={vi.fn()}
+      onAccept={onAccept}
+    />);
+
+    expect((within(container).getByRole("button", { name: /Eliminar pagos/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(container).getAllByRole("button", { name: "CANCELAR" })
+      .every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    const accept = within(container).getByRole("button", { name: "ACEPTAR" });
+    expect((accept as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(accept);
+    expect(onAccept).toHaveBeenCalledOnce();
+  });
+
+  it("allows an explicit idempotent retry while payment entry remains locked", () => {
+    const onAccept = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled allowAdd={false} acceptOpenSession
+      acceptLabel="REINTENTAR CONFIRMACIÓN"
+      onAdd={vi.fn()} onQuery={vi.fn()} onAccept={onAccept}
+    />);
+
+    expect((within(container).getByRole("button", {
+      name: "Efectivo",
+    }) as HTMLButtonElement).disabled).toBe(true);
+    const retry = within(container).getByRole("button", { name: "REINTENTAR CONFIRMACIÓN" });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(retry);
+    expect(onAccept).toHaveBeenCalledOnce();
+  });
+
+  it("can keep cancellation locked while allowing a rejected card attempt to be cleared", () => {
+    const rejectedSession: PaymentSession = {
+      ...session,
+      status: "COLLECTING",
+      allocations: [{ ...session.allocations[0], status: "DECLINED" }],
+    };
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={rejectedSession} providers={["PAYTEF"]}
+      manualCardEnabled allowAdd={false} closeDisabled
+      onAdd={vi.fn()} onQuery={vi.fn()} onClear={vi.fn()} onClose={vi.fn()}
+    />);
+
+    expect(hasLockedIntegratedPayment(rejectedSession.allocations)).toBe(false);
+    expect((within(container).getByRole("button", { name: /Eliminar pagos/ }) as HTMLButtonElement).disabled).toBe(false);
     expect(within(container).getAllByRole("button", { name: "CANCELAR" })
       .every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });

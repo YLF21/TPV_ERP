@@ -100,6 +100,52 @@ class CommercialDocumentTest {
                 .hasMessageContaining("500");
     }
 
+    @Test
+    void replacesEditableDraftContentWithoutChangingItsIdentity() {
+        var storeId = UUID.randomUUID();
+        var original = new CommercialDocument(
+                storeId, UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.of(2026, 8, 10), USER_ID, BigDecimal.ZERO);
+        original.setParties(UUID.randomUUID(), null, null);
+        original.setDueDate(LocalDate.of(2026, 9, 9));
+        original.setInternalComment("Comentario anterior");
+        original.addLine(new DocumentLine(
+                original, UUID.randomUUID(), 1, BigDecimal.ONE, "P-1", "Anterior", null,
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21")));
+        var originalId = original.getId();
+        var originalCreatedAt = original.getCreadoEn();
+
+        var newCustomerId = UUID.randomUUID();
+        var replacement = new CommercialDocument(
+                storeId, UUID.randomUUID(), CommercialDocumentType.ALBARAN_VENTA,
+                LocalDate.of(2026, 8, 12), USER_ID, new BigDecimal("5.00"));
+        replacement.setParties(newCustomerId, null, null);
+        replacement.setDueDate(LocalDate.of(2026, 9, 11));
+        replacement.setInternalComment("Comentario conservado");
+        var replacementLine = new DocumentLine(
+                replacement, UUID.randomUUID(), 1, new BigDecimal("2"),
+                "P-2", "Nombre temporal", null, new BigDecimal("20.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        replacementLine.assignTemporaryOverrides(true, true);
+        replacement.addLine(replacementLine);
+
+        original.replacePendingSaleDraft(replacement);
+
+        assertThat(original.getId()).isEqualTo(originalId);
+        assertThat(original.getCreadoEn()).isEqualTo(originalCreatedAt);
+        assertThat(original.getTipo()).isEqualTo(CommercialDocumentType.ALBARAN_VENTA);
+        assertThat(original.getFecha()).isEqualTo(LocalDate.of(2026, 8, 12));
+        assertThat(original.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 11));
+        assertThat(original.getClienteId()).isEqualTo(newCustomerId);
+        assertThat(original.getComentarioInterno()).isEqualTo("Comentario conservado");
+        assertThat(original.getTotal()).isEqualByComparingTo("38.00");
+        assertThat(original.getLineas()).singleElement().satisfies(line -> {
+            assertThat(line.getNombre()).isEqualTo("Nombre temporal");
+            assertThat(line.isTemporaryNameOverride()).isTrue();
+            assertThat(line.isTemporaryPriceOverride()).isTrue();
+        });
+    }
+
     private static CommercialDocument saleInvoice(BigDecimal total) {
         return documentWithTotal(CommercialDocumentType.FACTURA_VENTA, total);
     }

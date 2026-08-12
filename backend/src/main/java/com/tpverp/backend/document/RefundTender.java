@@ -69,6 +69,12 @@ public class RefundTender {
             throw new IllegalArgumentException(
                     "La devolucion manual con tarjeta requiere referencia");
         }
+        if (type == RefundTenderType.TRANSFER
+                && originalPaymentId == null
+                && (this.reference == null || this.reference.isBlank())) {
+            throw new IllegalArgumentException(
+                    "La devolucion por transferencia requiere el pago original o una referencia");
+        }
         if (type != RefundTenderType.CARD && terminalOperationId != null) {
             throw new IllegalArgumentException("Solo la devolucion con tarjeta admite operacion de datafono");
         }

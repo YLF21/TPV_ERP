@@ -2237,6 +2237,7 @@ describe("SaleScreen", () => {
   });
 
   it("keeps the approved clear scopes and per-sale comment, discounts and print method", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -2306,7 +2307,18 @@ describe("SaleScreen", () => {
     const clearSale = await screen.findByRole("dialog", {
       name: "Eliminar venta actual",
     });
-    fireEvent.click(within(clearSale).getByRole("button", { name: "Eliminar venta" }));
+    expect(clearSale).toHaveClass("sale-clear-sale-dialog");
+    expect(within(clearSale).getByText("Esta acción no se puede deshacer.")).toBeVisible();
+    const cancelClearSale = within(clearSale).getByRole("button", { name: "Cancelar" });
+    const confirmClearSale = within(clearSale).getByRole("button", { name: "Eliminar venta" });
+    await waitFor(() => expect(cancelClearSale).toHaveFocus());
+    await user.tab();
+    expect(confirmClearSale).toHaveFocus();
+    fireEvent.keyDown(confirmClearSale, { key: "ArrowLeft" });
+    expect(cancelClearSale).toHaveFocus();
+    fireEvent.keyDown(cancelClearSale, { key: "ArrowRight" });
+    expect(confirmClearSale).toHaveFocus();
+    await user.keyboard("{Enter}");
     expect(checkoutProps.current?.sale?.internalComment).toBeUndefined();
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
@@ -2434,8 +2446,8 @@ describe("SaleScreen", () => {
     const customerDialogAfterEdit = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
     fireEvent.keyDown(customerDialogAfterEdit, { key: "Enter" });
     const receivables = await screen.findByRole("dialog", { name: "Documentos pendientes del cliente" });
-    expect(receivables).toHaveTextContent("FV-1");
-    expect(receivables).toHaveTextContent("40,00 €");
+    expect(await within(receivables).findByText("FV-1")).toBeVisible();
+    await waitFor(() => expect(receivables).toHaveTextContent("40,00 €"));
     expect(checkoutProps.current?.sale?.customerId).toBeNull();
   });
 

@@ -124,6 +124,15 @@ class SaleDocumentAuthorizationManifestServiceTest {
                                 GenericSaleConfirmationBlockedException.Reason.MISSING));
     }
 
+    @Test
+    void reportsLegacyDraftWithoutManifestWithoutThrowingInsideTheTransaction() {
+        var document = document();
+        when(manifests.findForUpdate(document.getId(), storeId))
+                .thenReturn(Optional.empty());
+
+        assertThat(service.findValidation(document)).isEmpty();
+    }
+
     private SaleDocumentAuthorizationManifest manifest(
             CommercialDocument document,
             Map<SaleOperationCode, Long> policyVersions) {

@@ -1,8 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../api/client";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { ApiError, apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import { formatQuantityValue } from "../sale/productQuantity";
+import {
+  formatQuantityValue,
+  isProductQuantityPrecisionValid,
+  normalizeProductQuantity,
+  parseProductQuantityInput,
+  productQuantityStep,
+} from "../sale/productQuantity";
 import {
   addLocalDays,
   pendingCreateBody,
@@ -14,32 +26,60 @@ import {
 import {
   findSaleOperationAuthorization,
   loadSalesOperationSecurity,
+  type SaleOperationCredentials,
   type SalesOperationSecurityConfiguration,
 } from "../sale/operationSecurity";
 import {
   detectSaleMutationOperations,
   saleMutationAuthorizationRequirements,
+  saleMutationCredentialsRequired,
+  type SaleMutationOperationAuthorizations,
 } from "../sale/saleMutationAuthorizations";
+import { saleCommandFromKeyboard, type SaleCommandId } from "../sale/saleCommands";
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
 import {
   addSaleLine,
+  createSaleCartLineId,
+  effectiveSaleLineDiscount,
+  saleCartLineIdentity,
+  saleLineHasValidTemporaryPriceAuthorization,
+  saleLineSelectionAfterArrow,
+  saleLineSubtotal,
   saleLineUnitPrice,
+  salePauseQuantity,
+  saleProductBlocksManualDiscount,
   saleProductFiscalSnapshot,
   saleProductRequiresOpenPrice,
   saleTotal,
   selectSaleProduct,
+  selectedProductAfterRemoval,
+  updateSaleLineDiscount,
+  updateSaleLineQuantity,
+  updateSaleLineSerialNumbers,
+  updateSaleLineTemporaryName,
+  updateSaleLineTemporaryPrice,
   type SaleCustomer,
   type SaleLine,
   type SaleProduct,
 } from "./SaleScreen";
+import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDialog";
 import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
+import { SaleProductInformationDialog } from "./SaleProductInformationDialog";
 import { SaleProductSearchDialog } from "./SaleProductSearchDialog";
+import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
+import {
+  SalesDocumentDraftDialog,
+  type SalesDocumentDraftDetail,
+} from "./SalesDocumentDraftDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { userCanManageStockProducts } from "./stockAccess";
 
 type DocumentType = "FACTURA_VENTA" | "ALBARAN_VENTA";
 type CheckoutMode = "CONFIRM_PENDING" | "CONFIRM_AND_PAY";
+type LineEditAction = "temporaryName" | "temporaryPrice";
 type WarehouseOption = {
   id: string;
   active?: boolean;
@@ -51,6 +91,7 @@ type Props = {
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
+  interfaceMode?: SaleInterfaceMode;
 };
 
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -70,32 +111,84 @@ function recoveryStorageKey(terminalCode: string) {
   return `tpverp.sales-document-checkout.${terminalCode}`;
 }
 
-function readRecovery(terminalCode: string) {
-  try {
-    const raw = localStorage.getItem(recoveryStorageKey(terminalCode));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PendingSaleRecoveryEnvelope;
-    return parsed?.version === 2 && parsed.terminalCode === terminalCode ? parsed : null;
-  } catch {
-    return null;
-  }
+function formatPercentage(value: number, locale: LocaleCode) {
+  if (value <= 0) return "";
+  return `${new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale, {
+    maximumFractionDigits: 2,
+  }).format(value)} %`;
 }
 
-export function SalesDocumentScreen({ locale, session, terminalContext }: Props) {
+function shortcutTargetIsEditable(target: EventTarget | null) {
+  return target instanceof HTMLElement && (
+    target.matches("input, textarea, select")
+    || target.isContentEditable
+    || target.contentEditable === "true"
+    || target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+  );
+}
+
+function readRecovery(terminalCode: string) {
+    try {
+      const raw = localStorage.getItem(recoveryStorageKey(terminalCode));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PendingSaleRecoveryEnvelope;
+      if (parsed?.version !== 2 || parsed.terminalCode !== terminalCode) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+}
+
+export function SalesDocumentScreen({
+  locale,
+  session,
+  terminalContext,
+  interfaceMode = "KEYBOARD",
+}: Props) {
   const t = createTranslator(locale);
   const [documentType, setDocumentType] = useState<DocumentType>("FACTURA_VENTA");
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const [lines, setLines] = useState<SaleLine[]>([]);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [nextScanQuantity, setNextScanQuantity] = useState(1);
+  const [nextScanMode, setNextScanMode] = useState<"UNIT" | "PACKAGE">("UNIT");
   const [customers, setCustomers] = useState<SaleCustomer[]>([]);
   const [customer, setCustomer] = useState<SaleCustomer | null>(null);
+  const [selectedCustomerResultId, setSelectedCustomerResultId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [query, setQuery] = useState("");
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [editingDraft, setEditingDraft] = useState<{ id: string; version: number } | null>(null);
+  const [issueDate, setIssueDate] = useState(localDate);
+  const [importedDueDate, setImportedDueDate] = useState<string | null>(null);
+  const [importedGlobalDiscount, setImportedGlobalDiscount] = useState("0.00");
+  const [importedInternalComment, setImportedInternalComment] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
+  const [productInformationProduct, setProductInformationProduct] =
+    useState<SaleProduct | null>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerQuery, setCustomerQuery] = useState("");
   const [pendingOpenPriceProduct, setPendingOpenPriceProduct] = useState<SaleProduct | null>(null);
+  const [pendingOpenPriceQuantity, setPendingOpenPriceQuantity] = useState(1);
+  const [lineEditAction, setLineEditAction] = useState<LineEditAction | null>(null);
+  const [lineEditValue, setLineEditValue] = useState("");
+  const [lineEditError, setLineEditError] = useState("");
+  const [serialNumberOpen, setSerialNumberOpen] = useState(false);
+  const [pendingTemporaryPriceChange, setPendingTemporaryPriceChange] = useState<{
+    lineId: string;
+    productId: string;
+    unitPrice: number;
+  } | null>(null);
+  const [temporaryPriceAuthorizationBusy, setTemporaryPriceAuthorizationBusy] = useState(false);
+  const [temporaryPriceAuthorizationError, setTemporaryPriceAuthorizationError] = useState("");
+  const [draftAuthorizationOpen, setDraftAuthorizationOpen] = useState(false);
+  const [draftAuthorizationError, setDraftAuthorizationError] = useState("");
+  const [shortcutMessage, setShortcutMessage] = useState("");
+  const [shortcutError, setShortcutError] = useState("");
   const [checkoutId, setCheckoutId] = useState(uuid);
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode | null>(null);
   const [recovery, setRecovery] = useState<PendingSaleRecoveryEnvelope | null>(
@@ -112,11 +205,14 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
     useState<PendingCardPaymentMode | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const customerDialogRef = useRef<HTMLElement>(null);
-  const issueDate = localDate();
-  const dueDate = customer
-    ? addLocalDays(new Date(), Math.max(0, customer.paymentTermDays ?? 30))
-    : issueDate;
+  const lineEditDialogRef = useRef<HTMLElement>(null);
+  const lineEditInputRef = useRef<HTMLInputElement>(null);
+  const dueDate = importedDueDate ?? (customer
+    ? addLocalDays(new Date(`${issueDate}T12:00:00`), Math.max(0, customer.paymentTermDays ?? 30))
+    : issueDate);
+  const effectiveDraftId = editingDraft?.id ?? recovery?.sourceDocumentId ?? null;
   const activeMember = customer?.activeMember === true;
+  const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
   const fallbackTotal = saleTotal(lines, activeMember);
   const total = quotedTotal ?? fallbackTotal;
   const canWrite = hasPermission(session, "ADMIN")
@@ -146,16 +242,37 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
     "CONFIRM_MANUAL_CARD_PAYMENT",
     session.permissions,
   );
+  const temporaryPriceChangeAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "TEMPORARY_PRICE_CHANGE",
+    session.permissions,
+  );
+  const canApplyManualDiscount = Boolean(operationSecurity?.operations.some(
+    (operation) => operation.code === "APPLY_SALE_DISCOUNT",
+  ));
+  const detectedSaleMutationOperations = detectSaleMutationOperations(lines.map((line) => ({
+    quantity: line.quantity,
+    discountPercent: line.discountPercent,
+    catalogName: line.product.name,
+    temporaryName: line.temporaryName,
+    catalogUnitPrice: line.product.salePrice,
+    openUnitPrice: line.openUnitPrice,
+  })));
+  const temporaryPriceLines = lines.filter((line) => (
+    line.openUnitPrice != null && Number(line.product.salePrice ?? 0) !== 0
+  ));
+  const temporaryPriceAuthorizationsReady = temporaryPriceLines.every((line) => (
+    saleLineHasValidTemporaryPriceAuthorization(
+      line,
+      Date.now(),
+      operationSecurity?.version,
+    )
+  ));
   const saleMutationAuthorizations = saleMutationAuthorizationRequirements(
     operationSecurity,
-    detectSaleMutationOperations(lines.map((line) => ({
-      quantity: line.quantity,
-      discountPercent: line.discountPercent,
-      catalogName: line.product.name,
-      temporaryName: line.temporaryName,
-      catalogUnitPrice: line.product.salePrice,
-      openUnitPrice: line.openUnitPrice,
-    }))).map((operation) => ({
+    detectedSaleMutationOperations.filter((operation) => (
+      operation.code !== "TEMPORARY_PRICE_CHANGE" || !temporaryPriceAuthorizationsReady
+    )).map((operation) => ({
       ...operation,
       label: t(`gestion.salesOperationSecurity.operation.${operation.code}`),
     })),
@@ -172,6 +289,75 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       option.clientId, option.fiscalName, option.documentNumber,
     ].some((value) => value?.toLocaleLowerCase().includes(normalized))).slice(0, 100);
   }, [customerQuery, customers]);
+  const customerSelectionIds = useMemo(
+    () => customerResults.map((option) => option.id),
+    [customerResults],
+  );
+
+  function closeCustomerDialog() {
+    setCustomerOpen(false);
+    setCustomerQuery("");
+  }
+
+  function chooseDocumentCustomer(option: SaleCustomer) {
+    setCustomer(option);
+    setImportedDueDate(null);
+    setSelectedCustomerResultId(option.id);
+    closeCustomerDialog();
+    invalidate();
+    queueMicrotask(() => inputRef.current?.focus());
+  }
+
+  function scrollCustomerSelectionIntoView(customerId: string) {
+    queueMicrotask(() => {
+      document.getElementById(
+        `sales-document-customer-option-${encodeURIComponent(customerId)}`,
+      )?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
+
+  function handleCustomerDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeCustomerDialog();
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (customerSelectionIds.length === 0) return;
+      const currentIndex = customerSelectionIds.indexOf(selectedCustomerResultId);
+      const nextIndex = currentIndex < 0
+        ? event.key === "ArrowDown" ? 0 : customerSelectionIds.length - 1
+        : (
+            currentIndex
+            + (event.key === "ArrowDown" ? 1 : -1)
+            + customerSelectionIds.length
+          ) % customerSelectionIds.length;
+      const nextId = customerSelectionIds[nextIndex];
+      setSelectedCustomerResultId(nextId);
+      scrollCustomerSelectionIntoView(nextId);
+      return;
+    }
+    if (event.key !== "Insert") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const selected = customerResults.find(
+      (option) => option.id === selectedCustomerResultId,
+    );
+    if (selected) chooseDocumentCustomer(selected);
+  }
+
+  useEffect(() => {
+    if (!customerOpen) return;
+    setSelectedCustomerResultId((current) => {
+      if (customerSelectionIds.includes(current)) return current;
+      if (customer?.id && customerSelectionIds.includes(customer.id)) return customer.id;
+      return customerSelectionIds[0] ?? "";
+    });
+  }, [customer?.id, customerOpen, customerSelectionIds]);
 
   useEffect(() => {
     if (!customerOpen || !customerDialogRef.current) return;
@@ -180,18 +366,20 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       dialog as unknown as ModalFocusRoot,
       document,
     );
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setCustomerOpen(false);
-      setCustomerQuery("");
-    };
-    dialog.addEventListener("keydown", closeOnEscape);
-    return () => {
-      dialog.removeEventListener("keydown", closeOnEscape);
-      deactivate();
-    };
+    return deactivate;
   }, [customerOpen]);
+
+  useEffect(() => {
+    if (!lineEditAction || !lineEditDialogRef.current) return;
+    const dialog = lineEditDialogRef.current;
+    const deactivate = activateModalFocusTrap(
+      dialog as unknown as ModalFocusRoot,
+      document,
+    );
+    lineEditInputRef.current?.focus();
+    lineEditInputRef.current?.select();
+    return deactivate;
+  }, [lineEditAction]);
 
   function invalidate() {
     setCheckoutId(uuid());
@@ -200,15 +388,50 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
     setStatus("");
   }
 
+  function clearShortcutFeedback() {
+    setShortcutMessage("");
+    setShortcutError("");
+  }
+
+  function clearQuickEntry(message = "") {
+    setQuery("");
+    setShortcutError("");
+    setShortcutMessage(message);
+    queueMicrotask(() => inputRef.current?.focus());
+  }
+
+  function reportShortcutError(message: string) {
+    setShortcutMessage("");
+    setShortcutError(message);
+  }
+
   function resetDocument(message = "") {
     setLines([]);
+    setSelectedLineId(null);
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
     setCustomer(null);
+    setEditingDraft(null);
+    setDraftsOpen(false);
+    setIssueDate(localDate());
+    setImportedDueDate(null);
+    setImportedGlobalDiscount("0.00");
+    setImportedInternalComment(null);
     setQuery("");
+    setSearchOpen(false);
+    setProductSearchQuery("");
+    setProductSearchSelectedId("");
+    setProductInformationProduct(null);
     setCheckoutId(uuid());
     setQuotedTotal(null);
     setQuoteError("");
     setCheckoutMode(null);
     setRecovery(null);
+    setLineEditAction(null);
+    setSerialNumberOpen(false);
+    setDraftAuthorizationOpen(false);
+    setDraftAuthorizationError("");
+    clearShortcutFeedback();
     localStorage.removeItem(recoveryStorageKey(terminalContext.terminalCode));
     setStatus(message);
     queueMicrotask(() => inputRef.current?.focus());
@@ -223,17 +446,28 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       date: issueDate,
       customerId: customer.id,
       dueDate,
-      globalDiscount: "0.00",
+      globalDiscount: importedGlobalDiscount,
+      ...(importedInternalComment ? { internalComment: importedInternalComment } : {}),
+      ...(editingDraft ? { draftVersion: editingDraft.version } : {}),
       completionMode: mode,
       lines: lines.map((line) => ({
         productId: line.product.id,
         quantity: line.quantity,
         code: line.product.code ?? line.product.barcode ?? line.product.id,
-        name: line.product.name ?? line.product.code ?? t("sale.main.unnamedProduct"),
+        name: line.temporaryName
+          ?? line.product.name ?? line.product.code ?? t("sale.main.unnamedProduct"),
         rate: line.product.rate ?? null,
         price: saleLineUnitPrice(line, activeMember).toFixed(2),
         discount: line.discountPercent.toFixed(2),
         ...saleProductFiscalSnapshot(line.product),
+        serialNumbers: line.serialNumbers ?? [],
+        temporaryNameOverride: Boolean(line.temporaryName),
+        temporaryPriceOverride: line.openUnitPrice !== undefined
+          && Number(line.product.salePrice ?? 0) !== 0,
+        cartLineId: saleCartLineIdentity(line),
+        ...(line.temporaryPriceAuthorization ? {
+          temporaryPriceAuthorizationToken: line.temporaryPriceAuthorization.token,
+        } : {}),
       })),
     };
   }
@@ -305,7 +539,10 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
         }
         return;
       }
-      apiRequest<{ total: number | string }>("/pos/sales-document-checkouts/quote", {
+      const quotePath = editingDraft
+        ? `/pos/sales-document-drafts/${encodeURIComponent(editingDraft.id)}/quote`
+        : "/pos/sales-document-checkouts/quote";
+      apiRequest<{ total: number | string }>(quotePath, {
         token: session.accessToken,
         body: pendingCreateBody(requestDraft, [], 0),
       }).then((quote) => {
@@ -320,22 +557,166 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       active = false;
       window.clearTimeout(timer);
     };
-  }, [activeMember, checkoutId, customer, documentType, lines, warehouseId]);
+  }, [
+    activeMember,
+    checkoutId,
+    customer,
+    documentType,
+    editingDraft,
+    importedDueDate,
+    importedGlobalDiscount,
+    importedInternalComment,
+    issueDate,
+    lines,
+    warehouseId,
+  ]);
 
-  function addProduct(product: SaleProduct, openUnitPrice?: number) {
-    setLines((current) => addSaleLine(current, product, openUnitPrice));
+  function addProduct(product: SaleProduct, openUnitPrice?: number, quantity = 1) {
+    const existing = openUnitPrice == null
+      ? lines.find((line) => line.product.id === product.id && line.openUnitPrice == null)
+      : undefined;
+    const lineId = existing ? saleCartLineIdentity(existing) : createSaleCartLineId();
+    setLines((current) => addSaleLine(current, product, openUnitPrice, quantity, lineId));
+    setSelectedLineId(lineId);
     invalidate();
-    setQuery("");
-    queueMicrotask(() => inputRef.current?.focus());
+    clearQuickEntry();
   }
 
   function requestAddProduct(product: SaleProduct) {
-    const existing = lines.some((line) => line.product.id === product.id);
-    if (saleProductRequiresOpenPrice(product) && !existing) {
+    const packageQuantity = Number(product.packageQuantity ?? 1);
+    const quantity = nextScanMode === "PACKAGE"
+      ? nextScanQuantity * (Number.isFinite(packageQuantity) && packageQuantity > 0
+        ? packageQuantity : 1)
+      : nextScanQuantity;
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
+    if (!isProductQuantityPrecisionValid(quantity, product.productType)
+        || quantity < productQuantityStep(product.productType)
+        || quantity > 9999) {
+      reportShortcutError(t("sale.quantity.invalid"));
+      return;
+    }
+    if (saleProductRequiresOpenPrice(product)) {
+      setPendingOpenPriceQuantity(quantity);
       setPendingOpenPriceProduct(product);
       return;
     }
-    addProduct(product);
+    addProduct(product, undefined, quantity);
+  }
+
+  function openProductSearch() {
+    setProductSearchQuery(query);
+    setProductSearchSelectedId("");
+    setSearchOpen(true);
+  }
+
+  function clearProductSearch() {
+    setSearchOpen(false);
+    setProductSearchQuery("");
+    setProductSearchSelectedId("");
+    setQuery("");
+  }
+
+  function closeProductSearch() {
+    clearProductSearch();
+    queueMicrotask(() => inputRef.current?.focus());
+  }
+
+  function selectProductFromSearch(product: SaleProduct) {
+    clearProductSearch();
+    setProductInformationProduct(null);
+    requestAddProduct(product);
+  }
+
+  function openProductInformation(product: SaleProduct) {
+    setProductSearchSelectedId(product.id);
+    setSearchOpen(false);
+    setProductInformationProduct(product);
+  }
+
+  function closeProductInformation() {
+    setProductInformationProduct(null);
+    setSearchOpen(true);
+  }
+
+  function addProductFromInformation(product: SaleProduct) {
+    setProductInformationProduct(null);
+    selectProductFromSearch(product);
+  }
+
+  async function importDocumentDraft(detail: SalesDocumentDraftDetail) {
+    const importedCustomer = customers.find((option) => option.id === detail.customerId) ?? {
+      id: detail.customerId,
+      fiscalName: detail.customerName ?? null,
+      activeMember: false,
+    } satisfies SaleCustomer;
+    const importedLines = detail.lines.map((line) => {
+      const catalogProduct = products.find((product) => product.id === line.productId);
+      const storedPrice = Number(line.unitPrice);
+      const catalogPrice = Number(catalogProduct?.salePrice ?? storedPrice);
+      const openPrice = Boolean(catalogProduct && catalogPrice === 0);
+      const product: SaleProduct = {
+        ...(catalogProduct ?? {}),
+        id: line.productId,
+        active: catalogProduct?.active ?? true,
+        productType: catalogProduct?.productType ?? "UNIT",
+        code: line.code ?? catalogProduct?.code ?? line.productId,
+        barcode: line.barcode ?? catalogProduct?.barcode ?? null,
+        name: line.temporaryNameOverride
+          ? catalogProduct?.name ?? line.name
+          : line.name ?? catalogProduct?.name,
+        salePrice: line.temporaryPriceOverride || openPrice
+          ? (catalogProduct?.salePrice ?? (storedPrice || 1))
+          : storedPrice,
+        memberPrice: null,
+        offerPrice: null,
+        offerDiscountPercent: null,
+        priceUseMode: "NORMAL",
+        discountType: "NORMAL",
+        offerActive: false,
+        taxId: catalogProduct?.taxId ?? "",
+        taxesIncluded: line.taxesIncluded,
+        taxRegime: line.taxRegime,
+        taxPercentage: line.taxPercentage,
+        rate: line.rate ?? null,
+      };
+      return {
+        cartLineId: line.id,
+        product,
+        quantity: Number(line.quantity),
+        discountPercent: Number(line.discount),
+        serialNumbers: line.serialNumbers ?? [],
+        ...(line.temporaryNameOverride && line.name
+          ? { temporaryName: line.name }
+          : {}),
+        ...(line.temporaryPriceOverride || openPrice
+          ? { openUnitPrice: storedPrice }
+          : {}),
+      } satisfies SaleLine;
+    });
+    setDocumentType(detail.type);
+    setIssueDate(detail.date);
+    setImportedDueDate(detail.dueDate);
+    setImportedGlobalDiscount(Number(detail.globalDiscount).toFixed(2));
+    setImportedInternalComment(detail.internalComment ?? null);
+    setWarehouseId(detail.warehouseId);
+    setCustomer(importedCustomer);
+    setSelectedCustomerResultId(detail.customerId);
+    setLines(importedLines);
+    setSelectedLineId(importedLines[0] ? saleCartLineIdentity(importedLines[0]) : null);
+    setEditingDraft({ id: detail.id, version: detail.version });
+    setCheckoutId(uuid());
+    setQuotedTotal(Number(detail.total));
+    setQuoteError("");
+    setCheckoutMode(null);
+    setRecovery(null);
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
+    setDraftsOpen(false);
+    setStatus(t("salesDocument.drafts.imported"));
+    clearShortcutFeedback();
+    localStorage.removeItem(recoveryStorageKey(terminalContext.terminalCode));
+    queueMicrotask(() => inputRef.current?.focus());
   }
 
   function submitSearch() {
@@ -344,37 +725,430 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       requestAddProduct(exact);
       return;
     }
-    if (query.trim()) setSearchOpen(true);
+    if (query.trim()) openProductSearch();
   }
 
-  function updateQuantity(productId: string, change: number) {
-    setLines((current) => current.flatMap((line) => {
-      if (line.product.id !== productId) return [line];
-      const quantity = line.quantity + change;
-      return quantity <= 0 ? [] : [{ ...line, quantity: Math.min(9999, quantity) }];
-    }));
+  function removeLine(lineId: string) {
+    setSelectedLineId(selectedProductAfterRemoval(lines, lineId));
+    setLines((current) => current.filter((line) => saleCartLineIdentity(line) !== lineId));
     invalidate();
   }
 
-  async function saveDraft() {
+  function updateQuantity(lineId: string, change: number) {
+    const line = lines.find((candidate) => saleCartLineIdentity(candidate) === lineId);
+    if (!line) return;
+    const quantity = normalizeProductQuantity(line.quantity + change);
+    if (quantity <= 0) {
+      removeLine(lineId);
+      return;
+    }
+    if (quantity > 9999 || !isProductQuantityPrecisionValid(quantity, line.product.productType)) {
+      reportShortcutError(t("sale.quantity.invalid"));
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(current, lineId, quantity));
+    invalidate();
+  }
+
+  function requireSelectedLine() {
+    if (selectedLine) return selectedLine;
+    reportShortcutError(t("salesDocument.shortcut.selectLine"));
+    return null;
+  }
+
+  function quantityOperand() {
+    const quantity = parseProductQuantityInput(query);
+    return Number.isFinite(quantity) ? quantity : null;
+  }
+
+  function wholeOperand() {
+    if (!/^\d+$/.test(query)) return null;
+    const value = Number(query);
+    return Number.isSafeInteger(value) ? value : null;
+  }
+
+  function applyPauseQuantity() {
+    const line = requireSelectedLine();
+    if (!line) return;
+    const quantity = salePauseQuantity(query);
+    if (quantity === 0) {
+      removeLine(saleCartLineIdentity(line));
+      clearQuickEntry();
+      return;
+    }
+    if (quantity == null || quantity < productQuantityStep(line.product.productType)
+        || quantity > 9999
+        || !isProductQuantityPrecisionValid(quantity, line.product.productType)) {
+      reportShortcutError(t("sale.quantity.invalid"));
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(
+      current,
+      saleCartLineIdentity(line),
+      quantity,
+    ));
+    invalidate();
+    clearQuickEntry();
+  }
+
+  function adjustSelectedQuantity(direction: 1 | -1) {
+    const line = requireSelectedLine();
+    if (!line) return;
+    const operand = quantityOperand();
+    if (operand == null || operand < productQuantityStep(line.product.productType)
+        || !isProductQuantityPrecisionValid(operand, line.product.productType)) {
+      reportShortcutError(t("sale.quantity.invalid"));
+      return;
+    }
+    const quantity = normalizeProductQuantity(line.quantity + direction * operand);
+    if (quantity === 0) {
+      removeLine(saleCartLineIdentity(line));
+      clearQuickEntry();
+      return;
+    }
+    if (quantity < productQuantityStep(line.product.productType) || quantity > 9999
+        || !isProductQuantityPrecisionValid(quantity, line.product.productType)) {
+      reportShortcutError(t("sale.quantity.invalid"));
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(
+      current,
+      saleCartLineIdentity(line),
+      quantity,
+    ));
+    invalidate();
+    clearQuickEntry();
+  }
+
+  function prepareNextProductQuantity(asPackage: boolean) {
+    const operand = asPackage ? wholeOperand() : quantityOperand();
+    if (operand == null || operand <= 0) {
+      reportShortcutError(t("sale.quantity.invalid"));
+      return;
+    }
+    setNextScanQuantity(operand);
+    setNextScanMode(asPackage ? "PACKAGE" : "UNIT");
+    clearQuickEntry();
+  }
+
+  function applyQuickLineDiscount() {
+    const line = requireSelectedLine();
+    if (!line) return;
+    if (!canApplyManualDiscount) {
+      reportShortcutError(t("salesDocument.shortcut.discountUnavailable"));
+      return;
+    }
+    if (saleProductBlocksManualDiscount(line.product)) {
+      reportShortcutError(t("sale.discountBlocked"));
+      return;
+    }
+    const discount = wholeOperand();
+    if (discount == null || discount < 0 || discount > 100) {
+      reportShortcutError(t("sale.discount.invalid"));
+      return;
+    }
+    setLines((current) => updateSaleLineDiscount(
+      current,
+      saleCartLineIdentity(line),
+      discount,
+    ));
+    invalidate();
+    clearQuickEntry();
+  }
+
+  function applyDesiredLinePrice() {
+    const line = requireSelectedLine();
+    if (!line) return;
+    if (!canApplyManualDiscount || saleProductBlocksManualDiscount(line.product)) {
+      reportShortcutError(t("salesDocument.shortcut.discountUnavailable"));
+      return;
+    }
+    const desiredPrice = wholeOperand();
+    const currentPrice = saleLineUnitPrice(line, activeMember);
+    if (desiredPrice == null || desiredPrice < 0 || desiredPrice > currentPrice
+        || currentPrice <= 0) {
+      reportShortcutError(t("salesDocument.shortcut.desiredPriceInvalid"));
+      return;
+    }
+    const discount = Math.round((1 - desiredPrice / currentPrice) * 10_000) / 100;
+    setLines((current) => updateSaleLineDiscount(
+      current,
+      saleCartLineIdentity(line),
+      discount,
+    ));
+    invalidate();
+    clearQuickEntry();
+  }
+
+  function openLineEdit(action: LineEditAction) {
+    const line = requireSelectedLine();
+    if (!line) return;
+    if (action === "temporaryPrice" && saleProductRequiresOpenPrice(line.product)) return;
+    setLineEditAction(action);
+    setLineEditValue(action === "temporaryName"
+      ? line.temporaryName ?? line.product.name ?? ""
+      : line.openUnitPrice == null ? "" : String(line.openUnitPrice));
+    setLineEditError("");
+  }
+
+  function saveTemporaryName() {
+    if (!selectedLine) return;
+    try {
+      setLines((current) => updateSaleLineTemporaryName(
+        current,
+        saleCartLineIdentity(selectedLine),
+        lineEditValue,
+      ));
+      setLineEditAction(null);
+      invalidate();
+      queueMicrotask(() => inputRef.current?.focus());
+    } catch {
+      setLineEditError(t("sale.temporaryName.invalid"));
+    }
+  }
+
+  async function authorizeTemporaryPriceChange(
+    change: { lineId: string; productId: string; unitPrice: number },
+    credentials: SaleOperationCredentials,
+  ) {
+    setTemporaryPriceAuthorizationBusy(true);
+    setTemporaryPriceAuthorizationError("");
+    setLineEditError("");
+    try {
+      const authorization = await apiRequest<{
+        token: string;
+        expiresAt: string;
+        policyVersion: number;
+      }>("/pos/sale-operation-authorizations/temporary-price", {
+        token: session.accessToken,
+        body: {
+          productId: change.productId,
+          cartLineId: change.lineId,
+          unitPrice: change.unitPrice,
+          authorization: credentials,
+        },
+      });
+      setLines((current) => updateSaleLineTemporaryPrice(
+        current,
+        change.lineId,
+        change.unitPrice,
+        {
+          token: authorization.token,
+          expiresAt: authorization.expiresAt,
+          unitPrice: change.unitPrice,
+          productId: change.productId,
+          cartLineId: change.lineId,
+          policyVersion: authorization.policyVersion,
+        },
+      ));
+      setPendingTemporaryPriceChange(null);
+      setLineEditAction(null);
+      invalidate();
+      queueMicrotask(() => inputRef.current?.focus());
+    } catch (error) {
+      const message = error instanceof ApiError
+        ? error.message
+        : t("sale.temporaryPrice.invalid");
+      if (pendingTemporaryPriceChange) setTemporaryPriceAuthorizationError(message);
+      else setLineEditError(message);
+    } finally {
+      setTemporaryPriceAuthorizationBusy(false);
+    }
+  }
+
+  async function saveTemporaryPrice() {
+    if (!selectedLine) return;
+    const normalized = lineEditValue.trim().replace(",", ".");
+    if (normalized && !/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+      setLineEditError(t("sale.temporaryPrice.invalid"));
+      return;
+    }
+    try {
+      const unitPrice = normalized ? Number(normalized) : undefined;
+      const lineId = saleCartLineIdentity(selectedLine);
+      if (unitPrice == null || Number(selectedLine.product.salePrice ?? 0) === 0) {
+        setLines((current) => updateSaleLineTemporaryPrice(current, lineId, unitPrice));
+        setLineEditAction(null);
+        invalidate();
+        queueMicrotask(() => inputRef.current?.focus());
+        return;
+      }
+      if (!temporaryPriceChangeAuthorization) {
+        setLineEditError(t("sale.temporaryPrice.authorizationUnavailable"));
+        return;
+      }
+      const change = {
+        lineId,
+        productId: selectedLine.product.id,
+        unitPrice,
+      };
+      if (temporaryPriceChangeAuthorization.mode === "DIRECT") {
+        await authorizeTemporaryPriceChange(change, {});
+        return;
+      }
+      setPendingTemporaryPriceChange(change);
+      setTemporaryPriceAuthorizationError("");
+      setLineEditAction(null);
+    } catch {
+      setLineEditError(t("sale.temporaryPrice.invalid"));
+    }
+  }
+
+  function executeDocumentCommand(command: SaleCommandId) {
+    if (saving || checkoutMode || recovery) return;
+    switch (command) {
+      case "product-search":
+        openProductSearch();
+        break;
+      case "quantity":
+        applyPauseQuantity();
+        break;
+      case "add-quantity":
+        adjustSelectedQuantity(1);
+        break;
+      case "subtract-quantity":
+        adjustSelectedQuantity(-1);
+        break;
+      case "next-units":
+        prepareNextProductQuantity(false);
+        break;
+      case "next-package":
+        prepareNextProductQuantity(true);
+        break;
+      case "temporary-name":
+        openLineEdit("temporaryName");
+        break;
+      case "desired-price":
+        applyDesiredLinePrice();
+        break;
+      case "temporary-price":
+        openLineEdit("temporaryPrice");
+        break;
+      case "line-discount":
+        applyQuickLineDiscount();
+        break;
+      case "serial-number":
+        if (requireSelectedLine()) setSerialNumberOpen(true);
+        break;
+      case "customer":
+        setCustomerOpen(true);
+        break;
+      case "checkout":
+        startCheckout("CONFIRM_AND_PAY");
+        break;
+    }
+  }
+
+  useEffect(() => {
+    function handleDocumentShortcut(event: KeyboardEvent) {
+      if (event.repeat || document.querySelector(
+        '[role="dialog"][aria-modal="true"], dialog[open]',
+      )) return;
+      const command = saleCommandFromKeyboard(event);
+      const supported = command && [
+        "product-search",
+        "quantity",
+        "add-quantity",
+        "subtract-quantity",
+        "next-units",
+        "next-package",
+        "temporary-name",
+        "desired-price",
+        "temporary-price",
+        "line-discount",
+        "serial-number",
+        "customer",
+        "checkout",
+      ].includes(command);
+      if (command && supported) {
+        if (!event.ctrlKey && shortcutTargetIsEditable(event.target)
+            && event.target !== inputRef.current) return;
+        event.preventDefault();
+        executeDocumentCommand(command);
+        return;
+      }
+      if (event.ctrlKey && !event.altKey && !event.metaKey) return;
+      if (shortcutTargetIsEditable(event.target) && event.target !== inputRef.current) return;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        if (lines.length === 0) return;
+        setSelectedLineId(saleLineSelectionAfterArrow(
+          lines,
+          selectedLineId,
+          event.key,
+        ));
+        event.preventDefault();
+        return;
+      }
+      if (!event.altKey && !event.metaKey && !event.ctrlKey && event.key.length === 1
+          && event.target !== inputRef.current && !shortcutTargetIsEditable(event.target)) {
+        event.preventDefault();
+        setQuery((current) => current + event.key);
+        clearShortcutFeedback();
+        inputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleDocumentShortcut);
+    return () => window.removeEventListener("keydown", handleDocumentShortcut);
+  }, [
+    activeMember,
+    canApplyManualDiscount,
+    checkoutMode,
+    lines,
+    query,
+    ready,
+    recovery,
+    saving,
+    selectedLineId,
+    temporaryPriceChangeAuthorization,
+  ]);
+
+  async function saveDraft(
+    saleMutations: SaleMutationOperationAuthorizations = {},
+  ) {
     if (!ready || saving) return;
     setSaving(true);
     setStatus("");
+    setDraftAuthorizationError("");
     try {
       const requestDraft = draft("DRAFT");
-      const result = await apiRequest<{ document: { id: string } }>(
-        "/pos/sales-document-checkouts",
+      await apiRequest<{ document: { id: string } }>(
+        editingDraft
+          ? `/pos/sales-document-drafts/${encodeURIComponent(editingDraft.id)}`
+          : "/pos/sales-document-checkouts",
         {
+          ...(editingDraft ? { method: "PUT" } : {}),
           token: session.accessToken,
-          body: pendingCreateBody(requestDraft, [], Math.round(total * 100)),
+          body: pendingCreateBody(
+            requestDraft,
+            [],
+            Math.round(total * 100),
+            { saleMutations },
+          ),
         },
       );
-      resetDocument(t("salesDocument.savedDraft").replace("{id}", result.document.id));
+      resetDocument(t("salesDocument.savedDraft"));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : t("salesDocument.saveError"));
+      const message = error instanceof Error ? error.message : t("salesDocument.saveError");
+      if (draftAuthorizationOpen) setDraftAuthorizationError(message);
+      else setStatus(message);
     } finally {
       setSaving(false);
     }
+  }
+
+  function requestSaveDraft() {
+    if (!ready || saving) return;
+    if (saleMutationAuthorizations == null) {
+      setStatus(t("salesDocument.saveError"));
+      return;
+    }
+    const requirements = saleMutationCredentialsRequired(saleMutationAuthorizations);
+    if (requirements.length === 0) {
+      void saveDraft();
+      return;
+    }
+    setDraftAuthorizationError("");
+    setDraftAuthorizationOpen(true);
   }
 
   function startCheckout(mode: CheckoutMode) {
@@ -437,34 +1211,53 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
             <span>{t("sale.searchDialog.name")}</span>
             <span>{t("sale.main.quantity")}</span>
             <span>{t("sale.searchDialog.price")}</span>
+            <span>{t("sale.main.discount")}</span>
             <span>{t("sale.main.total")}</span>
-            <span>{t("salesDocument.actions")}</span>
           </div>
           <div className="sales-document-lines">
             {lines.length === 0 && <p>{t("salesDocument.empty")}</p>}
             {lines.map((line) => (
-              <article key={line.product.id}>
+              <article
+                key={saleCartLineIdentity(line)}
+                className={selectedLineId === saleCartLineIdentity(line) ? "selected" : undefined}
+                aria-selected={selectedLineId === saleCartLineIdentity(line)}
+                onClick={() => setSelectedLineId(saleCartLineIdentity(line))}
+              >
                 <span>{line.product.code ?? line.product.barcode ?? "\u2014"}</span>
-                <strong>{line.product.name ?? t("sale.main.unnamedProduct")}</strong>
-                <div className="sales-document-quantity">
-                  <button
-                    type="button"
-                    aria-label={`${t("sale.main.quantity")} -1`}
-                    onClick={() => updateQuantity(line.product.id, -1)}
-                  >{"\u2212"}</button>
-                  <b>{formatQuantityValue(line.quantity, locale)}</b>
-                  <button
-                    type="button"
-                    aria-label={`${t("sale.main.quantity")} +1`}
-                    onClick={() => updateQuantity(line.product.id, 1)}
-                  >+</button>
-                </div>
+                <strong>{line.temporaryName
+                  ?? line.product.name ?? t("sale.main.unnamedProduct")}</strong>
+                {interfaceMode === "TOUCH" ? (
+                  <div className="sales-document-quantity">
+                    <button
+                      type="button"
+                      aria-label={`${t("sale.main.quantity")} -1`}
+                      disabled={line.quantity <= productQuantityStep(line.product.productType)}
+                      onClick={() => updateQuantity(
+                        saleCartLineIdentity(line),
+                        -productQuantityStep(line.product.productType),
+                      )}
+                    >{"\u2212"}</button>
+                    <b>{formatQuantityValue(line.quantity, locale)}</b>
+                    <button
+                      type="button"
+                      aria-label={`${t("sale.main.quantity")} +1`}
+                      disabled={line.quantity >= 9999}
+                      onClick={() => updateQuantity(
+                        saleCartLineIdentity(line),
+                        productQuantityStep(line.product.productType),
+                      )}
+                    >+</button>
+                  </div>
+                ) : (
+                  <b className="sales-document-quantity-value">
+                    {formatQuantityValue(line.quantity, locale)}
+                  </b>
+                )}
                 <span>{formatMoney(saleLineUnitPrice(line, activeMember), locale)}</span>
-                <b>{formatMoney(saleLineUnitPrice(line, activeMember) * line.quantity, locale)}</b>
-                <button type="button" onClick={() => {
-                  setLines((current) => current.filter((candidate) => candidate.product.id !== line.product.id));
-                  invalidate();
-                }}>{t("salesDocument.remove")}</button>
+                <span className="sales-document-discount">
+                  {formatPercentage(effectiveSaleLineDiscount(line), locale)}
+                </span>
+                <b>{formatMoney(saleLineSubtotal(line, activeMember), locale)}</b>
               </article>
             ))}
           </div>
@@ -485,22 +1278,43 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
                 value={query}
                 disabled={catalogLoading || Boolean(loadError)}
                 placeholder={t("sale.main.searchPlaceholder")}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  clearShortcutFeedback();
+                }}
               />
             </label>
             <button type="submit">{t("sale.main.search")}</button>
           </form>
-          {(loadError || quoteError || status) && (
-            <p className={loadError || quoteError ? "sale-action-error" : "sales-document-status"} role="status">
-              {loadError || quoteError || status}
+          <p className="sale-next-quantity sales-document-next-quantity">
+            {t("sale.main.quantity")}: {formatQuantityValue(nextScanQuantity, locale)}
+            {nextScanMode === "PACKAGE"
+              ? ` ${t(nextScanQuantity === 1
+                ? "sale.quantity.package" : "sale.quantity.packages")}`
+              : ""}
+          </p>
+          {(loadError || quoteError || shortcutError || shortcutMessage || status) && (
+            <p
+              className={loadError || quoteError || shortcutError
+                ? "sale-action-error" : "sales-document-status"}
+              role={loadError || quoteError || shortcutError ? "alert" : "status"}
+            >
+              {loadError || quoteError || shortcutError || shortcutMessage || status}
             </p>
           )}
-          <div className="sales-document-final-actions">
-            <button type="button" disabled={!ready || saving} onClick={() => void saveDraft()}>
-              {t("salesDocument.saveDraft")}
+          <div className="sales-document-draft-entry">
+            <span>{t("salesDocument.drafts.section")}</span>
+            <button
+              type="button"
+              disabled={saving || Boolean(checkoutMode)}
+              onClick={() => setDraftsOpen(true)}
+            >
+              {t("salesDocument.drafts.open")}
             </button>
-            <button type="button" disabled={!ready || saving} onClick={() => startCheckout("CONFIRM_PENDING")}>
-              {t("salesDocument.confirmPending")}
+          </div>
+          <div className="sales-document-final-actions">
+            <button type="button" disabled={!ready || saving} onClick={requestSaveDraft}>
+              {t("salesDocument.saveDraft")}
             </button>
             <button type="button" className="primary" disabled={!ready || saving} onClick={() => startCheckout("CONFIRM_AND_PAY")}>
               {t("salesDocument.confirmAndPay")}
@@ -515,9 +1329,24 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
         <span>Ctrl+F {"\u00b7"} {t("salesDocument.shortcut")}</span>
       </footer>
 
-      {searchOpen && (
+      {draftsOpen && (
+        <SalesDocumentDraftDialog
+          locale={locale}
+          token={session.accessToken}
+          hasCurrentWork={lines.length > 0}
+          onClose={() => {
+            setDraftsOpen(false);
+            queueMicrotask(() => inputRef.current?.focus());
+          }}
+          onImport={importDocumentDraft}
+        />
+      )}
+
+      {searchOpen && !productInformationProduct && (
         <SaleProductSearchDialog
-          initialQuery={query}
+          initialQuery={productSearchQuery}
+          initialSelectedId={productSearchSelectedId}
+          interfaceMode={interfaceMode}
           locale={locale}
           products={products}
           token={session.accessToken}
@@ -534,15 +1363,30 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
             results: t("sale.searchDialog.results"),
             empty: t("sale.searchDialog.empty"),
             close: t("common.close"),
-            add: t("sale.searchDialog.add"),
+            add: t("salesDocument.productSearch.add"),
             details: t("sale.searchDialog.details"),
             navigate: t("sale.searchDialog.navigate"),
             selected: t("sale.searchDialog.selected"),
             unnamedProduct: t("sale.main.unnamedProduct"),
             missingCode: t("sale.main.missingCode"),
           }}
-          onClose={() => setSearchOpen(false)}
-          onSelect={(product) => { setSearchOpen(false); requestAddProduct(product); }}
+          onInspect={openProductInformation}
+          onQueryChange={setProductSearchQuery}
+          onSelectionChange={setProductSearchSelectedId}
+          onClose={closeProductSearch}
+          onSelect={selectProductFromSearch}
+        />
+      )}
+
+      {productInformationProduct && (
+        <SaleProductInformationDialog
+          product={productInformationProduct}
+          locale={locale}
+          token={session.accessToken}
+          interfaceMode={interfaceMode}
+          canManageProducts={userCanManageStockProducts(session)}
+          onAdd={addProductFromInformation}
+          onClose={closeProductInformation}
         />
       )}
 
@@ -558,11 +1402,162 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
             cancel: t("common.cancel"),
             accept: t("sale.openPrice.accept"),
           }}
-          onCancel={() => setPendingOpenPriceProduct(null)}
+          onCancel={() => {
+            setPendingOpenPriceProduct(null);
+            setPendingOpenPriceQuantity(1);
+            queueMicrotask(() => inputRef.current?.focus());
+          }}
           onAccept={(price) => {
             const product = pendingOpenPriceProduct;
+            const quantity = pendingOpenPriceQuantity;
             setPendingOpenPriceProduct(null);
-            if (product) addProduct(product, price);
+            setPendingOpenPriceQuantity(1);
+            if (product) addProduct(product, price, quantity);
+          }}
+        />
+      )}
+
+      {lineEditAction && selectedLine && (
+        <div className="sale-action-overlay" role="presentation">
+          <section
+            ref={lineEditDialogRef}
+            className="sale-action-dialog sale-inline-edit-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sales-document-line-edit-title"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              setLineEditAction(null);
+              queueMicrotask(() => inputRef.current?.focus());
+            }}
+          >
+            <header>
+              <div>
+                <h2 id="sales-document-line-edit-title">{t(lineEditAction === "temporaryName"
+                  ? "sale.temporaryName.title" : "sale.temporaryPrice.title")}</h2>
+                <p>{selectedLine.product.code ?? selectedLine.product.barcode ?? ""}</p>
+              </div>
+              <button
+                type="button"
+                aria-label={t("common.close")}
+                disabled={temporaryPriceAuthorizationBusy}
+                onClick={() => {
+                  setLineEditAction(null);
+                  queueMicrotask(() => inputRef.current?.focus());
+                }}
+              >{"\u00d7"}</button>
+            </header>
+            <form onSubmit={(event) => {
+              event.preventDefault();
+              if (lineEditAction === "temporaryName") saveTemporaryName();
+              else void saveTemporaryPrice();
+            }}>
+              <p>
+                <span>{t("sale.main.product")}</span>
+                <strong>{selectedLine.temporaryName
+                  ?? selectedLine.product.name ?? t("sale.main.unnamedProduct")}</strong>
+              </p>
+              <label>
+                <span>{t(lineEditAction === "temporaryName"
+                  ? "sale.temporaryName.label" : "sale.temporaryPrice.label")}</span>
+                <input
+                  ref={lineEditInputRef}
+                  maxLength={lineEditAction === "temporaryName" ? 255 : undefined}
+                  inputMode={lineEditAction === "temporaryPrice" ? "decimal" : undefined}
+                  disabled={temporaryPriceAuthorizationBusy}
+                  value={lineEditValue}
+                  onChange={(event) => {
+                    setLineEditValue(event.target.value);
+                    setLineEditError("");
+                  }}
+                />
+              </label>
+              <small>{t(lineEditAction === "temporaryName"
+                ? "sale.temporaryName.hint" : "sale.temporaryPrice.hint")}</small>
+              {lineEditError && <p className="sale-action-error" role="alert">{lineEditError}</p>}
+              <footer className="sale-action-buttons">
+                <button
+                  type="button"
+                  disabled={temporaryPriceAuthorizationBusy}
+                  onClick={() => {
+                    setLineEditAction(null);
+                    queueMicrotask(() => inputRef.current?.focus());
+                  }}
+                >{t("sale.dialog.cancel")}</button>
+                <button type="submit" className="primary" disabled={temporaryPriceAuthorizationBusy}>
+                  {t("sale.dialog.save")}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {pendingTemporaryPriceChange && temporaryPriceChangeAuthorization && (
+        <SaleMutationAuthorizationDialog
+          open
+          locale={locale}
+          currentUsername={session.username}
+          requirements={[{
+            code: "TEMPORARY_PRICE_CHANGE",
+            label: t("gestion.salesOperationSecurity.operation.TEMPORARY_PRICE_CHANGE"),
+            authorization: temporaryPriceChangeAuthorization,
+          }]}
+          busy={temporaryPriceAuthorizationBusy}
+          error={temporaryPriceAuthorizationError}
+          onCancel={() => {
+            setPendingTemporaryPriceChange(null);
+            setTemporaryPriceAuthorizationError("");
+            queueMicrotask(() => inputRef.current?.focus());
+          }}
+          onConfirm={(authorizations: SaleMutationOperationAuthorizations) => {
+            const credentials = authorizations.TEMPORARY_PRICE_CHANGE ?? {};
+            void authorizeTemporaryPriceChange(pendingTemporaryPriceChange, credentials);
+          }}
+        />
+      )}
+
+      {draftAuthorizationOpen && saleMutationAuthorizations && (
+        <SaleMutationAuthorizationDialog
+          open
+          locale={locale}
+          currentUsername={session.username}
+          requirements={saleMutationCredentialsRequired(saleMutationAuthorizations)}
+          busy={saving}
+          error={draftAuthorizationError}
+          onCancel={() => {
+            setDraftAuthorizationOpen(false);
+            setDraftAuthorizationError("");
+            queueMicrotask(() => inputRef.current?.focus());
+          }}
+          onConfirm={(authorizations) => {
+            void saveDraft(authorizations);
+          }}
+        />
+      )}
+
+      {serialNumberOpen && selectedLine && (
+        <SaleSerialNumberDialog
+          locale={locale}
+          productName={selectedLine.temporaryName
+            ?? selectedLine.product.name ?? selectedLine.product.code ?? ""}
+          quantity={selectedLine.quantity}
+          initialSerialNumbers={selectedLine.serialNumbers ?? []}
+          onCancel={() => {
+            setSerialNumberOpen(false);
+            queueMicrotask(() => inputRef.current?.focus());
+          }}
+          onConfirm={(serialNumbers) => {
+            setLines((current) => updateSaleLineSerialNumbers(
+              current,
+              saleCartLineIdentity(selectedLine),
+              serialNumbers,
+            ));
+            setSerialNumberOpen(false);
+            invalidate();
+            setShortcutMessage(t("sale.serialNumber.saved"));
+            queueMicrotask(() => inputRef.current?.focus());
           }}
         />
       )}
@@ -575,37 +1570,56 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
             role="dialog"
             aria-modal="true"
             aria-labelledby="sales-document-customer-title"
+            onKeyDown={handleCustomerDialogKeyDown}
           >
             <header>
               <h2 id="sales-document-customer-title">{t("salesDocument.selectCustomer")}</h2>
               <button
                 type="button"
                 aria-label={t("common.close")}
-                onClick={() => {
-                  setCustomerOpen(false);
-                  setCustomerQuery("");
-                }}
+                onClick={closeCustomerDialog}
               >{"\u00d7"}</button>
             </header>
             <input
               autoFocus
+              aria-label={t("sale.customer.search")}
+              aria-activedescendant={selectedCustomerResultId
+                ? `sales-document-customer-option-${encodeURIComponent(selectedCustomerResultId)}`
+                : undefined}
               value={customerQuery}
               placeholder={t("salesDocument.customerSearch")}
-              onChange={(event) => setCustomerQuery(event.target.value)}
+              onChange={(event) => {
+                setCustomerQuery(event.target.value);
+                setSelectedCustomerResultId("");
+              }}
             />
-            <div>
+            <div
+              className="sales-document-customer-results"
+              role="listbox"
+              aria-label={t("salesDocument.selectCustomer")}
+            >
               {customerResults.map((option) => (
-                <button type="button" key={option.id} onClick={() => {
-                  setCustomer(option);
-                  setCustomerOpen(false);
-                  setCustomerQuery("");
-                  invalidate();
-                }}>
+                <button
+                  id={`sales-document-customer-option-${encodeURIComponent(option.id)}`}
+                  type="button"
+                  role="option"
+                  aria-selected={option.id === selectedCustomerResultId}
+                  className={option.id === selectedCustomerResultId ? "selected" : undefined}
+                  key={option.id}
+                  onFocus={() => setSelectedCustomerResultId(option.id)}
+                  onClick={() => setSelectedCustomerResultId(option.id)}
+                  onDoubleClick={() => chooseDocumentCustomer(option)}
+                >
                   <strong>{option.fiscalName ?? option.clientId ?? option.id}</strong>
                   <span>{option.documentNumber ?? "\u2014"}</span>
                 </button>
               ))}
             </div>
+            <footer className="sales-document-customer-shortcuts">
+              <span><kbd>{"\u2191"}</kbd><kbd>{"\u2193"}</kbd>{t("sale.searchDialog.navigate")}</span>
+              <span><kbd>Insert</kbd>{t("sale.customer.select")}</span>
+              <span><kbd>Esc</kbd>{t("sale.dialog.close")}</span>
+            </footer>
           </section>
         </div>
       )}
@@ -627,10 +1641,15 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
           cardPaymentMode={cardPaymentMode}
           saleMutationAuthorizations={saleMutationAuthorizations}
           terminalContext={terminalContext}
-          endpointBase="/pos/sales-document-checkouts"
-          allowPayments={effectiveMode === "CONFIRM_AND_PAY"}
-          requireFullPayment={effectiveMode === "CONFIRM_AND_PAY"}
+          endpointBase={effectiveDraftId
+            ? `/pos/sales-document-drafts/${encodeURIComponent(effectiveDraftId)}`
+            : "/pos/sales-document-checkouts"}
+          sourceDocumentId={effectiveDraftId ?? undefined}
+          allowPayments
+          allowPendingCompletion
           lockDocumentType
+          standardCheckout
+          interfaceMode={interfaceMode}
           title={t(effectiveMode === "CONFIRM_AND_PAY"
             ? "salesDocument.paymentTitle" : "salesDocument.pendingTitle")}
           confirmLabel={t(effectiveMode === "CONFIRM_AND_PAY"

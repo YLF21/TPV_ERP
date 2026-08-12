@@ -254,14 +254,16 @@ public class DocumentService {
             LocalDate dueDate,
             List<PaymentCommand> payments,
             Authentication authentication) {
-        requirePendingSaleType(command);
-        var customer = requireActiveCustomer(command.clienteId());
-        var customerContext = promotionPricing.customerContext(
-                organization.currentCompany().getId(), customer.getId());
-        var document = createDraft(command, authentication, customerContext);
-        var promotions = promotionContext(document, customerContext);
-        applyDirectPromotions(document, promotions);
-        document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
+        var document = quotePendingSale(command, dueDate, authentication);
+        return completePreparedPendingSale(document, payments, authentication);
+    }
+
+    private CommercialDocument completePreparedPendingSale(
+            CommercialDocument document,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        var customer = requireActiveCustomer(document.getClienteId());
+        var promotions = promotionContext(document);
         var commands = List.copyOf(payments == null ? List.of() : payments);
         requirePositiveUniquePayments(commands);
         requirePaymentTotalAtMost(commands, document.getTotal());
@@ -2384,6 +2386,143 @@ public class DocumentService {
         var saved = documents.save(draft);
         recordCreated(saved);
         return saved;
+    }
+
+    @Transactional(readOnly = true)
+    CommercialDocument pendingSaleDraft(
+            UUID id, Long expectedVersion, Authentication authentication) {
+        var draft = documents.findByIdAndTiendaId(
+                        Objects.requireNonNull(id, "id"),
+                        organization.currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        requireEditablePendingSaleDraft(draft, expectedVersion, authentication);
+        return draft;
+    }
+
+    @Transactional
+    CommercialDocument updatePendingSaleDraft(
+            UUID id,
+            Long expectedVersion,
+            DocumentCommand command,
+            LocalDate dueDate,
+            Authentication authentication) {
+        var draft = lockPendingSaleDraft(id, expectedVersion, authentication);
+        replacePendingSaleDraft(draft, command, dueDate, authentication);
+        var saved = documents.saveAndFlush(draft);
+        operationalEvents.record(saved, DocumentOperationalEventType.MODIFICADO,
+                organization.currentUser(authentication).getId(),
+                currentTerminalOrNull(authentication), Instant.now(clock));
+        return saved;
+    }
+
+    @Transactional
+    CommercialDocument completePendingSaleDraft(
+            UUID id,
+            Long expectedVersion,
+            DocumentCommand replacement,
+            LocalDate dueDate,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        var draft = lockPendingSaleDraft(id, expectedVersion, authentication);
+        if (replacement != null) {
+            replacePendingSaleDraft(draft, replacement, dueDate, authentication);
+            operationalEvents.record(draft, DocumentOperationalEventType.MODIFICADO,
+                    organization.currentUser(authentication).getId(),
+                    currentTerminalOrNull(authentication), Instant.now(clock));
+        }
+        return completePreparedPendingSale(draft, payments, authentication);
+    }
+
+    boolean pendingSaleDraftMatches(
+            CommercialDocument draft,
+            CustomerPendingSaleController.CreateRequest request) {
+        if (!Objects.equals(draft.getAlmacenId(), request.warehouseId())
+                || draft.getTipo() != request.type()
+                || !Objects.equals(draft.getFecha(), request.date())
+                || !Objects.equals(draft.getClienteId(), request.customerId())
+                || !Objects.equals(draft.getDueDate(), request.dueDate())
+                || Money.euros(draft.getDescuentoGlobal()).compareTo(
+                        Money.euros(request.globalDiscount())) != 0
+                || !Objects.equals(normalizedComment(draft.getComentarioInterno()),
+                        normalizedComment(request.internalComment()))) {
+            return false;
+        }
+        var persisted = draft.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .toList();
+        var requested = request.lines() == null ? List.<DocumentRequest.LineRequest>of()
+                : request.lines();
+        if (persisted.size() != requested.size()) return false;
+        for (var index = 0; index < persisted.size(); index++) {
+            var line = persisted.get(index);
+            var value = requested.get(index);
+            if (!line.getId().toString().equals(value.cartLineId())
+                    || !Objects.equals(line.getProductoId(), value.productoId())
+                    || line.getCantidad().compareTo(value.cantidad()) != 0
+                    || !Objects.equals(line.getCodigo(), value.codigo())
+                    || !Objects.equals(line.getNombre(), value.nombre())
+                    || !Objects.equals(line.getTarifa(), value.tarifa())
+                    || line.getPrecioUnitario().compareTo(value.precioUnitario()) != 0
+                    || line.getDescuento().compareTo(value.descuento()) != 0
+                    || line.isImpuestosIncluidos() != value.impuestosIncluidos()
+                    || !Objects.equals(line.getRegimenImpuesto(), value.regimenImpuesto())
+                    || line.getPorcentajeImpuesto().compareTo(value.porcentajeImpuesto()) != 0
+                    || !line.getSerialNumbers().equals(
+                            value.serialNumbers() == null ? List.of() : value.serialNumbers())
+                    || line.isTemporaryNameOverride() != value.temporaryNameOverride()
+                    || line.isTemporaryPriceOverride() != value.temporaryPriceOverride()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private CommercialDocument lockPendingSaleDraft(
+            UUID id, Long expectedVersion, Authentication authentication) {
+        var draft = documents.findLockedDocument(
+                        Objects.requireNonNull(id, "id"),
+                        organization.currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        draft.getLineas().size();
+        requireEditablePendingSaleDraft(draft, expectedVersion, authentication);
+        return draft;
+    }
+
+    private void requireEditablePendingSaleDraft(
+            CommercialDocument draft,
+            Long expectedVersion,
+            Authentication authentication) {
+        if (draft.getEstado() != DocumentStatus.BORRADOR
+                || (draft.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                && draft.getTipo() != CommercialDocumentType.ALBARAN_VENTA)) {
+            throw new IllegalStateException("sales_document_draft_not_editable");
+        }
+        if (expectedVersion == null || draft.getVersion() != expectedVersion) {
+            throw new IllegalStateException("sales_document_draft_stale");
+        }
+        requireDocumentWritePermission(
+                draft.getTipo(), authentication,
+                draft.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                        ? CorePermissionBootstrap.INVOICES_WRITE
+                        : CorePermissionBootstrap.DELIVERY_NOTES_WRITE);
+    }
+
+    private void replacePendingSaleDraft(
+            CommercialDocument draft,
+            DocumentCommand command,
+            LocalDate dueDate,
+            Authentication authentication) {
+        requirePendingSaleType(command);
+        requireDocumentWritePermission(
+                command.tipo(), authentication,
+                command.tipo() == CommercialDocumentType.FACTURA_VENTA
+                        ? CorePermissionBootstrap.INVOICES_WRITE
+                        : CorePermissionBootstrap.DELIVERY_NOTES_WRITE);
+        draft.replacePendingSaleDraft(quotePendingSale(command, dueDate, authentication));
+    }
+
+    private static String normalizedComment(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     @Transactional

@@ -79,6 +79,27 @@ describe("pending sale recovery envelope", () => {
     });
   });
 
+  it("fails closed unless imported draft identity and version are recovered together", () => {
+    const storage = new MemoryStorage();
+    const sourceWithoutVersion = {
+      ...envelope(),
+      sourceDocumentId: "draft-1",
+    };
+    storage.setItem(pendingSaleRecoveryKey("T-01"), JSON.stringify(sourceWithoutVersion));
+    expect(loadPendingSaleRecovery(storage, "T-01")).toMatchObject({
+      status: "blocked", reason: "IDENTITY_MISMATCH",
+    });
+
+    const versionWithoutSource = {
+      ...envelope(),
+      draft: { ...draft, draftVersion: 4 },
+    };
+    storage.setItem(pendingSaleRecoveryKey("T-01"), JSON.stringify(versionWithoutSource));
+    expect(loadPendingSaleRecovery(storage, "T-01")).toMatchObject({
+      status: "blocked", reason: "IDENTITY_MISMATCH",
+    });
+  });
+
   it("keeps corrupt JSON and extracts identifiers for administrative recovery", () => {
     const storage = new MemoryStorage();
     const raw = '{"checkoutId":"checkout-recoverable","operationId":"operation-recoverable"';

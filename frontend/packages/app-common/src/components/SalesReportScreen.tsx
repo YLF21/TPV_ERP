@@ -92,10 +92,29 @@ type DailyCommercialReportDay = {
   priorDebtCollected: number | string;
   refunds?: number | string;
   cashInflow: number | string;
+  ticketCount?: number;
+  invoiceCount?: number;
+  salesTotal?: number | string;
+};
+
+type DailyPaymentBreakdown = {
+  cash: number | string;
+  card: number | string;
+  transfer: number | string;
+  voucher: number | string;
+  pending: number | string;
+  other: number | string;
 };
 
 type DailyCommercialReport = DailyCommercialReportDay & {
   storeId: string;
+  salesByPaymentMethod?: DailyPaymentBreakdown;
+  pendingCollectionsByPaymentMethod?: DailyPaymentBreakdown;
+  refundsByPaymentMethod?: DailyPaymentBreakdown;
+  openingCashFund?: number | string;
+  cashEntries?: number | string;
+  cashWithdrawals?: number | string;
+  expectedCash?: number | string;
   days?: DailyCommercialReportDay[];
 };
 
@@ -3162,15 +3181,44 @@ export function SalesReportScreen({
     if (dailyReportLoading) return <p className="daily-summary-empty" aria-live="polite">{t("salesReport.daily.loading")}</p>;
     if (dailyReportError) return <div className="daily-summary-error"><p role="alert">{dailyReportError}</p><button type="button" onClick={() => setDailyReportReload((value) => value + 1)}>{t("salesReport.daily.retry")}</button></div>;
     if (dailyCommercialReport) {
-      const rows: Array<[string, number | string]> = [
-        ["salesReport.daily.invoiced", dailyCommercialReport.invoiced],
-        ["salesReport.daily.ticketSales", dailyCommercialReport.ticketSales ?? 0],
-        ["salesReport.daily.collectedCurrent", dailyCommercialReport.collectedCurrent],
-        ["salesReport.daily.newPending", dailyCommercialReport.newPending],
-        ["salesReport.daily.priorDebtCollected", dailyCommercialReport.priorDebtCollected],
-        ["salesReport.daily.refunds", dailyCommercialReport.refunds ?? 0],
-        ["salesReport.daily.cashInflow", dailyCommercialReport.cashInflow]
-      ];
+      const numeric = (value: number | string | undefined) => Number(value ?? 0);
+      const salesTotal = numeric(dailyCommercialReport.salesTotal ?? (
+        numeric(dailyCommercialReport.invoiced)
+        + numeric(dailyCommercialReport.ticketSales)
+        - numeric(dailyCommercialReport.refunds)
+      ));
+      const emptyBreakdown: DailyPaymentBreakdown = {
+        cash: 0, card: 0, transfer: 0, voucher: 0, pending: 0, other: 0
+      };
+      const sales = dailyCommercialReport.salesByPaymentMethod ?? {
+        ...emptyBreakdown, other: salesTotal
+      };
+      const pendingCollections = dailyCommercialReport.pendingCollectionsByPaymentMethod ?? {
+        ...emptyBreakdown, other: dailyCommercialReport.priorDebtCollected
+      };
+      const refundMethods = dailyCommercialReport.refundsByPaymentMethod ?? {
+        ...emptyBreakdown, other: dailyCommercialReport.refunds ?? 0
+      };
+      const hasAmount = (values: Array<number | string | undefined>) => (
+        values.some((value) => Math.abs(numeric(value)) >= 0.005)
+      );
+      const pendingOther = numeric(pendingCollections.voucher)
+        + numeric(pendingCollections.pending)
+        + numeric(pendingCollections.other);
+      const hasPendingCollections = hasAmount([
+        pendingCollections.cash, pendingCollections.card,
+        pendingCollections.transfer, pendingOther
+      ]);
+      const hasRefunds = hasAmount([
+        refundMethods.cash, refundMethods.card, refundMethods.transfer,
+        refundMethods.voucher, refundMethods.other
+      ]);
+      const amountLine = (key: string, value: number | string, className = "daily-payment-line") => (
+        <div className={className} key={key}>
+          <span>{t(key)}</span>
+          <strong>{`${formatAmount(numeric(value))} €`}</strong>
+        </div>
+      );
       const days = dailyCommercialReport.days ?? [];
       return (
         <div className="daily-summary-scroll">
@@ -3179,18 +3227,49 @@ export function SalesReportScreen({
               <div className="daily-period-summary-heading">
                 <div>
                   <span>{t("salesReport.daily.periodSummary")}</span>
-                  <h2>{t("salesReport.daily.totalAmount")}</h2>
+                  <h2 id="daily-sales-methods-title">{t("salesReport.daily.salesSection")}</h2>
                 </div>
                 {days.length > 0 && <strong>{`${days.length} ${t("salesReport.daily.daysIncluded")}`}</strong>}
               </div>
-              {rows.map(([key, value]) => (
-                <div className={key === "salesReport.daily.cashInflow" ? "daily-final-total-line" : "daily-payment-line"} key={key}>
-                  <span>{t(key)}</span>
-                  <strong>{`${formatAmount(Number(value))} €`}</strong>
-                </div>
-              ))}
+              <section className="daily-summary-group" aria-labelledby="daily-sales-methods-title">
+                {amountLine("salesReport.daily.totalSales", salesTotal, "daily-final-total-line")}
+                {amountLine("EFECTIVO", sales.cash)}
+                {amountLine("TARJETA", sales.card)}
+                {amountLine("TRANSFERENCIA", sales.transfer)}
+                {amountLine("salesReport.daily.incomingVouchers", sales.voucher)}
+                {amountLine("salesReport.daily.pending", sales.pending)}
+                {hasAmount([sales.other]) && amountLine("salesReport.daily.other", sales.other)}
+              </section>
+              {hasPendingCollections && (
+                <section className="daily-summary-group" aria-labelledby="daily-pending-collections-title">
+                  <h3 id="daily-pending-collections-title">{t("salesReport.daily.pendingCollectionsSection")}</h3>
+                  {amountLine("EFECTIVO", pendingCollections.cash)}
+                  {amountLine("TARJETA", pendingCollections.card)}
+                  {amountLine("TRANSFERENCIA", pendingCollections.transfer)}
+                  {hasAmount([pendingOther]) && amountLine("salesReport.daily.other", pendingOther)}
+                </section>
+              )}
+              {hasRefunds && (
+                <section className="daily-summary-group" aria-labelledby="daily-refunds-title">
+                  <h3 id="daily-refunds-title">{t("salesReport.daily.refundsSection")}</h3>
+                  {amountLine("EFECTIVO", refundMethods.cash)}
+                  {amountLine("TARJETA", refundMethods.card)}
+                  {amountLine("salesReport.daily.outgoingVouchers", refundMethods.voucher)}
+                  {amountLine("TRANSFERENCIA", refundMethods.transfer)}
+                  {hasAmount([refundMethods.other]) && amountLine("salesReport.daily.other", refundMethods.other)}
+                </section>
+              )}
+              <section className="daily-summary-group daily-cash-summary-group" aria-labelledby="daily-cash-title">
+                <h3 id="daily-cash-title">{t("salesReport.daily.cashSection")}</h3>
+                {dailyCommercialReport.openingCashFund != null
+                  && amountLine("salesReport.daily.openingCashFund", dailyCommercialReport.openingCashFund)}
+                {amountLine("salesReport.daily.cashEntries", dailyCommercialReport.cashEntries ?? 0)}
+                {amountLine("salesReport.daily.cashWithdrawals", dailyCommercialReport.cashWithdrawals ?? 0)}
+                {dailyCommercialReport.expectedCash != null
+                  && amountLine("salesReport.daily.expectedCash", dailyCommercialReport.expectedCash, "daily-final-total-line")}
+              </section>
             </section>
-            {days.length > 1 && (
+            {days.length > 0 && (
               <section className="daily-breakdown-card" aria-label={t("salesReport.daily.dailyBreakdown")}>
                 <header className="daily-breakdown-heading">
                   <div>
@@ -3204,26 +3283,18 @@ export function SalesReportScreen({
                     <thead>
                       <tr>
                         <th scope="col">{t("salesReport.daily.date")}</th>
-                        <th scope="col">{t("salesReport.daily.invoiced")}</th>
-                        <th scope="col">{t("salesReport.daily.ticketSales")}</th>
-                        <th scope="col">{t("salesReport.daily.collectedCurrent")}</th>
-                        <th scope="col">{t("salesReport.daily.newPending")}</th>
-                        <th scope="col">{t("salesReport.daily.priorDebtCollected")}</th>
-                        <th scope="col">{t("salesReport.daily.refunds")}</th>
-                        <th scope="col">{t("salesReport.daily.cashInflow")}</th>
+                        <th scope="col">{t("salesReport.daily.ticketCount")}</th>
+                        <th scope="col">{t("salesReport.daily.invoiceCount")}</th>
+                        <th scope="col">{t("salesReport.daily.totalSales")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {days.map((day) => (
                         <tr key={day.date}>
                           <th scope="row">{formatFilterDate(day.date, locale)}</th>
-                          <td>{`${formatAmount(Number(day.invoiced))} €`}</td>
-                          <td>{`${formatAmount(Number(day.ticketSales ?? 0))} €`}</td>
-                          <td>{`${formatAmount(Number(day.collectedCurrent))} €`}</td>
-                          <td>{`${formatAmount(Number(day.newPending))} €`}</td>
-                          <td>{`${formatAmount(Number(day.priorDebtCollected))} €`}</td>
-                          <td>{`${formatAmount(Number(day.refunds ?? 0))} €`}</td>
-                          <td>{`${formatAmount(Number(day.cashInflow))} €`}</td>
+                          <td>{day.ticketCount ?? 0}</td>
+                          <td>{day.invoiceCount ?? 0}</td>
+                          <td>{`${formatAmount(numeric(day.salesTotal))} €`}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -269,6 +269,30 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             @Param("storeId") UUID storeId,
             @Param("types") Collection<CommercialDocumentType> types);
 
+    @Query("""
+            select document.id
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.estado = com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and document.tipo in :types
+            order by document.creadoEn desc, cast(document.id as string) desc
+            """)
+    List<UUID> findSalesDraftIds(
+            @Param("storeId") UUID storeId,
+            @Param("types") Collection<CommercialDocumentType> types,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = "lineas")
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.id in :ids
+            """)
+    List<CommercialDocument> findSalesDraftsWithLines(
+            @Param("storeId") UUID storeId,
+            @Param("ids") Collection<UUID> ids);
+
     @EntityGraph(attributePaths = "lineas")
     Optional<CommercialDocument> findByTiendaIdAndTipoAndNumeroIgnoreCase(
             UUID tiendaId, CommercialDocumentType tipo, String numero);

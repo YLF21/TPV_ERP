@@ -269,7 +269,8 @@ public record DocumentLineCommand(
                 line.getDescuento(), line.isImpuestosIncluidos(),
                 line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
                 line.getLineType(), line.getPromotionId(), line.getPromotionVersionId(),
-                line.getPromotionalCouponId(), line.getSerialNumbers(), false, false,
+                line.getPromotionalCouponId(), line.getSerialNumbers(),
+                line.isTemporaryNameOverride(), line.isTemporaryPriceOverride(),
                 !hasReturnOrigin
                         ? null
                         : line.getGiftReceiptLineId() == null
@@ -324,6 +325,7 @@ public record DocumentLineCommand(
                         regimenImpuesto, porcentajeImpuesto, frozenBase, frozenTax,
                         frozenTotal);
         line.assignSerialNumbers(serialNumbers);
+        line.assignTemporaryOverrides(temporaryNameOverride, temporaryPriceOverride);
         if (originalDocumentLineId != null) {
             line.identifyRefundOf(originalDocumentLineId);
         }

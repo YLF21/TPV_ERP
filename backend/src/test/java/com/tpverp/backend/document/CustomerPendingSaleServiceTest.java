@@ -63,6 +63,7 @@ class CustomerPendingSaleServiceTest {
     @Mock DocumentViewAssembler views;
     @Mock SaleOperationSecurityService saleOperationSecurity;
     @Mock SaleDocumentMutationAuthorizationService documentMutationAuthorization;
+    @Mock SaleDocumentAuthorizationManifestService authorizationManifests;
     @Mock PaymentMethodRepository paymentMethods;
     @Mock Authentication authentication;
     @Mock Store store;
@@ -106,6 +107,9 @@ class CustomerPendingSaleServiceTest {
                         org.mockito.ArgumentMatchers.nullable(String.class),
                         eq(authentication)))
                 .thenReturn(new Authorization(user, user, false));
+        org.mockito.Mockito.lenient().when(documentMutationAuthorization.authorize(
+                        any(), any(), any(), eq(authentication), any(), any()))
+                .thenReturn(SaleDocumentMutationAuthorizationService.AuthorizationProof.empty());
         org.mockito.Mockito.lenient().when(paymentMethods.findByIdAndEmpresaId(
                         any(), eq(companyId)))
                 .thenAnswer(invocation -> Optional.of(new PaymentMethod(
@@ -117,7 +121,8 @@ class CustomerPendingSaleServiceTest {
         service = new CustomerPendingSaleService(
                 documents, checkouts, reservations, terminalOperations, configurations,
                 currentTerminal, organization, customers, audit, views,
-                saleOperationSecurity, documentMutationAuthorization, paymentMethods,
+                saleOperationSecurity, documentMutationAuthorization,
+                authorizationManifests, paymentMethods,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -565,10 +570,121 @@ class CustomerPendingSaleServiceTest {
 
         verify(documents).createPendingSaleDraft(
                 any(), eq(request.dueDate()), eq(authentication));
+        verify(authorizationManifests).record(
+                eq(saved),
+                eq(SaleDocumentMutationAuthorizationService.AuthorizationProof.empty()));
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
         verify(customers, never()).findLockedByIdAndCompanyId(any(), any());
         verify(saleOperationSecurity, never()).authorize(
                 any(SaleOperationCode.class), any(), any(), any());
+    }
+
+    @Test
+    void importedUnchangedDraftQuotesItsPersistedTotalWithoutRepricing() {
+        var draftId = UUID.randomUUID();
+        var request = importedDraftRequest(
+                withCompletionMode(
+                        request(List.of(), new BigDecimal("100.00")),
+                        CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT),
+                4L);
+        var persisted = document(new BigDecimal("100.00"));
+        when(documents.pendingSaleDraft(draftId, 4L, authentication)).thenReturn(persisted);
+        when(documents.pendingSaleDraftMatches(persisted, request)).thenReturn(true);
+
+        assertThat(service.quoteDraft(draftId, request, authentication).total())
+                .isEqualByComparingTo("100.00");
+
+        verify(documents, never()).quotePendingSale(any(), any(), any());
+    }
+
+    @Test
+    void importedUnchangedDraftIsConfirmedAndPaidWithTheSameIdentity() {
+        var draftId = UUID.randomUUID();
+        var request = importedDraftRequest(
+                withCompletionMode(
+                        request(List.of(standardPayment(new BigDecimal("100.00"))),
+                                new BigDecimal("100.00")),
+                        CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY),
+                7L);
+        var persisted = document(new BigDecimal("100.00"));
+        var saved = document(new BigDecimal("100.00"));
+        when(documents.pendingSaleDraft(draftId, 7L, authentication)).thenReturn(persisted);
+        when(documents.pendingSaleDraftMatches(persisted, request)).thenReturn(true);
+        when(authorizationManifests.findValidation(persisted)).thenReturn(Optional.of(
+                new SaleDocumentAuthorizationManifestService.Validation(java.util.Set.of(), false)));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.completePendingSaleDraft(
+                eq(draftId), eq(7L), org.mockito.ArgumentMatchers.isNull(),
+                eq(request.dueDate()), any(), eq(authentication))).thenReturn(saved);
+
+        assertThat(service.completeDraft(draftId, request, authentication)).isSameAs(saved);
+
+        verify(documents).completePendingSaleDraft(
+                eq(draftId), eq(7L), org.mockito.ArgumentMatchers.isNull(),
+                eq(request.dueDate()), any(), eq(authentication));
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
+    void importedLegacyDraftWithoutManifestCanBeConfirmedPending() {
+        var draftId = UUID.randomUUID();
+        var request = importedDraftRequest(
+                withCompletionMode(
+                        request(List.of(), new BigDecimal("100.00")),
+                        CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_PENDING),
+                8L);
+        var persisted = document(new BigDecimal("100.00"));
+        var saved = document(new BigDecimal("100.00"));
+        when(documents.pendingSaleDraft(draftId, 8L, authentication)).thenReturn(persisted);
+        when(documents.pendingSaleDraftMatches(persisted, request)).thenReturn(true);
+        when(authorizationManifests.findValidation(persisted)).thenReturn(Optional.empty());
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.completePendingSaleDraft(
+                eq(draftId), eq(8L), org.mockito.ArgumentMatchers.isNull(),
+                eq(request.dueDate()), any(), eq(authentication))).thenReturn(saved);
+
+        assertThat(service.completeDraft(draftId, request, authentication)).isSameAs(saved);
+
+        verify(documentMutationAuthorization).authorize(
+                any(), eq(request.lines()), eq(request.operationAuthorizations()),
+                eq(authentication), eq("SALES_DOCUMENT_LEGACY_DRAFT_IMPORT"),
+                eq(request.checkoutId()));
+        verify(documents).completePendingSaleDraft(
+                eq(draftId), eq(8L), org.mockito.ArgumentMatchers.isNull(),
+                eq(request.dueDate()), any(), eq(authentication));
+    }
+
+    @Test
+    void editedImportedDraftUpdatesTheSameIdentityAndRefreshesItsManifest() {
+        var draftId = UUID.randomUUID();
+        var request = importedDraftRequest(
+                withCompletionMode(
+                        request(List.of(), new BigDecimal("100.00")),
+                        CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT),
+                9L);
+        var persisted = document(new BigDecimal("90.00"));
+        var quoted = document(new BigDecimal("100.00"));
+        var saved = document(new BigDecimal("100.00"));
+        when(documents.pendingSaleDraft(draftId, 9L, authentication)).thenReturn(persisted);
+        when(documents.pendingSaleDraftMatches(persisted, request)).thenReturn(false);
+        when(documents.quotePendingSale(any(), eq(request.dueDate()), eq(authentication)))
+                .thenReturn(quoted);
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.updatePendingSaleDraft(
+                eq(draftId), eq(9L), any(), eq(request.dueDate()), eq(authentication)))
+                .thenReturn(saved);
+
+        assertThat(service.updateDraft(draftId, request, authentication)).isSameAs(saved);
+
+        verify(authorizationManifests).replace(
+                saved, SaleDocumentMutationAuthorizationService.AuthorizationProof.empty());
+        verify(documents, never()).createPendingSaleDraft(any(), any(), any());
     }
 
     @Test
@@ -996,6 +1112,26 @@ class CustomerPendingSaleServiceTest {
                 base.checkoutId(), base.warehouseId(), base.type(), base.date(),
                 base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
                 base.payments(), base.quotedTotal(), base.creditOverride(), completionMode);
+    }
+
+    private CustomerPendingSaleController.CreateRequest importedDraftRequest(
+            CustomerPendingSaleController.CreateRequest base, long version) {
+        var line = base.lines().getFirst();
+        var identifiedLine = new DocumentRequest.LineRequest(
+                line.productoId(), line.cantidad(), line.codigo(), line.nombre(),
+                line.tarifa(), line.precioUnitario(), line.descuento(),
+                line.impuestosIncluidos(), line.regimenImpuesto(),
+                line.porcentajeImpuesto(), line.lineType(), line.promotionId(),
+                line.promotionVersionId(), line.promotionalCouponId(),
+                line.serialNumbers(), line.temporaryNameOverride(),
+                line.temporaryPriceOverride(), UUID.randomUUID().toString(), null);
+        return new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(),
+                List.of(identifiedLine), base.payments(), base.quotedTotal(),
+                base.creditOverride(), base.completionMode(), base.internalComment(),
+                base.authorizerUsername(), base.authorizerPassword(),
+                base.operationAuthorizations(), version);
     }
 
     private CustomerPendingSaleController.CreateRequest replaceStandardPayment(

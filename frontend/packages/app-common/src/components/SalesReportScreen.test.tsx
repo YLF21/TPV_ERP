@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -925,16 +925,37 @@ describe("SalesReportScreen", () => {
           priorDebtCollected: "20.00",
           refunds: "15.00",
           cashInflow: "90.00",
+          ticketCount: 3,
+          invoiceCount: 2,
+          salesTotal: "125.00",
+          salesByPaymentMethod: {
+            cash: "45.00", card: "40.00", transfer: "20.00",
+            voucher: "10.00", pending: "10.00", other: "0.00"
+          },
+          pendingCollectionsByPaymentMethod: {
+            cash: "5.00", card: "10.00", transfer: "5.00",
+            voucher: "0.00", pending: "0.00", other: "0.00"
+          },
+          refundsByPaymentMethod: {
+            cash: "5.00", card: "5.00", transfer: "2.00",
+            voucher: "3.00", pending: "0.00", other: "0.00"
+          },
+          openingCashFund: "50.00",
+          cashEntries: "10.00",
+          cashWithdrawals: "5.00",
+          expectedCash: "90.00",
           days: [
             {
               date: "2026-07-15", invoiced: "40.00", ticketSales: "10.00",
               collectedCurrent: "30.00", newPending: "10.00",
-              priorDebtCollected: "5.00", refunds: "5.00", cashInflow: "35.00"
+              priorDebtCollected: "5.00", refunds: "5.00", cashInflow: "35.00",
+              ticketCount: 1, invoiceCount: 1, salesTotal: "45.00"
             },
             {
               date: "2026-07-16", invoiced: "60.00", ticketSales: "30.00",
               collectedCurrent: "40.00", newPending: "60.00",
-              priorDebtCollected: "15.00", refunds: "10.00", cashInflow: "55.00"
+              priorDebtCollected: "15.00", refunds: "10.00", cashInflow: "55.00",
+              ticketCount: 2, invoiceCount: 1, salesTotal: "80.00"
             }
           ]
         });
@@ -963,20 +984,25 @@ describe("SalesReportScreen", () => {
       expect.stringMatching(/^\/commercial-reports\/daily\?dateFrom=.*&dateTo=.*/),
       { token: "token" }
     ));
-    expect(screen.getByText("100.00 €")).toBeVisible();
-    expect(screen.getAllByText("40.00 €")).toHaveLength(3);
-    expect(screen.getAllByText("70.00 €")).toHaveLength(2);
-    expect(screen.getByText("20.00 €")).toBeVisible();
-    expect(screen.getAllByText("Devoluciones monetarias").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("15.00 €").length).toBeGreaterThan(0);
-    expect(screen.getByText("90.00 €")).toBeVisible();
-    expect(screen.getAllByText("Ventas de tickets").length).toBeGreaterThan(0);
+    const summary = await screen.findByRole("region", { name: "Resumen contable diario" });
+    expect(within(summary).getByText("125.00 €")).toBeVisible();
+    expect(within(summary).getByText("Vales entrantes")).toBeVisible();
+    expect(within(summary).getByText("Cobros de pendientes")).toBeVisible();
+    expect(within(summary).getByText("Devoluciones")).toBeVisible();
+    expect(within(summary).getByText("Vales salientes")).toBeVisible();
+    expect(within(summary).getByText("Fondo inicial")).toBeVisible();
+    expect(within(summary).getByText("Esperado en efectivo")).toBeVisible();
+    expect(within(summary).queryByText("Otros")).not.toBeInTheDocument();
     expect(screen.getByText("Resumen diario")).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Número de tickets" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Número de facturas" })).toBeVisible();
+    expect(screen.getAllByText("45.00 €").length).toBeGreaterThan(0);
+    expect(screen.getByText("80.00 €")).toBeVisible();
     expect(screen.getByText("15/7/2026")).toBeVisible();
     expect(screen.getByText("16/7/2026")).toBeVisible();
   });
 
-  it("does not repeat the daily breakdown when the selected period contains one day", async () => {
+  it("keeps the requested detail table when the selected period contains one day", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
       if (path.startsWith("/commercial-reports/daily")) {
         return Promise.resolve({
@@ -988,6 +1014,23 @@ describe("SalesReportScreen", () => {
           newPending: "5.00",
           priorDebtCollected: "2.00",
           cashInflow: "27.00",
+          ticketCount: 1,
+          invoiceCount: 1,
+          salesTotal: "30.00",
+          salesByPaymentMethod: {
+            cash: "25.00", card: "0.00", transfer: "0.00",
+            voucher: "0.00", pending: "5.00", other: "0.00"
+          },
+          pendingCollectionsByPaymentMethod: {
+            cash: "0.00", card: "0.00", transfer: "0.00",
+            voucher: "0.00", pending: "0.00", other: "0.00"
+          },
+          refundsByPaymentMethod: {
+            cash: "0.00", card: "0.00", transfer: "0.00",
+            voucher: "0.00", pending: "0.00", other: "0.00"
+          },
+          openingCashFund: "20.00", cashEntries: "0.00",
+          cashWithdrawals: "0.00", expectedCash: "45.00",
           days: [{
             date: "2026-08-09",
             invoiced: "20.00",
@@ -995,7 +1038,8 @@ describe("SalesReportScreen", () => {
             collectedCurrent: "25.00",
             newPending: "5.00",
             priorDebtCollected: "2.00",
-            cashInflow: "27.00"
+            cashInflow: "27.00",
+            ticketCount: 1, invoiceCount: 1, salesTotal: "30.00"
           }]
         });
       }
@@ -1017,7 +1061,9 @@ describe("SalesReportScreen", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Resumen del período")).toBeVisible());
-    expect(screen.queryByRole("region", { name: "Resumen diario" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Resumen diario" })).toBeVisible();
+    expect(screen.queryByText("Cobros de pendientes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Devoluciones")).not.toBeInTheDocument();
   });
 
   it("applies two different dates to the daily sales report", async () => {
@@ -1066,6 +1112,8 @@ describe("SalesReportScreen", () => {
     expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
     expect((await screen.findAllByText("1.00 €")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("Fondo inicial")).not.toBeInTheDocument();
+    expect(screen.queryByText("Esperado en efectivo")).not.toBeInTheDocument();
     expect(request.mock.calls.filter(([path]) => String(path).startsWith("/commercial-reports/daily"))).toHaveLength(2);
   });
 

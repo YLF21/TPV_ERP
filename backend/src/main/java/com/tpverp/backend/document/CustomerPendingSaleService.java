@@ -51,6 +51,7 @@ public class CustomerPendingSaleService {
     private final DocumentViewAssembler views;
     private final SaleOperationSecurityService saleOperationSecurity;
     private final SaleDocumentMutationAuthorizationService documentMutationAuthorization;
+    private final SaleDocumentAuthorizationManifestService authorizationManifests;
     private final PaymentMethodRepository paymentMethods;
     private final Clock clock;
 
@@ -67,6 +68,7 @@ public class CustomerPendingSaleService {
             DocumentViewAssembler views,
             SaleOperationSecurityService saleOperationSecurity,
             SaleDocumentMutationAuthorizationService documentMutationAuthorization,
+            SaleDocumentAuthorizationManifestService authorizationManifests,
             PaymentMethodRepository paymentMethods,
             Clock clock) {
         this.documents = documents;
@@ -81,6 +83,7 @@ public class CustomerPendingSaleService {
         this.views = views;
         this.saleOperationSecurity = saleOperationSecurity;
         this.documentMutationAuthorization = documentMutationAuthorization;
+        this.authorizationManifests = authorizationManifests;
         this.paymentMethods = paymentMethods;
         this.clock = clock;
     }
@@ -93,17 +96,46 @@ public class CustomerPendingSaleService {
         return new Quote(total, assessCredit(request, total, false));
     }
 
+    @Transactional(readOnly = true)
+    public Quote quoteDraft(
+            UUID draftId,
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        var quoted = effectiveQuote(draftId, request, authentication);
+        return new Quote(quoted.document().getTotal(),
+                assessCredit(request, quoted.document().getTotal(), false));
+    }
+
     public PaymentTerminalResult chargeCard(
+            CustomerPendingSaleController.CardChargeRequest request,
+            Authentication authentication) {
+        return chargeCard(null, request, authentication);
+    }
+
+    public PaymentTerminalResult chargeDraftCard(
+            UUID draftId,
+            CustomerPendingSaleController.CardChargeRequest request,
+            Authentication authentication) {
+        return chargeCard(Objects.requireNonNull(draftId, "draftId"), request, authentication);
+    }
+
+    private PaymentTerminalResult chargeCard(
+            UUID sourceDraftId,
             CustomerPendingSaleController.CardChargeRequest request,
             Authentication authentication) {
         Objects.requireNonNull(request, "request");
         var sale = Objects.requireNonNull(request.sale(), "sale");
         var amount = positive(request.amount(), "amount");
         var terminalId = currentTerminal.terminalId(authentication);
-        var total = authoritativeQuote(sale, authentication).getTotal();
+        var quoted = effectiveQuote(sourceDraftId, sale, authentication);
+        var total = quoted.document().getTotal();
         requireQuotedTotal(sale, total);
-        authorizeDocumentMutations(
-                sale, authentication, "CUSTOMER_PENDING_CARD_CHARGE");
+        if (quoted.persistedUnchanged()) {
+            authorizePersistedDraft(quoted.document(), sale, authentication);
+        } else {
+            authorizeDocumentMutations(
+                    sale, authentication, "CUSTOMER_PENDING_CARD_CHARGE");
+        }
         var cardPayment = requireIntegratedCardPayment(sale);
         requireCardPaymentMethod(cardPayment, "integrated_card_payment_method_required");
         var credit = assessCredit(sale, total, false);
@@ -119,7 +151,7 @@ public class CustomerPendingSaleService {
         if (Money.euros(cardPayment.amount()).compareTo(amount) != 0) {
             throw new IllegalArgumentException("card_charge_amount_mismatch");
         }
-        var hash = CustomerPendingSaleRequestHasher.hash(sale, total);
+        var hash = CustomerPendingSaleRequestHasher.hash(sale, total, sourceDraftId);
         var configuration = configurations.required(terminalId);
         requireIntegratedCardConfiguration(
                 configuration, terminalId, organization.currentStore().getId());
@@ -148,6 +180,38 @@ public class CustomerPendingSaleService {
     public CommercialDocument createDocument(
             CustomerPendingSaleController.CreateRequest request,
             Authentication authentication) {
+        return processDocument(null, request, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument updateDraft(
+            UUID draftId,
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        if (request.completionMode()
+                != CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT) {
+            throw new IllegalArgumentException("sales_document_draft_mode_required");
+        }
+        return processDocument(Objects.requireNonNull(draftId, "draftId"), request, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument completeDraft(
+            UUID draftId,
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        if (request.completionMode() == null
+                || request.completionMode()
+                == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT) {
+            throw new IllegalArgumentException("sales_document_checkout_mode_required");
+        }
+        return processDocument(Objects.requireNonNull(draftId, "draftId"), request, authentication);
+    }
+
+    private CommercialDocument processDocument(
+            UUID sourceDraftId,
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
         Objects.requireNonNull(request, "request");
         var completionMode = request.completionMode();
         validateCompletionMode(request, completionMode);
@@ -156,7 +220,8 @@ public class CustomerPendingSaleService {
         var userId = organization.currentUser(authentication).getId();
         var owner = UUID.randomUUID();
         var replayHash = CustomerPendingSaleRequestHasher.hash(
-                request, Objects.requireNonNull(request.quotedTotal(), "quotedTotal"));
+                request, Objects.requireNonNull(request.quotedTotal(), "quotedTotal"),
+                sourceDraftId);
 
         var existing = reservations.find(
                 terminalId, request.checkoutId());
@@ -171,10 +236,15 @@ public class CustomerPendingSaleService {
                     Instant.now(clock));
         }
 
-        var total = authoritativeQuote(request, authentication).getTotal();
+        var quoted = effectiveQuote(sourceDraftId, request, authentication);
+        var total = quoted.document().getTotal();
         requireQuotedTotal(request, total);
-        authorizeDocumentMutations(
-                request, authentication, "CUSTOMER_PENDING_DOCUMENT");
+        var mutationAuthorization = quoted.persistedUnchanged()
+                ? authorizePersistedDraft(quoted.document(), request, authentication)
+                : new DraftMutationAuthorization(
+                        authorizeDocumentMutations(
+                                request, authentication, "CUSTOMER_PENDING_DOCUMENT"),
+                        true);
         if (completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY
                 && declaredPayments(request).compareTo(total) != 0) {
             throw new IllegalArgumentException("sales_document_checkout_payment_total_mismatch");
@@ -192,7 +262,7 @@ public class CustomerPendingSaleService {
                         overrideAuthorizerUsername(request.creditOverride()),
                         overrideAuthorizerPassword(request.creditOverride()),
                         authentication);
-        var hash = CustomerPendingSaleRequestHasher.hash(request, total);
+        var hash = CustomerPendingSaleRequestHasher.hash(request, total, sourceDraftId);
 
         if (existing.isEmpty()) {
             checkout = CustomerPendingSaleCheckout.reserve(
@@ -237,12 +307,39 @@ public class CustomerPendingSaleService {
             }
             authorizeStandardPayments(request, authentication);
             var commands = paymentCommands(request, cardOperation, terminalId);
-            var document = completionMode
-                    == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
-                    ? documents.createPendingSaleDraft(
-                    request.toCommand(), request.dueDate(), authentication)
-                    : documents.createPendingSale(
-                    request.toCommand(), request.dueDate(), commands, authentication);
+            CommercialDocument document;
+            if (sourceDraftId == null) {
+                document = completionMode
+                        == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
+                        ? documents.createPendingSaleDraft(
+                                request.toCommand(), request.dueDate(), authentication)
+                        : documents.createPendingSale(
+                                request.toCommand(), request.dueDate(), commands, authentication);
+                if (completionMode
+                        == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT) {
+                    authorizationManifests.record(
+                            document, Objects.requireNonNull(mutationAuthorization.proof()));
+                }
+            } else if (completionMode
+                    == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT) {
+                document = quoted.persistedUnchanged()
+                        ? quoted.document()
+                        : documents.updatePendingSaleDraft(
+                                sourceDraftId, request.draftVersion(), request.toCommand(),
+                                request.dueDate(), authentication);
+                if (mutationAuthorization.replaceManifest()) {
+                    authorizationManifests.replace(
+                            document, Objects.requireNonNull(mutationAuthorization.proof()));
+                }
+            } else {
+                document = documents.completePendingSaleDraft(
+                        sourceDraftId,
+                        request.draftVersion(),
+                        quoted.persistedUnchanged() ? null : request.toCommand(),
+                        request.dueDate(),
+                        commands,
+                        authentication);
+            }
             if (cardOperation != null) {
                 var payment = document.getPagos().stream()
                         .filter(value -> request.checkoutId().equals(value.getRequestId()))
@@ -339,17 +436,58 @@ public class CustomerPendingSaleService {
                 lockAndEnforce);
     }
 
-    private void authorizeDocumentMutations(
+    private SaleDocumentMutationAuthorizationService.AuthorizationProof
+            authorizeDocumentMutations(
             CustomerPendingSaleController.CreateRequest request,
             Authentication authentication,
             String sourceType) {
-        documentMutationAuthorization.authorize(
+        return documentMutationAuthorization.authorize(
                 request.toCommand(),
                 request.lines(),
                 request.operationAuthorizations(),
                 authentication,
                 sourceType,
                 request.checkoutId());
+    }
+
+    private DraftMutationAuthorization authorizePersistedDraft(
+            CommercialDocument document,
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        var storedValidation = authorizationManifests.findValidation(document);
+        if (storedValidation.isEmpty()) {
+            return new DraftMutationAuthorization(
+                    authorizeDocumentMutations(
+                            request, authentication, "SALES_DOCUMENT_LEGACY_DRAFT_IMPORT"),
+                    true);
+        }
+        var validation = storedValidation.orElseThrow();
+        if (!validation.policyChanged()) {
+            return new DraftMutationAuthorization(null, false);
+        }
+        var proof = documentMutationAuthorization.reauthorize(
+                document,
+                validation.operations(),
+                request.operationAuthorizations(),
+                authentication,
+                "SALES_DOCUMENT_DRAFT_CONFIRMATION_REAUTHORIZATION",
+                document.getId());
+        return new DraftMutationAuthorization(proof, true);
+    }
+
+    private EffectiveQuote effectiveQuote(
+            UUID sourceDraftId,
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        if (sourceDraftId == null) {
+            return new EffectiveQuote(authoritativeQuote(request, authentication), false);
+        }
+        var persisted = documents.pendingSaleDraft(
+                sourceDraftId, request.draftVersion(), authentication);
+        if (documents.pendingSaleDraftMatches(persisted, request)) {
+            return new EffectiveQuote(persisted, true);
+        }
+        return new EffectiveQuote(authoritativeQuote(request, authentication), false);
     }
 
     private CreditAssessment assessCredit(
@@ -879,6 +1017,13 @@ public class CustomerPendingSaleService {
         }
         return value;
     }
+
+    private record EffectiveQuote(
+            CommercialDocument document, boolean persistedUnchanged) {}
+
+    private record DraftMutationAuthorization(
+            SaleDocumentMutationAuthorizationService.AuthorizationProof proof,
+            boolean replaceManifest) {}
 
     public record Quote(BigDecimal total, CreditAssessment credit) {}
 

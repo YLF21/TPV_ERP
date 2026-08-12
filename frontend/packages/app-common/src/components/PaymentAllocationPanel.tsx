@@ -55,6 +55,10 @@ type Props = {
   clearVisible?: boolean;
   acceptVisible?: boolean;
   acceptSubmitsCurrent?: boolean;
+  acceptOpenSession?: boolean;
+  acceptLabel?: string;
+  acceptWithLockedIntegratedPayment?: boolean;
+  closeDisabled?: boolean;
   commentEnabled?: boolean;
   checkoutDiscountCents?: number;
   voucherOnlyRefund?: boolean;
@@ -185,6 +189,10 @@ export function PaymentAllocationPanel({
   clearVisible = true,
   acceptVisible = true,
   acceptSubmitsCurrent = false,
+  acceptOpenSession = false,
+  acceptLabel,
+  acceptWithLockedIntegratedPayment = false,
+  closeDisabled = false,
   commentEnabled = true,
   checkoutDiscountCents = 0,
   voucherOnlyRefund = false,
@@ -245,7 +253,15 @@ export function PaymentAllocationPanel({
     ? recoveryMethod
     : method;
   const integratedPaymentLocked = hasLockedIntegratedPayment(session.allocations);
+  const integratedPaymentInFlight = session.allocations.some((allocation) =>
+    allocation.kind === "INTEGRATED_CARD"
+    && ["READY", "PENDING", "TIMEOUT"].includes(allocation.status));
   const entryLocked = busy || voucherResolving || !allowAdd || compensationRequired;
+  const acceptAddsCurrentPayment = acceptSubmitsCurrent && remaining > 0;
+  const integratedPaymentBlocksAccept = integratedPaymentInFlight
+    || (integratedPaymentLocked
+      && !acceptAddsCurrentPayment
+      && !acceptWithLockedIntegratedPayment);
 
   function refundAvailabilityForMethod(value: CheckoutMethod) {
     if (!refund) return undefined;
@@ -563,7 +579,7 @@ export function PaymentAllocationPanel({
         if (!busy && !integratedPaymentLocked) onClear?.();
       } else if (event.key === "Escape") {
         event.preventDefault();
-        if (!busy && !integratedPaymentLocked) onClose?.();
+        if (!busy && !integratedPaymentLocked && !closeDisabled) onClose?.();
       } else if (event.key === "Enter"
           && (event.target === amountRef.current
             || event.target === voucherCodeRef.current
@@ -578,7 +594,7 @@ export function PaymentAllocationPanel({
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [
     allowAdd, amountCents, busy, cashAppliedCents, cashChangeCents, checkoutDiscountCents,
-    comment, compensationRequired, customerSelected, effectiveRows.length, integratedPaymentLocked, interfaceMode,
+    closeDisabled, comment, compensationRequired, customerSelected, effectiveRows.length, integratedPaymentLocked, interfaceMode,
     cardEnabled, cashEnabled, commentEnabled, manualCardEnabled, manualCardRequiresReference, method,
     onClear, onClose, onDiscount, pendingEnabled, providers, reference, remaining,
     session.totalCents, transferDate, transferDateEnabled, transferEnabled, transferRequiresReference, voucherCode,
@@ -604,7 +620,8 @@ export function PaymentAllocationPanel({
       role="dialog" aria-modal="true" aria-labelledby="sale-checkout-title" aria-busy={busy}>
       <header className="sale-checkout-header">
         <h2 id="sale-checkout-title">{refund ? (locale === "es" ? "DEVOLUCIÓN" : locale === "en" ? "REFUND" : "退款") : copy.title}</h2>
-        <button type="button" aria-label={copy.cancel} disabled={busy || integratedPaymentLocked}
+        <button type="button" aria-label={copy.cancel}
+          disabled={busy || integratedPaymentLocked || closeDisabled}
           onClick={onClose}>×</button>
       </header>
 
@@ -721,13 +738,15 @@ export function PaymentAllocationPanel({
                 || (session.allocations.length === 0 && checkoutDiscountCents === 0)}
               onClick={onClear}>{interfaceMode === "KEYBOARD" && <kbd>F12</kbd>}{copy.clear}</button>}
             <span />
-            <button type="button" disabled={busy || integratedPaymentLocked}
+            <button type="button" disabled={busy || integratedPaymentLocked || closeDisabled}
               onClick={onClose}>{copy.cancel}</button>
             {acceptVisible && <button type="button" className="primary"
-              disabled={busy || integratedPaymentLocked || (acceptSubmitsCurrent
+              disabled={busy || integratedPaymentBlocksAccept || (acceptAddsCurrentPayment
                 ? !allowAdd || compensationRequired || remaining <= 0
-                : session.status !== "COVERED")}
-              onClick={acceptSubmitsCurrent ? () => submit(true) : onAccept}>{copy.accept}</button>}
+                : !acceptOpenSession && session.status !== "COVERED")}
+              onClick={acceptAddsCurrentPayment ? () => submit(true) : onAccept}>
+              {acceptLabel ?? copy.accept}
+            </button>}
           </footer>
         </div>
 

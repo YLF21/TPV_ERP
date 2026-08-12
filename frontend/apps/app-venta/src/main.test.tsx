@@ -207,6 +207,9 @@ describe("APP VENTA locale wiring", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open sales document window" }));
 
     const notice = await screen.findByRole("alert");
+    expect(openSalesDocuments).toHaveBeenCalledWith(expect.objectContaining({
+      interfaceMode: "KEYBOARD",
+    }));
     expect(notice).toHaveTextContent("No se pudo abrir la ventana de venta documental");
     expect(notice).not.toHaveTextContent("private technical detail");
     fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));

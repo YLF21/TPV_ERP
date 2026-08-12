@@ -131,6 +131,10 @@ public class CommercialDocument {
         return id;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     public UUID getPaymentTerminalRefundOperationId() { return paymentTerminalRefundOperationId; }
     public void identifyPaymentTerminalRefund(UUID operationId) {
         if (paymentTerminalRefundOperationId != null && !paymentTerminalRefundOperationId.equals(operationId))
@@ -336,6 +340,35 @@ public class CommercialDocument {
             throw new IllegalStateException("el documento ya tiene un pago principal");
         }
         pagos.add(payment);
+    }
+
+    void replacePendingSaleDraft(CommercialDocument replacement) {
+        Objects.requireNonNull(replacement, "replacement");
+        if (estado != DocumentStatus.BORRADOR
+                || (tipo != CommercialDocumentType.FACTURA_VENTA
+                && tipo != CommercialDocumentType.ALBARAN_VENTA)
+                || replacement.estado != DocumentStatus.BORRADOR
+                || (replacement.tipo != CommercialDocumentType.FACTURA_VENTA
+                && replacement.tipo != CommercialDocumentType.ALBARAN_VENTA)
+                || !pagos.isEmpty()
+                || !tiendaId.equals(replacement.tiendaId)) {
+            throw new IllegalStateException("sales_document_draft_not_editable");
+        }
+        almacenId = replacement.almacenId;
+        tipo = replacement.tipo;
+        fecha = replacement.fecha;
+        clienteId = replacement.clienteId;
+        proveedorId = null;
+        numeroExterno = null;
+        comentarioInterno = replacement.comentarioInterno;
+        descuentoGlobal = replacement.descuentoGlobal;
+        fechaVencimiento = replacement.fechaVencimiento;
+        origenStock = replacement.origenStock;
+        cuentaCobrar = replacement.cuentaCobrar;
+        lineas.clear();
+        replacement.lineas.stream()
+                .map(DocumentLineCommand::from)
+                .forEach(line -> addLine(line.toEntity(this)));
     }
 
     // Confirma una vez el documento conservando fecha e identidad fiscal.

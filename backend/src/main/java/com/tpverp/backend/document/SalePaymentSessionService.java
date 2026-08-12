@@ -469,6 +469,8 @@ public class SalePaymentSessionService {
                                  ? RefundTenderType.CASH
                                  : allocation.getKind() == SalePaymentAllocationKind.VOUCHER
                                          ? RefundTenderType.VOUCHER
+                                         : allocation.getKind() == SalePaymentAllocationKind.TRANSFER
+                                                 ? RefundTenderType.TRANSFER
                                          : RefundTenderType.CARD,
                          allocation.getAmount(),
                          allocation.getOriginalPaymentId(),

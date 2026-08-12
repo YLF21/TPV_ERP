@@ -48,11 +48,7 @@ public record TicketPrintView(
     }
 
     public static TicketPrintView from(CommercialDocument document, List<RefundTender> refundPayouts) {
-        if (document.getEstado() != DocumentStatus.CONFIRMADO
-                || document.getConfirmadoEn() == null) {
-            throw new IllegalArgumentException(
-                    "message.document.print_ticket_requires_confirmed_document");
-        }
+        requirePrintable(document);
         return new TicketPrintView(
                 document.getId(), document.getNumero(), document.getConfirmadoEn(),
                 document.getLineas().stream()
@@ -74,6 +70,7 @@ public record TicketPrintView(
                                             case CASH -> "EFECTIVO";
                                             case CARD -> "TARJETA";
                                             case VOUCHER -> "VALE";
+                                            case TRANSFER -> "TRANSFERENCIA";
                                             case EXCHANGE -> "COMPENSACION DE CAMBIO";
                                         }, payout.getAmount().negate()))
                                 .toList(),
@@ -92,8 +89,8 @@ public record TicketPrintView(
     public static TicketPrintView fromExchange(
             CommercialDocument sale,
             CommercialDocument refund) {
-        requireConfirmed(sale);
-        requireConfirmed(refund);
+        requirePrintable(sale);
+        requirePrintable(refund);
         var lines = Stream.concat(refund.getLineas().stream(), sale.getLineas().stream())
                 .filter(line -> line.getLineType() != DocumentLineType.MANUAL_DISCOUNT)
                 .map(line -> new Line(line.getNombre(), line.getCantidad(),
@@ -131,9 +128,13 @@ public record TicketPrintView(
                 .negate());
     }
 
-    private static void requireConfirmed(CommercialDocument document) {
-        if (document.getEstado() != DocumentStatus.CONFIRMADO
-                || document.getConfirmadoEn() == null) {
+    private static void requirePrintable(CommercialDocument document) {
+        var status = document.getEstado();
+        boolean finalized = status == DocumentStatus.CONFIRMADO
+                || status == DocumentStatus.PENDIENTE
+                || status == DocumentStatus.PARCIAL
+                || status == DocumentStatus.PAGADO;
+        if (!finalized || document.getConfirmadoEn() == null) {
             throw new IllegalArgumentException(
                     "message.document.print_ticket_requires_confirmed_document");
         }

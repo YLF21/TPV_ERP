@@ -15,5 +15,15 @@ public record DailyCommercialReportView(
         BigDecimal priorDebtCollected,
         BigDecimal refunds,
         BigDecimal cashInflow,
+        long ticketCount,
+        long invoiceCount,
+        BigDecimal salesTotal,
+        DailyPaymentBreakdownView salesByPaymentMethod,
+        DailyPaymentBreakdownView pendingCollectionsByPaymentMethod,
+        DailyPaymentBreakdownView refundsByPaymentMethod,
+        BigDecimal openingCashFund,
+        BigDecimal cashEntries,
+        BigDecimal cashWithdrawals,
+        BigDecimal expectedCash,
         List<DailyCommercialReportDayView> days) {
 }

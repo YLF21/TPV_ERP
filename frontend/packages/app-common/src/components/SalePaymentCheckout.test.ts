@@ -908,13 +908,15 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(discardRequest).toHaveBeenCalledTimes(1);
  });
  it("prepares application close by discarding an uncertain simulator session and clearing recovery",async()=>{
-  const storageKey="tpverp.payment-session.01";const attemptKey=`${storageKey}.allocation-attempt`;
-  const session={id:"session-shutdown",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[{id:"a-1",idempotencyKey:"a-1",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"TIMEOUT"}]};
-  sessionStorage.setItem(storageKey,session.id);localStorage.setItem(attemptKey,"stable");
+ const storageKey="tpverp.payment-session.01";const attemptKey=`${storageKey}.allocation-attempt`;
+ const session={id:"session-shutdown",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[{id:"a-1",idempotencyKey:"a-1",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"TIMEOUT"}]};
+  const discardRequest=vi.fn();
+ sessionStorage.setItem(storageKey,session.id);localStorage.setItem(attemptKey,"stable");
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
    if(path==="/pos/payment-sessions/active")return session;
    if(path.endsWith("/simulator-discard")){
+    discardRequest(options?.body);
     expect(options?.body).toEqual({
      reason: expect.stringMatching(/^(application_shutdown|sale_entry_cleanup)$/),
     });
@@ -922,12 +924,13 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    }
    throw new Error(`unexpected request ${path}`);
   });
-  const ref=createRef<SalePaymentCheckoutHandle>();const onLockedChange=vi.fn();
-  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onLockedChange,onFinalized:vi.fn()}));
-  await waitFor(()=>expect(sessionStorage.getItem(storageKey)).toBe(session.id));
+ const ref=createRef<SalePaymentCheckoutHandle>();const onLockedChange=vi.fn();
+ render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onLockedChange,onFinalized:vi.fn()}));
+  await waitFor(()=>expect(discardRequest).toHaveBeenCalledTimes(1));
+  await waitFor(()=>expect(sessionStorage.getItem(storageKey)).toBeNull());
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
   await expect(ref.current!.prepareApplicationClose()).resolves.toBe("READY");
   expect(sessionStorage.getItem(storageKey)).toBeNull();expect(localStorage.getItem(attemptKey)).toBeNull();
-  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
  });
  it("blocks logout when simulator discard is not confirmed CANCELLED",async()=>{
   const session={id:"session-logout-unsafe",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[]};
