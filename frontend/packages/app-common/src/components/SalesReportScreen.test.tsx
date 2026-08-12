@@ -596,7 +596,7 @@ describe("SalesReportScreen", () => {
         customerName: "Cliente Cinco",
         invoiceNumber: "FV-2026-00042",
         lifecycleStatus: "PARTIALLY_RETURNED",
-        paymentMethods: ["EFECTIVO", "TARJETA"]
+        paymentMethods: ["EFECTIVO", "COMPENSACION_DEVOLUCION", "TARJETA", "OTRO"]
       }, {
         id: "ticket-return",
         tipo: "TICKET",
@@ -605,7 +605,32 @@ describe("SalesReportScreen", () => {
         fecha: "2026-08-11",
         total: "-25.00",
         lifecycleStatus: "RETURNED",
-        refundMethods: ["CASH", "TRANSFER"]
+        refundMethods: ["CASH", "EXCHANGE", "TRANSFER"]
+      }, {
+        id: "ticket-pending",
+        tipo: "TICKET",
+        estado: "PARCIAL",
+        numero: "001-260811-00002",
+        fecha: "2026-08-11",
+        total: "50.00",
+        paymentMethods: ["EFECTIVO"]
+      }, {
+        id: "ticket-discount",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "001-260811-00003",
+        fecha: "2026-08-11",
+        total: "10.00",
+        paymentMethods: ["DESCUENTO"]
+      }, {
+        id: "ticket-exchange-only",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "001-260811-00004",
+        fecha: "2026-08-11",
+        total: "-10.00",
+        lifecycleStatus: "RETURNED",
+        refundMethods: ["EXCHANGE"]
       }],
       [], [], [], [], [], session, terminalContext
     );
@@ -622,8 +647,40 @@ describe("SalesReportScreen", () => {
     }));
     expect(report?.rows[1]).toEqual(expect.objectContaining({
       status: "salesReport.status.returned",
-      payment: "salesReport.refundMethod.cash + salesReport.refundMethod.transfer"
+      payment: "EFECTIVO + TRANSFERENCIA"
     }));
+    expect(report?.rows[2]).toEqual(expect.objectContaining({
+      payment: "EFECTIVO + salesReport.payment.pending"
+    }));
+    expect(report?.rows[3]).toEqual(expect.objectContaining({ payment: "DESCUENTO" }));
+    expect(report?.rows[4]).toEqual(expect.objectContaining({ payment: "—" }));
+  });
+
+  it("shows Descuento only for the F11 checkout method", () => {
+    const reports = buildDocumentReports(
+      [{
+        id: "ticket-product-discount",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "T-DISCOUNT-PRODUCT",
+        fecha: "2026-08-11",
+        total: "90.00",
+        descuentoGlobal: "10.00",
+        paymentMethods: ["EFECTIVO"]
+      }, {
+        id: "ticket-f11-discount",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "T-DISCOUNT-F11",
+        fecha: "2026-08-11",
+        total: "10.00",
+        paymentMethods: ["DESCUENTO"]
+      }],
+      [], [], [], [], [], session, terminalContext
+    );
+
+    expect(reports["salesReport.tickets"]?.rows[0]?.payment).toBe("EFECTIVO");
+    expect(reports["salesReport.tickets"]?.rows[1]?.payment).toBe("DESCUENTO");
   });
 
   it("does not offer invoice conversion or cancellation for invoiced and returned tickets", () => {

@@ -1206,17 +1206,40 @@ function paymentText(document: DocumentView) {
   return names.join(" + ");
 }
 
-function refundPaymentText(document: DocumentView) {
-  const keys: Record<string, string> = {
-    CASH: "salesReport.refundMethod.cash",
-    CARD: "salesReport.refundMethod.card",
-    VOUCHER: "salesReport.refundMethod.voucher",
-    TRANSFER: "salesReport.refundMethod.transfer",
-    EXCHANGE: "salesReport.refundMethod.exchange"
+function normalizedTicketPaymentLabel(value: string) {
+  const normalized = value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  const labels: Record<string, string> = {
+    CASH: "EFECTIVO",
+    EFECTIVO: "EFECTIVO",
+    CARD: "TARJETA",
+    TARJETA: "TARJETA",
+    TRANSFER: "TRANSFERENCIA",
+    TRANSFERENCIA: "TRANSFERENCIA",
+    VOUCHER: "VALE",
+    VALE: "VALE",
+    PENDING: "salesReport.payment.pending",
+    PENDIENTE: "salesReport.payment.pending",
+    DISCOUNT: "DESCUENTO",
+    DESCUENTO: "DESCUENTO"
   };
-  return Array.from(new Set(document.refundMethods ?? []))
-    .map((method) => keys[method] ?? method)
-    .join(" + ");
+  return labels[normalized] ?? "";
+}
+
+function ticketPaymentText(document: DocumentView) {
+  const rawMethods = Number(document.total ?? 0) < 0
+    ? document.refundMethods ?? []
+    : document.paymentMethods?.length
+      ? document.paymentMethods
+      : (document.payments ?? []).map((payment) => payment.methodName);
+  const labels = rawMethods
+    .filter((method): method is string => Boolean(method))
+    .map(normalizedTicketPaymentLabel)
+    .filter(Boolean);
+  if (["PENDIENTE", "PARCIAL"].includes(String(document.estado ?? "").toUpperCase())) {
+    labels.push("salesReport.payment.pending");
+  }
+  const uniqueLabels = Array.from(new Set(labels));
+  return uniqueLabels.length ? uniqueLabels.join(" + ") : "—";
 }
 
 function ticketLifecycleStatus(document: DocumentView) {
@@ -1442,7 +1465,7 @@ export function buildDocumentReports(
     user: documentUser(document, user),
     customer: document.customerCode || document.clienteCodigo || document.customerId || document.clienteId || "",
     customerName: document.customerName || document.clienteNombre || "",
-    payment: Number(document.total ?? 0) < 0 ? refundPaymentText(document) : paymentText(document),
+    payment: ticketPaymentText(document),
     comment: document.comentarioInterno || "",
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
