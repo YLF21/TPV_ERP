@@ -4707,6 +4707,15 @@ textarea {
   padding: 24px;
 }
 
+.sale-action-suboverlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 31, 50, 0.34);
+}
+
 .sale-action-dialog {
   width: min(440px, 100%);
   display: grid;
@@ -15277,6 +15286,11 @@ body,
   font-size: 0.86rem;
 }
 
+.parked-sales-delete-button {
+  border-radius: 0;
+  background: #fff;
+}
+
 .parked-sales-footer {
   display: flex;
   justify-content: space-between;
@@ -15289,12 +15303,6 @@ body,
 .parked-sales-footer button {
   min-width: 112px;
   border-radius: 0;
-}
-
-.parked-sales-footer > button:last-child {
-  border-color: #8293a6;
-  background: #ffffff;
-  color: #173f6e;
 }
 
 .parked-sale-confirm-dialog,
@@ -15317,6 +15325,12 @@ body,
   border-radius: 0;
 }
 
+.parked-sales-delete-all-dialog > .sale-business-dialog-actions > button:first-child {
+  border-color: #8293a6;
+  background: #ffffff;
+  color: #173f6e;
+}
+
 @media (max-width: 900px) {
   .ticket-management-dialog {
     width: calc(100vw - 24px) !important;
@@ -15336,7 +15350,8 @@ body,
 }
 
 @media (max-width: 720px) {
-  .sale-action-overlay {
+  .sale-action-overlay,
+  .sale-action-suboverlay {
     padding: 8px;
   }
 

@@ -47,6 +47,12 @@ describe("ParkedSalesDialog", () => {
       .toHaveClass("sale-business-dialog", "parked-sales-dialog");
     const list = await screen.findByRole("listbox", { name: "Ventas aparcadas" });
     await waitFor(() => expect(list).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Eliminar Mesa 1" }))
+      .toHaveClass("parked-sales-delete-button");
+    expect(screen.getByRole("button", { name: "Eliminar todo" }))
+      .toHaveClass("parked-sales-delete-all-button");
+    expect(screen.getByRole("button", { name: "Cerrar" }))
+      .toHaveClass("parked-sales-close-button");
     fireEvent.keyDown(list, { key: "Enter" });
 
     await waitFor(() => expect(recovered).toHaveBeenCalledWith(opened));
@@ -103,9 +109,12 @@ describe("ParkedSalesDialog", () => {
     request.mockResolvedValueOnce([summary]).mockResolvedValueOnce(undefined);
     show();
 
+    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas aparcadas" });
     fireEvent.click(await screen.findByRole("button", { name: "Eliminar Mesa 1" }));
     const confirmation = screen.getByRole("dialog", { name: "Eliminar venta guardada" });
     expect(confirmation).toHaveClass("sale-business-dialog", "sale-clear-sale-dialog");
+    expect(confirmation.parentElement).toHaveClass("sale-action-suboverlay");
+    expect(parkedDialog).toHaveAttribute("aria-hidden", "true");
     const cancel = within(confirmation).getByRole("button", { name: "Cancelar" });
     const remove = within(confirmation).getByRole("button", { name: "Eliminar" });
     expect(cancel).toHaveFocus();
@@ -129,6 +138,7 @@ describe("ParkedSalesDialog", () => {
     fireEvent.click(deleteAll);
     const dialog = screen.getByRole("dialog", { name: "Eliminar todas las ventas guardadas" });
     expect(dialog).toHaveClass("sale-business-dialog", "parked-sales-delete-all-dialog");
+    expect(dialog.parentElement).toHaveClass("sale-action-suboverlay");
     expect(within(dialog).queryByRole("textbox", { name: /Usuario autorizador/ })).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText(/contraseña/i), { target: { value: "secret" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar todo" }));

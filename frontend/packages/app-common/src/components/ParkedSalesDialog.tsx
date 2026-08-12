@@ -322,7 +322,7 @@ export function ParkedSalesDialog({
                 <button
                   type="button"
                   aria-label={`${t("parkedSales.delete")} ${label}`}
-                  className="danger"
+                  className="danger parked-sales-delete-button"
                   disabled={Boolean(busyId)}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -335,58 +335,62 @@ export function ParkedSalesDialog({
             );
           })}
         </div>
-        <footer className="parked-sales-footer sale-business-dialog-actions">
-          <button type="button" className="danger" disabled={sales.length === 0 || Boolean(busyId)} onClick={() => { setDeleteAllOpen(true); setError(""); }}>
+        <footer className="parked-sales-footer sale-action-buttons sale-business-dialog-actions">
+          <button type="button" className="danger parked-sales-delete-all-button" disabled={sales.length === 0 || Boolean(busyId)} onClick={() => { setDeleteAllOpen(true); setError(""); }}>
             {t("parkedSales.deleteAll")}
           </button>
-          <button type="button" disabled={Boolean(busyId)} onClick={onClose}>{t("common.close")}</button>
+          <button type="button" className="parked-sales-close-button" disabled={Boolean(busyId)} onClick={onClose}>{t("common.close")}</button>
         </footer>
       </section>
 
       {pendingDeleteSale && (
-        <section
-          ref={singleDialogRef}
-          className="sale-action-dialog sale-business-dialog sale-clear-sale-dialog parked-sale-confirm-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("parkedSales.deleteTitle")}
-          onKeyDown={handleSingleDeleteKeyDown}
-        >
-          <header><h2>{t("parkedSales.deleteTitle")}</h2></header>
-          <div className="sale-clear-sale-warning" role="note">
-            <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
-            <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteConfirm")}</p></div>
-          </div>
-          <div className="sale-action-buttons sale-clear-sale-actions">
-            <button ref={singleCancelRef} autoFocus type="button" disabled={Boolean(busyId)} onClick={() => setPendingDeleteId("")}>{t("common.cancel")}</button>
-            <button ref={singleConfirmRef} type="button" className="danger" disabled={Boolean(busyId)} onClick={() => void removeOne()}>{t("parkedSales.delete")}</button>
-          </div>
-        </section>
+        <div className="sale-action-suboverlay" role="presentation">
+          <section
+            ref={singleDialogRef}
+            className="sale-action-dialog sale-business-dialog sale-clear-sale-dialog parked-sale-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("parkedSales.deleteTitle")}
+            onKeyDown={handleSingleDeleteKeyDown}
+          >
+            <header><h2>{t("parkedSales.deleteTitle")}</h2></header>
+            <div className="sale-clear-sale-warning" role="note">
+              <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
+              <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteConfirm")}</p></div>
+            </div>
+            <div className="sale-action-buttons sale-clear-sale-actions">
+              <button ref={singleCancelRef} autoFocus type="button" disabled={Boolean(busyId)} onClick={() => setPendingDeleteId("")}>{t("common.cancel")}</button>
+              <button ref={singleConfirmRef} type="button" className="danger" disabled={Boolean(busyId)} onClick={() => void removeOne()}>{t("parkedSales.delete")}</button>
+            </div>
+          </section>
+        </div>
       )}
 
       {deleteAllOpen && (
-        <section ref={deleteAllDialogRef} className="sale-action-dialog sale-business-dialog parked-sales-delete-all-dialog" role="dialog" aria-modal="true" aria-label={t("parkedSales.deleteAllTitle")}>
-          <header><h2>{t("parkedSales.deleteAllTitle")}</h2></header>
-          <div className="sale-clear-sale-warning" role="note">
-            <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
-            <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteAllConfirm")}</p></div>
-          </div>
-          <SaleOperationAuthorizationFields
-            locale={locale}
-            currentUsername={currentUsername}
-            authorization={bulkAuthorization}
-            username={authorizerUsername}
-            password={authorizerPassword}
-            disabled={Boolean(busyId)}
-            autoFocus
-            onUsernameChange={setAuthorizerUsername}
-            onPasswordChange={setAuthorizerPassword}
-          />
-          <div className="sale-action-buttons sale-business-dialog-actions">
-            <button type="button" disabled={Boolean(busyId)} onClick={closeDeleteAll}>{t("common.cancel")}</button>
-            <button type="button" className="danger" disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(bulkAuthorization, authorizerUsername, authorizerPassword)} onClick={() => void removeAll()}>{t("parkedSales.deleteAll")}</button>
-          </div>
-        </section>
+        <div className="sale-action-suboverlay" role="presentation">
+          <section ref={deleteAllDialogRef} className="sale-action-dialog sale-business-dialog parked-sales-delete-all-dialog" role="dialog" aria-modal="true" aria-label={t("parkedSales.deleteAllTitle")}>
+            <header><h2>{t("parkedSales.deleteAllTitle")}</h2></header>
+            <div className="sale-clear-sale-warning" role="note">
+              <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
+              <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteAllConfirm")}</p></div>
+            </div>
+            <SaleOperationAuthorizationFields
+              locale={locale}
+              currentUsername={currentUsername}
+              authorization={bulkAuthorization}
+              username={authorizerUsername}
+              password={authorizerPassword}
+              disabled={Boolean(busyId)}
+              autoFocus
+              onUsernameChange={setAuthorizerUsername}
+              onPasswordChange={setAuthorizerPassword}
+            />
+            <div className="sale-action-buttons sale-business-dialog-actions">
+              <button type="button" disabled={Boolean(busyId)} onClick={closeDeleteAll}>{t("common.cancel")}</button>
+              <button type="button" className="danger" disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(bulkAuthorization, authorizerUsername, authorizerPassword)} onClick={() => void removeAll()}>{t("parkedSales.deleteAll")}</button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
