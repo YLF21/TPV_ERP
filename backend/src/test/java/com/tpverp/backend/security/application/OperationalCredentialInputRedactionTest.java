@@ -111,7 +111,7 @@ class OperationalCredentialInputRedactionTest {
                 new PaymentTerminalOperationController.RefundRequest(
                         UUID.randomUUID(), "refund-key", SECRET, BigDecimal.ONE,
                         List.of(), AUTHORIZER, SECRET),
-                new ParkedSaleController.DeleteRequest(AUTHORIZER, SECRET));
+                new ParkedSaleController.DeleteAllRequest(AUTHORIZER, SECRET));
     }
 
     private static DocumentRequest documentRequest(

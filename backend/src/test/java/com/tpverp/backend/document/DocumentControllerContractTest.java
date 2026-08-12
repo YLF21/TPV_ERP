@@ -96,7 +96,6 @@ class DocumentControllerContractTest {
         var method = ParkedSaleController.class.getDeclaredMethod(
                 "delete",
                 UUID.class,
-                ParkedSaleController.DeleteRequest.class,
                 org.springframework.security.core.Authentication.class);
 
         assertThat(method.getAnnotation(PostMapping.class).value())
@@ -105,6 +104,13 @@ class DocumentControllerContractTest {
                 .noneMatch(candidate -> candidate.isAnnotationPresent(
                         org.springframework.web.bind.annotation.DeleteMapping.class)))
                 .isTrue();
+
+        var bulkMethod = ParkedSaleController.class.getDeclaredMethod(
+                "deleteAll",
+                ParkedSaleController.DeleteAllRequest.class,
+                org.springframework.security.core.Authentication.class);
+        assertThat(bulkMethod.getAnnotation(PostMapping.class).value())
+                .containsExactly("/deletions");
     }
 
     @Test

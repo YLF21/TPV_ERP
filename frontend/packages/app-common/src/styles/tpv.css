@@ -15177,6 +15177,16 @@ body,
   font-size: 0.9rem;
 }
 
+.parked-sales-keyboard-hint {
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border-left: 3px solid #2f78bd;
+  background: #edf4fb;
+  color: #425a75;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
 .parked-sales-empty-hint {
   margin: -8px 0 16px;
   padding: 10px 12px;
@@ -15204,9 +15214,17 @@ body,
 
 .parked-sales-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
   max-height: 42vh;
   overflow: auto;
+  border: 1px solid #c5d1df;
+  background: #fff;
+  outline: none;
+}
+
+.parked-sales-list:focus-visible {
+  border-color: #2f78bd;
+  box-shadow: 0 0 0 2px rgba(47, 120, 189, 0.2);
 }
 
 .parked-sales-empty {
@@ -15215,7 +15233,7 @@ body,
   gap: 8px;
   padding: 22px;
   border: 1px dashed #b9c9da;
-  border-radius: 8px;
+  border-radius: 2px;
   background: #f8fbff;
   color: #52657c;
 }
@@ -15226,13 +15244,29 @@ body,
 
 .parked-sales-list article {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 12px;
-  border: 1px solid #ccd8e6;
-  border-radius: 7px;
-  background: #f8fbff;
+  border: 0;
+  border-bottom: 1px solid #d8e1eb;
+  border-left: 4px solid transparent;
+  border-radius: 0;
+  background: #fff;
+  cursor: default;
+}
+
+.parked-sales-list article:last-child {
+  border-bottom: 0;
+}
+
+.parked-sales-list article.selected {
+  border-left-color: #2f78bd;
+  background: #dceaf7;
+}
+
+.parked-sales-list article:hover {
+  background: #edf4fb;
 }
 
 .parked-sales-list article div {
@@ -15243,6 +15277,17 @@ body,
 .parked-sales-list article span {
   color: #64748b;
   font-size: 0.86rem;
+}
+
+.parked-sales-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.parked-sale-confirm-dialog,
+.parked-sales-delete-all-dialog {
+  width: min(570px, calc(100vw - 32px));
 }
 
 @media (max-width: 900px) {

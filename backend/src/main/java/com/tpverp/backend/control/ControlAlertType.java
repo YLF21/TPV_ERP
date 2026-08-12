@@ -31,7 +31,9 @@ public enum ControlAlertType {
     CASH_SESSION_DISCREPANCY(
             "Descuadre de caja", ControlRuleParameterKind.NONE, Map.of(), true),
     PRODUCT_CATALOG_MODIFIED(
-            "Modificacion de producto desde venta", ControlRuleParameterKind.NONE, Map.of(), true);
+            "Modificacion de producto desde venta", ControlRuleParameterKind.NONE, Map.of(), true),
+    PARKED_SALE_DELETED(
+            "Eliminacion de venta guardada", ControlRuleParameterKind.NONE, Map.of(), true);
 
     private final String systemName;
     private final ControlRuleParameterKind parameterKind;

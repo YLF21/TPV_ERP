@@ -408,6 +408,40 @@ public class ControlAlertDetectionService {
         }
     }
 
+    @Transactional
+    public void detectParkedSalesDeleted(
+            UUID operationId,
+            List<ParkedSaleDeletionSnapshot> deletedSales,
+            boolean bulk,
+            UUID terminalId,
+            UUID authorizerId,
+            String authorizerName,
+            boolean delegated,
+            Authentication authentication) {
+        if (deletedSales == null || deletedSales.isEmpty()) return;
+        var storeId = organization.currentStore().getId();
+        var operator = organization.currentUser(authentication);
+        var now = clock.instant();
+        var data = new LinkedHashMap<String, Object>();
+        data.put("bulk", bulk);
+        data.put("deletedCount", deletedSales.size());
+        data.put("total", deletedSales.stream()
+                .map(ParkedSaleDeletionSnapshot::total)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        data.put("authorizerId", authorizerId.toString());
+        data.put("authorizerName", authorizerName);
+        data.put("delegated", delegated);
+        data.put("sales", deletedSales.stream().map(sale -> Map.<String, Object>of(
+                "parkedSaleId", sale.id().toString(),
+                "createdAt", sale.createdAt().toString(),
+                "comment", sale.comment() == null ? "" : sale.comment(),
+                "total", sale.total())).toList());
+        for (var rule : activeRules(storeId, ControlAlertType.PARKED_SALE_DELETED)) {
+            emit(rule, "PARKED_SALE_DELETION", operationId, null, null, terminalId,
+                    operator.getId(), operator.getUserName(), now, data);
+        }
+    }
+
     private void detectManualNegativeQuantity(
             CommercialDocument document,
             UUID terminalId,
@@ -513,5 +547,9 @@ public class ControlAlertDetectionService {
     }
 
     public record ManualLineDiscount(int position, UUID productId, BigDecimal discountPercent) {
+    }
+
+    public record ParkedSaleDeletionSnapshot(
+            UUID id, java.time.Instant createdAt, String comment, BigDecimal total) {
     }
 }
