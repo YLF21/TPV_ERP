@@ -13,7 +13,7 @@ const { renderTicketHtml } = require("./ticket-renderer.cjs");
 const { renderProductLabelHtml, normalizedProfile } = require("./product-label-renderer.cjs");
 const { renderTableReportHtml } = require("./table-report-renderer.cjs");
 const { restrictNavigation, trustedOrigin } = require("./navigation-security.cjs");
-const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
+const { buildCashDrawerBuffer, buildRasterDocumentBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 const {
   executeEscposTicketPrint,
   executeWindowsTicketPrint,
@@ -171,7 +171,9 @@ function createSalesDocumentWindow(bootstrap) {
   }
   salesDocumentWindow = new BrowserWindow({
     title: `${appName} - Factura / Albaran`,
-    fullscreen: true,
+    fullscreen: false,
+    frame: true,
+    center: true,
     width: 1380,
     height: 860,
     minWidth: 1050,
@@ -194,7 +196,11 @@ function createSalesDocumentWindow(bootstrap) {
   const target = new URL(appUrl);
   target.searchParams.set("window", "sales-document");
   salesDocumentWindow.loadURL(target.toString());
-  salesDocumentWindow.once("ready-to-show", () => salesDocumentWindow?.show());
+  salesDocumentWindow.once("ready-to-show", () => {
+    if (!salesDocumentWindow || salesDocumentWindow.isDestroyed()) return;
+    salesDocumentWindow.maximize();
+    salesDocumentWindow.show();
+  });
   salesDocumentWindow.on("closed", () => {
     salesDocumentBootstraps.delete(salesDocumentWebContentsId);
     salesDocumentWindow = undefined;
@@ -599,9 +605,10 @@ function sendWindowsRawPrinterBuffer(printerName, buffer) {
     return Promise.reject(new Error("Impresion RAW Windows solo disponible en Windows"));
   }
 
-  const bytes = Array.from(buffer).join(",");
   const command = `
 $printerName = $env:TPV_RAW_PRINTER_NAME
+$encodedBuffer = [Console]::In.ReadToEnd()
+$buffer = [Convert]::FromBase64String($encodedBuffer)
 $source = @'
 using System;
 using System.Runtime.InteropServices;
@@ -630,12 +637,12 @@ public class TpvRawPrinter {
 }
 '@
 Add-Type -TypeDefinition $source -ErrorAction Stop
-$written = [TpvRawPrinter]::Send($printerName, [byte[]](${bytes}))
-if ($written -ne ${buffer.length}) { throw "RAW_WRITE_FAILED:$written" }
+$written = [TpvRawPrinter]::Send($printerName, $buffer)
+if ($written -ne $buffer.Length) { throw "RAW_WRITE_FAILED:$written" }
 `;
 
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       "powershell.exe",
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowerShellCommand(command)],
       {
@@ -651,6 +658,8 @@ if ($written -ne ${buffer.length}) { throw "RAW_WRITE_FAILED:$written" }
         resolve();
       }
     );
+    child.stdin.on("error", () => {});
+    child.stdin.end(buffer.toString("base64"));
   });
 }
 
@@ -756,7 +765,19 @@ async function printTicket(ticket, config) {
 
   if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
     let logoRaster;
-    if (typeof ticket?.logo === "string" && ticket.logo.startsWith("data:image/")) {
+    let documentRaster;
+    if (typeof ticket?.documentRaster === "string" && ticket.documentRaster.startsWith("data:image/")) {
+      const source = nativeImage.createFromDataURL(ticket.documentRaster);
+      if (!source.isEmpty()) {
+        const sourceSize = source.getSize();
+        const scale = Math.min(1, 576 / sourceSize.width);
+        const width = Math.max(1, Math.round(sourceSize.width * scale));
+        const height = Math.max(1, Math.round(sourceSize.height * scale));
+        const resized = scale < 1 ? source.resize({ width, height, quality: "best" }) : source;
+        const size = resized.getSize();
+        documentRaster = { width: size.width, height: size.height, bgra: resized.toBitmap() };
+      }
+    } else if (typeof ticket?.logo === "string" && ticket.logo.startsWith("data:image/")) {
       const source = nativeImage.createFromDataURL(ticket.logo);
       if (!source.isEmpty()) {
         const sourceSize = source.getSize();
@@ -771,7 +792,9 @@ async function printTicket(ticket, config) {
     const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
     return executeEscposTicketPrint({
       sendBuffer: (buffer) => sendTicketPrinterRawBuffer(routedConfig, buffer),
-      ticketBuffer: buildTicketBuffer({ ...ticket, logoRaster }),
+      ticketBuffer: documentRaster
+        ? buildRasterDocumentBuffer(documentRaster)
+        : buildTicketBuffer({ ...ticket, logoRaster }),
       drawerBuffer: shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
         ? buildCashDrawerBuffer()
         : undefined,

@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { buildCashDrawerBuffer, buildRasterImageBuffer, buildTicketBuffer, normalizeSerialPath, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
+const { buildCashDrawerBuffer, buildRasterDocumentBuffer, buildRasterImageBuffer, buildTicketBuffer, normalizeSerialPath, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 
 describe("escpos command builder", () => {
   it("builds a ticket with init, text, line feed and cut command", () => {
@@ -102,6 +102,27 @@ describe("escpos command builder", () => {
       notes: ["Gracias por su compra"],
     }).toString("latin1");
     expect(text).toContain("Gracias por su compra");
+  });
+
+  it("splits a Jasper ticket raster into bounded ESC/POS bands and cuts once", () => {
+    const width = 8;
+    const height = 600;
+    const buffer = buildRasterDocumentBuffer({
+      width,
+      height,
+      bgra: Buffer.alloc(width * height * 4, 0),
+    });
+    const rasterCommands = Array.from({ length: buffer.length - 3 }, (_, index) => index)
+      .filter((index) => buffer[index] === 0x1d && buffer[index + 1] === 0x76
+        && buffer[index + 2] === 0x30 && buffer[index + 3] === 0x00);
+
+    expect(rasterCommands).toHaveLength(3);
+    expect([...buffer.subarray(0, 2)]).toEqual([0x1b, 0x40]);
+    const firstBandEnd = rasterCommands[0] + 8 + 256;
+    expect(buffer[firstBandEnd]).toBe(0x1d);
+    expect(buffer.subarray(rasterCommands[0], rasterCommands[1])).not.toContain(0x0a);
+    expect([...buffer.subarray(-7, -3)]).toEqual([0x0a, 0x0a, 0x0a, 0x0a]);
+    expect([...buffer.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
   });
 
   it("builds a non-fiscal cancellation receipt with compensation details", () => {

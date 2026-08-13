@@ -1,11 +1,13 @@
 import { ApiError, apiBaseUrl, apiRequest } from "@tpverp/app-common";
 
 export type DocumentTemplateType = "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET";
+export type DocumentTemplateFormat = "A4" | "TICKET_80";
 export type DocumentTemplateStatus = "DRAFT" | "VALIDATED" | "ACTIVE" | "RETIRED";
 
 export type ResolvedDocumentTemplate = {
   id: string | null;
   type: DocumentTemplateType;
+  format: DocumentTemplateFormat;
   scope: "STORE" | "COMPANY" | "SYSTEM";
   code: string;
   version: number;
@@ -18,6 +20,7 @@ export type ResolvedDocumentTemplate = {
 export type DocumentTemplateView = {
   id: string;
   type: DocumentTemplateType;
+  format: DocumentTemplateFormat;
   scope: "STORE" | "COMPANY" | "SYSTEM";
   code: string;
   version: number;
@@ -39,17 +42,18 @@ export type DocumentTemplateCatalog = {
 
 export function loadDocumentTemplateCatalog(
   type: DocumentTemplateType,
+  format: DocumentTemplateFormat,
   token?: string,
   request: typeof apiRequest = apiRequest,
 ) {
   return request<DocumentTemplateCatalog>(
-    `/document-templates?type=${encodeURIComponent(type)}`,
+    `/document-templates?type=${encodeURIComponent(type)}&format=${encodeURIComponent(format)}`,
     { token },
   );
 }
 
 export function createDocumentTemplateDraft(
-  value: { type: DocumentTemplateType; code: string; name: string },
+  value: { type: DocumentTemplateType; format: DocumentTemplateFormat; code: string; name: string },
   token?: string,
   request: typeof apiRequest = apiRequest,
 ) {

@@ -12,7 +12,12 @@ import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.Collections;
@@ -22,9 +27,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import javax.imageio.ImageIO;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JasperPrintManager;
 import net.sf.jasperreports.json.query.JsonQueryExecuterFactory;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +42,8 @@ public class InvoiceJasperRenderer {
 
     static final String ISSUER_LOGO_STREAM_PARAMETER = "TPV_ISSUER_LOGO_STREAM";
     static final String ISSUER_LOGO_PRESENT_PARAMETER = "TPV_ISSUER_LOGO_PRESENT";
+    private static final int TICKET_RASTER_WIDTH = 576;
+    private static final int TICKET_RASTER_MAX_HEIGHT = 30_000;
 
     private final DocumentTemplateRepository templates;
     private final DocumentTemplateArtifactStorage storage;
@@ -65,7 +76,8 @@ public class InvoiceJasperRenderer {
             Customer customer,
             InvoicePresentationSnapshot presentation,
             String qrUrl) {
-        return render(document, store, company, customer, presentation, qrUrl, null);
+        return render(document, store, company, customer, presentation, qrUrl,
+                null, DocumentTemplateFormat.A4);
     }
 
     public Optional<byte[]> render(
@@ -76,11 +88,39 @@ public class InvoiceJasperRenderer {
             InvoicePresentationSnapshot presentation,
             String qrUrl,
             String logoDataUri) {
+        return render(document, store, company, customer, presentation, qrUrl,
+                logoDataUri, DocumentTemplateFormat.A4);
+    }
+
+    public Optional<byte[]> render(
+            CommercialDocument document,
+            Store store,
+            Company company,
+            Customer customer,
+            InvoicePresentationSnapshot presentation,
+            String qrUrl,
+            String logoDataUri,
+            DocumentTemplateFormat format) {
+        return renderDocument(document, store, company, customer, presentation,
+                qrUrl, logoDataUri, format).map(RenderedDocument::pdf);
+    }
+
+    public Optional<RenderedDocument> renderDocument(
+            CommercialDocument document,
+            Store store,
+            Company company,
+            Customer customer,
+            InvoicePresentationSnapshot presentation,
+            String qrUrl,
+            String logoDataUri,
+            DocumentTemplateFormat format) {
         Objects.requireNonNull(document, "document");
         Objects.requireNonNull(store, "store");
         Objects.requireNonNull(company, "company");
         Objects.requireNonNull(presentation, "presentation");
-        var reference = presentation.template();
+        Objects.requireNonNull(format, "format");
+        var reference = format == DocumentTemplateFormat.TICKET_80
+                ? presentation.ticketTemplate() : presentation.template();
         var templateType = templateType(document.getTipo());
         if (templateType == null || reference == null || reference.builtIn()) {
             return Optional.empty();
@@ -92,7 +132,7 @@ public class InvoiceJasperRenderer {
                         reference.id(), company.getId(), store.getId())
                 .orElseThrow(() -> new IllegalStateException(
                         "invoice_print_template_not_available"));
-        verifyReference(template, reference, templateType);
+        verifyReference(template, reference, templateType, format);
         try {
             byte[] source = storage.readSource(template.getArtifactReference());
             if (!SafeJrxmlCompiler.sha256(source).equals(template.getSha256())) {
@@ -113,9 +153,93 @@ public class InvoiceJasperRenderer {
             var context = SafeJrxmlCompiler.secureContext();
             var print = JasperFillManager.getInstance(context).fill(
                     new ByteArrayInputStream(compiled), parameters);
-            return Optional.of(JasperExportManager.getInstance(context).exportToPdf(print));
+            byte[] pdf = JasperExportManager.getInstance(context).exportToPdf(print);
+            byte[] ticketRaster = format == DocumentTemplateFormat.TICKET_80
+                    ? ticketRaster(print) : null;
+            return Optional.of(new RenderedDocument(pdf, ticketRaster));
         } catch (IOException | JRException exception) {
             throw new IllegalStateException("invoice_jasper_render_failed", exception);
+        }
+    }
+
+    private static byte[] ticketRaster(JasperPrint print) throws JRException, IOException {
+        if (print.getPages().isEmpty() || print.getPageWidth() <= 0) {
+            throw new IllegalStateException("invoice_ticket_raster_empty");
+        }
+        float zoom = (float) TICKET_RASTER_WIDTH / print.getPageWidth();
+        var pages = new java.util.ArrayList<BufferedImage>(print.getPages().size());
+        int totalHeight = 0;
+        for (int pageIndex = 0; pageIndex < print.getPages().size(); pageIndex++) {
+            Image rendered = JasperPrintManager.printPageToImage(print, pageIndex, zoom);
+            var page = opaque(rendered);
+            int usedHeight = usedHeight(page);
+            var cropped = page.getSubimage(0, 0, page.getWidth(), usedHeight);
+            pages.add(cropped);
+            totalHeight = Math.addExact(totalHeight, usedHeight);
+            if (totalHeight > TICKET_RASTER_MAX_HEIGHT) {
+                throw new IllegalStateException("invoice_ticket_raster_too_long");
+            }
+        }
+        var output = new BufferedImage(TICKET_RASTER_WIDTH, totalHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = output.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, output.getWidth(), output.getHeight());
+            int y = 0;
+            for (var page : pages) {
+                graphics.drawImage(page, 0, y, null);
+                y += page.getHeight();
+            }
+        } finally {
+            graphics.dispose();
+        }
+        var bytes = new ByteArrayOutputStream();
+        if (!ImageIO.write(output, "png", bytes)) {
+            throw new IllegalStateException("invoice_ticket_raster_encoder_unavailable");
+        }
+        return bytes.toByteArray();
+    }
+
+    private static BufferedImage opaque(Image source) {
+        var output = new BufferedImage(
+                source.getWidth(null), source.getHeight(null), BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = output.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, output.getWidth(), output.getHeight());
+            graphics.drawImage(source, 0, 0, null);
+        } finally {
+            graphics.dispose();
+        }
+        return output;
+    }
+
+    private static int usedHeight(BufferedImage image) {
+        int lastInkRow = 0;
+        for (int y = image.getHeight() - 1; y >= 0; y--) {
+            boolean hasInk = false;
+            for (int x = 0; x < image.getWidth(); x++) {
+                int rgb = image.getRGB(x, y);
+                int red = (rgb >> 16) & 0xff;
+                int green = (rgb >> 8) & 0xff;
+                int blue = rgb & 0xff;
+                if (red < 245 || green < 245 || blue < 245) {
+                    hasInk = true;
+                    break;
+                }
+            }
+            if (hasInk) {
+                lastInkRow = y;
+                break;
+            }
+        }
+        return Math.min(image.getHeight(), Math.max(1, lastInkRow + 17));
+    }
+
+    public record RenderedDocument(byte[] pdf, byte[] ticketRasterPng) {
+
+        public RenderedDocument {
+            Objects.requireNonNull(pdf, "pdf");
         }
     }
 
@@ -191,6 +315,7 @@ public class InvoiceJasperRenderer {
         putNullable(issuer, "phone", company.getDomicilioFiscal().get("telefono"));
         putNullable(issuer, "email", company.getDomicilioFiscal().get("email"));
         putNullable(issuer, "logoDataUri", logoDataUri);
+        putNullable(issuer, "details", issuerDetails(company));
 
         var customerNode = root.putObject("customer");
         if (customer != null) {
@@ -207,6 +332,7 @@ public class InvoiceJasperRenderer {
             }
             putNullable(customerNode, "phone", customer.getPhone());
             putNullable(customerNode, "customerCode", customer.getClientId());
+            putNullable(customerNode, "details", customerDetails(customer));
         }
 
         boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA;
@@ -273,8 +399,10 @@ public class InvoiceJasperRenderer {
     private static void verifyReference(
             DocumentTemplate template,
             InvoicePresentationSnapshot.TemplateReference reference,
-            DocumentTemplateType expectedType) {
+            DocumentTemplateType expectedType,
+            DocumentTemplateFormat expectedFormat) {
         if (template.getType() != expectedType
+                || template.getFormat() != expectedFormat
                 || (template.getStatus() != DocumentTemplateStatus.ACTIVE
                         && template.getStatus() != DocumentTemplateStatus.RETIRED)
                 || !template.getCode().equals(reference.code())
@@ -355,6 +483,59 @@ public class InvoiceJasperRenderer {
         putNullable(target, "city", source.get("ciudad"));
         putNullable(target, "province", source.get("provincia"));
         putNullable(target, "countryName", source.get("pais"));
+    }
+
+    private static String issuerDetails(Company company) {
+        var source = company.getDomicilioFiscal();
+        return compactLines(
+                labeled("NIF: ", company.getTaxId()),
+                source.get("linea1"),
+                locality(source.get("codigoPostal"), source.get("ciudad"),
+                        source.get("provincia")),
+                labeled("País: ", source.get("pais")),
+                joinNonBlank(" · ", source.get("telefono"), source.get("email")));
+    }
+
+    private static String customerDetails(Customer customer) {
+        var source = customer.getFiscalAddress();
+        return compactLines(
+                labeled("Cód. cliente: ", customer.getClientId()),
+                labeled("NIF: ", customer.getDocumentNumber()),
+                source == null ? null : source.getAddress(),
+                source == null ? null : locality(
+                        source.getPostalCode(), source.getCity(), source.getProvince()),
+                source == null ? null : labeled("País: ", source.getCountry()),
+                labeled("Tel.: ", customer.getPhone()));
+    }
+
+    private static String locality(String postalCode, String city, String province) {
+        var locality = joinNonBlank(" ", postalCode, city);
+        var normalizedProvince = normalized(province);
+        if (normalizedProvince == null
+                || normalizedProvince.equalsIgnoreCase(normalized(city))) {
+            return locality;
+        }
+        return joinNonBlank(" · ", locality, normalizedProvince);
+    }
+
+    private static String labeled(String label, String value) {
+        var normalizedValue = normalized(value);
+        return normalizedValue == null ? null : label + normalizedValue;
+    }
+
+    private static String joinNonBlank(String separator, String... values) {
+        return Stream.of(values)
+                .map(InvoiceJasperRenderer::normalized)
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining(separator));
+    }
+
+    private static String compactLines(String... values) {
+        return joinNonBlank("\n", values);
+    }
+
+    private static String normalized(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static void putNullable(ObjectNode node, String name, String value) {

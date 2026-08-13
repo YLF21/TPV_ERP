@@ -15,10 +15,12 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
             from DocumentTemplate template
             where template.store.id = :storeId
               and template.type = :type
+              and template.format = :format
               and template.status = com.tpverp.backend.document.template.DocumentTemplateStatus.ACTIVE
             order by template.templateVersion desc
             """)
-    Optional<DocumentTemplate> findActiveForStore(UUID storeId, DocumentTemplateType type);
+    Optional<DocumentTemplate> findActiveForStore(
+            UUID storeId, DocumentTemplateType type, DocumentTemplateFormat format);
 
     @Query("""
             select template
@@ -27,10 +29,12 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
               and template.store is null
               and template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.COMPANY
               and template.type = :type
+              and template.format = :format
               and template.status = com.tpverp.backend.document.template.DocumentTemplateStatus.ACTIVE
             order by template.templateVersion desc
             """)
-    Optional<DocumentTemplate> findActiveForCompany(UUID companyId, DocumentTemplateType type);
+    Optional<DocumentTemplate> findActiveForCompany(
+            UUID companyId, DocumentTemplateType type, DocumentTemplateFormat format);
 
     @Query("""
             select template
@@ -39,10 +43,12 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
               and template.store is null
               and template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.SYSTEM
               and template.type = :type
+              and template.format = :format
               and template.status = com.tpverp.backend.document.template.DocumentTemplateStatus.ACTIVE
             order by template.templateVersion desc
             """)
-    Optional<DocumentTemplate> findActiveForSystem(DocumentTemplateType type);
+    Optional<DocumentTemplate> findActiveForSystem(
+            DocumentTemplateType type, DocumentTemplateFormat format);
 
     @Query("""
             select template
@@ -64,10 +70,11 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
               and template.store is null
               and template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.SYSTEM
               and template.type = :type
+              and template.format = :format
               and template.status = com.tpverp.backend.document.template.DocumentTemplateStatus.ACTIVE
             """)
     Optional<DocumentTemplate> findActiveSystemTemplateForUpdate(
-            DocumentTemplateType type);
+            DocumentTemplateType type, DocumentTemplateFormat format);
 
     @Query("""
             select template
@@ -129,8 +136,9 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
             from DocumentTemplate template
             where template.store.id = :storeId
               and template.type = :type
+              and template.format = :format
               and template.status = com.tpverp.backend.document.template.DocumentTemplateStatus.ACTIVE
             """)
     Optional<DocumentTemplate> findActiveStoreTemplateForUpdate(
-            UUID storeId, DocumentTemplateType type);
+            UUID storeId, DocumentTemplateType type, DocumentTemplateFormat format);
 }

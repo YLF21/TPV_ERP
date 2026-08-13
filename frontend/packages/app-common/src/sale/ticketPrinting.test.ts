@@ -241,6 +241,41 @@ describe("confirmed ticket printing", () => {
     }), expect.anything());
   });
 
+  it("selects the Jasper 80 mm PDF for a Windows ticket-printer route", async () => {
+    const printA4Document = vi.fn().mockResolvedValue({ ok: true });
+    const ticketRenderedPdf = {
+      contentType: "application/pdf" as const,
+      base64: "JVBERi10aWNrZXQ=",
+    };
+    const config = {
+      ...defaultHardwareConfig,
+      ticketPrinterDriver: "WINDOWS_DRIVER" as const,
+      documentPrintRoutes: defaultHardwareConfig.documentPrintRoutes.map((route) =>
+        route.documentType === "INVOICE"
+          ? { ...route, printerTarget: "TICKET_PRINTER" as const, paperSize: "TICKET_80" as const }
+          : route),
+    };
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(config),
+      printA4Document,
+    } as unknown as HardwareBridge;
+
+    await printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-80",
+      lines: snapshot.lines,
+      total: "7.00",
+      renderedPdf: { contentType: "application/pdf", base64: "JVBERi1hNA==" },
+      ticketRenderedPdf,
+    }, terminal, hardware);
+
+    expect(printA4Document).toHaveBeenCalledWith(
+      expect.objectContaining({ renderedPdf: ticketRenderedPdf }),
+      config,
+    );
+  });
+
   it("exports a pending commercial document as PDF when selected for this sale", async () => {
     const exportA4DocumentPdf = vi.fn().mockResolvedValue({
       ok: true,
@@ -320,6 +355,34 @@ describe("confirmed ticket printing", () => {
       tax: 21,
       total: 121,
       escposLabels: expect.objectContaining({ base: "Base", tax: "Impuesto", total: "Total" })
+    }), config);
+  });
+
+  it("sends the Jasper ticket raster through the ESC/POS route", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const config = {
+      ...defaultHardwareConfig,
+      ticketPrinterDriver: "ESCPOS_RAW" as const,
+      documentPrintRoutes: defaultHardwareConfig.documentPrintRoutes.map((route) => route.documentType === "INVOICE"
+        ? { ...route, printerTarget: "TICKET_PRINTER" as const, paperSize: "TICKET_80" as const }
+        : route),
+    };
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(config),
+      printTicket,
+    } as unknown as HardwareBridge;
+
+    await printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-JASPER-80",
+      lines: snapshot.lines,
+      total: "7.00",
+      ticketRenderedImage: { contentType: "image/png", base64: "iVBORw0KGgo=" },
+    }, terminal, hardware);
+
+    expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
+      documentRaster: "data:image/png;base64,iVBORw0KGgo=",
     }), config);
   });
 

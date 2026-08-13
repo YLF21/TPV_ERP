@@ -20,6 +20,7 @@ import com.tpverp.backend.organization.InvoicePrintSettingsRepository;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateScope;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.ResolvedDocumentTemplate;
@@ -60,10 +61,12 @@ class InvoicePresentationSnapshotFactoryTest {
                 .thenReturn(List.of(account));
         var templateId = UUID.randomUUID();
         var templates = mock(DocumentTemplateResolver.class);
-        when(templates.resolve(DocumentTemplateType.FACTURA_VENTA)).thenReturn(
+        when(templates.resolve(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4)).thenReturn(
                 new ResolvedDocumentTemplate(
                         templateId,
                         DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.A4,
                         DocumentTemplateScope.STORE,
                         "FACTURA_TIENDA",
                         3,
@@ -71,13 +74,28 @@ class InvoicePresentationSnapshotFactoryTest {
                         templateId.toString(),
                         "a".repeat(64),
                         false));
+        var ticketTemplateId = UUID.randomUUID();
+        when(templates.resolve(
+                DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(
+                new ResolvedDocumentTemplate(
+                        ticketTemplateId,
+                        DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.TICKET_80,
+                        DocumentTemplateScope.SYSTEM,
+                        "FACTURA_TICKET_80",
+                        1,
+                        1,
+                        ticketTemplateId.toString(),
+                        "c".repeat(64),
+                        false));
 
         var factory = new InvoicePresentationSnapshotFactory(
                 organization, licenses, settings, accounts, new ObjectMapper());
         factory.setTemplateResolver(templates);
         var snapshot = factory.read(factory.create());
 
-        assertThat(snapshot.schemaVersion()).isEqualTo(3);
+        assertThat(snapshot.schemaVersion()).isEqualTo(4);
         assertThat(snapshot.fiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
         assertThat(snapshot.observations()).isEqualTo("Gracias por su confianza");
         assertThat(snapshot.bankAccounts()).containsExactly(
@@ -86,6 +104,10 @@ class InvoicePresentationSnapshotFactoryTest {
         assertThat(snapshot.template()).isEqualTo(
                 new InvoicePresentationSnapshot.TemplateReference(
                         templateId, "FACTURA_TIENDA", 3, 1, "a".repeat(64), false));
+        assertThat(snapshot.ticketTemplate()).isEqualTo(
+                new InvoicePresentationSnapshot.TemplateReference(
+                        ticketTemplateId, "FACTURA_TICKET_80", 1, 1,
+                        "c".repeat(64), false));
     }
 
     @Test
@@ -106,10 +128,12 @@ class InvoicePresentationSnapshotFactoryTest {
         when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of());
         var templateId = UUID.randomUUID();
         var templates = mock(DocumentTemplateResolver.class);
-        when(templates.resolve(DocumentTemplateType.ALBARAN_VENTA)).thenReturn(
+        when(templates.resolve(
+                DocumentTemplateType.ALBARAN_VENTA, DocumentTemplateFormat.A4)).thenReturn(
                 new ResolvedDocumentTemplate(
                         templateId,
                         DocumentTemplateType.ALBARAN_VENTA,
+                        DocumentTemplateFormat.A4,
                         DocumentTemplateScope.STORE,
                         "ALBARAN_A4",
                         2,

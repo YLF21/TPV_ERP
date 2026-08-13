@@ -70,7 +70,8 @@ class DocumentTemplateCatalogServiceTest {
                 next.getId(), store.getEmpresa().getId(), store.getId()))
                 .thenReturn(Optional.of(next));
         when(templates.findActiveStoreTemplateForUpdate(
-                store.getId(), DocumentTemplateType.FACTURA_VENTA))
+                store.getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4))
                 .thenReturn(Optional.of(previous));
         when(templates.saveAndFlush(any(DocumentTemplate.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

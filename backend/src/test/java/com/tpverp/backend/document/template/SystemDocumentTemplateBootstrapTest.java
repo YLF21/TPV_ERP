@@ -40,17 +40,25 @@ class SystemDocumentTemplateBootstrapTest {
         bootstrap.initialize();
 
         assertThat(stored.values())
-                .hasSize(2)
+                .hasSize(3)
                 .allSatisfy(template -> {
                     assertThat(template.getScope()).isEqualTo(DocumentTemplateScope.SYSTEM);
                     assertThat(template.getStatus()).isEqualTo(DocumentTemplateStatus.ACTIVE);
-                    assertThat(template.getTemplateVersion()).isEqualTo(1);
                     assertThat(storage.readSource(template.getArtifactReference())).isNotEmpty();
                     assertThat(storage.readCompiled(template.getArtifactReference())).isNotEmpty();
                 });
+        assertThat(stored.values())
+                .filteredOn(template -> "FACTURA_TICKET_80".equals(template.getCode()))
+                .extracting(DocumentTemplate::getTemplateVersion)
+                .containsExactly(2);
+        assertThat(stored.values())
+                .filteredOn(template -> !"FACTURA_TICKET_80".equals(template.getCode()))
+                .extracting(DocumentTemplate::getTemplateVersion)
+                .containsOnly(1);
         assertThat(stored.values()).extracting(DocumentTemplate::getCode)
-                .containsExactlyInAnyOrder("FACTURA_A4", "ALBARAN_A4");
-        verify(templates, times(6)).saveAndFlush(any(DocumentTemplate.class));
+                .containsExactlyInAnyOrder(
+                        "FACTURA_A4", "ALBARAN_A4", "FACTURA_TICKET_80");
+        verify(templates, times(9)).saveAndFlush(any(DocumentTemplate.class));
     }
 
     @Test
@@ -67,6 +75,7 @@ class SystemDocumentTemplateBootstrapTest {
         assertThat(newer.getStatus()).isEqualTo(DocumentTemplateStatus.ACTIVE);
         assertThat(stored.values().stream()
                 .filter(template -> template.getType() == DocumentTemplateType.FACTURA_VENTA)
+                .filter(template -> template.getFormat() == DocumentTemplateFormat.A4)
                 .filter(template -> template.getTemplateVersion() == 1)
                 .findFirst())
                 .get()
@@ -80,7 +89,7 @@ class SystemDocumentTemplateBootstrapTest {
         var templates = mock(DocumentTemplateRepository.class);
         var storage = new DocumentTemplateArtifactStorage(tempDir);
         byte[] source = new ClassPathResource(
-                "document-templates/factura_venta_a4.jrxml")
+                "document-templates/FACTURA_VENTA_A4.jrxml")
                 .getContentAsByteArray();
         var compiled = new SafeJrxmlCompiler().compile(source);
         var current = DocumentTemplate.systemDraft(
@@ -103,10 +112,11 @@ class SystemDocumentTemplateBootstrapTest {
         configureRepository(templates, stored);
         var definition = new SystemDocumentTemplateBootstrap.Definition(
                 DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4,
                 "FACTURA_A4",
                 2,
                 "Factura A4 v2",
-                "document-templates/factura_venta_a4.jrxml");
+                "document-templates/FACTURA_VENTA_A4.jrxml");
         var bootstrap = new SystemDocumentTemplateBootstrap(
                 templates,
                 storage,
@@ -164,9 +174,10 @@ class SystemDocumentTemplateBootstrapTest {
                         .filter(template -> template.getTemplateVersion()
                                 == (int) invocation.getArgument(1))
                         .findFirst());
-        when(templates.findActiveSystemTemplateForUpdate(any()))
+        when(templates.findActiveSystemTemplateForUpdate(any(), any()))
                 .thenAnswer(invocation -> stored.values().stream()
                         .filter(template -> template.getType() == invocation.getArgument(0))
+                        .filter(template -> template.getFormat() == invocation.getArgument(1))
                         .filter(template -> template.getStatus() == DocumentTemplateStatus.ACTIVE)
                         .findFirst());
         when(templates.saveAndFlush(any(DocumentTemplate.class)))

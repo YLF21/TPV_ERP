@@ -1449,7 +1449,9 @@ describe("CustomerPendingSaleDialog", () => {
     const confirmButton = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
     await waitFor(() => expect((confirmButton as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(confirmButton);
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({ documentId: "doc-1" }, expect.any(Function)));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(
+      { documentId: "doc-1" }, expect.any(Function), "printer offline",
+    ));
   });
 
   it("uses the normal checkout panel and confirms a Ctrl+F document paid in cash", async () => {

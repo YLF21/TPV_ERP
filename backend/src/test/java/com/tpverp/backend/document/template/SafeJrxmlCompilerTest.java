@@ -81,6 +81,14 @@ class SafeJrxmlCompilerTest {
                 .hasMessage("document_template_jrxml_expression_forbidden");
     }
 
+    @Test
+    void allowsLengthForBoundedTemplateText() {
+        var expression = "$F{name} == null ? \"\" : "
+                + "($F{name}.length() <= 64 ? $F{name} : $F{name}.substring(0, 64))";
+
+        assertThat(compiler.compile(report(expression)).compiled()).isNotEmpty();
+    }
+
     private static byte[] report(String expression) {
         return bytes(validReport("""
                 <field name="name" class="java.lang.String"/>

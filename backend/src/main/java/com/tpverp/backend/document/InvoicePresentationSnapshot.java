@@ -9,10 +9,11 @@ public record InvoicePresentationSnapshot(
         String observations,
         List<BankAccount> bankAccounts,
         TemplateReference template,
+        TemplateReference ticketTemplate,
         LogoReference logo) {
 
     public InvoicePresentationSnapshot {
-        if (schemaVersion < 1 || schemaVersion > 3) {
+        if (schemaVersion < 1 || schemaVersion > 4) {
             throw new IllegalArgumentException("invoice_print_snapshot_version_invalid");
         }
         bankAccounts = bankAccounts == null ? List.of() : List.copyOf(bankAccounts);
@@ -23,7 +24,7 @@ public record InvoicePresentationSnapshot(
             InvoiceFiscalProfile fiscalProfile,
             String observations,
             List<BankAccount> bankAccounts) {
-        this(schemaVersion, fiscalProfile, observations, bankAccounts, null, null);
+        this(schemaVersion, fiscalProfile, observations, bankAccounts, null, null, null);
     }
 
     public InvoicePresentationSnapshot(
@@ -32,7 +33,17 @@ public record InvoicePresentationSnapshot(
             String observations,
             List<BankAccount> bankAccounts,
             TemplateReference template) {
-        this(schemaVersion, fiscalProfile, observations, bankAccounts, template, null);
+        this(schemaVersion, fiscalProfile, observations, bankAccounts, template, null, null);
+    }
+
+    public InvoicePresentationSnapshot(
+            int schemaVersion,
+            InvoiceFiscalProfile fiscalProfile,
+            String observations,
+            List<BankAccount> bankAccounts,
+            TemplateReference template,
+            LogoReference logo) {
+        this(schemaVersion, fiscalProfile, observations, bankAccounts, template, null, logo);
     }
 
     public record BankAccount(String bankName, String iban) {

@@ -6,6 +6,7 @@ import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.InvoiceBankAccountRepository;
@@ -74,7 +75,10 @@ public class InvoicePresentationSnapshotFactory {
                                 account.getBankName(), formatIban(account.getIban())))
                         .toList()
                 : java.util.List.<InvoicePresentationSnapshot.BankAccount>of();
-        var template = templateReference(templateType);
+        var template = templateReference(templateType, DocumentTemplateFormat.defaultFor(templateType));
+        var ticketTemplate = templateType == DocumentTemplateType.FACTURA_VENTA
+                ? templateReference(templateType, DocumentTemplateFormat.TICKET_80)
+                : null;
         var logo = storePresentation == null || storePresentation.logo() == null ? null
                 : new InvoicePresentationSnapshot.LogoReference(
                         storePresentation.logo().id(),
@@ -83,7 +87,7 @@ public class InvoicePresentationSnapshotFactory {
         try {
             return mapper.writeValueAsString(
                     new InvoicePresentationSnapshot(
-                            3, profile, observations, accounts, template, logo));
+                            4, profile, observations, accounts, template, ticketTemplate, logo));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("invoice_print_snapshot_serialization_failed", error);
         }
@@ -92,7 +96,7 @@ public class InvoicePresentationSnapshotFactory {
     public InvoicePresentationSnapshot read(String value) {
         try {
             var snapshot = mapper.readValue(value, InvoicePresentationSnapshot.class);
-            if (snapshot.schemaVersion() < 1 || snapshot.schemaVersion() > 3) {
+            if (snapshot.schemaVersion() < 1 || snapshot.schemaVersion() > 4) {
                 throw new IllegalStateException("invoice_print_snapshot_version_invalid");
             }
             return snapshot;
@@ -124,10 +128,12 @@ public class InvoicePresentationSnapshotFactory {
     }
 
     private InvoicePresentationSnapshot.TemplateReference templateReference(
-            DocumentTemplateType templateType) {
+            DocumentTemplateType templateType,
+            DocumentTemplateFormat format) {
         if (templates == null) {
             var builtInCode = switch (templateType) {
-                case FACTURA_VENTA -> "FACTURA_A4";
+                case FACTURA_VENTA -> format == DocumentTemplateFormat.TICKET_80
+                        ? "FACTURA_TICKET_80" : "FACTURA_A4";
                 case ALBARAN_VENTA -> "ALBARAN_A4";
                 case TICKET -> "TICKET_80";
             };
@@ -136,7 +142,7 @@ public class InvoicePresentationSnapshotFactory {
                     builtInCode,
                     1, 1, null, true);
         }
-        var resolved = templates.resolve(templateType);
+        var resolved = templates.resolve(templateType, format);
         return new InvoicePresentationSnapshot.TemplateReference(
                 resolved.id(),
                 resolved.code(),

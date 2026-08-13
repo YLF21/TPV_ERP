@@ -19,12 +19,23 @@ describe("desktop navigation security", () => {
     expect(source).toContain("restrictNavigation(salesDocumentWindow, trustedAppOrigin)");
   });
 
-  it("opens the sales document workspace in fullscreen mode", () => {
+  it("opens the sales document workspace maximized with its native frame", () => {
     const windowStart = source.indexOf("salesDocumentWindow = new BrowserWindow({");
     const preferencesStart = source.indexOf("webPreferences:", windowStart);
+    const windowEnd = source.indexOf("return { ok: true, focused: false };", preferencesStart);
 
     expect(windowStart).toBeGreaterThan(-1);
     expect(preferencesStart).toBeGreaterThan(windowStart);
-    expect(source.slice(windowStart, preferencesStart)).toContain("fullscreen: true");
+    expect(windowEnd).toBeGreaterThan(preferencesStart);
+    expect(source.slice(windowStart, preferencesStart)).toContain("fullscreen: false");
+    expect(source.slice(windowStart, preferencesStart)).toContain("frame: true");
+    expect(source.slice(windowStart, preferencesStart)).toContain("center: true");
+    expect(source.slice(preferencesStart, windowEnd)).toContain("salesDocumentWindow.maximize()");
+  });
+
+  it("streams RAW printer payloads through stdin instead of the Windows command line", () => {
+    expect(source).toContain('[Console]::In.ReadToEnd()');
+    expect(source).toContain('child.stdin.end(buffer.toString("base64"))');
+    expect(source).not.toContain('Array.from(buffer).join(",")');
   });
 });

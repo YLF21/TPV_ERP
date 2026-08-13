@@ -33,7 +33,8 @@ class DocumentTemplateControllerTest {
 
     @Test
     void listsCatalogWithDedicatedManagementPermission() throws Exception {
-        when(service.currentStoreCatalog(DocumentTemplateType.FACTURA_VENTA))
+        when(service.currentStoreCatalog(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
                 .thenReturn(new DocumentTemplateCatalogService.CatalogView(
                         ResolvedDocumentTemplate.builtIn(DocumentTemplateType.FACTURA_VENTA),
                         List.of()));
@@ -59,11 +60,13 @@ class DocumentTemplateControllerTest {
     void adminCanRegisterStoreDraftMetadata() throws Exception {
         var view = new DocumentTemplateCatalogService.TemplateView(
                 UUID.randomUUID(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4,
                 DocumentTemplateScope.STORE, "FACTURA_LP", 1, "Factura LP",
                 DocumentTemplateStatus.DRAFT, null, null, null,
                 Instant.parse("2026-08-09T10:00:00Z"), null, null, null);
         when(service.registerCurrentStoreDraft(
-                DocumentTemplateType.FACTURA_VENTA, "FACTURA_LP", "Factura LP"))
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4,
+                "FACTURA_LP", "Factura LP"))
                 .thenReturn(view);
 
         mvc.perform(post("/api/v1/document-templates/store-drafts")
@@ -73,6 +76,7 @@ class DocumentTemplateControllerTest {
                         .content("""
                                 {
                                   "type": "FACTURA_VENTA",
+                                  "format": "A4",
                                   "code": "FACTURA_LP",
                                   "name": "Factura LP"
                                 }
@@ -88,6 +92,7 @@ class DocumentTemplateControllerTest {
         var templateId = UUID.randomUUID();
         var validated = new DocumentTemplateCatalogService.TemplateView(
                 templateId, DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4,
                 DocumentTemplateScope.STORE, "FACTURA_LP", 1, "Factura LP",
                 DocumentTemplateStatus.VALIDATED, 1, "a".repeat(64), null,
                 Instant.parse("2026-08-09T10:00:00Z"),
@@ -98,6 +103,7 @@ class DocumentTemplateControllerTest {
         when(artifacts.activate(templateId))
                 .thenReturn(new DocumentTemplateCatalogService.TemplateView(
                         templateId, DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.A4,
                         DocumentTemplateScope.STORE, "FACTURA_LP", 1, "Factura LP",
                         DocumentTemplateStatus.ACTIVE, 1, "a".repeat(64), null,
                         Instant.parse("2026-08-09T10:00:00Z"),
