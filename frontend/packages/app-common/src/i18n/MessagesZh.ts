@@ -2426,6 +2426,7 @@ export class MessagesZh {
     "gestion.documentTemplates.version": "\u7248\u672c",
     "gestion.documentTemplates.origin": "\u6765\u6e90",
     "gestion.documentTemplates.system": "\u7cfb\u7edf",
+    "gestion.documentTemplates.company": "\u516c\u53f8",
     "gestion.documentTemplates.store": "\u95e8\u5e97",
     "gestion.documentTemplates.schema": "\u67b6\u6784",
     "gestion.documentTemplates.newVersion": "\u65b0\u7248\u672c",

@@ -20,3 +20,5 @@ tpv:
     portable-secret-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   backup:
     default-directory: target/test-backups
+  document-templates:
+    directory: ${TPV_DOCUMENT_TEMPLATE_DIRECTORY:target/test-document-templates}

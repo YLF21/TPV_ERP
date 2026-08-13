@@ -78,7 +78,7 @@ public class DocumentTemplate {
     private Instant retiredAt;
 
     @Version
-    private long version;
+    private Long version;
 
     protected DocumentTemplate() {
     }

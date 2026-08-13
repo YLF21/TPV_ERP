@@ -2431,6 +2431,7 @@ export class MessagesEs {
     "gestion.documentTemplates.version": "Versión",
     "gestion.documentTemplates.origin": "Origen",
     "gestion.documentTemplates.system": "Sistema",
+    "gestion.documentTemplates.company": "Empresa",
     "gestion.documentTemplates.store": "Tienda",
     "gestion.documentTemplates.schema": "Esquema",
     "gestion.documentTemplates.newVersion": "Nueva versión",

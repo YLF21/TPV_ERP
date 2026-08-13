@@ -47,6 +47,31 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
     @Query("""
             select template
             from DocumentTemplate template
+            where template.company is null
+              and template.store is null
+              and template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.SYSTEM
+              and template.code = :code
+              and template.templateVersion = :templateVersion
+            """)
+    Optional<DocumentTemplate> findSystemTemplate(
+            String code, int templateVersion);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select template
+            from DocumentTemplate template
+            where template.company is null
+              and template.store is null
+              and template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.SYSTEM
+              and template.type = :type
+              and template.status = com.tpverp.backend.document.template.DocumentTemplateStatus.ACTIVE
+            """)
+    Optional<DocumentTemplate> findActiveSystemTemplateForUpdate(
+            DocumentTemplateType type);
+
+    @Query("""
+            select template
+            from DocumentTemplate template
             where template.store.id = :storeId
             order by template.createdAt desc, template.code asc, template.templateVersion desc
             """)
