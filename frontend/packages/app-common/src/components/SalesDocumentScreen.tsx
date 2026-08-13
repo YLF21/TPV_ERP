@@ -1452,7 +1452,7 @@ export function SalesDocumentScreen({
             </p>
           )}
           {pendingPrintRetry && (
-            <aside className="sales-document-print-retry" role="alert">
+            <aside className="receivables-error" role="alert">
               <div>
                 <strong>{t("payment.result.printFailed")}</strong>
                 {printFailureMessage && <small>{printFailureMessage}</small>}

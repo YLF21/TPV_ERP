@@ -21238,36 +21238,6 @@ textarea:focus,
   color: #20583d;
 }
 
-.sales-document-print-retry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px;
-  border-left: 4px solid #b42318;
-  background: #fff0ee;
-  color: #8f1d18;
-}
-
-.sales-document-print-retry div {
-  display: grid;
-  gap: 3px;
-}
-
-.sales-document-print-retry small {
-  overflow-wrap: anywhere;
-}
-
-.sales-document-print-retry button {
-  min-height: 36px;
-  flex: 0 0 auto;
-  border: 1px solid #173f6e;
-  border-radius: 0;
-  background: #173f6e;
-  color: #fff;
-  font-weight: 750;
-}
-
 .sale-customer-table-row .debt,
 .sale-customer-table-row .overdue-debt {
   justify-content: flex-end;
