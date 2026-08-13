@@ -21,6 +21,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       effective: {
         id: "system-template-id",
         type: path.includes("ALBARAN_VENTA") ? "ALBARAN_VENTA" : "FACTURA_VENTA",
+        format: path.includes("TICKET_80") ? "TICKET_80" : "A4",
         scope: "SYSTEM",
         code: path.includes("ALBARAN_VENTA") ? "ALBARAN_A4" : "FACTURA_A4",
         version: 1,
@@ -46,7 +47,7 @@ describe("DocumentTemplateSettingsScreen", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
     await waitFor(() => expect(request).toHaveBeenLastCalledWith(
-      "/document-templates?type=ALBARAN_VENTA",
+      "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
     ));
     expect(await screen.findByText("ALBARAN_A4")).toBeInTheDocument();

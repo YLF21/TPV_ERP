@@ -7,6 +7,7 @@ import {
   loadDocumentTemplateCatalog,
   uploadDocumentTemplateArtifact,
   type DocumentTemplateCatalog,
+  type DocumentTemplateFormat,
   type DocumentTemplateType,
   type DocumentTemplateView,
 } from "./documentTemplatesApi";
@@ -40,6 +41,7 @@ function originLabel(scope: DocumentTemplateView["scope"] | undefined, t: Transl
 
 export function DocumentTemplateSettingsScreen({ session, t, request = apiRequest }: Props) {
   const [selectedType, setSelectedType] = useState<DocumentTemplateType>("FACTURA_VENTA");
+  const [selectedFormat, setSelectedFormat] = useState<DocumentTemplateFormat>("A4");
   const [catalog, setCatalog] = useState<DocumentTemplateCatalog | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -48,17 +50,21 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
+  const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET"
+    ? "TICKET_80"
+    : selectedType === "ALBARAN_VENTA" ? "A4" : selectedFormat;
 
-  function suggestedCode(type: DocumentTemplateType) {
+  function suggestedCode(type: DocumentTemplateType, format: DocumentTemplateFormat) {
+    if (type === "FACTURA_VENTA" && format === "TICKET_80") return "FACTURA_TICKET_80";
     if (type === "ALBARAN_VENTA") return "ALBARAN_A4";
     if (type === "TICKET") return "TICKET_80";
     return "FACTURA_A4";
   }
 
-  async function refresh(type = selectedType) {
+  async function refresh(type = selectedType, format = effectiveFormat) {
     setLoading(true);
     try {
-      setCatalog(await loadDocumentTemplateCatalog(type, session.accessToken, request));
+      setCatalog(await loadDocumentTemplateCatalog(type, format, session.accessToken, request));
     } catch (error) {
       setCatalog(null);
       setMessage({ kind: "error", text: failureMessage(error, t("gestion.documentTemplates.loadError")) });
@@ -68,13 +74,13 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   }
 
   useEffect(() => {
-    setCode(suggestedCode(selectedType));
+    setCode(suggestedCode(selectedType, effectiveFormat));
     setName("");
     setMessage(null);
-    void refresh(selectedType);
+    void refresh(selectedType, effectiveFormat);
     // refresh is intentionally tied to the selected catalog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedType, request, session.accessToken]);
+  }, [selectedType, selectedFormat, request, session.accessToken]);
 
   async function createDraft(event: FormEvent) {
     event.preventDefault();
@@ -83,7 +89,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     setMessage(null);
     try {
       await createDocumentTemplateDraft(
-        { type: selectedType, code: code.trim(), name: name.trim() },
+        { type: selectedType, format: effectiveFormat, code: code.trim(), name: name.trim() },
         session.accessToken,
         request,
       );
@@ -164,6 +170,23 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
           </button>
         ))}
       </div>
+
+      {selectedType === "FACTURA_VENTA" && (
+        <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.format")}>
+          {(["A4", "TICKET_80"] as DocumentTemplateFormat[]).map((format) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedFormat === format}
+              className={selectedFormat === format ? "selected" : undefined}
+              key={format}
+              onClick={() => setSelectedFormat(format)}
+            >
+              {t(`gestion.documentTemplates.format.${format}`)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {message && (
         <p className={`gestion-document-template-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>

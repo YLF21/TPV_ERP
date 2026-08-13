@@ -59,7 +59,7 @@ public class SafeJrxmlCompiler {
     private static final Set<String> ALLOWED_METHODS = Set.of(
             "ByteArrayInputStream", "DecimalFormat",
             "equals", "equalsIgnoreCase", "trim", "isEmpty",
-            "substring", "indexOf", "getDecoder", "decode", "format",
+            "length", "substring", "indexOf", "getDecoder", "decode", "format",
             "stream", "spliterator", "map", "asText", "collect", "joining");
     private static final Pattern QUALIFIED_CLASS = Pattern.compile(
             "(?<![A-Za-z0-9_$])(?:[a-z_][A-Za-z0-9_$]*\\.){2,}[A-Z][A-Za-z0-9_$]*");

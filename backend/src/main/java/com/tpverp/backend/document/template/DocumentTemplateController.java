@@ -39,15 +39,16 @@ public class DocumentTemplateController {
 
     @GetMapping
     public DocumentTemplateCatalogService.CatalogView catalog(
-            @RequestParam(defaultValue = "FACTURA_VENTA") DocumentTemplateType type) {
-        return service.currentStoreCatalog(type);
+            @RequestParam(defaultValue = "FACTURA_VENTA") DocumentTemplateType type,
+            @RequestParam(defaultValue = "A4") DocumentTemplateFormat format) {
+        return service.currentStoreCatalog(type, format);
     }
 
     @PostMapping("/store-drafts")
     public DocumentTemplateCatalogService.TemplateView registerStoreDraft(
             @Valid @RequestBody StoreDraftRequest request) {
         return service.registerCurrentStoreDraft(
-                request.type(), request.code(), request.name());
+                request.type(), request.format(), request.code(), request.name());
     }
 
     @PostMapping(path = "/{templateId}/artifact",
@@ -78,6 +79,7 @@ public class DocumentTemplateController {
 
     public record StoreDraftRequest(
             @NotNull DocumentTemplateType type,
+            @NotNull DocumentTemplateFormat format,
             @NotBlank
             @Size(min = 3, max = 80)
             @Pattern(regexp = "[A-Za-z0-9][A-Za-z0-9_]{2,79}") String code,

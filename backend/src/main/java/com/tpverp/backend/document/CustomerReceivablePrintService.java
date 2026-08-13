@@ -4,6 +4,7 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CompanyPrintIdentityView;
 import com.tpverp.backend.document.template.InvoiceJasperRenderer;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRepository;
@@ -110,6 +111,24 @@ public class CustomerReceivablePrintService {
                         "application/pdf",
                         Base64.getEncoder().encodeToString(bytes)))
                 .orElse(null);
+        var ticketRendered = jasperRenderer == null
+                || document.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                ? java.util.Optional.<InvoiceJasperRenderer.RenderedDocument>empty()
+                : jasperRenderer.renderDocument(document, organization.currentStore(), company,
+                        customer, presentation, qrUrl, logoDataUri,
+                        DocumentTemplateFormat.TICKET_80);
+        var ticketRenderedPdf = ticketRendered
+                .map(renderedDocument -> new RenderedPdf(
+                        "application/pdf",
+                        Base64.getEncoder().encodeToString(renderedDocument.pdf())))
+                .orElse(null);
+        var ticketRenderedImage = ticketRendered
+                .map(InvoiceJasperRenderer.RenderedDocument::ticketRasterPng)
+                .filter(Objects::nonNull)
+                .map(bytes -> new RenderedImage(
+                        "image/png",
+                        Base64.getEncoder().encodeToString(bytes)))
+                .orElse(null);
         return new CommercialDocumentPrint(document.getId(), document.getTipo(),
                 document.getNumero(), document.getFecha(), document.getConfirmadoEn(),
                 document.getClienteId(), FiscalParty.from(company, logoDataUri),
@@ -120,7 +139,8 @@ public class CustomerReceivablePrintService {
                         .map(Payment::from).toList(),
                 document.getBaseTotal(), document.getImpuestoTotal(), document.getTotal(),
                 presentation.fiscalProfile(), presentation.observations(),
-                presentation.bankAccounts(), qrUrl, qrImage(qrUrl), renderedPdf);
+                presentation.bankAccounts(), qrUrl, qrImage(qrUrl), renderedPdf,
+                ticketRenderedPdf, ticketRenderedImage);
     }
 
     @Transactional(readOnly = true)
@@ -227,7 +247,8 @@ public class CustomerReceivablePrintService {
             BigDecimal baseTotal, BigDecimal taxTotal, BigDecimal total,
             InvoiceFiscalProfile fiscalProfile, String observations,
             List<InvoicePresentationSnapshot.BankAccount> bankAccounts,
-            String qrUrl, String qrImage, RenderedPdf renderedPdf) {
+            String qrUrl, String qrImage, RenderedPdf renderedPdf,
+            RenderedPdf ticketRenderedPdf, RenderedImage ticketRenderedImage) {
         public CommercialDocumentPrint(
                 UUID documentId,
                 CommercialDocumentType documentType,
@@ -250,7 +271,7 @@ public class CustomerReceivablePrintService {
             this(documentId, documentType, documentNumber, issueDate, issuedAt,
                     customerId, issuer, customer, lines, payments, baseTotal,
                     taxTotal, total, fiscalProfile, observations, bankAccounts,
-                    qrUrl, qrImage, null);
+                    qrUrl, qrImage, null, null, null);
         }
     }
     public record RenderedPdf(String contentType, String base64) {
@@ -258,6 +279,14 @@ public class CustomerReceivablePrintService {
             if (!"application/pdf".equals(contentType)
                     || base64 == null || base64.isBlank()) {
                 throw new IllegalArgumentException("invoice_rendered_pdf_invalid");
+            }
+        }
+    }
+    public record RenderedImage(String contentType, String base64) {
+        public RenderedImage {
+            if (!"image/png".equals(contentType)
+                    || base64 == null || base64.isBlank()) {
+                throw new IllegalArgumentException("invoice_rendered_image_invalid");
             }
         }
     }

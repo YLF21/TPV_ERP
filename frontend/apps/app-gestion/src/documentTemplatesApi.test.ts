@@ -10,17 +10,22 @@ describe("document templates API", () => {
   it("loads the selected document catalog", async () => {
     const request = vi.fn().mockResolvedValue({ effective: {}, storeTemplates: [] });
 
-    await loadDocumentTemplateCatalog("ALBARAN_VENTA", "token", request);
+    await loadDocumentTemplateCatalog("ALBARAN_VENTA", "A4", "token", request);
 
     expect(request).toHaveBeenCalledWith(
-      "/document-templates?type=ALBARAN_VENTA",
+      "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
     );
   });
 
   it("creates a store draft with its document type", async () => {
     const request = vi.fn().mockResolvedValue({ id: "template-1" });
-    const value = { type: "TICKET" as const, code: "TICKET_80", name: "Ticket tienda" };
+    const value = {
+      type: "TICKET" as const,
+      format: "TICKET_80" as const,
+      code: "TICKET_80",
+      name: "Ticket tienda",
+    };
 
     await createDocumentTemplateDraft(value, "token", request);
 

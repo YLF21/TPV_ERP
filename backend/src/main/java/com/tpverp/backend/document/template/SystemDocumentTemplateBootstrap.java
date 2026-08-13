@@ -24,16 +24,25 @@ class SystemDocumentTemplateBootstrap {
     private static final List<Definition> BUNDLED_TEMPLATES = List.of(
             new Definition(
                     DocumentTemplateType.FACTURA_VENTA,
+                    DocumentTemplateFormat.A4,
                     "FACTURA_A4",
                     1,
                     "Factura de venta A4",
-                    "document-templates/factura_venta_a4.jrxml"),
+                    "document-templates/FACTURA_VENTA_A4.jrxml"),
             new Definition(
                     DocumentTemplateType.ALBARAN_VENTA,
+                    DocumentTemplateFormat.A4,
                     "ALBARAN_A4",
                     1,
                     "Albaran de venta A4",
-                    "document-templates/albaran_venta_a4.jrxml"));
+                    "document-templates/ALBARAN_VENTA_A4.jrxml"),
+            new Definition(
+                    DocumentTemplateType.FACTURA_VENTA,
+                    DocumentTemplateFormat.TICKET_80,
+                    "FACTURA_TICKET_80",
+                    2,
+                    "Factura de venta ticket 80 mm",
+                    "document-templates/FACTURA_VENTA_TICKET_80.jrxml"));
 
     private final DocumentTemplateRepository templates;
     private final DocumentTemplateArtifactStorage storage;
@@ -89,6 +98,7 @@ class SystemDocumentTemplateBootstrap {
         var compiled = compiler.compile(source);
         var template = DocumentTemplate.systemDraft(
                 definition.type(),
+                definition.format(),
                 definition.code(),
                 definition.version(),
                 definition.name(),
@@ -115,6 +125,7 @@ class SystemDocumentTemplateBootstrap {
             byte[] source,
             String sourceHash) {
         if (template.getType() != definition.type()
+                || template.getFormat() != definition.format()
                 || template.getScope() != DocumentTemplateScope.SYSTEM) {
             throw new IllegalStateException(
                     "system_document_template_definition_conflict");
@@ -176,7 +187,8 @@ class SystemDocumentTemplateBootstrap {
                 || template.getStatus() == DocumentTemplateStatus.RETIRED) {
             return;
         }
-        var active = templates.findActiveSystemTemplateForUpdate(definition.type());
+        var active = templates.findActiveSystemTemplateForUpdate(
+                definition.type(), definition.format());
         if (active.isPresent()) {
             var current = active.get();
             if (current.getTemplateVersion() >= definition.version()) {
@@ -220,6 +232,7 @@ class SystemDocumentTemplateBootstrap {
 
     record Definition(
             DocumentTemplateType type,
+            DocumentTemplateFormat format,
             String code,
             int version,
             String name,
@@ -227,6 +240,7 @@ class SystemDocumentTemplateBootstrap {
 
         Definition {
             Objects.requireNonNull(type, "type");
+            Objects.requireNonNull(format, "format");
             DocumentTemplate.normalizeCode(code);
             if (version <= 0) {
                 throw new IllegalArgumentException(

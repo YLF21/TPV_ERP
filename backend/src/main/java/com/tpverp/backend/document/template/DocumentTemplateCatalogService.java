@@ -40,11 +40,18 @@ public class DocumentTemplateCatalogService {
 
     @Transactional(readOnly = true)
     public CatalogView currentStoreCatalog(DocumentTemplateType type) {
+        return currentStoreCatalog(type, DocumentTemplateFormat.defaultFor(type));
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogView currentStoreCatalog(
+            DocumentTemplateType type, DocumentTemplateFormat format) {
         var store = organization.currentStore();
         return new CatalogView(
-                resolver.resolve(store, type),
+                resolver.resolve(store, type, format),
                 templates.findAllForStore(store.getId()).stream()
-                        .filter(template -> template.getType() == type)
+                        .filter(template -> template.getType() == type
+                                && template.getFormat() == format)
                         .map(TemplateView::from)
                         .toList());
     }
@@ -52,6 +59,7 @@ public class DocumentTemplateCatalogService {
     @Transactional
     public TemplateView registerCurrentStoreDraft(
             DocumentTemplateType type,
+            DocumentTemplateFormat format,
             String code,
             String name) {
         var currentStore = organization.currentStore();
@@ -65,6 +73,7 @@ public class DocumentTemplateCatalogService {
         var template = DocumentTemplate.storeDraft(
                 store,
                 type,
+                format,
                 normalizedCode,
                 nextVersion,
                 name,
@@ -74,6 +83,15 @@ public class DocumentTemplateCatalogService {
         audit.record("DOCUMENT_TEMPLATE_DRAFT_REGISTERED", AuditResult.EXITO,
                 auditDetails(saved));
         return TemplateView.from(saved);
+    }
+
+    @Transactional
+    public TemplateView registerCurrentStoreDraft(
+            DocumentTemplateType type,
+            String code,
+            String name) {
+        return registerCurrentStoreDraft(
+                type, DocumentTemplateFormat.defaultFor(type), code, name);
     }
 
     /**
@@ -88,7 +106,7 @@ public class DocumentTemplateCatalogService {
         }
         var now = clock.instant();
         templates.findActiveStoreTemplateForUpdate(
-                        template.getStore().getId(), template.getType())
+                        template.getStore().getId(), template.getType(), template.getFormat())
                 .filter(active -> !active.getId().equals(template.getId()))
                 .ifPresent(active -> {
                     active.retire(now);
@@ -128,6 +146,7 @@ public class DocumentTemplateCatalogService {
         details.put("templateId", template.getId().toString());
         details.put("scope", template.getScope().name());
         details.put("type", template.getType().name());
+        details.put("format", template.getFormat().name());
         details.put("code", template.getCode());
         details.put("templateVersion", template.getTemplateVersion());
         details.put("status", template.getStatus().name());
@@ -142,6 +161,7 @@ public class DocumentTemplateCatalogService {
     public record TemplateView(
             UUID id,
             DocumentTemplateType type,
+            DocumentTemplateFormat format,
             DocumentTemplateScope scope,
             String code,
             int version,
@@ -157,7 +177,7 @@ public class DocumentTemplateCatalogService {
 
         static TemplateView from(DocumentTemplate template) {
             return new TemplateView(
-                    template.getId(), template.getType(), template.getScope(),
+                    template.getId(), template.getType(), template.getFormat(), template.getScope(),
                     template.getCode(), template.getTemplateVersion(), template.getName(),
                     template.getStatus(), template.getSchemaVersion(), template.getSha256(),
                     template.getCreatedByUserId(), template.getCreatedAt(),

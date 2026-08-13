@@ -1,0 +1,416 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="factura_venta_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" uuid="846be4e4-a87b-4b07-98e4-34bdffb19501" ignorePagination="true">
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="mm"/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Factura F1 - multipágina"/>
+	<dataset name="TaxBreakdownDataset" uuid="ad18a344-7a66-43fc-b600-62536aa93722">
+		<field name="taxRegime" class="java.lang.String">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="taxRegime"/>
+		</field>
+		<field name="taxRate" class="java.math.BigDecimal">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="taxRate"/>
+		</field>
+		<field name="taxableBase" class="java.math.BigDecimal">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="taxableBase"/>
+		</field>
+		<field name="taxAmount" class="java.math.BigDecimal">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="taxAmount"/>
+		</field>
+	</dataset>
+	<dataset name="InvoiceBankAccountsDataset" uuid="d3826349-94da-4679-ab23-68e61cd63503">
+		<field name="bankName" class="java.lang.String">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="bankName"/>
+		</field>
+		<field name="iban" class="java.lang.String">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="iban"/>
+		</field>
+	</dataset>
+	<parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream"/>
+	<parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean"/>
+	<query language="jsonql"><![CDATA[lines]]></query>
+	<field name="code" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="code"/>
+	</field>
+	<field name="barcode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="barcode"/>
+	</field>
+	<field name="articleName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="articleName"/>
+	</field>
+	<field name="quantity" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="quantity"/>
+	</field>
+	<field name="unitPriceNet" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="unitPriceNet"/>
+	</field>
+	<field name="discountPercent" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="discountPercent"/>
+	</field>
+	<field name="taxRate" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="taxRate"/>
+	</field>
+	<field name="lineTotal" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="lineTotal"/>
+	</field>
+	<field name="documentDisplayNumber" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.document.displayNumber"/>
+	</field>
+	<field name="issueDate" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.document.issueDate"/>
+	</field>
+	<field name="issuerLegalName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.legalName"/>
+	</field>
+	<field name="issuerTaxId" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.taxId"/>
+	</field>
+	<field name="issuerAddressLine1" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.line1"/>
+	</field>
+	<field name="issuerPostalCode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.postalCode"/>
+	</field>
+	<field name="issuerCity" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.city"/>
+	</field>
+	<field name="issuerProvince" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.province"/>
+	</field>
+	<field name="issuerCountryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.countryName"/>
+	</field>
+	<field name="issuerPhone" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.phone"/>
+	</field>
+	<field name="customerLegalName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.legalName"/>
+	</field>
+	<field name="customerCode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.customerCode"/>
+	</field>
+	<field name="customerTaxId" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.taxId"/>
+	</field>
+	<field name="customerAddressLine1" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.address.line1"/>
+	</field>
+	<field name="customerPostalCode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.address.postalCode"/>
+	</field>
+	<field name="customerCity" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.address.city"/>
+	</field>
+	<field name="customerProvince" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.address.province"/>
+	</field>
+	<field name="customerCountryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.address.countryName"/>
+	</field>
+	<field name="customerPhone" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.customer.phone"/>
+	</field>
+	<field name="fiscalQrRequired" class="java.lang.Boolean">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.qrRequired"/>
+	</field>
+	<field name="fiscalVerificationUrl" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.verificationUrl"/>
+	</field>
+	<field name="fiscalLegend" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.legend"/>
+	</field>
+	<field name="grossAmount" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.grossAmount"/>
+	</field>
+	<field name="discountTotal" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.discountTotal"/>
+	</field>
+	<field name="taxableBaseTotal" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.taxableBase"/>
+	</field>
+	<field name="taxTotal" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.taxTotal"/>
+	</field>
+	<field name="grandTotal" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.grandTotal"/>
+	</field>
+	<field name="amountPaid" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.amountPaid"/>
+	</field>
+	<field name="amountDue" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.amountDue"/>
+	</field>
+	<field name="paymentMethod" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.payment.method"/>
+	</field>
+	<field name="bankAccounts" class="java.lang.Object">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.payment.bankAccounts"/>
+	</field>
+	<field name="observations" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.observations"/>
+	</field>
+	<field name="fiscalProfile" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscalProfile"/>
+	</field>
+	<field name="currency" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.currency"/>
+	</field>
+	<title height="50" splitType="Stretch">
+		<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+		<element kind="image" uuid="54e85a42-541d-461c-b278-26f6511b2b41" x="50" y="0" width="100" height="50" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+		</element>
+	</title>
+	<pageHeader height="195" splitType="Stretch">
+		<element kind="textField" uuid="b65d6d72-5521-4634-bf65-100912f43009" x="0" y="0" width="211" height="14" fontName="SansSerif" fontSize="10.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+		</element>
+		<element kind="textField" uuid="4c0e0458-8342-4245-9eff-8b2df4f0ef82" x="0" y="14" width="211" height="15" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+			<expression><![CDATA["NIF: " + ($F{issuerTaxId} == null ? "" : $F{issuerTaxId})]]></expression>
+		</element>
+		<element kind="textField" uuid="398f5b65-fbad-4f20-ae9e-83d990e4eb1d" x="0" y="29" width="211" height="40" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" hTextAlign="Center">
+			<expression><![CDATA[
+			($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty() ? "" : $F{issuerAddressLine1}.trim())
+			+ (($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty()) && ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty()) ? "" : ($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty() ? "" : "\n") + ($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty() ? "" : $F{issuerPostalCode}.trim() + ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty() ? "" : " ")) + ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty() ? "" : $F{issuerCity}.trim()))
+			+ (((($F{issuerProvince} != null && !$F{issuerProvince}.trim().isEmpty()) && ($F{issuerCity} == null || !$F{issuerProvince}.trim().equalsIgnoreCase($F{issuerCity}.trim()))) || ($F{issuerCountryName} != null && !$F{issuerCountryName}.trim().isEmpty())) ? (($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty()) && ($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty()) && ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty()) ? "" : "\n") + (($F{issuerProvince} != null && !$F{issuerProvince}.trim().isEmpty()) && ($F{issuerCity} == null || !$F{issuerProvince}.trim().equalsIgnoreCase($F{issuerCity}.trim())) ? $F{issuerProvince}.trim() : "") + ((($F{issuerProvince} != null && !$F{issuerProvince}.trim().isEmpty()) && ($F{issuerCity} == null || !$F{issuerProvince}.trim().equalsIgnoreCase($F{issuerCity}.trim()))) && ($F{issuerCountryName} != null && !$F{issuerCountryName}.trim().isEmpty()) ? " · " : "") + ($F{issuerCountryName} == null || $F{issuerCountryName}.trim().isEmpty() ? "" : $F{issuerCountryName}.trim()) : "")
+			+ ($F{issuerPhone} == null || $F{issuerPhone}.trim().isEmpty() ? "" : (($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty()) && ($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty()) && ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty()) && (($F{issuerProvince} == null || $F{issuerProvince}.trim().isEmpty()) || ($F{issuerCity} != null && $F{issuerProvince}.trim().equalsIgnoreCase($F{issuerCity}.trim()))) && ($F{issuerCountryName} == null || $F{issuerCountryName}.trim().isEmpty()) ? "" : "\n") + "Tel.: " + $F{issuerPhone}.trim())
+		]]></expression>
+		</element>
+		<element kind="staticText" uuid="219c5aa8-75d6-4214-a11e-86138b0aed25" x="0" y="71" width="211" height="12" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Left">
+			<text><![CDATA[CLIENTE]]></text>
+		</element>
+		<element kind="textField" uuid="6ee9aed0-11e3-4b00-b270-a65946591daf" x="0" y="83" width="211" height="14" fontName="SansSerif" fontSize="8.5" bold="true" hTextAlign="Left">
+			<expression><![CDATA[$F{customerLegalName}]]></expression>
+		</element>
+		<element kind="textField" uuid="0391ef0b-e07b-4b73-b5d8-4919f41997e9" x="0" y="97" width="211" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Left">
+			<expression><![CDATA[
+			($F{customerCode} == null || $F{customerCode}.trim().isEmpty() ? "" : "Cód. cliente: " + $F{customerCode}.trim())
+			+ ($F{customerTaxId} == null || $F{customerTaxId}.trim().isEmpty() ? "" : ($F{customerCode} == null || $F{customerCode}.trim().isEmpty() ? "" : " · ") + "NIF: " + $F{customerTaxId}.trim())
+		]]></expression>
+		</element>
+		<element kind="textField" uuid="e7d4fdbf-77cb-43e8-a137-42d8d4c505b5" x="0" y="111" width="211" height="40" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" hTextAlign="Left">
+			<expression><![CDATA[
+			($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty() ? "" : $F{customerAddressLine1}.trim())
+			+ (($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty()) && ($F{customerCity} == null || $F{customerCity}.trim().isEmpty()) ? "" : ($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty() ? "" : "\n") + ($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty() ? "" : $F{customerPostalCode}.trim() + ($F{customerCity} == null || $F{customerCity}.trim().isEmpty() ? "" : " ")) + ($F{customerCity} == null || $F{customerCity}.trim().isEmpty() ? "" : $F{customerCity}.trim()))
+			+ (((($F{customerProvince} != null && !$F{customerProvince}.trim().isEmpty()) && ($F{customerCity} == null || !$F{customerProvince}.trim().equalsIgnoreCase($F{customerCity}.trim()))) || ($F{customerCountryName} != null && !$F{customerCountryName}.trim().isEmpty())) ? (($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty()) && ($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty()) && ($F{customerCity} == null || $F{customerCity}.trim().isEmpty()) ? "" : "\n") + (($F{customerProvince} != null && !$F{customerProvince}.trim().isEmpty()) && ($F{customerCity} == null || !$F{customerProvince}.trim().equalsIgnoreCase($F{customerCity}.trim())) ? $F{customerProvince}.trim() : "") + ((($F{customerProvince} != null && !$F{customerProvince}.trim().isEmpty()) && ($F{customerCity} == null || !$F{customerProvince}.trim().equalsIgnoreCase($F{customerCity}.trim()))) && ($F{customerCountryName} != null && !$F{customerCountryName}.trim().isEmpty()) ? " · " : "") + ($F{customerCountryName} == null || $F{customerCountryName}.trim().isEmpty() ? "" : $F{customerCountryName}.trim()) : "")
+			+ ($F{customerPhone} == null || $F{customerPhone}.trim().isEmpty() ? "" : (($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty()) && ($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty()) && ($F{customerCity} == null || $F{customerCity}.trim().isEmpty()) && (($F{customerProvince} == null || $F{customerProvince}.trim().isEmpty()) || ($F{customerCity} != null && $F{customerProvince}.trim().equalsIgnoreCase($F{customerCity}.trim()))) && ($F{customerCountryName} == null || $F{customerCountryName}.trim().isEmpty()) ? "" : "\n") + "Tel.: " + $F{customerPhone}.trim())
+		]]></expression>
+		</element>
+		<element kind="line" uuid="95f50d26-eae2-4d29-aad2-034a57151c5d" x="0" y="155" width="211" height="1">
+			<pen lineWidth="0.8"/>
+		</element>
+		<element kind="staticText" uuid="bb4859e3-65dd-451c-9233-415048425a90" x="0" y="158" width="78" height="20" fontName="SansSerif" fontSize="14.0" bold="true">
+			<text><![CDATA[FACTURA]]></text>
+		</element>
+		<element kind="textField" uuid="b1992a76-b983-4a0c-a3ce-a288dcc84f79" x="0" y="178" width="131" height="13" fontName="Monospaced" fontSize="8.5" bold="true" hTextAlign="Left">
+			<expression><![CDATA[$F{documentDisplayNumber}]]></expression>
+		</element>
+		<element kind="textField" uuid="e0209109-dfe5-4115-a429-44f3991f1d1d" x="80" y="178" width="131" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right">
+			<expression><![CDATA["Fecha: " + $F{issueDate}]]></expression>
+		</element>
+	</pageHeader>
+	<columnHeader height="24" splitType="Stretch">
+		<element kind="line" uuid="b1cd75aa-8b66-482f-9696-959fb03fb6ee" x="0" y="0" width="211" height="1">
+			<pen lineWidth="0.6"/>
+		</element>
+		<element kind="staticText" uuid="a2e8bb8a-eb2a-4d0a-a6af-76d72e68608b" x="0" y="5" width="132" height="14" fontName="SansSerif" fontSize="8.0" bold="true">
+			<text><![CDATA[Artículo]]></text>
+		</element>
+		<element kind="staticText" uuid="b20533a0-c927-4bdc-8110-8e05f4c1b82f" x="134" y="5" width="28" height="14" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Cant.]]></text>
+		</element>
+		<element kind="staticText" uuid="ea8ebc46-e373-4d69-9982-6047563dfdb1" x="164" y="5" width="47" height="14" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Total]]></text>
+		</element>
+		<element kind="line" uuid="2f3df33c-d920-48be-89f9-8ebf2b67a2ff" x="0" y="23" width="211" height="1">
+			<pen lineWidth="0.6"/>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="47" splitType="Prevent">
+			<element kind="textField" uuid="355ce25b-ed93-4ef1-81cb-42c7e3ff06ca" x="0" y="3" width="63" height="13" fontName="Monospaced" fontSize="8.0" blankWhenNull="true" bold="true">
+				<expression><![CDATA[$F{code}]]></expression>
+			</element>
+			<element kind="textField" uuid="e58b901d-b36a-4c6d-90bc-4510a4229a07" x="63" y="3" width="69" height="13" fontName="Monospaced" fontSize="8.5" blankWhenNull="true" bold="true">
+				<expression><![CDATA[$F{barcode}]]></expression>
+			</element>
+			<element kind="textField" uuid="f528ca34-41d1-4402-ab76-3297291db928" x="0" y="18" width="211" height="13" fontName="SansSerif" fontSize="9.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{articleName} == null ? "" : ($F{articleName}.length() <= 64 ? $F{articleName} : $F{articleName}.substring(0, 64))]]></expression>
+			</element>
+			<element kind="textField" uuid="71ed9cdb-f6ac-447f-8ad9-ae2dc8a3e9ef" x="134" y="3" width="28" height="13" fontName="SansSerif" fontSize="8.5" pattern="#0.###" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$F{quantity}]]></expression>
+			</element>
+			<element kind="textField" uuid="8c013c70-5680-4794-9a8f-ed845aec3261" x="164" y="3" width="47" height="13" fontName="SansSerif" fontSize="9.0" pattern="#0.00" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$F{lineTotal}]]></expression>
+			</element>
+			<element kind="textField" uuid="e8c8ce0f-75cc-47fc-b167-dd3a8d45c257" positionType="Float" x="0" y="33" width="211" height="12" fontName="SansSerif" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA[ new java.text.DecimalFormat("#0.00").format($F{unitPriceNet}) + " · Dto. " + new java.text.DecimalFormat("#0.##").format($F{discountPercent}) + "% · Imp. " + new java.text.DecimalFormat("#0.##").format($F{taxRate}) + "%"]]></expression>
+			</element>
+			<element kind="line" uuid="1af6f012-61db-423c-88ff-fc46512a0859" positionType="Float" x="0" y="46" width="211" height="1">
+				<pen lineWidth="0.5" lineStyle="Dotted"/>
+			</element>
+		</band>
+	</detail>
+	<summary height="444" splitType="Stretch">
+		<element kind="staticText" uuid="edc48977-d611-4285-bd1f-761ef76da81b" x="0" y="5" width="211" height="13" fontName="SansSerif" fontSize="8.0" bold="true">
+			<text><![CDATA[DESGLOSE DE IMPUESTOS]]></text>
+		</element>
+		<element kind="staticText" uuid="0da43520-0e61-4c8e-8567-39c99fdf416c" x="0" y="20" width="55" height="11" fontName="SansSerif" fontSize="8.0" bold="true">
+			<text><![CDATA[Impuesto]]></text>
+		</element>
+		<element kind="staticText" uuid="24ab0fba-a115-416b-b102-31c29c4af604" x="56" y="20" width="35" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Tipo %]]></text>
+		</element>
+		<element kind="staticText" uuid="0308957e-d7ed-4cc5-a33d-e341180714f1" x="95" y="20" width="55" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Base]]></text>
+		</element>
+		<element kind="staticText" uuid="ba13ae88-765c-464a-a590-c6a0ffc3cdb0" x="155" y="20" width="56" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Cuota]]></text>
+		</element>
+		<element kind="component" uuid="e6470c34-0ef1-4294-a83f-140ce3593dba" x="0" y="32" width="211" height="16">
+			<component kind="list" printOrder="Vertical">
+				<datasetRun uuid="70defe13-53db-4dc1-a567-f33108b27a73" subDataset="TaxBreakdownDataset">
+					<dataSourceExpression><![CDATA[SUB_DATA_SOURCE("^^.taxBreakdown.*")]]></dataSourceExpression>
+				</datasetRun>
+				<contents height="16" width="211">
+					<element kind="textField" uuid="376e3766-63a0-4869-83be-f6ef6334cad7" x="0" y="0" width="55" height="14" fontName="SansSerif" fontSize="8.0">
+						<expression><![CDATA[$F{taxRegime}]]></expression>
+					</element>
+					<element kind="textField" uuid="b35645e6-600b-44be-8073-eec7f727a171" x="55" y="0" width="35" height="14" fontName="SansSerif" fontSize="8.0" pattern="#0.##" hTextAlign="Right">
+						<expression><![CDATA[$F{taxRate}]]></expression>
+					</element>
+					<element kind="textField" uuid="604141ed-b459-4d0c-8c1e-f61af1c57fe0" x="95" y="0" width="55" height="14" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+						<expression><![CDATA[$F{taxableBase}]]></expression>
+					</element>
+					<element kind="textField" uuid="13c40148-ee26-4e1e-af1e-8a3385389516" x="155" y="0" width="56" height="14" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+						<expression><![CDATA[$F{taxAmount}]]></expression>
+					</element>
+					<element kind="line" uuid="74281e59-e04b-4e10-8985-51035c688529" x="0" y="15" width="211" height="1">
+						<pen lineWidth="0.25"/>
+					</element>
+				</contents>
+			</component>
+		</element>
+		<element kind="staticText" uuid="cfab1e5b-82d4-4712-a907-ce7214580f2c" positionType="Float" x="0" y="54" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+			<text><![CDATA[Importe bruto]]></text>
+		</element>
+		<element kind="textField" uuid="18b71c68-cd3f-43ff-a46c-3490dc38048a" positionType="Float" x="130" y="54" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{grossAmount}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b2009ef1-05ef-4c2c-be6e-684fe5636ee1" positionType="Float" x="0" y="66" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+			<text><![CDATA[Descuentos]]></text>
+		</element>
+		<element kind="textField" uuid="259647fe-83bf-4c13-a9a1-daeea0e4e70d" positionType="Float" x="130" y="66" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{discountTotal}]]></expression>
+		</element>
+		<element kind="staticText" uuid="224492de-6b64-4534-b791-9fbc66319641" positionType="Float" x="0" y="78" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+			<text><![CDATA[Base imponible]]></text>
+		</element>
+		<element kind="textField" uuid="5ecfc3d7-eb27-4820-a9c7-621df0d824fa" positionType="Float" x="130" y="78" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{taxableBaseTotal}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b945ad3f-3354-4a38-be1c-f0e45a3925a5" positionType="Float" x="0" y="90" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+			<text><![CDATA[Impuestos]]></text>
+		</element>
+		<element kind="textField" uuid="95e60668-09d3-4d77-ae6a-43675f5c3c34" positionType="Float" x="130" y="90" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{taxTotal}]]></expression>
+		</element>
+		<element kind="line" uuid="2981af7f-dd2a-474a-b843-884ee74ea35c" positionType="Float" x="0" y="105" width="211" height="1">
+			<pen lineWidth="0.8"/>
+		</element>
+		<element kind="staticText" uuid="72039dbd-5cc8-4573-8083-4c81a4b5358d" positionType="Float" x="0" y="110" width="115" height="20" fontName="SansSerif" fontSize="11.0" bold="true">
+			<text><![CDATA[TOTAL FACTURA]]></text>
+		</element>
+		<element kind="textField" uuid="a8c09247-7975-4d47-8a4f-ef702cc3c6a1" positionType="Float" x="115" y="110" width="96" height="20" fontName="SansSerif" fontSize="11.0" pattern="#0.00" bold="true" hTextAlign="Right">
+			<expression><![CDATA[new java.text.DecimalFormat("#0.00").format($F{grandTotal}) + " " + $F{currency}]]></expression>
+		</element>
+		<element kind="staticText" uuid="6293ed15-7bf7-4a96-9f3d-e7720d5f9460" positionType="Float" x="0" y="134" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+			<text><![CDATA[Importe pagado]]></text>
+		</element>
+		<element kind="textField" uuid="2a3595d0-4545-4ddf-aa04-17189b278772" positionType="Float" x="130" y="134" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{amountPaid}]]></expression>
+		</element>
+		<element kind="staticText" uuid="2f1c96ec-50c8-4d28-80bd-47ca1b86ae4c" positionType="Float" x="0" y="147" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+			<text><![CDATA[Importe pendiente]]></text>
+		</element>
+		<element kind="textField" uuid="1f426e12-300b-43c2-984e-b8a69fc01629" positionType="Float" x="130" y="147" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{amountDue}]]></expression>
+		</element>
+		<element kind="textField" uuid="5cc52723-fb1b-4a00-9613-e61b4c4ee347" positionType="Float" x="0" y="162" width="211" height="13" fontName="SansSerif" fontSize="8.0">
+			<printWhenExpression><![CDATA[$F{paymentMethod} != null && !$F{paymentMethod}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["Forma de pago: " + $F{paymentMethod}]]></expression>
+		</element>
+		<element kind="staticText" uuid="f17e9916-4188-4917-a54f-aef3e78a5814" positionType="Float" x="0" y="178" width="211" height="13" fontName="SansSerif" fontSize="8.5" bold="true">
+			<text><![CDATA[OBSERVACIONES]]></text>
+		</element>
+		<element kind="textField" uuid="98dc404b-8bb6-48a3-b9ec-ec1fcf874d75" positionType="Float" x="0" y="193" width="211" height="50" fontName="SansSerif" fontSize="8.5" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA[$F{observations}]]></expression>
+			<box>
+				<pen lineWidth="0.5"/>
+				<topPen lineWidth="0.5"/>
+				<leftPen lineWidth="0.5"/>
+				<bottomPen lineWidth="0.5"/>
+				<rightPen lineWidth="0.5"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="438c8202-9301-4b6f-8505-474be19ae8bf" positionType="Float" x="0" y="246" width="211" height="12" fontName="SansSerif" fontSize="7.0" bold="true">
+			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<text><![CDATA[DATOS BANCARIOS]]></text>
+		</element>
+		<element kind="component" uuid="67ddb821-65c5-4b4c-bd60-d992268c2dba" positionType="Float" x="0" y="260" width="211" height="18">
+			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<component kind="list" printOrder="Vertical">
+				<datasetRun uuid="aef2a1e6-24f0-4d9d-9b10-b94a199fb196" subDataset="InvoiceBankAccountsDataset">
+					<dataSourceExpression><![CDATA[SUB_DATA_SOURCE("^^.payment.bankAccounts.*")]]></dataSourceExpression>
+				</datasetRun>
+				<contents height="18" width="211">
+					<element kind="textField" uuid="8ad3f4c3-4fcb-48f4-a33b-7dd4f488b7ba" x="0" y="0" width="65" height="16" fontName="SansSerif" fontSize="6.0">
+						<expression><![CDATA[$F{bankName}]]></expression>
+					</element>
+					<element kind="textField" uuid="89cb08e0-52f9-4bcb-b8be-b49347ceac33" x="67" y="0" width="144" height="16" fontName="Monospaced" fontSize="6.0">
+						<expression><![CDATA[$F{iban}]]></expression>
+					</element>
+				</contents>
+			</component>
+		</element>
+		<element kind="textField" uuid="79dc70ca-3c17-48d5-a723-f62a8a427b41" positionType="Float" x="20" y="284" width="171" height="24" fontName="SansSerif" fontSize="6.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{fiscalLegend}]]></expression>
+		</element>
+		<element kind="textField" uuid="218d7341-433c-4825-9313-30d302416eda" positionType="Float" x="20" y="246" width="171" height="24" fontName="SansSerif" fontSize="6.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
+			<expression><![CDATA[$F{fiscalLegend}]]></expression>
+		</element>
+		<element kind="component" uuid="e3152778-2ca9-45a8-a31b-f67440cbec99" positionType="Float" x="63" y="314" width="86" height="86">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
+				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
+			</component>
+		</element>
+		<element kind="component" uuid="6ce4efb4-a029-4231-b43a-8860bcc795f7" positionType="Float" x="63" y="276" width="86" height="86">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
+			<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
+				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
+			</component>
+		</element>
+		<element kind="line" uuid="ca40dff6-3af5-46d9-ad37-3b031ca0a835" positionType="Float" x="35" y="410" width="141" height="1">
+			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="a31ff610-8f0c-4232-a26b-e822f28732a2" positionType="Float" x="20" y="416" width="171" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<text><![CDATA[Gracias por su confianza]]></text>
+		</element>
+		<element kind="line" uuid="be288493-e55e-4254-8b2d-f28c755eea44" positionType="Float" x="35" y="372" width="141" height="1">
+			<printWhenExpression><![CDATA[!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="66ba0ee6-cbd3-412e-9981-0c412d4beb22" positionType="Float" x="20" y="378" width="171" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+			<printWhenExpression><![CDATA[!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<text><![CDATA[Gracias por su confianza]]></text>
+		</element>
+	</summary>
+</jasperReport>

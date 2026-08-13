@@ -37,6 +37,10 @@ public class DocumentTemplate {
     private DocumentTemplateType type;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "formato", nullable = false, length = 16)
+    private DocumentTemplateFormat format;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "ambito", nullable = false, length = 16)
     private DocumentTemplateScope scope;
 
@@ -87,6 +91,7 @@ public class DocumentTemplate {
             Company company,
             Store store,
             DocumentTemplateType type,
+            DocumentTemplateFormat format,
             DocumentTemplateScope scope,
             String code,
             int templateVersion,
@@ -97,6 +102,10 @@ public class DocumentTemplate {
         this.company = company;
         this.store = store;
         this.type = Objects.requireNonNull(type, "type");
+        this.format = Objects.requireNonNull(format, "format");
+        if (!format.supports(type)) {
+            throw new IllegalArgumentException("document_template_format_unsupported");
+        }
         this.scope = Objects.requireNonNull(scope, "scope");
         this.code = normalizeCode(code);
         if (templateVersion <= 0) {
@@ -113,13 +122,40 @@ public class DocumentTemplate {
     static DocumentTemplate storeDraft(
             Store store,
             DocumentTemplateType type,
+            DocumentTemplateFormat format,
             String code,
             int templateVersion,
             String name,
             UUID createdByUserId,
             Instant createdAt) {
         Objects.requireNonNull(store, "store");
-        return new DocumentTemplate(store.getEmpresa(), store, type, DocumentTemplateScope.STORE,
+        return new DocumentTemplate(store.getEmpresa(), store, type, format, DocumentTemplateScope.STORE,
+                code, templateVersion, name, createdByUserId, createdAt);
+    }
+
+    static DocumentTemplate storeDraft(
+            Store store,
+            DocumentTemplateType type,
+            String code,
+            int templateVersion,
+            String name,
+            UUID createdByUserId,
+            Instant createdAt) {
+        return storeDraft(store, type, DocumentTemplateFormat.defaultFor(type), code,
+                templateVersion, name, createdByUserId, createdAt);
+    }
+
+    static DocumentTemplate companyDraft(
+            Company company,
+            DocumentTemplateType type,
+            DocumentTemplateFormat format,
+            String code,
+            int templateVersion,
+            String name,
+            UUID createdByUserId,
+            Instant createdAt) {
+        Objects.requireNonNull(company, "company");
+        return new DocumentTemplate(company, null, type, format, DocumentTemplateScope.COMPANY,
                 code, templateVersion, name, createdByUserId, createdAt);
     }
 
@@ -131,8 +167,19 @@ public class DocumentTemplate {
             String name,
             UUID createdByUserId,
             Instant createdAt) {
-        Objects.requireNonNull(company, "company");
-        return new DocumentTemplate(company, null, type, DocumentTemplateScope.COMPANY,
+        return companyDraft(company, type, DocumentTemplateFormat.defaultFor(type), code,
+                templateVersion, name, createdByUserId, createdAt);
+    }
+
+    static DocumentTemplate systemDraft(
+            DocumentTemplateType type,
+            DocumentTemplateFormat format,
+            String code,
+            int templateVersion,
+            String name,
+            UUID createdByUserId,
+            Instant createdAt) {
+        return new DocumentTemplate(null, null, type, format, DocumentTemplateScope.SYSTEM,
                 code, templateVersion, name, createdByUserId, createdAt);
     }
 
@@ -143,8 +190,8 @@ public class DocumentTemplate {
             String name,
             UUID createdByUserId,
             Instant createdAt) {
-        return new DocumentTemplate(null, null, type, DocumentTemplateScope.SYSTEM,
-                code, templateVersion, name, createdByUserId, createdAt);
+        return systemDraft(type, DocumentTemplateFormat.defaultFor(type), code,
+                templateVersion, name, createdByUserId, createdAt);
     }
 
     void validateArtifact(
@@ -232,6 +279,7 @@ public class DocumentTemplate {
     public Company getCompany() { return company; }
     public Store getStore() { return store; }
     public DocumentTemplateType getType() { return type; }
+    public DocumentTemplateFormat getFormat() { return format; }
     public DocumentTemplateScope getScope() { return scope; }
     public String getCode() { return code; }
     public int getTemplateVersion() { return templateVersion; }

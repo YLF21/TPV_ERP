@@ -38,6 +38,7 @@ import {
 } from "../sale/saleMutationAuthorizations";
 import { saleCommandFromKeyboard, type SaleCommandId } from "../sale/saleCommands";
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
+import { retryPrintSucceeded } from "../sale/printRetry";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
@@ -229,6 +230,9 @@ export function SalesDocumentScreen({
   const [quoteError, setQuoteError] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [pendingPrintRetry, setPendingPrintRetry] = useState<(() => Promise<unknown>) | null>(null);
+  const [printFailureMessage, setPrintFailureMessage] = useState("");
+  const [printRetrying, setPrintRetrying] = useState(false);
   const [operationSecurity, setOperationSecurity] =
     useState<SalesOperationSecurityConfiguration | null>(null);
   const [cardPaymentMode, setCardPaymentMode] =
@@ -497,6 +501,19 @@ export function SalesDocumentScreen({
     localStorage.removeItem(recoveryStorageKey(terminalContext.terminalCode));
     setStatus(message);
     queueMicrotask(() => inputRef.current?.focus());
+  }
+
+  async function retryPendingPrint() {
+    if (!pendingPrintRetry || printRetrying) return;
+    setPrintRetrying(true);
+    try {
+      if (await retryPrintSucceeded(pendingPrintRetry)) {
+        setPendingPrintRetry(null);
+        setPrintFailureMessage("");
+      }
+    } finally {
+      setPrintRetrying(false);
+    }
   }
 
   function draft(mode: PendingSaleDraft["completionMode"]): PendingSaleDraft {
@@ -1434,6 +1451,21 @@ export function SalesDocumentScreen({
               {loadError || quoteError || shortcutError || shortcutMessage || status}
             </p>
           )}
+          {pendingPrintRetry && (
+            <aside className="sales-document-print-retry" role="alert">
+              <div>
+                <strong>{t("payment.result.printFailed")}</strong>
+                {printFailureMessage && <small>{printFailureMessage}</small>}
+              </div>
+              <button
+                type="button"
+                disabled={printRetrying}
+                onClick={() => void retryPendingPrint()}
+              >
+                {t("payment.result.retryPrint")}
+              </button>
+            </aside>
+          )}
           <div className="sales-document-draft-entry">
             <span>{t("salesDocument.drafts.section")}</span>
             <button
@@ -1800,7 +1832,9 @@ export function SalesDocumentScreen({
           onCancel={() => {
             if (!recovery) setCheckoutMode(null);
           }}
-          onSuccess={(result) => {
+          onSuccess={(result, retryPrint, technicalMessage) => {
+            setPendingPrintRetry(() => retryPrint ?? null);
+            setPrintFailureMessage(technicalMessage ?? "");
             resetDocument(
               t("salesDocument.completed").replace(
                 "{number}",

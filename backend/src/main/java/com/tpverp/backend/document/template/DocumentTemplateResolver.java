@@ -20,21 +20,34 @@ public class DocumentTemplateResolver {
 
     @Transactional(readOnly = true)
     public ResolvedDocumentTemplate resolve(DocumentTemplateType type) {
-        return resolve(organization.currentStore(), type);
+        return resolve(type, DocumentTemplateFormat.defaultFor(type));
+    }
+
+    @Transactional(readOnly = true)
+    public ResolvedDocumentTemplate resolve(
+            DocumentTemplateType type, DocumentTemplateFormat format) {
+        return resolve(organization.currentStore(), type, format);
     }
 
     @Transactional(readOnly = true)
     public ResolvedDocumentTemplate resolve(Store store, DocumentTemplateType type) {
-        var storeTemplate = templates.findActiveForStore(store.getId(), type);
+        return resolve(store, type, DocumentTemplateFormat.defaultFor(type));
+    }
+
+    @Transactional(readOnly = true)
+    public ResolvedDocumentTemplate resolve(
+            Store store, DocumentTemplateType type, DocumentTemplateFormat format) {
+        var storeTemplate = templates.findActiveForStore(store.getId(), type, format);
         if (storeTemplate.isPresent()) {
             return ResolvedDocumentTemplate.from(storeTemplate.get());
         }
-        var companyTemplate = templates.findActiveForCompany(store.getEmpresa().getId(), type);
+        var companyTemplate = templates.findActiveForCompany(
+                store.getEmpresa().getId(), type, format);
         if (companyTemplate.isPresent()) {
             return ResolvedDocumentTemplate.from(companyTemplate.get());
         }
-        return templates.findActiveForSystem(type)
+        return templates.findActiveForSystem(type, format)
                 .map(ResolvedDocumentTemplate::from)
-                .orElseGet(() -> ResolvedDocumentTemplate.builtIn(type));
+                .orElseGet(() -> ResolvedDocumentTemplate.builtIn(type, format));
     }
 }

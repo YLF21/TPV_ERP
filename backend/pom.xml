@@ -177,8 +177,9 @@
 				<targetPath>document-templates</targetPath>
 				<filtering>false</filtering>
 				<includes>
-					<include>factura_venta_a4.jrxml</include>
-					<include>albaran_venta_a4.jrxml</include>
+					<include>FACTURA_VENTA_A4.jrxml</include>
+					<include>ALBARAN_VENTA_A4.jrxml</include>
+					<include>FACTURA_VENTA_TICKET_80.jrxml</include>
 				</includes>
 			</resource>
 		</resources>

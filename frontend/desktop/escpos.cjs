@@ -34,7 +34,7 @@ function buildCashDrawerBuffer() {
   return Buffer.from([ESC, 0x70, 0x00, 0x19, 0xfa]);
 }
 
-function buildRasterImageBuffer(raster) {
+function buildRasterImageBuffer(raster, appendLineFeed = true) {
   if (!raster || !Number.isInteger(raster.width) || !Number.isInteger(raster.height)
       || raster.width <= 0 || raster.height <= 0 || raster.width > 576
       || raster.height > 512 || !Buffer.isBuffer(raster.bgra)
@@ -61,8 +61,31 @@ function buildRasterImageBuffer(raster) {
       bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff,
       raster.height & 0xff, (raster.height >> 8) & 0xff]),
     pixels,
-    Buffer.from([0x0a])
+    ...(appendLineFeed ? [Buffer.from([0x0a])] : [])
   ]);
+}
+
+function buildRasterDocumentBuffer(raster) {
+  if (!raster || !Number.isInteger(raster.width) || !Number.isInteger(raster.height)
+      || raster.width <= 0 || raster.height <= 0 || raster.width > 576
+      || raster.height > 30000 || !Buffer.isBuffer(raster.bgra)
+      || raster.bgra.length !== raster.width * raster.height * 4) {
+    throw new Error("ESC_POS_DOCUMENT_RASTER_INVALID");
+  }
+  const chunks = [Buffer.from([ESC, 0x40]), Buffer.from([ESC, 0x61, 0x01])];
+  const rowsPerBand = 256;
+  const rowBytes = raster.width * 4;
+  for (let y = 0; y < raster.height; y += rowsPerBand) {
+    const height = Math.min(rowsPerBand, raster.height - y);
+    chunks.push(buildRasterImageBuffer({
+      width: raster.width,
+      height,
+      bgra: raster.bgra.subarray(y * rowBytes, (y + height) * rowBytes)
+    }, false));
+  }
+  chunks.push(Buffer.from([0x0a, 0x0a, 0x0a, 0x0a]));
+  chunks.push(Buffer.from([GS, 0x56, 0x00]));
+  return Buffer.concat(chunks);
 }
 
 function buildTicketBuffer(ticket) {
@@ -231,6 +254,7 @@ async function sendEscposBuffer(config, buffer) {
 
 module.exports = {
   buildCashDrawerBuffer,
+  buildRasterDocumentBuffer,
   buildRasterImageBuffer,
   buildTicketBuffer,
   normalizeSerialPath,

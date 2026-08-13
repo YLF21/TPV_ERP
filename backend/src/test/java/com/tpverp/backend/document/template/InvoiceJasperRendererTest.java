@@ -17,6 +17,7 @@ import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.FiscalAddress;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +33,7 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.springframework.core.io.ClassPathResource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -68,6 +70,56 @@ class InvoiceJasperRendererTest {
             assertThat(new PDFTextStripper().getText(document))
                     .contains("8430000000010");
         }
+    }
+
+    @Test
+    void rendersBundledEightyMillimeterInvoiceWithFiscalQr() throws Exception {
+        var fixture = fixture();
+        var template = DocumentTemplate.storeDraft(
+                fixture.store(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.TICKET_80, "FACTURA_TICKET_80", 1,
+                "Factura ticket 80", UUID.randomUUID(),
+                Instant.parse("2026-08-10T08:00:00Z"));
+        var compiler = new SafeJrxmlCompiler();
+        byte[] source = new ClassPathResource(
+                "document-templates/FACTURA_VENTA_TICKET_80.jrxml")
+                .getContentAsByteArray();
+        var compiled = compiler.compile(source);
+        var storage = new DocumentTemplateArtifactStorage(temporaryDirectory);
+        storage.write(template.getId(), compiled.source(), compiled.compiled());
+        template.validateArtifact(
+                SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
+                template.getId().toString(), compiled.sha256(),
+                Instant.parse("2026-08-10T10:00:00Z"));
+        template.activate(Instant.parse("2026-08-10T10:01:00Z"));
+        var templates = mock(DocumentTemplateRepository.class);
+        when(templates.findPrintableTemplate(
+                template.getId(), fixture.company().getId(), fixture.store().getId()))
+                .thenReturn(Optional.of(template));
+        var renderer = new InvoiceJasperRenderer(
+                templates, storage, compiler, new ObjectMapper());
+        var ticketReference = new InvoicePresentationSnapshot.TemplateReference(
+                template.getId(), template.getCode(), template.getTemplateVersion(),
+                SafeJrxmlCompiler.DATA_SCHEMA_VERSION, compiled.sha256(), false);
+        var presentation = new InvoicePresentationSnapshot(
+                4, InvoiceFiscalProfile.IVA, "Gracias por su confianza", List.of(),
+                snapshot(fixture.template(), "a".repeat(64)).template(),
+                ticketReference, null);
+
+        var rendered = renderer.renderDocument(
+                fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
+                presentation, "https://www2.agenciatributaria.gob.es/qr",
+                null, DocumentTemplateFormat.TICKET_80).orElseThrow();
+        var pdf = rendered.pdf();
+        try (var document = Loader.loadPDF(pdf)) {
+            assertThat(document.getPage(0).getMediaBox().getWidth()).isEqualTo(227f);
+            assertThat(new PDFTextStripper().getText(document))
+                    .contains("FACTURA", "FV-2026-1", "Cód. cliente", "C-001", "8430000000010",
+                            "TOTAL FACTURA", "Gracias por su confianza");
+        }
+        var raster = ImageIO.read(new ByteArrayInputStream(rendered.ticketRasterPng()));
+        assertThat(raster.getWidth()).isEqualTo(576);
+        assertThat(raster.getHeight()).isBetween(100, 5_073);
     }
 
     @Test
@@ -151,6 +203,18 @@ class InvoiceJasperRendererTest {
         assertThat(json.at("/observations").asText()).isEqualTo("Gracias");
         assertThat(json.at("/issuer/logoDataUri").asText())
                 .isEqualTo("data:image/png;base64,AA==");
+        assertThat(json.at("/issuer/details").asText()).isEqualTo("""
+                NIF: B12345678
+                Calle Emisor 1
+                35001 Las Palmas
+                País: ES""");
+        assertThat(json.at("/customer/details").asText()).isEqualTo("""
+                Cód. cliente: C-001
+                NIF: B87654321
+                Calle Cliente 2
+                35002 Las Palmas
+                País: ES
+                Tel.: 928000000""");
         assertThat(json.at("/totals/grossAmount").decimalValue())
                 .isEqualByComparingTo("10.00");
         assertThat(json.at("/totals/discountTotal").decimalValue()).isZero();

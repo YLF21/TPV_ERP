@@ -75,6 +75,8 @@ export type PendingCommercialDocumentPrintSnapshot = {
   qrUrl?: string;
   qrImage?: string;
   renderedPdf?: { contentType: "application/pdf"; base64: string };
+  ticketRenderedPdf?: { contentType: "application/pdf"; base64: string };
+  ticketRenderedImage?: { contentType: "image/png"; base64: string };
 };
 
 function printableAddress(address: FiscalPartySnapshot["address"] | undefined) {
@@ -357,6 +359,7 @@ export function commercialDocumentAsA4Document(
   snapshot: PendingCommercialDocumentPrintSnapshot,
   terminal: TerminalContext,
   locale: LocaleCode,
+  format: "A4" | "TICKET_80" = "A4",
 ): A4DocumentPrintRequest {
   const t = createTranslator(locale);
   const invoice = invoiceLabels(locale);
@@ -379,7 +382,7 @@ export function commercialDocumentAsA4Document(
     bankAccounts: snapshot.bankAccounts,
     qrUrl: snapshot.qrUrl,
     qrImage: snapshot.qrImage,
-    renderedPdf: snapshot.renderedPdf,
+    renderedPdf: format === "TICKET_80" ? snapshot.ticketRenderedPdf : snapshot.renderedPdf,
     lines: snapshot.lines.map((line) => ({
       code: line.code,
       barcode: line.barcode,
@@ -500,12 +503,20 @@ export async function printPendingCommercialDocument(
         })),
         payments: [], total: Number(snapshot.total),
         ...(snapshot.issuer?.logo ? { logo: snapshot.issuer.logo } : {}),
+        ...(snapshot.ticketRenderedImage
+          ? { documentRaster: `data:${snapshot.ticketRenderedImage.contentType};base64,${snapshot.ticketRenderedImage.base64}` }
+          : {}),
         ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
       }, config);
       return result.ok ? { status: "PRINTED" } : { status: "FAILED", technicalMessage: result.message };
     }
     const result = await hardware.printA4Document(
-      commercialDocumentAsA4Document(snapshot, terminal, locale),
+      commercialDocumentAsA4Document(
+        snapshot,
+        terminal,
+        locale,
+        route?.paperSize === "TICKET_80" ? "TICKET_80" : "A4",
+      ),
       config,
     );
     return result.ok

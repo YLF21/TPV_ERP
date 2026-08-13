@@ -125,6 +125,7 @@ export type TicketPrintRequest = {
   title?: string;
   notice?: string;
   logo?: string;
+  documentRaster?: string;
   notes?: string[];
   details?: Array<{ label: string; value: string }>;
   documentNumber: string;

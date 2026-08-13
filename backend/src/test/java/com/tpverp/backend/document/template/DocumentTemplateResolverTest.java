@@ -25,7 +25,8 @@ class DocumentTemplateResolverTest {
         var storeTemplate = active(DocumentTemplate.storeDraft(
                 store, DocumentTemplateType.FACTURA_VENTA,
                 "FACTURA_TIENDA", 2, "Tienda", null, Instant.EPOCH));
-        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA))
+        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4))
                 .thenReturn(Optional.of(storeTemplate));
 
         var resolved = resolver.resolve(store, DocumentTemplateType.FACTURA_VENTA);
@@ -33,8 +34,10 @@ class DocumentTemplateResolverTest {
         assertThat(resolved.code()).isEqualTo("FACTURA_TIENDA");
         assertThat(resolved.scope()).isEqualTo(DocumentTemplateScope.STORE);
         verify(templates, never()).findActiveForCompany(
-                store.getEmpresa().getId(), DocumentTemplateType.FACTURA_VENTA);
-        verify(templates, never()).findActiveForSystem(DocumentTemplateType.FACTURA_VENTA);
+                store.getEmpresa().getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4);
+        verify(templates, never()).findActiveForSystem(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4);
     }
 
     @Test
@@ -43,10 +46,12 @@ class DocumentTemplateResolverTest {
         var companyTemplate = active(DocumentTemplate.companyDraft(
                 store.getEmpresa(), DocumentTemplateType.FACTURA_VENTA,
                 "FACTURA_EMPRESA", 4, "Empresa", null, Instant.EPOCH));
-        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA))
+        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4))
                 .thenReturn(Optional.empty());
         when(templates.findActiveForCompany(
-                store.getEmpresa().getId(), DocumentTemplateType.FACTURA_VENTA))
+                store.getEmpresa().getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4))
                 .thenReturn(Optional.of(companyTemplate));
 
         var resolved = resolver.resolve(store, DocumentTemplateType.FACTURA_VENTA);
@@ -58,12 +63,15 @@ class DocumentTemplateResolverTest {
     @Test
     void usesBuiltInVersionWhenNoCatalogTemplateIsActive() {
         var store = DocumentTemplateTest.store();
-        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA))
+        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4))
                 .thenReturn(Optional.empty());
         when(templates.findActiveForCompany(
-                store.getEmpresa().getId(), DocumentTemplateType.FACTURA_VENTA))
+                store.getEmpresa().getId(), DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.A4))
                 .thenReturn(Optional.empty());
-        when(templates.findActiveForSystem(DocumentTemplateType.FACTURA_VENTA))
+        when(templates.findActiveForSystem(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
                 .thenReturn(Optional.empty());
 
         var resolved = resolver.resolve(store, DocumentTemplateType.FACTURA_VENTA);

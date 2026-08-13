@@ -92,7 +92,11 @@ type Props = {
   printDocument?: typeof printPendingCommercialDocument;
   printMode?: SalePrintMode;
   onCancel: () => void;
-  onSuccess: (result: PendingSaleResult, retryPrint?: () => Promise<unknown>) => void;
+  onSuccess: (
+    result: PendingSaleResult,
+    retryPrint?: () => Promise<unknown>,
+    printFailureMessage?: string,
+  ) => void;
   endpointBase?: string;
   sourceDocumentId?: string;
   allowPayments?: boolean;
@@ -553,16 +557,28 @@ export function CustomerPendingSaleDialog({
       try { onClearRecovery?.(); }
       catch { /* The confirmed idempotent checkout remains safe to replay. */ }
       let retryPrint: (() => Promise<unknown>) | undefined;
+      let printFailureMessage: string | undefined;
       const printSnapshot = result.printDocument;
       if (terminalContext && printSnapshot) {
         const effectivePrintMode = draft.printMode ?? printMode;
         const retry = () => effectivePrintMode === "DEFAULT"
           ? printDocument(printSnapshot, terminalContext, undefined, locale)
           : printDocument(printSnapshot, terminalContext, undefined, locale, effectivePrintMode);
-        try { if ((await retry()).status === "FAILED") retryPrint = retry; }
-        catch { retryPrint = retry; }
+        try {
+          const printResult = await retry();
+          if (printResult.status === "FAILED") {
+            retryPrint = retry;
+            printFailureMessage = printResult.technicalMessage;
+          }
+        } catch (printFailure) {
+          retryPrint = retry;
+          printFailureMessage = printFailure instanceof Error
+            ? printFailure.message
+            : String(printFailure);
+        }
       }
-      if (retryPrint) onSuccess(completed, retryPrint); else onSuccess(completed);
+      if (retryPrint) onSuccess(completed, retryPrint, printFailureMessage);
+      else onSuccess(completed);
     } catch (failure) {
       const hasIntegratedCard = confirmedPayments.some((payment) =>
         payment.kind === "INTEGRATED_CARD");

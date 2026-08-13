@@ -5,6 +5,7 @@ import java.util.UUID;
 public record ResolvedDocumentTemplate(
         UUID id,
         DocumentTemplateType type,
+        DocumentTemplateFormat format,
         DocumentTemplateScope scope,
         String code,
         int version,
@@ -20,6 +21,7 @@ public record ResolvedDocumentTemplate(
         return new ResolvedDocumentTemplate(
                 template.getId(),
                 template.getType(),
+                template.getFormat(),
                 template.getScope(),
                 template.getCode(),
                 template.getTemplateVersion(),
@@ -30,10 +32,33 @@ public record ResolvedDocumentTemplate(
     }
 
     static ResolvedDocumentTemplate builtIn(DocumentTemplateType type) {
+        return builtIn(type, DocumentTemplateFormat.defaultFor(type));
+    }
+
+    static ResolvedDocumentTemplate builtIn(
+            DocumentTemplateType type, DocumentTemplateFormat format) {
+        if (type == DocumentTemplateType.FACTURA_VENTA
+                && format == DocumentTemplateFormat.TICKET_80) {
+            return new ResolvedDocumentTemplate(
+                    null,
+                    type,
+                    format,
+                    DocumentTemplateScope.SYSTEM,
+                    "FACTURA_TICKET_80",
+                    1,
+                    1,
+                    "builtin:factura_venta_ticket_80_v1",
+                    null,
+                    true);
+        }
+        if (format != DocumentTemplateFormat.defaultFor(type)) {
+            throw new IllegalArgumentException("document_template_format_unsupported");
+        }
         return switch (type) {
             case FACTURA_VENTA -> new ResolvedDocumentTemplate(
                     null,
                     type,
+                    format,
                     DocumentTemplateScope.SYSTEM,
                     "FACTURA_A4",
                     1,
@@ -44,6 +69,7 @@ public record ResolvedDocumentTemplate(
             case ALBARAN_VENTA -> new ResolvedDocumentTemplate(
                     null,
                     type,
+                    format,
                     DocumentTemplateScope.SYSTEM,
                     "ALBARAN_A4",
                     1,
@@ -54,6 +80,7 @@ public record ResolvedDocumentTemplate(
             case TICKET -> new ResolvedDocumentTemplate(
                     null,
                     type,
+                    format,
                     DocumentTemplateScope.SYSTEM,
                     "TICKET_80",
                     1,
