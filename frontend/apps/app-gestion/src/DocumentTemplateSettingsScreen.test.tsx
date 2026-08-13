@@ -19,15 +19,15 @@ describe("DocumentTemplateSettingsScreen", () => {
   it("loads each catalog and exposes only the real draft workflow", async () => {
     const request = vi.fn().mockImplementation(async (path: string) => ({
       effective: {
-        id: null,
+        id: "system-template-id",
         type: path.includes("ALBARAN_VENTA") ? "ALBARAN_VENTA" : "FACTURA_VENTA",
         scope: "SYSTEM",
         code: path.includes("ALBARAN_VENTA") ? "ALBARAN_A4" : "FACTURA_A4",
         version: 1,
         schemaVersion: 1,
-        artifactReference: "builtin:test",
-        sha256: null,
-        builtIn: true,
+        artifactReference: "system-template-id",
+        sha256: "a".repeat(64),
+        builtIn: false,
       },
       storeTemplates: [],
     }));
@@ -41,6 +41,7 @@ describe("DocumentTemplateSettingsScreen", () => {
     );
 
     expect(await screen.findByText("FACTURA_A4")).toBeInTheDocument();
+    expect(screen.getByText("Sistema")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Crear borrador" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));

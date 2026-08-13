@@ -31,6 +31,13 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
+function originLabel(scope: DocumentTemplateView["scope"] | undefined, t: Translator) {
+  if (scope === "STORE") return t("gestion.documentTemplates.store");
+  if (scope === "COMPANY") return t("gestion.documentTemplates.company");
+  if (scope === "SYSTEM") return t("gestion.documentTemplates.system");
+  return "-";
+}
+
 export function DocumentTemplateSettingsScreen({ session, t, request = apiRequest }: Props) {
   const [selectedType, setSelectedType] = useState<DocumentTemplateType>("FACTURA_VENTA");
   const [catalog, setCatalog] = useState<DocumentTemplateCatalog | null>(null);
@@ -173,7 +180,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         </div>
         <dl>
           <div><dt>{t("gestion.documentTemplates.version")}</dt><dd>{catalog?.effective.version ?? "-"}</dd></div>
-          <div><dt>{t("gestion.documentTemplates.origin")}</dt><dd>{catalog?.effective.builtIn ? t("gestion.documentTemplates.system") : t("gestion.documentTemplates.store")}</dd></div>
+          <div><dt>{t("gestion.documentTemplates.origin")}</dt><dd>{originLabel(catalog?.effective.scope, t)}</dd></div>
           <div><dt>{t("gestion.documentTemplates.schema")}</dt><dd>{catalog?.effective.schemaVersion ?? "-"}</dd></div>
         </dl>
       </section>
