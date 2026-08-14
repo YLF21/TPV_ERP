@@ -22,6 +22,7 @@ describe("StoreDocumentPrintSettingsScreen", () => {
       ticketObservations: "Gracias",
       invoiceObservations: "Factura",
       deliveryNoteObservations: "Albaran",
+      ticketStyle: "PRINCIPAL",
     };
     const request = vi.fn(async (_path: string, options?: { method?: string; body?: unknown }) =>
       options?.method === "PUT"

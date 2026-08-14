@@ -47,6 +47,8 @@ public class SafeJrxmlCompiler {
             "java.time.LocalDate",
             "java.time.Instant",
             "java.util.Date",
+            "java.sql.Timestamp",
+            "byte[]",
             "java.text.DecimalFormat",
             "java.io.InputStream",
             "java.io.ByteArrayInputStream",

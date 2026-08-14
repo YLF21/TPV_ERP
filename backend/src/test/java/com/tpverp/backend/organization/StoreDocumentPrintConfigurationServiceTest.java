@@ -48,13 +48,15 @@ class StoreDocumentPrintConfigurationServiceTest {
 
         var observations = service.updateObservations(
                 "Gracias", "Factura legal", "Mercancia entregada");
+        var style = service.updateTicketStyle(TicketPrintStyle.MINIMALISTA);
         var logo = service.uploadLogo(png());
 
         assertThat(observations.ticketObservations()).isEqualTo("Gracias");
         assertThat(observations.invoiceObservations()).isEqualTo("Factura legal");
         assertThat(observations.deliveryNoteObservations()).isEqualTo("Mercancia entregada");
+        assertThat(style.ticketStyle()).isEqualTo(TicketPrintStyle.MINIMALISTA);
         assertThat(logo.storeId()).isEqualTo(storeId);
-        verify(audit, org.mockito.Mockito.times(2)).record(any(), any(), any());
+        verify(audit, org.mockito.Mockito.times(3)).record(any(), any(), any());
     }
 
     @Test

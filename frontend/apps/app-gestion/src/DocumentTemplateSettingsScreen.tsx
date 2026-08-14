@@ -11,6 +11,14 @@ import {
   type DocumentTemplateType,
   type DocumentTemplateView,
 } from "./documentTemplatesApi";
+import {
+  loadStoreDocumentPrintConfiguration,
+  saveStoreTicketStyle,
+  type TicketPrintStyle,
+} from "./storeDocumentPrintConfigurationApi";
+import ticketStylePrincipal from "./assets/ticket-styles/principal.svg";
+import ticketStyleCompacta from "./assets/ticket-styles/compacta.svg";
+import ticketStyleMinimalista from "./assets/ticket-styles/minimalista.svg";
 
 type Translator = (key: string) => string;
 
@@ -21,6 +29,12 @@ type Props = {
 };
 
 const documentTypes: DocumentTemplateType[] = ["FACTURA_VENTA", "ALBARAN_VENTA", "TICKET"];
+
+const ticketStylePreviews: Record<TicketPrintStyle, string> = {
+  PRINCIPAL: ticketStylePrincipal,
+  COMPACTA: ticketStyleCompacta,
+  MINIMALISTA: ticketStyleMinimalista,
+};
 
 function failureMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) return error.message || fallback;
@@ -48,6 +62,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [code, setCode] = useState("FACTURA_A4");
   const [name, setName] = useState("");
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [ticketStyle, setTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
   const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET"
@@ -82,6 +97,36 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedType, selectedFormat, request, session.accessToken]);
 
+  useEffect(() => {
+    if (selectedType !== "TICKET") return;
+    void loadStoreDocumentPrintConfiguration(session.accessToken, request)
+      .then((value) => setTicketStyle(value.ticketStyle ?? "PRINCIPAL"))
+      .catch((error) => setMessage({
+        kind: "error",
+        text: failureMessage(error, t("gestion.documentTemplates.ticketStyleLoadError")),
+      }));
+  }, [selectedType, request, session.accessToken, t]);
+
+  async function updateTicketStyle() {
+    if (!canManage || busyId) return;
+    setBusyId("ticket-style");
+    setMessage(null);
+    try {
+      const value = await saveStoreTicketStyle(
+        ticketStyle, session.accessToken, request,
+      );
+      setTicketStyle(value.ticketStyle);
+      setMessage({ kind: "success", text: t("gestion.documentTemplates.ticketStyleSaved") });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: failureMessage(error, t("gestion.documentTemplates.ticketStyleSaveError")),
+      });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function createDraft(event: FormEvent) {
     event.preventDefault();
     if (!canManage || busyId || !code.trim() || !name.trim()) return;
@@ -103,12 +148,12 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     }
   }
 
-  async function upload(template: DocumentTemplateView, file: File | undefined) {
-    if (!file || !canManage || busyId) return;
+  async function upload(template: DocumentTemplateView, files: File[]) {
+    if (files.length === 0 || !canManage || busyId) return;
     setBusyId(template.id);
     setMessage(null);
     try {
-      await uploadDocumentTemplateArtifact(template.id, file, session.accessToken, request);
+      await uploadDocumentTemplateArtifact(template.id, files, session.accessToken, request);
       setMessage({ kind: "success", text: t("gestion.documentTemplates.validated") });
       await refresh();
     } catch (error) {
@@ -208,6 +253,39 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         </dl>
       </section>
 
+      {selectedType === "TICKET" && (
+        <section className="gestion-ticket-style-selector" aria-labelledby="ticket-style-title">
+          <div className="gestion-ticket-style-copy">
+            <h3 id="ticket-style-title">{t("gestion.documentTemplates.ticketStyle")}</h3>
+            <p>{t("gestion.documentTemplates.ticketStyleHelp")}</p>
+          </div>
+          <figure className="gestion-ticket-style-preview">
+            <img
+              src={ticketStylePreviews[ticketStyle]}
+              alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}`}
+            />
+            <figcaption>{t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}</figcaption>
+          </figure>
+          <div className="gestion-ticket-style-actions">
+            <label>
+              <span>{t("gestion.documentTemplates.ticketStyleLabel")}</span>
+              <select
+                value={ticketStyle}
+                disabled={!canManage || busyId !== null}
+                onChange={(event) => setTicketStyle(event.currentTarget.value as TicketPrintStyle)}
+              >
+                <option value="PRINCIPAL">{t("gestion.documentTemplates.ticketStyle.PRINCIPAL")}</option>
+                <option value="COMPACTA">{t("gestion.documentTemplates.ticketStyle.COMPACTA")}</option>
+                <option value="MINIMALISTA">{t("gestion.documentTemplates.ticketStyle.MINIMALISTA")}</option>
+              </select>
+            </label>
+            <button type="button" disabled={!canManage || busyId !== null} onClick={() => void updateTicketStyle()}>
+              {t("gestion.documentTemplates.ticketStyleSave")}
+            </button>
+          </div>
+        </section>
+      )}
+
       <form className="gestion-document-template-create" onSubmit={createDraft}>
         <div>
           <h3>{t("gestion.documentTemplates.newVersion")}</h3>
@@ -246,14 +324,17 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                 <input
                   type="file"
                   accept=".jrxml,application/xml,text/xml"
+                  multiple={template.type === "TICKET"}
                   disabled={!canManage || busyId !== null || template.status !== "DRAFT"}
                   onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
+                    const files = Array.from(event.currentTarget.files ?? []);
                     event.currentTarget.value = "";
-                    void upload(template, file);
+                    void upload(template, files);
                   }}
                 />
-                {t("gestion.documentTemplates.upload")}
+                {t(template.type === "TICKET"
+                  ? "gestion.documentTemplates.uploadBundle"
+                  : "gestion.documentTemplates.upload")}
               </label>
               {template.sha256 && <button type="button" onClick={() => void download(template)}>{t("gestion.documentTemplates.download")}</button>}
               {template.status === "VALIDATED" && <button type="button" className="primary" disabled={busyId !== null} onClick={() => void activate(template)}>{t("gestion.documentTemplates.activate")}</button>}

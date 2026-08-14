@@ -4,6 +4,19 @@ const require = createRequire(import.meta.url);
 const { renderTicketHtml } = require("./ticket-renderer.cjs");
 
 describe("ticket desktop renderer", () => {
+  it("uses the complete Jasper raster when the configured ticket design is available", () => {
+    const raster = "data:image/png;base64,iVBORw0KGgo=";
+    const html = renderTicketHtml({
+      documentRaster: raster,
+      storeName: "This generic content must not be rendered",
+      lines: [], payments: [], total: 0,
+    });
+
+    expect(html).toContain(raster);
+    expect(html).toContain("width:80mm");
+    expect(html).not.toContain("This generic content must not be rendered");
+  });
+
   it.each([
     [{ item: "Item", quantity: "Qty.", price: "Price", total: "Total", terminal: "Terminal" }, "Item", "Qty."],
     [{ item: "商品", quantity: "数量", price: "价格", total: "合计", terminal: "终端" }, "商品", "数量"]

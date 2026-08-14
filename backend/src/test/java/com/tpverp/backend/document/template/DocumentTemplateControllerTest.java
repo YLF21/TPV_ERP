@@ -109,7 +109,7 @@ class DocumentTemplateControllerTest {
                         Instant.parse("2026-08-09T10:01:00Z"),
                         Instant.parse("2026-08-09T10:02:00Z"), null));
         var file = new MockMultipartFile(
-                "file", "factura.jrxml", "application/xml", "<jasperReport/>".getBytes());
+                "files", "factura.jrxml", "application/xml", "<jasperReport/>".getBytes());
 
         mvc.perform(multipart("/api/v1/document-templates/{id}/artifact", templateId)
                         .file(file)

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="520" viewBox="0 0 220 520" role="img" aria-labelledby="title description">
+  <title id="title">Plantilla de ticket compacta</title>
+  <desc id="description">Vista completa del ticket compacto con cabecera centrada, código de barras, compra, pago, impuestos, cliente, devoluciones y QR.</desc>
+  <rect width="220" height="520" fill="#eef2f6"/>
+  <rect x="24" y="8" width="172" height="504" rx="2" fill="#fff" stroke="#8b9caf"/>
+  <g fill="#172a40" font-family="Arial, sans-serif">
+    <!-- Cabecera centrada -->
+    <g aria-label="Logo de la tienda">
+      <rect x="103" y="13" width="14" height="14" rx="3" fill="#0b315f"/>
+      <path d="M106 19h8l-1-3h-6zm1 1h6v4h-6z" fill="#fff"/>
+      <path d="M109 20v4" stroke="#0b315f" stroke-width=".7"/>
+    </g>
+    <text x="110" y="39" text-anchor="middle" font-size="9.2" font-weight="700">EMPRESA PRUEBAS TPV ERP</text>
+    <text x="110" y="48" text-anchor="middle" font-size="6.5">CIF: B00000000 · Tel.: 928000000</text>
+    <text x="110" y="60" text-anchor="middle" font-size="6.5">Calle Pruebas 1 · 35001 Las Palmas · ES</text>
+    <text x="110" y="72" text-anchor="middle" font-size="6.5">tienda001@example.test</text>
+    <text x="110" y="85" text-anchor="middle" font-size="6.5">02/08/2026 12:00:00</text>
+    <text x="110" y="101" text-anchor="middle" font-size="6.8" font-weight="700">Factura simplificada: 001-260802-800001</text>
+
+    <!-- Código de barras -->
+    <g fill="#172a40">
+      <rect x="58" y="111" width="2" height="24"/><rect x="62" y="111" width="1" height="24"/>
+      <rect x="65" y="111" width="3" height="24"/><rect x="70" y="111" width="1" height="24"/>
+      <rect x="73" y="111" width="2" height="24"/><rect x="77" y="111" width="4" height="24"/>
+      <rect x="83" y="111" width="1" height="24"/><rect x="86" y="111" width="3" height="24"/>
+      <rect x="91" y="111" width="2" height="24"/><rect x="95" y="111" width="1" height="24"/>
+      <rect x="98" y="111" width="4" height="24"/><rect x="104" y="111" width="2" height="24"/>
+      <rect x="109" y="111" width="1" height="24"/><rect x="112" y="111" width="3" height="24"/>
+      <rect x="117" y="111" width="1" height="24"/><rect x="120" y="111" width="4" height="24"/>
+      <rect x="126" y="111" width="2" height="24"/><rect x="130" y="111" width="1" height="24"/>
+      <rect x="133" y="111" width="3" height="24"/><rect x="138" y="111" width="2" height="24"/>
+      <rect x="143" y="111" width="4" height="24"/><rect x="149" y="111" width="2" height="24"/>
+      <rect x="153" y="111" width="3" height="24"/><rect x="158" y="111" width="2" height="24"/>
+    </g>
+
+    <!-- Artículos -->
+    <line x1="32" y1="146" x2="188" y2="146" stroke="#172a40" stroke-width=".7"/>
+    <text x="34" y="160" font-size="7" font-weight="700">Artículo</text>
+    <text x="186" y="160" text-anchor="end" font-size="7" font-weight="700">Importe</text>
+    <line x1="32" y1="168" x2="188" y2="168" stroke="#172a40" stroke-width=".6"/>
+    <text x="34" y="182" font-size="6.8">Bebida demo 01</text>
+    <text x="38" y="195" font-size="6.4">1 × (1,80 €)</text>
+    <text x="186" y="195" text-anchor="end" font-size="6.4">1,80 €</text>
+    <line x1="32" y1="202" x2="188" y2="202" stroke="#8b9caf" stroke-width=".4"/>
+    <text x="34" y="214" font-size="6.4">Subtotal</text>
+    <text x="186" y="214" text-anchor="end" font-size="6.4">2,18 €</text>
+    <text x="34" y="226" font-size="6.4">Descuento Socio (2%)</text>
+    <text x="186" y="226" text-anchor="end" font-size="6.4">−0,04 €</text>
+    <line x1="32" y1="237" x2="188" y2="237" stroke="#172a40" stroke-width=".7"/>
+    <text x="34" y="255" font-size="8.5" font-weight="700">TOTAL A PAGAR</text>
+    <text x="186" y="255" text-anchor="end" font-size="10" font-weight="700">2,14 €</text>
+
+    <!-- Pago centrado -->
+    <text x="110" y="278" text-anchor="middle" font-size="7" font-weight="700">FORMA DE PAGO</text>
+    <text x="34" y="294" font-size="6.4">Efectivo</text>
+    <text x="186" y="294" text-anchor="end" font-size="6.4">2,18 €</text>
+    <text x="34" y="306" font-size="6.4">Cambio entregado</text>
+    <text x="186" y="306" text-anchor="end" font-size="6.4">0,00 €</text>
+
+    <!-- Impuestos -->
+    <line x1="32" y1="317" x2="188" y2="317" stroke="#172a40" stroke-width=".6"/>
+    <text x="34" y="330" font-size="6.5" font-weight="700">Impuesto</text>
+    <text x="125" y="330" text-anchor="middle" font-size="6.5" font-weight="700">Base</text>
+    <text x="186" y="330" text-anchor="end" font-size="6.5" font-weight="700">Cuota</text>
+    <line x1="32" y1="336" x2="188" y2="336" stroke="#172a40" stroke-width=".5"/>
+    <text x="34" y="350" font-size="6.4">IVA 21%</text>
+    <text x="125" y="350" text-anchor="middle" font-size="6.4">1,80 €</text>
+    <text x="186" y="350" text-anchor="end" font-size="6.4">0,38 €</text>
+
+    <!-- Cliente -->
+    <line x1="32" y1="363" x2="188" y2="363" stroke="#172a40" stroke-width=".6"/>
+    <text x="34" y="377" font-size="6.7">CLIENTE DEMO 01</text>
+    <text x="34" y="389" font-size="6">Código: C-001-000101 · Tel.: 610000001 · VENTA</text>
+    <text x="34" y="401" font-size="6">Descuento Socio: 2%</text>
+
+    <!-- Condiciones centradas -->
+    <text x="110" y="423" text-anchor="middle" font-size="6.7" font-weight="700">CONDICIONES DE DEVOLUCIÓN</text>
+    <line x1="32" y1="429" x2="188" y2="429" stroke="#172a40" stroke-width=".5"/>
+    <text x="34" y="441" font-size="5.3">Devoluciones: 30 días desde la compra. Producto sin</text>
+    <text x="34" y="450" font-size="5.3">usar, en perfecto estado y con embalaje y accesorios.</text>
+    <text x="34" y="459" font-size="5.3">Reembolso por el mismo método de pago.</text>
+
+    <!-- QR centrado -->
+    <rect x="94" y="466" width="32" height="32" fill="none" stroke="#172a40"/>
+    <path d="M98 470h8v8h-8zm12 0h4v4h-4zm8 0h4v10h-4zM98 482h4v12h-4zm8-3h10v6h-10zm12 8h4v7h-4zm-12 4h9v3h-9z" fill="#172a40"/>
+    <text x="110" y="507" text-anchor="middle" font-size="6.2">Gracias por su compra</text>
+  </g>
+</svg>

@@ -1,0 +1,266 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="ticket_cabecera" language="java" columnCount="1" pageWidth="207" pageHeight="842" orientation="Landscape" columnWidth="207" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" uuid="9deb3e4d-30dd-4118-b497-770ee4fa3379">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<style name="BarcodeCentrado" hImageAlign="Center" vImageAlign="Middle"/>
+	<parameter name="TIENDA_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["13b6fb74-3de0-3198-8166-cf4eeb249f7f"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["58109209-2548-4c19-9c4e-6f47c541035b"]]></defaultValueExpression>
+	</parameter>
+	<query language="sql"><![CDATA[SELECT
+    COALESCE(
+        NULLIF(TRIM(e.razon_social), ''),
+        t.nombre
+    ) AS nombre_cabecera,
+
+    t.nombre AS tienda,
+    t.codigo_tienda,
+    t.telefono,
+    t.email,
+
+    jsonb_extract_path_text(t.direccion, 'linea1') AS direccion,
+    jsonb_extract_path_text(t.direccion, 'codigoPostal') AS codigo_postal,
+    jsonb_extract_path_text(t.direccion, 'ciudad') AS ciudad,
+    jsonb_extract_path_text(t.direccion, 'provincia') AS provincia,
+    jsonb_extract_path_text(t.direccion, 'pais') AS pais,
+
+    e.tax_id AS cif,
+    e.razon_social,
+
+    jsonb_extract_path_text(
+        e.domicilio_fiscal,
+        'linea1'
+    ) AS direccion_fiscal,
+
+    jsonb_extract_path_text(
+        e.domicilio_fiscal,
+        'codigoPostal'
+    ) AS codigo_postal_fiscal,
+
+    jsonb_extract_path_text(
+        e.domicilio_fiscal,
+        'ciudad'
+    ) AS ciudad_fiscal,
+
+    jsonb_extract_path_text(
+        e.domicilio_fiscal,
+        'provincia'
+    ) AS provincia_fiscal,
+
+    jsonb_extract_path_text(
+        e.domicilio_fiscal,
+        'pais'
+    ) AS pais_fiscal,
+
+    d.numero AS numero_ticket,
+    COALESCE(d.confirmado_en, d.creado_en) AS fecha_ticket,
+    ldt.contenido AS logo_contenido
+
+FROM tienda t
+
+INNER JOIN empresa e
+    ON e.id = t.empresa_id
+
+INNER JOIN documento d
+    ON d.tienda_id = t.id
+
+LEFT JOIN configuracion_documento_impreso_tienda cdi
+    ON cdi.tienda_id = t.id
+
+LEFT JOIN logo_documento_tienda ldt
+    ON ldt.id = cdi.logo_id
+   AND ldt.tienda_id = t.id
+
+WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
+  AND d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
+	<field name="nombre_cabecera" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="nombre_cabecera"/>
+		<property name="com.jaspersoft.studio.field.label" value="nombre_cabecera"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="tienda"/>
+	</field>
+	<field name="tienda" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="tienda"/>
+		<property name="com.jaspersoft.studio.field.label" value="tienda"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="tienda"/>
+	</field>
+	<field name="codigo_tienda" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="codigo_tienda"/>
+		<property name="com.jaspersoft.studio.field.label" value="codigo_tienda"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="tienda"/>
+	</field>
+	<field name="telefono" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="telefono"/>
+		<property name="com.jaspersoft.studio.field.label" value="telefono"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="tienda"/>
+	</field>
+	<field name="email" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="email"/>
+		<property name="com.jaspersoft.studio.field.label" value="email"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="tienda"/>
+	</field>
+	<field name="direccion" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="direccion"/>
+		<property name="com.jaspersoft.studio.field.label" value="direccion"/>
+	</field>
+	<field name="codigo_postal" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="codigo_postal"/>
+		<property name="com.jaspersoft.studio.field.label" value="codigo_postal"/>
+	</field>
+	<field name="ciudad" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ciudad"/>
+		<property name="com.jaspersoft.studio.field.label" value="ciudad"/>
+	</field>
+	<field name="provincia" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="provincia"/>
+		<property name="com.jaspersoft.studio.field.label" value="provincia"/>
+	</field>
+	<field name="pais" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="pais"/>
+		<property name="com.jaspersoft.studio.field.label" value="pais"/>
+	</field>
+	<field name="cif" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="cif"/>
+		<property name="com.jaspersoft.studio.field.label" value="cif"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="empresa"/>
+	</field>
+	<field name="razon_social" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="razon_social"/>
+		<property name="com.jaspersoft.studio.field.label" value="razon_social"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="empresa"/>
+	</field>
+	<field name="direccion_fiscal" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="direccion_fiscal"/>
+		<property name="com.jaspersoft.studio.field.label" value="direccion_fiscal"/>
+	</field>
+	<field name="codigo_postal_fiscal" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="codigo_postal_fiscal"/>
+		<property name="com.jaspersoft.studio.field.label" value="codigo_postal_fiscal"/>
+	</field>
+	<field name="ciudad_fiscal" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ciudad_fiscal"/>
+		<property name="com.jaspersoft.studio.field.label" value="ciudad_fiscal"/>
+	</field>
+	<field name="provincia_fiscal" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="provincia_fiscal"/>
+		<property name="com.jaspersoft.studio.field.label" value="provincia_fiscal"/>
+	</field>
+	<field name="pais_fiscal" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="pais_fiscal"/>
+		<property name="com.jaspersoft.studio.field.label" value="pais_fiscal"/>
+	</field>
+	<field name="numero_ticket" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="numero_ticket"/>
+		<property name="com.jaspersoft.studio.field.label" value="numero_ticket"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
+	</field>
+	<field name="fecha_ticket" class="java.sql.Timestamp">
+		<property name="com.jaspersoft.studio.field.name" value="fecha_ticket"/>
+		<property name="com.jaspersoft.studio.field.label" value="fecha_ticket"/>
+	</field>
+	<field name="logo_contenido" class="byte[]">
+		<property name="com.jaspersoft.studio.field.name" value="logo_contenido"/>
+		<property name="com.jaspersoft.studio.field.label" value="logo_contenido"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="logo_documento_tienda"/>
+	</field>
+	<background splitType="Stretch"/>
+	<title height="50">
+		<printWhenExpression><![CDATA[$F{logo_contenido} != null && $F{logo_contenido}.length > 0]]></printWhenExpression>
+		<element kind="image" uuid="aa06c895-f7a4-45e8-bd5c-289f4ca99f8e" x="15" y="2" width="177" height="46" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+			<expression><![CDATA[$F{logo_contenido} == null || $F{logo_contenido}.length == 0
+    ? null
+    : new java.io.ByteArrayInputStream($F{logo_contenido})]]></expression>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+	</title>
+	<detail>
+		<band height="130" splitType="Stretch">
+			<element kind="textField" uuid="d5a13582-e483-406b-8b13-0bf1ee570c6a" positionType="Float" x="5" y="0" width="194" height="18" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
+				<expression><![CDATA[$F{nombre_cabecera}]]></expression>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="e049cb9b-b1ce-4584-b328-6ae23d6c8429" positionType="Float" x="5" y="72" width="197" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA["Factura simplificada:  " + $F{numero_ticket}]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="20" y="89" width="167" height="30" style="BarcodeCentrado">
+				<component kind="barcode4j:Code128" textPosition="none">
+					<codeExpression><![CDATA[$F{numero_ticket}]]></codeExpression>
+				</component>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="317bec0c-ecef-40e0-9ed2-a4b26fedb36a" positionType="Float" x="5" y="57" width="197" height="13" fontSize="9.0" textAdjust="StretchHeight" linkType="None" linkTarget="Self" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
+    .format($F{fecha_ticket})]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="119dd9b7-866c-411e-aa63-6c8c43fb9695" positionType="Float" x="5" y="18" width="194" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[($F{cif} == null ? "" : "CIF: " + $F{cif})
++
+($F{telefono} == null || $F{telefono}.trim().isEmpty()
+    ? ""
+    : " · Tel.: " + $F{telefono}.trim())]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="201a7c8b-a787-4931-a7c7-ab9880e85ebe" positionType="Float" x="5" y="31" width="197" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[($F{direccion} == null || $F{direccion}.trim().isEmpty() ? "" : $F{direccion}.trim())
++ ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty()
+    ? ""
+    : (($F{direccion} == null || $F{direccion}.trim().isEmpty()) ? "" : " · ") + $F{codigo_postal}.trim())
++
+($F{ciudad} == null || $F{ciudad}.trim().isEmpty()
+    ? ""
+    : " " + $F{ciudad}.trim())
++
+($F{pais} == null || $F{pais}.trim().isEmpty()
+    ? ""
+    : " · " + $F{pais}.trim())]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="1a158564-f566-4bb7-9d52-338da1f1cb61" positionType="Float" x="5" y="44" width="194" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[$F{email} == null || $F{email}.trim().isEmpty()
+    ? ""
+    : $F{email}.trim()]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			</element>
+			<element kind="line" uuid="b28e28d5-caf4-4651-83a6-06824da48447" x="5" y="127" width="197" height="1">
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<pen lineWidth="0.5" lineStyle="Dashed"/>
+			</element>
+		</band>
+	</detail>
+</jasperReport>

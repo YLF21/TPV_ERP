@@ -47,12 +47,13 @@ class DocumentTemplateArtifactServiceTest {
         var storage = new DocumentTemplateArtifactStorage(tempDir);
         var catalog = mock(DocumentTemplateCatalogService.class);
         var service = new DocumentTemplateArtifactService(
-                templates, organization, compiler, storage, catalog, audit,
+                templates, organization, compiler, mock(TicketJrxmlBundleCompiler.class),
+                storage, catalog, audit,
                 Clock.fixed(Instant.parse("2026-08-10T10:00:00Z"), ZoneOffset.UTC));
 
         var result = service.uploadAndValidate(
-                draft.getId(), new MockMultipartFile(
-                        "file", "factura.jrxml", "application/xml", new byte[] {1, 2}));
+                draft.getId(), java.util.List.of(new MockMultipartFile(
+                        "files", "factura.jrxml", "application/xml", new byte[] {1, 2})));
 
         assertThat(result.status()).isEqualTo(DocumentTemplateStatus.VALIDATED);
         assertThat(result.sha256()).isEqualTo("a".repeat(64));
@@ -75,14 +76,14 @@ class DocumentTemplateArtifactServiceTest {
                 templateId, store.getEmpresa().getId(), store.getId()))
                 .thenReturn(Optional.empty());
         var service = new DocumentTemplateArtifactService(
-                templates, organization, compiler,
+                templates, organization, compiler, mock(TicketJrxmlBundleCompiler.class),
                 new DocumentTemplateArtifactStorage(tempDir),
                 mock(DocumentTemplateCatalogService.class), mock(AuditService.class),
                 Clock.systemUTC());
 
         assertThatThrownBy(() -> service.uploadAndValidate(
-                templateId, new MockMultipartFile(
-                        "file", "factura.jrxml", "application/xml", new byte[] {1})))
+                templateId, java.util.List.of(new MockMultipartFile(
+                        "files", "factura.jrxml", "application/xml", new byte[] {1}))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("document_template_not_found");
         assertThat(tempDir).isEmptyDirectory();
@@ -115,7 +116,8 @@ class DocumentTemplateArtifactServiceTest {
         when(catalog.activateValidatedCurrentStoreTemplate(template.getId()))
                 .thenReturn(expected);
         var service = new DocumentTemplateArtifactService(
-                templates, organization, compiler, storage, catalog,
+                templates, organization, compiler, mock(TicketJrxmlBundleCompiler.class),
+                storage, catalog,
                 mock(AuditService.class), Clock.systemUTC());
 
         var result = service.activate(template.getId());

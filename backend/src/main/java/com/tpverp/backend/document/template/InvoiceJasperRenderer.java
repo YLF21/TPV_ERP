@@ -162,7 +162,7 @@ public class InvoiceJasperRenderer {
         }
     }
 
-    private static byte[] ticketRaster(JasperPrint print) throws JRException, IOException {
+    static byte[] ticketRaster(JasperPrint print) throws JRException, IOException {
         if (print.getPages().isEmpty() || print.getPageWidth() <= 0) {
             throw new IllegalStateException("invoice_ticket_raster_empty");
         }

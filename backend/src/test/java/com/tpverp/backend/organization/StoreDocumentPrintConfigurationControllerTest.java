@@ -3,6 +3,8 @@ package com.tpverp.backend.organization;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,7 +29,8 @@ class StoreDocumentPrintConfigurationControllerTest {
         var storeId = UUID.randomUUID();
         when(service.configuration()).thenReturn(
                 new StoreDocumentPrintConfigurationService.Configuration(
-                        storeId, null, "Ticket", "Factura", "Albaran"));
+                        storeId, null, "Ticket", "Factura", "Albaran",
+                        TicketPrintStyle.PRINCIPAL));
 
         mvc.perform(get("/api/v1/store-document-print-configuration")
                         .with(user("admin").roles("ADMIN")))
@@ -36,6 +39,22 @@ class StoreDocumentPrintConfigurationControllerTest {
                 .andExpect(jsonPath("$.ticketObservations").value("Ticket"))
                 .andExpect(jsonPath("$.invoiceObservations").value("Factura"))
                 .andExpect(jsonPath("$.deliveryNoteObservations").value("Albaran"));
+    }
+
+    @Test
+    void administratorCanSelectTheCompactTicketStyle() throws Exception {
+        var storeId = UUID.randomUUID();
+        when(service.updateTicketStyle(TicketPrintStyle.COMPACTA)).thenReturn(
+                new StoreDocumentPrintConfigurationService.Configuration(
+                        storeId, null, null, null, null, TicketPrintStyle.COMPACTA));
+
+        mvc.perform(put("/api/v1/store-document-print-configuration/ticket-style")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"style\":\"COMPACTA\"}")
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticketStyle").value("COMPACTA"));
     }
 
     @Test

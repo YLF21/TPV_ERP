@@ -55,8 +55,8 @@ public class DocumentTemplateController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public DocumentTemplateCatalogService.TemplateView uploadArtifact(
             @PathVariable UUID templateId,
-            @RequestParam("file") MultipartFile file) {
-        return artifacts.uploadAndValidate(templateId, file);
+            @RequestParam("files") java.util.List<MultipartFile> files) {
+        return artifacts.uploadAndValidate(templateId, files);
     }
 
     @PostMapping("/{templateId}/activate")
@@ -73,7 +73,7 @@ public class DocumentTemplateController {
                 .build();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-                .contentType(MediaType.APPLICATION_XML)
+                .contentType(MediaType.parseMediaType(source.contentType()))
                 .body(source.content());
     }
 

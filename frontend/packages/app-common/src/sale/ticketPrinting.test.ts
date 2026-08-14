@@ -60,12 +60,24 @@ describe("confirmed ticket printing", () => {
 
   it("prints the authoritative snapshot when automatic ticket printing is enabled", async () => {
     const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const ticketRenderedPdf = {
+      contentType: "application/pdf" as const,
+      base64: "JVBERi10aWNrZXQ=",
+    };
+    const ticketRenderedImage = {
+      contentType: "image/png" as const,
+      base64: "iVBORw0KGgo=",
+    };
     const hardware = {
       getHardwareConfig: vi.fn().mockResolvedValue(hardwareConfig(true)),
       printTicket
     } as unknown as HardwareBridge;
 
-    const result = await printConfirmedTicketAutomatically(snapshot, terminal, hardware);
+    const result = await printConfirmedTicketAutomatically({
+      ...snapshot,
+      ticketRenderedPdf,
+      ticketRenderedImage,
+    }, terminal, hardware);
 
     expect(result).toEqual({ status: "PRINTED" });
     expect(printTicket).toHaveBeenCalledWith({
@@ -78,6 +90,8 @@ describe("confirmed ticket printing", () => {
       total: 7,
       subtotal: 5.79,
       tax: 1.21,
+      renderedPdf: ticketRenderedPdf,
+      documentRaster: "data:image/png;base64,iVBORw0KGgo=",
       labels: expect.objectContaining({ discount: "Descuento" }),
       escposLabels: expect.objectContaining({ discount: "Descuento" }),
     }, expect.objectContaining({ documentPrintRoutes: expect.any(Array) }));

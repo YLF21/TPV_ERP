@@ -68,6 +68,26 @@ public class StoreDocumentPrintConfigurationService {
     }
 
     @Transactional
+    public Configuration updateTicketStyle(TicketPrintStyle style) {
+        UUID storeId = organization.currentStore().getId();
+        var value = settings.findById(storeId)
+                .orElseGet(() -> new StoreDocumentPrintSettings(storeId));
+        value.useTicketStyle(style);
+        settings.save(value);
+        audit.record("STORE_TICKET_PRINT_STYLE_UPDATED", AuditResult.EXITO,
+                Map.of("storeId", storeId.toString(), "style", style.name()));
+        return view(storeId, value);
+    }
+
+    @Transactional(readOnly = true)
+    public TicketPrintStyle ticketStyle() {
+        UUID storeId = organization.currentStore().getId();
+        return settings.findById(storeId)
+                .map(StoreDocumentPrintSettings::getTicketStyle)
+                .orElse(TicketPrintStyle.PRINCIPAL);
+    }
+
+    @Transactional
     public Configuration uploadLogo(byte[] content) {
         UUID storeId = organization.currentStore().getId();
         var validated = validate(content);
@@ -140,7 +160,8 @@ public class StoreDocumentPrintConfigurationService {
                 logo,
                 value == null ? null : value.getTicketObservations(),
                 value == null ? null : value.getInvoiceObservations(),
-                value == null ? null : value.getDeliveryNoteObservations());
+                value == null ? null : value.getDeliveryNoteObservations(),
+                value == null ? TicketPrintStyle.PRINCIPAL : value.getTicketStyle());
     }
 
     private static String dataUri(StoreDocumentLogo logo) {
@@ -203,7 +224,8 @@ public class StoreDocumentPrintConfigurationService {
             Logo logo,
             String ticketObservations,
             String invoiceObservations,
-            String deliveryNoteObservations) {
+            String deliveryNoteObservations,
+            TicketPrintStyle ticketStyle) {
     }
 
     public record Logo(UUID id, String contentType, String sha256,

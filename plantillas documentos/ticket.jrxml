@@ -1,0 +1,161 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="ticket" language="java" columnCount="1" pageWidth="227" pageHeight="842" orientation="Landscape" columnWidth="207" leftMargin="10" rightMargin="10" topMargin="5" bottomMargin="5" uuid="2dc94852-353d-4b50-91aa-dcebe73ee7ed" ignorePagination="true">
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<parameter name="TIENDA_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["13b6fb74-3de0-3198-8166-cf4eeb249f7f"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["04e5bdfb-4f14-3e39-a9cd-b9fa291461d9"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="PLANTILLA" class="java.lang.String">
+		<description><![CDATA[Código de plantilla. PRINCIPAL utiliza los subreports actuales. COMPACTA y COMPACTO utilizan los subreports ticket_*_compacta.jasper.]]></description>
+		<defaultValueExpression><![CDATA["PRINCIPAL"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="TPV_SUBREPORT_DIR" class="java.lang.String">
+		<defaultValueExpression><![CDATA["subreport/"]]></defaultValueExpression>
+	</parameter>
+	<query language="sql"><![CDATA[SELECT
+    1 AS dummy,
+    d.cliente_id IS NOT NULL AS tiene_cliente,
+    EXISTS (SELECT 1 FROM documento_pago dp WHERE dp.documento_id = d.id) AS tiene_pago
+FROM documento d
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
+	<field name="dummy" class="java.lang.Integer">
+		<property name="com.jaspersoft.studio.field.name" value="dummy"/>
+		<property name="com.jaspersoft.studio.field.label" value="dummy"/>
+	</field>
+	<field name="tiene_cliente" class="java.lang.Boolean">
+		<property name="com.jaspersoft.studio.field.name" value="tiene_cliente"/>
+		<property name="com.jaspersoft.studio.field.label" value="tiene_cliente"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
+	</field>
+	<field name="tiene_pago" class="java.lang.Boolean">
+		<property name="com.jaspersoft.studio.field.name" value="tiene_pago"/>
+		<property name="com.jaspersoft.studio.field.label" value="tiene_pago"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
+	</field>
+	<background splitType="Stretch"/>
+	<title height="67">
+		<element kind="subreport" uuid="c4bd1278-d456-4d61-8d05-a8c9c2aed29f" x="0" y="0" width="204" height="65">
+			<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+			<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_cabecera"
+    + ($P{PLANTILLA} == null
+        || $P{PLANTILLA}.trim().isEmpty()
+        || "PRINCIPAL".equalsIgnoreCase($P{PLANTILLA}.trim())
+        ? ""
+        : ("COMPACTO".equalsIgnoreCase($P{PLANTILLA}.trim()) || "COMPACTA".equalsIgnoreCase($P{PLANTILLA}.trim())
+            ? "_compacta"
+            : ("MINIMALISTA".equalsIgnoreCase($P{PLANTILLA}.trim()) ? "_minimalista" : "")))
+    + ".jasper"]]></expression>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<parameter name="TIENDA_ID">
+				<expression><![CDATA[$P{TIENDA_ID}]]></expression>
+			</parameter>
+			<parameter name="DOCUMENTO_ID">
+				<expression><![CDATA[$P{DOCUMENTO_ID}]]></expression>
+			</parameter>
+		</element>
+	</title>
+	<detail>
+		<band height="3" splitType="Stretch">
+			<element kind="subreport" uuid="e2723f0c-d7b7-4b4e-ac39-f184dd0f1bf5" x="0" y="0" width="204" height="1">
+				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+				<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_contenido"
+    + ($P{PLANTILLA} == null
+        || $P{PLANTILLA}.trim().isEmpty()
+        || "PRINCIPAL".equalsIgnoreCase($P{PLANTILLA}.trim())
+        ? ""
+        : ("COMPACTO".equalsIgnoreCase($P{PLANTILLA}.trim()) || "COMPACTA".equalsIgnoreCase($P{PLANTILLA}.trim())
+            ? "_compacta"
+            : ("MINIMALISTA".equalsIgnoreCase($P{PLANTILLA}.trim()) ? "_minimalista" : "")))
+    + ".jasper"]]></expression>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<parameter name="DOCUMENTO_ID">
+					<expression><![CDATA[$P{DOCUMENTO_ID}]]></expression>
+				</parameter>
+			</element>
+		</band>
+		<band height="3" splitType="Stretch">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{tiene_pago})]]></printWhenExpression>
+			<element kind="subreport" uuid="0eebdb6b-cd33-4426-a9b1-ef5081f8dc13" positionType="Float" x="0" y="0" width="204" height="1" removeLineWhenBlank="true">
+				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+				<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_pago"
+    + ($P{PLANTILLA} == null
+        || $P{PLANTILLA}.trim().isEmpty()
+        || "PRINCIPAL".equalsIgnoreCase($P{PLANTILLA}.trim())
+        ? ""
+        : ("COMPACTO".equalsIgnoreCase($P{PLANTILLA}.trim()) || "COMPACTA".equalsIgnoreCase($P{PLANTILLA}.trim())
+            ? "_compacta"
+            : ("MINIMALISTA".equalsIgnoreCase($P{PLANTILLA}.trim()) ? "_minimalista" : "")))
+    + ".jasper"]]></expression>
+				<parameter name="DOCUMENTO_ID"><expression><![CDATA[$P{DOCUMENTO_ID}]]></expression></parameter>
+			</element>
+		</band>
+		<band height="23" splitType="Stretch">
+			<element kind="subreport" uuid="56d18b81-e961-4c97-aefb-941b09cdca0b" positionType="Float" x="0" y="0" width="204" height="20">
+				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+				<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_impuesto"
+    + ($P{PLANTILLA} == null
+        || $P{PLANTILLA}.trim().isEmpty()
+        || "PRINCIPAL".equalsIgnoreCase($P{PLANTILLA}.trim())
+        ? ""
+        : ("COMPACTO".equalsIgnoreCase($P{PLANTILLA}.trim()) || "COMPACTA".equalsIgnoreCase($P{PLANTILLA}.trim())
+            ? "_compacta"
+            : ("MINIMALISTA".equalsIgnoreCase($P{PLANTILLA}.trim()) ? "_minimalista" : "")))
+    + ".jasper"]]></expression>
+				<parameter name="DOCUMENTO_ID">
+					<expression><![CDATA[$P{DOCUMENTO_ID}]]></expression>
+				</parameter>
+			</element>
+		</band>
+		<band height="53" splitType="Stretch">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{tiene_cliente})]]></printWhenExpression>
+			<element kind="subreport" uuid="858bb5f5-7110-422a-833f-b4ddc57a4ea1" x="0" y="0" width="204" height="50" removeLineWhenBlank="true">
+				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+				<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_cliente"
+    + ($P{PLANTILLA} == null
+        || $P{PLANTILLA}.trim().isEmpty()
+        || "PRINCIPAL".equalsIgnoreCase($P{PLANTILLA}.trim())
+        ? ""
+        : ("COMPACTO".equalsIgnoreCase($P{PLANTILLA}.trim()) || "COMPACTA".equalsIgnoreCase($P{PLANTILLA}.trim())
+            ? "_compacta"
+            : ("MINIMALISTA".equalsIgnoreCase($P{PLANTILLA}.trim()) ? "_minimalista" : "")))
+    + ".jasper"]]></expression>
+				<parameter name="DOCUMENTO_ID">
+					<expression><![CDATA[$P{DOCUMENTO_ID}]]></expression>
+				</parameter>
+			</element>
+		</band>
+	</detail>
+	<summary height="50">
+		<element kind="subreport" uuid="f5ff5eb5-5b95-4af0-a891-692f151d7676" x="0" y="0" width="204" height="40">
+			<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+			<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_pie"
+    + ($P{PLANTILLA} == null
+        || $P{PLANTILLA}.trim().isEmpty()
+        || "PRINCIPAL".equalsIgnoreCase($P{PLANTILLA}.trim())
+        ? ""
+        : ("COMPACTO".equalsIgnoreCase($P{PLANTILLA}.trim()) || "COMPACTA".equalsIgnoreCase($P{PLANTILLA}.trim())
+            ? "_compacta"
+            : ("MINIMALISTA".equalsIgnoreCase($P{PLANTILLA}.trim()) ? "_minimalista" : "")))
+    + ".jasper"]]></expression>
+			<parameter name="TIENDA_ID">
+				<expression><![CDATA[$P{TIENDA_ID}]]></expression>
+			</parameter>
+			<parameter name="DOCUMENTO_ID">
+				<expression><![CDATA[$P{DOCUMENTO_ID}]]></expression>
+			</parameter>
+		</element>
+	</summary>
+</jasperReport>

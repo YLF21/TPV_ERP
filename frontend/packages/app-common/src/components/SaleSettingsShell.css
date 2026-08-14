@@ -571,6 +571,25 @@
   gap: 14px;
 }
 
+.sale-settings-screen .hardware-section .hardware-control-field,
+.sale-settings-screen .hardware-section .hardware-device-summary {
+  width: min(560px, 100%);
+}
+
+.sale-settings-screen .hardware-section > .hardware-check {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.sale-settings-screen .hardware-payment-methods {
+  width: min(880px, 100%);
+}
+
+.sale-settings-screen .hardware-payment-methods > div {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  column-gap: 32px;
+}
+
 .sale-settings-screen .hardware-inline-actions,
 .sale-settings-screen .hardware-settings-actions,
 .sale-settings-screen .hardware-label-tools {
@@ -715,5 +734,9 @@
 
   .sale-settings-screen .sale-settings-readonly-row:nth-child(odd) {
     border-right: 0;
+  }
+
+  .sale-settings-screen .hardware-payment-methods > div {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

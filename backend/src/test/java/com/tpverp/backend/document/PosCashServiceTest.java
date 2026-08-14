@@ -883,6 +883,9 @@ class PosCashServiceTest {
         when(documents.createTicket(any(DocumentCommand.class), anyList(), any()))
                 .thenReturn(ticket);
         when(documents.ticketPrintView(ticket)).thenReturn(TicketPrintView.from(ticket));
+        when(documents.renderTicketPrintView(
+                any(CommercialDocument.class), any(TicketPrintView.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
         var customerId = UUID.randomUUID();
         var service = new PosCashService(
                 documents, products, taxes, warehouses, paymentMethods, organization,

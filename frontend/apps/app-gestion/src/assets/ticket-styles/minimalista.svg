@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="600" viewBox="0 0 220 600" role="img" aria-labelledby="title description">
+  <title id="title">Plantilla de ticket minimalista</title>
+  <desc id="description">Ticket minimalista completo con logotipo, datos fiscales, código de barras, compra, pago, impuestos, cliente, devoluciones y QR.</desc>
+  <rect width="220" height="600" fill="#eef2f6"/>
+  <rect x="9" y="5" width="202" height="590" fill="#fff" stroke="#9aa9b8"/>
+
+  <g fill="#111" font-family="Arial, Helvetica, sans-serif">
+    <!-- Logotipo EP -->
+    <g transform="translate(91 14)" fill="#000">
+      <path d="M0 0h14v5H5v5h9v5H5v5h9v5H0z"/>
+      <path d="M16 0h10c7 0 11 4 11 10s-4 10-11 10h-5v8h-5zm5 5v10h5c4 0 6-2 6-5s-2-5-6-5z"/>
+    </g>
+
+    <!-- Comercio -->
+    <text x="18" y="57" font-size="10.5" font-weight="700">EMPRESA PRUEBAS TPV ERP</text>
+    <text x="18" y="78" font-size="7.2">CIF: B00000000 · Tel.: 928000000</text>
+    <text x="18" y="90" font-size="7.2">Calle Pruebas 1 · 35001 Las Palmas · ES</text>
+    <text x="18" y="102" font-size="7.2">tienda001@example.test</text>
+
+    <!-- Identificación -->
+    <text x="18" y="123" font-size="7.5" font-weight="700">Factura simplificada:</text>
+    <text x="202" y="123" text-anchor="end" font-size="7.5" font-weight="700">001-260802-800001</text>
+    <text x="18" y="140" font-size="7.2">02/08/2026 12:00:00</text>
+
+    <!-- Código de barras de ancho completo -->
+    <g fill="#000" transform="translate(55 151)">
+      <rect x="0" y="0" width="2" height="25"/><rect x="4" y="0" width="1" height="25"/>
+      <rect x="7" y="0" width="3" height="25"/><rect x="12" y="0" width="1" height="25"/>
+      <rect x="15" y="0" width="2" height="25"/><rect x="19" y="0" width="4" height="25"/>
+      <rect x="25" y="0" width="1" height="25"/><rect x="28" y="0" width="3" height="25"/>
+      <rect x="33" y="0" width="2" height="25"/><rect x="37" y="0" width="1" height="25"/>
+      <rect x="40" y="0" width="4" height="25"/><rect x="46" y="0" width="2" height="25"/>
+      <rect x="50" y="0" width="1" height="25"/><rect x="53" y="0" width="3" height="25"/>
+      <rect x="58" y="0" width="1" height="25"/><rect x="61" y="0" width="4" height="25"/>
+      <rect x="67" y="0" width="2" height="25"/><rect x="71" y="0" width="1" height="25"/>
+      <rect x="74" y="0" width="3" height="25"/><rect x="79" y="0" width="2" height="25"/>
+      <rect x="83" y="0" width="4" height="25"/><rect x="89" y="0" width="1" height="25"/>
+      <rect x="92" y="0" width="2" height="25"/><rect x="96" y="0" width="3" height="25"/>
+      <rect x="101" y="0" width="1" height="25"/><rect x="104" y="0" width="4" height="25"/>
+    </g>
+
+    <!-- Artículos -->
+    <line x1="15" y1="184" x2="205" y2="184" stroke="#111" stroke-width=".7"/>
+    <text x="18" y="199" font-size="7.4" font-weight="700">Artículo</text>
+    <text x="202" y="199" text-anchor="end" font-size="7.4" font-weight="700">Importe</text>
+    <line x1="15" y1="207" x2="205" y2="207" stroke="#111" stroke-width=".6"/>
+    <text x="15" y="222" font-size="7.2">Bebida demo 01</text>
+    <text x="20" y="237" font-size="7">1 × ( 1,80 € )</text>
+    <text x="202" y="237" text-anchor="end" font-size="7">1,80 €</text>
+    <line x1="15" y1="244" x2="205" y2="244" stroke="#111" stroke-width=".45"/>
+    <text x="15" y="257" font-size="7">Subtotal</text>
+    <text x="202" y="257" text-anchor="end" font-size="7">2,18 €</text>
+    <text x="15" y="271" font-size="7">Descuento Socio (2%)</text>
+    <text x="202" y="271" text-anchor="end" font-size="7">−0,04 €</text>
+    <line x1="15" y1="284" x2="205" y2="284" stroke="#111" stroke-width=".7"/>
+    <text x="18" y="303" font-size="9.4" font-weight="700">TOTAL A PAGAR</text>
+    <text x="202" y="303" text-anchor="end" font-size="11" font-weight="700">2,14 €</text>
+
+    <!-- Forma de pago -->
+    <text x="18" y="329" font-size="8" font-weight="700">FORMA DE PAGO</text>
+    <text x="15" y="349" font-size="7.2">Efectivo</text>
+    <text x="202" y="349" text-anchor="end" font-size="7.2">2,18 €</text>
+    <text x="15" y="364" font-size="7.2">Cambio entregado</text>
+    <text x="202" y="364" text-anchor="end" font-size="7.2">0,00 €</text>
+
+    <!-- Impuestos -->
+    <line x1="15" y1="377" x2="205" y2="377" stroke="#111" stroke-width=".6"/>
+    <text x="18" y="391" font-size="7.2" font-weight="700">Impuesto</text>
+    <text x="135" y="391" text-anchor="middle" font-size="7.2" font-weight="700">Base</text>
+    <text x="202" y="391" text-anchor="end" font-size="7.2" font-weight="700">Cuota</text>
+    <line x1="15" y1="399" x2="205" y2="399" stroke="#111" stroke-width=".5"/>
+    <text x="18" y="415" font-size="7.1">IVA 21%</text>
+    <text x="135" y="415" text-anchor="middle" font-size="7.1">1,80 €</text>
+    <text x="202" y="415" text-anchor="end" font-size="7.1">0,38 €</text>
+
+    <!-- Cliente -->
+    <line x1="15" y1="430" x2="205" y2="430" stroke="#111" stroke-width=".6"/>
+    <text x="18" y="446" font-size="7.6" font-weight="700">CLIENTE DEMO 01</text>
+    <text x="18" y="461" font-size="6.8">Código: C-001-000101 · Tel.: 610000001 · VENTA</text>
+    <text x="18" y="475" font-size="6.8">Descuento Socio: 2%</text>
+
+    <!-- Condiciones -->
+    <text x="18" y="499" font-size="7.5" font-weight="700">CONDICIONES DE DEVOLUCIÓN</text>
+    <line x1="15" y1="507" x2="205" y2="507" stroke="#111" stroke-width=".55"/>
+    <text x="18" y="520" font-size="5.8">Devoluciones: 30 días desde la compra. Producto sin</text>
+    <text x="18" y="530" font-size="5.8">usar, en perfecto estado y con embalaje y accesorios.</text>
+    <text x="18" y="540" font-size="5.8">Reembolso por el mismo método de pago. Fuera de</text>
+    <text x="18" y="550" font-size="5.8">plazo o condiciones, podrá rechazarse.</text>
+
+    <!-- QR y agradecimiento -->
+    <g transform="translate(24 558) scale(.62)" fill="#000">
+      <rect width="48" height="48" fill="#fff" stroke="#000" stroke-width="2"/>
+      <path d="M3 3h14v14H3zm4 4v6h6V7zM31 3h14v14H31zm4 4v6h6V7zM3 31h14v14H3zm4 4v6h6v-6zM21 3h4v5h-4zm5 7h4v4h-4zm-7 7h7v4h-7zm9 2h5v6h-5zm7 2h4v5h-4zm-14 5h6v5h-6zm8 2h4v4h-4zm7 1h9v4h-9zm-16 5h4v7h-4zm7 1h6v4h-6zm8 2h4v8h-4zm7 0h3v5h-3zm-20 6h9v3h-9z"/>
+    </g>
+    <text x="193" y="582" text-anchor="end" font-size="7.2">Gracias por su compra</text>
+  </g>
+</svg>

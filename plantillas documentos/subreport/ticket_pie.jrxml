@@ -1,0 +1,82 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="ticket_pie" language="java" columnCount="1" pageWidth="207" pageHeight="842" orientation="Landscape" columnWidth="207" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" uuid="b83b7c92-857f-4afb-a105-391a9fd343f8">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<parameter name="TIENDA_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["13b6fb74-3de0-3198-8166-cf4eeb249f7f"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["58109209-2548-4c19-9c4e-6f47c541035b"]]></defaultValueExpression>
+	</parameter>
+	<query language="sql"><![CDATA[SELECT
+    CAST(d.id AS varchar) AS contenido_qr,
+    COALESCE(
+        cdi.observaciones_ticket,
+        ''
+    ) AS observacion_ticket
+FROM documento d
+LEFT JOIN configuracion_documento_impreso_tienda cdi
+    ON cdi.tienda_id = d.tienda_id
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
+	<field name="contenido_qr" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="contenido_qr"/>
+		<property name="com.jaspersoft.studio.field.label" value="contenido_qr"/>
+	</field>
+	<field name="observacion_ticket" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="observacion_ticket"/>
+		<property name="com.jaspersoft.studio.field.label" value="observacion_ticket"/>
+	</field>
+	<background splitType="Stretch"/>
+	<detail>
+		<band height="171" splitType="Stretch">
+			<element kind="textField" uuid="37a6f279-7859-4617-ad52-2dddbe40d066" positionType="Float" x="5" y="23" width="199" height="38" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+				<expression><![CDATA[$F{observacion_ticket}]]></expression>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<box leftPadding="2" rightPadding="2"/>
+			</element>
+			<element kind="line" uuid="99eed8a4-d56c-4ffb-8603-bc93e6497b23" x="5" y="1" width="197" height="1">
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<pen lineWidth="0.5" lineStyle="Dashed"/>
+			</element>
+			<element kind="staticText" uuid="1c471111-2883-4068-a12e-465170b5744c" positionType="Float" x="5" y="7" width="197" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+				<text><![CDATA[CONDICIONES DE DEVOLUCIÓN]]></text>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			</element>
+			<element kind="staticText" uuid="4ed14df0-1037-436f-af5b-89194c98efb8" positionType="Float" x="5" y="155" width="197" height="13" fontSize="9.0" hTextAlign="Center">
+				<text><![CDATA[Gracias por su compra]]></text>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="component" uuid="12ced4b2-46ab-45b2-a35b-d0c1258445bc" positionType="Float" x="61" y="64" width="86" height="86">
+				<component kind="barcode4j:QRCode">
+					<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
+				</component>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</band>
+	</detail>
+</jasperReport>

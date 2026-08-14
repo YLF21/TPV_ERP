@@ -1546,13 +1546,18 @@ describe("SalesReportScreen", () => {
           payments: [{ method: "EFECTIVO", amount: 60.5 }],
           baseTotal: 50,
           taxTotal: 10.5,
-          total: 60.5
+          total: 60.5,
+          ticketRenderedPdf: {
+            contentType: "application/pdf",
+            base64: "JVBERi0xLjc="
+          }
         });
       }
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
     const previewWindow = {
       opener: window,
+      location: { replace: vi.fn() },
       document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
       setTimeout: vi.fn((callback: () => void) => callback()),
       focus: vi.fn(),
@@ -1560,6 +1565,7 @@ describe("SalesReportScreen", () => {
       close: vi.fn()
     };
     vi.spyOn(window, "open").mockReturnValue(previewWindow as unknown as Window);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:ticket-copy");
 
     render(
       <SalesReportScreen
@@ -1588,8 +1594,11 @@ describe("SalesReportScreen", () => {
       "/tickets/ticket-1/print",
       { token: "token" }
     ));
-    expect(previewWindow.document.write).toHaveBeenCalledWith(expect.stringContaining("T-001"));
-    expect(previewWindow.print).toHaveBeenCalledOnce();
+    expect(createObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
+    expect(previewWindow.location.replace).toHaveBeenCalledWith("blob:ticket-copy");
+    expect(previewWindow.document.write).not.toHaveBeenCalled();
+    expect(previewWindow.print).not.toHaveBeenCalled();
+    createObjectUrl.mockRestore();
   });
 
   it("builds V67-compatible report table definitions with sensible defaults", () => {

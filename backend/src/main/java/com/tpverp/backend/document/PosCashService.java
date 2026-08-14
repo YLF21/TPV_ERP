@@ -414,7 +414,8 @@ public class PosCashService {
         reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
                 snapshots.serialize(printTicket), Instant.now());
         checkouts.save(reserved);
-        return new Result(ticket.getId(), ticket.getNumero(), total, received, change, printTicket);
+        return new Result(ticket.getId(), ticket.getNumero(), total, received, change,
+                documents.renderTicketPrintView(ticket, printTicket));
     }
 
     @Transactional(readOnly = true)

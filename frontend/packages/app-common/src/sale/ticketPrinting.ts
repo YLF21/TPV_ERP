@@ -42,6 +42,8 @@ export type ConfirmedTicketPrintSnapshot = {
   checkoutDiscountTotal?: NumericValue;
   observations?: string;
   logo?: string;
+  ticketRenderedPdf?: { contentType: "application/pdf"; base64: string };
+  ticketRenderedImage?: { contentType: "image/png"; base64: string };
 };
 
 export type TicketPrintOutcome = {
@@ -152,6 +154,10 @@ export function ticketPrintRequest(
     labels,
     escposLabels: labels,
     ...(snapshot.logo ? { logo: snapshot.logo } : {}),
+    ...(snapshot.ticketRenderedPdf ? { renderedPdf: snapshot.ticketRenderedPdf } : {}),
+    ...(snapshot.ticketRenderedImage
+      ? { documentRaster: `data:${snapshot.ticketRenderedImage.contentType};base64,${snapshot.ticketRenderedImage.base64}` }
+      : {}),
     ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
   };
 }
