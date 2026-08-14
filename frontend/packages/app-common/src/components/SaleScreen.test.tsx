@@ -2236,6 +2236,92 @@ describe("SaleScreen", () => {
     expect(onOpenCustomerReceivables).not.toHaveBeenCalled();
   });
 
+  it("opens customer receivables from System with Ctrl+D and the selected customer context", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response("[]", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.includes("/customers/sale-options/search")) {
+        return new Response(JSON.stringify([customers[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    const onOpenCustomerReceivables = vi.fn();
+    render(
+      <SaleScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, permissions: ["CUSTOMER_RECEIVABLES_READ"] }}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onOpenCustomerReceivables={onOpenCustomerReceivables}
+      />,
+    );
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "SISTEMA" }));
+    const receivablesAction = screen.getByRole("menuitem", {
+      name: "Deudas de clientes Ctrl+D",
+    });
+    expect(receivablesAction).toBeEnabled();
+    fireEvent.click(receivablesAction);
+    expect(onOpenCustomerReceivables).toHaveBeenLastCalledWith(undefined);
+
+    fireEvent.keyDown(window, { key: "End" });
+    const customerDialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    await waitFor(() => expect(
+      within(customerDialog).getByRole("button", { name: /Cliente Pruebas/ }),
+    ).toHaveAttribute("aria-current", "true"));
+    fireEvent.keyDown(customerDialog, { key: "Insert" });
+    expect(checkoutProps.current?.sale?.customerId).toBe(customers[0].id);
+
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    expect(onOpenCustomerReceivables).toHaveBeenLastCalledWith(customers[0].id);
+
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1000));
+    fireEvent.click(screen.getByRole("button", { name: "SISTEMA" }));
+    expect(screen.getByRole("menuitem", { name: "Deudas de clientes Ctrl+D" }))
+      .toBeDisabled();
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    expect(onOpenCustomerReceivables).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not expose or execute customer receivables without read permission", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    const onOpenCustomerReceivables = vi.fn();
+    render(
+      <SaleScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, permissions: ["VENTA"] }}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onOpenCustomerReceivables={onOpenCustomerReceivables}
+      />,
+    );
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "SISTEMA" }));
+    expect(screen.queryByRole("menuitem", { name: /Deudas de clientes/ }))
+      .not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    expect(onOpenCustomerReceivables).not.toHaveBeenCalled();
+  });
+
   it("keeps the approved clear scopes and per-sale comment, discounts and print method", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {

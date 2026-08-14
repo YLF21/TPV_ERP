@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   ErpSelect,
+  erpSelectPopoverLayout,
   erpSelectKeyIntent,
   nextErpSelectOptionIndex,
   type ErpSelectOption
@@ -58,5 +59,19 @@ describe("ErpSelect", () => {
     expect(nextErpSelectOptionIndex(options, -1, 1)).toBe(0);
     expect(nextErpSelectOptionIndex(options, -1, -1)).toBe(2);
     expect(nextErpSelectOptionIndex([], -1, 1)).toBe(-1);
+  });
+
+  it("keeps the popover inside the viewport and opens it above when needed", () => {
+    expect(erpSelectPopoverLayout(
+      { top: 720, bottom: 766, left: 1080, width: 220 },
+      { width: 340, height: 240 },
+      { width: 1329, height: 912 },
+    )).toEqual({
+      top: 476,
+      left: 981,
+      minWidth: 220,
+      maxWidth: 1313,
+      maxHeight: 240,
+    });
   });
 });

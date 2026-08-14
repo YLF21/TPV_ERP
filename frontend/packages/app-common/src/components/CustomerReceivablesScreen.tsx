@@ -8,9 +8,9 @@ import {
   type CustomerReceivablePaymentReceiptSnapshot
 } from "../sale/ticketPrinting";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
+import "./CustomerReceivablesScreen.css";
 import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./CustomerReceivablePaymentDialog";
-import { ScreenContextFooter } from "./ScreenContextFooter";
-import { SessionTopControls } from "./SessionTopControls";
+import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { TableSortButton } from "./TableSortButton";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
@@ -88,7 +88,7 @@ export function effectiveReceivableStatus(row: Pick<CustomerReceivable, "status"
   return "PENDIENTE";
 }
 
-export function CustomerReceivablesScreen({ locale, session, terminalContext, initialCustomerId, request = apiRequest, printReceipt = printCustomerReceivablePaymentReceipt, onBack, onLocaleChange, onLogout }: Props) {
+export function CustomerReceivablesScreen({ locale, session, terminalContext, initialCustomerId, request = apiRequest, printReceipt = printCustomerReceivablePaymentReceipt, onBack }: Props) {
   const t = createTranslator(locale);
   const [view, setView] = useState<ReceivablesView>("OPEN");
   const [rows, setRows] = useState<CustomerReceivable[]>([]);
@@ -110,6 +110,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   };
   const loadGeneration = useRef(0);
   const detailGeneration = useRef(0);
+  const dialogRef = useRef<HTMLElement>(null);
   const canPay = hasPermission(session, "CUSTOMER_RECEIVABLES_PAY");
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
@@ -147,6 +148,25 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
     return () => { mounted = false; };
   }, [methods.length, request, session.accessToken, view]);
   useEffect(() => () => { detailGeneration.current += 1; }, []);
+  useEffect(() => {
+    if (!dialogRef.current) return;
+    return activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document);
+  }, []);
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.repeat) return;
+      if (selected) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (selectedHistory) {
+        if (!printing) closeHistory();
+        return;
+      }
+      onBack();
+    };
+    window.addEventListener("keydown", closeOnEscape, true);
+    return () => window.removeEventListener("keydown", closeOnEscape, true);
+  }, [onBack, printing, selected, selectedHistory]);
 
   const consultHistory = async (row: CustomerReceivablePaymentHistory) => {
     const generation = ++detailGeneration.current;
@@ -225,17 +245,34 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
     if (column === "credit") return Number(entry.credit);
     return Number(entry.balance);
   }, locale), [account?.entries, accountSorting.sort, locale, t]);
+  const customerContext = account?.customerName ?? rows[0]?.customerName ?? historyRows[0]?.customerName;
+  const resultCount = view === "OPEN" ? rows.length : view === "HISTORY" ? historyRows.length : account?.entries.length ?? 0;
 
-  return <main className="customer-receivables-screen">
-    <header className="entry-topbar"><strong>{t("receivables.title").toLocaleUpperCase(locale)}</strong></header>
-    <SessionTopControls locale={locale} session={session} languageLabel={t("common.language")} shutdownLabel={t("common.close")} changePasswordLabel={t("auth.changePassword")} logoutLabel={t("auth.logout")} shutdownConfirmTitle={t("shutdown.title")} shutdownConfirmText={t("shutdown.message")} noLabel={t("common.no")} yesLabel={t("common.yes")} onLocaleChange={onLocaleChange} onLogout={onLogout} />
-    <section className="customer-receivables-panel">
-      <header><div><h1>{t(view === "OPEN" ? "receivables.title" : view === "HISTORY" ? "receivables.history.title" : "receivables.account.title")}</h1><p>{t(view === "OPEN" ? "receivables.subtitle" : view === "HISTORY" ? "receivables.history.subtitle" : "receivables.account.subtitle")}</p></div><button type="button" className="receivables-back-button" onClick={onBack}>{t("common.back")}</button></header>
+  return <div className="customer-receivables-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onBack(); }}>
+    <section
+      ref={dialogRef}
+      className="customer-receivables-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="customer-receivables-title"
+      aria-describedby="customer-receivables-subtitle"
+      aria-hidden={selected || selectedHistory ? true : undefined}
+    >
+      <header className="customer-receivables-dialog-header">
+        <span className="customer-receivables-mark" aria-hidden="true">€</span>
+        <div>
+          <span className="customer-receivables-kicker">{t("receivables.workspace")}</span>
+          <h2 id="customer-receivables-title">{t(view === "OPEN" ? "receivables.title" : view === "HISTORY" ? "receivables.history.title" : "receivables.account.title")}</h2>
+          <p id="customer-receivables-subtitle">{t(view === "OPEN" ? "receivables.subtitle" : view === "HISTORY" ? "receivables.history.subtitle" : "receivables.account.subtitle")}{customerContext ? <strong> · {customerContext}</strong> : null}</p>
+        </div>
+        <button type="button" className="customer-receivables-close" aria-label={t("common.close")} onClick={onBack}>×</button>
+      </header>
       <nav className="receivables-view-tabs" aria-label={t("receivables.view.label")}>
         <button type="button" aria-pressed={view === "OPEN"} onClick={() => setView("OPEN")}>{t("receivables.view.open")}</button>
         <button type="button" aria-pressed={view === "HISTORY"} onClick={() => setView("HISTORY")}>{t("receivables.view.history")}</button>
         {initialCustomerId && <button type="button" aria-pressed={view === "ACCOUNT"} onClick={() => setView("ACCOUNT")}>{t("receivables.view.account")}</button>}
       </nav>
+      <div className="customer-receivables-dialog-body">
       {view === "OPEN" ? <>
         <div className="customer-receivables-filters">
           <label>{t("receivables.search")}<input value={search} onChange={(event) => setSearch(event.target.value)} /></label>
@@ -287,8 +324,13 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           </div>
         </>}
       </div>}
+      </div>
+      <footer className="customer-receivables-dialog-footer">
+        <p aria-live="polite"><strong>{resultCount}</strong> {t("receivables.results")}</p>
+        <span><kbd>Esc</kbd> {t("common.close")}</span>
+        <button type="button" onClick={onBack}>{t("common.close")}</button>
+      </footer>
     </section>
-    <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
     {selected && <CustomerReceivablePaymentDialog locale={locale} receivable={selected} token={session.accessToken} terminalCode={terminalContext.terminalCode} terminalContext={terminalContext} request={request} printReceipt={printReceipt} onCancel={() => setSelected(null)} onPayment={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint(() => retry ?? null); setSelected(updated); }} onPaid={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint(() => retry ?? null); setSelected(null); void load(); }} />}
     {selectedHistory && <div className="sale-action-overlay" role="presentation">
       <section className="customer-receivable-payment-dialog receivable-history-dialog" role="dialog" aria-modal="true" aria-labelledby="receivable-history-title">
@@ -299,5 +341,5 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         <footer><button type="button" disabled={printing} onClick={closeHistory}>{t("common.close")}</button><button type="button" disabled={!receipt || detailLoading || printing} onClick={() => void reprintReceipt()}>{printing ? t("receivables.history.printing") : t("receivables.action.reprint")}</button></footer>
       </section>
     </div>}
-  </main>;
+  </div>;
 }

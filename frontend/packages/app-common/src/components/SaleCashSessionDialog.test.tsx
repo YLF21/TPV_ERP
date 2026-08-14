@@ -15,6 +15,24 @@ afterEach(() => {
 });
 
 describe("SaleCashSessionDialog", () => {
+  it("uses a neutral cancel action when cash opening starts from Home", async () => {
+    const onExitSales = vi.fn();
+    render(
+      <SaleCashSessionDialog
+        locale="es"
+        mode="OPEN"
+        openContext="HOME"
+        terminalId="terminal-1"
+        token="token"
+        onExitSales={onExitSales}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Salir de Ventas" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(onExitSales).toHaveBeenCalledOnce();
+  });
+
   it("closes a cash session with the retained fund and exits Sales after success", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       id: "session-1",

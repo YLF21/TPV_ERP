@@ -107,6 +107,55 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void salesReadinessReportsRequiredClosedSessionWithoutWriting() {
+        var fixture = serviceFixture();
+        var config = new CashStoreConfig(fixture.store.getId());
+        config.update(BigDecimal.ZERO, false, true, false, true);
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+
+        var readiness = fixture.service.salesReadiness(
+                fixture.terminal.getId(),
+                salesAuthentication(fixture.user));
+
+        assertThat(readiness.cashSessionRequired()).isTrue();
+        assertThat(readiness.open()).isFalse();
+        assertThat(readiness.session()).isNull();
+        assertThat(readiness.requireWithdrawalBreakdown()).isTrue();
+        assertThat(readiness.withdrawalDenominations())
+                .containsExactlyElementsOf(CashDenomination.valuesInEuroOrder());
+        verify(fixture.sessions, never()).save(any(CashSession.class));
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+        verify(fixture.organization, never()).currentUser(any());
+        verify(fixture.terminals, never()).findForCashSessionPreparation(any(), any());
+    }
+
+    @Test
+    void salesReadinessReportsExistingOpenSessionWithoutWriting() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(),
+                fixture.terminal.getId(),
+                fixture.user.getId(),
+                NOW,
+                new BigDecimal("25.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(
+                fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+
+        var readiness = fixture.service.salesReadiness(
+                fixture.terminal.getId(),
+                salesAuthentication(fixture.user));
+
+        assertThat(readiness.cashSessionRequired()).isFalse();
+        assertThat(readiness.open()).isTrue();
+        assertThat(readiness.session()).isNotNull();
+        assertThat(readiness.session().id()).isEqualTo(session.getId());
+        verify(fixture.sessions, never()).save(any(CashSession.class));
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+        verify(fixture.organization, never()).currentUser(any());
+    }
+
+    @Test
     void secondMismatchClosesSessionAndStoresDiscrepancy() {
         var session = openSession();
 

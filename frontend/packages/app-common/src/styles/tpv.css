@@ -616,77 +616,6 @@ textarea {
   font-weight: 850;
 }
 
-.home-actions {
-  width: min(980px, calc(100vw - 96px));
-  height: min(470px, calc(100vh - 250px));
-  min-height: 390px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
-  gap: 24px;
-  margin-top: 86px;
-}
-
-.home-action-side {
-  display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.home-action {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.54);
-  border-radius: 26px;
-  background: rgba(221, 235, 255, 0.42);
-  color: #233d69;
-  box-shadow: 0 22px 70px rgba(77, 125, 203, 0.16);
-  backdrop-filter: blur(14px);
-  cursor: pointer;
-  font-size: 30px;
-  font-weight: 950;
-  letter-spacing: 0;
-  text-shadow: 0 2px 18px rgba(255, 255, 255, 0.6);
-}
-
-.home-action-sale {
-  gap: 22px;
-  font-size: 56px;
-}
-
-.home-action-icon {
-  width: 58px;
-  height: 58px;
-  object-fit: contain;
-  opacity: 0.82;
-}
-
-.home-action-sale .home-action-icon {
-  width: 92px;
-  height: 92px;
-}
-
-.home-action:hover,
-.home-action:focus-visible {
-  border-color: rgba(255, 255, 255, 0.84);
-  background: rgba(235, 244, 255, 0.68);
-  outline: 4px solid rgba(74, 132, 232, 0.22);
-}
-
-.home-action:disabled {
-  color: rgba(35, 61, 105, 0.34);
-  cursor: default;
-  filter: grayscale(0.3);
-}
-
-.home-action:disabled:hover {
-  border-color: rgba(255, 255, 255, 0.54);
-  background: rgba(221, 235, 255, 0.42);
-  outline: none;
-}
-
 .report-shell {
   width: calc(100vw - 48px);
   height: calc(100vh - 116px);
@@ -3245,88 +3174,6 @@ textarea {
   color: #c52828;
   font-size: 13px;
   font-weight: 850;
-}
-
-.home-screen .home-actions {
-  z-index: 1;
-  width: min(980px, calc(100vw - 96px));
-  height: min(470px, calc(100vh - 238px));
-  min-height: 390px;
-  margin-top: 78px;
-  gap: 16px;
-}
-
-.home-screen .home-action-side {
-  gap: 12px;
-}
-
-.home-screen .home-action {
-  gap: 14px;
-  border: 1px solid #d7e0ea;
-  border-radius: 18px;
-  background: #ffffff;
-  color: #17233b;
-  box-shadow: 0 16px 40px rgba(31, 55, 86, 0.1);
-  backdrop-filter: none;
-  font-size: 24px;
-  text-shadow: none;
-}
-
-.home-screen .home-action-sale {
-  gap: 20px;
-  border-color: #244e86;
-  background: #244e86;
-  color: #ffffff;
-  font-size: 48px;
-  box-shadow: 0 18px 44px rgba(36, 78, 134, 0.24);
-}
-
-.home-screen .home-action-icon {
-  width: 52px;
-  height: 52px;
-  opacity: 0.9;
-  filter: grayscale(1);
-}
-
-.home-screen .home-action-sale .home-action-icon {
-  width: 88px;
-  height: 88px;
-  filter: grayscale(1) brightness(0) invert(1);
-}
-
-.home-screen .home-action:hover,
-.home-screen .home-action:focus-visible {
-  border-color: #9db8db;
-  background: #f3f7fb;
-  color: #17233b;
-  outline: 3px solid rgba(36, 78, 134, 0.14);
-  box-shadow: 0 16px 40px rgba(31, 55, 86, 0.1);
-}
-
-.home-screen .home-action-sale:hover,
-.home-screen .home-action-sale:focus-visible {
-  border-color: #17233b;
-  background: #17233b;
-  color: #ffffff;
-}
-
-.home-screen .home-action:disabled {
-  border-color: #d7e0ea;
-  background: #f3f7fb;
-  color: #9aa8ba;
-  box-shadow: none;
-  filter: none;
-}
-
-.home-screen .home-action:disabled .home-action-icon {
-  opacity: 0.42;
-}
-
-.home-screen .home-action:disabled:hover {
-  border-color: #d7e0ea;
-  background: #f3f7fb;
-  color: #9aa8ba;
-  outline: none;
 }
 
 .login-screen .shutdown-overlay,
@@ -12513,7 +12360,17 @@ body,
   gap: 34px !important;
 }
 
+.home-screen .home-sale-launcher {
+  width: 410px;
+  height: var(--home-launcher-height);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-content: stretch;
+  gap: 8px;
+}
+
 .home-screen .home-action {
+  position: relative !important;
   min-height: 0 !important;
   height: 242px !important;
   display: grid !important;
@@ -12546,15 +12403,100 @@ body,
   grid-template-rows: 210px 1fr !important;
   justify-items: center !important;
   align-items: center !important;
-  width: 410px !important;
-  height: var(--home-launcher-height) !important;
-  min-height: var(--home-launcher-height) !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
   padding: 0 !important;
   border-color: #062249 !important;
   background:
     linear-gradient(180deg, #07254f 0 168px, #2f7dbc 168px 100%) !important;
   color: #ffffff !important;
   text-align: center !important;
+}
+
+.home-screen .home-action-shortcut {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 34px;
+  min-height: 25px;
+  display: grid;
+  place-items: center;
+  padding: 0 7px;
+  border: 1px solid #9eb0c4;
+  border-radius: 3px;
+  background: #f5f8fb;
+  color: #173f6e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.home-screen .home-action-sale .home-action-shortcut {
+  border-color: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.home-screen .home-action-sale:disabled {
+  border-color: #9ba9b8 !important;
+  background: linear-gradient(180deg, #d9e0e7 0 168px, #aeb9c5 168px 100%) !important;
+  color: #4e5d6e !important;
+  cursor: not-allowed !important;
+}
+
+.home-screen .home-action-sale:disabled .home-action-icon {
+  filter: grayscale(1) brightness(0.55) !important;
+  opacity: 0.68 !important;
+}
+
+.home-screen .home-action-sale:disabled .home-action-shortcut {
+  border-color: #8e9cac;
+  background: rgba(255, 255, 255, 0.45);
+  color: #4e5d6e;
+}
+
+.home-screen .home-sale-cash-state {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 5px 9px;
+  border-left: 3px solid #c88916;
+  background: #fff8e8;
+  color: #62450d;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.home-screen .home-sale-cash-state.error {
+  border-left-color: #a83232;
+  background: #fff1f1;
+  color: #7f1d1d;
+}
+
+.home-screen .home-open-cash-button,
+.home-screen .home-cash-retry-button {
+  min-height: 38px;
+  border: 1px solid #173f6e;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #173f6e;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.home-screen .home-open-cash-button:hover,
+.home-screen .home-open-cash-button:focus-visible,
+.home-screen .home-cash-retry-button:hover,
+.home-screen .home-cash-retry-button:focus-visible {
+  background: #eaf2fb;
+  outline: 2px solid rgba(36, 101, 165, 0.2);
+  outline-offset: 1px;
 }
 
 .home-screen .home-action-icon,
@@ -12605,7 +12547,11 @@ body,
   }
 
   .home-screen .home-action-sale {
-    width: 380px !important;
+    width: 100% !important;
+  }
+
+  .home-screen .home-sale-launcher {
+    width: 380px;
   }
 
   .home-screen .home-action {
@@ -12622,6 +12568,10 @@ body,
 
   .home-screen .home-action-sale {
     width: 100% !important;
+  }
+
+  .home-screen .home-sale-launcher {
+    width: 100%;
   }
 
   .home-screen .home-action-side {

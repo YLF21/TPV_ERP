@@ -38,7 +38,7 @@ describe("SettingsScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a settings hub with formal controls and hardware entry", () => {
+  it("renders the grouped APP VENTA shell and starts in sales settings for an authorized user", () => {
     const html = renderToStaticMarkup(
       <SettingsScreen
         app="venta"
@@ -49,30 +49,72 @@ describe("SettingsScreen", () => {
         onLocaleChange={vi.fn()}
         onLogout={vi.fn()}
         onOpenHardware={vi.fn()}
+        onOpenDocumentPrinting={vi.fn()}
       />
     );
 
-    expect(html).toContain('class="settings-screen"');
-    expect(html).toContain('class="report-user-button"');
-    expect(html).toContain('class="language-button"');
-    expect(html).toContain('class="shutdown-button"');
-    expect(html).toContain('class="report-footer-context"');
-    expect(html).toContain("DB:");
-    expect(html).toContain("Conexión");
-    expect(html).toContain("AJUSTES");
-    expect(html).toContain("Terminal");
-    expect(html).toContain("Hardware");
-    expect(html).toContain("Impresión de documentos");
-    expect(html).toContain("Configurar impresión");
+    expect(html).toContain('class="settings-screen sale-settings-screen"');
+    expect(html).toContain('class="settings-shell sale-settings-shell"');
+    expect(html).toContain("Mis preferencias");
+    expect(html).toContain("Este puesto");
+    expect(html).toContain("Soporte");
+    expect(html).toContain("Mi cuenta");
+    expect(html).not.toContain("Idioma y región");
+    expect(html).toContain("Seguridad");
+    expect(html).toContain("Informes");
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain("Venta y cobro");
+    expect(html).toContain("Dispositivos");
+    expect(html).toContain("Impresión y etiquetas");
+    expect(html).toContain("Diagnóstico");
     expect(html).toContain("Entrada de cobro");
-    expect(html).toContain('<label for="cash-input-mode">Entrada de cobro</label>');
-    expect(html).toContain('<select id="cash-input-mode"');
-    expect(html).toContain('value="touch" selected=""');
-    expect(html).toContain("Táctil");
-    expect(html).toContain("Teclado normal");
     expect(html).toContain("Datáfono");
-    expect(html).toContain("Cargando configuración del datáfono");
-    expect(html).toContain("Interfaz de venta");
+    expect(html).toContain("Caja y turno");
+    expect(html.indexOf("Caja y turno")).toBeLessThan(html.indexOf("Interfaz de venta"));
+  });
+
+  it("routes workstation destinations through the existing callbacks", () => {
+    const onOpenHardware = vi.fn();
+    const onOpenDocumentPrinting = vi.fn();
+    const onOpenDiagnostics = vi.fn();
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onOpenHardware={onOpenHardware}
+        onOpenDocumentPrinting={onOpenDocumentPrinting}
+        onOpenDiagnostics={onOpenDiagnostics}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dispositivos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Impresión y etiquetas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Diagnóstico" }));
+
+    expect(onOpenHardware).toHaveBeenCalledOnce();
+    expect(onOpenDocumentPrinting).toHaveBeenCalledOnce();
+    expect(onOpenDiagnostics).toHaveBeenCalledOnce();
+  });
+
+  it("opens the personal destination requested by another settings screen", () => {
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={{ username: "venta", displayName: "VENTA", permissions: ["VENTA"] }}
+        terminalContext={terminalContext}
+        initialDestination="security"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Seguridad", level: 2 })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Seguridad" })).toHaveAttribute("aria-current", "page");
   });
 
   it("initializes the cash input selector from the stored keyboard preference", () => {
@@ -99,7 +141,7 @@ describe("SettingsScreen", () => {
     expect(storage.setItem).toHaveBeenCalledWith("tpverp.cashInputMode.v1", "keyboard");
   });
 
-  it("localizes the cash input setting", () => {
+  it("localizes the protected sales settings", () => {
     const html = renderToStaticMarkup(
       <SettingsScreen
         app="venta"
@@ -111,13 +153,14 @@ describe("SettingsScreen", () => {
       />
     );
 
+    expect(html).toContain("Sales and payments");
     expect(html).toContain("Cash input");
     expect(html).toContain("Choose how amounts are entered when taking cash payments.");
     expect(html).toContain("Touch");
     expect(html).toContain("Standard keyboard");
   });
 
-  it("keeps the sale interface section scoped to APP VENTA", () => {
+  it("does not expose APP VENTA workstation settings in APP GESTION", () => {
     const html = renderToStaticMarkup(
       <SettingsScreen
         app="gestion"
@@ -126,11 +169,11 @@ describe("SettingsScreen", () => {
         terminalContext={terminalContext}
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
-        onLogout={vi.fn()}
-        onOpenHardware={vi.fn()}
       />
     );
 
+    expect(html).toContain("Mi cuenta");
+    expect(html).not.toContain("Venta y cobro");
     expect(html).not.toContain("Interfaz de venta");
   });
 
@@ -180,7 +223,6 @@ describe("SettingsScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Interfaz de venta" }));
     expect(await screen.findByRole("radio", { name: /Ordenador con teclado/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("radio", { name: /Pantalla táctil/ }));
     fireEvent.click(screen.getByRole("button", { name: "Guardar para esta terminal" }));
@@ -220,7 +262,6 @@ describe("SettingsScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Interfaz de venta" }));
     fireEvent.click(await screen.findByRole("radio", { name: /Pantalla táctil/ }));
     fireEvent.click(screen.getByRole("button", { name: "Guardar para esta terminal" }));
 
@@ -229,10 +270,8 @@ describe("SettingsScreen", () => {
     );
   });
 
-  it("keeps the terminal interface read-only without the configuration permission", async () => {
-    const requestMock = vi.fn((path: string) => path === "/terminal-configuration/interface"
-      ? Promise.resolve({ terminalId: "terminal-1", saleMode: "TOUCH" })
-      : Promise.reject(new Error("not_part_of_test")));
+  it("shows only personal settings and performs no protected request without permission", async () => {
+    const requestMock = vi.fn();
     render(
       <SettingsScreen
         app="venta"
@@ -250,38 +289,51 @@ describe("SettingsScreen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Interfaz de venta" }));
-    const touchOption = await screen.findByRole("radio", { name: /Pantalla táctil/ });
-    expect((touchOption.closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Guardar para esta terminal" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Solo un administrador/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Mi cuenta" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Mi cuenta" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("button", { name: "Venta y cobro" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dispositivos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Impresión y etiquetas" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Diagnóstico" })).toBeNull();
+    expect(screen.queryByText("Datáfono")).toBeNull();
+    await waitFor(() => expect(requestMock).not.toHaveBeenCalled());
   });
 
-  it("shows the active user settings and changes the authenticated password", async () => {
-    const request = vi.fn().mockResolvedValue(undefined);
+  it("unifies language with account and keeps security behavior", async () => {
+    const request = vi.fn((path: string, options?: { method?: string }) => {
+      if (path === "/terminal-configuration/interface") {
+        return Promise.resolve({ terminalId: "terminal-1", saleMode: "KEYBOARD" });
+      }
+      if (path === "/auth/password" && options?.method === "PUT") return Promise.resolve(undefined);
+      return Promise.reject(new Error("not_part_of_test"));
+    });
     const onLocaleChange = vi.fn();
     render(
       <SettingsScreen
         app="venta"
         locale="es"
         session={{ ...session, accessToken: "token", role: "ADMIN", maxDiscountPercent: 20 }}
-        terminalContext={terminalContext}
+        terminalContext={{ ...terminalContext, terminalId: "terminal-1" }}
         onBack={vi.fn()}
         onLocaleChange={onLocaleChange}
-        request={request}
+        request={request as unknown as typeof apiRequest}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mi cuenta" }));
     expect(screen.getByText("Perfil activo")).toBeTruthy();
     expect(screen.getByText("20%")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Idioma y región" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "English" }));
     expect(onLocaleChange).toHaveBeenCalledWith("en");
 
+    fireEvent.click(screen.getByRole("button", { name: "Seguridad" }));
     fireEvent.change(screen.getByLabelText("Contraseña actual"), { target: { value: "0000" } });
     fireEvent.change(screen.getByLabelText("Nueva contraseña"), { target: { value: "1234" } });
     fireEvent.change(screen.getByLabelText("Confirmar nueva contraseña"), { target: { value: "1234" } });
-    fireEvent.click(screen.getByRole("button", { name: "Cambiar contraseña" }));
+    const passwordAction = screen.getByRole("button", { name: "Cambiar contraseña" });
+    expect(passwordAction).toHaveClass("sale-settings-action-button");
+    fireEvent.click(passwordAction);
 
     await waitFor(() => expect(request).toHaveBeenCalledWith("/auth/password", {
       token: "token",
@@ -291,7 +343,7 @@ describe("SettingsScreen", () => {
     expect(await screen.findByText("Contraseña cambiada correctamente.")).toBeTruthy();
   });
 
-  it("configures report display and output instead of showing an empty placeholder", () => {
+  it("configures report display and output from its own personal section", () => {
     const onOpenReports = vi.fn();
     render(
       <SettingsScreen
@@ -316,7 +368,9 @@ describe("SettingsScreen", () => {
       primaryAction: "pdf"
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir informes y configurar columnas" }));
+    const openReports = screen.getByRole("button", { name: "Abrir informes y configurar columnas" });
+    expect(openReports).toHaveClass("sale-settings-action-button");
+    fireEvent.click(openReports);
     expect(onOpenReports).toHaveBeenCalledOnce();
   });
 });

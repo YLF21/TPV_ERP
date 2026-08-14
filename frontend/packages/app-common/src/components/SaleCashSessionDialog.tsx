@@ -20,6 +20,7 @@ type Props = {
   locale: LocaleCode;
   currentUsername?: string;
   mode: "OPEN" | "CLOSE";
+  openContext?: "SALES" | "HOME";
   terminalId: string;
   token: string;
   authorization?: SaleOperationAuthorization;
@@ -139,6 +140,7 @@ export function SaleCashSessionDialog({
   locale,
   currentUsername = "",
   mode,
+  openContext = "SALES",
   terminalId,
   token,
   authorization = {
@@ -344,7 +346,7 @@ export function SaleCashSessionDialog({
           <footer>
             {mode === "OPEN" ? (
               <button type="button" className="secondary" disabled={busy} onClick={onExitSales}>
-                {t.exit}
+                {openContext === "HOME" ? t.cancel : t.exit}
               </button>
             ) : (
               <button

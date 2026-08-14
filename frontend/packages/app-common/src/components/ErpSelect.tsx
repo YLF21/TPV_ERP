@@ -11,6 +11,40 @@ export type ErpSelectOption = Readonly<{
 
 export type ErpSelectKeyIntent = "next" | "previous" | "select" | "close" | "first" | "last" | null;
 
+type ErpSelectPopoverLayout = {
+  top: number;
+  left: number;
+  minWidth: number;
+  maxWidth: number;
+  maxHeight: number;
+};
+
+export function erpSelectPopoverLayout(
+  trigger: Pick<DOMRect, "top" | "bottom" | "left" | "width">,
+  popover: Pick<DOMRect, "width" | "height">,
+  viewport: { width: number; height: number },
+): ErpSelectPopoverLayout {
+  const margin = 8;
+  const gap = 4;
+  const availableBelow = Math.max(0, viewport.height - trigger.bottom - gap - margin);
+  const availableAbove = Math.max(0, trigger.top - gap - margin);
+  const desiredHeight = Math.min(240, Math.max(34, popover.height));
+  const openAbove = availableBelow < desiredHeight && availableAbove > availableBelow;
+  const availableHeight = openAbove ? availableAbove : availableBelow;
+  const maxHeight = Math.max(1, Math.min(240, availableHeight));
+  const maxWidth = Math.max(1, viewport.width - margin * 2);
+  const desiredWidth = Math.min(maxWidth, Math.max(trigger.width, popover.width));
+  const left = Math.min(
+    Math.max(margin, trigger.left),
+    Math.max(margin, viewport.width - desiredWidth - margin),
+  );
+  const top = openAbove
+    ? Math.max(margin, trigger.top - gap - Math.min(desiredHeight, maxHeight))
+    : trigger.bottom + gap;
+
+  return { top, left, minWidth: Math.min(trigger.width, maxWidth), maxWidth, maxHeight };
+}
+
 type ErpSelectProps = {
   value: string;
   options: readonly ErpSelectOption[];
@@ -80,6 +114,7 @@ export function ErpSelect({
   const listboxId = `${id ?? generatedId}-listbox`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -117,6 +152,33 @@ export function ErpSelect({
     if (!open) return;
     optionRefs.current[activeIndex]?.focus();
   }, [activeIndex, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const positionPopover = () => {
+      const trigger = triggerRef.current;
+      const popover = popoverRef.current;
+      if (!trigger || !popover) return;
+      const layout = erpSelectPopoverLayout(
+        trigger.getBoundingClientRect(),
+        popover.getBoundingClientRect(),
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      popover.style.top = `${layout.top}px`;
+      popover.style.left = `${layout.left}px`;
+      popover.style.minWidth = `${layout.minWidth}px`;
+      popover.style.maxWidth = `${layout.maxWidth}px`;
+      popover.style.maxHeight = `${layout.maxHeight}px`;
+    };
+
+    positionPopover();
+    window.addEventListener("resize", positionPopover);
+    window.addEventListener("scroll", positionPopover, true);
+    return () => {
+      window.removeEventListener("resize", positionPopover);
+      window.removeEventListener("scroll", positionPopover, true);
+    };
+  }, [open, options.length]);
 
   useOutsidePointerDown(open, rootRef, () => setOpen(false));
 
@@ -212,6 +274,7 @@ export function ErpSelect({
       {open && (
         <div
           className="erp-select__popover"
+          ref={popoverRef}
           id={listboxId}
           role="listbox"
           aria-label={accessibleLabel}

@@ -1,0 +1,439 @@
+.customer-receivables-overlay {
+  position: fixed;
+  z-index: 180;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 4vh, 52px) clamp(24px, 4vw, 72px);
+  background: rgb(10 27 48 / 52%);
+  animation: receivables-overlay-in 120ms ease-out;
+}
+
+.customer-receivables-dialog {
+  width: min(1380px, calc(100vw - 64px));
+  height: min(780px, calc(100dvh - 72px));
+  min-height: 540px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #71859b;
+  border-radius: 4px;
+  background: #f3f6f9;
+  box-shadow: 0 24px 70px rgb(8 25 45 / 38%);
+  color: #13233a;
+  animation: receivables-dialog-in 140ms ease-out;
+}
+
+.customer-receivables-dialog-header {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 16px;
+  border-bottom: 3px solid #d49a17;
+  background: #102f55;
+  color: #fff;
+}
+
+.customer-receivables-mark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #7690aa;
+  background: #173f6e;
+  color: #f5c75d;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.customer-receivables-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: #b9c9d9;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.customer-receivables-dialog-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.customer-receivables-dialog-header p {
+  margin: 4px 0 0;
+  color: #dce6f0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.customer-receivables-dialog-header p strong {
+  color: #fff;
+}
+
+.customer-receivables-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #8097ae;
+  border-radius: 2px;
+  background: #173f6e;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.customer-receivables-close:hover,
+.customer-receivables-close:focus-visible {
+  border-color: #dbe7f2;
+  background: #245689;
+  outline: none;
+}
+
+.customer-receivables-dialog .receivables-view-tabs {
+  min-height: 44px;
+  gap: 0;
+  margin: 0;
+  padding: 0 14px;
+  border-bottom: 1px solid #aebdcb;
+  background: #e7edf3;
+}
+
+.customer-receivables-dialog .receivables-view-tabs button {
+  min-height: 43px;
+  padding: 0 18px;
+  border: 0;
+  border-right: 1px solid #c1ccd7;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #40556b;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.customer-receivables-dialog .receivables-view-tabs button:first-child {
+  border-left: 1px solid #c1ccd7;
+}
+
+.customer-receivables-dialog .receivables-view-tabs button[aria-pressed="true"] {
+  border-color: #c1ccd7;
+  border-bottom-color: #2365a5;
+  background: #fff;
+  color: #102f55;
+}
+
+.customer-receivables-dialog-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px 14px;
+}
+
+.customer-receivables-dialog .customer-receivables-filters {
+  flex: 0 0 auto;
+  grid-template-columns: minmax(220px, 1.7fr) minmax(130px, .8fr) minmax(160px, 1fr) minmax(120px, .75fr) repeat(2, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #bdc9d5;
+  background: #fff;
+}
+
+.customer-receivables-dialog .customer-receivables-filters.receivables-history-filters {
+  grid-template-columns: minmax(260px, 1.7fr) minmax(190px, 1fr) repeat(2, minmax(170px, 1fr));
+}
+
+.customer-receivables-dialog .customer-receivables-filters label {
+  gap: 4px;
+  color: #344a61;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.customer-receivables-dialog .customer-receivables-filters input,
+.customer-receivables-dialog .customer-receivables-filters select {
+  min-height: 35px;
+  padding: 6px 9px;
+  border: 1px solid #91a4b7;
+  border-radius: 2px;
+  background: #fff;
+  color: #17283c;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.customer-receivables-dialog .customer-receivables-filters input:focus,
+.customer-receivables-dialog .customer-receivables-filters select:focus {
+  border-color: #2365a5;
+  outline: 2px solid #c9e1f6;
+  outline-offset: 0;
+}
+
+.customer-receivables-dialog .customer-receivables-filters .receivables-checkbox {
+  min-height: 35px;
+  align-self: end;
+  flex-direction: row;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #c3ced9;
+  background: #f2f6f9;
+  text-transform: none;
+}
+
+.customer-receivables-dialog .customer-receivables-filters .receivables-checkbox input {
+  width: 16px;
+  min-height: auto;
+  margin: 0;
+}
+
+.customer-receivables-dialog .customer-receivables-table {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  border: 1px solid #aebdcb;
+  background: #fff;
+}
+
+.customer-receivables-dialog .receivable-row,
+.customer-receivables-dialog .receivable-history-row,
+.customer-receivables-dialog .receivable-account-row {
+  color: #1b2a3d;
+  font-size: 12px;
+}
+
+.customer-receivables-dialog .receivable-row > *,
+.customer-receivables-dialog .receivable-history-row > *,
+.customer-receivables-dialog .receivable-account-row > * {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 8px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.customer-receivables-dialog .receivable-row.header,
+.customer-receivables-dialog .receivable-history-row.header,
+.customer-receivables-dialog .receivable-account-row.header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  min-height: 39px;
+  background: #285990;
+  color: #fff;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.customer-receivables-dialog .receivable-row:not(.header):nth-child(odd),
+.customer-receivables-dialog .receivable-history-row:not(.header):nth-child(odd),
+.customer-receivables-dialog .receivable-account-row:not(.header):nth-child(odd) {
+  background: #f5f8fb;
+}
+
+.customer-receivables-dialog .receivable-row:not(.header):hover,
+.customer-receivables-dialog .receivable-history-row:not(.header):hover,
+.customer-receivables-dialog .receivable-account-row:not(.header):hover {
+  background: #e9f2fa;
+}
+
+.customer-receivables-dialog .receivable-row.overdue {
+  box-shadow: inset 4px 0 #b42318;
+  background: #fff1ef;
+}
+
+.customer-receivables-dialog .table-sort-button {
+  color: inherit;
+}
+
+.customer-receivables-dialog .receivable-row [role="cell"] button,
+.customer-receivables-dialog .receivable-history-row [role="cell"] button {
+  min-height: 29px;
+  padding: 4px 11px;
+  border: 1px solid #1b4d7f;
+  border-radius: 2px;
+  background: #285990;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.customer-receivables-dialog .receivable-row [role="cell"] button:hover:not(:disabled),
+.customer-receivables-dialog .receivable-history-row [role="cell"] button:hover:not(:disabled) {
+  background: #1e4774;
+}
+
+.customer-receivables-dialog .receivable-row [role="cell"] button:disabled {
+  border-color: #a7b3c0;
+  background: #d9e0e7;
+  color: #6b7784;
+  cursor: not-allowed;
+}
+
+.customer-receivables-dialog .receivables-error {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e3aaa4;
+  border-left: 4px solid #b42318;
+  background: #fff2f0;
+}
+
+.customer-receivables-dialog .receivables-error p {
+  margin: 0;
+}
+
+.customer-receivables-dialog .receivables-account {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  margin: 0;
+}
+
+.customer-receivables-dialog .receivables-account-summary {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.customer-receivables-dialog .receivables-account-summary article {
+  min-height: 68px;
+  border-radius: 2px;
+}
+
+.customer-receivables-dialog-footer {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 14px;
+  border-top: 1px solid #aebdcb;
+  background: #e7edf3;
+}
+
+.customer-receivables-dialog-footer p {
+  margin: 0;
+  color: #53677b;
+  font-size: 12px;
+}
+
+.customer-receivables-dialog-footer p strong {
+  color: #102f55;
+  font-size: 14px;
+}
+
+.customer-receivables-dialog-footer > span {
+  color: #596b7c;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.customer-receivables-dialog-footer kbd {
+  padding: 2px 6px;
+  border: 1px solid #9aabbc;
+  border-bottom-width: 2px;
+  border-radius: 2px;
+  background: #fff;
+  color: #173f6e;
+  font: inherit;
+  font-weight: 850;
+}
+
+.customer-receivables-dialog-footer button {
+  min-width: 116px;
+  min-height: 34px;
+  padding: 6px 16px;
+  border: 1px solid #1b4d7f;
+  border-radius: 2px;
+  background: #285990;
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.customer-receivables-dialog-footer button:hover,
+.customer-receivables-dialog-footer button:focus-visible {
+  background: #1e4774;
+  outline: 2px solid #aaccea;
+  outline-offset: 1px;
+}
+
+@keyframes receivables-overlay-in {
+  from { background: rgb(10 27 48 / 0%); }
+}
+
+@keyframes receivables-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.992); }
+}
+
+@media (max-width: 1180px) {
+  .customer-receivables-dialog .customer-receivables-filters,
+  .customer-receivables-dialog .customer-receivables-filters.receivables-history-filters {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .customer-receivables-dialog .receivables-account-summary {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .customer-receivables-overlay {
+    padding: 10px;
+  }
+
+  .customer-receivables-dialog {
+    width: calc(100vw - 20px);
+    height: calc(100dvh - 20px);
+    min-height: 0;
+  }
+
+  .customer-receivables-dialog-header {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
+  .customer-receivables-mark,
+  .customer-receivables-dialog-header p,
+  .customer-receivables-dialog-footer > span {
+    display: none;
+  }
+
+  .customer-receivables-dialog .receivables-view-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0;
+  }
+
+  .customer-receivables-dialog .receivables-view-tabs button {
+    padding: 0 8px;
+  }
+
+  .customer-receivables-dialog .customer-receivables-filters,
+  .customer-receivables-dialog .customer-receivables-filters.receivables-history-filters {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .customer-receivables-dialog-footer {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customer-receivables-overlay,
+  .customer-receivables-dialog {
+    animation: none;
+  }
+}

@@ -25,6 +25,8 @@ describe("saleCommandFromKeyboard", () => {
   });
 
   it("resolves the agreed document shortcuts without changing their keys", () => {
+    expect(saleCommandFromKeyboard(key("d", { ctrlKey: true })))
+      .toBe("customer-receivables");
     expect(saleCommandFromKeyboard(key("o", { ctrlKey: true }))).toBe("sale-comment");
     expect(saleCommandFromKeyboard(key("F4", { ctrlKey: true }))).toBe("clear-sale");
     expect(saleCommandFromKeyboard(key("A", { ctrlKey: true, shiftKey: true }))).toBe("clear-lines");
