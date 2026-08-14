@@ -410,12 +410,13 @@ public class PosCashService {
                 : documents.createApprovedCardTicketFromSnapshot(
                         snapshot(quote, cash.getId(), prepared), payment, authentication);
         completeTemporaryPriceAuthorizations("POS_CASH", request.checkoutId());
-        var printTicket = documents.ticketPrintView(ticket);
+        var printTicket = documents.renderTicketPrintView(
+                ticket, documents.ticketPrintView(ticket));
         reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
                 snapshots.serialize(printTicket), Instant.now());
         checkouts.save(reserved);
         return new Result(ticket.getId(), ticket.getNumero(), total, received, change,
-                documents.renderTicketPrintView(ticket, printTicket));
+                printTicket);
     }
 
     @Transactional(readOnly = true)

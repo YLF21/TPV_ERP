@@ -210,7 +210,7 @@ public class DocumentService {
         this.audit = audit;
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setTicketJasperRenderer(TicketJasperRenderer ticketJasperRenderer) {
         this.ticketJasperRenderer = ticketJasperRenderer;
     }
