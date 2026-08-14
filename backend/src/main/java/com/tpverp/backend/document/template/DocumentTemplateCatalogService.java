@@ -48,7 +48,7 @@ public class DocumentTemplateCatalogService {
             DocumentTemplateType type, DocumentTemplateFormat format) {
         var store = organization.currentStore();
         return new CatalogView(
-                resolver.resolve(store, type, format),
+                resolver.findEffective(store, type, format).orElse(null),
                 templates.findAllForStore(store.getId()).stream()
                         .filter(template -> template.getType() == type
                                 && template.getFormat() == format)

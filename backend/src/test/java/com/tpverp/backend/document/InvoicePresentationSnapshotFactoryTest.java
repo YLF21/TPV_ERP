@@ -178,8 +178,24 @@ class InvoicePresentationSnapshotFactoryTest {
                         "Gracias por su compra",
                         new StoreDocumentPrintConfigurationService.LogoReference(
                                 logoId, "image/png", "c".repeat(64))));
+        var templateId = UUID.randomUUID();
+        var templates = mock(DocumentTemplateResolver.class);
+        when(templates.resolve(
+                DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80)).thenReturn(
+                new ResolvedDocumentTemplate(
+                        templateId,
+                        DocumentTemplateType.TICKET,
+                        DocumentTemplateFormat.TICKET_80,
+                        DocumentTemplateScope.STORE,
+                        "TICKET_80",
+                        1,
+                        1,
+                        templateId.toString(),
+                        "d".repeat(64),
+                        false));
         var factory = new InvoicePresentationSnapshotFactory(
                 organization, licenses, settings, accounts, new ObjectMapper());
+        factory.setTemplateResolver(templates);
         factory.setStorePrintConfiguration(storeConfiguration);
 
         var snapshot = factory.read(factory.create(DocumentTemplateType.TICKET));

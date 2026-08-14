@@ -34,6 +34,22 @@ class DocumentTemplateCatalogServiceTest {
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
+    void exposesAnEmptyEffectiveTemplateSoTheFirstManualVersionCanBeCreated() {
+        var store = DocumentTemplateTest.store();
+        when(organization.currentStore()).thenReturn(store);
+        when(resolver.findEffective(
+                store, DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
+                .thenReturn(Optional.empty());
+        when(templates.findAllForStore(store.getId())).thenReturn(java.util.List.of());
+
+        var catalog = service.currentStoreCatalog(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4);
+
+        assertThat(catalog.effective()).isNull();
+        assertThat(catalog.storeTemplates()).isEmpty();
+    }
+
+    @Test
     void registersNextStoreVersionUnderCurrentTenant() {
         var store = DocumentTemplateTest.store();
         when(organization.currentStore()).thenReturn(store);

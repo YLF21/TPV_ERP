@@ -6,6 +6,7 @@ import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
+import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -131,16 +132,7 @@ public class InvoicePresentationSnapshotFactory {
             DocumentTemplateType templateType,
             DocumentTemplateFormat format) {
         if (templates == null) {
-            var builtInCode = switch (templateType) {
-                case FACTURA_VENTA -> format == DocumentTemplateFormat.TICKET_80
-                        ? "FACTURA_TICKET_80" : "FACTURA_A4";
-                case ALBARAN_VENTA -> "ALBARAN_A4";
-                case TICKET -> "TICKET_80";
-            };
-            return new InvoicePresentationSnapshot.TemplateReference(
-                    null,
-                    builtInCode,
-                    1, 1, null, true);
+            throw new DocumentTemplateRequiredException(templateType, format);
         }
         var resolved = templates.resolve(templateType, format);
         return new InvoicePresentationSnapshot.TemplateReference(

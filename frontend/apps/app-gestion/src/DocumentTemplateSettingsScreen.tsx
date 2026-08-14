@@ -198,13 +198,13 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         <div>
           <span>{t("gestion.documentTemplates.effective")}</span>
           <h3 id="document-template-effective-title">
-            {loading ? t("common.loading") : catalog?.effective.code ?? "-"}
+            {loading ? t("common.loading") : catalog?.effective?.code ?? t("gestion.documentTemplates.missing")}
           </h3>
         </div>
         <dl>
-          <div><dt>{t("gestion.documentTemplates.version")}</dt><dd>{catalog?.effective.version ?? "-"}</dd></div>
-          <div><dt>{t("gestion.documentTemplates.origin")}</dt><dd>{originLabel(catalog?.effective.scope, t)}</dd></div>
-          <div><dt>{t("gestion.documentTemplates.schema")}</dt><dd>{catalog?.effective.schemaVersion ?? "-"}</dd></div>
+          <div><dt>{t("gestion.documentTemplates.version")}</dt><dd>{catalog?.effective?.version ?? "-"}</dd></div>
+          <div><dt>{t("gestion.documentTemplates.origin")}</dt><dd>{originLabel(catalog?.effective?.scope, t)}</dd></div>
+          <div><dt>{t("gestion.documentTemplates.schema")}</dt><dd>{catalog?.effective?.schemaVersion ?? "-"}</dd></div>
         </dl>
       </section>
 

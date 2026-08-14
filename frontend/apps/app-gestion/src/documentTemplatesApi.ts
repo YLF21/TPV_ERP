@@ -36,7 +36,7 @@ export type DocumentTemplateView = {
 };
 
 export type DocumentTemplateCatalog = {
-  effective: ResolvedDocumentTemplate;
+  effective: ResolvedDocumentTemplate | null;
   storeTemplates: DocumentTemplateView[];
 };
 

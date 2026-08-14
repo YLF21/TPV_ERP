@@ -16,20 +16,9 @@ const session: UserSession = {
 afterEach(cleanup);
 
 describe("DocumentTemplateSettingsScreen", () => {
-  it("loads each catalog and exposes only the real draft workflow", async () => {
-    const request = vi.fn().mockImplementation(async (path: string) => ({
-      effective: {
-        id: "system-template-id",
-        type: path.includes("ALBARAN_VENTA") ? "ALBARAN_VENTA" : "FACTURA_VENTA",
-        format: path.includes("TICKET_80") ? "TICKET_80" : "A4",
-        scope: "SYSTEM",
-        code: path.includes("ALBARAN_VENTA") ? "ALBARAN_A4" : "FACTURA_A4",
-        version: 1,
-        schemaVersion: 1,
-        artifactReference: "system-template-id",
-        sha256: "a".repeat(64),
-        builtIn: false,
-      },
+  it("keeps the manual workflow available when the active JRXML is missing", async () => {
+    const request = vi.fn().mockImplementation(async () => ({
+      effective: null,
       storeTemplates: [],
     }));
 
@@ -41,8 +30,8 @@ describe("DocumentTemplateSettingsScreen", () => {
       />,
     );
 
-    expect(await screen.findByText("FACTURA_A4")).toBeInTheDocument();
-    expect(screen.getByText("Sistema")).toBeInTheDocument();
+    expect(await screen.findByText("Falta plantilla JRXML activa")).toBeInTheDocument();
+    expect(screen.getByText(/Sin ella, la emisión y la impresión quedan bloqueadas/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Crear borrador" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
@@ -50,6 +39,6 @@ describe("DocumentTemplateSettingsScreen", () => {
       "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
     ));
-    expect(await screen.findByText("ALBARAN_A4")).toBeInTheDocument();
+    expect(screen.getByText("Falta plantilla JRXML activa")).toBeInTheDocument();
   });
 });
