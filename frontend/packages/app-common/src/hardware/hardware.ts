@@ -126,6 +126,7 @@ export type TicketPrintRequest = {
   notice?: string;
   logo?: string;
   documentRaster?: string;
+  renderedPdf?: { contentType: "application/pdf"; base64: string };
   notes?: string[];
   details?: Array<{ label: string; value: string }>;
   documentNumber: string;

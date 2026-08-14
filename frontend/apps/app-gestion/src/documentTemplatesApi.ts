@@ -66,12 +66,12 @@ export function createDocumentTemplateDraft(
 
 export function uploadDocumentTemplateArtifact(
   templateId: string,
-  file: File,
+  files: File[],
   token?: string,
   request: typeof apiRequest = apiRequest,
 ) {
   const body = new FormData();
-  body.append("file", file);
+  files.forEach((file) => body.append("files", file));
   return request<DocumentTemplateView>(
     `/document-templates/${encodeURIComponent(templateId)}/artifact`,
     { method: "POST", token, body },
@@ -104,7 +104,8 @@ export async function downloadDocumentTemplateSource(
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${template.code.toLowerCase()}_v${template.version}.jrxml`;
+  const bundle = response.headers.get("content-type")?.includes("application/zip");
+  anchor.download = `${template.code.toLowerCase()}_v${template.version}.${bundle ? "zip" : "jrxml"}`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

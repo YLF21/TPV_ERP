@@ -40,13 +40,13 @@ describe("document templates API", () => {
     const request = vi.fn().mockResolvedValue({ id: "template-1" });
     const file = new File(["<jasperReport/>"], "ticket.jrxml", { type: "application/xml" });
 
-    await uploadDocumentTemplateArtifact("template-1", file, "token", request);
+    await uploadDocumentTemplateArtifact("template-1", [file], "token", request);
     await activateDocumentTemplate("template-1", "token", request);
 
     const upload = request.mock.calls[0];
     expect(upload[0]).toBe("/document-templates/template-1/artifact");
     expect(upload[1].body).toBeInstanceOf(FormData);
-    expect((upload[1].body as FormData).get("file")).toBe(file);
+    expect((upload[1].body as FormData).get("files")).toBe(file);
     expect(request).toHaveBeenLastCalledWith("/document-templates/template-1/activate", {
       method: "POST",
       token: "token",

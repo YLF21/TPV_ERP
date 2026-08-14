@@ -380,7 +380,7 @@ public class SalePaymentSessionService {
      if (session.getTicketId() != null) {
          return new Finalization(
                  session,
-                 documents.loadTicketPrintView(session.getTicketId()),
+                 documents.loadRenderedTicketPrintView(session.getTicketId()),
                  issuedVoucherFor(documents.loadForPrint(session.getTicketId())));
      }
      if (session.getStatus() != SalePaymentSessionStatus.COVERED) {
@@ -510,7 +510,8 @@ public class SalePaymentSessionService {
                       .issueOrFindFromNegativeTicket(ticket, voucherAmount);
               issuedVoucher = IssuedVoucher.from(generatedVoucher, ticket.getNumero());
          }
-         printTicket = documents.ticketPrintView(ticket);
+         printTicket = documents.renderTicketPrintView(
+                 ticket, documents.ticketPrintView(ticket));
      } else if (hasReturnLines(snapshot)) {
          var sourceTicketId = refundSourceTicketId(snapshot);
          var selections = refundSelections(snapshot);
@@ -555,13 +556,15 @@ public class SalePaymentSessionService {
              printTicket = documents.ticketPrintViewFromExchange(ticket, refund);
          } else {
              ticket = refund;
-             printTicket = documents.ticketPrintView(refund);
+             printTicket = documents.renderTicketPrintView(
+                     refund, documents.ticketPrintView(refund));
          }
      } else {
          ticket = pendingAmount.signum() > 0
                  ? documents.createPendingTicketFromSnapshot(snapshot, commands, auth)
                  : documents.createApprovedCardTicketFromSnapshot(snapshot, commands, auth);
-         printTicket = documents.ticketPrintView(ticket);
+         printTicket = documents.renderTicketPrintView(
+                 ticket, documents.ticketPrintView(ticket));
      }
      if (issuedVoucher == null) {
          issuedVoucher = issuedVoucherFor(ticket);

@@ -1,0 +1,385 @@
+<!-- Plantilla MINIMALISTA: estructura limpia, aireada y monocromática. -->
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="ticket_contenido_minimalista" language="java" columnCount="1" pageWidth="207" pageHeight="842" orientation="Landscape" columnWidth="207" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" uuid="a7e38e2a-1b57-4e83-b8cb-bd2e5b806102">
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["58109209-2548-4c19-9c4e-6f47c541035b"]]></defaultValueExpression>
+	</parameter>
+	<query language="sql"><![CDATA[SELECT
+    dl.posicion,
+    dl.nombre AS articulo,
+    dl.cantidad,
+    dl.precio_unitario AS precio,
+    dl.descuento AS descuento_linea,
+    dl.precio_unitario * dl.cantidad AS importe_bruto,
+    dl.precio_unitario * dl.cantidad - dl.total AS importe_descuento,
+    dl.total AS total_linea,
+    d.descuento_global,
+    vale.concepto_vale,
+    vale.codigo_vale,
+    COALESCE(vale.importe_descuento_vale, 0::numeric) AS importe_descuento_vale,
+    GREATEST(
+        SUM(dl.total) OVER () - d.total,
+        0::numeric
+    ) +
+    CASE
+        WHEN COALESCE(c.descuento, 0) > 0
+         AND d.descuento_global <> c.descuento
+         AND NOT EXISTS (
+             SELECT 1
+             FROM documento_linea dcl
+             WHERE dcl.documento_id = d.id
+               AND dcl.descuento = c.descuento
+               AND dcl.promocion_id IS NULL
+               AND dcl.cupon_promocional_id IS NULL
+         )
+        THEN ROUND(d.total * c.descuento / 100, 2)
+        ELSE 0::numeric
+    END AS importe_descuento_ticket,
+    c.descuento AS porcentaje_descuento_socio,
+    CASE
+        WHEN COALESCE(c.descuento, 0) > 0
+         AND d.descuento_global <> c.descuento
+         AND NOT EXISTS (
+             SELECT 1
+             FROM documento_linea dcl
+             WHERE dcl.documento_id = d.id
+               AND dcl.descuento = c.descuento
+               AND dcl.promocion_id IS NULL
+               AND dcl.cupon_promocional_id IS NULL
+         )
+        THEN ROUND(d.total * c.descuento / 100, 2)
+        ELSE 0::numeric
+    END AS importe_descuento_socio,
+    d.total -
+    CASE
+        WHEN COALESCE(c.descuento, 0) > 0
+         AND d.descuento_global <> c.descuento
+         AND NOT EXISTS (
+             SELECT 1
+             FROM documento_linea dcl
+             WHERE dcl.documento_id = d.id
+               AND dcl.descuento = c.descuento
+               AND dcl.promocion_id IS NULL
+               AND dcl.cupon_promocional_id IS NULL
+         )
+        THEN ROUND(d.total * c.descuento / 100, 2)
+        ELSE 0::numeric
+    END AS total_ticket
+FROM documento_linea dl
+INNER JOIN documento d
+    ON d.id = dl.documento_id
+LEFT JOIN cliente c
+    ON c.id = d.cliente_id
+LEFT JOIN LATERAL (
+    SELECT
+        string_agg(
+            COALESCE(NULLIF(vl.nombre, ''), NULLIF(p.nombre, ''), 'DTO. VALE'),
+            ', ' ORDER BY vl.posicion
+        ) AS concepto_vale,
+        string_agg(
+            COALESCE(
+                NULLIF(vl.codigo, ''),
+                CASE
+                    WHEN cp.codigo_ultimos4 IS NOT NULL THEN '****' || cp.codigo_ultimos4
+                    ELSE NULL
+                END
+            ),
+            ', ' ORDER BY vl.posicion
+        ) AS codigo_vale,
+        SUM(ABS(vl.total)) AS importe_descuento_vale
+    FROM documento_linea vl
+    LEFT JOIN cupon_promocional cp
+        ON cp.id = vl.cupon_promocional_id
+    LEFT JOIN promocion p
+        ON p.id = cp.promocion_id
+    WHERE vl.documento_id = d.id
+      AND vl.tipo_linea = 'PROMOTIONAL_COUPON'
+) vale ON TRUE
+WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+  AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')
+ORDER BY dl.posicion]]></query>
+	<field name="posicion" class="java.lang.Integer">
+		<property name="com.jaspersoft.studio.field.name" value="posicion"/>
+		<property name="com.jaspersoft.studio.field.label" value="posicion"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento_linea"/>
+	</field>
+	<field name="articulo" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="articulo"/>
+		<property name="com.jaspersoft.studio.field.label" value="articulo"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento_linea"/>
+	</field>
+	<field name="cantidad" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="cantidad"/>
+		<property name="com.jaspersoft.studio.field.label" value="cantidad"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento_linea"/>
+	</field>
+	<field name="precio" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="precio"/>
+		<property name="com.jaspersoft.studio.field.label" value="precio"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento_linea"/>
+	</field>
+	<field name="descuento_linea" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="descuento_linea"/>
+		<property name="com.jaspersoft.studio.field.label" value="descuento_linea"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento_linea"/>
+	</field>
+	<field name="importe_bruto" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="importe_bruto"/>
+		<property name="com.jaspersoft.studio.field.label" value="importe_bruto"/>
+	</field>
+	<field name="importe_descuento" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="importe_descuento"/>
+		<property name="com.jaspersoft.studio.field.label" value="importe_descuento"/>
+	</field>
+	<field name="total_linea" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="total_linea"/>
+		<property name="com.jaspersoft.studio.field.label" value="total_linea"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento_linea"/>
+	</field>
+	<field name="descuento_global" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="descuento_global"/>
+		<property name="com.jaspersoft.studio.field.label" value="descuento_global"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
+	</field>
+	<field name="concepto_vale" class="java.lang.String"/>
+	<field name="codigo_vale" class="java.lang.String"/>
+	<field name="importe_descuento_vale" class="java.math.BigDecimal"/>
+	<field name="importe_descuento_ticket" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="importe_descuento_ticket"/>
+		<property name="com.jaspersoft.studio.field.label" value="importe_descuento_ticket"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
+	</field>
+	<field name="porcentaje_descuento_socio" class="java.math.BigDecimal"/>
+	<field name="importe_descuento_socio" class="java.math.BigDecimal"/>
+	<field name="total_ticket" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="total_ticket"/>
+		<property name="com.jaspersoft.studio.field.label" value="total_ticket"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
+	</field>
+	<variable name="TOTAL_CALCULADO" calculation="Sum" class="java.math.BigDecimal">
+		<description><![CDATA[total]]></description>
+		<expression><![CDATA[$F{total_linea} == null
+    ? java.math.BigDecimal.ZERO
+    : $F{total_linea}]]></expression>
+		<initialValueExpression><![CDATA[java.math.BigDecimal.ZERO]]></initialValueExpression>
+	</variable>
+	<background splitType="Stretch"/>
+	<columnHeader height="24">
+		<element kind="staticText" uuid="a4cf4d4e-56f4-4d3b-9a84-f6e730ca95f7" x="8" y="2" width="117" height="14" fontSize="8.0" bold="true">
+			<text><![CDATA[Artículo]]></text>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+		</element>
+		<element kind="staticText" uuid="8e67afd0-a982-42b1-91b1-14eadd6c759a" x="130" y="2" width="69" height="14" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Importe]]></text>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+		</element>
+		<element kind="line" uuid="acff5298-5031-4df3-adeb-da3099911e2f" x="5" y="19" width="197" height="1">
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<pen lineWidth="0.5"/>
+		</element>
+		<property name="com.jaspersoft.studio.unit.height" value="px"/>
+	</columnHeader>
+	<detail>
+		<band height="27" splitType="Stretch">
+			<element kind="textField" uuid="d8d2f01d-553c-479c-b655-e576bcd5491d" x="5" y="1" width="194" height="13" fontSize="8.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{articulo}]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="18dd453b-0242-4238-b701-6b07f55c2bf8" positionType="Float" x="10" y="15" width="114" height="12" fontSize="8.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{cantidad} == null || $F{precio} == null
+    ? ""
+    : $F{cantidad}.stripTrailingZeros().toPlainString()
+        + " × ( "
+        + new java.text.DecimalFormat("#,##0.00")
+            .format($F{precio})
+        + " € )"]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="aa9be962-65fb-4088-ac51-27cb5287829d" positionType="Float" x="130" y="15" width="70" height="12" fontSize="8.0" textAdjust="StretchHeight" hTextAlign="Right">
+				<expression><![CDATA[$F{importe_bruto} == null
+    ? ""
+    : new java.text.DecimalFormat("#,##0.00")
+        .format($F{importe_bruto}) + " €"]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</band>
+		<band height="12">
+			<printWhenExpression><![CDATA[$F{descuento_linea} != null
+&& $F{descuento_linea}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<element kind="textField" uuid="1925bfe6-74ea-4208-bb0e-27ca55d7bc6e" positionType="Float" x="10" y="0" width="114" height="12" fontSize="8.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{descuento_linea} == null
+    ? ""
+    : "DESCUENTO "
+        + new java.text.DecimalFormat("#,##0.##")
+            .format($F{descuento_linea})
+        + " %"]]></expression>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="9c3cc9d0-53af-495f-b7af-dd1f950b0aeb" positionType="Float" x="130" y="0" width="70" height="12" fontSize="8.0" textAdjust="StretchHeight" hTextAlign="Right">
+				<expression><![CDATA[$F{importe_descuento} == null
+    ? ""
+    : new java.text.DecimalFormat("#,##0.00")
+        .format($F{importe_descuento}.negate())
+        + " €"]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</band>
+	</detail>
+	<summary height="98">
+		<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a02" x="5" y="73" width="197" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="staticText" uuid="d4c5be3a-c031-4fa3-8c71-8d40ab61818e" positionType="Float" x="8" y="79" width="117" height="18" fontSize="10.0" bold="true">
+			<text><![CDATA[TOTAL A PAGAR]]></text>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="textField" uuid="bc55553c-cebb-46bf-a905-552a0cf0e316" positionType="Float" x="130" y="78" width="69" height="20" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Right">
+			<expression><![CDATA[$F{total_ticket} == null
+    ? ""
+    : new java.text.DecimalFormat("#,##0.00")
+        .format($F{total_ticket}) + " €"]]></expression>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="line" uuid="98d1b3db-6cda-49e2-983f-0328f0df2dd8" x="5" y="0" width="197" height="1">
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<pen lineWidth="0.5" lineStyle="Solid"/>
+		</element>
+		<element kind="staticText" uuid="9dd5ed61-e3f0-4116-8105-dace715e5c41" x="5" y="2" width="120" height="13" fontSize="8.0">
+			<text><![CDATA[Subtotal
+]]></text>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+		</element>
+		<element kind="textField" uuid="ffafdbc7-c78d-4751-8aed-7c038a8e51a4" x="130" y="2" width="70" height="13" fontSize="8.0" textAdjust="StretchHeight" hTextAlign="Right">
+			<expression><![CDATA[$V{TOTAL_CALCULADO} == null
+    ? ""
+    : new java.text.DecimalFormat("#,##0.00")
+        .format($V{TOTAL_CALCULADO}) + " €"]]></expression>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="frame" uuid="8fc46d81-8cb3-48c2-b0cb-0f18531c644c" positionType="Float" x="5" y="15" width="195" height="26" removeLineWhenBlank="true">
+			<element kind="textField" uuid="a791bd2d-6f43-45fd-a678-6387a2a35b02" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
+				<printWhenExpression><![CDATA[$F{importe_descuento_vale} != null
+&& $F{importe_descuento_vale}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<expression><![CDATA[$F{concepto_vale}]]></expression>
+			</element>
+			<element kind="textField" uuid="c513e0c4-f1d6-482a-ac5e-6b9c3c418c39" x="125" y="0" width="70" height="13" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA[$F{importe_descuento_vale} != null
+&& $F{importe_descuento_vale}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<expression><![CDATA[new java.text.DecimalFormat("#,##0.00")
+    .format($F{importe_descuento_vale}.negate()) + " €"]]></expression>
+			</element>
+			<element kind="textField" uuid="3aac407e-3db2-4bf1-880c-217abbe593a6" x="10" y="13" width="185" height="13" fontSize="8.0" removeLineWhenBlank="true">
+				<printWhenExpression><![CDATA[$F{importe_descuento_vale} != null
+&& $F{importe_descuento_vale}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<expression><![CDATA[$F{codigo_vale}]]></expression>
+			</element>
+		</element>
+		<element kind="frame" uuid="5bc92810-5884-457d-8e11-b9440375513b" positionType="Float" x="5" y="41" width="195" height="13" removeLineWhenBlank="true">
+		<element kind="textField" uuid="bf44a667-1274-4598-878e-13022b8dc04c" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
+			<printWhenExpression><![CDATA[$F{importe_descuento_ticket} != null
+&& $F{importe_descuento_ticket}
+    .subtract($F{importe_descuento_vale} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_descuento_vale})
+    .subtract($F{importe_descuento_socio} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_descuento_socio})
+    .max(java.math.BigDecimal.ZERO)
+    .compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<expression><![CDATA["Descuento Adicional"]]></expression>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+		</element>
+		<element kind="textField" uuid="61103a45-4ad8-4c4a-bfd0-80cf8c18afd0" x="125" y="0" width="70" height="13" fontSize="8.0" textAdjust="StretchHeight" hTextAlign="Right">
+			<printWhenExpression><![CDATA[$F{importe_descuento_ticket} != null
+&& $F{importe_descuento_ticket}
+    .subtract($F{importe_descuento_vale} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_descuento_vale})
+    .subtract($F{importe_descuento_socio} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_descuento_socio})
+    .max(java.math.BigDecimal.ZERO)
+    .compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<expression><![CDATA[$F{importe_descuento_ticket} == null
+    ? ""
+    : new java.text.DecimalFormat("#,##0.00")
+        .format(
+            $F{importe_descuento_ticket}
+                .subtract($F{importe_descuento_vale} == null
+                    ? java.math.BigDecimal.ZERO
+                    : $F{importe_descuento_vale})
+                .subtract($F{importe_descuento_socio} == null
+                    ? java.math.BigDecimal.ZERO
+                    : $F{importe_descuento_socio})
+                .max(java.math.BigDecimal.ZERO)
+                .negate()
+        ) + " €"]]></expression>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		</element>
+		<element kind="frame" uuid="4b093d67-cff7-47be-b996-d1ae21155b2b" positionType="Float" x="5" y="54" width="195" height="13" removeLineWhenBlank="true">
+		<element kind="textField" uuid="382b80f0-7062-4fa5-b62e-c7ae68c1c66f" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
+			<printWhenExpression><![CDATA[$F{importe_descuento_socio} != null
+&& $F{importe_descuento_socio}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<expression><![CDATA["Descuento Socio ("
+    + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_socio})
+    + "%)"]]></expression>
+		</element>
+		<element kind="textField" uuid="29789ed4-b722-40f5-b0ee-eb265a8441cb" x="125" y="0" width="70" height="13" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Right">
+			<printWhenExpression><![CDATA[$F{importe_descuento_socio} != null
+&& $F{importe_descuento_socio}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<expression><![CDATA[new java.text.DecimalFormat("#,##0.00")
+    .format($F{importe_descuento_socio}.negate()) + " €"]]></expression>
+		</element>
+		</element>
+	</summary>
+</jasperReport>

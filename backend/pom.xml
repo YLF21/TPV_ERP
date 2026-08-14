@@ -168,6 +168,26 @@
 	</dependencies>
 
 	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+			</resource>
+			<!-- Package editable ticket sources; compiled reports are materialized at runtime. -->
+			<resource>
+				<directory>../plantillas documentos</directory>
+				<targetPath>reports/tickets</targetPath>
+				<includes>
+					<include>ticket.jrxml</include>
+				</includes>
+			</resource>
+			<resource>
+				<directory>../plantillas documentos/subreport</directory>
+				<targetPath>reports/tickets/subreport</targetPath>
+				<includes>
+					<include>*.jrxml</include>
+				</includes>
+			</resource>
+		</resources>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>

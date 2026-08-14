@@ -27,6 +27,7 @@ import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.TicketJasperRenderer;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
@@ -63,12 +64,16 @@ import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.terminal.StorePaymentConfiguration;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
 import com.tpverp.backend.terminal.TerminalPaymentConfigurationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DocumentService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DocumentService.class);
 
     private static final EnumSet<CommercialDocumentType> DELIVERY_NOTES = EnumSet.of(
             CommercialDocumentType.ALBARAN_VENTA, CommercialDocumentType.ALBARAN_COMPRA);
@@ -130,6 +135,7 @@ public class DocumentService {
     private AuditService audit;
     private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
     private SalesInvoiceRectificationRepository salesInvoiceRectifications;
+    private TicketJasperRenderer ticketJasperRenderer;
 
     public DocumentService(
             CommercialDocumentRepository documents,
@@ -202,6 +208,11 @@ public class DocumentService {
     @org.springframework.beans.factory.annotation.Autowired
     void setAuditService(AuditService audit) {
         this.audit = audit;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTicketJasperRenderer(TicketJasperRenderer ticketJasperRenderer) {
+        this.ticketJasperRenderer = ticketJasperRenderer;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -2056,6 +2067,30 @@ public class DocumentService {
                 .map(this::loadForPrint)
                 .map(refund -> ticketPrintViewFromExchange(sale, refund))
                 .orElseGet(() -> ticketPrintView(sale));
+    }
+
+    @Transactional(readOnly = true)
+    public TicketPrintView loadRenderedTicketPrintView(UUID id) {
+        var sale = loadForPrint(id);
+        return relations.findOriginId(sale.getId(), DocumentRelationType.COMPENSA)
+                .map(this::loadForPrint)
+                .map(refund -> ticketPrintViewFromExchange(sale, refund))
+                .orElseGet(() -> renderTicketPrintView(sale, ticketPrintView(sale)));
+    }
+
+    public TicketPrintView renderTicketPrintView(
+            CommercialDocument document, TicketPrintView view) {
+        if (ticketJasperRenderer == null) {
+            return view;
+        }
+        try {
+            var rendered = ticketJasperRenderer.renderForPrint(document);
+            return view.withRenderedDocument(rendered.pdf(), rendered.png());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Configured ticket rendering failed for document {}",
+                    document.getId(), exception);
+            return view;
+        }
     }
 
     public TicketPrintView ticketPrintView(CommercialDocument document) {

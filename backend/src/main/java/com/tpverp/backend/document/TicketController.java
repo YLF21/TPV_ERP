@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
 import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.document.template.TicketJasperRenderer;
 import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -16,6 +17,10 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +41,7 @@ public class TicketController {
     private final TicketCancellationService cancellations;
     private final GenericSalesApiService genericSales;
     private final PreviousTicketImportService previousTicketImports;
+    private final TicketJasperRenderer jasperRenderer;
 
     public TicketController(
             DocumentService service,
@@ -44,7 +50,8 @@ public class TicketController {
             TicketReturnService returns,
             TicketCancellationService cancellations,
             GenericSalesApiService genericSales,
-            PreviousTicketImportService previousTicketImports) {
+            PreviousTicketImportService previousTicketImports,
+            TicketJasperRenderer jasperRenderer) {
         this.service = service;
         this.fiscalQr = fiscalQr;
         this.views = views;
@@ -52,6 +59,7 @@ public class TicketController {
         this.cancellations = cancellations;
         this.genericSales = genericSales;
         this.previousTicketImports = previousTicketImports;
+        this.jasperRenderer = jasperRenderer;
     }
 
     @GetMapping
@@ -72,7 +80,27 @@ public class TicketController {
     @GetMapping("/{id}/print")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public TicketPrintView print(@PathVariable UUID id) {
-        return service.loadTicketPrintView(id);
+        return service.loadRenderedTicketPrintView(id);
+    }
+
+    @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
+    public ResponseEntity<byte[]> pdf(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String template) {
+        var ticket = service.loadForPrint(id);
+        var selectedTemplate = template == null || template.isBlank()
+                ? jasperRenderer.selectedTemplate()
+                : TicketJasperRenderer.Template.parse(template);
+        var content = jasperRenderer.render(ticket, selectedTemplate);
+        String number = ticket.getNumero() == null ? id.toString() : ticket.getNumero();
+        String filename = "ticket-" + number.replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(filename)
+                        .build().toString())
+                .body(content);
     }
 
     @GetMapping("/{id}/return-options")

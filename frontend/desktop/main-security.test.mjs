@@ -38,4 +38,10 @@ describe("desktop navigation security", () => {
     expect(source).toContain('child.stdin.end(buffer.toString("base64"))');
     expect(source).not.toContain('Array.from(buffer).join(",")');
   });
+
+  it("replaces an existing encrypted terminal identity on Windows", () => {
+    expect(source).toContain("fs.copyFileSync(temporary, target)");
+    expect(source).toContain("fs.rmSync(temporary, { force: true })");
+    expect(source).not.toContain("fs.renameSync(temporary, target)");
+  });
 });

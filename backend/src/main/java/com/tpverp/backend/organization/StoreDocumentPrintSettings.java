@@ -2,6 +2,8 @@ package com.tpverp.backend.organization;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
@@ -27,6 +29,10 @@ public class StoreDocumentPrintSettings {
     @Column(name = "observaciones_albaran", length = 2000)
     private String deliveryNoteObservations;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estilo_ticket", nullable = false, length = 16)
+    private TicketPrintStyle ticketStyle = TicketPrintStyle.PRINCIPAL;
+
     @Version
     private long version;
 
@@ -42,8 +48,14 @@ public class StoreDocumentPrintSettings {
     public String getTicketObservations() { return ticketObservations; }
     public String getInvoiceObservations() { return invoiceObservations; }
     public String getDeliveryNoteObservations() { return deliveryNoteObservations; }
+    public TicketPrintStyle getTicketStyle() {
+        return ticketStyle == null ? TicketPrintStyle.PRINCIPAL : ticketStyle;
+    }
 
     public void useLogo(UUID value) { logoId = value; }
+    public void useTicketStyle(TicketPrintStyle value) {
+        ticketStyle = java.util.Objects.requireNonNull(value, "ticketStyle");
+    }
 
     public void updateObservations(String ticket, String invoice, String deliveryNote) {
         ticketObservations = observations(ticket);

@@ -1,6 +1,9 @@
 function escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
 const money = (value) => Number(value || 0).toFixed(2);
 function renderTicketHtml(ticket) {
+  if (typeof ticket?.documentRaster === "string" && ticket.documentRaster.startsWith("data:image/")) {
+    return `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:0;size:80mm auto}html,body{width:80mm;margin:0;padding:0;background:#fff}img{display:block;width:80mm;height:auto;margin:0}</style></head><body><img src="${escapeHtml(ticket.documentRaster)}" alt=""></body></html>`;
+  }
   const l = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", base: "Base", tax: "Impuesto", total: "Total", ...(ticket.labels || {}) };
   const giftReceipt = ticket.layout === "GIFT_RECEIPT";
   const cancellationReceipt = ticket.layout === "CANCELLATION_RECEIPT";

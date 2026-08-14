@@ -1,0 +1,98 @@
+<!-- Created for JasperReports Library 7.0.6 -->
+<jasperReport name="ticket_cliente" language="java" columnCount="1" pageWidth="207" pageHeight="842" orientation="Landscape" columnWidth="207" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" uuid="d5f697b7-4578-43fd-8a8e-794885290cf5">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["04e5bdfb-4f14-3e39-a9cd-b9fa291461d9"]]></defaultValueExpression>
+	</parameter>
+	<query language="sql"><![CDATA[SELECT
+    c.nombre_fiscal AS nombre_cliente,
+    c.client_id AS codigo_cliente,
+    c.telefono,
+    c.tarifa,
+    c.descuento AS porcentaje_descuento,
+    c.descuento > 0 AS descuento_cliente_aplicado,
+    CASE
+        WHEN c.descuento > 0 AND d.descuento_global = c.descuento THEN
+            GREATEST(
+                COALESCE(SUM(dl.total) FILTER (WHERE dl.tipo_linea <> 'MANUAL_DISCOUNT'), 0) - d.total,
+                0
+            )
+        WHEN COUNT(*) FILTER (
+            WHERE dl.descuento = c.descuento
+              AND dl.promocion_id IS NULL
+              AND dl.cupon_promocional_id IS NULL
+        ) > 0 THEN
+            COALESCE(SUM(
+                CASE
+                    WHEN dl.descuento = c.descuento
+                     AND dl.promocion_id IS NULL
+                     AND dl.cupon_promocional_id IS NULL
+                    THEN GREATEST(
+                        CASE
+                            WHEN dl.impuestos_incluidos THEN dl.precio_unitario * dl.cantidad
+                            ELSE dl.precio_unitario * dl.cantidad
+                                 * (1 + COALESCE(dl.porcentaje_impuesto, 0) / 100)
+                        END - dl.total,
+                        0
+                    )
+                    ELSE 0
+                END
+            ), 0)
+        ELSE ROUND(d.total * c.descuento / 100, 2)
+    END AS importe_descuento_cliente
+FROM documento d
+INNER JOIN cliente c
+    ON c.id = d.cliente_id
+LEFT JOIN documento_linea dl
+    ON dl.documento_id = d.id
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+GROUP BY d.id, d.descuento_global, d.total,
+         c.id, c.nombre_fiscal, c.client_id, c.telefono, c.tarifa, c.descuento]]></query>
+	<field name="nombre_cliente" class="java.lang.String"/>
+	<field name="codigo_cliente" class="java.lang.String"/>
+	<field name="telefono" class="java.lang.String"/>
+	<field name="tarifa" class="java.lang.String"/>
+	<field name="porcentaje_descuento" class="java.math.BigDecimal"/>
+	<field name="descuento_cliente_aplicado" class="java.lang.Boolean"/>
+	<field name="importe_descuento_cliente" class="java.math.BigDecimal"/>
+	<background splitType="Stretch"/>
+	<detail>
+		<band height="50" splitType="Stretch">
+			<element kind="line" uuid="e566929f-92ad-4ff4-943c-04f5e29173ef" x="5" y="4" width="197" height="1">
+				<pen lineWidth="0.5" lineStyle="Dashed"/>
+			</element>
+			<element kind="textField" uuid="316e55de-7a88-44e3-af7d-9438fcfaead1" x="5" y="10" width="197" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[($F{nombre_cliente} == null || $F{nombre_cliente}.trim().isEmpty()
+    ? ""
+    : $F{nombre_cliente}.trim())]]></expression>
+			</element>
+			<element kind="textField" uuid="5a01b86e-4f38-4af6-b563-4000948576cc" x="5" y="22" width="197" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[($F{codigo_cliente} == null || $F{codigo_cliente}.trim().isEmpty()
+    ? ""
+    : "Cod.: " + $F{codigo_cliente}.trim())
++ ($F{telefono} == null || $F{telefono}.trim().isEmpty()
+    ? ""
+    : " - Tel.: " + $F{telefono}.trim())
++ ($F{tarifa} == null || $F{tarifa}.trim().isEmpty()
+    ? ""
+    : " - " + $F{tarifa}.trim())]]></expression>
+			</element>
+			<element kind="textField" uuid="e7644a6d-e0eb-4f93-92ef-32bf5d620b50" x="5" y="34" width="197" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{porcentaje_descuento} != null
+&& $F{porcentaje_descuento}.compareTo(java.math.BigDecimal.ZERO) > 0
+&& java.lang.Boolean.TRUE.equals($F{descuento_cliente_aplicado})]]></printWhenExpression>
+				<expression><![CDATA["Descuento Socio: "
+    + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento}) + "%"]]></expression>
+			</element>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</band>
+	</detail>
+</jasperReport>

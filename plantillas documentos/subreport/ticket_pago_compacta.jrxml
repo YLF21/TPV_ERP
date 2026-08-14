@@ -1,0 +1,82 @@
+<!-- Plantilla COMPACTA: tipografía uniforme, menor densidad y separadores sólidos. -->
+<!-- Created for JasperReports Library 7.0.6 -->
+<jasperReport name="ticket_pago_compacta" language="java" columnCount="1" pageWidth="207" pageHeight="842" orientation="Landscape" columnWidth="207" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" uuid="a7e38e2a-1b57-4e83-b8cb-bd2e5b806103">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String"/>
+	<query language="sql"><![CDATA[SELECT
+    dp.posicion,
+    COALESCE(mp.nombre, 'PAGO') AS metodo_pago,
+    dp.importe,
+    mp.abre_caja_registradora AS es_metalico,
+    dp.entregado,
+    dp.cambio,
+    (
+        UPPER(COALESCE(mp.nombre, '')) LIKE '%TARJET%'
+        OR dp.terminal_cobro_id IS NOT NULL
+        OR dp.terminal_pago_modo IS NOT NULL
+    ) AS es_tarjeta,
+    COALESCE(NULLIF(dp.autorizacion_tarjeta, ''), NULLIF(op.authorization_code, '')) AS autorizacion_tarjeta,
+    (
+        dp.terminal_cobro_id IS NOT NULL
+        OR op.id IS NOT NULL
+        OR dp.terminal_pago_estado IS NOT NULL
+    ) AS pago_integrado,
+    receipt.receipt_text AS recibo_terminal
+FROM documento_pago dp
+LEFT JOIN metodo_pago mp ON mp.id = dp.metodo_pago_id
+LEFT JOIN LATERAL (
+    SELECT pto.*
+    FROM payment_terminal_operation pto
+    WHERE pto.id = dp.terminal_cobro_id
+       OR pto.document_payment_id = dp.id
+    ORDER BY pto.created_at DESC
+    LIMIT 1
+) op ON TRUE
+LEFT JOIN LATERAL (
+    SELECT ptr.receipt_text
+    FROM payment_terminal_receipt ptr
+    WHERE ptr.operation_id = op.id
+    ORDER BY ptr.updated_at DESC
+    LIMIT 1
+) receipt ON TRUE
+WHERE dp.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+ORDER BY dp.posicion, dp.creado_en]]></query>
+	<field name="posicion" class="java.lang.Integer"/>
+	<field name="metodo_pago" class="java.lang.String"/>
+	<field name="importe" class="java.math.BigDecimal"/>
+	<field name="es_metalico" class="java.lang.Boolean"/>
+	<field name="entregado" class="java.math.BigDecimal"/>
+	<field name="cambio" class="java.math.BigDecimal"/>
+	<field name="es_tarjeta" class="java.lang.Boolean"/>
+	<field name="autorizacion_tarjeta" class="java.lang.String"/>
+	<field name="pago_integrado" class="java.lang.Boolean"/>
+	<field name="recibo_terminal" class="java.lang.String"/>
+	<background splitType="Stretch"/>
+	<title height="24">
+		<element kind="staticText" uuid="b16db4aa-1048-4f2f-8bba-e673057585b8" x="8" y="7" width="191" height="12" fontSize="8.0" bold="true" hTextAlign="Center"><text><![CDATA[FORMA DE PAGO]]></text></element>
+	</title>
+	<detail>
+		<band height="13">
+			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($F{es_metalico})
+&& !java.lang.Boolean.TRUE.equals($F{es_tarjeta})]]></printWhenExpression>
+			<element kind="textField" uuid="04b35f20-50f1-42dd-ac22-3e647e082d79" x="5" y="0" width="120" height="12" fontSize="8.0"><expression><![CDATA[$F{metodo_pago}]]></expression></element>
+			<element kind="textField" uuid="8f16df3f-0153-4a52-a0e9-a265154a9be5" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$F{importe} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{importe}) + " €"]]></expression></element>
+		</band>
+		<band height="13" splitType="Stretch">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{es_tarjeta})]]></printWhenExpression>
+			<element kind="staticText" uuid="b2b59f21-4a71-44c9-b29b-b26f15be2a21" x="5" y="0" width="120" height="12" fontSize="8.0"><text><![CDATA[Tarjeta bancaria]]></text></element>
+			<element kind="textField" uuid="ff02e2bb-d799-498c-b7df-290cc7db6e56" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$F{importe} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{importe}) + " \u20AC"]]></expression></element>
+		</band>
+		<band height="13">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{es_metalico}) && $F{entregado} != null]]></printWhenExpression>
+			<element kind="staticText" uuid="eb94f502-b5b7-45bd-85c7-aa0f12396560" x="5" y="0" width="120" height="12" fontSize="8.0"><text><![CDATA[Efectivo]]></text></element>
+			<element kind="textField" uuid="33448077-7a1b-45bd-9b66-1dc044ea8e73" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{entregado}) + " €"]]></expression></element>
+		</band>
+		<band height="13">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{es_metalico}) && $F{cambio} != null]]></printWhenExpression>
+			<element kind="staticText" uuid="b626604c-7c5c-46c7-a203-6a9c2360afe8" x="5" y="0" width="120" height="12" fontSize="8.0"><text><![CDATA[Cambio entregado]]></text></element>
+			<element kind="textField" uuid="50465408-5831-4df0-9efe-c3f57ce78974" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{cambio}) + " €"]]></expression></element>
+		</band>
+	</detail>
+</jasperReport>

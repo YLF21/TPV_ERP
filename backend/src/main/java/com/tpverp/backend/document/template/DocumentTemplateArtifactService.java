@@ -6,6 +6,8 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import java.io.IOException;
 import java.time.Clock;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ public class DocumentTemplateArtifactService {
     private final DocumentTemplateRepository templates;
     private final CurrentOrganization organization;
     private final SafeJrxmlCompiler compiler;
+    private final TicketJrxmlBundleCompiler ticketCompiler;
     private final DocumentTemplateArtifactStorage storage;
     private final DocumentTemplateCatalogService catalog;
     private final AuditService audit;
@@ -29,6 +32,7 @@ public class DocumentTemplateArtifactService {
             DocumentTemplateRepository templates,
             CurrentOrganization organization,
             SafeJrxmlCompiler compiler,
+            TicketJrxmlBundleCompiler ticketCompiler,
             DocumentTemplateArtifactStorage storage,
             DocumentTemplateCatalogService catalog,
             AuditService audit,
@@ -36,6 +40,7 @@ public class DocumentTemplateArtifactService {
         this.templates = templates;
         this.organization = organization;
         this.compiler = compiler;
+        this.ticketCompiler = ticketCompiler;
         this.storage = storage;
         this.catalog = catalog;
         this.audit = audit;
@@ -44,17 +49,30 @@ public class DocumentTemplateArtifactService {
 
     @Transactional
     public DocumentTemplateCatalogService.TemplateView uploadAndValidate(
-            UUID templateId, MultipartFile file) {
-        Objects.requireNonNull(file, "file");
+            UUID templateId, List<MultipartFile> files) {
+        Objects.requireNonNull(files, "files");
         var template = currentStoreTemplateForUpdate(templateId);
         if (template.getStatus() != DocumentTemplateStatus.DRAFT) {
             throw new IllegalStateException("document_template_not_draft");
         }
-        var compiled = compiler.compile(read(file));
         DocumentTemplateArtifactStorage.StoredArtifact artifact;
+        String sha256;
         try {
-            artifact = storage.write(
-                    template.getId(), compiled.source(), compiled.compiled());
+            if (template.getType() == DocumentTemplateType.TICKET) {
+                var compiled = ticketCompiler.compile(readBundle(files));
+                artifact = storage.writeBundle(template.getId(),
+                        TicketJrxmlBundleCompiler.MASTER_FILENAME, compiled.reports());
+                sha256 = compiled.sha256();
+            } else {
+                if (files.size() != 1) {
+                    throw new IllegalArgumentException(
+                            "document_template_single_jrxml_required");
+                }
+                var compiled = compiler.compile(read(files.getFirst()));
+                artifact = storage.write(
+                        template.getId(), compiled.source(), compiled.compiled());
+                sha256 = compiled.sha256();
+            }
         } catch (IOException exception) {
             throw new IllegalStateException(
                     "document_template_artifact_storage_failed", exception);
@@ -63,7 +81,7 @@ public class DocumentTemplateArtifactService {
         template.validateArtifact(
                 SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
                 artifact.reference(),
-                compiled.sha256(),
+                sha256,
                 clock.instant());
         var saved = templates.saveAndFlush(template);
         audit.record("DOCUMENT_TEMPLATE_VALIDATED", AuditResult.EXITO, auditDetails(saved));
@@ -81,9 +99,17 @@ public class DocumentTemplateArtifactService {
             throw new IllegalStateException("document_template_artifact_not_available");
         }
         try {
+            if (storage.isBundle(template.getArtifactReference())) {
+                return new SourceDownload(
+                        template.getCode().toLowerCase(java.util.Locale.ROOT)
+                                + "_v" + template.getTemplateVersion() + ".zip",
+                        "application/zip",
+                        zip(storage.readBundleSources(template.getArtifactReference())));
+            }
             return new SourceDownload(
                     template.getCode().toLowerCase(java.util.Locale.ROOT)
                             + "_v" + template.getTemplateVersion() + ".jrxml",
+                    "application/xml",
                     storage.readSource(template.getArtifactReference()));
         } catch (IOException exception) {
             throw new IllegalStateException(
@@ -115,6 +141,16 @@ public class DocumentTemplateArtifactService {
 
     private void verifyStoredArtifact(DocumentTemplate template) {
         try {
+            if (storage.isBundle(template.getArtifactReference())) {
+                var sources = storage.readBundleSources(template.getArtifactReference());
+                if (!TicketJrxmlBundleCompiler.bundleSha256(sources)
+                        .equals(template.getSha256())) {
+                    throw new IllegalStateException(
+                            "document_template_artifact_integrity_failed");
+                }
+                ticketCompiler.compile(sources);
+                return;
+            }
             byte[] source = storage.readSource(template.getArtifactReference());
             byte[] compiled = storage.readCompiled(template.getArtifactReference());
             if (compiled.length == 0
@@ -145,6 +181,43 @@ public class DocumentTemplateArtifactService {
         } catch (IOException exception) {
             throw new IllegalArgumentException("document_template_jrxml_read_failed", exception);
         }
+    }
+
+    private static byte[] zip(Map<String, byte[]> sources) throws IOException {
+        try (var output = new java.io.ByteArrayOutputStream();
+                var zip = new java.util.zip.ZipOutputStream(output)) {
+            for (var entry : new java.util.TreeMap<>(sources).entrySet()) {
+                zip.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));
+                zip.write(entry.getValue());
+                zip.closeEntry();
+            }
+            zip.finish();
+            return output.toByteArray();
+        }
+    }
+
+    private static Map<String, byte[]> readBundle(List<MultipartFile> files) {
+        if (files.isEmpty()) {
+            throw new IllegalArgumentException("document_template_jrxml_required");
+        }
+        long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+        if (totalSize > 20L * 1024 * 1024) {
+            throw new IllegalArgumentException("document_template_ticket_bundle_too_large");
+        }
+        var sources = new LinkedHashMap<String, byte[]>();
+        for (MultipartFile file : files) {
+            String filename = file.getOriginalFilename();
+            if (filename == null || !filename.matches(
+                    "[A-Za-z0-9][A-Za-z0-9_-]*\\.jrxml")) {
+                throw new IllegalArgumentException(
+                        "document_template_bundle_filename_invalid");
+            }
+            if (sources.putIfAbsent(filename, read(file)) != null) {
+                throw new IllegalArgumentException(
+                        "document_template_bundle_filename_duplicated");
+            }
+        }
+        return Map.copyOf(sources);
     }
 
     private void deleteArtifactOnRollback(String reference) {
@@ -178,7 +251,7 @@ public class DocumentTemplateArtifactService {
         return details;
     }
 
-    public record SourceDownload(String filename, byte[] content) {
+    public record SourceDownload(String filename, String contentType, byte[] content) {
 
         public SourceDownload {
             content = content.clone();

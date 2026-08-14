@@ -1,6 +1,7 @@
 package com.tpverp.backend.organization;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import org.springframework.http.MediaType;
@@ -38,6 +39,12 @@ public class StoreDocumentPrintConfigurationController {
                 request.ticket(), request.invoice(), request.deliveryNote());
     }
 
+    @PutMapping("/ticket-style")
+    public StoreDocumentPrintConfigurationService.Configuration updateTicketStyle(
+            @Valid @RequestBody TicketStyleRequest request) {
+        return service.updateTicketStyle(request.style());
+    }
+
     @PutMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public StoreDocumentPrintConfigurationService.Configuration uploadLogo(
             @RequestPart("file") MultipartFile file) throws IOException {
@@ -53,5 +60,8 @@ public class StoreDocumentPrintConfigurationController {
             @Size(max = 2000) String ticket,
             @Size(max = 2000) String invoice,
             @Size(max = 2000) String deliveryNote) {
+    }
+
+    public record TicketStyleRequest(@NotNull TicketPrintStyle style) {
     }
 }

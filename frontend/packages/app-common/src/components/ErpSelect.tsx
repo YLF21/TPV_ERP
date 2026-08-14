@@ -32,7 +32,11 @@ export function erpSelectPopoverLayout(
   const openAbove = availableBelow < desiredHeight && availableAbove > availableBelow;
   const availableHeight = openAbove ? availableAbove : availableBelow;
   const maxHeight = Math.max(1, Math.min(240, availableHeight));
-  const maxWidth = Math.max(1, viewport.width - margin * 2);
+  // Keep short option lists readable even when their form control spans a wide
+  // settings panel. The CSS already uses the same visual cap; applying it to
+  // the measured layout prevents the inline positioning styles from overriding
+  // that limit.
+  const maxWidth = Math.max(1, Math.min(360, viewport.width - margin * 2));
   const desiredWidth = Math.min(maxWidth, Math.max(trigger.width, popover.width));
   const left = Math.min(
     Math.max(margin, trigger.left),

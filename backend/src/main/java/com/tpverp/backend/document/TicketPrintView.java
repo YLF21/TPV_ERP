@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.stream.Stream;
 import java.util.UUID;
@@ -17,7 +18,9 @@ public record TicketPrintView(
         BigDecimal taxTotal,
         BigDecimal checkoutDiscountTotal,
         String observations,
-        String logo) {
+        String logo,
+        RenderedPdf ticketRenderedPdf,
+        RenderedImage ticketRenderedImage) {
 
     public TicketPrintView(
             UUID documentId,
@@ -27,7 +30,7 @@ public record TicketPrintView(
             List<Payment> payments,
             BigDecimal total) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                null, null, BigDecimal.ZERO, null, null);
+                null, null, BigDecimal.ZERO, null, null, null, null);
     }
 
     public TicketPrintView(
@@ -40,7 +43,7 @@ public record TicketPrintView(
             BigDecimal baseTotal,
             BigDecimal taxTotal) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                baseTotal, taxTotal, BigDecimal.ZERO, null, null);
+                baseTotal, taxTotal, BigDecimal.ZERO, null, null, null, null);
     }
 
     public static TicketPrintView from(CommercialDocument document) {
@@ -79,6 +82,8 @@ public record TicketPrintView(
                 document.getImpuestoTotal(),
                 checkoutDiscountTotal(document.getLineas()),
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -111,13 +116,24 @@ public record TicketPrintView(
                 Money.euros(checkoutDiscountTotal(sale.getLineas())
                         .add(checkoutDiscountTotal(refund.getLineas()))),
                 null,
+                null,
+                null,
                 null);
     }
 
     public TicketPrintView withPresentation(String observations, String logo) {
         return new TicketPrintView(
                 documentId, documentNumber, issuedAt, lines, payments, total,
-                baseTotal, taxTotal, checkoutDiscountTotal, observations, logo);
+                baseTotal, taxTotal, checkoutDiscountTotal, observations, logo,
+                ticketRenderedPdf, ticketRenderedImage);
+    }
+
+    public TicketPrintView withRenderedDocument(byte[] pdf, byte[] png) {
+        return new TicketPrintView(
+                documentId, documentNumber, issuedAt, lines, payments, total,
+                baseTotal, taxTotal, checkoutDiscountTotal, observations, logo,
+                new RenderedPdf("application/pdf", Base64.getEncoder().encodeToString(pdf)),
+                new RenderedImage("image/png", Base64.getEncoder().encodeToString(png)));
     }
 
     private static BigDecimal checkoutDiscountTotal(List<DocumentLine> lines) {
@@ -159,4 +175,8 @@ public record TicketPrintView(
     }
 
     public record Payment(String method, BigDecimal amount) {}
+
+    public record RenderedPdf(String contentType, String base64) {}
+
+    public record RenderedImage(String contentType, String base64) {}
 }

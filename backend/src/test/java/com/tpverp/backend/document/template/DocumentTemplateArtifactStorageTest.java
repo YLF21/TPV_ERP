@@ -29,6 +29,27 @@ class DocumentTemplateArtifactStorageTest {
     }
 
     @Test
+    void storesACompiledTicketBundleInAnIsolatedTemplateDirectory() throws Exception {
+        var storage = new DocumentTemplateArtifactStorage(tempDir);
+        var templateId = UUID.randomUUID();
+        var reports = java.util.Map.of(
+                "ticket.jrxml", new TicketJrxmlBundleCompiler.CompiledReport(
+                        new byte[] {1}, new byte[] {2}),
+                "ticket_pie.jrxml", new TicketJrxmlBundleCompiler.CompiledReport(
+                        new byte[] {3}, new byte[] {4}));
+
+        var stored = storage.writeBundle(templateId, "ticket.jrxml", reports);
+
+        assertThat(storage.isBundle(stored.reference())).isTrue();
+        assertThat(storage.readBundleSources(stored.reference()))
+                .containsEntry("ticket.jrxml", new byte[] {1})
+                .containsEntry("ticket_pie.jrxml", new byte[] {3});
+        assertThat(Files.readAllBytes(
+                storage.compiledBundleMaster(stored.reference(), "ticket.jrxml")))
+                .containsExactly(2);
+    }
+
+    @Test
     void rejectsReferencesThatAreNotInternalTemplateIdentifiers() {
         var storage = new DocumentTemplateArtifactStorage(tempDir);
 

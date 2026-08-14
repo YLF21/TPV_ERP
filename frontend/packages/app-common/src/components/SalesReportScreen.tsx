@@ -10,7 +10,6 @@ import {
   commercialDocumentAsA4Document,
   outputConfirmedTicket,
   printPendingCommercialDocument,
-  ticketAsA4Document,
   type ConfirmedTicketPrintSnapshot,
   type PendingCommercialDocumentPrintSnapshot
 } from "../sale/ticketPrinting";
@@ -139,6 +138,20 @@ function apiServerLabel() {
 
 function currentOnlineStatus() {
   return typeof navigator === "undefined" ? false : navigator.onLine;
+}
+
+function renderedPdfBlob(renderedPdf: { contentType: "application/pdf"; base64: string }): Blob {
+  const binary = window.atob(renderedPdf.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: renderedPdf.contentType });
+}
+
+function showPdfPreview(preview: Window, pdf: Blob): void {
+  const objectUrl = URL.createObjectURL(pdf);
+  preview.opener = null;
+  preview.location.replace(objectUrl);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 const reportIcon: Record<string, string> = {
@@ -2348,11 +2361,18 @@ export function SalesReportScreen({
           { token: session.accessToken }
         );
         if (browserPreview) {
-          writeWarehouseDocumentPreview(
-            browserPreview,
-            ticketAsA4Document(snapshot, terminalContext, locale),
-            { autoPrint: true }
-          );
+          let pdf: Blob;
+          if (snapshot.ticketRenderedPdf) {
+            pdf = renderedPdfBlob(snapshot.ticketRenderedPdf);
+          } else {
+            const response = await fetch(
+              `${apiBaseUrl}/tickets/${encodeURIComponent(documentPreviewRow.__documentId)}/pdf`,
+              { headers: { Authorization: `Bearer ${session.accessToken}` } }
+            );
+            if (!response.ok) throw new Error(await salesReportResponseError(response));
+            pdf = await response.blob();
+          }
+          showPdfPreview(browserPreview, pdf);
           setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
           return;
         }

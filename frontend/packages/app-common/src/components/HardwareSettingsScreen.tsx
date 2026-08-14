@@ -523,7 +523,7 @@ export function HardwareSettingsScreen({
 
           <section className="hardware-section">
             <h2>{t("hardware.cashDrawer")}</h2>
-            <label><span>{t("hardware.connectionType")}</span>
+            <label className="hardware-control-field"><span>{t("hardware.connectionType")}</span>
               <ErpSelect aria-label={t("hardware.connectionType")} value={config.cashDrawerConnection}
                 onChange={(value) => updateConfig({ cashDrawerConnection: value as HardwareConfig["cashDrawerConnection"] })}
                 options={[
@@ -569,7 +569,7 @@ export function HardwareSettingsScreen({
                 <span>{t(method)}</span>
               </label>)}</div>
             </div>
-            <label><span>{t("hardware.drawerProfile")}</span>
+            <label className="hardware-control-field"><span>{t("hardware.drawerProfile")}</span>
               <ErpSelect aria-label={t("hardware.drawerProfile")} value={config.cashDrawerCommandProfile}
                 onChange={(value) => updateConfig({ cashDrawerCommandProfile: value as HardwareConfig["cashDrawerCommandProfile"] })}
                 options={[{ value: "ESCPOS_STANDARD", label: "ESC/POS standard" }]} />

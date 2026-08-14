@@ -244,7 +244,10 @@ function writeTerminalIdentity(identity) {
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(temporary, safeStorage.encryptString(JSON.stringify(identity)));
-    fs.renameSync(temporary, target);
+    // renameSync no reemplaza de forma fiable un destino existente en Windows.
+    // copyFileSync sí permite rotar la credencial tras un nuevo aprovisionamiento.
+    fs.copyFileSync(temporary, target);
+    fs.rmSync(temporary, { force: true });
     return { ok: true };
   } catch (error) {
     try { fs.rmSync(temporary, { force: true }); } catch {}
@@ -812,6 +815,16 @@ async function printTicket(ticket, config) {
     return structuredError("PRINTER_NOT_CONFIGURED", "Impresora no configurada");
   }
 
+  let jasperPdf;
+  try {
+    jasperPdf = renderedPdfBuffer(ticket);
+  } catch (error) {
+    return structuredError(
+      "PRINT_FAILED",
+      error instanceof Error ? error.message : "El PDF Jasper del ticket no es valido"
+    );
+  }
+
   const printWindow = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -822,7 +835,9 @@ async function printTicket(ticket, config) {
   });
 
   try {
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderTicketHtml(ticket))}`);
+    await printWindow.loadURL(jasperPdf
+      ? renderedPdfDataUrl(ticket)
+      : `data:text/html;charset=utf-8,${encodeURIComponent(renderTicketHtml(ticket))}`);
     return executeWindowsTicketPrint({
       webContents: printWindow.webContents,
       printerName,
@@ -850,6 +865,18 @@ async function exportTicketPdf(ticket, defaultFileName) {
   });
   if (result.canceled || !result.filePath) {
     return { ok: true, canceled: true };
+  }
+  try {
+    const jasperPdf = renderedPdfBuffer(ticket);
+    if (jasperPdf) {
+      fs.writeFileSync(result.filePath, jasperPdf);
+      return { ok: true, canceled: false, filePath: result.filePath };
+    }
+  } catch (error) {
+    return structuredError(
+      "PDF_EXPORT_FAILED",
+      error instanceof Error ? error.message : "El PDF Jasper del ticket no es valido"
+    );
   }
   const printWindow = new BrowserWindow({
     show: false,

@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -62,6 +64,16 @@ class TicketPrintViewTest {
         var branded = view.withPresentation("Gracias por su compra", "data:image/png;base64,AA==");
         assertThat(branded.observations()).isEqualTo("Gracias por su compra");
         assertThat(branded.logo()).isEqualTo("data:image/png;base64,AA==");
+
+        var rendered = branded.withRenderedDocument(
+                "%PDF-ticket".getBytes(StandardCharsets.UTF_8),
+                "PNG-ticket".getBytes(StandardCharsets.UTF_8));
+        assertThat(rendered.ticketRenderedPdf().contentType()).isEqualTo("application/pdf");
+        assertThat(Base64.getDecoder().decode(rendered.ticketRenderedPdf().base64()))
+                .isEqualTo("%PDF-ticket".getBytes(StandardCharsets.UTF_8));
+        assertThat(rendered.ticketRenderedImage().contentType()).isEqualTo("image/png");
+        assertThat(Base64.getDecoder().decode(rendered.ticketRenderedImage().base64()))
+                .isEqualTo("PNG-ticket".getBytes(StandardCharsets.UTF_8));
     }
 
     @Test

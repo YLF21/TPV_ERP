@@ -14,7 +14,10 @@ export type StoreDocumentPrintConfiguration = {
   ticketObservations: string | null;
   invoiceObservations: string | null;
   deliveryNoteObservations: string | null;
+  ticketStyle: TicketPrintStyle;
 };
+
+export type TicketPrintStyle = "PRINCIPAL" | "COMPACTA" | "MINIMALISTA";
 
 export function loadStoreDocumentPrintConfiguration(
   token?: string,
@@ -57,5 +60,16 @@ export function removeStoreDocumentLogo(
   return request<StoreDocumentPrintConfiguration>(
     "/store-document-print-configuration/logo",
     { method: "DELETE", token },
+  );
+}
+
+export function saveStoreTicketStyle(
+  style: TicketPrintStyle,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<StoreDocumentPrintConfiguration>(
+    "/store-document-print-configuration/ticket-style",
+    { method: "PUT", token, body: { style } },
   );
 }

@@ -70,7 +70,21 @@ describe("ErpSelect", () => {
       top: 476,
       left: 981,
       minWidth: 220,
-      maxWidth: 1313,
+      maxWidth: 360,
+      maxHeight: 240,
+    });
+  });
+
+  it("caps a dropdown opened from a full-width settings control", () => {
+    expect(erpSelectPopoverLayout(
+      { top: 475, bottom: 521, left: 165, width: 1850 },
+      { width: 1850, height: 140 },
+      { width: 2048, height: 1024 },
+    )).toEqual({
+      top: 525,
+      left: 165,
+      minWidth: 360,
+      maxWidth: 360,
       maxHeight: 240,
     });
   });
