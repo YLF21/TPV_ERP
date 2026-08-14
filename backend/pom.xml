@@ -172,21 +172,7 @@
 			<resource>
 				<directory>src/main/resources</directory>
 			</resource>
-			<!-- Ticket master and compiled subreports edited with Jaspersoft Studio. -->
-			<resource>
-				<directory>../plantillas documentos</directory>
-				<includes>
-					<include>ticket.jasper</include>
-				</includes>
-			</resource>
-			<resource>
-				<directory>../plantillas documentos/subreport</directory>
-				<targetPath>subreport</targetPath>
-				<includes>
-					<include>*.jasper</include>
-				</includes>
-			</resource>
-			<!-- Keep the editable sources in the packaged application for diagnosis. -->
+			<!-- Package editable ticket sources; compiled reports are materialized at runtime. -->
 			<resource>
 				<directory>../plantillas documentos</directory>
 				<targetPath>reports/tickets</targetPath>

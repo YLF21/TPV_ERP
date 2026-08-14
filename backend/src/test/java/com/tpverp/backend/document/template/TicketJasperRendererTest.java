@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperCompileManager;
 import net.sf.jasperreports.engine.util.JRLoader;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.ClassPathResource;
 
 class TicketJasperRendererTest {
@@ -29,14 +32,18 @@ class TicketJasperRendererTest {
     };
 
     @Test
-    void packagesEveryCompiledMasterAndSubreport() throws IOException, JRException {
+    void materializesEveryCompiledMasterAndSubreport(@TempDir Path temporaryDirectory)
+            throws JRException {
+        var bundle = new BuiltInTicketJasperBundle(
+                new TicketJrxmlBundleCompiler(),
+                new DocumentTemplateArtifactStorage(temporaryDirectory));
+        Path master = bundle.compiledMaster();
         for (String name : REPORTS) {
-            var resource = new ClassPathResource(name);
-            assertThat(resource.exists()).as(name).isTrue();
-            try (var input = resource.getInputStream()) {
-                assertThat(JRLoader.loadObject(input)).as(name).isNotNull();
-            }
+            Path report = master.getParent().resolve(Path.of(name).getFileName());
+            assertThat(Files.isRegularFile(report)).as(name).isTrue();
+            assertThat(JRLoader.loadObject(report.toFile())).as(name).isNotNull();
         }
+        assertThat(bundle.compiledMaster()).isEqualTo(master);
     }
 
     @Test

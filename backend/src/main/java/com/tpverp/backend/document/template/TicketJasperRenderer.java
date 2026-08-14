@@ -12,30 +12,30 @@ import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 /** Renders the built-in, database-backed thermal ticket reports. */
 @Service
 public class TicketJasperRenderer {
 
-    static final String MASTER_REPORT = "ticket.jasper";
-
     private final DataSource dataSource;
     private final DocumentTemplateResolver templates;
     private final DocumentTemplateArtifactStorage storage;
     private final StoreDocumentPrintConfigurationService printConfiguration;
+    private final BuiltInTicketJasperBundle builtInBundle;
 
     public TicketJasperRenderer(
             DataSource dataSource,
             DocumentTemplateResolver templates,
             DocumentTemplateArtifactStorage storage,
-            StoreDocumentPrintConfigurationService printConfiguration) {
+            StoreDocumentPrintConfigurationService printConfiguration,
+            BuiltInTicketJasperBundle builtInBundle) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.templates = Objects.requireNonNull(templates, "templates");
         this.storage = Objects.requireNonNull(storage, "storage");
         this.printConfiguration = Objects.requireNonNull(
                 printConfiguration, "printConfiguration");
+        this.builtInBundle = Objects.requireNonNull(builtInBundle, "builtInBundle");
     }
 
     public Template selectedTemplate() {
@@ -67,14 +67,11 @@ public class TicketJasperRenderer {
 
         var resolved = templates.resolve(DocumentTemplateType.TICKET);
         try (var connection = dataSource.getConnection()) {
-            net.sf.jasperreports.engine.JasperPrint print;
             boolean useBuiltInBundle = resolved.builtIn()
                     || !storage.isBundle(resolved.artifactReference());
+            java.nio.file.Path master;
             if (useBuiltInBundle) {
-                var report = new ClassPathResource(MASTER_REPORT);
-                try (var input = report.getInputStream()) {
-                    print = JasperFillManager.fillReport(input, parameters, connection);
-                }
+                master = builtInBundle.compiledMaster();
             } else {
                 var sources = storage.readBundleSources(resolved.artifactReference());
                 if (!TicketJrxmlBundleCompiler.bundleSha256(sources)
@@ -82,14 +79,14 @@ public class TicketJasperRenderer {
                     throw new IllegalStateException(
                             "document_template_artifact_integrity_failed");
                 }
-                var master = storage.compiledBundleMaster(
+                master = storage.compiledBundleMaster(
                         resolved.artifactReference(), TicketJrxmlBundleCompiler.MASTER_FILENAME);
-                parameters.put(TicketJrxmlBundleCompiler.SUBREPORT_DIRECTORY_PARAMETER,
-                        master.getParent().toAbsolutePath().toString()
-                                + java.io.File.separator);
-                print = JasperFillManager.fillReport(
-                        master.toAbsolutePath().toString(), parameters, connection);
             }
+            parameters.put(TicketJrxmlBundleCompiler.SUBREPORT_DIRECTORY_PARAMETER,
+                    master.getParent().toAbsolutePath().toString()
+                            + java.io.File.separator);
+            var print = JasperFillManager.fillReport(
+                    master.toAbsolutePath().toString(), parameters, connection);
             return new RenderedTicket(
                     JasperExportManager.exportReportToPdf(print),
                     InvoiceJasperRenderer.ticketRaster(print));
