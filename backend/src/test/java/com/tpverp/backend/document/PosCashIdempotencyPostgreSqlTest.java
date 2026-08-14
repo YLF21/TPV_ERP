@@ -178,6 +178,10 @@ class PosCashIdempotencyPostgreSqlTest {
         });
         when(documents.ticketPrintView(any())).thenAnswer(invocation ->
                 TicketPrintView.from(invocation.getArgument(0)));
+        when(documents.renderTicketPrintView(any(), any())).thenAnswer(invocation ->
+                ((TicketPrintView) invocation.getArgument(1)).withRenderedDocument(
+                        "rendered-pdf".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "rendered-png".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
 
         var auth = new UsernamePasswordAuthenticationToken(user, "n/a");
         var request = new PosCashController.CashRequest(UUID.randomUUID(),
@@ -193,6 +197,8 @@ class PosCashIdempotencyPostgreSqlTest {
             var b = second.get(20, TimeUnit.SECONDS);
             assertThat(a.id()).isEqualTo(b.id());
             assertThat(a.printTicket()).isEqualTo(b.printTicket());
+            assertThat(a.printTicket().ticketRenderedPdf()).isNotNull();
+            assertThat(a.printTicket().ticketRenderedImage()).isNotNull();
         }
         verify(documents, times(1)).createTicket(any(), anyList(), any());
         assertThat(jdbc.queryForObject("select count(*) from pos_cash_checkout", Integer.class)).isEqualTo(1);
