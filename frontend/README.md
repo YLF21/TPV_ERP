@@ -4,12 +4,44 @@ Monorepo de APP VENTA, APP GESTION y los paquetes compartidos.
 
 ## Ejecucion local
 
-Desde este directorio:
+La forma recomendada en Windows es usar el entorno aislado desde la raiz del
+repositorio. Crea una base PostgreSQL temporal, aplica las migraciones, carga
+los datos de demostracion y configura una identidad de terminal valida. Al
+salir, detiene solo los procesos que ha iniciado y elimina esa base:
+
+```powershell
+$env:TPV_POSTGRES_ADMIN_PASSWORD = "<contrasena-local-postgres>"
+$env:TPV_TEST_DB_PASSWORD = "<contrasena-local-del-rol-tpv_erp_test>"
+.\tools\start-app-venta-isolated.cmd
+```
+
+La aplicacion queda en `http://127.0.0.1:4173`. El acceso de demostracion es
+`ADMIN` / `0000`. Las contrasenas PostgreSQL solo se establecen en la sesion de
+PowerShell: no deben guardarse en el repositorio. Para comprobar arranque,
+migraciones, terminal y login sin dejar el entorno abierto:
+
+```powershell
+.\tools\start-app-venta-isolated.cmd -CheckOnly
+```
+
+Si alguno de los puertos esta ocupado, el lanzador se detiene sin cerrar el
+proceso ajeno. Se pueden elegir otros puertos de forma explicita:
+
+```powershell
+.\tools\start-app-venta-isolated.cmd -BackendPort 18081 -FrontendPort 4175
+```
+
+Este lanzador no modifica `tpv_erp_dev`, `tpv_erp_test` ni ejecuta
+`flyway repair`. Requiere que el rol `tpv_erp_test` ya exista; la preparacion
+inicial de roles y bases esta en `backend/scripts/create-databases.sql`.
+
+Para una ejecucion manual desde este directorio:
 
 ```powershell
 npm.cmd install
 $env:VITE_TPV_BACKEND_URL = "http://127.0.0.1:8080"
 $env:VITE_TPV_TERMINAL_ID = "<uuid-terminal-local>"
+$env:VITE_TPV_TERMINAL_CREDENTIAL = "<credencial-terminal-local>"
 npm.cmd run dev:venta
 ```
 
@@ -48,10 +80,10 @@ calcular el total. Efectivo y tarjeta aceptan un importe inicial parcial mayor
 que cero y no superior al saldo; efectivo conserva recibido/cambio y tarjeta
 envia exactamente ese importe al terminal.
 
-El acceso **DEUDAS CLIENTES** de la pantalla inicial permite filtrar albaranes
-y facturas y cobrar posteriormente por efectivo, tarjeta o transferencia. La
-misma vista se abre prefiltrada desde **Ver deudas** en la ficha del cliente.
-Estas opciones dependen de `CUSTOMER_RECEIVABLES_READ`,
+El acceso **Deudas de clientes** del menu **Sistema** (`Ctrl+D`) permite filtrar
+albaranes y facturas y cobrar posteriormente por efectivo, tarjeta o
+transferencia. La misma vista se abre prefiltrada desde **Ver deudas** en la
+ficha del cliente. Estas opciones dependen de `CUSTOMER_RECEIVABLES_READ`,
 `CUSTOMER_RECEIVABLES_CREATE` y `CUSTOMER_RECEIVABLES_PAY`.
 
 Tanto al crear una venta pendiente como al cobrar una deuda, la UI conserva
