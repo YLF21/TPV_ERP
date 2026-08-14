@@ -51,6 +51,17 @@ export function prepareCashSessionForSales(
   });
 }
 
+export function loadCashSessionReadiness(
+  terminalId: string,
+  token: string,
+  request: RequestFunction = apiRequest,
+) {
+  const query = new URLSearchParams({ terminalId });
+  return request<CashSalesSessionReadiness>(`/cash/sessions/readiness?${query}`, {
+    token,
+  });
+}
+
 export function openCashSession(
   terminalId: string,
   token: string,

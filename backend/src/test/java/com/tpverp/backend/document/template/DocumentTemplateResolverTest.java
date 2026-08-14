@@ -1,6 +1,7 @@
 package com.tpverp.backend.document.template;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,7 +62,7 @@ class DocumentTemplateResolverTest {
     }
 
     @Test
-    void usesBuiltInVersionWhenNoCatalogTemplateIsActive() {
+    void requiresAnActiveJrxmlWhenNoCatalogTemplateExists() {
         var store = DocumentTemplateTest.store();
         when(templates.findActiveForStore(store.getId(), DocumentTemplateType.FACTURA_VENTA,
                 DocumentTemplateFormat.A4))
@@ -74,11 +75,18 @@ class DocumentTemplateResolverTest {
                 DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
                 .thenReturn(Optional.empty());
 
-        var resolved = resolver.resolve(store, DocumentTemplateType.FACTURA_VENTA);
-
-        assertThat(resolved.builtIn()).isTrue();
-        assertThat(resolved.code()).isEqualTo("FACTURA_A4");
-        assertThat(resolved.version()).isEqualTo(1);
+        assertThat(resolver.findEffective(
+                store, DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
+                .isEmpty();
+        assertThatThrownBy(() -> resolver.resolve(store, DocumentTemplateType.FACTURA_VENTA))
+                .isInstanceOf(DocumentTemplateRequiredException.class)
+                .hasMessage(DocumentTemplateRequiredException.MESSAGE_KEY)
+                .satisfies(error -> {
+                    var required = (DocumentTemplateRequiredException) error;
+                    assertThat(required.documentType())
+                            .isEqualTo(DocumentTemplateType.FACTURA_VENTA);
+                    assertThat(required.format()).isEqualTo(DocumentTemplateFormat.A4);
+                });
     }
 
     private static DocumentTemplate active(DocumentTemplate template) {

@@ -111,10 +111,8 @@
 }
 
 .erp-select__popover {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
+  z-index: 1000;
   width: max-content;
   min-width: 100%;
   max-width: min(360px, calc(100vw - 32px));

@@ -2,6 +2,7 @@ package com.tpverp.backend.document.template;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,17 +38,23 @@ public class DocumentTemplateResolver {
     @Transactional(readOnly = true)
     public ResolvedDocumentTemplate resolve(
             Store store, DocumentTemplateType type, DocumentTemplateFormat format) {
+        return findEffective(store, type, format)
+                .orElseThrow(() -> new DocumentTemplateRequiredException(type, format));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ResolvedDocumentTemplate> findEffective(
+            Store store, DocumentTemplateType type, DocumentTemplateFormat format) {
         var storeTemplate = templates.findActiveForStore(store.getId(), type, format);
         if (storeTemplate.isPresent()) {
-            return ResolvedDocumentTemplate.from(storeTemplate.get());
+            return storeTemplate.map(ResolvedDocumentTemplate::from);
         }
         var companyTemplate = templates.findActiveForCompany(
                 store.getEmpresa().getId(), type, format);
         if (companyTemplate.isPresent()) {
-            return ResolvedDocumentTemplate.from(companyTemplate.get());
+            return companyTemplate.map(ResolvedDocumentTemplate::from);
         }
         return templates.findActiveForSystem(type, format)
-                .map(ResolvedDocumentTemplate::from)
-                .orElseGet(() -> ResolvedDocumentTemplate.builtIn(type, format));
+                .map(ResolvedDocumentTemplate::from);
     }
 }

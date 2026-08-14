@@ -32,11 +32,11 @@ class DocumentTemplateControllerTest {
     @MockitoBean private DocumentTemplateArtifactService artifacts;
 
     @Test
-    void listsCatalogWithDedicatedManagementPermission() throws Exception {
+    void listsCatalogWithoutAnEffectiveTemplateSoItCanBeConfigured() throws Exception {
         when(service.currentStoreCatalog(
                 DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
                 .thenReturn(new DocumentTemplateCatalogService.CatalogView(
-                        ResolvedDocumentTemplate.builtIn(DocumentTemplateType.FACTURA_VENTA),
+                        null,
                         List.of()));
 
         mvc.perform(get("/api/v1/document-templates")
@@ -44,8 +44,7 @@ class DocumentTemplateControllerTest {
                                 () -> "APP_GESTION_ACCESS",
                                 () -> "DOCUMENT_TEMPLATES_MANAGE")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.effective.code").value("FACTURA_A4"))
-                .andExpect(jsonPath("$.effective.builtIn").value(true));
+                .andExpect(jsonPath("$.effective").doesNotExist());
     }
 
     @Test

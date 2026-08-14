@@ -5,6 +5,9 @@ import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
 import com.tpverp.backend.document.TicketNotFoundException;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
+import com.tpverp.backend.document.template.DocumentTemplateType;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.tpverp.backend.organization.Company;
@@ -116,6 +119,29 @@ class ApiExceptionHandlerTest {
 
         assertEquals("en", problem.getProperties().get("locale"));
         assertEquals("A product with history cannot be deleted", problem.getDetail());
+    }
+
+    @Test
+    void reportsTheExactMissingJrxmlTypeAndFormat() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.documentTemplateRequired(
+                new DocumentTemplateRequiredException(
+                        DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.TICKET_80),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(
+                DocumentTemplateRequiredException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals("FACTURA_VENTA", problem.getProperties().get("documentType"));
+        assertEquals("TICKET_80", problem.getProperties().get("format"));
+        assertEquals(
+                "Falta una plantilla JRXML activa para este tipo y formato de documento. "
+                        + "Cárgala y actívala en APP GESTIÓN, Configuración, Plantillas de documentos.",
+                problem.getDetail());
     }
 
     @Test

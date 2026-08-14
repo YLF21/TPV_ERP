@@ -21,6 +21,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,7 +34,6 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
-import org.springframework.core.io.ClassPathResource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -73,7 +73,7 @@ class InvoiceJasperRendererTest {
     }
 
     @Test
-    void rendersBundledEightyMillimeterInvoiceWithFiscalQr() throws Exception {
+    void rendersManuallySuppliedEightyMillimeterInvoiceWithFiscalQr() throws Exception {
         var fixture = fixture();
         var template = DocumentTemplate.storeDraft(
                 fixture.store(), DocumentTemplateType.FACTURA_VENTA,
@@ -81,9 +81,8 @@ class InvoiceJasperRendererTest {
                 "Factura ticket 80", UUID.randomUUID(),
                 Instant.parse("2026-08-10T08:00:00Z"));
         var compiler = new SafeJrxmlCompiler();
-        byte[] source = new ClassPathResource(
-                "document-templates/FACTURA_VENTA_TICKET_80.jrxml")
-                .getContentAsByteArray();
+        byte[] source = Files.readAllBytes(Path.of(
+                "..", "plantillas documentos", "FACTURA_VENTA_TICKET_80.jrxml"));
         var compiled = compiler.compile(source);
         var storage = new DocumentTemplateArtifactStorage(temporaryDirectory);
         storage.write(template.getId(), compiled.source(), compiled.compiled());

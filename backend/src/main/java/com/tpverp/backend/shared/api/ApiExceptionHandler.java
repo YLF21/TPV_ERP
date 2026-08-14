@@ -7,6 +7,7 @@ import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
 import com.tpverp.backend.document.TicketNotFoundException;
+import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
@@ -203,6 +204,23 @@ public class ApiExceptionHandler {
             default -> "Recurso no encontrado";
         };
         return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", detail, language, request);
+    }
+
+    @ExceptionHandler(DocumentTemplateRequiredException.class)
+    ProblemDetail documentTemplateRequired(
+            DocumentTemplateRequiredException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var problem = problem(
+                HttpStatus.CONFLICT,
+                DocumentTemplateRequiredException.CODE,
+                localizedExceptionDetail(
+                        exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language,
+                request);
+        problem.setProperty("documentType", exception.documentType().name());
+        problem.setProperty("format", exception.format().name());
+        return problem;
     }
 
     @ExceptionHandler(IllegalStateException.class)

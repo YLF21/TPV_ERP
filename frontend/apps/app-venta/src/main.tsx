@@ -25,6 +25,8 @@ import {
 import type { ProductLabelIssuer } from "../../../packages/app-common/src/hardware/hardware";
 import type { ProductLabelCommercialContext } from "../../../packages/app-common/src/components/SaleProductLabelDialog";
 import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/components/AppVentaHomeEscapeNavigation";
+import { createTranslator } from "../../../packages/app-common/src/i18n/LocalizedMessages";
+import type { SaleSettingsDestination } from "../../../packages/app-common/src/components/SaleSettingsShell";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
 
@@ -323,9 +325,10 @@ export function SalesUtilityWindowApp() {
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
-  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings" | "documentPrintingSettings">("home");
+  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings">("home");
+  const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("sale");
+  const [receivablesOpen, setReceivablesOpen] = useState(false);
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
-  const [receivablesReturnScreen, setReceivablesReturnScreen] = useState<"home" | "sale" | "stock">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
   const [saleInterfaceMode, setSaleInterfaceMode] =
@@ -398,8 +401,8 @@ export function App() {
     resetLocale();
   };
   const handleReturnHome = () => {
+    setReceivablesOpen(false);
     setReceivablesCustomerId(undefined);
-    setReceivablesReturnScreen("home");
     setScreen("home");
   };
   const withHomeEscapeConfirmation = (content: ReactNode) => (
@@ -407,6 +410,57 @@ export function App() {
       {content}
     </AppVentaHomeEscapeNavigation>
   );
+
+  const settingsTranslator = createTranslator(locale);
+
+  const settingsNotice = appNotice ? (
+    <aside className="app-notice-toast" role="alert" aria-live="assertive">
+      <span>{appNotice}</span>
+      <button type="button" onClick={() => setAppNotice(null)}>
+        {settingsTranslator("common.close")}
+      </button>
+    </aside>
+  ) : null;
+
+  function openSettingsDestination(destination: SaleSettingsDestination) {
+    setAppNotice(null);
+    if (destination === "devices") {
+      setScreen("hardwareSettings");
+      return;
+    }
+    if (destination === "printing") {
+      setScreen("documentPrintingSettings");
+      return;
+    }
+    if (destination === "diagnostics") {
+      setScreen("diagnosticsSettings");
+      return;
+    }
+    setSettingsDestination(destination);
+    setScreen("settings");
+  }
+
+  function openProductLabelUtility() {
+    const salesUtilities = window.tpvDesktop?.salesUtilities;
+    if (!salesUtilities || !session || !terminalContext) return;
+    setAppNotice(null);
+    void salesUtilities.open({
+      kind: "PRODUCT_LABEL",
+      locale,
+      session,
+      terminalContext,
+    }).then((result) => {
+      if (!result.ok) {
+        setAppNotice(settingsTranslator("hardware.printing.openError"));
+        return;
+      }
+      if (result.printed) {
+        setAppNotice(settingsTranslator(result.pdf
+          ? "sale.productLabel.pdfSaved"
+          : "sale.productLabel.printed"));
+      }
+    }).catch(() => setAppNotice(settingsTranslator("hardware.printing.openError")));
+  }
 
   if (terminalContext === undefined) {
     return <AppLoadingFallback locale={locale} />;
@@ -475,12 +529,19 @@ export function App() {
     || hasPermission(session, "GESTION_CUENTAS");
   const canOpenCustomerReceivables = hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
   const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
+  const canConfigureTerminal = hasPermission(session, "CONFIGURACION_TERMINAL");
 
-  if (screen === "customerReceivables" && canOpenCustomerReceivables) {
-    return withHomeEscapeConfirmation(
-      <CustomerReceivablesScreen locale={locale} session={session} terminalContext={terminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen(receivablesReturnScreen); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />,
-    );
-  }
+  const customerReceivablesDialog = receivablesOpen && canOpenCustomerReceivables
+    ? <CustomerReceivablesScreen
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        initialCustomerId={receivablesCustomerId}
+        onBack={() => { setReceivablesOpen(false); setReceivablesCustomerId(undefined); }}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
+      />
+    : null;
 
   if (screen === "salesReport" && canOpenSalesReport) {
     return withHomeEscapeConfirmation(
@@ -510,8 +571,7 @@ export function App() {
           onLocaleChange={handleLocaleChange}
           onOpenCustomerReceivables={(customerId?: string) => {
             setReceivablesCustomerId(customerId);
-            setReceivablesReturnScreen("sale");
-            setScreen("customerReceivables");
+            setReceivablesOpen(true);
           }}
           onOpenSalesDocumentWindow={window.tpvDesktop?.salesDocuments
             ? () => {
@@ -539,6 +599,7 @@ export function App() {
               }
             : undefined}
         />
+        {customerReceivablesDialog}
         {appNotice && (
           <aside className="app-notice-toast" role="alert" aria-live="assertive">
             <span>{appNotice}</span>
@@ -553,16 +614,19 @@ export function App() {
 
   if (screen === "stock") {
     return withHomeEscapeConfirmation(
-      <StockScreen
-        app="venta"
-        locale={locale}
-        session={session}
-        terminalContext={terminalContext}
-        onBack={() => setScreen("home")}
-        onLogout={handleLogout}
-        onLocaleChange={handleLocaleChange}
-        onOpenCustomerReceivables={(customerId: string) => { setReceivablesCustomerId(customerId); setReceivablesReturnScreen("stock"); setScreen("customerReceivables"); }}
-      />,
+      <>
+        <StockScreen
+          app="venta"
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          onBack={() => setScreen("home")}
+          onLogout={handleLogout}
+          onLocaleChange={handleLocaleChange}
+          onOpenCustomerReceivables={(customerId: string) => { setReceivablesCustomerId(customerId); setReceivablesOpen(true); }}
+        />
+        {customerReceivablesDialog}
+      </>,
     );
   }
 
@@ -580,50 +644,93 @@ export function App() {
     );
   }
 
-  if (screen === "hardwareSettings") {
+  if (screen === "hardwareSettings" && canConfigureTerminal) {
     return withHomeEscapeConfirmation(
-      <HardwareSettingsScreen
-        app="venta"
-        locale={locale}
-        session={session}
-        terminalContext={terminalContext}
-        onBack={() => setScreen("home")}
-        onLocaleChange={handleLocaleChange}
-        onLogout={handleLogout}
-      />,
+      <>
+        <HardwareSettingsScreen
+          app="venta"
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          onBack={() => setScreen("home")}
+          onLocaleChange={handleLocaleChange}
+          onLogout={handleLogout}
+          mode="devices"
+          onNavigateSettings={openSettingsDestination}
+        />
+        {settingsNotice}
+      </>,
     );
   }
 
-  if (screen === "documentPrintingSettings") {
+  if (screen === "documentPrintingSettings" && canConfigureTerminal) {
     return withHomeEscapeConfirmation(
-      <HardwareSettingsScreen
-        app="venta"
-        locale={locale}
-        session={session}
-        terminalContext={terminalContext}
-        onBack={() => setScreen("settings")}
-        onLocaleChange={handleLocaleChange}
-        onLogout={handleLogout}
-        documentRoutingOnly
-      />,
+      <>
+        <HardwareSettingsScreen
+          app="venta"
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          onBack={() => setScreen("home")}
+          onLocaleChange={handleLocaleChange}
+          onLogout={handleLogout}
+          mode="printing"
+          onNavigateSettings={openSettingsDestination}
+          onOpenProductLabels={window.tpvDesktop?.salesUtilities
+            ? openProductLabelUtility
+            : undefined}
+        />
+        {settingsNotice}
+      </>,
     );
   }
 
-  if (screen === "settings") {
+  if (screen === "diagnosticsSettings" && canConfigureTerminal) {
     return withHomeEscapeConfirmation(
-      <SettingsScreen
-        app="venta"
-        locale={locale}
-        session={session}
-        terminalContext={terminalContext}
-        onBack={() => setScreen("home")}
-        onLogout={handleLogout}
-        onLocaleChange={handleLocaleChange}
-        onOpenHardware={() => setScreen("hardwareSettings")}
-        onOpenDocumentPrinting={() => setScreen("documentPrintingSettings")}
-        onOpenReports={() => setScreen("salesReport")}
-        onSaleInterfaceModeChange={setSaleInterfaceMode}
-      />,
+      <>
+        <HardwareSettingsScreen
+          app="venta"
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          onBack={() => setScreen("home")}
+          onLocaleChange={handleLocaleChange}
+          onLogout={handleLogout}
+          mode="diagnostics"
+          onNavigateSettings={openSettingsDestination}
+        />
+        {settingsNotice}
+      </>,
+    );
+  }
+
+  if (
+    screen === "settings"
+    || (!canConfigureTerminal && (
+      screen === "hardwareSettings"
+      || screen === "documentPrintingSettings"
+      || screen === "diagnosticsSettings"
+    ))
+  ) {
+    return withHomeEscapeConfirmation(
+      <>
+        <SettingsScreen
+          app="venta"
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          initialDestination={canConfigureTerminal ? settingsDestination : "account"}
+          onBack={() => setScreen("home")}
+          onLogout={handleLogout}
+          onLocaleChange={handleLocaleChange}
+          onOpenHardware={() => openSettingsDestination("devices")}
+          onOpenDocumentPrinting={() => openSettingsDestination("printing")}
+          onOpenDiagnostics={() => openSettingsDestination("diagnostics")}
+          onOpenReports={() => setScreen("salesReport")}
+          onSaleInterfaceModeChange={setSaleInterfaceMode}
+        />
+        {settingsNotice}
+      </>,
     );
   }
 
@@ -640,7 +747,6 @@ export function App() {
       onOpenStock={() => setScreen("stock")}
       onOpenWarehouse={() => setScreen("warehouse")}
       onOpenSalesReport={() => setScreen("salesReport")}
-      onOpenCustomerReceivables={() => { setReceivablesCustomerId(undefined); setReceivablesReturnScreen("home"); setScreen("customerReceivables"); }}
       onOpenSettings={() => setScreen("settings")}
     />
   );

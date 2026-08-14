@@ -20,14 +20,13 @@ it("keeps print retry after two failures and clears only after success", async (
 });
 
 describe("CustomerReceivablesScreen", () => {
-  it("uses the prominent back action and returns to the previous screen", async () => {
+  it("renders as a compact modal and closes with Escape", async () => {
     const request = vi.fn().mockResolvedValue([]);
     const onBack = vi.fn();
     render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={onBack} onLocaleChange={vi.fn()} />);
 
-    const backButton = screen.getByRole("button", { name: "Volver" });
-    expect(backButton).toHaveClass("receivables-back-button");
-    fireEvent.click(backButton);
+    expect(screen.getByRole("dialog", { name: "Deudas de clientes" })).toHaveClass("customer-receivables-dialog");
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(onBack).toHaveBeenCalledOnce();
   });
 
@@ -39,6 +38,25 @@ describe("CustomerReceivablesScreen", () => {
 
     expect(await screen.findByRole("cell", { name: "Pagado" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Cobrar FV-1" })).toBeDisabled();
+  });
+
+  it("closes the nested payment first without closing the receivables modal", async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return [];
+      if (path === "/terminal-configuration/payment") return {};
+      return [row];
+    });
+    const onBack = vi.fn();
+    render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={onBack} onLocaleChange={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cobrar FV-1" }));
+    await waitFor(() => expect(document.querySelector(".sale-checkout-dialog")).toBeInTheDocument());
+    expect(document.querySelector(".customer-receivables-dialog")).toHaveAttribute("aria-hidden", "true");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(document.querySelector(".sale-checkout-dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "Deudas de clientes" })).not.toHaveAttribute("aria-hidden");
+    expect(onBack).not.toHaveBeenCalled();
   });
 
   it("loads the tenant-scoped endpoint with the customer prefilter and renders the financial columns", async () => {

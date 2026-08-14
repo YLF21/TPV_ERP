@@ -150,6 +150,29 @@ public class CashSessionService {
         return readiness(cashConfig, sessions.save(session), authentication);
     }
 
+    // Consulta la disponibilidad para Ventas sin bloquear la terminal ni abrir una sesion.
+    @Transactional(readOnly = true)
+    public CashSalesSessionReadinessView salesReadiness(
+            UUID terminalId,
+            Authentication authentication) {
+        permissions.requireSalesPermission(authentication);
+        var terminal = validateTerminal(terminalId);
+        var cashConfig = config(terminal.getTienda().getId());
+        var existing = sessions.findByTerminalIdAndStatus(
+                terminal.getId(), CashSessionStatus.ABIERTA);
+        if (existing.isPresent()) {
+            return readiness(cashConfig, existing.get(), authentication);
+        }
+        return new CashSalesSessionReadinessView(
+                cashConfig.isCashSessionRequired(),
+                false,
+                null,
+                cashConfig.isRequireEntryBreakdown(),
+                CashDenomination.valuesInEuroOrder(),
+                cashConfig.isRequireWithdrawalBreakdown(),
+                CashDenomination.valuesInEuroOrder());
+    }
+
     // Records a manual entry in an open session after resolving the configured F9 policy.
     @Transactional
     public CashMovementView entry(UUID terminalId, CashEntryRequest request, Authentication authentication) {

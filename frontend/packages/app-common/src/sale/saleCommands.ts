@@ -20,6 +20,7 @@ export type SaleCommandId =
   | "import-previous-ticket"
   | "checkout"
   | "customer"
+  | "customer-receivables"
   | "park-sale"
   | "sale-comment"
   | "clear-sale"
@@ -60,6 +61,7 @@ export function saleCommandFromKeyboard(
       if (key === "d") return "clear-discounts";
       return null;
     }
+    if (key === "d") return "customer-receivables";
     if (key === "f") return "sales-document";
     if (event.key === "F2") return "ean-generator";
     if (key === "i") return "print-product-label";

@@ -82,6 +82,8 @@ class CashControllerContractTest {
                 "VENTA", "CASH_OPERATE");
         assertEndpoint("prepareForSales", PostMapping.class, new String[] {"/sessions/prepare-sales"},
                 "VENTA", "CASH_OPERATE");
+        assertEndpoint("salesReadiness", GetMapping.class, new String[] {"/sessions/readiness"},
+                "VENTA", "CASH_OPERATE");
         assertEndpoint("close", PostMapping.class, new String[] {"/sessions/close"},
                 "VENTA", "CASH_OPERATE");
         assertEndpoint("entry", PostMapping.class, new String[] {"/movements/entry"},
@@ -106,6 +108,30 @@ class CashControllerContractTest {
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
         assertEndpoint("updateConfig", PutMapping.class, new String[] {"/config"},
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
+    }
+
+    @Test
+    void sellerCanReadSalesReadinessWithoutPreparingCashSession() throws Exception {
+        when(sessions.salesReadiness(eq(TERMINAL_ID), any()))
+                .thenReturn(new CashSalesSessionReadinessView(
+                        true, false, null, false, List.of(), false, List.of()));
+
+        mvc.perform(get("/api/v1/cash/sessions/readiness")
+                        .param("terminalId", TERMINAL_ID.toString())
+                        .with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cashSessionRequired").value(true))
+                .andExpect(jsonPath("$.open").value(false));
+
+        verify(sessions).salesReadiness(eq(TERMINAL_ID), any());
+    }
+
+    @Test
+    void accountingOnlyUserCannotReadSalesReadiness() throws Exception {
+        mvc.perform(get("/api/v1/cash/sessions/readiness")
+                        .param("terminalId", TERMINAL_ID.toString())
+                        .with(user("accounting").authorities(() -> GESTION_CUENTAS)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

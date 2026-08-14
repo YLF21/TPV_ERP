@@ -41,27 +41,27 @@ vi.mock("../../../packages/app-common/src/components/SessionHomeScreen", () => (
     locale,
     onLocaleChange,
     onLogout,
-    onOpenCustomerReceivables,
     onOpenSales,
+    onOpenSettings,
   }: {
     locale: LocaleCode;
     onLocaleChange: (locale: LocaleCode) => void;
     onLogout: () => void;
-    onOpenCustomerReceivables?: () => void;
     onOpenSales?: () => void;
+    onOpenSettings?: () => void;
   }) => (
     <section aria-label="home">
       <output aria-label="home locale">{locale}</output>
       <button type="button" onClick={() => onLocaleChange("zh")}>Change home locale</button>
       <button type="button" onClick={onLogout}>Log out</button>
-      <button type="button" onClick={onOpenCustomerReceivables}>Open receivables</button>
       <button type="button" onClick={onOpenSales}>Open sales</button>
+      <button type="button" onClick={onOpenSettings}>Open settings</button>
     </section>
   ),
 }));
 
 vi.mock("../../../packages/app-common/src/components/CustomerReceivablesScreen", () => ({
-  CustomerReceivablesScreen: ({ initialCustomerId, onBack }: { initialCustomerId?: string; onBack: () => void }) => <section aria-label="receivables"><output>{initialCustomerId}</output><button onClick={onBack}>Back home</button></section>
+  CustomerReceivablesScreen: ({ initialCustomerId, onBack }: { initialCustomerId?: string; onBack: () => void }) => <section role="dialog" aria-label="receivables"><output>{initialCustomerId}</output><button onClick={onBack}>Close receivables</button></section>
 }));
 
 vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
@@ -77,6 +77,45 @@ vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
       {onOpenSalesDocumentWindow && (
         <button type="button" onClick={onOpenSalesDocumentWindow}>Open sales document window</button>
       )}
+    </section>
+  ),
+}));
+
+vi.mock("../../../packages/app-common/src/components/SettingsScreen", () => ({
+  SettingsScreen: ({
+    initialDestination,
+    onOpenHardware,
+    onOpenDocumentPrinting,
+    onOpenDiagnostics,
+  }: {
+    initialDestination?: string;
+    onOpenHardware?: () => void;
+    onOpenDocumentPrinting?: () => void;
+    onOpenDiagnostics?: () => void;
+  }) => (
+    <section aria-label="settings">
+      <output aria-label="settings destination">{initialDestination}</output>
+      <button type="button" onClick={onOpenHardware}>Open devices</button>
+      <button type="button" onClick={onOpenDocumentPrinting}>Open printing</button>
+      <button type="button" onClick={onOpenDiagnostics}>Open diagnostics</button>
+    </section>
+  ),
+}));
+
+vi.mock("../../../packages/app-common/src/components/HardwareSettingsScreen", () => ({
+  HardwareSettingsScreen: ({
+    mode,
+    onNavigateSettings,
+    onOpenProductLabels,
+  }: {
+    mode?: string;
+    onNavigateSettings?: (destination: "account") => void;
+    onOpenProductLabels?: () => void;
+  }) => (
+    <section aria-label="hardware settings">
+      <output aria-label="hardware mode">{mode}</output>
+      <button type="button" onClick={() => onNavigateSettings?.("account")}>Open account settings</button>
+      {onOpenProductLabels ? <button type="button" onClick={onOpenProductLabels}>Open product labels</button> : null}
     </section>
   ),
 }));
@@ -146,21 +185,86 @@ describe("APP VENTA locale wiring", () => {
     expect(screen.getByLabelText("login locale")).toHaveTextContent("es");
   });
 
-  it("opens the customer receivables screen from home", async () => {
-    render(<App />); fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open receivables" }));
-    expect(await screen.findByLabelText("receivables")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Back home" }));
-    expect(screen.getByLabelText("home")).toBeVisible();
-  });
-
   it("opens filtered customer receivables from the sale sidebar", async () => {
     render(<App />); fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open sale receivables" }));
     expect(await screen.findByLabelText("receivables")).toHaveTextContent("customer-from-sale");
-    fireEvent.click(screen.getByRole("button", { name: "Back home" }));
+    expect(screen.getByLabelText("sale")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Close receivables" }));
+    expect(screen.queryByLabelText("receivables")).not.toBeInTheDocument();
     expect(await screen.findByLabelText("sale")).toBeVisible();
+  });
+
+  it("routes permitted terminal settings and opens the real product-label utility", async () => {
+    loginSession = {
+      ...session,
+      permissions: ["CONFIGURACION_TERMINAL"],
+    };
+    const openSalesUtility = vi.fn().mockResolvedValue({ ok: true, printed: true, pdf: false });
+    vi.stubGlobal("tpvDesktop", {
+      terminalIdentity: {
+        load: vi.fn().mockResolvedValue({
+          ok: true,
+          identity: {
+            storeName: "TIENDA DEMO",
+            terminalCode: "SERVIDOR",
+            terminalId: "terminal-real",
+            terminalCredential: "protected-secret",
+          },
+        }),
+      },
+      salesUtilities: { open: openSalesUtility },
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("sale");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open devices" }));
+    expect(await screen.findByLabelText("hardware mode")).toHaveTextContent("devices");
+    fireEvent.click(screen.getByRole("button", { name: "Open account settings" }));
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("account");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open diagnostics" }));
+    expect(await screen.findByLabelText("hardware mode")).toHaveTextContent("diagnostics");
+    fireEvent.click(screen.getByRole("button", { name: "Open account settings" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open printing" }));
+    expect(await screen.findByLabelText("hardware mode")).toHaveTextContent("printing");
+    fireEvent.click(screen.getByRole("button", { name: "Open product labels" }));
+
+    await waitFor(() => expect(openSalesUtility).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "PRODUCT_LABEL",
+      locale: "es",
+      session: loginSession,
+      terminalContext: expect.objectContaining({ terminalId: "terminal-real" }),
+    })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Etiqueta enviada a la impresora");
+  });
+
+  it("does not mount protected terminal screens without CONFIGURACION_TERMINAL", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("account");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open devices" }));
+    expect(await screen.findByLabelText("settings")).toBeVisible();
+    expect(screen.getByLabelText("settings destination")).toHaveTextContent("account");
+    expect(screen.queryByLabelText("hardware settings")).not.toBeInTheDocument();
+  });
+
+  it("does not expose the product-label CTA when the desktop bridge is unavailable", async () => {
+    loginSession = { ...session, permissions: ["CONFIGURACION_TERMINAL"] };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open printing" }));
+
+    expect(await screen.findByLabelText("hardware mode")).toHaveTextContent("printing");
+    expect(screen.queryByRole("button", { name: "Open product labels" })).not.toBeInTheDocument();
   });
 
   it("asks for confirmation before Escape returns from a main screen to Home", async () => {

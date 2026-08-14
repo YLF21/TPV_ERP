@@ -4105,6 +4105,8 @@ export function SaleScreen({
         return paymentActionsDisabled || paymentLocked;
       case "customer":
         return paymentLocked || Boolean(previousTicketImportBatch);
+      case "customer-receivables":
+        return paymentLocked || !canOpenCustomerReceivables;
       case "park-sale":
         return paymentLocked || parkedSaleSaving || Boolean(previousTicketImportBatch)
           || (lines.length > 0 && saleMutationSecurityUnavailable);
@@ -4238,6 +4240,9 @@ export function SaleScreen({
         break;
       case "customer":
         openCustomerDialog();
+        break;
+      case "customer-receivables":
+        onOpenCustomerReceivables?.(selectedCustomer?.id);
         break;
       case "park-sale":
         runParkSaleCommand();
@@ -4373,6 +4378,14 @@ export function SaleScreen({
           disabled: saleCommandDisabled("print-product-label"),
           onSelect: () => executeSaleCommand("print-product-label"),
         },
+        ...(canOpenCustomerReceivables ? [{
+          type: "action" as const,
+          id: "customer-receivables",
+          label: commandLabels.receivables,
+          shortcut: "Ctrl+D",
+          disabled: saleCommandDisabled("customer-receivables"),
+          onSelect: () => executeSaleCommand("customer-receivables"),
+        }] : []),
         { type: "separator", id: "system-separator-1" },
         {
           type: "action", id: "cash-drawer", label: commandLabels.cashDrawer, shortcut: "F3",
