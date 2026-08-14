@@ -80,4 +80,103 @@ No renderer errors were captured. The development run emitted only Vite connecti
 
 - P3: if the real payment-terminal contract is simplified later, the first viewport could more closely match the mock's single-row datafono summary. No current functionality should be removed solely for visual compactness.
 
-final result: implementation and automated QA passed; physical printer validation remains external.
+previous result: implementation and automated QA passed; physical printer validation remains external.
+
+## Menu parity follow-up — 2026-08-14
+
+source visual truth path: `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-52ab84bc-b659-45fc-b0aa-2d98864229fd.png`
+
+scope: make the APP VENTA Warehouse, Reports and Settings side menus follow the compact Product menu language without changing routes, permissions or behavior.
+
+### Implemented checks
+
+- Warehouse already renders the shared `stock-nav` used by Product; no duplicate component or CSS path was introduced.
+- Reports keeps its existing `report-nav` contract while matching Product's spacing, typography, neutral buttons and selected state; its original report icons are visible again.
+- Settings keeps its permission-aware grouped navigation while matching Product's fixed 190 px rail, compact neutral buttons, blue selected state and amber Back action.
+- Focused component coverage passes for Product, Warehouse, Reports and Settings: 4 files, 108 tests.
+- APP VENTA production build and bundle-budget checks passed before the final structural test assertions; the focused suite was rerun after those assertions.
+
+### Blocker
+
+A fresh authenticated implementation capture was not available after the current CSS pass. Therefore visual comparison against the supplied narrow-viewport reference remains pending and pixel-level fidelity is not claimed.
+
+previous result: blocked
+
+## Shared module navigation follow-up — 2026-08-14
+
+source visual truth paths:
+
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-c356065e-e737-474f-8bc6-d38ddf640962.png` — Product, 515 × 1079 px.
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-e8d16dce-fe3f-4e9c-a10e-9915117bdb5f.png` — Warehouse, 503 × 1079 px.
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-d2b8ccdf-94e5-4818-a0dc-e6ad3e9d2d86.png` — Reports, 431 × 1036 px.
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-4cd14940-46c4-4ac7-bb65-fdae18ebe798.png` — Settings, 428 × 1079 px.
+
+implementation screenshot path: unavailable; the browser-rendered application remained at the ADMIN login after the documented demo login returned a connection error.
+
+viewport: source captures use narrow desktop crops with widths between 428 and 515 px and heights between 1036 and 1079 px. The blocked browser evidence was captured at 1280 × 720 CSS px, deviceScaleFactor 1, and is not a valid same-state comparison.
+
+state: Spanish locale, terminal SERVIDOR. Source images show authenticated Product, Warehouse, Reports and Settings screens. Browser evidence shows the unauthenticated login state, so no pixel-level comparison was attempted.
+
+### Findings
+
+- [P1] Fresh implementation capture unavailable. The source and browser states do not match, so visual fidelity cannot be passed.
+- The implementation now uses one real `ModuleNavBackButton` in all four modules, backed by the existing Phosphor icon library and each screen's real `onBack` callback.
+- The four full-height navigation layouts share the same outer white surface, 190 px rail, compact menu controls, divider rhythm and bottom-anchored Back action.
+- Settings group padding was removed to match Product's section rhythm, and its workspace-to-navigation separation was reduced to the same 8 px used by the other modules.
+
+### Required fidelity surfaces
+
+- Fonts and typography: existing APP VENTA tokens and weights are unchanged; fresh rendered comparison remains blocked.
+- Spacing and layout rhythm: shared CSS and component contracts now encode the requested dimensions and bottom anchoring; fresh rendered comparison remains blocked.
+- Colors and visual tokens: all modules use the same white surface, blue selection and amber Back action tokens.
+- Image quality and asset fidelity: no raster imagery is required; the Back icon comes from the existing Phosphor icon library.
+- Copy and content: labels, routes, permissions and screen-specific group names remain unchanged.
+
+### Full-view comparison evidence
+
+Not available in the same authenticated state. The emitted browser capture only proves the authentication blocker and is not used as visual evidence of the module menus.
+
+### Focused region comparison evidence
+
+Not available because the implementation menus could not be opened in the browser session.
+
+### Primary interactions tested
+
+- The shared Back control renders its icon and calls the supplied navigation callback.
+- Product, Warehouse, Reports and Settings render the shared icon contract.
+- Focused suite: 5 files, 109 tests passed.
+- APP VENTA production build and bundle-budget check passed.
+
+### Console errors checked
+
+No module-screen console pass was possible because authentication did not complete.
+
+### Comparison history
+
+1. Source review found inconsistent panel surfaces, Settings group spacing and Back placement.
+2. The implementation restored a shared outer white panel, normalized Settings spacing and moved Back to the bottom through flex auto margin.
+3. Post-fix browser capture was blocked at login; no visual pass is claimed.
+
+### Implementation checklist
+
+- [x] Shared functional Back component with icon.
+- [x] Bottom anchoring in Product, Warehouse, Reports and Settings.
+- [x] Shared large white panel and 190 px navigation rail.
+- [x] Automated component, build and bundle validation.
+- [ ] Authenticated narrow-viewport visual capture and same-state comparison.
+
+### Arrow and label spacing follow-up
+
+Source evidence:
+
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-4e43beab-f76c-4d80-a803-fe34d99296f2.png`
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-690473f5-4179-41cf-86c6-bf4e2d244545.png`
+- `C:\Users\YLF\AppData\Local\Temp\codex-clipboard-99b01a19-ecf9-489b-8272-025df0063458.png`
+
+The focused crops show that Product and Warehouse did not apply the configured 6 px gap because their Back button was not a flex container. `ModuleNavBackButton.css` now owns `display: flex` and vertical centering, so the existing shared gap separates the Phosphor arrow from the label consistently. Focused validation passed: 3 files, 54 tests; production build and bundle budget passed. A post-fix authenticated screenshot is still unavailable, so the overall visual result remains blocked.
+
+### Navigation icons follow-up
+
+All functional entries in Product, Warehouse, Reports and Settings now use the shared `ModuleNavItem` structure: a 22 px icon centered above a centered label inside a 52 px minimum-height button. Reports reuses its original raster icons; the other modules use the existing Phosphor dependency. Back remains a separate horizontal action anchored at the bottom of the rail. Focused validation passed: 5 files, 110 tests. The complete frontend suite passed on rerun: 166 files, 1419 tests. APP VENTA and APP GESTIÓN production builds and bundle budgets passed. Authenticated visual comparison remains pending.
+
+final result: blocked

@@ -1,4 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  ClipboardText,
+  DownloadSimple,
+  ListChecks,
+  Receipt,
+  UploadSimple
+} from "@phosphor-icons/react";
+import type { Icon } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -6,6 +14,8 @@ import { GoodsCheckPanel } from "./GoodsCheckPanel";
 import { PurchaseDocumentsPanel } from "./PurchaseDocumentsPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { ModuleNavBackButton } from "./ModuleNavBackButton";
+import { ModuleNavItem } from "./ModuleNavItem";
 import { WarehouseOperationsPanel } from "./WarehouseOperationsPanel";
 import type {
   WarehouseCustomerOption,
@@ -20,6 +30,18 @@ export {
   warehouseSections
 } from "./warehouseAccess";
 export type { WarehouseSection } from "./warehouseAccess";
+
+const warehouseNavigation: Array<{
+  section: WarehouseSection;
+  labelKey: string;
+  icon: Icon;
+}> = [
+  { section: "input", labelKey: "stock.nav.inputWarehouse", icon: DownloadSimple },
+  { section: "purchaseDeliveryNotes", labelKey: "warehouseScreen.purchaseDeliveryNotes", icon: ClipboardText },
+  { section: "purchaseInvoices", labelKey: "warehouseScreen.purchaseInvoices", icon: Receipt },
+  { section: "output", labelKey: "stock.nav.outputWarehouse", icon: UploadSimple },
+  { section: "goodsCheck", labelKey: "warehouseScreen.goodsCheck", icon: ListChecks }
+];
 
 type WarehouseScreenProps = {
   app: AppKind;
@@ -146,30 +168,19 @@ export function WarehouseScreen({
 
         {!embedded && <aside className="stock-nav">
           <strong>{t("home.warehouse")}</strong>
-          <button type="button" className={section === "input" ? "selected" : ""} onClick={() => setSection("input")}>
-            {t("stock.nav.inputWarehouse")}
-          </button>
-          <button
-            type="button"
-            className={section === "purchaseDeliveryNotes" ? "selected" : ""}
-            onClick={() => setSection("purchaseDeliveryNotes")}
-          >
-            {t("warehouseScreen.purchaseDeliveryNotes")}
-          </button>
-          <button
-            type="button"
-            className={section === "purchaseInvoices" ? "selected" : ""}
-            onClick={() => setSection("purchaseInvoices")}
-          >
-            {t("warehouseScreen.purchaseInvoices")}
-          </button>
-          <button type="button" className={section === "output" ? "selected" : ""} onClick={() => setSection("output")}>
-            {t("stock.nav.outputWarehouse")}
-          </button>
-          <button type="button" className={section === "goodsCheck" ? "selected" : ""} onClick={() => setSection("goodsCheck")}>
-            {t("warehouseScreen.goodsCheck")}
-          </button>
-          <button type="button" className="report-back" onClick={onBack}>{t("common.back")}</button>
+          {warehouseNavigation.map(({ section: destination, labelKey, icon: NavigationIcon }) => {
+            const selected = section === destination;
+            return (
+              <ModuleNavItem
+                icon={<NavigationIcon size={22} weight={selected ? "fill" : "regular"} />}
+                label={t(labelKey)}
+                selected={selected}
+                key={destination}
+                onClick={() => setSection(destination)}
+              />
+            );
+          })}
+          <ModuleNavBackButton label={t("common.back")} onBack={onBack} />
         </aside>}
 
         <section className="stock-list work-panel" aria-label={t(titleKey)}>

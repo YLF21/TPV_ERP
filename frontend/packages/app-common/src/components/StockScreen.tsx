@@ -1,5 +1,18 @@
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, DragEvent, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
+import {
+  ChartLineUp,
+  IdentificationBadge,
+  IdentificationCard,
+  Megaphone,
+  Package,
+  Prohibit,
+  Table,
+  Tag,
+  Truck,
+  UsersThree
+} from "@phosphor-icons/react";
+import type { Icon } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -10,10 +23,11 @@ import type { PartyDirectoryKind } from "./PartyDirectoryPanel";
 import type { ProductCreateEditProduct, ProductCreateFormState } from "./ProductCreateDialog";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { ModuleNavBackButton } from "./ModuleNavBackButton";
+import { ModuleNavItem } from "./ModuleNavItem";
 import { StockSalesHistoryPanel } from "./StockSalesHistoryPanel";
 import { StockSettingsDialog } from "./StockSettingsDialog";
-import type { StockSettingsMode, StockSettingsView } from "./StockSettingsDialog";
-import { StockPermissionsDialog } from "./StockPermissionsDialog";
+import type { StockSettingsView } from "./StockSettingsDialog";
 import {
   buildStockBulkSupplierPrincipalAssignments,
   buildStockBulkSupplierAssignments,
@@ -93,6 +107,22 @@ export {
 } from "./stockAccess";
 export type { StockViewKey } from "./stockAccess";
 
+const stockNavigationIcon: Record<StockViewKey, Icon> = {
+  "stock.current": Package,
+  "stock.topSales": ChartLineUp,
+  "stock.offers": Tag,
+  "stock.memberPrice": IdentificationBadge,
+  "stock.promotions": Megaphone,
+  "stock.noDiscount": Prohibit,
+  "stock.bulkEdit": Table
+};
+
+const partyNavigationIcon: Record<PartyDirectoryKind, Icon> = {
+  customers: UsersThree,
+  members: IdentificationCard,
+  suppliers: Truck
+};
+
 type StockDetailTab = "stock" | "sales";
 export type StockBulkEditTab = "main" | "info" | "salePrice" | "memberPrice" | "wholesalePrice" | "offer" | "image";
 export type BulkPriceUseMode = "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
@@ -153,7 +183,7 @@ type StockScreenProps = {
   embedded?: boolean;
   initialView?: StockViewKey;
   initialPartyDirectory?: PartyDirectoryKind | null;
-  initialSettingsMode?: StockSettingsMode | null;
+  initialSettingsMode?: "configuration" | null;
   onOpenCustomerReceivables?: (customerId: string) => void;
 };
 
@@ -2040,7 +2070,7 @@ export function StockScreen({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkConflictDraftId, setBulkConflictDraftId] = useState<string | null>(null);
   const [bulkFinder, setBulkFinder] = useState<{ rowId: string; query: string } | null>(null);
-  const [stockSettingsMode, setStockSettingsMode] = useState<StockSettingsMode | null>(initialSettingsMode);
+  const [stockSettingsMode, setStockSettingsMode] = useState<"configuration" | null>(initialSettingsMode);
 
   useEffect(() => {
     if (initialPartyDirectory) {
@@ -6597,38 +6627,39 @@ export function StockScreen({
 
         {!embedded && <aside className="stock-nav">
           {!(selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor") && <strong>{stockTitle}</strong>}
-          {visibleStockViews.map((view) => (
-            <button
-              type="button"
-              className={stockViewIsSelected(selectedView, view, partyDirectory) ? "selected" : ""}
-              key={view}
-              onClick={() => {
-                setPartyDirectory(null);
-                setSelectedView(view);
-              }}
-            >
-              {t(view)}
-            </button>
-          ))}
+          {visibleStockViews.map((view) => {
+            const selected = stockViewIsSelected(selectedView, view, partyDirectory);
+            const NavigationIcon = stockNavigationIcon[view];
+            return (
+              <ModuleNavItem
+                icon={<NavigationIcon size={22} weight={selected ? "fill" : "regular"} />}
+                label={t(view)}
+                selected={selected}
+                key={view}
+                onClick={() => {
+                  setPartyDirectory(null);
+                  setSelectedView(view);
+                }}
+              />
+            );
+          })}
 
           {visiblePartyDirectories.length > 0 && <strong className="stock-nav-section">{t("party.section")}</strong>}
-          {visiblePartyDirectories.map((kind) => (
-            <button type="button" className={partyDirectory === kind ? "selected" : ""} key={kind} onClick={() => {
-              setPartyDirectory(kind);
-            }}>{t(`party.${kind}.title`)}</button>
-          ))}
+          {visiblePartyDirectories.map((kind) => {
+            const selected = partyDirectory === kind;
+            const NavigationIcon = partyNavigationIcon[kind];
+            return (
+              <ModuleNavItem
+                icon={<NavigationIcon size={22} weight={selected ? "fill" : "regular"} />}
+                label={t(`party.${kind}.title`)}
+                selected={selected}
+                key={kind}
+                onClick={() => setPartyDirectory(kind)}
+              />
+            );
+          })}
 
-          {(canManageWarehouseSettings || session.permissions.includes("ADMIN")) && <strong className="stock-nav-section">{t("stock.settings")}</strong>}
-          {canManageWarehouseSettings && (
-            <button type="button" onClick={() => setStockSettingsMode("configuration")}>{t("stock.settings.configuration")}</button>
-          )}
-          {session.permissions.includes("ADMIN") && (
-            <button type="button" onClick={() => setStockSettingsMode("permissions")}>{t("stock.settings.permissions")}</button>
-          )}
-
-          <button type="button" className="report-back" onClick={onBack}>
-            {t("common.back")}
-          </button>
+          <ModuleNavBackButton label={t("common.back")} onBack={onBack} />
         </aside>}
 
         <section className={`stock-list work-panel ${!partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : selectedViewLabel}>
@@ -7315,14 +7346,6 @@ export function StockScreen({
         canManageProducts={canManageProducts}
         onClose={() => setStockSettingsMode(null)}
         onSaved={setStockSettings}
-      />
-      <StockPermissionsDialog
-        open={stockSettingsMode === "permissions"}
-        app={app}
-        username={session.username}
-        locale={locale}
-        token={session.accessToken}
-        onClose={() => setStockSettingsMode(null)}
       />
     </main>
   );

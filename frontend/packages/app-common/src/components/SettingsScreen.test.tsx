@@ -55,6 +55,13 @@ describe("SettingsScreen", () => {
 
     expect(html).toContain('class="settings-screen sale-settings-screen"');
     expect(html).toContain('class="settings-shell sale-settings-shell"');
+    expect(html).toContain('class="module-nav-back-icon"');
+    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(7);
+    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(7);
+    expect(html).toContain('class="top-date-time"');
+    expect(html).toContain('class="report-user-button"');
+    expect(html).toContain('class="language-button"');
+    expect(html).toContain('class="shutdown-button"');
     expect(html).toContain("Mis preferencias");
     expect(html).toContain("Este puesto");
     expect(html).toContain("Soporte");

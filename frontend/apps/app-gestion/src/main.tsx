@@ -95,7 +95,7 @@ type StockSelection = {
   key: string;
   view?: StockViewKey;
   partyDirectory?: PartyDirectoryKind;
-  settingsMode?: "configuration" | "permissions";
+  settingsMode?: "configuration";
   warehouseSection?: WarehouseSection;
   warehouseManagement?: boolean;
   warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
@@ -267,11 +267,6 @@ function GestionScreen({
       key: "stock.settings.configuration",
       label: t("stock.settings.configuration"),
       onOpen: () => onOpenStock({ key: "stock.settings.configuration", settingsMode: "configuration" as const })
-    }] : []),
-    ...(session.permissions.includes("ADMIN") ? [{
-      key: "stock.settings.permissions",
-      label: t("stock.settings.permissions"),
-      onOpen: () => onOpenStock({ key: "stock.settings.permissions", settingsMode: "permissions" as const })
     }] : [])
   ];
   const warehouseChildren: GestionNavigationItem[] = [

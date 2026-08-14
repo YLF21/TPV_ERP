@@ -15673,15 +15673,16 @@ textarea:focus,
 }
 
 .report-screen .report-nav {
-  gap: 5px !important;
-  padding: 10px 12px 14px !important;
+  gap: 4px !important;
+  padding: 8px 6px 10px !important;
 }
 
 .report-screen .report-nav strong,
 .report-screen .report-nav-section {
-  margin: 7px 4px 4px !important;
+  margin: 5px 4px 3px !important;
   color: var(--tpv-v3-muted) !important;
-  font-size: 12px !important;
+  font-size: 10px !important;
+  line-height: 1.1 !important;
   font-weight: 900 !important;
 }
 
@@ -15693,14 +15694,15 @@ textarea:focus,
 .report-screen .date-nav-button,
 .report-screen .date-day,
 .report-screen .date-month-button {
-  min-height: 31px !important;
+  min-height: 27px !important;
   border: 1px solid var(--tpv-v3-line) !important;
   border-radius: var(--tpv-v3-radius) !important;
   background: var(--tpv-v3-surface-alt) !important;
   color: var(--tpv-v3-text) !important;
   box-shadow: none !important;
-  font-size: 13px !important;
-  font-weight: 850 !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+  font-weight: 800 !important;
 }
 
 .report-screen .report-nav button:hover,
@@ -16485,7 +16487,10 @@ textarea:focus,
 
 .stock-nav .report-back,
 .report-nav .report-back,
-.settings-nav .report-back,
+.settings-nav .report-back {
+  margin-top: auto !important;
+}
+
 .hardware-nav .report-back {
   margin-top: 8px !important;
 }
@@ -16520,6 +16525,8 @@ textarea:focus,
   position: relative !important;
   grid-template-rows: minmax(0, 1fr) !important;
   height: calc(100dvh - 68px) !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface) !important;
 }
 
 .stock-screen .work-topbar,
@@ -16620,7 +16627,6 @@ textarea:focus,
 .hardware-screen .hardware-workspace {
   border: 0 !important;
   border-radius: 0 !important;
-  background: transparent !important;
   box-shadow: none !important;
 }
 
@@ -16636,6 +16642,11 @@ textarea:focus,
 .settings-screen .settings-workspace,
 .hardware-screen .hardware-workspace {
   padding-left: 8px !important;
+}
+
+.hardware-screen .hardware-nav,
+.hardware-screen .hardware-workspace {
+  background: transparent !important;
 }
 
 .stock-screen .work-shell,
@@ -20150,7 +20161,7 @@ textarea:focus,
 
 .report-screen .report-nav .report-back {
   min-height: 27px !important;
-  margin-top: 8px !important;
+  margin-top: auto !important;
   padding: 3px 6px !important;
   gap: 6px !important;
   font-size: 11px !important;

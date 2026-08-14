@@ -793,6 +793,10 @@ describe("SalesReportScreen", () => {
       />
     );
 
+    expect(html).toContain('class="report-nav"');
+    expect(html).toContain('class="module-nav-back-icon"');
+    expect(html).toContain('class="module-nav-item-icon"');
+    expect(html).toContain('class="report-menu-icon"');
     expect(html).toContain('class="report-brand-back"');
     expect(html).toContain("APP VENTA");
     expect(html).toContain("Salidas");

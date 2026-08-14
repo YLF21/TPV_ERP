@@ -68,6 +68,10 @@ describe("WarehouseScreen", () => {
     expect(html).toContain("Salida almacén");
     expect(html).toContain("Comprobación de pedido");
     expect(html).not.toContain("Edición masiva");
+    expect(html).toContain('class="stock-nav"');
+    expect(html).toContain('class="module-nav-back-icon"');
+    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(5);
+    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(5);
     expect(html).not.toContain(">Clientes<");
     expect(html).not.toContain(">Proveedores<");
   });

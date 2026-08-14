@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import {
-  ArrowLeft,
   Desktop,
   FileText,
   LockKey,
@@ -15,6 +14,8 @@ import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { ModuleNavBackButton } from "./ModuleNavBackButton";
+import { ModuleNavItem } from "./ModuleNavItem";
 import "./SaleSettingsShell.css";
 
 export type SaleSettingsDestination =
@@ -86,16 +87,14 @@ export function SaleSettingsShell({
   }: SaleSettingsNavigationItem) {
     const selected = active === destination;
     return (
-      <button
-        type="button"
-        className={`sale-settings-nav-item${selected ? " selected" : ""}`}
-        aria-current={selected ? "page" : undefined}
+      <ModuleNavItem
+        className="sale-settings-nav-item"
+        icon={<Icon size={22} weight={selected ? "fill" : "regular"} />}
+        label={t(labelKey)}
+        selected={selected}
         key={destination}
         onClick={() => onNavigate(destination)}
-      >
-        <Icon className="sale-settings-nav-icon" size={20} weight={selected ? "fill" : "regular"} aria-hidden="true" />
-        <span>{t(labelKey)}</span>
-      </button>
+      />
     );
   }
 
@@ -147,10 +146,11 @@ export function SaleSettingsShell({
             </>
           ) : null}
 
-          <button type="button" className="report-back sale-settings-nav-item" onClick={onBack}>
-            <ArrowLeft className="sale-settings-nav-icon" size={20} aria-hidden="true" />
-            <span>{t("common.back")}</span>
-          </button>
+          <ModuleNavBackButton
+            className="sale-settings-nav-item"
+            label={t("common.back")}
+            onBack={onBack}
+          />
         </aside>
 
         <section className="settings-workspace sale-settings-workspace">

@@ -1209,6 +1209,10 @@ describe("StockScreen", () => {
     );
 
     expect(html).toContain('class="stock-screen work-screen"');
+    expect(html).toContain('class="stock-nav"');
+    expect(html).toContain('class="module-nav-back-icon"');
+    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(10);
+    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(10);
     expect(html).toContain('class="report-user-button"');
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
@@ -1225,7 +1229,8 @@ describe("StockScreen", () => {
     expect(html).toContain("Productos con promoción");
     expect(html).toContain("Productos prohibidos a descuento");
     expect(html).toContain("Edición masiva de productos");
-    expect(html).toContain("Configuración stock");
+    expect(html).not.toContain("Configuración stock");
+    expect(html).not.toContain("Permisos stock");
     expect(html).toContain("Código");
     expect(html).toContain("Código de barras");
     expect(html).toContain("Nombre");
@@ -1238,6 +1243,25 @@ describe("StockScreen", () => {
     expect(html).not.toContain("Cafe molido");
     expect(html).not.toContain("Pan integral");
     expect(html).not.toContain("Aceite oliva");
+  });
+
+  it("keeps stock configuration available as embedded APP GESTION content", () => {
+    const html = renderToStaticMarkup(
+      <StockScreen
+        app="gestion"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        embedded
+        initialSettingsMode="configuration"
+      />
+    );
+
+    expect(html).toContain('class="filter-dialog stock-settings-dialog"');
+    expect(html).toContain("Configuración stock");
+    expect(html).not.toContain("Permisos stock");
   });
 
   it("renders a selected stock view as embedded APP GESTION content without duplicate navigation", () => {

@@ -32,6 +32,8 @@ import {
   type SalesOperationSecurityConfiguration
 } from "../sale/operationAuthorization";
 import { ErpSelect } from "./ErpSelect";
+import { ModuleNavBackButton } from "./ModuleNavBackButton";
+import { ModuleNavItem } from "./ModuleNavItem";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -3579,33 +3581,27 @@ export function SalesReportScreen({
         {!embedded && <aside className="report-nav">
           {availableReports.visibleOutputReports.length > 0 && <strong>{t("salesReport.output")}</strong>}
           {availableReports.visibleOutputReports.map((reportKey) => (
-            <button
-              type="button"
-              className={selectedReport === reportKey ? "selected" : ""}
+            <ModuleNavItem
+              icon={<img alt="" className="report-menu-icon" src={reportIcon[reportKey]} />}
+              label={t(reportKey)}
+              selected={selectedReport === reportKey}
               key={reportKey}
               onClick={() => selectReport(reportKey)}
-            >
-              <img alt="" className="report-menu-icon" src={reportIcon[reportKey]} />
-              {t(reportKey)}
-            </button>
+            />
           ))}
 
           {availableReports.visibleInputReports.length > 0 && <strong className="report-nav-section">{t("salesReport.input")}</strong>}
           {availableReports.visibleInputReports.map((reportKey) => (
-            <button
-              type="button"
-              className={selectedReport === reportKey ? "selected" : ""}
+            <ModuleNavItem
+              icon={<img alt="" className="report-menu-icon" src={reportIcon[reportKey]} />}
+              label={t(reportKey)}
+              selected={selectedReport === reportKey}
               key={reportKey}
               onClick={() => selectReport(reportKey)}
-            >
-              <img alt="" className="report-menu-icon" src={reportIcon[reportKey]} />
-              {t(reportKey)}
-            </button>
+            />
           ))}
 
-          <button type="button" className="report-back" onClick={onBack}>
-            {t("common.back")}
-          </button>
+          <ModuleNavBackButton label={t("common.back")} onBack={onBack} />
         </aside>}
 
         <section className="report-workspace">
