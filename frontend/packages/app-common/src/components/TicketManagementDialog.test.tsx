@@ -50,6 +50,8 @@ describe("TicketManagementDialog", () => {
     expect(await screen.findByText("Página 1 de 2")).toBeVisible();
     expect(screen.getByRole("button", { name: /T-020/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /T-021/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /T-001/ }))
+      .toHaveAttribute("aria-pressed", "true"));
 
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     expect(await screen.findByText("Página 2 de 2")).toBeVisible();

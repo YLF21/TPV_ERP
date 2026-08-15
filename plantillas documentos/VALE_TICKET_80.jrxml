@@ -28,8 +28,8 @@
 	<field name="voucherBarcode" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.barcode"/>
 	</field>
-	<field name="voucherAmount" class="java.math.BigDecimal">
-		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.amount"/>
+	<field name="voucherAmountFormatted" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.amountFormatted"/>
 	</field>
 	<field name="voucherIssuedAt" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.issuedAt"/>
@@ -109,7 +109,7 @@
 			<text><![CDATA[VALE]]></text>
 		</element>
 		<element kind="textField" uuid="0410f598-596b-4104-8715-a5da17f9845b" x="0" y="107" width="211" height="34" fontName="SansSerif" fontSize="26.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<expression><![CDATA[new java.text.DecimalFormat("#0.00").format($F{voucherAmount}) + " " + $F{currency}]]></expression>
+			<expression><![CDATA[$F{voucherAmountFormatted} + " " + $F{currency}]]></expression>
 		</element>
 		<element kind="component" uuid="c952059e-5d63-48da-bba2-bec026974a5f" x="0" y="143" width="211" height="47">
 			<component kind="barcode4j:Code128" moduleWidth="2.0" textPosition="none" quietZone="13.0" verticalQuietZone="0.0">

@@ -7,6 +7,7 @@ import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.InvoiceJasperRenderer;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -77,6 +78,7 @@ public class VoucherPrintService {
         voucherNode.put("code", voucher.code());
         voucherNode.put("barcode", voucher.code());
         voucherNode.put("amount", voucher.initialAmount());
+        voucherNode.put("amountFormatted", formatAmount(voucher.initialAmount()));
         voucherNode.put("issuedAt", DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
                 .withZone(ZoneId.of(store.getTimezone())).format(voucher.createdAt()));
         voucherNode.put("status", voucher.status().name());
@@ -137,6 +139,12 @@ public class VoucherPrintService {
             formatted.append(documentNumbers.get(index));
         }
         return formatted.toString();
+    }
+
+    private static String formatAmount(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.HALF_UP)
+                .toPlainString()
+                .replace('.', ',');
     }
 
     private static void putNullable(ObjectNode node, String name, String value) {
