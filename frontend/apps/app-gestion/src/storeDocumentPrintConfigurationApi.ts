@@ -16,9 +16,11 @@ export type StoreDocumentPrintConfiguration = {
   deliveryNoteObservations: string | null;
   voucherObservations: string | null;
   ticketStyle: TicketPrintStyle;
+  ticketTemplateOrigin: TicketTemplateOrigin;
 };
 
 export type TicketPrintStyle = "PRINCIPAL" | "COMPACTA" | "MINIMALISTA";
+export type TicketTemplateOrigin = "INTEGRATED" | "IMPORTED";
 
 export function loadStoreDocumentPrintConfiguration(
   token?: string,
@@ -72,5 +74,17 @@ export function saveStoreTicketStyle(
   return request<StoreDocumentPrintConfiguration>(
     "/store-document-print-configuration/ticket-style",
     { method: "PUT", token, body: { style } },
+  );
+}
+
+export function saveStoreTicketPresentation(
+  origin: TicketTemplateOrigin,
+  style: TicketPrintStyle,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<StoreDocumentPrintConfiguration>(
+    "/store-document-print-configuration/ticket-presentation",
+    { method: "PUT", token, body: { origin, style } },
   );
 }

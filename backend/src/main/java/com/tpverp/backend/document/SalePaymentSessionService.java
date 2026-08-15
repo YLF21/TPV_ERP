@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class SalePaymentSessionService {
+ private static final Logger LOGGER = LoggerFactory.getLogger(SalePaymentSessionService.class);
  private final SalePaymentSessionRepository sessions; private final PosCashService sales; private final DocumentService documents; private final PosCardDocumentSnapshot snapshots;
  private final PaymentMethodRepository methods; private final CurrentOrganization organization; private final CurrentTerminal currentTerminal; private final CardTerminalConfigurationReader configurations; private final PaymentTerminalOperationService operations;
  private final CashPaymentRecorder cashPayments; private final TransactionOperations transactions; private final StorePaymentConfigurationRepository storePaymentConfigurations;
@@ -42,7 +45,7 @@ public class SalePaymentSessionService {
  SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments){this(sessions,sales,documents,snapshots,methods,organization,currentTerminal,configurations,operations,cashPayments,null,new TransactionOperations(){public <T>T execute(org.springframework.transaction.support.TransactionCallback<T> action){return action.doInTransaction(null);}},null,null);}
  SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,StorePaymentConfigurationRepository storePaymentConfigurations){this(sessions,sales,documents,snapshots,methods,organization,currentTerminal,configurations,operations,cashPayments,storePaymentConfigurations,new TransactionOperations(){public <T>T execute(org.springframework.transaction.support.TransactionCallback<T> action){return action.doInTransaction(null);}},null,null);}
  SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,SaleOperationSecurityService operationSecurity,AuditService audit){this(sessions,sales,documents,snapshots,methods,organization,currentTerminal,configurations,operations,cashPayments,null,new TransactionOperations(){public <T>T execute(org.springframework.transaction.support.TransactionCallback<T> action){return action.doInTransaction(null);}},operationSecurity,audit);}
- private SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,StorePaymentConfigurationRepository storePaymentConfigurations,TransactionOperations transactions,SaleOperationSecurityService operationSecurity,AuditService audit){this.sessions=sessions;this.sales=sales;this.documents=documents;this.snapshots=snapshots;this.methods=methods;this.organization=organization;this.currentTerminal=currentTerminal;this.configurations=configurations;this.operations=operations;this.cashPayments=Objects.requireNonNull(cashPayments);this.storePaymentConfigurations=storePaymentConfigurations;this.transactions=transactions;this.operationSecurity=operationSecurity;this.audit=audit;}
+ SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,StorePaymentConfigurationRepository storePaymentConfigurations,TransactionOperations transactions,SaleOperationSecurityService operationSecurity,AuditService audit){this.sessions=sessions;this.sales=sales;this.documents=documents;this.snapshots=snapshots;this.methods=methods;this.organization=organization;this.currentTerminal=currentTerminal;this.configurations=configurations;this.operations=operations;this.cashPayments=Objects.requireNonNull(cashPayments);this.storePaymentConfigurations=storePaymentConfigurations;this.transactions=transactions;this.operationSecurity=operationSecurity;this.audit=audit;}
 
  @Autowired void setVoucherService(VoucherService voucherService){this.voucherService=voucherService;}
  @Autowired void setVoucherPrintService(VoucherPrintService voucherPrintService){this.voucherPrintService=voucherPrintService;}
@@ -352,10 +355,10 @@ public class SalePaymentSessionService {
      });
  }
  @Transactional public SalePaymentSession query(UUID sessionId,UUID allocationId,Authentication auth){var session=scoped(sessions.findLocked(sessionId).orElseThrow(),auth);var a=session.getAllocations().stream().filter(x->x.getId().equals(allocationId)&&x.getKind()==SalePaymentAllocationKind.INTEGRATED_CARD).findFirst().orElseThrow();if(session.getDirection()==SalePaymentSessionDirection.REFUND){var op=requireRefundTerminalOperations().query(a.getOperationId()==null?a.getId():a.getOperationId());a.result(op.getStatus(),a.getId(),op.getExternalReference(),op.getAuthorizationCode(),null);}else{var op=operations.recover(a.getOperationId()==null?a.getId():a.getOperationId(),UUID.randomUUID());a.result(op.getStatus(),a.getId(),op.getExternalReference(),op.getAuthorizationCode(),null);}return sessions.save(session);}
- @Transactional public Finalization finalizeSession(UUID id, Authentication auth) {
+ public Finalization finalizeSession(UUID id, Authentication auth) {
      return finalizeSession(id, null, null, null, auth);
  }
- @Transactional public Finalization finalizeSession(
+ public Finalization finalizeSession(
          UUID id,
          String creditOverrideReason,
          String authorizerUsername,
@@ -370,7 +373,31 @@ public class SalePaymentSessionService {
              null,
              auth);
  }
- @Transactional public Finalization finalizeSession(
+ public Finalization finalizeSession(
+         UUID id,
+         String creditOverrideReason,
+         String authorizerUsername,
+         String authorizerPassword,
+         String creditOverrideAuthorizerUsername,
+         String creditOverrideAuthorizerPassword,
+         Authentication auth) {
+     var finalized = Objects.requireNonNull(transactions.execute(tx ->
+             finalizeTransaction(
+                     id,
+                     creditOverrideReason,
+                     authorizerUsername,
+                     authorizerPassword,
+                     creditOverrideAuthorizerUsername,
+                     creditOverrideAuthorizerPassword,
+                     auth)));
+     var printTicket = documents.renderTicketPrintView(
+             finalized.ticket(), finalized.printTicket());
+     return new Finalization(
+             finalized.session(),
+             printTicket,
+             issuedVoucher(finalized.issuedVoucher(), finalized.originTicketNumber()));
+ }
+ private TransactionalFinalization finalizeTransaction(
          UUID id,
          String creditOverrideReason,
          String authorizerUsername,
@@ -380,10 +407,13 @@ public class SalePaymentSessionService {
          Authentication auth) {
      var session = scoped(sessions.findLocked(id).orElseThrow(), auth);
      if (session.getTicketId() != null) {
-         return new Finalization(
+         var ticket = documents.loadForPrint(session.getTicketId());
+         return new TransactionalFinalization(
                  session,
-                 documents.loadRenderedTicketPrintView(session.getTicketId()),
-                 issuedVoucherFor(documents.loadForPrint(session.getTicketId())));
+                 ticket,
+                 documents.loadTicketPrintView(session.getTicketId()),
+                 issuedVoucherFor(ticket),
+                 ticket.getNumero());
      }
      if (session.getStatus() != SalePaymentSessionStatus.COVERED) {
          throw new IllegalStateException("payment_session_not_finalizable");
@@ -463,7 +493,7 @@ public class SalePaymentSessionService {
      }
       CommercialDocument ticket;
       TicketPrintView printTicket;
-      IssuedVoucher issuedVoucher = null;
+      Voucher issuedVoucher = null;
       if (session.getDirection() == SalePaymentSessionDirection.REFUND) {
          var payouts = approved.stream().map(allocation ->
                  new RefundSettlementRecorder.TenderCommand(
@@ -508,12 +538,10 @@ public class SalePaymentSessionService {
                  .map(RefundSettlementRecorder.TenderCommand::amount)
                  .reduce(BigDecimal.ZERO, BigDecimal::add);
          if (voucherAmount.signum() > 0) {
-              var generatedVoucher = requireVoucherService()
+              issuedVoucher = requireVoucherService()
                       .issueOrFindFromNegativeTicket(ticket, voucherAmount);
-              issuedVoucher = issuedVoucher(generatedVoucher, ticket.getNumero());
          }
-         printTicket = documents.renderTicketPrintView(
-                 ticket, documents.ticketPrintView(ticket));
+         printTicket = documents.ticketPrintView(ticket);
      } else if (hasReturnLines(snapshot)) {
          var sourceTicketId = refundSourceTicketId(snapshot);
          var selections = refundSelections(snapshot);
@@ -558,15 +586,13 @@ public class SalePaymentSessionService {
              printTicket = documents.ticketPrintViewFromExchange(ticket, refund);
          } else {
              ticket = refund;
-             printTicket = documents.renderTicketPrintView(
-                     refund, documents.ticketPrintView(refund));
+             printTicket = documents.ticketPrintView(refund);
          }
      } else {
          ticket = pendingAmount.signum() > 0
                  ? documents.createPendingTicketFromSnapshot(snapshot, commands, auth)
                  : documents.createApprovedCardTicketFromSnapshot(snapshot, commands, auth);
-         printTicket = documents.renderTicketPrintView(
-                 ticket, documents.ticketPrintView(ticket));
+         printTicket = documents.ticketPrintView(ticket);
      }
      if (issuedVoucher == null) {
          issuedVoucher = issuedVoucherFor(ticket);
@@ -588,7 +614,8 @@ public class SalePaymentSessionService {
          }
      }
      var saved = sessions.save(session);
-     return new Finalization(saved, printTicket, issuedVoucher);
+     return new TransactionalFinalization(
+             saved, ticket, printTicket, issuedVoucher, ticket.getNumero());
  }
  @Transactional public SalePaymentSession cancel(UUID id,Authentication auth){var s=scoped(sessions.findLocked(id).orElseThrow(),auth);s.cancel();sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}
  @Transactional public SalePaymentSession discardSimulation(UUID id,String reason,Authentication auth){var normalizedReason=SimulatorDiscardReason.require(reason);var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var configuration=configurations.required(s.getTerminalId());if(!configuration.terminalId().equals(s.getTerminalId())||!configuration.storeId().equals(s.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(!configuration.testMode())throw new IllegalStateException("simulator_discard_requires_test_mode");s.discardSimulation(normalizedReason,requireUser(auth).getId());sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}
@@ -896,18 +923,28 @@ public class SalePaymentSessionService {
  private void validateIntegratedConfiguration(CardTerminalConfiguration config,SalePaymentSession state,String provider){if(!config.enabled())throw new IllegalArgumentException("payment_terminal_configuration_not_enabled");if(config.mode()!=PaymentCardMode.INTEGRATED)throw new IllegalArgumentException("payment_terminal_configuration_not_integrated");if(config.provider()==null||config.provider()==PaymentTerminalProvider.NONE)throw new IllegalArgumentException("payment_terminal_provider_required");if(!config.terminalId().equals(state.getTerminalId())||!config.storeId().equals(state.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(provider==null||!config.provider().name().equals(provider))throw new IllegalArgumentException("provider_not_configured");if(storePaymentConfigurations!=null){var rules=storePaymentConfigurations.findByStoreId(state.getStoreId()).orElse(null);if(rules!=null&&(!rules.isIntegratedCardEnabled()||!List.of(rules.getAllowedPaymentTerminalProviders().split(",")).contains(config.provider().name())))throw new IllegalArgumentException("payment_terminal_provider_not_allowed");}}
  private PaymentMethod activeMethod(SalePaymentAllocationKind kind){var name=switch(kind){case CASH->"EFECTIVO";case MANUAL_CARD,INTEGRATED_CARD->"TARJETA";case VOUCHER->"VALE";case TRANSFER->"TRANSFERENCIA";default->null;};var company=organization.currentCompany();return name==null||company==null?null:methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(),name).orElseThrow();}
  private VoucherService requireVoucherService(){if(voucherService==null)throw new IllegalStateException("voucher_service_unavailable");return voucherService;}
- private IssuedVoucher issuedVoucherFor(CommercialDocument ticket) {
+ private Voucher issuedVoucherFor(CommercialDocument ticket) {
      if (voucherService == null || ticket == null) {
          return null;
      }
      return voucherService.issuedFromTicket(ticket)
-             .map(voucher -> issuedVoucher(voucher, ticket.getNumero()))
              .orElse(null);
  }
  private IssuedVoucher issuedVoucher(Voucher voucher,String originTicketNumber) {
-     return voucherPrintService == null || voucher.printSnapshot() == null
-             ? IssuedVoucher.from(voucher, originTicketNumber)
-             : IssuedVoucher.from(voucherPrintService.render(voucher));
+     if (voucher == null) {
+         return null;
+     }
+     if (voucherPrintService == null || voucher.printSnapshot() == null) {
+         return IssuedVoucher.from(voucher, originTicketNumber);
+     }
+     try {
+         return IssuedVoucher.from(voucherPrintService.render(voucher));
+     } catch (RuntimeException error) {
+         LOGGER.warn(
+                 "El vale {} se ha emitido, pero no se pudo generar su impresion Jasper",
+                 voucher.code(), error);
+         return IssuedVoucher.from(voucher, originTicketNumber);
+     }
  }
  private static String normalize(String value){return value==null||value.isBlank()?null:value.trim();}
  private static UserAccount requireUser(Authentication a){if(a.getPrincipal() instanceof UserAccount u)return u;throw new IllegalStateException("user_required");}
@@ -946,5 +983,12 @@ public class SalePaymentSessionService {
      public Finalization(SalePaymentSession session, TicketPrintView printTicket) {
          this(session, printTicket, null);
      }
+ }
+ private record TransactionalFinalization(
+         SalePaymentSession session,
+         CommercialDocument ticket,
+         TicketPrintView printTicket,
+         Voucher issuedVoucher,
+         String originTicketNumber) {
  }
 }

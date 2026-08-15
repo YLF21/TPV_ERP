@@ -33,6 +33,10 @@ public class StoreDocumentPrintSettings {
     @Column(name = "estilo_ticket", nullable = false, length = 16)
     private TicketPrintStyle ticketStyle = TicketPrintStyle.PRINCIPAL;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origen_plantilla_ticket", nullable = false, length = 16)
+    private TicketTemplateOrigin ticketTemplateOrigin = TicketTemplateOrigin.INTEGRATED;
+
     @Column(name = "observaciones_vale", length = 2000)
     private String voucherObservations;
 
@@ -55,10 +59,18 @@ public class StoreDocumentPrintSettings {
     public TicketPrintStyle getTicketStyle() {
         return ticketStyle == null ? TicketPrintStyle.PRINCIPAL : ticketStyle;
     }
+    public TicketTemplateOrigin getTicketTemplateOrigin() {
+        return ticketTemplateOrigin == null
+                ? TicketTemplateOrigin.INTEGRATED : ticketTemplateOrigin;
+    }
 
     public void useLogo(UUID value) { logoId = value; }
     public void useTicketStyle(TicketPrintStyle value) {
         ticketStyle = java.util.Objects.requireNonNull(value, "ticketStyle");
+    }
+    public void useTicketTemplateOrigin(TicketTemplateOrigin value) {
+        ticketTemplateOrigin = java.util.Objects.requireNonNull(
+                value, "ticketTemplateOrigin");
     }
 
     public void updateObservations(

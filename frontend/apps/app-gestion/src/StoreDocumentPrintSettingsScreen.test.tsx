@@ -24,6 +24,7 @@ describe("StoreDocumentPrintSettingsScreen", () => {
       deliveryNoteObservations: "Albaran",
       voucherObservations: "Vale",
       ticketStyle: "PRINCIPAL",
+      ticketTemplateOrigin: "INTEGRATED",
     };
     const request = vi.fn(async (_path: string, options?: { method?: string; body?: unknown }) =>
       options?.method === "PUT"

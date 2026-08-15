@@ -19,23 +19,27 @@ public class DocumentTemplateResolver {
         this.organization = organization;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,
+            noRollbackFor = DocumentTemplateRequiredException.class)
     public ResolvedDocumentTemplate resolve(DocumentTemplateType type) {
         return resolve(type, DocumentTemplateFormat.defaultFor(type));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,
+            noRollbackFor = DocumentTemplateRequiredException.class)
     public ResolvedDocumentTemplate resolve(
             DocumentTemplateType type, DocumentTemplateFormat format) {
         return resolve(organization.currentStore(), type, format);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,
+            noRollbackFor = DocumentTemplateRequiredException.class)
     public ResolvedDocumentTemplate resolve(Store store, DocumentTemplateType type) {
         return resolve(store, type, DocumentTemplateFormat.defaultFor(type));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,
+            noRollbackFor = DocumentTemplateRequiredException.class)
     public ResolvedDocumentTemplate resolve(
             Store store, DocumentTemplateType type, DocumentTemplateFormat format) {
         return findEffective(store, type, format)

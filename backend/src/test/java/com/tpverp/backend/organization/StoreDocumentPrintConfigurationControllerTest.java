@@ -30,7 +30,7 @@ class StoreDocumentPrintConfigurationControllerTest {
         when(service.configuration()).thenReturn(
                 new StoreDocumentPrintConfigurationService.Configuration(
                         storeId, null, "Ticket", "Factura", "Albaran", "Vale",
-                        TicketPrintStyle.PRINCIPAL));
+                        TicketPrintStyle.PRINCIPAL, TicketTemplateOrigin.INTEGRATED));
 
         mvc.perform(get("/api/v1/store-document-print-configuration")
                         .with(user("admin").roles("ADMIN")))
@@ -40,7 +40,8 @@ class StoreDocumentPrintConfigurationControllerTest {
                 .andExpect(jsonPath("$.invoiceObservations").value("Factura"))
                 .andExpect(jsonPath("$.deliveryNoteObservations").value("Albaran"))
                 .andExpect(jsonPath("$.voucherObservations").value("Vale"))
-                .andExpect(jsonPath("$.ticketStyle").value("PRINCIPAL"));
+                .andExpect(jsonPath("$.ticketStyle").value("PRINCIPAL"))
+                .andExpect(jsonPath("$.ticketTemplateOrigin").value("INTEGRATED"));
     }
 
     @Test
@@ -49,7 +50,7 @@ class StoreDocumentPrintConfigurationControllerTest {
         when(service.updateTicketStyle(TicketPrintStyle.COMPACTA)).thenReturn(
                 new StoreDocumentPrintConfigurationService.Configuration(
                         storeId, null, null, null, null, null,
-                        TicketPrintStyle.COMPACTA));
+                        TicketPrintStyle.COMPACTA, TicketTemplateOrigin.INTEGRATED));
 
         mvc.perform(put("/api/v1/store-document-print-configuration/ticket-style")
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
@@ -57,6 +58,25 @@ class StoreDocumentPrintConfigurationControllerTest {
                         .with(user("admin").roles("ADMIN"))
                         .with(csrf()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticketStyle").value("COMPACTA"));
+    }
+
+    @Test
+    void administratorCanSelectAnImportedTicketTemplate() throws Exception {
+        var storeId = UUID.randomUUID();
+        when(service.updateTicketPresentation(
+                TicketTemplateOrigin.IMPORTED, TicketPrintStyle.COMPACTA)).thenReturn(
+                new StoreDocumentPrintConfigurationService.Configuration(
+                        storeId, null, null, null, null, null,
+                        TicketPrintStyle.COMPACTA, TicketTemplateOrigin.IMPORTED));
+
+        mvc.perform(put("/api/v1/store-document-print-configuration/ticket-presentation")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"origin\":\"IMPORTED\",\"style\":\"COMPACTA\"}")
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticketTemplateOrigin").value("IMPORTED"))
                 .andExpect(jsonPath("$.ticketStyle").value("COMPACTA"));
     }
 

@@ -883,13 +883,28 @@ class PosCashServiceTest {
         when(documents.createTicket(any(DocumentCommand.class), anyList(), any()))
                 .thenReturn(ticket);
         when(documents.ticketPrintView(ticket)).thenReturn(TicketPrintView.from(ticket));
+        var transactionCommitted = new java.util.concurrent.atomic.AtomicBoolean();
         when(documents.renderTicketPrintView(
                 any(CommercialDocument.class), any(TicketPrintView.class)))
-                .thenAnswer(invocation -> invocation.getArgument(1));
+                .thenAnswer(invocation -> {
+                    assertThat(transactionCommitted.get()).isTrue();
+                    return invocation.getArgument(1);
+                });
+        org.springframework.transaction.support.TransactionOperations transactions =
+                new org.springframework.transaction.support.TransactionOperations() {
+                    @Override
+                    public <T> T execute(
+                            org.springframework.transaction.support.TransactionCallback<T> action) {
+                        T result = action.doInTransaction(null);
+                        transactionCommitted.set(true);
+                        return result;
+                    }
+                };
         var customerId = UUID.randomUUID();
         var service = new PosCashService(
                 documents, products, taxes, warehouses, paymentMethods, organization,
-                checkouts, snapshots, currentTerminal);
+                checkouts, snapshots, currentTerminal, null, null, null, null,
+                transactions);
         var sale = new PosCashController.SaleRequest(
                 customerId, List.of(new PosCashController.LineRequest(
                         productId, BigDecimal.valueOf(2), BigDecimal.ZERO)));
@@ -946,6 +961,9 @@ class PosCashServiceTest {
         when(fixture.checkouts().findScopedForUpdate(
                 request.checkoutId(), fixture.companyId(), fixture.storeId(),
                 fixture.terminalId(), fixture.userId())).thenReturn(Optional.of(checkout));
+        var ticket = mock(CommercialDocument.class);
+        when(fixture.documents().loadForPrint(checkout.getDocumentId())).thenReturn(ticket);
+        when(fixture.documents().renderTicketPrintView(ticket, snapshot)).thenReturn(snapshot);
 
         var result = fixture.service().charge(request, fixture.authentication());
 

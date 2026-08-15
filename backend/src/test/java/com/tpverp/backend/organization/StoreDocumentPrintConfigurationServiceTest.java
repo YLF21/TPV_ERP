@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -26,6 +28,7 @@ class StoreDocumentPrintConfigurationServiceTest {
         var organization = mock(CurrentOrganization.class);
         var settings = mock(StoreDocumentPrintSettingsRepository.class);
         var logos = mock(StoreDocumentLogoRepository.class);
+        var templates = mock(DocumentTemplateResolver.class);
         var audit = mock(AuditService.class);
         var store = mock(Store.class);
         var storeId = UUID.randomUUID();
@@ -43,12 +46,14 @@ class StoreDocumentPrintConfigurationServiceTest {
                 Optional.ofNullable(savedLogo.get()));
         when(settings.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var service = new StoreDocumentPrintConfigurationService(
-                organization, settings, logos, audit,
+                organization, settings, logos, templates, audit,
                 Clock.fixed(Instant.parse("2026-08-10T12:00:00Z"), ZoneOffset.UTC));
 
         var observations = service.updateObservations(
                 "Gracias", "Factura legal", "Mercancia entregada", "Vale al portador");
         var style = service.updateTicketStyle(TicketPrintStyle.MINIMALISTA);
+        var origin = service.updateTicketPresentation(
+                TicketTemplateOrigin.INTEGRATED, TicketPrintStyle.COMPACTA);
         var logo = service.uploadLogo(png());
 
         assertThat(observations.ticketObservations()).isEqualTo("Gracias");
@@ -56,8 +61,10 @@ class StoreDocumentPrintConfigurationServiceTest {
         assertThat(observations.deliveryNoteObservations()).isEqualTo("Mercancia entregada");
         assertThat(observations.voucherObservations()).isEqualTo("Vale al portador");
         assertThat(style.ticketStyle()).isEqualTo(TicketPrintStyle.MINIMALISTA);
+        assertThat(origin.ticketTemplateOrigin()).isEqualTo(TicketTemplateOrigin.INTEGRATED);
+        assertThat(origin.ticketStyle()).isEqualTo(TicketPrintStyle.COMPACTA);
         assertThat(logo.storeId()).isEqualTo(storeId);
-        verify(audit, org.mockito.Mockito.times(3)).record(any(), any(), any());
+        verify(audit, org.mockito.Mockito.times(4)).record(any(), any(), any());
     }
 
     @Test
@@ -65,6 +72,7 @@ class StoreDocumentPrintConfigurationServiceTest {
         var organization = mock(CurrentOrganization.class);
         var settings = mock(StoreDocumentPrintSettingsRepository.class);
         var logos = mock(StoreDocumentLogoRepository.class);
+        var templates = mock(DocumentTemplateResolver.class);
         var store = mock(Store.class);
         var storeId = UUID.randomUUID();
         var value = new StoreDocumentPrintSettings(storeId);
@@ -73,7 +81,8 @@ class StoreDocumentPrintConfigurationServiceTest {
         when(organization.currentStore()).thenReturn(store);
         when(settings.findById(storeId)).thenReturn(Optional.of(value));
         var service = new StoreDocumentPrintConfigurationService(
-                organization, settings, logos, mock(AuditService.class), Clock.systemUTC());
+                organization, settings, logos, templates,
+                mock(AuditService.class), Clock.systemUTC());
 
         assertThat(service.presentation(DocumentTemplateType.TICKET).observations())
                 .isEqualTo("Ticket");
@@ -83,6 +92,28 @@ class StoreDocumentPrintConfigurationServiceTest {
                 .isEqualTo("Albaran");
         assertThat(service.presentation(DocumentTemplateType.VALE).observations())
                 .isEqualTo("Vale");
+    }
+
+    @Test
+    void requiresAnEffectiveTemplateBeforeSelectingImportedTickets() {
+        var organization = mock(CurrentOrganization.class);
+        var settings = mock(StoreDocumentPrintSettingsRepository.class);
+        var templates = mock(DocumentTemplateResolver.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(organization.currentStore()).thenReturn(store);
+        when(templates.findEffective(
+                store, DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(Optional.empty());
+        var service = new StoreDocumentPrintConfigurationService(
+                organization, settings, mock(StoreDocumentLogoRepository.class),
+                templates, mock(AuditService.class), Clock.systemUTC());
+
+        assertThatThrownBy(() -> service.updateTicketPresentation(
+                TicketTemplateOrigin.IMPORTED, TicketPrintStyle.PRINCIPAL))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("ticket_imported_template_required");
     }
 
     @Test

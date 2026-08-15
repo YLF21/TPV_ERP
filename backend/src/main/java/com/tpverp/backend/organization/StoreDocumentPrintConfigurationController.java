@@ -45,6 +45,12 @@ public class StoreDocumentPrintConfigurationController {
         return service.updateTicketStyle(request.style());
     }
 
+    @PutMapping("/ticket-presentation")
+    public StoreDocumentPrintConfigurationService.Configuration updateTicketPresentation(
+            @Valid @RequestBody TicketPresentationRequest request) {
+        return service.updateTicketPresentation(request.origin(), request.style());
+    }
+
     @PutMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public StoreDocumentPrintConfigurationService.Configuration uploadLogo(
             @RequestPart("file") MultipartFile file) throws IOException {
@@ -64,5 +70,10 @@ public class StoreDocumentPrintConfigurationController {
     }
 
     public record TicketStyleRequest(@NotNull TicketPrintStyle style) {
+    }
+
+    public record TicketPresentationRequest(
+            @NotNull TicketTemplateOrigin origin,
+            @NotNull TicketPrintStyle style) {
     }
 }

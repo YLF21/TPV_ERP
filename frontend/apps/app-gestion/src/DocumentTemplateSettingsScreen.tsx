@@ -13,8 +13,9 @@ import {
 } from "./documentTemplatesApi";
 import {
   loadStoreDocumentPrintConfiguration,
-  saveStoreTicketStyle,
+  saveStoreTicketPresentation,
   type TicketPrintStyle,
+  type TicketTemplateOrigin,
 } from "./storeDocumentPrintConfigurationApi";
 import ticketStylePrincipal from "./assets/ticket-styles/principal.svg";
 import ticketStyleCompacta from "./assets/ticket-styles/compacta.svg";
@@ -77,6 +78,8 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [name, setName] = useState("");
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [ticketStyle, setTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
+  const [ticketTemplateOrigin, setTicketTemplateOrigin] =
+    useState<TicketTemplateOrigin>("INTEGRATED");
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
   const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET" || selectedType === "VALE"
@@ -115,22 +118,26 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   useEffect(() => {
     if (selectedType !== "TICKET") return;
     void loadStoreDocumentPrintConfiguration(session.accessToken, request)
-      .then((value) => setTicketStyle(value.ticketStyle ?? "PRINCIPAL"))
+      .then((value) => {
+        setTicketStyle(value.ticketStyle ?? "PRINCIPAL");
+        setTicketTemplateOrigin(value.ticketTemplateOrigin ?? "INTEGRATED");
+      })
       .catch((error) => setMessage({
         kind: "error",
         text: failureMessage(error, t("gestion.documentTemplates.ticketStyleLoadError")),
       }));
   }, [selectedType, request, session.accessToken, t]);
 
-  async function updateTicketStyle() {
+  async function updateTicketPresentation() {
     if (!canManage || busyId) return;
     setBusyId("ticket-style");
     setMessage(null);
     try {
-      const value = await saveStoreTicketStyle(
-        ticketStyle, session.accessToken, request,
+      const value = await saveStoreTicketPresentation(
+        ticketTemplateOrigin, ticketStyle, session.accessToken, request,
       );
       setTicketStyle(value.ticketStyle);
+      setTicketTemplateOrigin(value.ticketTemplateOrigin);
       setMessage({ kind: "success", text: t("gestion.documentTemplates.ticketStyleSaved") });
     } catch (error) {
       setMessage({
@@ -274,27 +281,52 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
             <h3 id="ticket-style-title">{t("gestion.documentTemplates.ticketStyle")}</h3>
             <p>{t("gestion.documentTemplates.ticketStyleHelp")}</p>
           </div>
-          <figure className="gestion-ticket-style-preview">
-            <img
-              src={ticketStylePreviews[ticketStyle]}
-              alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}`}
-            />
-            <figcaption>{t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}</figcaption>
-          </figure>
+          {ticketTemplateOrigin === "INTEGRATED" ? (
+            <figure className="gestion-ticket-style-preview">
+              <img
+                src={ticketStylePreviews[ticketStyle]}
+                alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}`}
+              />
+              <figcaption>{t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}</figcaption>
+            </figure>
+          ) : (
+            <div className="gestion-ticket-imported-summary">
+              <strong>{catalog?.effective?.code ?? t("gestion.documentTemplates.missing")}</strong>
+              <span>{t("gestion.documentTemplates.version")} {catalog?.effective?.version ?? "-"}</span>
+              <small>{t("gestion.documentTemplates.ticketOriginImportedHelp")}</small>
+            </div>
+          )}
           <div className="gestion-ticket-style-actions">
             <label>
-              <span>{t("gestion.documentTemplates.ticketStyleLabel")}</span>
+              <span>{t("gestion.documentTemplates.ticketOriginLabel")}</span>
               <select
-                value={ticketStyle}
+                value={ticketTemplateOrigin}
                 disabled={!canManage || busyId !== null}
-                onChange={(event) => setTicketStyle(event.currentTarget.value as TicketPrintStyle)}
+                onChange={(event) => setTicketTemplateOrigin(
+                  event.currentTarget.value as TicketTemplateOrigin,
+                )}
               >
-                <option value="PRINCIPAL">{t("gestion.documentTemplates.ticketStyle.PRINCIPAL")}</option>
-                <option value="COMPACTA">{t("gestion.documentTemplates.ticketStyle.COMPACTA")}</option>
-                <option value="MINIMALISTA">{t("gestion.documentTemplates.ticketStyle.MINIMALISTA")}</option>
+                <option value="INTEGRATED">{t("gestion.documentTemplates.ticketOrigin.INTEGRATED")}</option>
+                <option value="IMPORTED" disabled={!catalog?.effective}>
+                  {t("gestion.documentTemplates.ticketOrigin.IMPORTED")}
+                </option>
               </select>
             </label>
-            <button type="button" disabled={!canManage || busyId !== null} onClick={() => void updateTicketStyle()}>
+            {ticketTemplateOrigin === "INTEGRATED" && (
+              <label>
+                <span>{t("gestion.documentTemplates.ticketStyleLabel")}</span>
+                <select
+                  value={ticketStyle}
+                  disabled={!canManage || busyId !== null}
+                  onChange={(event) => setTicketStyle(event.currentTarget.value as TicketPrintStyle)}
+                >
+                  <option value="PRINCIPAL">{t("gestion.documentTemplates.ticketStyle.PRINCIPAL")}</option>
+                  <option value="COMPACTA">{t("gestion.documentTemplates.ticketStyle.COMPACTA")}</option>
+                  <option value="MINIMALISTA">{t("gestion.documentTemplates.ticketStyle.MINIMALISTA")}</option>
+                </select>
+              </label>
+            )}
+            <button type="button" disabled={!canManage || busyId !== null} onClick={() => void updateTicketPresentation()}>
               {t("gestion.documentTemplates.ticketStyleSave")}
             </button>
           </div>
