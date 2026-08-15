@@ -121,6 +121,7 @@ export type TicketPaymentPrint = {
 };
 
 export type TicketPrintRequest = {
+  requireRenderedDocument?: boolean;
   layout?: "STANDARD" | "GIFT_RECEIPT" | "CANCELLATION_RECEIPT";
   title?: string;
   notice?: string;
@@ -148,6 +149,7 @@ export type TicketPrintRequest = {
 };
 
 export type A4DocumentPrintRequest = {
+  requireRenderedDocument?: boolean;
   documentType: Exclude<PrintableDocumentType, "TICKET">;
   locale?: "es" | "en" | "zh";
   title: string;

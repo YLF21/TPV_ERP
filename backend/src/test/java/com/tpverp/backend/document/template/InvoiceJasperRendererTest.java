@@ -59,7 +59,8 @@ class InvoiceJasperRendererTest {
                 fixture.template().getId(), fixture.company().getId(), fixture.store().getId()))
                 .thenReturn(Optional.of(fixture.template()));
         var renderer = new InvoiceJasperRenderer(
-                templates, storage, compiler, new ObjectMapper());
+                templates, storage, compiler, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(compiler));
 
         var pdf = renderer.render(
                 fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
@@ -96,7 +97,8 @@ class InvoiceJasperRendererTest {
                 template.getId(), fixture.company().getId(), fixture.store().getId()))
                 .thenReturn(Optional.of(template));
         var renderer = new InvoiceJasperRenderer(
-                templates, storage, compiler, new ObjectMapper());
+                templates, storage, compiler, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(compiler));
         var ticketReference = new InvoicePresentationSnapshot.TemplateReference(
                 template.getId(), template.getCode(), template.getTemplateVersion(),
                 SafeJrxmlCompiler.DATA_SCHEMA_VERSION, compiled.sha256(), false);
@@ -139,7 +141,8 @@ class InvoiceJasperRendererTest {
                 fixture.template().getId(), fixture.company().getId(), fixture.store().getId()))
                 .thenReturn(Optional.of(fixture.template()));
         var renderer = new InvoiceJasperRenderer(
-                templates, storage, compiler, new ObjectMapper());
+                templates, storage, compiler, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(compiler));
         var presentation = snapshot(fixture.template(), compiled.sha256());
 
         var withLogo = renderer.render(
@@ -163,21 +166,42 @@ class InvoiceJasperRendererTest {
     }
 
     @Test
-    void builtInTemplateKeepsExistingHtmlFallback() {
+    void builtInTemplateRendersPackagedJrxml() {
         var fixture = fixture();
+        var builtIns = new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler());
         var renderer = new InvoiceJasperRenderer(
                 mock(DocumentTemplateRepository.class),
                 new DocumentTemplateArtifactStorage(temporaryDirectory),
                 new SafeJrxmlCompiler(),
-                new ObjectMapper());
+                new ObjectMapper(),
+                builtIns);
         var snapshot = new InvoicePresentationSnapshot(
-                2, InvoiceFiscalProfile.IVA, null, List.of(),
-                new InvoicePresentationSnapshot.TemplateReference(
-                        null, "FACTURA_A4", 1, 1, null, true));
+                4, InvoiceFiscalProfile.IVA, null, List.of(),
+                builtIns.reference(DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.A4));
 
         assertThat(renderer.render(
                 fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
-                snapshot, null)).isEmpty();
+                snapshot, null).orElseThrow()).startsWith(0x25, 0x50, 0x44, 0x46);
+    }
+
+    @Test
+    void legacySnapshotWithoutTemplateMigratesToTheIntegratedJrxmlAtPrintTime() {
+        var fixture = fixture();
+        var compiler = new SafeJrxmlCompiler();
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                compiler,
+                new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(compiler));
+        var legacySnapshot = new InvoicePresentationSnapshot(
+                1, InvoiceFiscalProfile.IVA, null, List.of());
+
+        assertThat(renderer.render(
+                fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
+                legacySnapshot, null).orElseThrow())
+                .startsWith(0x25, 0x50, 0x44, 0x46);
     }
 
     @Test
@@ -187,7 +211,8 @@ class InvoiceJasperRendererTest {
                 mock(DocumentTemplateRepository.class),
                 new DocumentTemplateArtifactStorage(temporaryDirectory),
                 new SafeJrxmlCompiler(),
-                new ObjectMapper());
+                new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
 
         var json = renderer.data(
                 fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
@@ -252,7 +277,8 @@ class InvoiceJasperRendererTest {
                 template.getId(), fixture.company().getId(), fixture.store().getId()))
                 .thenReturn(Optional.of(template));
         var renderer = new InvoiceJasperRenderer(
-                templates, storage, compiler, new ObjectMapper());
+                templates, storage, compiler, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(compiler));
         var presentation = snapshot(template, compiled.sha256());
 
         var json = renderer.data(

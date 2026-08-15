@@ -7,7 +7,10 @@ import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
+import com.tpverp.backend.document.template.BuiltInDocumentJrxmlCatalog;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateOrigin;
+import com.tpverp.backend.document.template.DocumentTemplatePresentationService;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.InvoiceBankAccountRepository;
@@ -24,22 +27,31 @@ public class InvoicePresentationSnapshotFactory {
     private final InvoicePrintSettingsRepository settings;
     private final InvoiceBankAccountRepository bankAccounts;
     private final ObjectMapper mapper;
+    private final BuiltInDocumentJrxmlCatalog builtInTemplates;
     private DocumentTemplateResolver templates;
+    private DocumentTemplatePresentationService templatePresentations;
     private StoreDocumentPrintConfigurationService storePrintConfiguration;
 
     public InvoicePresentationSnapshotFactory(CurrentOrganization organization,
             LicenseRepository licenses, InvoicePrintSettingsRepository settings,
-            InvoiceBankAccountRepository bankAccounts, ObjectMapper mapper) {
+            InvoiceBankAccountRepository bankAccounts, ObjectMapper mapper,
+            BuiltInDocumentJrxmlCatalog builtInTemplates) {
         this.organization = organization;
         this.licenses = licenses;
         this.settings = settings;
         this.bankAccounts = bankAccounts;
         this.mapper = mapper;
+        this.builtInTemplates = builtInTemplates;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setTemplateResolver(DocumentTemplateResolver templates) {
         this.templates = templates;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplatePresentations(DocumentTemplatePresentationService value) {
+        this.templatePresentations = value;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -131,6 +143,12 @@ public class InvoicePresentationSnapshotFactory {
     private InvoicePresentationSnapshot.TemplateReference templateReference(
             DocumentTemplateType templateType,
             DocumentTemplateFormat format) {
+        if (templatePresentations != null
+                && usesJsonDocumentPresentation(templateType)
+                && templatePresentations.origin(templateType, format)
+                        == DocumentTemplateOrigin.INTEGRATED) {
+            return builtInTemplates.reference(templateType, format);
+        }
         if (templates == null) {
             throw new DocumentTemplateRequiredException(templateType, format);
         }
@@ -143,4 +161,10 @@ public class InvoicePresentationSnapshotFactory {
                 resolved.sha256(),
                 resolved.builtIn());
     }
+
+    private static boolean usesJsonDocumentPresentation(DocumentTemplateType templateType) {
+        return templateType == DocumentTemplateType.FACTURA_VENTA
+                || templateType == DocumentTemplateType.ALBARAN_VENTA;
+    }
+
 }

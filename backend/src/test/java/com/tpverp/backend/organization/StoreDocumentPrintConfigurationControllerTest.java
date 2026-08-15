@@ -81,6 +81,34 @@ class StoreDocumentPrintConfigurationControllerTest {
     }
 
     @Test
+    void templateManagerCanReadAndUpdateTicketPresentation() throws Exception {
+        var storeId = UUID.randomUUID();
+        when(service.configuration()).thenReturn(
+                new StoreDocumentPrintConfigurationService.Configuration(
+                        storeId, null, null, null, null, null,
+                        TicketPrintStyle.PRINCIPAL, TicketTemplateOrigin.INTEGRATED));
+        when(service.updateTicketPresentation(
+                TicketTemplateOrigin.IMPORTED, TicketPrintStyle.PRINCIPAL)).thenReturn(
+                new StoreDocumentPrintConfigurationService.Configuration(
+                        storeId, null, null, null, null, null,
+                        TicketPrintStyle.PRINCIPAL, TicketTemplateOrigin.IMPORTED));
+        var manager = user("manager").authorities(
+                () -> "APP_GESTION_ACCESS", () -> "DOCUMENT_TEMPLATES_MANAGE");
+
+        mvc.perform(get("/api/v1/store-document-print-configuration").with(manager))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/v1/store-document-print-configuration/ticket-presentation")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"origin\":\"IMPORTED\",\"style\":\"PRINCIPAL\"}")
+                        .with(user("manager").authorities(
+                                () -> "APP_GESTION_ACCESS",
+                                () -> "DOCUMENT_TEMPLATES_MANAGE"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticketTemplateOrigin").value("IMPORTED"));
+    }
+
+    @Test
     void rejectsNonAdministrators() throws Exception {
         mvc.perform(get("/api/v1/store-document-print-configuration")
                         .with(user("manager").authorities(() -> "GESTION_VENTAS")))

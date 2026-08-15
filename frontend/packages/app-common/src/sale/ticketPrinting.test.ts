@@ -53,6 +53,7 @@ describe("confirmed ticket printing", () => {
       total: 2,
       renderedPdf,
     }, terminal, "es")).toEqual(expect.objectContaining({
+      requireRenderedDocument: true,
       renderedPdf,
       lines: [expect.objectContaining({ barcode: "8430000000010" })],
     }));
@@ -81,6 +82,7 @@ describe("confirmed ticket printing", () => {
 
     expect(result).toEqual({ status: "PRINTED" });
     expect(printTicket).toHaveBeenCalledWith({
+      requireRenderedDocument: true,
       documentNumber: "T-1",
       storeName: "Tienda",
       terminalCode: "CAJA-1",
@@ -285,7 +287,10 @@ describe("confirmed ticket printing", () => {
     }, terminal, hardware);
 
     expect(printA4Document).toHaveBeenCalledWith(
-      expect.objectContaining({ renderedPdf: ticketRenderedPdf }),
+      expect.objectContaining({
+        requireRenderedDocument: true,
+        renderedPdf: ticketRenderedPdf,
+      }),
       config,
     );
   });

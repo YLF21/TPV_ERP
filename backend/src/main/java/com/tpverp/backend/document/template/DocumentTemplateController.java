@@ -15,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,12 +30,15 @@ public class DocumentTemplateController {
 
     private final DocumentTemplateCatalogService service;
     private final DocumentTemplateArtifactService artifacts;
+    private final DocumentTemplatePresentationService presentations;
 
     public DocumentTemplateController(
             DocumentTemplateCatalogService service,
-            DocumentTemplateArtifactService artifacts) {
+            DocumentTemplateArtifactService artifacts,
+            DocumentTemplatePresentationService presentations) {
         this.service = service;
         this.artifacts = artifacts;
+        this.presentations = presentations;
     }
 
     @GetMapping
@@ -42,6 +46,19 @@ public class DocumentTemplateController {
             @RequestParam(defaultValue = "FACTURA_VENTA") DocumentTemplateType type,
             @RequestParam(defaultValue = "A4") DocumentTemplateFormat format) {
         return service.currentStoreCatalog(type, format);
+    }
+
+    @GetMapping("/presentation")
+    public DocumentTemplatePresentationService.Presentation presentation(
+            @RequestParam DocumentTemplateType type,
+            @RequestParam DocumentTemplateFormat format) {
+        return presentations.presentation(type, format);
+    }
+
+    @PutMapping("/presentation")
+    public DocumentTemplatePresentationService.Presentation updatePresentation(
+            @Valid @RequestBody PresentationRequest request) {
+        return presentations.update(request.type(), request.format(), request.origin());
     }
 
     @PostMapping("/store-drafts")
@@ -84,5 +101,11 @@ public class DocumentTemplateController {
             @Size(min = 3, max = 80)
             @Pattern(regexp = "[A-Za-z0-9][A-Za-z0-9_]{2,79}") String code,
             @NotBlank @Size(max = 160) String name) {
+    }
+
+    public record PresentationRequest(
+            @NotNull DocumentTemplateType type,
+            @NotNull DocumentTemplateFormat format,
+            @NotNull DocumentTemplateOrigin origin) {
     }
 }

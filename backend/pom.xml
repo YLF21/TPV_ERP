@@ -187,6 +187,17 @@
 					<include>ticket*.jrxml</include>
 				</includes>
 			</resource>
+			<!-- Immutable v1 JSON-backed commercial document models. -->
+			<resource>
+				<directory>../plantillas documentos</directory>
+				<targetPath>reports/documents/v1</targetPath>
+				<includes>
+					<include>FACTURA_VENTA_A4.jrxml</include>
+					<include>FACTURA_VENTA_TICKET_80.jrxml</include>
+					<include>ALBARAN_VENTA_A4.jrxml</include>
+					<include>VALE_TICKET_80.jrxml</include>
+				</includes>
+			</resource>
 		</resources>
 		<plugins>
 			<plugin>

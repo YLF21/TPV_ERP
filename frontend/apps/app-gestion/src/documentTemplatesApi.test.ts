@@ -3,6 +3,8 @@ import {
   activateDocumentTemplate,
   createDocumentTemplateDraft,
   loadDocumentTemplateCatalog,
+  loadDocumentTemplatePresentation,
+  saveDocumentTemplatePresentation,
   uploadDocumentTemplateArtifact,
 } from "./documentTemplatesApi";
 
@@ -16,6 +18,27 @@ describe("document templates API", () => {
       "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
     );
+  });
+
+  it("loads and saves the presentation origin by document format", async () => {
+    const request = vi.fn().mockResolvedValue({
+      type: "FACTURA_VENTA", format: "A4", origin: "INTEGRATED",
+    });
+
+    await loadDocumentTemplatePresentation("FACTURA_VENTA", "A4", "token", request);
+    await saveDocumentTemplatePresentation({
+      type: "FACTURA_VENTA", format: "TICKET_80", origin: "IMPORTED",
+    }, "token", request);
+
+    expect(request).toHaveBeenNthCalledWith(1,
+      "/document-templates/presentation?type=FACTURA_VENTA&format=A4",
+      { token: "token" },
+    );
+    expect(request).toHaveBeenNthCalledWith(2, "/document-templates/presentation", {
+      method: "PUT",
+      token: "token",
+      body: { type: "FACTURA_VENTA", format: "TICKET_80", origin: "IMPORTED" },
+    });
   });
 
   it("creates a store draft with its document type", async () => {

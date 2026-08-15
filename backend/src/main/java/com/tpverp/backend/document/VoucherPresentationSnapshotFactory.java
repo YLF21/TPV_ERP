@@ -3,6 +3,9 @@ package com.tpverp.backend.document;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.BuiltInDocumentJrxmlCatalog;
+import com.tpverp.backend.document.template.DocumentTemplateOrigin;
+import com.tpverp.backend.document.template.DocumentTemplatePresentationService;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -22,6 +25,8 @@ public class VoucherPresentationSnapshotFactory {
     private final CommercialDocumentRepository documents;
     private final TerminalRepository terminals;
     private final ObjectMapper mapper;
+    private final DocumentTemplatePresentationService templatePresentations;
+    private final BuiltInDocumentJrxmlCatalog builtInTemplates;
 
     public VoucherPresentationSnapshotFactory(
             CurrentOrganization organization,
@@ -29,13 +34,17 @@ public class VoucherPresentationSnapshotFactory {
             StoreDocumentPrintConfigurationService printConfiguration,
             CommercialDocumentRepository documents,
             TerminalRepository terminals,
-            ObjectMapper mapper) {
+            ObjectMapper mapper,
+            DocumentTemplatePresentationService templatePresentations,
+            BuiltInDocumentJrxmlCatalog builtInTemplates) {
         this.organization = organization;
         this.templates = templates;
         this.printConfiguration = printConfiguration;
         this.documents = documents;
         this.terminals = terminals;
         this.mapper = mapper;
+        this.templatePresentations = templatePresentations;
+        this.builtInTemplates = builtInTemplates;
     }
 
     public String create(
@@ -45,8 +54,13 @@ public class VoucherPresentationSnapshotFactory {
             throw new IllegalArgumentException("documento no encontrado");
         }
         var presentation = printConfiguration.presentation(DocumentTemplateType.VALE);
-        var template = templates.resolve(
-                store, DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80);
+        var templateReference = templatePresentations.origin(
+                DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80)
+                == DocumentTemplateOrigin.INTEGRATED
+                        ? builtInTemplates.reference(
+                                DocumentTemplateType.VALE,
+                                DocumentTemplateFormat.TICKET_80)
+                        : importedTemplateReference(store);
         var traceability = predecessor == null || predecessor.printSnapshot() == null
                 ? legacyTrace(predecessor == null
                         ? voucher.originTickets() : predecessor.originTickets())
@@ -63,9 +77,7 @@ public class VoucherPresentationSnapshotFactory {
         var snapshot = new VoucherPresentationSnapshot(
                 1,
                 presentation.observations(),
-                new InvoicePresentationSnapshot.TemplateReference(
-                        template.id(), template.code(), template.version(),
-                        template.schemaVersion(), template.sha256(), template.builtIn()),
+                templateReference,
                 presentation.logo() == null ? null
                         : new InvoicePresentationSnapshot.LogoReference(
                                 presentation.logo().id(), presentation.logo().contentType(),
@@ -77,6 +89,15 @@ public class VoucherPresentationSnapshotFactory {
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("voucher_print_snapshot_serialization_failed", error);
         }
+    }
+
+    private InvoicePresentationSnapshot.TemplateReference importedTemplateReference(
+            com.tpverp.backend.organization.Store store) {
+        var template = templates.resolve(
+                store, DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80);
+        return new InvoicePresentationSnapshot.TemplateReference(
+                template.id(), template.code(), template.version(),
+                template.schemaVersion(), template.sha256(), template.builtIn());
     }
 
     public VoucherPresentationSnapshot read(String value) {

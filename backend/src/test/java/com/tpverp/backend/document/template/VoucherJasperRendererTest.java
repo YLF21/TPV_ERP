@@ -104,7 +104,9 @@ class VoucherJasperRendererTest {
         var organization = mock(CurrentOrganization.class);
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentCompany()).thenReturn(company);
-        var renderer = new InvoiceJasperRenderer(templates, storage, compiler, mapper);
+        var renderer = new InvoiceJasperRenderer(
+                templates, storage, compiler, mapper,
+                new BuiltInDocumentJrxmlCatalog(compiler));
         var service = new VoucherPrintService(
                 organization, snapshotFactory, renderer, mapper);
 
