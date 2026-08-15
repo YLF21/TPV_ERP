@@ -5,6 +5,7 @@ import {
   loadDocumentTemplateCatalog,
   loadDocumentTemplatePresentation,
   saveDocumentTemplatePresentation,
+  reactivateDocumentTemplate,
   uploadDocumentTemplateArtifact,
 } from "./documentTemplatesApi";
 
@@ -38,6 +39,17 @@ describe("document templates API", () => {
       method: "PUT",
       token: "token",
       body: { type: "FACTURA_VENTA", format: "TICKET_80", origin: "IMPORTED" },
+    });
+  });
+
+  it("reactivates a recoverable retired version", async () => {
+    const request = vi.fn().mockResolvedValue({ id: "template-1", status: "ACTIVE" });
+
+    await reactivateDocumentTemplate("template-1", "token", request);
+
+    expect(request).toHaveBeenCalledWith("/document-templates/template-1/reactivate", {
+      method: "POST",
+      token: "token",
     });
   });
 

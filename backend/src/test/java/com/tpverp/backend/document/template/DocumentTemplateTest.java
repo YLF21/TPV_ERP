@@ -35,12 +35,14 @@ class DocumentTemplateTest {
                 1, "signed:templates/factura-a4-lp-v1",
                 "A".repeat(64), CREATED_AT.plusSeconds(60));
         template.activate(CREATED_AT.plusSeconds(120));
-        template.retire(CREATED_AT.plusSeconds(180));
+        template.retire(CREATED_AT.plusSeconds(180),
+                DocumentTemplateRetirementReason.REPLACED_BY_TEMPLATE);
 
         assertThat(template.getStatus()).isEqualTo(DocumentTemplateStatus.RETIRED);
         assertThat(template.getSha256()).isEqualTo("a".repeat(64));
         assertThat(template.getActivatedAt()).isEqualTo(CREATED_AT.plusSeconds(120));
         assertThat(template.getRetiredAt()).isEqualTo(CREATED_AT.plusSeconds(180));
+        assertThat(template.canReactivate()).isFalse();
     }
 
     @Test

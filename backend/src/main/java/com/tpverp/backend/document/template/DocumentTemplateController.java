@@ -82,6 +82,12 @@ public class DocumentTemplateController {
         return artifacts.activate(templateId);
     }
 
+    @PostMapping("/{templateId}/reactivate")
+    public DocumentTemplateCatalogService.TemplateView reactivate(
+            @PathVariable UUID templateId) {
+        return artifacts.reactivate(templateId);
+    }
+
     @GetMapping("/{templateId}/source")
     public ResponseEntity<byte[]> source(@PathVariable UUID templateId) {
         var source = artifacts.source(templateId);

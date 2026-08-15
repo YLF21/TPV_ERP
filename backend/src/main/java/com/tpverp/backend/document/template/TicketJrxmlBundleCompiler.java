@@ -39,6 +39,9 @@ public class TicketJrxmlBundleCompiler {
             "payment_terminal_receipt", "promocion", "tienda");
     private static final Pattern SQL_TABLE = Pattern.compile(
             "(?i)\\b(?:from|join)\\s+([a-z_][a-z0-9_]*)");
+    private static final Pattern SQL_CTE = Pattern.compile(
+            "(?is)(?:\\bwith\\b|\\)\\s*,)\\s*([a-z_][a-z0-9_]*)\\s+as\\s*"
+                    + "(?:(?:not\\s+)?materialized\\s*)?\\(");
     private static final Pattern SQL_MUTATION = Pattern.compile(
             "(?i)\\b(?:insert|update|delete|merge|alter|drop|truncate|grant|revoke|copy|call|do)\\b");
     private static final Pattern DANGEROUS_EXPRESSION = Pattern.compile(
@@ -63,10 +66,16 @@ public class TicketJrxmlBundleCompiler {
         if (uploadedSources != null
                 && uploadedSources.size() == 1
                 && uploadedSources.containsKey(MASTER_FILENAME)) {
+            byte[] master = uploadedSources.get(MASTER_FILENAME);
+            if (!SUBREPORT_EXPRESSION.matcher(decodeUtf8(master)).find()) {
+                // A self-contained ticket owns its complete layout and must not
+                // inherit any of the built-in Principal/Compacta/Minimalista reports.
+                return compile(uploadedSources);
+            }
             var completed = new LinkedHashMap<String, byte[]>();
             for (String filename : REQUIRED_FILENAMES) {
                 if (MASTER_FILENAME.equals(filename)) {
-                    completed.put(filename, uploadedSources.get(filename));
+                    completed.put(filename, master);
                     continue;
                 }
                 var resource = new ClassPathResource(builtInResourceName(filename));
@@ -89,7 +98,10 @@ public class TicketJrxmlBundleCompiler {
     }
 
     public CompiledBundle compile(Map<String, byte[]> sources) {
-        if (sources == null || !sources.keySet().equals(REQUIRED_FILENAMES)) {
+        boolean standalone = sources != null
+                && sources.keySet().equals(Set.of(MASTER_FILENAME));
+        if (!standalone
+                && (sources == null || !sources.keySet().equals(REQUIRED_FILENAMES))) {
             throw new IllegalArgumentException("document_template_ticket_bundle_incomplete");
         }
         var compiled = new LinkedHashMap<String, CompiledReport>();
@@ -199,10 +211,15 @@ public class TicketJrxmlBundleCompiler {
                         && !normalized.contains("$P{TIENDA_ID}"))) {
             throw new IllegalArgumentException("document_template_ticket_query_forbidden");
         }
+        var cteNames = new java.util.HashSet<String>();
+        var ctes = SQL_CTE.matcher(normalized);
+        while (ctes.find()) {
+            cteNames.add(ctes.group(1).toLowerCase(java.util.Locale.ROOT));
+        }
         var tables = SQL_TABLE.matcher(normalized);
         while (tables.find()) {
             String table = tables.group(1).toLowerCase(java.util.Locale.ROOT);
-            if (!"lateral".equals(table) && !"lineas_fiscales".equals(table)
+            if (!"lateral".equals(table) && !cteNames.contains(table)
                     && !ALLOWED_TABLES.contains(table)) {
                 throw new IllegalArgumentException(
                         "document_template_ticket_query_forbidden");
@@ -212,6 +229,18 @@ public class TicketJrxmlBundleCompiler {
 
     private static byte[] masterWithPortableSubreportDirectory(byte[] source) {
         String report = decodeUtf8(source);
+        var slots = SUBREPORT_EXPRESSION.matcher(report);
+        int slotCount = 0;
+        while (slots.find()) {
+            slotCount++;
+        }
+        if (slotCount == 0) {
+            return source;
+        }
+        if (slotCount != 6) {
+            throw new IllegalArgumentException(
+                    "document_template_ticket_subreport_expression_invalid");
+        }
         String parameterDeclaration = "<parameter name=\""
                 + SUBREPORT_DIRECTORY_PARAMETER + "\"";
         if (!report.contains(parameterDeclaration)) {
@@ -225,9 +254,7 @@ public class TicketJrxmlBundleCompiler {
         }
         var matcher = SUBREPORT_EXPRESSION.matcher(report);
         var transformed = new StringBuffer();
-        int count = 0;
         while (matcher.find()) {
-            count++;
             String expression = matcher.group(2);
             String portableExpression = expression.contains(
                     "$P{" + SUBREPORT_DIRECTORY_PARAMETER + "}")
@@ -238,10 +265,6 @@ public class TicketJrxmlBundleCompiler {
                     matcher.group(1) + portableExpression + matcher.group(3)));
         }
         matcher.appendTail(transformed);
-        if (count != 6) {
-            throw new IllegalArgumentException(
-                    "document_template_ticket_subreport_expression_invalid");
-        }
         return transformed.toString().getBytes(StandardCharsets.UTF_8);
     }
 

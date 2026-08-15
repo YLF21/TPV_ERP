@@ -1,0 +1,382 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="ticekt_v1" language="java" columnCount="1" pageWidth="227" pageHeight="842" columnWidth="207" leftMargin="10" rightMargin="10" topMargin="5" bottomMargin="5" uuid="72e5b760-6648-49ab-8325-acde62b8ce51" ignorePagination="true">
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<parameter name="TIENDA_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["13b6fb74-3de0-3198-8166-cf4eeb249f7f"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<defaultValueExpression><![CDATA["04e5bdfb-4f14-3e39-a9cd-b9fa291461d9"]]></defaultValueExpression>
+	</parameter>
+	<query language="sql"><![CDATA[WITH cabecera AS (
+    SELECT
+        d.id AS documento_id,
+        COALESCE(NULLIF(TRIM(e.razon_social), ''), t.nombre) AS nombre_cabecera,
+        e.tax_id AS cif,
+        t.telefono,
+        t.email,
+        jsonb_extract_path_text(t.direccion, 'linea1') AS direccion,
+        jsonb_extract_path_text(t.direccion, 'codigoPostal') AS codigo_postal,
+        jsonb_extract_path_text(t.direccion, 'ciudad') AS ciudad,
+        jsonb_extract_path_text(t.direccion, 'pais') AS pais,
+        d.numero AS numero_ticket,
+        COALESCE(d.confirmado_en, d.creado_en) AS fecha_ticket,
+        d.total AS total_ticket,
+        ldt.contenido AS logo_contenido,
+        CAST(d.id AS varchar) AS contenido_qr,
+        COALESCE(cdi.observaciones_ticket, '') AS observacion_ticket,
+        c.nombre_fiscal AS nombre_cliente,
+        c.client_id AS codigo_cliente,
+        c.telefono AS telefono_cliente,
+        c.tarifa,
+        c.descuento AS porcentaje_descuento_cliente
+    FROM documento d
+    INNER JOIN tienda t ON t.id = d.tienda_id
+    INNER JOIN empresa e ON e.id = t.empresa_id
+    LEFT JOIN cliente c ON c.id = d.cliente_id
+    LEFT JOIN configuracion_documento_impreso_tienda cdi ON cdi.tienda_id = t.id
+    LEFT JOIN logo_documento_tienda ldt ON ldt.id = cdi.logo_id AND ldt.tienda_id = t.id
+    WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+      AND t.id = CAST($P{TIENDA_ID} AS uuid)
+),
+lineas AS (
+    SELECT
+        dl.documento_id,
+        dl.posicion,
+        dl.nombre AS articulo,
+        dl.cantidad,
+        dl.precio_unitario AS precio,
+        COALESCE(dl.descuento, 0::numeric) AS descuento_linea,
+        dl.precio_unitario * dl.cantidad AS importe_bruto,
+        GREATEST(dl.precio_unitario * dl.cantidad - dl.total, 0::numeric) AS importe_descuento,
+        dl.total AS total_linea
+    FROM documento_linea dl
+    WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+      AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')
+),
+totales AS (
+    SELECT
+        c.documento_id,
+        COALESCE(SUM(l.importe_bruto), 0::numeric) AS subtotal_bruto,
+        GREATEST(COALESCE(SUM(l.importe_bruto), 0::numeric) - c.total_ticket, 0::numeric) AS descuento_total
+    FROM cabecera c
+    LEFT JOIN lineas l ON l.documento_id = c.documento_id
+    GROUP BY c.documento_id, c.total_ticket
+),
+pago_origen AS (
+    SELECT
+        dp.documento_id,
+        dp.posicion,
+        COALESCE(mp.nombre, 'PAGO') AS metodo_pago,
+        dp.importe,
+        dp.entregado,
+        dp.cambio,
+        COALESCE(NULLIF(dp.autorizacion_tarjeta, ''), NULLIF(op.authorization_code, '')) AS autorizacion,
+        receipt.receipt_text
+    FROM documento_pago dp
+    LEFT JOIN metodo_pago mp ON mp.id = dp.metodo_pago_id
+    LEFT JOIN LATERAL (
+        SELECT pto.*
+        FROM payment_terminal_operation pto
+        WHERE pto.id = dp.terminal_cobro_id OR pto.document_payment_id = dp.id
+        ORDER BY pto.created_at DESC
+        LIMIT 1
+    ) op ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT ptr.receipt_text
+        FROM payment_terminal_receipt ptr
+        WHERE ptr.operation_id = op.id
+        ORDER BY ptr.updated_at DESC
+        LIMIT 1
+    ) receipt ON TRUE
+    WHERE dp.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+),
+pago_filas AS (
+    SELECT documento_id, posicion * 10 AS orden, metodo_pago AS etiqueta, importe AS importe FROM pago_origen
+    UNION ALL
+    SELECT documento_id, posicion * 10 + 1, 'Entregado', entregado FROM pago_origen WHERE entregado IS NOT NULL
+    UNION ALL
+    SELECT documento_id, posicion * 10 + 2, 'Cambio entregado', cambio FROM pago_origen WHERE cambio IS NOT NULL
+    UNION ALL
+    SELECT documento_id, posicion * 10 + 3, 'Autorización: ' || autorizacion, NULL::numeric FROM pago_origen WHERE autorizacion IS NOT NULL
+    UNION ALL
+    SELECT documento_id, posicion * 10 + 4, receipt_text, NULL::numeric FROM pago_origen WHERE receipt_text IS NOT NULL
+),
+pagos AS (
+    SELECT
+        documento_id,
+        string_agg(etiqueta, E'\n' ORDER BY orden) AS pago_etiquetas,
+        string_agg(CASE WHEN importe IS NULL THEN '' ELSE translate(to_char(importe, 'FM999999990.00'), '.', ',') || ' €' END, E'\n' ORDER BY orden) AS pago_importes
+    FROM pago_filas
+    GROUP BY documento_id
+),
+lineas_fiscales AS (
+    SELECT
+        dl.documento_id,
+        dl.porcentaje_impuesto,
+        dl.base,
+        dl.impuesto,
+        COALESCE(NULLIF(dl.regimen_impuesto, ''), licencia_actual.regimen_impuesto, 'IVA') AS regimen_impuesto,
+        ((COALESCE(UPPER(licencia_actual.perfil_comercial), '') = 'MINORISTA'
+          OR COALESCE(d.comentario_interno, '') ILIKE '%comerciante minorista%')
+          AND COALESCE(NULLIF(dl.regimen_impuesto, ''), licencia_actual.regimen_impuesto, 'IVA') = 'IGIC') AS impuesto_exento
+    FROM documento_linea dl
+    INNER JOIN documento d ON d.id = dl.documento_id
+    LEFT JOIN LATERAL (
+        SELECT l.regimen_impuesto, l.perfil_comercial
+        FROM licencia l
+        WHERE l.tienda_id = d.tienda_id AND l.activa = TRUE
+        ORDER BY l.valida_desde DESC NULLS LAST, l.importada_en DESC NULLS LAST
+        LIMIT 1
+    ) licencia_actual ON TRUE
+    WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+      AND dl.tipo_linea <> 'MANUAL_DISCOUNT'
+),
+impuesto_agrupado AS (
+    SELECT
+        documento_id,
+        CASE WHEN impuesto_exento THEN NULL ELSE porcentaje_impuesto END AS porcentaje_iva,
+        SUM(base) AS base_iva,
+        SUM(impuesto) AS cuota_iva,
+        regimen_impuesto,
+        impuesto_exento
+    FROM lineas_fiscales
+    WHERE porcentaje_impuesto IS NOT NULL OR impuesto_exento
+    GROUP BY documento_id, regimen_impuesto, impuesto_exento,
+             CASE WHEN impuesto_exento THEN NULL ELSE porcentaje_impuesto END
+),
+impuesto_filas AS (
+    SELECT
+        documento_id,
+        CASE
+            WHEN impuesto_exento THEN regimen_impuesto || ' EXENTO'
+            ELSE regimen_impuesto || ' ' || translate(to_char(porcentaje_iva, 'FM999990.##'), '.', ',') || '%'
+        END AS impuesto_nombre,
+        base_iva,
+        cuota_iva,
+        CASE WHEN impuesto_exento THEN -1::numeric ELSE porcentaje_iva END AS orden
+    FROM impuesto_agrupado
+),
+impuestos AS (
+    SELECT
+        documento_id,
+        string_agg(impuesto_nombre, E'\n' ORDER BY orden) AS impuesto_nombres,
+        string_agg(translate(to_char(base_iva, 'FM999999990.00'), '.', ',') || ' €', E'\n' ORDER BY orden) AS impuesto_bases,
+        string_agg(translate(to_char(cuota_iva, 'FM999999990.00'), '.', ',') || ' €', E'\n' ORDER BY orden) AS impuesto_cuotas
+    FROM impuesto_filas
+    GROUP BY documento_id
+)
+SELECT
+    c.nombre_cabecera, c.cif, c.telefono, c.email, c.direccion, c.codigo_postal, c.ciudad, c.pais,
+    c.numero_ticket, c.fecha_ticket, c.total_ticket, c.logo_contenido, c.contenido_qr, c.observacion_ticket,
+    c.nombre_cliente, c.codigo_cliente, c.telefono_cliente, c.tarifa, c.porcentaje_descuento_cliente,
+    l.posicion, l.articulo, l.cantidad, l.precio, l.descuento_linea, l.importe_bruto, l.importe_descuento, l.total_linea,
+    t.subtotal_bruto, t.descuento_total,
+    p.pago_etiquetas, p.pago_importes,
+    i.impuesto_nombres, i.impuesto_bases, i.impuesto_cuotas
+FROM cabecera c
+LEFT JOIN lineas l ON l.documento_id = c.documento_id
+LEFT JOIN totales t ON t.documento_id = c.documento_id
+LEFT JOIN pagos p ON p.documento_id = c.documento_id
+LEFT JOIN impuestos i ON i.documento_id = c.documento_id
+ORDER BY l.posicion NULLS LAST]]></query>
+	<field name="nombre_cabecera" class="java.lang.String"/>
+	<field name="cif" class="java.lang.String"/>
+	<field name="telefono" class="java.lang.String"/>
+	<field name="email" class="java.lang.String"/>
+	<field name="direccion" class="java.lang.String"/>
+	<field name="codigo_postal" class="java.lang.String"/>
+	<field name="ciudad" class="java.lang.String"/>
+	<field name="pais" class="java.lang.String"/>
+	<field name="numero_ticket" class="java.lang.String"/>
+	<field name="fecha_ticket" class="java.sql.Timestamp"/>
+	<field name="total_ticket" class="java.math.BigDecimal"/>
+	<field name="logo_contenido" class="byte[]"/>
+	<field name="contenido_qr" class="java.lang.String"/>
+	<field name="observacion_ticket" class="java.lang.String"/>
+	<field name="nombre_cliente" class="java.lang.String"/>
+	<field name="codigo_cliente" class="java.lang.String"/>
+	<field name="telefono_cliente" class="java.lang.String"/>
+	<field name="tarifa" class="java.lang.String"/>
+	<field name="porcentaje_descuento_cliente" class="java.math.BigDecimal"/>
+	<field name="posicion" class="java.lang.Integer"/>
+	<field name="articulo" class="java.lang.String"/>
+	<field name="cantidad" class="java.math.BigDecimal"/>
+	<field name="precio" class="java.math.BigDecimal"/>
+	<field name="descuento_linea" class="java.math.BigDecimal"/>
+	<field name="importe_bruto" class="java.math.BigDecimal"/>
+	<field name="importe_descuento" class="java.math.BigDecimal"/>
+	<field name="total_linea" class="java.math.BigDecimal"/>
+	<field name="subtotal_bruto" class="java.math.BigDecimal"/>
+	<field name="descuento_total" class="java.math.BigDecimal"/>
+	<field name="pago_etiquetas" class="java.lang.String"/>
+	<field name="pago_importes" class="java.lang.String"/>
+	<field name="impuesto_nombres" class="java.lang.String"/>
+	<field name="impuesto_bases" class="java.lang.String"/>
+	<field name="impuesto_cuotas" class="java.lang.String"/>
+	<background splitType="Stretch"/>
+	<title height="126" splitType="Stretch">
+		<element kind="image" uuid="0a613286-eef3-4382-b931-ed1e575935be" x="82" y="0" width="42" height="30" scaleImage="RetainShape" removeLineWhenBlank="true" hImageAlign="Center">
+			<printWhenExpression><![CDATA[$F{logo_contenido} != null && $F{logo_contenido}.length > 0]]></printWhenExpression>
+			<expression><![CDATA[new java.io.ByteArrayInputStream($F{logo_contenido})]]></expression>
+		</element>
+		<element kind="textField" uuid="3a7c06cb-cbd3-4eac-a075-822402d30d56" x="4" y="31" width="199" height="17" fontSize="12.0" textAdjust="ScaleFont" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{nombre_cabecera}]]></expression>
+		</element>
+		<element kind="textField" uuid="e39e8175-146c-4efe-859d-a72c19bb6bd4" x="4" y="49" width="199" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+			<expression><![CDATA[($F{cif} == null || $F{cif}.trim().isEmpty() ? "" : "CIF: " + $F{cif}.trim()) + ($F{telefono} == null || $F{telefono}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono}.trim())]]></expression>
+		</element>
+		<element kind="textField" uuid="e3afac92-cbd8-4519-90e1-cb93bc39027d" x="4" y="62" width="199" height="12" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Center">
+			<expression><![CDATA[($F{direccion} == null ? "" : $F{direccion}.trim()) + ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty() ? "" : " · " + $F{codigo_postal}.trim()) + ($F{ciudad} == null || $F{ciudad}.trim().isEmpty() ? "" : " " + $F{ciudad}.trim()) + ($F{pais} == null || $F{pais}.trim().isEmpty() ? "" : " · " + $F{pais}.trim())]]></expression>
+		</element>
+		<element kind="textField" uuid="bedcf3e1-03ac-468b-8354-12e39928e649" x="4" y="75" width="199" height="11" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+			<expression><![CDATA[$F{email} == null ? "" : $F{email}.trim()]]></expression>
+		</element>
+		<element kind="textField" uuid="a3e77851-10d0-4c48-b047-ed67dffefef5" x="4" y="87" width="199" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA["Factura simplificada: " + $F{numero_ticket}]]></expression>
+		</element>
+		<element kind="textField" uuid="690e85ee-593c-4bd4-ae5c-c2c13d3e34dc" x="4" y="100" width="199" height="11" fontSize="8.0" hTextAlign="Center">
+			<expression><![CDATA[new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($F{fecha_ticket})]]></expression>
+		</element>
+		<element kind="component" uuid="43fd485f-2b94-4b21-9888-df9f8112f3a4" x="27" y="112" width="153" height="14">
+			<component kind="barcode4j:Code128" textPosition="none">
+				<codeExpression><![CDATA[$F{numero_ticket}]]></codeExpression>
+			</component>
+		</element>
+	</title>
+	<columnHeader height="22" splitType="Stretch">
+		<element kind="line" uuid="45b8f4b0-2027-42ae-ad16-e3b414c7cb09" x="2" y="1" width="203" height="1">
+			<pen lineWidth="0.6"/>
+		</element>
+		<element kind="staticText" uuid="7884d5a3-131b-4a6c-a5a9-38f447b98bb8" x="3" y="5" width="145" height="13" fontSize="9.0" bold="true">
+			<text><![CDATA[Artículo]]></text>
+		</element>
+		<element kind="staticText" uuid="f38d443e-4168-4056-8ba2-74129f547d62" x="148" y="5" width="56" height="13" fontSize="9.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Importe]]></text>
+		</element>
+		<element kind="line" uuid="f4815047-6159-4481-8729-27568ddb6303" x="2" y="21" width="203" height="1">
+			<pen lineWidth="0.6"/>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="30" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{articulo} != null]]></printWhenExpression>
+			<element kind="textField" uuid="3bf20508-20ef-450b-87fa-acde478a4a2a" x="3" y="1" width="201" height="14" fontSize="9.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{articulo}]]></expression>
+			</element>
+			<element kind="textField" uuid="a23dcbff-206f-4a20-9b19-a8b74ced7dd1" x="8" y="16" width="139" height="12" fontSize="8.0">
+				<expression><![CDATA[$F{cantidad} == null || $F{precio} == null ? "" : $F{cantidad}.stripTrailingZeros().toPlainString() + " × ( " + new java.text.DecimalFormat("#,##0.00").format($F{precio}) + " € )"]]></expression>
+			</element>
+			<element kind="textField" uuid="fb315671-70f8-4123-b72b-d9959b868a55" x="148" y="16" width="56" height="12" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA[$F{importe_bruto} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{importe_bruto}) + " €"]]></expression>
+			</element>
+		</band>
+		<band height="14" splitType="Prevent">
+			<printWhenExpression><![CDATA[$F{importe_descuento} != null && $F{importe_descuento}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<element kind="textField" uuid="9f79a47e-a06f-4dd4-999a-f097a7987c7c" x="8" y="1" width="139" height="12" fontSize="8.0">
+				<expression><![CDATA["DESCUENTO " + new java.text.DecimalFormat("#,##0.##").format($F{descuento_linea}) + " %"]]></expression>
+			</element>
+			<element kind="textField" uuid="aa311737-9325-411a-a9ea-db46054888c4" x="148" y="1" width="56" height="12" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{importe_descuento}.negate()) + " €"]]></expression>
+			</element>
+		</band>
+	</detail>
+	<summary height="352" splitType="Stretch">
+		<element kind="line" uuid="f8f69da9-f809-4141-8c4f-445204a94cbc" x="2" y="1" width="203" height="1">
+			<pen lineWidth="0.6" lineStyle="Dashed"/>
+		</element>
+		<element kind="staticText" uuid="6b350206-c02d-488d-92e6-04ed834abfc8" x="3" y="5" width="135" height="12" fontSize="9.0">
+			<text><![CDATA[Subtotal antes de descuentos]]></text>
+		</element>
+		<element kind="textField" uuid="b38de1a3-17f7-499b-8350-a846117808f0" x="140" y="5" width="64" height="12" fontSize="9.0" hTextAlign="Right">
+			<expression><![CDATA[$F{subtotal_bruto} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{subtotal_bruto}) + " €"]]></expression>
+		</element>
+		<element kind="staticText" uuid="7d500318-4668-40b7-8fa3-5c0f303b0878" x="3" y="18" width="135" height="12" fontSize="9.0">
+			<text><![CDATA[Descuentos]]></text>
+		</element>
+		<element kind="textField" uuid="f79fe08d-3ce0-498f-9512-abac23bf2269" x="140" y="18" width="64" height="12" fontSize="9.0" hTextAlign="Right">
+			<expression><![CDATA[$F{descuento_total} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{descuento_total}.negate()) + " €"]]></expression>
+		</element>
+		<element kind="line" uuid="a9bd1ad8-dbd8-45dc-a20c-2be7edcf494c" x="2" y="33" width="203" height="1">
+			<pen lineWidth="0.6"/>
+		</element>
+		<element kind="staticText" uuid="607717e0-9aaa-462a-ae80-84163448880b" x="3" y="38" width="139" height="18" fontSize="13.0" bold="true">
+			<text><![CDATA[TOTAL A PAGAR]]></text>
+		</element>
+		<element kind="textField" uuid="c53b3447-39f1-43e6-a8d4-80835d63668a" x="139" y="36" width="65" height="21" fontSize="14.0" bold="true" hTextAlign="Right">
+			<expression><![CDATA[$F{total_ticket} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{total_ticket}) + " €"]]></expression>
+		</element>
+		<element kind="staticText" uuid="c9fa3201-d658-431c-8f56-b31e6aa0f277" x="3" y="66" width="201" height="13" fontSize="9.0" bold="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{pago_etiquetas} != null && !$F{pago_etiquetas}.trim().isEmpty()]]></printWhenExpression>
+			<text><![CDATA[FORMA DE PAGO]]></text>
+		</element>
+		<element kind="textField" uuid="2e6f606e-47eb-4cd3-81dc-bc52edeb3a44" x="3" y="81" width="143" height="48" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{pago_etiquetas}]]></expression>
+		</element>
+		<element kind="textField" uuid="5262f1b3-ad7f-4a21-9e77-6f07ae70a903" x="147" y="81" width="57" height="48" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Right">
+			<expression><![CDATA[$F{pago_importes}]]></expression>
+		</element>
+		<element kind="line" uuid="f8e97eb3-4e48-44c4-ac1f-d15524204840" x="2" y="134" width="203" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="49f27a95-ccad-4f16-ac6d-8161a0a2e8f9" x="3" y="138" width="84" height="12" fontSize="8.0" bold="true">
+			<text><![CDATA[Impuesto]]></text>
+		</element>
+		<element kind="staticText" uuid="7a8b9a4a-5b70-46e7-9a64-f976c625e356" x="87" y="138" width="58" height="12" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Base]]></text>
+		</element>
+		<element kind="staticText" uuid="df4179ac-e71d-4d17-897e-8f006189f8b7" x="146" y="138" width="58" height="12" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[Cuota]]></text>
+		</element>
+		<element kind="line" uuid="7b68963f-c156-4dbf-a06b-acde3aab0959" x="2" y="151" width="203" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="textField" uuid="c4c66d54-73f5-47f4-88c3-8c3991fde365" x="3" y="154" width="84" height="33" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{impuesto_nombres}]]></expression>
+		</element>
+		<element kind="textField" uuid="21ecbc48-19f7-4eb9-970d-7857bdac16c9" x="87" y="154" width="58" height="33" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Right">
+			<expression><![CDATA[$F{impuesto_bases}]]></expression>
+		</element>
+		<element kind="textField" uuid="5756a3dd-825e-44c9-8003-65f41ad2626c" x="146" y="154" width="58" height="33" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Right">
+			<expression><![CDATA[$F{impuesto_cuotas}]]></expression>
+		</element>
+		<element kind="line" uuid="5a068073-ce6a-4e9c-9fc7-d584358e6071" x="2" y="192" width="203" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="textField" uuid="50400ca4-acde-464b-8b51-862070304756" x="3" y="196" width="201" height="13" fontSize="9.0" removeLineWhenBlank="true" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$F{nombre_cliente} == null ? "" : $F{nombre_cliente}.trim()]]></expression>
+		</element>
+		<element kind="textField" uuid="f6ba42cc-f6f9-4724-99c7-c1ef05017c2d" x="3" y="210" width="201" height="12" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Center">
+			<expression><![CDATA[($F{codigo_cliente} == null || $F{codigo_cliente}.trim().isEmpty() ? "" : "Cód.: " + $F{codigo_cliente}.trim()) + ($F{telefono_cliente} == null || $F{telefono_cliente}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono_cliente}.trim()) + ($F{tarifa} == null || $F{tarifa}.trim().isEmpty() ? "" : " · " + $F{tarifa}.trim())]]></expression>
+		</element>
+		<element kind="textField" uuid="d9265e60-49d7-409c-b9bf-bd47a6fe4df2" x="3" y="223" width="201" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{porcentaje_descuento_cliente} != null && $F{porcentaje_descuento_cliente}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<expression><![CDATA["Descuento socio: " + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_cliente}) + "%"]]></expression>
+		</element>
+		<element kind="staticText" uuid="5058e582-e00a-46a3-bd18-916437ff5885" x="3" y="241" width="201" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{observacion_ticket} != null && !$F{observacion_ticket}.trim().isEmpty()]]></printWhenExpression>
+			<text><![CDATA[CONDICIONES DE DEVOLUCIÓN]]></text>
+		</element>
+		<element kind="line" uuid="12d4459f-0bd3-492c-b742-bfa69df15bee" x="2" y="254" width="203" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="textField" uuid="ff9393b1-e24c-4ba6-aa9f-10035779b68e" x="3" y="258" width="201" height="36" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{observacion_ticket}]]></expression>
+		</element>
+		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="65" y="297" width="76" height="45">
+			<component kind="barcode4j:QRCode">
+				<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
+			</component>
+		</element>
+		<element kind="staticText" uuid="cc188b24-3997-433b-a9af-340657f81e98" x="3" y="340" width="201" height="12" fontSize="9.0" hTextAlign="Center">
+			<text><![CDATA[Gracias por su compra v1]]></text>
+		</element>
+	</summary>
+</jasperReport>

@@ -58,7 +58,15 @@ public class DocumentTemplateResolver {
         if (companyTemplate.isPresent()) {
             return companyTemplate.map(ResolvedDocumentTemplate::from);
         }
-        return templates.findActiveForSystem(type, format)
+        var systemTemplate = templates.findActiveForSystem(type, format)
                 .map(ResolvedDocumentTemplate::from);
+        if (systemTemplate.isPresent()) {
+            return systemTemplate;
+        }
+        if (type == DocumentTemplateType.TICKET
+                && format == DocumentTemplateFormat.TICKET_80) {
+            return Optional.of(ResolvedDocumentTemplate.builtInTicket());
+        }
+        return Optional.empty();
     }
 }

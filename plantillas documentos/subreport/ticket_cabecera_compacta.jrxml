@@ -188,7 +188,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 		</element>
 	</title>
 	<detail>
-		<band height="135" splitType="Stretch">
+		<band height="147" splitType="Stretch">
 			<element kind="textField" uuid="d5a13582-e483-406b-8b13-0bf1ee570c6a" positionType="Float" x="5" y="3" width="197" height="17" fontSize="10.5" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
 				<expression><![CDATA[$F{nombre_cabecera}]]></expression>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -196,14 +196,14 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="textField" uuid="e049cb9b-b1ce-4584-b328-6ae23d6c8429" positionType="Float" x="5" y="80" width="197" height="14" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" bold="true" hTextAlign="Center">
+			<element kind="textField" uuid="e049cb9b-b1ce-4584-b328-6ae23d6c8429" positionType="Float" x="5" y="83" width="197" height="14" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" bold="true" hTextAlign="Center">
 				<expression><![CDATA["Factura simplificada:  " + $F{numero_ticket}]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="21" y="99" width="165" height="24" style="BarcodeCentrado">
+			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="8" y="105" width="191" height="30" style="BarcodeCentrado">
 				<component kind="barcode4j:Code128" textPosition="none">
 					<codeExpression><![CDATA[$F{numero_ticket}]]></codeExpression>
 				</component>
@@ -256,11 +256,6 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
-			</element>
-			<element kind="line" uuid="b28e28d5-caf4-4651-83a6-06824da48447" x="5" y="130" width="197" height="1">
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
-				<property name="com.jaspersoft.studio.unit.x" value="px"/>
-				<pen lineWidth="0.5" lineStyle="Solid"/>
 			</element>
 		</band>
 	</detail>

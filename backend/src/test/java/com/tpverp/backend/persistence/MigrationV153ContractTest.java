@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV151ContractTest {
+class MigrationV153ContractTest {
 
     @Test
     void createsGenericPerFormatOriginsAndPreservesExistingSelections() throws Exception {
         try (var input = getClass().getResourceAsStream(
-                "/db/migration/V151__origen_plantilla_documento_por_formato.sql")) {
+                "/db/migration/V153__origen_plantilla_documento_por_formato.sql")) {
             assertThat(input).isNotNull();
             String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8);
             assertThat(sql)

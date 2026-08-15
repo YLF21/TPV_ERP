@@ -7,6 +7,7 @@ import com.tpverp.backend.document.template.DocumentTemplateOrigin;
 import com.tpverp.backend.document.template.DocumentTemplatePresentationService;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.DocumentTemplateCatalogService;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -40,6 +41,7 @@ public class StoreDocumentPrintConfigurationService {
     private final AuditService audit;
     private final Clock clock;
     private DocumentTemplatePresentationService templatePresentations;
+    private final DocumentTemplateCatalogService documentTemplates;
 
     public StoreDocumentPrintConfigurationService(
             CurrentOrganization organization,
@@ -47,13 +49,15 @@ public class StoreDocumentPrintConfigurationService {
             StoreDocumentLogoRepository logos,
             DocumentTemplateResolver templates,
             AuditService audit,
-            Clock clock) {
+            Clock clock,
+            DocumentTemplateCatalogService documentTemplates) {
         this.organization = organization;
         this.settings = settings;
         this.logos = logos;
         this.templates = templates;
         this.audit = audit;
         this.clock = clock;
+        this.documentTemplates = documentTemplates;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -88,6 +92,7 @@ public class StoreDocumentPrintConfigurationService {
                 .orElseGet(() -> new StoreDocumentPrintSettings(storeId));
         value.useTicketStyle(style);
         settings.save(value);
+        documentTemplates.useBuiltInCurrentStoreTicket();
         audit.record("STORE_TICKET_PRINT_STYLE_UPDATED", AuditResult.EXITO,
                 Map.of("storeId", storeId.toString(), "style", style.name()));
         return view(storeId, value);
@@ -116,6 +121,9 @@ public class StoreDocumentPrintConfigurationService {
         value.useTicketTemplateOrigin(origin);
         value.useTicketStyle(style);
         settings.save(value);
+        if (origin == TicketTemplateOrigin.INTEGRATED) {
+            documentTemplates.useBuiltInCurrentStoreTicket();
+        }
         audit.record("STORE_TICKET_PRINT_PRESENTATION_UPDATED", AuditResult.EXITO,
                 Map.of("storeId", storeId.toString(),
                         "origin", origin.name(), "style", style.name()));

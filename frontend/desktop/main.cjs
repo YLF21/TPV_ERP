@@ -818,6 +818,13 @@ async function printTicket(ticket, config) {
     return structuredError("PRINTER_NOT_CONFIGURED", "Impresora no configurada");
   }
 
+  // Microsoft Print to PDF uses the interactive PORTPROMPT port and cannot
+  // complete Electron's silent webContents.print flow. Reuse the ticket PDF
+  // exporter so the operator can choose the destination file explicitly.
+  if (isMicrosoftPrintToPdf(printerName)) {
+    return exportTicketPdf(ticket, renderedPdfDefaultFileName(ticket));
+  }
+
   let jasperPdf;
   try {
     jasperPdf = renderedPdfBuffer(ticket);

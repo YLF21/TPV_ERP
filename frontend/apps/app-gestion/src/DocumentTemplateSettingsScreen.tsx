@@ -7,6 +7,7 @@ import {
   loadDocumentTemplateCatalog,
   loadDocumentTemplatePresentation,
   saveDocumentTemplatePresentation,
+  reactivateDocumentTemplate,
   uploadDocumentTemplateArtifact,
   type DocumentTemplateCatalog,
   type DocumentTemplateFormat,
@@ -51,6 +52,9 @@ const ticketBundleFilenames = new Set([
 
 export function documentTemplateArtifactFiles(type: DocumentTemplateType, files: File[]): File[] {
   if (type !== "TICKET") return files;
+  if (files.length === 1 && files[0].name.toLowerCase().endsWith(".jrxml")) {
+    return files;
+  }
   return files.filter((file) => ticketBundleFilenames.has(file.name.toLowerCase()));
 }
 
@@ -85,11 +89,16 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     useState<TicketTemplateOrigin>("INTEGRATED");
   const [documentTemplateOrigin, setDocumentTemplateOrigin] =
     useState<DocumentTemplateOrigin>("INTEGRATED");
+  const [savedTicketStyle, setSavedTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
   const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET" || selectedType === "VALE"
     ? "TICKET_80"
     : selectedType === "ALBARAN_VENTA" ? "A4" : selectedFormat;
+  const selectedTicketPresentationIsActive = selectedType === "TICKET"
+    && (ticketTemplateOrigin === "INTEGRATED"
+      ? catalog?.effective?.builtIn === true && ticketStyle === savedTicketStyle
+      : catalog?.effective?.builtIn === false);
 
   function suggestedCode(type: DocumentTemplateType, format: DocumentTemplateFormat) {
     if (type === "FACTURA_VENTA" && format === "TICKET_80") return "FACTURA_TICKET_80";
@@ -124,7 +133,9 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     if (selectedType !== "TICKET") return;
     void loadStoreDocumentPrintConfiguration(session.accessToken, request)
       .then((value) => {
-        setTicketStyle(value.ticketStyle ?? "PRINCIPAL");
+        const style = value.ticketStyle ?? "PRINCIPAL";
+        setTicketStyle(style);
+        setSavedTicketStyle(style);
         setTicketTemplateOrigin(value.ticketTemplateOrigin ?? "INTEGRATED");
       })
       .catch((error) => setMessage({
@@ -162,8 +173,10 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         ticketTemplateOrigin, ticketStyle, session.accessToken, request,
       );
       setTicketStyle(value.ticketStyle);
+      setSavedTicketStyle(value.ticketStyle);
       setTicketTemplateOrigin(value.ticketTemplateOrigin);
       setMessage({ kind: "success", text: t("gestion.documentTemplates.ticketStyleSaved") });
+      await refresh("TICKET", "TICKET_80");
     } catch (error) {
       setMessage({
         kind: "error",
@@ -250,6 +263,21 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     }
   }
 
+  async function reactivate(template: DocumentTemplateView) {
+    if (!canManage || busyId || !template.reactivatable) return;
+    setBusyId(template.id);
+    setMessage(null);
+    try {
+      await reactivateDocumentTemplate(template.id, session.accessToken, request);
+      setMessage({ kind: "success", text: t("gestion.documentTemplates.reactivated") });
+      await refresh();
+    } catch (error) {
+      setMessage({ kind: "error", text: failureMessage(error, t("gestion.documentTemplates.reactivateError")) });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function download(template: DocumentTemplateView) {
     setMessage(null);
     try {
@@ -319,9 +347,30 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
           </h3>
         </div>
         <dl>
+          <div>
+            <dt>{t("gestion.documentTemplates.activeTemplate")}</dt>
+            <dd>{loading || !catalog?.effective
+              ? "-"
+              : (() => {
+                  const active = catalog.storeTemplates.find(
+                    (template) => template.id === catalog.effective?.id,
+                  );
+                  return active
+                    ? `v${catalog.effective.version} · ${active.name}`
+                    : `${t("gestion.documentTemplates.defaultTemplate")} · v${catalog.effective.version}`;
+                })()}</dd>
+          </div>
           <div><dt>{t("gestion.documentTemplates.version")}</dt><dd>{catalog?.effective?.version ?? "-"}</dd></div>
           <div><dt>{t("gestion.documentTemplates.origin")}</dt><dd>{originLabel(catalog?.effective?.scope, t)}</dd></div>
           <div><dt>{t("gestion.documentTemplates.schema")}</dt><dd>{catalog?.effective?.schemaVersion ?? "-"}</dd></div>
+          {selectedType === "TICKET" && (
+            <div>
+              <dt>{t("gestion.documentTemplates.activeTicketStyle")}</dt>
+              <dd>{catalog?.effective?.builtIn
+                ? t(`gestion.documentTemplates.ticketStyle.${savedTicketStyle}`)
+                : t("gestion.documentTemplates.customTicketTemplate")}</dd>
+            </div>
+          )}
         </dl>
       </section>
 
@@ -379,7 +428,9 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         <section className="gestion-ticket-style-selector" aria-labelledby="ticket-style-title">
           <div className="gestion-ticket-style-copy">
             <h3 id="ticket-style-title">{t("gestion.documentTemplates.ticketStyle")}</h3>
-            <p>{t("gestion.documentTemplates.ticketStyleHelp")}</p>
+            <p>{catalog?.effective?.builtIn
+              ? t("gestion.documentTemplates.ticketStyleHelp")
+              : t("gestion.documentTemplates.ticketStyleReplacesCustomHelp")}</p>
           </div>
           {ticketTemplateOrigin === "INTEGRATED" ? (
             <figure className="gestion-ticket-style-preview">
@@ -426,8 +477,16 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                 </select>
               </label>
             )}
-            <button type="button" disabled={!canManage || busyId !== null} onClick={() => void updateTicketPresentation()}>
-              {t("gestion.documentTemplates.ticketStyleSave")}
+            <button
+              type="button"
+              disabled={!canManage || busyId !== null || selectedTicketPresentationIsActive}
+              onClick={() => void updateTicketPresentation()}
+            >
+              {selectedTicketPresentationIsActive
+                ? t("gestion.documentTemplates.ticketStyleActive")
+                : ticketTemplateOrigin === "INTEGRATED" && catalog?.effective?.builtIn === false
+                  ? t("gestion.documentTemplates.ticketStyleReplace")
+                  : t("gestion.documentTemplates.ticketStyleSave")}
             </button>
           </div>
         </section>
@@ -488,6 +547,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
               </label>
               {template.sha256 && <button type="button" onClick={() => void download(template)}>{t("gestion.documentTemplates.download")}</button>}
               {template.status === "VALIDATED" && <button type="button" className="primary" disabled={busyId !== null} onClick={() => void activate(template)}>{t("gestion.documentTemplates.activate")}</button>}
+              {template.reactivatable && <button type="button" className="primary" disabled={busyId !== null} onClick={() => void reactivate(template)}>{t("gestion.documentTemplates.reactivate")}</button>}
             </div>
           </article>
         ))}

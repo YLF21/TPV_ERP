@@ -97,6 +97,114 @@ class DocumentTemplateCatalogServiceTest {
         assertThat(result.status()).isEqualTo(DocumentTemplateStatus.ACTIVE);
         assertThat(previous.getStatus()).isEqualTo(DocumentTemplateStatus.RETIRED);
         assertThat(previous.getRetiredAt()).isEqualTo(NOW);
+        assertThat(previous.canReactivate()).isFalse();
+    }
+
+    @Test
+    void selectingABuiltInTicketDesignRetiresTheActiveCustomTicket() {
+        var store = DocumentTemplateTest.store();
+        var active = validated(DocumentTemplate.storeDraft(
+                store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80,
+                "TICKET_80", 2, "Personalizada", null, NOW.minusSeconds(300)));
+        active.activate(NOW.minusSeconds(200));
+        when(organization.currentStore()).thenReturn(store);
+        when(templates.findActiveStoreTemplateForUpdate(
+                store.getId(), DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(Optional.of(active));
+        when(templates.saveAndFlush(any(DocumentTemplate.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.useBuiltInCurrentStoreTicket();
+
+        assertThat(active.getStatus()).isEqualTo(DocumentTemplateStatus.RETIRED);
+        assertThat(active.getRetiredAt()).isEqualTo(NOW);
+        assertThat(active.canReactivate()).isTrue();
+        verify(audit).record(
+                org.mockito.ArgumentMatchers.eq("DOCUMENT_TEMPLATE_RETIRED"),
+                org.mockito.ArgumentMatchers.eq(AuditResult.EXITO), any());
+    }
+
+    @Test
+    void reactivatesOnlyATicketRetiredBySelectingABuiltInDesign() {
+        var store = DocumentTemplateTest.store();
+        var retired = validated(DocumentTemplate.storeDraft(
+                store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80,
+                "TICKET_80", 2, "Personalizada", null, NOW.minusSeconds(300)));
+        retired.activate(NOW.minusSeconds(200));
+        retired.retire(NOW.minusSeconds(100),
+                DocumentTemplateRetirementReason.BUILT_IN_DESIGN_SELECTED);
+        when(organization.currentStore()).thenReturn(store);
+        when(templates.findStoreTemplateForUpdate(
+                retired.getId(), store.getEmpresa().getId(), store.getId()))
+                .thenReturn(Optional.of(retired));
+        when(templates.findMaxVersionForStore(store.getId(), "TICKET_80"))
+                .thenReturn(2);
+        when(templates.findActiveStoreTemplateForUpdate(
+                store.getId(), DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(Optional.empty());
+        when(templates.saveAndFlush(any(DocumentTemplate.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = service.reactivateCurrentStoreTemplate(retired.getId());
+
+        assertThat(result.status()).isEqualTo(DocumentTemplateStatus.ACTIVE);
+        assertThat(result.reactivatable()).isFalse();
+        assertThat(retired.getRetiredAt()).isNull();
+        assertThat(retired.getRetirementReason()).isNull();
+        verify(audit).record(
+                org.mockito.ArgumentMatchers.eq("DOCUMENT_TEMPLATE_REACTIVATED"),
+                org.mockito.ArgumentMatchers.eq(AuditResult.EXITO), any());
+    }
+
+    @Test
+    void exposesReactivationOnlyForTheLatestVersion() {
+        var store = DocumentTemplateTest.store();
+        var previous = retiredBuiltInTicket(store, 4);
+        var latest = retiredBuiltInTicket(store, 5);
+        when(organization.currentStore()).thenReturn(store);
+        when(resolver.findEffective(
+                store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80))
+                .thenReturn(Optional.empty());
+        when(templates.findAllForStore(store.getId()))
+                .thenReturn(java.util.List.of(latest, previous));
+
+        var catalog = service.currentStoreCatalog(
+                DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80);
+
+        assertThat(catalog.storeTemplates())
+                .extracting(DocumentTemplateCatalogService.TemplateView::version,
+                        DocumentTemplateCatalogService.TemplateView::reactivatable)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(5, true),
+                        org.assertj.core.groups.Tuple.tuple(4, false));
+    }
+
+    @Test
+    void rejectsReactivationOfAnOlderVersion() {
+        var store = DocumentTemplateTest.store();
+        var previous = retiredBuiltInTicket(store, 4);
+        when(organization.currentStore()).thenReturn(store);
+        when(templates.findStoreTemplateForUpdate(
+                previous.getId(), store.getEmpresa().getId(), store.getId()))
+                .thenReturn(Optional.of(previous));
+        when(templates.findMaxVersionForStore(store.getId(), "TICKET_80"))
+                .thenReturn(5);
+
+        assertThatThrownBy(() -> service.reactivateCurrentStoreTemplate(previous.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("document_template_not_reactivatable");
+    }
+
+    private static DocumentTemplate retiredBuiltInTicket(
+            com.tpverp.backend.organization.Store store, int version) {
+        var template = validated(DocumentTemplate.storeDraft(
+                store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80,
+                "TICKET_80", version, "Personalizada " + version, null,
+                NOW.minusSeconds(300L + version)));
+        template.activate(NOW.minusSeconds(200L + version));
+        template.retire(NOW.minusSeconds(100L + version),
+                DocumentTemplateRetirementReason.BUILT_IN_DESIGN_SELECTED);
+        return template;
     }
 
     private static DocumentTemplate validated(DocumentTemplate template) {

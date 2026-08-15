@@ -34,6 +34,7 @@ export type DocumentTemplateView = {
   validatedAt: string | null;
   activatedAt: string | null;
   retiredAt: string | null;
+  reactivatable: boolean;
 };
 
 export type DocumentTemplateCatalog = {
@@ -120,6 +121,17 @@ export function activateDocumentTemplate(
 ) {
   return request<DocumentTemplateView>(
     `/document-templates/${encodeURIComponent(templateId)}/activate`,
+    { method: "POST", token },
+  );
+}
+
+export function reactivateDocumentTemplate(
+  templateId: string,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplateView>(
+    `/document-templates/${encodeURIComponent(templateId)}/reactivate`,
     { method: "POST", token },
   );
 }

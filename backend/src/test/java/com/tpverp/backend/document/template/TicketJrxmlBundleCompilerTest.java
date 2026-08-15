@@ -44,6 +44,63 @@ class TicketJrxmlBundleCompilerTest {
     }
 
     @Test
+    void compilesASelfContainedTicketWithoutAddingBuiltInSubreports() throws Exception {
+        byte[] source = standaloneTicket();
+
+        var bundle = compiler.compileUpload(java.util.Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME, source));
+
+        assertThat(bundle.reports()).containsOnlyKeys(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME);
+        assertThat(bundle.reports().get(TicketJrxmlBundleCompiler.MASTER_FILENAME).source())
+                .containsExactly(source);
+        assertThat(bundle.reports().get(TicketJrxmlBundleCompiler.MASTER_FILENAME).compiled())
+                .isNotEmpty();
+    }
+
+    @Test
+    void allowsReadOnlyCommonTableExpressionsInASelfContainedTicket() {
+        byte[] source = standaloneTicketWithQuery("""
+                WITH cabecera AS (
+                    SELECT d.id AS documento_id
+                    FROM documento d
+                    WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+                ),
+                lineas AS (
+                    SELECT dl.documento_id, dl.nombre
+                    FROM documento_linea dl
+                    INNER JOIN cabecera c ON c.documento_id = dl.documento_id
+                )
+                SELECT c.documento_id, l.nombre
+                FROM cabecera c
+                LEFT JOIN lineas l ON l.documento_id = c.documento_id
+                """);
+
+        var bundle = compiler.compileUpload(java.util.Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME, source));
+
+        assertThat(bundle.reports()).containsOnlyKeys(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME);
+    }
+
+    @Test
+    void stillRejectsAnUnauthorizedPhysicalTableBehindACommonTableExpression() {
+        byte[] source = standaloneTicketWithQuery("""
+                WITH datos AS (
+                    SELECT s.id
+                    FROM secretos s
+                    WHERE s.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+                )
+                SELECT id FROM datos
+                """);
+
+        assertThatThrownBy(() -> compiler.compileUpload(java.util.Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME, source)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("document_template_ticket_query_forbidden");
+    }
+
+    @Test
     void rejectsAnIncompleteBundleBeforeCompilation() throws Exception {
         var sources = repositorySources();
         sources.remove("ticket_pie_minimalista.jrxml");
@@ -77,5 +134,33 @@ class TicketJrxmlBundleCompilerTest {
             }
         }
         return sources;
+    }
+
+    private static byte[] standaloneTicket() {
+        return standaloneTicketWithQuery("""
+                SELECT 1 AS dummy
+                FROM documento d
+                WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+                """);
+    }
+
+    private static byte[] standaloneTicketWithQuery(String query) {
+        return """
+                <jasperReport name="standalone_ticket" language="java"
+                    pageWidth="227" pageHeight="842" columnWidth="207"
+                    leftMargin="10" rightMargin="10" topMargin="5" bottomMargin="5">
+                    <parameter name="TIENDA_ID" class="java.lang.String"/>
+                    <parameter name="DOCUMENTO_ID" class="java.lang.String"/>
+                    <query language="sql"><![CDATA[%s]]></query>
+                    <field name="dummy" class="java.lang.Integer"/>
+                    <detail>
+                        <band height="20">
+                            <element kind="staticText" x="0" y="0" width="207" height="20">
+                                <text><![CDATA[MI TICKET PERSONALIZADO]]></text>
+                            </element>
+                        </band>
+                    </detail>
+                </jasperReport>
+                """.formatted(query).getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 }
