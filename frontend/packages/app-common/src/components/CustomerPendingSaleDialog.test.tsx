@@ -1536,7 +1536,10 @@ describe("CustomerPendingSaleDialog", () => {
     const amount = view.container.querySelector<HTMLInputElement>(
       ".sale-checkout-entry > label input",
     )!;
-    await waitFor(() => expect(amount.value).toBe("10,00"));
+    await waitFor(() => {
+      expect(amount.disabled).toBe(false);
+      expect(amount.value).toBe("10,00");
+    });
     fireEvent.keyDown(amount, { key: "Enter" });
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({
