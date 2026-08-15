@@ -41,7 +41,25 @@ class StoreDocumentPrintConfigurationControllerTest {
                 .andExpect(jsonPath("$.deliveryNoteObservations").value("Albaran"))
                 .andExpect(jsonPath("$.voucherObservations").value("Vale"))
                 .andExpect(jsonPath("$.ticketStyle").value("PRINCIPAL"))
-                .andExpect(jsonPath("$.ticketTemplateOrigin").value("INTEGRATED"));
+                .andExpect(jsonPath("$.ticketTemplateOrigin").value("INTEGRATED"))
+                .andExpect(jsonPath("$.showStoreName").value(true));
+    }
+
+    @Test
+    void administratorCanHideTheStoreName() throws Exception {
+        var storeId = UUID.randomUUID();
+        when(service.updateStoreNameVisibility(false)).thenReturn(
+                new StoreDocumentPrintConfigurationService.Configuration(
+                        storeId, null, null, null, null, null,
+                        TicketPrintStyle.PRINCIPAL, TicketTemplateOrigin.INTEGRATED, false));
+
+        mvc.perform(put("/api/v1/store-document-print-configuration/store-name-visibility")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"showStoreName\":false}")
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.showStoreName").value(false));
     }
 
     @Test

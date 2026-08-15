@@ -20,10 +20,16 @@
 		<defaultValueExpression><![CDATA["58109209-2548-4c19-9c4e-6f47c541035b"]]></defaultValueExpression>
 	</parameter>
 	<query language="sql"><![CDATA[SELECT
-    COALESCE(
-        NULLIF(TRIM(e.razon_social), ''),
-        t.nombre
-    ) AS nombre_cabecera,
+	    CASE
+	        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+	            THEN COALESCE(NULLIF(TRIM(t.nombre), ''), NULLIF(TRIM(e.razon_social), ''))
+	        ELSE COALESCE(NULLIF(TRIM(e.razon_social), ''), NULLIF(TRIM(t.nombre), ''))
+	    END AS nombre_cabecera,
+	    CASE
+	        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+	            THEN NULLIF(TRIM(e.razon_social), '')
+	        ELSE NULL
+	    END AS nombre_empresa_secundario,
 
     t.nombre AS tienda,
     t.codigo_tienda,
@@ -89,6 +95,10 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 		<property name="com.jaspersoft.studio.field.name" value="nombre_cabecera"/>
 		<property name="com.jaspersoft.studio.field.label" value="nombre_cabecera"/>
 		<property name="com.jaspersoft.studio.field.tree.path" value="tienda"/>
+	</field>
+	<field name="nombre_empresa_secundario" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="nombre_empresa_secundario"/>
+		<property name="com.jaspersoft.studio.field.label" value="nombre_empresa_secundario"/>
 	</field>
 	<field name="tienda" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="tienda"/>
@@ -188,7 +198,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 		</element>
 	</title>
 	<detail>
-		<band height="147" splitType="Stretch">
+		<band height="158" splitType="Stretch">
 			<element kind="textField" uuid="d5a13582-e483-406b-8b13-0bf1ee570c6a" positionType="Float" x="5" y="3" width="197" height="17" fontSize="10.5" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
 				<expression><![CDATA[$F{nombre_cabecera}]]></expression>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -196,14 +206,17 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="textField" uuid="e049cb9b-b1ce-4584-b328-6ae23d6c8429" positionType="Float" x="5" y="83" width="197" height="14" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" bold="true" hTextAlign="Center">
+			<element kind="textField" uuid="67621fb7-7112-4afc-a971-a8516937ba04" positionType="Float" x="5" y="20" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[$F{nombre_empresa_secundario}]]></expression>
+			</element>
+			<element kind="textField" uuid="e049cb9b-b1ce-4584-b328-6ae23d6c8429" positionType="Float" x="5" y="94" width="197" height="14" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" bold="true" hTextAlign="Center">
 				<expression><![CDATA["Factura simplificada:  " + $F{numero_ticket}]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="8" y="105" width="191" height="30" style="BarcodeCentrado">
+			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="8" y="116" width="191" height="30" style="BarcodeCentrado">
 				<component kind="barcode4j:Code128" textPosition="none">
 					<codeExpression><![CDATA[$F{numero_ticket}]]></codeExpression>
 				</component>
@@ -212,7 +225,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="textField" uuid="317bec0c-ecef-40e0-9ed2-a4b26fedb36a" positionType="Float" x="5" y="65" width="197" height="12" fontSize="8.0" textAdjust="StretchHeight" linkType="None" linkTarget="Self" removeLineWhenBlank="true" hTextAlign="Center">
+			<element kind="textField" uuid="317bec0c-ecef-40e0-9ed2-a4b26fedb36a" positionType="Float" x="5" y="76" width="197" height="12" fontSize="8.0" textAdjust="StretchHeight" linkType="None" linkTarget="Self" removeLineWhenBlank="true" hTextAlign="Center">
 				<expression><![CDATA[new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
     .format($F{fecha_ticket})]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
@@ -220,7 +233,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="textField" uuid="119dd9b7-866c-411e-aa63-6c8c43fb9695" positionType="Float" x="5" y="27" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+			<element kind="textField" uuid="119dd9b7-866c-411e-aa63-6c8c43fb9695" positionType="Float" x="5" y="38" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
 				<expression><![CDATA[($F{cif} == null ? "" : "CIF: " + $F{cif})
 +
 ($F{telefono} == null || $F{telefono}.trim().isEmpty()
@@ -230,7 +243,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="textField" uuid="201a7c8b-a787-4931-a7c7-ab9880e85ebe" positionType="Float" x="5" y="39" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+			<element kind="textField" uuid="201a7c8b-a787-4931-a7c7-ab9880e85ebe" positionType="Float" x="5" y="50" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
 				<expression><![CDATA[($F{direccion} == null || $F{direccion}.trim().isEmpty() ? "" : $F{direccion}.trim())
 + ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty()
     ? ""
@@ -248,7 +261,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="textField" uuid="1a158564-f566-4bb7-9d52-338da1f1cb61" positionType="Float" x="5" y="51" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+			<element kind="textField" uuid="1a158564-f566-4bb7-9d52-338da1f1cb61" positionType="Float" x="5" y="62" width="197" height="11" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
 				<expression><![CDATA[$F{email} == null || $F{email}.trim().isEmpty()
     ? ""
     : $F{email}.trim()]]></expression>

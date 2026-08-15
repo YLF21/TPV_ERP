@@ -100,7 +100,8 @@ public class InvoicePresentationSnapshotFactory {
         try {
             return mapper.writeValueAsString(
                     new InvoicePresentationSnapshot(
-                            4, profile, observations, accounts, template, ticketTemplate, logo));
+                            5, profile, observations, accounts, template, ticketTemplate, logo,
+                            storePresentation == null || storePresentation.showStoreName()));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("invoice_print_snapshot_serialization_failed", error);
         }
@@ -109,7 +110,7 @@ public class InvoicePresentationSnapshotFactory {
     public InvoicePresentationSnapshot read(String value) {
         try {
             var snapshot = mapper.readValue(value, InvoicePresentationSnapshot.class);
-            if (snapshot.schemaVersion() < 1 || snapshot.schemaVersion() > 4) {
+            if (snapshot.schemaVersion() < 1 || snapshot.schemaVersion() > 5) {
                 throw new IllegalStateException("invoice_print_snapshot_version_invalid");
             }
             return snapshot;

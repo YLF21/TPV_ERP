@@ -54,6 +54,7 @@ class StoreDocumentPrintConfigurationServiceTest {
 
         var observations = service.updateObservations(
                 "Gracias", "Factura legal", "Mercancia entregada", "Vale al portador");
+        var identity = service.updateStoreNameVisibility(false);
         var style = service.updateTicketStyle(TicketPrintStyle.MINIMALISTA);
         var origin = service.updateTicketPresentation(
                 TicketTemplateOrigin.INTEGRATED, TicketPrintStyle.COMPACTA);
@@ -63,13 +64,14 @@ class StoreDocumentPrintConfigurationServiceTest {
         assertThat(observations.invoiceObservations()).isEqualTo("Factura legal");
         assertThat(observations.deliveryNoteObservations()).isEqualTo("Mercancia entregada");
         assertThat(observations.voucherObservations()).isEqualTo("Vale al portador");
+        assertThat(identity.showStoreName()).isFalse();
         assertThat(style.ticketStyle()).isEqualTo(TicketPrintStyle.MINIMALISTA);
         assertThat(origin.ticketTemplateOrigin()).isEqualTo(TicketTemplateOrigin.INTEGRATED);
         assertThat(origin.ticketStyle()).isEqualTo(TicketPrintStyle.COMPACTA);
         assertThat(logo.storeId()).isEqualTo(storeId);
         verify(documentTemplates, org.mockito.Mockito.times(2))
                 .useBuiltInCurrentStoreTicket();
-        verify(audit, org.mockito.Mockito.times(4)).record(any(), any(), any());
+        verify(audit, org.mockito.Mockito.times(5)).record(any(), any(), any());
     }
 
     @Test

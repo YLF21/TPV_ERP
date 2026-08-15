@@ -40,6 +40,9 @@ public class StoreDocumentPrintSettings {
     @Column(name = "observaciones_vale", length = 2000)
     private String voucherObservations;
 
+    @Column(name = "mostrar_nombre_tienda", nullable = false)
+    private boolean showStoreName = true;
+
     @Version
     private long version;
 
@@ -56,6 +59,7 @@ public class StoreDocumentPrintSettings {
     public String getInvoiceObservations() { return invoiceObservations; }
     public String getDeliveryNoteObservations() { return deliveryNoteObservations; }
     public String getVoucherObservations() { return voucherObservations; }
+    public boolean isShowStoreName() { return showStoreName; }
     public TicketPrintStyle getTicketStyle() {
         return ticketStyle == null ? TicketPrintStyle.PRINCIPAL : ticketStyle;
     }
@@ -72,6 +76,7 @@ public class StoreDocumentPrintSettings {
         ticketTemplateOrigin = java.util.Objects.requireNonNull(
                 value, "ticketTemplateOrigin");
     }
+    public void showStoreName(boolean value) { showStoreName = value; }
 
     public void updateObservations(
             String ticket, String invoice, String deliveryNote, String voucher) {

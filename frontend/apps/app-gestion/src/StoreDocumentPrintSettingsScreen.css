@@ -1,0 +1,46 @@
+.gestion-document-name-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 17px;
+  border: 1px solid var(--gestion-border);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(18, 48, 78, .07);
+}
+
+.gestion-document-name-panel h3,
+.gestion-document-name-panel p {
+  margin: 0;
+}
+
+.gestion-document-name-panel p {
+  margin-top: 4px;
+  color: var(--gestion-muted);
+}
+
+.gestion-document-name-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 390px;
+}
+
+.gestion-document-name-control > span {
+  font-weight: 800;
+  color: #245f38;
+}
+
+.gestion-document-name-control > span.is-hidden {
+  color: var(--gestion-muted);
+}
+
+@media (max-width: 980px) {
+  .gestion-document-name-panel,
+  .gestion-document-name-control {
+    align-items: stretch;
+    flex-direction: column;
+    min-width: 0;
+  }
+}

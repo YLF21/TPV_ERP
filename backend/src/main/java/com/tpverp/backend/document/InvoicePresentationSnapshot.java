@@ -10,13 +10,26 @@ public record InvoicePresentationSnapshot(
         List<BankAccount> bankAccounts,
         TemplateReference template,
         TemplateReference ticketTemplate,
-        LogoReference logo) {
+        LogoReference logo,
+        Boolean showStoreName) {
 
     public InvoicePresentationSnapshot {
-        if (schemaVersion < 1 || schemaVersion > 4) {
+        if (schemaVersion < 1 || schemaVersion > 5) {
             throw new IllegalArgumentException("invoice_print_snapshot_version_invalid");
         }
         bankAccounts = bankAccounts == null ? List.of() : List.copyOf(bankAccounts);
+    }
+
+    public InvoicePresentationSnapshot(
+            int schemaVersion,
+            InvoiceFiscalProfile fiscalProfile,
+            String observations,
+            List<BankAccount> bankAccounts,
+            TemplateReference template,
+            TemplateReference ticketTemplate,
+            LogoReference logo) {
+        this(schemaVersion, fiscalProfile, observations, bankAccounts,
+                template, ticketTemplate, logo, Boolean.TRUE);
     }
 
     public InvoicePresentationSnapshot(
@@ -44,6 +57,10 @@ public record InvoicePresentationSnapshot(
             TemplateReference template,
             LogoReference logo) {
         this(schemaVersion, fiscalProfile, observations, bankAccounts, template, null, logo);
+    }
+
+    public boolean shouldShowStoreName() {
+        return showStoreName == null || showStoreName;
     }
 
     public record BankAccount(String bankName, String iban) {

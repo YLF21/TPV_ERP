@@ -145,5 +145,19 @@ class VoucherJasperRendererTest {
                     .contains("TPV ERP SL", "B12345678", "Calle Empresa 1", "928000000")
                     .doesNotContain("empresa@example.test");
         }
+
+        var companyOnlySnapshot = new VoucherPresentationSnapshot(
+                2, snapshot.observations(), snapshot.template(), snapshot.logo(),
+                snapshot.terminalName(), snapshot.traceability(), false);
+        when(snapshotFactory.read("{}")).thenReturn(companyOnlySnapshot);
+        when(snapshotFactory.logoDataUri(companyOnlySnapshot, store.getId())).thenReturn(null);
+        var companyOnly = service.render(voucher);
+        byte[] companyOnlyPdf = java.util.Base64.getDecoder().decode(
+                companyOnly.renderedPdf().base64());
+        try (var document = Loader.loadPDF(companyOnlyPdf)) {
+            assertThat(new PDFTextStripper().getText(document))
+                    .contains("TPV ERP SL")
+                    .doesNotContain("Tienda Centro");
+        }
     }
 }

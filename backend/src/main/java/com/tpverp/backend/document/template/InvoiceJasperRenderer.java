@@ -343,8 +343,14 @@ public class InvoiceJasperRenderer {
         documentNode.put("operationDate", document.getFecha().toString());
 
         var issuer = root.putObject("issuer");
+        boolean showStoreName = presentation.shouldShowStoreName();
+        root.put("showStoreName", showStoreName);
         issuer.put("tradeName", store.getNombreEfectivo());
         issuer.put("legalName", company.getRazonSocial());
+        issuer.put("headerPrimaryName", showStoreName
+                ? store.getNombreEfectivo() : company.getRazonSocial());
+        putNullable(issuer, "headerSecondaryName",
+                showStoreName ? company.getRazonSocial() : null);
         issuer.put("taxId", company.getTaxId());
         address(issuer.putObject("address"), company.getDomicilioFiscal());
         putNullable(issuer, "phone", company.getDomicilioFiscal().get("telefono"));

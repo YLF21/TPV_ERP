@@ -227,6 +227,9 @@ class InvoiceJasperRendererTest {
         assertThat(json.at("/observations").asText()).isEqualTo("Gracias");
         assertThat(json.at("/issuer/logoDataUri").asText())
                 .isEqualTo("data:image/png;base64,AA==");
+        assertThat(json.at("/showStoreName").asBoolean()).isTrue();
+        assertThat(json.at("/issuer/headerPrimaryName").asText()).isEqualTo("Tienda Centro");
+        assertThat(json.at("/issuer/headerSecondaryName").asText()).isEqualTo("TPV ERP SL");
         assertThat(json.at("/issuer/details").asText()).isEqualTo("""
                 NIF: B12345678
                 Calle Emisor 1
@@ -242,6 +245,17 @@ class InvoiceJasperRendererTest {
         assertThat(json.at("/totals/grossAmount").decimalValue())
                 .isEqualByComparingTo("10.00");
         assertThat(json.at("/totals/discountTotal").decimalValue()).isZero();
+
+        var companyOnlyJson = renderer.data(
+                fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
+                new InvoicePresentationSnapshot(
+                        5, InvoiceFiscalProfile.IVA, "Gracias", List.of(),
+                        null, null, null, false),
+                null, null);
+        assertThat(companyOnlyJson.at("/showStoreName").asBoolean()).isFalse();
+        assertThat(companyOnlyJson.at("/issuer/headerPrimaryName").asText())
+                .isEqualTo("TPV ERP SL");
+        assertThat(companyOnlyJson.at("/issuer/headerSecondaryName").isNull()).isTrue();
     }
 
     @Test

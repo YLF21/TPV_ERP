@@ -84,12 +84,18 @@ public class VoucherPrintService {
         voucherNode.put("status", voucher.status().name());
         root.put("currency", store.getMoneda());
         root.put("storeName", store.getNombreEfectivo());
+        boolean showStoreName = snapshot.shouldShowStoreName();
+        root.put("showStoreName", showStoreName);
         putNullable(root, "terminalName", snapshot.terminalName());
         putNullable(root, "observations", snapshot.observations());
 
         var issuer = root.putObject("issuer");
         issuer.put("tradeName", store.getNombreEfectivo());
         issuer.put("legalName", company.getRazonSocial());
+        issuer.put("headerPrimaryName", showStoreName
+                ? store.getNombreEfectivo() : company.getRazonSocial());
+        putNullable(issuer, "headerSecondaryName",
+                showStoreName ? company.getRazonSocial() : null);
         issuer.put("taxId", company.getTaxId());
         var fiscalAddress = company.getDomicilioFiscal();
         var address = issuer.putObject("address");

@@ -25,6 +25,7 @@ describe("StoreDocumentPrintSettingsScreen", () => {
       voucherObservations: "Vale",
       ticketStyle: "PRINCIPAL",
       ticketTemplateOrigin: "INTEGRATED",
+      showStoreName: true,
     };
     const request = vi.fn(async (_path: string, options?: { method?: string; body?: unknown }) =>
       options?.method === "PUT"
@@ -61,5 +62,36 @@ describe("StoreDocumentPrintSettingsScreen", () => {
         },
       },
     ));
+  });
+
+  it("hides the store name using the persisted store setting", async () => {
+    const initial = {
+      storeId: "store-1",
+      logo: null,
+      ticketObservations: null,
+      invoiceObservations: null,
+      deliveryNoteObservations: null,
+      voucherObservations: null,
+      ticketStyle: "PRINCIPAL",
+      ticketTemplateOrigin: "INTEGRATED",
+      showStoreName: true,
+    };
+    const request = vi.fn(async (_path: string, options?: { method?: string; body?: unknown }) =>
+      options?.method === "PUT" ? { ...initial, showStoreName: false } : initial);
+
+    render(<StoreDocumentPrintSettingsScreen
+      session={session}
+      storeName="Tienda Centro"
+      t={createTranslator("es")}
+      request={request as unknown as typeof apiRequest}
+    />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ocultar nombre de tienda" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/store-document-print-configuration/store-name-visibility",
+      { method: "PUT", token: "token", body: { showStoreName: false } },
+    ));
+    expect(await screen.findByText("Se muestra solo el nombre de empresa")).toBeTruthy();
   });
 });

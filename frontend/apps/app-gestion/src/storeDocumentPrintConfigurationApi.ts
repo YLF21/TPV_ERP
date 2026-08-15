@@ -17,6 +17,7 @@ export type StoreDocumentPrintConfiguration = {
   voucherObservations: string | null;
   ticketStyle: TicketPrintStyle;
   ticketTemplateOrigin: TicketTemplateOrigin;
+  showStoreName: boolean;
 };
 
 export type TicketPrintStyle = "PRINCIPAL" | "COMPACTA" | "MINIMALISTA";
@@ -74,6 +75,17 @@ export function saveStoreTicketStyle(
   return request<StoreDocumentPrintConfiguration>(
     "/store-document-print-configuration/ticket-style",
     { method: "PUT", token, body: { style } },
+  );
+}
+
+export function saveStoreNameVisibility(
+  showStoreName: boolean,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<StoreDocumentPrintConfiguration>(
+    "/store-document-print-configuration/store-name-visibility",
+    { method: "PUT", token, body: { showStoreName } },
   );
 }
 

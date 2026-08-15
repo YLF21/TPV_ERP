@@ -86,6 +86,20 @@ public class StoreDocumentPrintConfigurationService {
     }
 
     @Transactional
+    public Configuration updateStoreNameVisibility(boolean showStoreName) {
+        UUID storeId = organization.currentStore().getId();
+        var value = settings.findById(storeId)
+                .orElseGet(() -> new StoreDocumentPrintSettings(storeId));
+        value.showStoreName(showStoreName);
+        settings.save(value);
+        audit.record("STORE_DOCUMENT_PRINT_STORE_NAME_VISIBILITY_UPDATED",
+                AuditResult.EXITO,
+                Map.of("storeId", storeId.toString(),
+                        "showStoreName", Boolean.toString(showStoreName)));
+        return view(storeId, value);
+    }
+
+    @Transactional
     public Configuration updateTicketStyle(TicketPrintStyle style) {
         UUID storeId = organization.currentStore().getId();
         var value = settings.findById(storeId)
@@ -185,7 +199,7 @@ public class StoreDocumentPrintConfigurationService {
     public Presentation presentation(DocumentTemplateType type) {
         UUID storeId = organization.currentStore().getId();
         var value = settings.findById(storeId).orElse(null);
-        if (value == null) return new Presentation(null, null);
+        if (value == null) return new Presentation(null, null, true);
         String observations = switch (Objects.requireNonNull(type, "type")) {
             case TICKET -> value.getTicketObservations();
             case FACTURA_VENTA -> value.getInvoiceObservations();
@@ -198,7 +212,7 @@ public class StoreDocumentPrintConfigurationService {
                                 item.getId(), item.getContentType(), item.getSha256()))
                         .orElseThrow(() -> new IllegalStateException(
                                 "document_print_logo_not_found"));
-        return new Presentation(observations, logo);
+        return new Presentation(observations, logo, value.isShowStoreName());
     }
 
     @Transactional(readOnly = true)
@@ -228,7 +242,8 @@ public class StoreDocumentPrintConfigurationService {
                 value == null ? null : value.getDeliveryNoteObservations(),
                 value == null ? null : value.getVoucherObservations(),
                 value == null ? TicketPrintStyle.PRINCIPAL : value.getTicketStyle(),
-                effectiveTicketTemplateOrigin(value));
+                effectiveTicketTemplateOrigin(value),
+                value == null || value.isShowStoreName());
     }
 
     private TicketTemplateOrigin effectiveTicketTemplateOrigin(
@@ -305,14 +320,36 @@ public class StoreDocumentPrintConfigurationService {
             String deliveryNoteObservations,
             String voucherObservations,
             TicketPrintStyle ticketStyle,
-            TicketTemplateOrigin ticketTemplateOrigin) {
+            TicketTemplateOrigin ticketTemplateOrigin,
+            boolean showStoreName) {
+
+        public Configuration(
+                UUID storeId,
+                Logo logo,
+                String ticketObservations,
+                String invoiceObservations,
+                String deliveryNoteObservations,
+                String voucherObservations,
+                TicketPrintStyle ticketStyle,
+                TicketTemplateOrigin ticketTemplateOrigin) {
+            this(storeId, logo, ticketObservations, invoiceObservations,
+                    deliveryNoteObservations, voucherObservations, ticketStyle,
+                    ticketTemplateOrigin, true);
+        }
     }
 
     public record Logo(UUID id, String contentType, String sha256,
             Instant createdAt, String dataUri) {
     }
 
-    public record Presentation(String observations, LogoReference logo) {
+    public record Presentation(
+            String observations,
+            LogoReference logo,
+            boolean showStoreName) {
+
+        public Presentation(String observations, LogoReference logo) {
+            this(observations, logo, true);
+        }
     }
 
     public record LogoReference(UUID id, String contentType, String sha256) {

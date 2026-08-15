@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ApiError, apiRequest, type UserSession } from "@tpverp/app-common";
+import "./StoreDocumentPrintSettingsScreen.css";
 import {
   loadStoreDocumentPrintConfiguration,
   removeStoreDocumentLogo,
+  saveStoreNameVisibility,
   saveStoreDocumentObservations,
   uploadStoreDocumentLogo,
   type StoreDocumentPrintConfiguration,
@@ -38,7 +40,7 @@ export function StoreDocumentPrintSettingsScreen({
   const [pendingLogo, setPendingLogo] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"logo" | "observations" | null>(null);
+  const [busy, setBusy] = useState<"identity" | "logo" | "observations" | null>(null);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const canManage = session.permissions.includes("ADMIN");
 
@@ -133,6 +135,22 @@ export function StoreDocumentPrintSettingsScreen({
     }
   }
 
+  async function toggleStoreNameVisibility() {
+    if (!canManage || busy || !configuration) return;
+    setBusy("identity");
+    setMessage(null);
+    try {
+      apply(await saveStoreNameVisibility(
+        !configuration.showStoreName, session.accessToken, request,
+      ));
+      setMessage({ kind: "success", text: t("gestion.documentPrint.storeNameSaved") });
+    } catch (error) {
+      setMessage({ kind: "error", text: failureMessage(error, t("gestion.documentPrint.saveError")) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const preview = pendingPreview ?? configuration?.logo?.dataUri ?? null;
 
   return (
@@ -153,6 +171,31 @@ export function StoreDocumentPrintSettingsScreen({
 
       {loading ? <p className="gestion-document-print-loading">{t("common.loading")}</p> : (
         <>
+          <section className="gestion-document-name-panel" aria-labelledby="document-name-title">
+            <div>
+              <h3 id="document-name-title">{t("gestion.documentPrint.storeName")}</h3>
+              <p>{t("gestion.documentPrint.storeNameHelp")}</p>
+            </div>
+            <div className="gestion-document-name-control">
+              <span className={configuration?.showStoreName ? "is-visible" : "is-hidden"}>
+                {t(configuration?.showStoreName
+                  ? "gestion.documentPrint.storeNameVisible"
+                  : "gestion.documentPrint.storeNameHidden")}
+              </span>
+              <button
+                type="button"
+                className="gestion-primary-button"
+                aria-pressed={configuration?.showStoreName ?? true}
+                disabled={!canManage || busy !== null || !configuration}
+                onClick={() => void toggleStoreNameVisibility()}
+              >
+                {t(configuration?.showStoreName
+                  ? "gestion.documentPrint.hideStoreName"
+                  : "gestion.documentPrint.showStoreName")}
+              </button>
+            </div>
+          </section>
+
           <section className="gestion-document-logo-panel" aria-labelledby="document-logo-title">
             <div className={`gestion-document-logo-preview ${preview ? "has-logo" : ""}`}>
               {preview ? <img src={preview} alt={t("gestion.documentPrint.logoPreview")} /> : <span>{t("gestion.documentPrint.noLogo")}</span>}

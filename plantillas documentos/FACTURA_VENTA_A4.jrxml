@@ -101,6 +101,12 @@
 	<field name="issuerLegalName" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.legalName"/>
 	</field>
+	<field name="issuerHeaderPrimaryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerPrimaryName"/>
+	</field>
+	<field name="issuerHeaderSecondaryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerSecondaryName"/>
+	</field>
 	<field name="issuerTaxId" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.taxId"/>
 	</field>
@@ -236,9 +242,13 @@
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
 			<expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
 		</element>
-		<element kind="textField" uuid="d1c39aee-3df7-45bd-920b-120bd6b3fb0a" x="70" y="0" width="270" height="28" fontName="SansSerif" fontSize="15.0" blankWhenNull="true" bold="true">
+		<element kind="textField" uuid="d1c39aee-3df7-45bd-920b-120bd6b3fb0a" x="70" y="0" width="270" height="16" fontName="SansSerif" fontSize="11.0" textAdjust="ScaleFont" blankWhenNull="true" bold="true" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+			<expression><![CDATA[$F{issuerHeaderPrimaryName}]]></expression>
+		</element>
+		<element kind="textField" uuid="c9855f4d-4328-429a-9224-b747971fe91f" x="70" y="16" width="270" height="12" fontName="SansSerif" fontSize="10.0" textAdjust="ScaleFont" blankWhenNull="true" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$F{issuerHeaderSecondaryName}]]></expression>
 		</element>
 		<element kind="textField" uuid="f5d7a4bd-7d80-4df2-b35e-00655a44d8b1" x="70" y="28" width="270" height="90" fontName="SansSerif" fontSize="10.0" textAdjust="StretchHeight" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
@@ -246,9 +256,13 @@
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</element>
-		<element kind="textField" uuid="5926f4e9-a2ea-411e-bc42-04cb0c48a94f" x="0" y="0" width="270" height="28" fontName="SansSerif" fontSize="15.0" blankWhenNull="true" bold="true">
+		<element kind="textField" uuid="5926f4e9-a2ea-411e-bc42-04cb0c48a94f" x="0" y="0" width="270" height="16" fontName="SansSerif" fontSize="11.0" textAdjust="ScaleFont" blankWhenNull="true" bold="true" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+			<expression><![CDATA[$F{issuerHeaderPrimaryName}]]></expression>
+		</element>
+		<element kind="textField" uuid="7739b9c0-d728-4207-91f3-cee749ef9fab" x="0" y="16" width="270" height="12" fontName="SansSerif" fontSize="10.0" textAdjust="ScaleFont" blankWhenNull="true" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$F{issuerHeaderSecondaryName}]]></expression>
 		</element>
 		<element kind="textField" uuid="708fe5bb-cc16-4f89-b2da-de06a4057877" x="0" y="28" width="270" height="90" fontName="SansSerif" fontSize="10.0" textAdjust="StretchHeight" blankWhenNull="true">
 			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>

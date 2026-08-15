@@ -160,7 +160,8 @@ class InvoicePresentationSnapshotFactoryTest {
         factory.setTemplateResolver(templates);
         var snapshot = factory.read(factory.create());
 
-        assertThat(snapshot.schemaVersion()).isEqualTo(4);
+        assertThat(snapshot.schemaVersion()).isEqualTo(5);
+        assertThat(snapshot.shouldShowStoreName()).isTrue();
         assertThat(snapshot.fiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
         assertThat(snapshot.observations()).isEqualTo("Gracias por su confianza");
         assertThat(snapshot.bankAccounts()).containsExactly(
@@ -243,7 +244,8 @@ class InvoicePresentationSnapshotFactoryTest {
                 new StoreDocumentPrintConfigurationService.Presentation(
                         "Gracias por su compra",
                         new StoreDocumentPrintConfigurationService.LogoReference(
-                                logoId, "image/png", "c".repeat(64))));
+                                logoId, "image/png", "c".repeat(64)),
+                        false));
         var templateId = UUID.randomUUID();
         var templates = mock(DocumentTemplateResolver.class);
         when(templates.resolve(
@@ -271,6 +273,7 @@ class InvoicePresentationSnapshotFactoryTest {
         assertThat(snapshot.logo()).isEqualTo(
                 new InvoicePresentationSnapshot.LogoReference(
                         logoId, "image/png", "c".repeat(64)));
+        assertThat(snapshot.shouldShowStoreName()).isFalse();
         assertThat(snapshot.template().code()).isEqualTo("TICKET_80");
         verify(settings, never()).findById(companyId);
         verify(accounts, never())

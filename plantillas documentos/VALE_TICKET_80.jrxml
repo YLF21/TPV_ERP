@@ -63,6 +63,12 @@
 	<field name="issuerLegalName" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.legalName"/>
 	</field>
+	<field name="issuerHeaderPrimaryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerPrimaryName"/>
+	</field>
+	<field name="issuerHeaderSecondaryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerSecondaryName"/>
+	</field>
 	<field name="issuerTaxId" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.taxId"/>
 	</field>
@@ -87,34 +93,21 @@
 	<field name="traceabilityDocumentNumbers" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.traceabilityDocumentNumbers"/>
 	</field>
-	<title height="216" splitType="Stretch">
-		<element kind="image" uuid="c97309b4-d63b-4925-b7c4-63368fd1cf44" x="60" y="4" width="91" height="24" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+	<title height="50" splitType="Stretch">
+		<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+		<element kind="image" uuid="c97309b4-d63b-4925-b7c4-63368fd1cf44" x="17" y="2" width="177" height="46" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
 			<expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
 		</element>
-		<element kind="textField" uuid="240439de-c39e-4900-9f5c-09032496177e" x="8" y="4" width="195" height="22" fontName="SansSerif" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-			<expression><![CDATA[$F{storeName}]]></expression>
+	</title>
+	<pageHeader height="216" splitType="Stretch">
+		<element kind="textField" uuid="240439de-c39e-4900-9f5c-09032496177e" x="8" y="0" width="195" height="20" fontName="SansSerif" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{issuerHeaderPrimaryName}]]></expression>
 		</element>
-		<element kind="textField" uuid="b7ba96bb-dbd2-4857-87db-31bd2bf98661" x="8" y="29" width="195" height="12" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
-			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+		<element kind="textField" uuid="2cb0a9a7-0cc8-46de-b748-d6d7751bbfa8" positionType="Float" x="8" y="20" width="195" height="13" fontName="SansSerif" fontSize="9.0" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{issuerHeaderSecondaryName}]]></expression>
 		</element>
-		<element kind="textField" uuid="54bf073d-17e8-4020-a2f5-c0d29fe6cf41" x="8" y="41" width="195" height="40" fontName="SansSerif" fontSize="7.4" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
-			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-			<expression><![CDATA[($F{issuerTaxId} == null ? "" : "NIF: " + $F{issuerTaxId})
-				+ ($F{issuerAddress} == null ? "" : "\n" + $F{issuerAddress}
-					+ ($F{issuerPostalCode} == null ? "" : " · " + $F{issuerPostalCode})
-					+ ($F{issuerCity} == null ? "" : " " + $F{issuerCity})
-					+ ($F{issuerProvince} == null ? "" : " · " + $F{issuerProvince}))
-				+ ($F{issuerPhone} == null ? "" : "\n" + $F{issuerPhone})]]></expression>
-		</element>
-		<element kind="textField" uuid="118620b3-83ec-4d95-b50f-d7c83015e415" x="8" y="26" width="195" height="12" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
-			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-			<expression><![CDATA[$F{issuerLegalName}]]></expression>
-		</element>
-		<element kind="textField" uuid="c7d6d2dc-c763-43a4-877e-96393e3cb1da" x="8" y="38" width="195" height="43" fontName="SansSerif" fontSize="7.4" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
-			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+		<element kind="textField" uuid="ef0e7d9e-986d-4e5a-ae66-571b9725bfa5" positionType="Float" x="8" y="33" width="195" height="48" fontName="SansSerif" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[($F{issuerTaxId} == null ? "" : "NIF: " + $F{issuerTaxId})
 				+ ($F{issuerAddress} == null ? "" : "\n" + $F{issuerAddress}
 					+ ($F{issuerPostalCode} == null ? "" : " · " + $F{issuerPostalCode})
@@ -139,7 +132,7 @@
 		<element kind="textField" uuid="c3de7603-553f-488b-a0d8-d99cb55a9279" x="0" y="205" width="211" height="10" fontName="SansSerif" fontSize="6.8" hTextAlign="Center">
 			<expression><![CDATA["Emitido: " + $F{voucherIssuedAt} + ($F{terminalName} == null ? "" : " · Terminal: " + $F{terminalName})]]></expression>
 		</element>
-	</title>
+	</pageHeader>
 	<columnHeader height="18" splitType="Stretch">
 		<element kind="line" uuid="db6f4e20-c7c0-49ee-852c-cda3a706aac2" x="0" y="0" width="211" height="1"><pen lineWidth="0.7"/></element>
 		<element kind="component" uuid="fa494436-b2b4-4480-9222-1427f0a82a2f" positionType="Float" x="0" y="3" width="211" height="12">

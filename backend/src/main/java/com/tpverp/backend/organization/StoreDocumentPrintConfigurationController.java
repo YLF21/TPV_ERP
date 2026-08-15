@@ -41,6 +41,13 @@ public class StoreDocumentPrintConfigurationController {
                 request.ticket(), request.invoice(), request.deliveryNote(), request.voucher());
     }
 
+    @PutMapping("/store-name-visibility")
+    @PreAuthorize("hasRole('ADMIN')")
+    public StoreDocumentPrintConfigurationService.Configuration updateStoreNameVisibility(
+            @Valid @RequestBody StoreNameVisibilityRequest request) {
+        return service.updateStoreNameVisibility(request.showStoreName());
+    }
+
     @PutMapping("/ticket-style")
     @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
             + "hasAuthority('DOCUMENT_TEMPLATES_MANAGE'))")
@@ -83,5 +90,8 @@ public class StoreDocumentPrintConfigurationController {
     public record TicketPresentationRequest(
             @NotNull TicketTemplateOrigin origin,
             @NotNull TicketPrintStyle style) {
+    }
+
+    public record StoreNameVisibilityRequest(@NotNull Boolean showStoreName) {
     }
 }

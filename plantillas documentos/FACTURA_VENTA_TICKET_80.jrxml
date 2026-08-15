@@ -63,6 +63,12 @@
 	<field name="issuerLegalName" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.legalName"/>
 	</field>
+	<field name="issuerHeaderPrimaryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerPrimaryName"/>
+	</field>
+	<field name="issuerHeaderSecondaryName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerSecondaryName"/>
+	</field>
 	<field name="issuerTaxId" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.taxId"/>
 	</field>
@@ -158,20 +164,23 @@
 	</field>
 	<title height="50" splitType="Stretch">
 		<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-		<element kind="image" uuid="54e85a42-541d-461c-b278-26f6511b2b41" x="50" y="0" width="100" height="50" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle">
+		<element kind="image" uuid="54e85a42-541d-461c-b278-26f6511b2b41" x="17" y="2" width="177" height="46" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
 			<expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 		</element>
 	</title>
-	<pageHeader height="195" splitType="Stretch">
-		<element kind="textField" uuid="b65d6d72-5521-4634-bf65-100912f43009" x="0" y="0" width="211" height="14" fontName="SansSerif" fontSize="10.0" bold="true" hTextAlign="Center">
-			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+	<pageHeader height="214" splitType="Stretch">
+		<element kind="textField" uuid="b65d6d72-5521-4634-bf65-100912f43009" x="0" y="0" width="211" height="20" fontName="SansSerif" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{issuerHeaderPrimaryName}]]></expression>
 		</element>
-		<element kind="textField" uuid="4c0e0458-8342-4245-9eff-8b2df4f0ef82" x="0" y="14" width="211" height="15" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="7b2bc8fc-e084-46ee-b92a-896a4048e59c" positionType="Float" x="0" y="20" width="211" height="13" fontName="SansSerif" fontSize="9.0" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Center">
+			<expression><![CDATA[$F{issuerHeaderSecondaryName}]]></expression>
+		</element>
+		<element kind="textField" uuid="4c0e0458-8342-4245-9eff-8b2df4f0ef82" positionType="Float" x="0" y="33" width="211" height="13" fontName="SansSerif" fontSize="9.0" hTextAlign="Center">
 			<expression><![CDATA["NIF: " + ($F{issuerTaxId} == null ? "" : $F{issuerTaxId})]]></expression>
 		</element>
-		<element kind="textField" uuid="398f5b65-fbad-4f20-ae9e-83d990e4eb1d" x="0" y="29" width="211" height="40" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" hTextAlign="Center">
+		<element kind="textField" uuid="398f5b65-fbad-4f20-ae9e-83d990e4eb1d" positionType="Float" x="0" y="46" width="211" height="39" fontName="SansSerif" fontSize="9.0" textAdjust="StretchHeight" blankWhenNull="true" hTextAlign="Center">
 			<expression><![CDATA[
 			($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty() ? "" : $F{issuerAddressLine1}.trim())
 			+ (($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty()) && ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty()) ? "" : ($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty() ? "" : "\n") + ($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty() ? "" : $F{issuerPostalCode}.trim() + ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty() ? "" : " ")) + ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty() ? "" : $F{issuerCity}.trim()))
@@ -179,19 +188,19 @@
 			+ ($F{issuerPhone} == null || $F{issuerPhone}.trim().isEmpty() ? "" : (($F{issuerAddressLine1} == null || $F{issuerAddressLine1}.trim().isEmpty()) && ($F{issuerPostalCode} == null || $F{issuerPostalCode}.trim().isEmpty()) && ($F{issuerCity} == null || $F{issuerCity}.trim().isEmpty()) && (($F{issuerProvince} == null || $F{issuerProvince}.trim().isEmpty()) || ($F{issuerCity} != null && $F{issuerProvince}.trim().equalsIgnoreCase($F{issuerCity}.trim()))) && ($F{issuerCountryName} == null || $F{issuerCountryName}.trim().isEmpty()) ? "" : "\n") + "Tel.: " + $F{issuerPhone}.trim())
 		]]></expression>
 		</element>
-		<element kind="staticText" uuid="219c5aa8-75d6-4214-a11e-86138b0aed25" x="0" y="71" width="211" height="12" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Left">
+		<element kind="staticText" uuid="219c5aa8-75d6-4214-a11e-86138b0aed25" x="0" y="90" width="211" height="12" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Left">
 			<text><![CDATA[CLIENTE]]></text>
 		</element>
-		<element kind="textField" uuid="6ee9aed0-11e3-4b00-b270-a65946591daf" x="0" y="83" width="211" height="14" fontName="SansSerif" fontSize="8.5" bold="true" hTextAlign="Left">
+		<element kind="textField" uuid="6ee9aed0-11e3-4b00-b270-a65946591daf" x="0" y="102" width="211" height="14" fontName="SansSerif" fontSize="8.5" bold="true" hTextAlign="Left">
 			<expression><![CDATA[$F{customerLegalName}]]></expression>
 		</element>
-		<element kind="textField" uuid="0391ef0b-e07b-4b73-b5d8-4919f41997e9" x="0" y="97" width="211" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Left">
+		<element kind="textField" uuid="0391ef0b-e07b-4b73-b5d8-4919f41997e9" x="0" y="116" width="211" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Left">
 			<expression><![CDATA[
 			($F{customerCode} == null || $F{customerCode}.trim().isEmpty() ? "" : "Cód. cliente: " + $F{customerCode}.trim())
 			+ ($F{customerTaxId} == null || $F{customerTaxId}.trim().isEmpty() ? "" : ($F{customerCode} == null || $F{customerCode}.trim().isEmpty() ? "" : " · ") + "NIF: " + $F{customerTaxId}.trim())
 		]]></expression>
 		</element>
-		<element kind="textField" uuid="e7d4fdbf-77cb-43e8-a137-42d8d4c505b5" x="0" y="111" width="211" height="40" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" hTextAlign="Left">
+		<element kind="textField" uuid="e7d4fdbf-77cb-43e8-a137-42d8d4c505b5" x="0" y="130" width="211" height="40" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" hTextAlign="Left">
 			<expression><![CDATA[
 			($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty() ? "" : $F{customerAddressLine1}.trim())
 			+ (($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty()) && ($F{customerCity} == null || $F{customerCity}.trim().isEmpty()) ? "" : ($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty() ? "" : "\n") + ($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty() ? "" : $F{customerPostalCode}.trim() + ($F{customerCity} == null || $F{customerCity}.trim().isEmpty() ? "" : " ")) + ($F{customerCity} == null || $F{customerCity}.trim().isEmpty() ? "" : $F{customerCity}.trim()))
@@ -199,16 +208,16 @@
 			+ ($F{customerPhone} == null || $F{customerPhone}.trim().isEmpty() ? "" : (($F{customerAddressLine1} == null || $F{customerAddressLine1}.trim().isEmpty()) && ($F{customerPostalCode} == null || $F{customerPostalCode}.trim().isEmpty()) && ($F{customerCity} == null || $F{customerCity}.trim().isEmpty()) && (($F{customerProvince} == null || $F{customerProvince}.trim().isEmpty()) || ($F{customerCity} != null && $F{customerProvince}.trim().equalsIgnoreCase($F{customerCity}.trim()))) && ($F{customerCountryName} == null || $F{customerCountryName}.trim().isEmpty()) ? "" : "\n") + "Tel.: " + $F{customerPhone}.trim())
 		]]></expression>
 		</element>
-		<element kind="line" uuid="95f50d26-eae2-4d29-aad2-034a57151c5d" x="0" y="155" width="211" height="1">
+		<element kind="line" uuid="95f50d26-eae2-4d29-aad2-034a57151c5d" x="0" y="174" width="211" height="1">
 			<pen lineWidth="0.8"/>
 		</element>
-		<element kind="staticText" uuid="bb4859e3-65dd-451c-9233-415048425a90" x="0" y="158" width="78" height="20" fontName="SansSerif" fontSize="14.0" bold="true">
+		<element kind="staticText" uuid="bb4859e3-65dd-451c-9233-415048425a90" x="0" y="177" width="78" height="20" fontName="SansSerif" fontSize="14.0" bold="true">
 			<text><![CDATA[FACTURA]]></text>
 		</element>
-		<element kind="textField" uuid="b1992a76-b983-4a0c-a3ce-a288dcc84f79" x="0" y="178" width="131" height="13" fontName="Monospaced" fontSize="8.5" bold="true" hTextAlign="Left">
+		<element kind="textField" uuid="b1992a76-b983-4a0c-a3ce-a288dcc84f79" x="0" y="197" width="131" height="13" fontName="Monospaced" fontSize="8.5" bold="true" hTextAlign="Left">
 			<expression><![CDATA[$F{documentDisplayNumber}]]></expression>
 		</element>
-		<element kind="textField" uuid="e0209109-dfe5-4115-a429-44f3991f1d1d" x="80" y="178" width="131" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right">
+		<element kind="textField" uuid="e0209109-dfe5-4115-a429-44f3991f1d1d" x="80" y="197" width="131" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right">
 			<expression><![CDATA["Fecha: " + $F{issueDate}]]></expression>
 		</element>
 	</pageHeader>

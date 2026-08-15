@@ -75,7 +75,7 @@ public class VoucherPresentationSnapshotFactory {
                         .map(com.tpverp.backend.terminal.Terminal::getNombre)
                         .orElse(null);
         var snapshot = new VoucherPresentationSnapshot(
-                1,
+                2,
                 presentation.observations(),
                 templateReference,
                 presentation.logo() == null ? null
@@ -83,7 +83,8 @@ public class VoucherPresentationSnapshotFactory {
                                 presentation.logo().id(), presentation.logo().contentType(),
                                 presentation.logo().sha256()),
                 terminalName,
-                List.copyOf(merged.values()));
+                List.copyOf(merged.values()),
+                presentation.showStoreName());
         try {
             return mapper.writeValueAsString(snapshot);
         } catch (JsonProcessingException error) {
