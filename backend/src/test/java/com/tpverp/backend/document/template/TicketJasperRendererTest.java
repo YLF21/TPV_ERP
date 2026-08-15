@@ -17,18 +17,18 @@ class TicketJasperRendererTest {
 
     private static final String[] REPORTS = {
         "ticket.jasper",
-        "subreport/ticket_cabecera.jasper", "subreport/ticket_cabecera_compacta.jasper",
-        "subreport/ticket_cabecera_minimalista.jasper",
-        "subreport/ticket_cliente.jasper", "subreport/ticket_cliente_compacta.jasper",
-        "subreport/ticket_cliente_minimalista.jasper",
-        "subreport/ticket_contenido.jasper", "subreport/ticket_contenido_compacta.jasper",
-        "subreport/ticket_contenido_minimalista.jasper",
-        "subreport/ticket_impuesto.jasper", "subreport/ticket_impuesto_compacta.jasper",
-        "subreport/ticket_impuesto_minimalista.jasper",
-        "subreport/ticket_pago.jasper", "subreport/ticket_pago_compacta.jasper",
-        "subreport/ticket_pago_minimalista.jasper",
-        "subreport/ticket_pie.jasper", "subreport/ticket_pie_compacta.jasper",
-        "subreport/ticket_pie_minimalista.jasper"
+        "ticket_cabecera.jasper", "ticket_cabecera_compacta.jasper",
+        "ticket_cabecera_minimalista.jasper",
+        "ticket_cliente.jasper", "ticket_cliente_compacta.jasper",
+        "ticket_cliente_minimalista.jasper",
+        "ticket_contenido.jasper", "ticket_contenido_compacta.jasper",
+        "ticket_contenido_minimalista.jasper",
+        "ticket_impuesto.jasper", "ticket_impuesto_compacta.jasper",
+        "ticket_impuesto_minimalista.jasper",
+        "ticket_pago.jasper", "ticket_pago_compacta.jasper",
+        "ticket_pago_minimalista.jasper",
+        "ticket_pie.jasper", "ticket_pie_compacta.jasper",
+        "ticket_pie_minimalista.jasper"
     };
 
     @Test
@@ -49,8 +49,8 @@ class TicketJasperRendererTest {
     @Test
     void packagesAndCompilesEveryEditableReportSource() throws IOException, JRException {
         for (String compiledName : REPORTS) {
-            String sourceName = "reports/tickets/"
-                    + compiledName.replace(".jasper", ".jrxml");
+            String sourceName = TicketJrxmlBundleCompiler.builtInResourceName(
+                    compiledName.replace(".jasper", ".jrxml"));
             var resource = new ClassPathResource(sourceName);
             assertThat(resource.exists()).as(sourceName).isTrue();
             try (var input = resource.getInputStream()) {

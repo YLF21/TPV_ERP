@@ -4,7 +4,10 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type UserSession } from "@tpverp/app-common";
-import { DocumentTemplateSettingsScreen } from "./DocumentTemplateSettingsScreen";
+import {
+  documentTemplateArtifactFiles,
+  DocumentTemplateSettingsScreen,
+} from "./DocumentTemplateSettingsScreen";
 
 const session: UserSession = {
   username: "manager",
@@ -16,6 +19,26 @@ const session: UserSession = {
 afterEach(cleanup);
 
 describe("DocumentTemplateSettingsScreen", () => {
+  it("keeps only the exact 19 ticket JRXML files when a shared folder is selected", () => {
+    const sections = ["cabecera", "cliente", "contenido", "impuesto", "pago", "pie"];
+    const ticketFiles = [
+      new File(["master"], "ticket.jrxml"),
+      ...sections.flatMap((section) => [
+        new File([section], `ticket_${section}.jrxml`),
+        new File([section], `ticket_${section}_compacta.jrxml`),
+        new File([section], `ticket_${section}_minimalista.jrxml`),
+      ]),
+    ];
+    const selected = documentTemplateArtifactFiles("TICKET", [
+      ...ticketFiles,
+      new File(["a4"], "FACTURA_VENTA_A4.jrxml"),
+      new File(["compiled"], "ticket.jasper"),
+    ]);
+
+    expect(selected).toHaveLength(19);
+    expect(selected.map((file) => file.name)).toEqual(ticketFiles.map((file) => file.name));
+  });
+
   it("keeps the manual workflow available when the active JRXML is missing", async () => {
     const request = vi.fn().mockImplementation(async () => ({
       effective: null,
