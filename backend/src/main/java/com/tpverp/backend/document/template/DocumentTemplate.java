@@ -81,6 +81,10 @@ public class DocumentTemplate {
     @Column(name = "retirada_en")
     private Instant retiredAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "motivo_retirada", length = 40)
+    private DocumentTemplateRetirementReason retirementReason;
+
     @Version
     private Long version;
 
@@ -229,7 +233,7 @@ public class DocumentTemplate {
         this.status = DocumentTemplateStatus.ACTIVE;
     }
 
-    void retire(Instant retiredAt) {
+    void retire(Instant retiredAt, DocumentTemplateRetirementReason reason) {
         if (status == DocumentTemplateStatus.RETIRED) {
             return;
         }
@@ -237,7 +241,25 @@ public class DocumentTemplate {
             throw new IllegalStateException("document_template_not_active");
         }
         this.retiredAt = Objects.requireNonNull(retiredAt, "retiredAt");
+        this.retirementReason = Objects.requireNonNull(reason, "reason");
         this.status = DocumentTemplateStatus.RETIRED;
+    }
+
+    void reactivate(Instant activatedAt) {
+        if (!canReactivate()) {
+            throw new IllegalStateException("document_template_not_reactivatable");
+        }
+        this.activatedAt = Objects.requireNonNull(activatedAt, "activatedAt");
+        this.retiredAt = null;
+        this.retirementReason = null;
+        this.status = DocumentTemplateStatus.ACTIVE;
+    }
+
+    boolean canReactivate() {
+        return status == DocumentTemplateStatus.RETIRED
+                && retirementReason == DocumentTemplateRetirementReason.BUILT_IN_DESIGN_SELECTED
+                && artifactReference != null
+                && sha256 != null;
     }
 
     private void validateScope() {
@@ -293,4 +315,5 @@ public class DocumentTemplate {
     public Instant getValidatedAt() { return validatedAt; }
     public Instant getActivatedAt() { return activatedAt; }
     public Instant getRetiredAt() { return retiredAt; }
+    public DocumentTemplateRetirementReason getRetirementReason() { return retirementReason; }
 }

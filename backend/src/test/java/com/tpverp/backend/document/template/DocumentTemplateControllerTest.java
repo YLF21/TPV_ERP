@@ -62,7 +62,7 @@ class DocumentTemplateControllerTest {
                 DocumentTemplateFormat.A4,
                 DocumentTemplateScope.STORE, "FACTURA_LP", 1, "Factura LP",
                 DocumentTemplateStatus.DRAFT, null, null, null,
-                Instant.parse("2026-08-09T10:00:00Z"), null, null, null);
+                Instant.parse("2026-08-09T10:00:00Z"), null, null, null, false);
         when(service.registerCurrentStoreDraft(
                 DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4,
                 "FACTURA_LP", "Factura LP"))
@@ -95,7 +95,7 @@ class DocumentTemplateControllerTest {
                 DocumentTemplateScope.STORE, "FACTURA_LP", 1, "Factura LP",
                 DocumentTemplateStatus.VALIDATED, 1, "a".repeat(64), null,
                 Instant.parse("2026-08-09T10:00:00Z"),
-                Instant.parse("2026-08-09T10:01:00Z"), null, null);
+                Instant.parse("2026-08-09T10:01:00Z"), null, null, false);
         when(artifacts.uploadAndValidate(
                 org.mockito.ArgumentMatchers.eq(templateId),
                 org.mockito.ArgumentMatchers.any())).thenReturn(validated);
@@ -107,7 +107,7 @@ class DocumentTemplateControllerTest {
                         DocumentTemplateStatus.ACTIVE, 1, "a".repeat(64), null,
                         Instant.parse("2026-08-09T10:00:00Z"),
                         Instant.parse("2026-08-09T10:01:00Z"),
-                        Instant.parse("2026-08-09T10:02:00Z"), null));
+                        Instant.parse("2026-08-09T10:02:00Z"), null, false));
         var file = new MockMultipartFile(
                 "files", "factura.jrxml", "application/xml", "<jasperReport/>".getBytes());
 
@@ -128,6 +128,31 @@ class DocumentTemplateControllerTest {
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
 
         verify(artifacts).activate(templateId);
+    }
+
+    @Test
+    void managerCanReactivateARecoverableRetiredVersion() throws Exception {
+        var templateId = UUID.randomUUID();
+        when(artifacts.reactivate(templateId))
+                .thenReturn(new DocumentTemplateCatalogService.TemplateView(
+                        templateId, DocumentTemplateType.TICKET,
+                        DocumentTemplateFormat.TICKET_80,
+                        DocumentTemplateScope.STORE, "TICKET_80", 2, "Mi ticket",
+                        DocumentTemplateStatus.ACTIVE, 1, "a".repeat(64), null,
+                        Instant.parse("2026-08-09T10:00:00Z"),
+                        Instant.parse("2026-08-09T10:01:00Z"),
+                        Instant.parse("2026-08-09T10:02:00Z"), null, false));
+
+        mvc.perform(post("/api/v1/document-templates/{id}/reactivate", templateId)
+                        .with(user("manager").authorities(
+                                () -> "APP_GESTION_ACCESS",
+                                () -> "DOCUMENT_TEMPLATES_MANAGE"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.reactivatable").value(false));
+
+        verify(artifacts).reactivate(templateId);
     }
 
     @EnableMethodSecurity

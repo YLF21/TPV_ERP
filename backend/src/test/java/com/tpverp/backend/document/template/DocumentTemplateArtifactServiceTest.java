@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -125,5 +126,47 @@ class DocumentTemplateArtifactServiceTest {
         assertThat(result).isSameAs(expected);
         verify(compiler).compile(any(byte[].class));
         verify(catalog).activateValidatedCurrentStoreTemplate(template.getId());
+    }
+
+    @Test
+    void acceptsAnyJrxmlFilenameAsTheSingleTicketMaster() throws Exception {
+        var templates = mock(DocumentTemplateRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var ticketCompiler = mock(TicketJrxmlBundleCompiler.class);
+        var store = DocumentTemplateTest.store();
+        var draft = DocumentTemplate.storeDraft(
+                store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80,
+                "TICKET_80", 4, "Mi ticket", null,
+                Instant.parse("2026-08-15T13:00:00Z"));
+        byte[] source = new byte[] {1, 2, 3};
+        var reports = Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME,
+                new TicketJrxmlBundleCompiler.CompiledReport(source, new byte[] {4, 5}));
+        when(organization.currentStore()).thenReturn(store);
+        when(templates.findStoreTemplateForUpdate(
+                draft.getId(), store.getEmpresa().getId(), store.getId()))
+                .thenReturn(Optional.of(draft));
+        when(templates.saveAndFlush(any(DocumentTemplate.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketCompiler.compileUpload(any())).thenAnswer(invocation -> {
+            Map<String, byte[]> sources = invocation.getArgument(0);
+            assertThat(sources).containsOnlyKeys(TicketJrxmlBundleCompiler.MASTER_FILENAME);
+            assertThat(sources.get(TicketJrxmlBundleCompiler.MASTER_FILENAME))
+                    .containsExactly(source);
+            return new TicketJrxmlBundleCompiler.CompiledBundle(
+                    reports, "b".repeat(64));
+        });
+        var service = new DocumentTemplateArtifactService(
+                templates, organization, mock(SafeJrxmlCompiler.class), ticketCompiler,
+                new DocumentTemplateArtifactStorage(tempDir),
+                mock(DocumentTemplateCatalogService.class), mock(AuditService.class),
+                Clock.systemUTC());
+
+        var result = service.uploadAndValidate(draft.getId(), java.util.List.of(
+                new MockMultipartFile("files", "ticekt_v1.jrxml",
+                        "application/xml", source)));
+
+        assertThat(result.status()).isEqualTo(DocumentTemplateStatus.VALIDATED);
+        assertThat(result.sha256()).isEqualTo("b".repeat(64));
     }
 }

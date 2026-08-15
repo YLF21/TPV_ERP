@@ -89,6 +89,26 @@ class DocumentTemplateResolverTest {
                 });
     }
 
+    @Test
+    void ticketFallsBackToTheBuiltInBundleWhenNoCustomTemplateIsActive() {
+        var store = DocumentTemplateTest.store();
+        when(templates.findActiveForStore(store.getId(), DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(Optional.empty());
+        when(templates.findActiveForCompany(
+                store.getEmpresa().getId(), DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(Optional.empty());
+        when(templates.findActiveForSystem(
+                DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80))
+                .thenReturn(Optional.empty());
+
+        var resolved = resolver.resolve(
+                store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80);
+
+        assertThat(resolved.builtIn()).isTrue();
+        assertThat(resolved.code()).isEqualTo("TICKET_80");
+        assertThat(resolved.artifactReference()).isEqualTo("builtin:ticket");
+    }
+
     private static DocumentTemplate active(DocumentTemplate template) {
         template.validateArtifact(
                 1, "signed:test", "a".repeat(64), Instant.EPOCH.plusSeconds(1));

@@ -4422,7 +4422,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-document-template-effective > div { padding: 14px 16px; border-right: 1px solid #9fb2c7; }
 .gestion-document-template-effective span { color: var(--gestion-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .gestion-document-template-effective h3 { margin: 4px 0 0; font-size: 20px; }
-.gestion-document-template-effective dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; }
+.gestion-document-template-effective dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 0; }
 .gestion-document-template-effective dl div { display: grid; align-content: center; gap: 3px; padding: 10px 14px; border-right: 1px solid #d3dce5; }
 .gestion-document-template-effective dl div:last-child { border-right: 0; }
 .gestion-document-template-effective dt { color: var(--gestion-muted); font-size: 12px; }

@@ -14,6 +14,20 @@ public record ResolvedDocumentTemplate(
         String sha256,
         boolean builtIn) {
 
+    static ResolvedDocumentTemplate builtInTicket() {
+        return new ResolvedDocumentTemplate(
+                null,
+                DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80,
+                DocumentTemplateScope.SYSTEM,
+                "TICKET_80",
+                1,
+                SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
+                "builtin:ticket",
+                null,
+                true);
+    }
+
     static ResolvedDocumentTemplate from(DocumentTemplate template) {
         if (template.getStatus() != DocumentTemplateStatus.ACTIVE) {
             throw new IllegalArgumentException("document_template_not_active");

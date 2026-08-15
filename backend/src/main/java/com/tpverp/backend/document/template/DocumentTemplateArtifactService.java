@@ -131,6 +131,19 @@ public class DocumentTemplateArtifactService {
         return catalog.activateValidatedCurrentStoreTemplate(templateId);
     }
 
+    public DocumentTemplateCatalogService.TemplateView reactivate(UUID templateId) {
+        var store = organization.currentStore();
+        var template = templates.findStoreTemplate(
+                        templateId, store.getEmpresa().getId(), store.getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "document_template_not_found"));
+        if (!template.canReactivate()) {
+            throw new IllegalStateException("document_template_not_reactivatable");
+        }
+        verifyStoredArtifact(template);
+        return catalog.reactivateCurrentStoreTemplate(templateId);
+    }
+
     private DocumentTemplate currentStoreTemplateForUpdate(UUID templateId) {
         var store = organization.currentStore();
         return templates.findStoreTemplateForUpdate(
@@ -203,6 +216,12 @@ public class DocumentTemplateArtifactService {
         long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > 20L * 1024 * 1024) {
             throw new IllegalArgumentException("document_template_ticket_bundle_too_large");
+        }
+        if (files.size() == 1) {
+            // A user-provided ticket master may have any .jrxml filename. The
+            // stored bundle uses the canonical name expected by the renderer.
+            return Map.of(TicketJrxmlBundleCompiler.MASTER_FILENAME,
+                    read(files.getFirst()));
         }
         var sources = new LinkedHashMap<String, byte[]>();
         for (MultipartFile file : files) {
