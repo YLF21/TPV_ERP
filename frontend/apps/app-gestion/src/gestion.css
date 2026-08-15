@@ -4324,7 +4324,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 
 .gestion-document-observations-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 13px;
   padding: 15px 17px;
 }
@@ -4436,6 +4436,10 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-ticket-style-preview { display: grid; justify-items: center; gap: 10px; width: 280px; box-sizing: border-box; margin: 0; padding: 16px; border: 1px solid #b2c0cf; background: #f4f7fa; box-shadow: 0 2px 8px rgb(20 40 60 / 8%); }
 .gestion-ticket-style-preview img { display: block; width: 220px; height: 520px; object-fit: contain; filter: drop-shadow(0 4px 6px rgb(20 40 60 / 22%)); }
 .gestion-ticket-style-preview figcaption { color: var(--gestion-muted); font-size: 13px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.gestion-ticket-imported-summary { display: grid; justify-items: center; gap: 8px; width: min(100%, 360px); box-sizing: border-box; padding: 24px; border: 1px solid #7f95aa; background: #f4f7fa; }
+.gestion-ticket-imported-summary strong { color: var(--gestion-navy); font-size: 20px; }
+.gestion-ticket-imported-summary span { font-weight: 800; }
+.gestion-ticket-imported-summary small { color: var(--gestion-muted); text-align: center; }
 .gestion-ticket-style-actions { display: grid; width: min(100%, 340px); gap: 12px; text-align: left; }
 .gestion-ticket-style-selector label { display: grid; gap: 5px; font-weight: 700; }
 .gestion-ticket-style-selector select { min-height: 36px; border: 1px solid #657a90; border-radius: 0; padding: 6px 8px; background: #fff; font: inherit; }

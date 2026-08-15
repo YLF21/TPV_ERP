@@ -278,7 +278,8 @@ describe("CustomerReceivablePaymentDialog", () => {
       cambio: "0.00",
     });
     fireEvent.keyDown(document.body, { key: "Enter" });
-    expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined);
+    await waitFor(() => expect(onPayment)
+      .toHaveBeenCalledWith(paymentResult.receivable, undefined));
     expect(onPaid).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "COBRO" })).toBeVisible();
   });
@@ -340,8 +341,10 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={onPaid}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Tarjeta" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    await waitFor(() => expect(cardButton).toBeEnabled());
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     fireEvent.keyDown(screen.getByLabelText("IMPORTE / RECIBIDO"), { key: "Enter" });
     const retained = await waitFor(() => {
       const stored = localStorage.getItem(receivablePaymentAttemptKey("01", "doc-1"));

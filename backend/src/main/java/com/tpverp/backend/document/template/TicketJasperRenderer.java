@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Objects;
 import javax.sql.DataSource;
 import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
+import com.tpverp.backend.organization.TicketTemplateOrigin;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
@@ -65,23 +66,8 @@ public class TicketJasperRenderer {
         parameters.put("DOCUMENTO_ID", document.getId().toString());
         parameters.put("PLANTILLA", template.reportValue());
 
-        var resolved = templates.resolve(DocumentTemplateType.TICKET);
         try (var connection = dataSource.getConnection()) {
-            boolean useBuiltInBundle = resolved.builtIn()
-                    || !storage.isBundle(resolved.artifactReference());
-            java.nio.file.Path master;
-            if (useBuiltInBundle) {
-                master = builtInBundle.compiledMaster();
-            } else {
-                var sources = storage.readBundleSources(resolved.artifactReference());
-                if (!TicketJrxmlBundleCompiler.bundleSha256(sources)
-                        .equals(resolved.sha256())) {
-                    throw new IllegalStateException(
-                            "document_template_artifact_integrity_failed");
-                }
-                master = storage.compiledBundleMaster(
-                        resolved.artifactReference(), TicketJrxmlBundleCompiler.MASTER_FILENAME);
-            }
+            var master = effectiveMaster();
             parameters.put(TicketJrxmlBundleCompiler.SUBREPORT_DIRECTORY_PARAMETER,
                     master.getParent().toAbsolutePath().toString()
                             + java.io.File.separator);
@@ -93,6 +79,25 @@ public class TicketJasperRenderer {
         } catch (IOException | SQLException | JRException exception) {
             throw new IllegalStateException("ticket_jasper_render_failed", exception);
         }
+    }
+
+    java.nio.file.Path effectiveMaster() throws IOException {
+        if (printConfiguration.ticketTemplateOrigin()
+                == TicketTemplateOrigin.INTEGRATED) {
+            return builtInBundle.compiledMaster();
+        }
+        var resolved = templates.resolve(DocumentTemplateType.TICKET);
+        if (resolved.builtIn() || !storage.isBundle(resolved.artifactReference())) {
+            throw new IllegalStateException("ticket_imported_template_bundle_required");
+        }
+        var sources = storage.readBundleSources(resolved.artifactReference());
+        if (!TicketJrxmlBundleCompiler.bundleSha256(sources)
+                .equals(resolved.sha256())) {
+            throw new IllegalStateException(
+                    "document_template_artifact_integrity_failed");
+        }
+        return storage.compiledBundleMaster(
+                resolved.artifactReference(), TicketJrxmlBundleCompiler.MASTER_FILENAME);
     }
 
     public record RenderedTicket(byte[] pdf, byte[] png) {

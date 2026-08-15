@@ -36,13 +36,19 @@ public class StoreDocumentPrintConfigurationController {
     public StoreDocumentPrintConfigurationService.Configuration updateObservations(
             @Valid @RequestBody ObservationsRequest request) {
         return service.updateObservations(
-                request.ticket(), request.invoice(), request.deliveryNote());
+                request.ticket(), request.invoice(), request.deliveryNote(), request.voucher());
     }
 
     @PutMapping("/ticket-style")
     public StoreDocumentPrintConfigurationService.Configuration updateTicketStyle(
             @Valid @RequestBody TicketStyleRequest request) {
         return service.updateTicketStyle(request.style());
+    }
+
+    @PutMapping("/ticket-presentation")
+    public StoreDocumentPrintConfigurationService.Configuration updateTicketPresentation(
+            @Valid @RequestBody TicketPresentationRequest request) {
+        return service.updateTicketPresentation(request.origin(), request.style());
     }
 
     @PutMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -59,9 +65,15 @@ public class StoreDocumentPrintConfigurationController {
     public record ObservationsRequest(
             @Size(max = 2000) String ticket,
             @Size(max = 2000) String invoice,
-            @Size(max = 2000) String deliveryNote) {
+            @Size(max = 2000) String deliveryNote,
+            @Size(max = 2000) String voucher) {
     }
 
     public record TicketStyleRequest(@NotNull TicketPrintStyle style) {
+    }
+
+    public record TicketPresentationRequest(
+            @NotNull TicketTemplateOrigin origin,
+            @NotNull TicketPrintStyle style) {
     }
 }

@@ -40,6 +40,9 @@ public class Voucher {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "tickets_origen", nullable = false, columnDefinition = "jsonb")
     private List<String> originTickets = new ArrayList<>();
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "impresion_snapshot", columnDefinition = "jsonb")
+    private String printSnapshot;
     @Version
     private long version;
 
@@ -61,6 +64,10 @@ public class Voucher {
 
     public UUID id() {
         return id;
+    }
+
+    public UUID storeId() {
+        return tiendaId;
     }
 
     public String code() {
@@ -85,6 +92,20 @@ public class Voucher {
 
     public List<String> originTickets() {
         return List.copyOf(originTickets);
+    }
+
+    public String printSnapshot() {
+        return printSnapshot;
+    }
+
+    public void capturePrintSnapshot(String snapshot) {
+        if (printSnapshot != null) {
+            throw new IllegalStateException("voucher_print_snapshot_is_immutable");
+        }
+        if (snapshot == null || snapshot.isBlank()) {
+            throw new IllegalArgumentException("voucher_print_snapshot_required");
+        }
+        printSnapshot = snapshot;
     }
 
     public BigDecimal consume(BigDecimal amount) {

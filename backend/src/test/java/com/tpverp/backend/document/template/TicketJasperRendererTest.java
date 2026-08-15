@@ -2,10 +2,18 @@ package com.tpverp.backend.document.template;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
+import com.tpverp.backend.organization.TicketTemplateOrigin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.UUID;
+import javax.sql.DataSource;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperCompileManager;
 import net.sf.jasperreports.engine.util.JRLoader;
@@ -77,5 +85,68 @@ class TicketJasperRendererTest {
         assertThatThrownBy(() -> TicketJasperRenderer.Template.parse("otro"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("ticket_jasper_template_invalid");
+    }
+
+    @Test
+    void integratedOriginUsesTheBundledReportsWithoutResolvingAnImport()
+            throws IOException {
+        var resolver = mock(DocumentTemplateResolver.class);
+        var storage = mock(DocumentTemplateArtifactStorage.class);
+        var configuration = mock(StoreDocumentPrintConfigurationService.class);
+        var builtIn = mock(BuiltInTicketJasperBundle.class);
+        var master = Path.of("integrated", "ticket.jasper");
+        when(configuration.ticketTemplateOrigin()).thenReturn(TicketTemplateOrigin.INTEGRATED);
+        when(builtIn.compiledMaster()).thenReturn(master);
+        var renderer = new TicketJasperRenderer(
+                mock(DataSource.class), resolver, storage, configuration, builtIn);
+
+        assertThat(renderer.effectiveMaster()).isEqualTo(master);
+        verifyNoInteractions(resolver, storage);
+    }
+
+    @Test
+    void importedOriginUsesOnlyTheActiveIntegrityCheckedBundle() throws IOException {
+        var resolver = mock(DocumentTemplateResolver.class);
+        var storage = mock(DocumentTemplateArtifactStorage.class);
+        var configuration = mock(StoreDocumentPrintConfigurationService.class);
+        var reports = Map.of("ticket.jrxml", "source".getBytes());
+        var sha256 = TicketJrxmlBundleCompiler.bundleSha256(reports);
+        var resolved = new ResolvedDocumentTemplate(
+                UUID.randomUUID(), DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80, DocumentTemplateScope.STORE,
+                "TICKET_80", 2, 1, "artifact", sha256, false);
+        var master = Path.of("imported", "ticket.jasper");
+        when(configuration.ticketTemplateOrigin()).thenReturn(TicketTemplateOrigin.IMPORTED);
+        when(resolver.resolve(DocumentTemplateType.TICKET)).thenReturn(resolved);
+        when(storage.isBundle("artifact")).thenReturn(true);
+        when(storage.readBundleSources("artifact")).thenReturn(reports);
+        when(storage.compiledBundleMaster(
+                "artifact", TicketJrxmlBundleCompiler.MASTER_FILENAME)).thenReturn(master);
+        var renderer = new TicketJasperRenderer(
+                mock(DataSource.class), resolver, storage, configuration,
+                mock(BuiltInTicketJasperBundle.class));
+
+        assertThat(renderer.effectiveMaster()).isEqualTo(master);
+    }
+
+    @Test
+    void importedOriginNeverFallsBackToTheIntegratedBundle() {
+        var resolver = mock(DocumentTemplateResolver.class);
+        var storage = mock(DocumentTemplateArtifactStorage.class);
+        var configuration = mock(StoreDocumentPrintConfigurationService.class);
+        var resolved = new ResolvedDocumentTemplate(
+                UUID.randomUUID(), DocumentTemplateType.TICKET,
+                DocumentTemplateFormat.TICKET_80, DocumentTemplateScope.STORE,
+                "TICKET_80", 2, 1, "artifact", "a".repeat(64), false);
+        when(configuration.ticketTemplateOrigin()).thenReturn(TicketTemplateOrigin.IMPORTED);
+        when(resolver.resolve(DocumentTemplateType.TICKET)).thenReturn(resolved);
+        when(storage.isBundle("artifact")).thenReturn(false);
+        var renderer = new TicketJasperRenderer(
+                mock(DataSource.class), resolver, storage, configuration,
+                mock(BuiltInTicketJasperBundle.class));
+
+        assertThatThrownBy(renderer::effectiveMaster)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("ticket_imported_template_bundle_required");
     }
 }

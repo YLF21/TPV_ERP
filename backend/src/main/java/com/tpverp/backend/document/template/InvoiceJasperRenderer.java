@@ -128,6 +128,29 @@ public class InvoiceJasperRenderer {
         if (templateType == DocumentTemplateType.FACTURA_VENTA && customer == null) {
             throw new IllegalArgumentException("invoice_print_customer_required");
         }
+        return renderPayload(
+                reference, templateType, format, store, company,
+                data(document, store, company, customer, presentation, qrUrl, logoDataUri),
+                logoDataUri);
+    }
+
+    public Optional<RenderedDocument> renderPayload(
+            InvoicePresentationSnapshot.TemplateReference reference,
+            DocumentTemplateType templateType,
+            DocumentTemplateFormat format,
+            Store store,
+            Company company,
+            ObjectNode data,
+            String logoDataUri) {
+        Objects.requireNonNull(reference, "reference");
+        Objects.requireNonNull(templateType, "templateType");
+        Objects.requireNonNull(format, "format");
+        Objects.requireNonNull(store, "store");
+        Objects.requireNonNull(company, "company");
+        Objects.requireNonNull(data, "data");
+        if (reference.builtIn()) {
+            return Optional.empty();
+        }
         var template = templates.findPrintableTemplate(
                         reference.id(), company.getId(), store.getId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -140,9 +163,7 @@ public class InvoiceJasperRenderer {
                         "document_template_artifact_integrity_failed");
             }
             byte[] compiled = compiled(template, source);
-            byte[] json = mapper.writeValueAsBytes(
-                    data(document, store, company, customer, presentation, qrUrl,
-                            logoDataUri));
+            byte[] json = mapper.writeValueAsBytes(data);
             var parameters = new LinkedHashMap<String, Object>();
             parameters.put(JsonQueryExecuterFactory.JSON_INPUT_STREAM,
                     new ByteArrayInputStream(json));

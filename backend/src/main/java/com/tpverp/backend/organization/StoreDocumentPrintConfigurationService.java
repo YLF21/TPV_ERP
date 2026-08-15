@@ -2,6 +2,8 @@ package com.tpverp.backend.organization;
 
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -32,6 +34,7 @@ public class StoreDocumentPrintConfigurationService {
     private final CurrentOrganization organization;
     private final StoreDocumentPrintSettingsRepository settings;
     private final StoreDocumentLogoRepository logos;
+    private final DocumentTemplateResolver templates;
     private final AuditService audit;
     private final Clock clock;
 
@@ -39,11 +42,13 @@ public class StoreDocumentPrintConfigurationService {
             CurrentOrganization organization,
             StoreDocumentPrintSettingsRepository settings,
             StoreDocumentLogoRepository logos,
+            DocumentTemplateResolver templates,
             AuditService audit,
             Clock clock) {
         this.organization = organization;
         this.settings = settings;
         this.logos = logos;
+        this.templates = templates;
         this.audit = audit;
         this.clock = clock;
     }
@@ -56,11 +61,12 @@ public class StoreDocumentPrintConfigurationService {
     }
 
     @Transactional
-    public Configuration updateObservations(String ticket, String invoice, String deliveryNote) {
+    public Configuration updateObservations(
+            String ticket, String invoice, String deliveryNote, String voucher) {
         UUID storeId = organization.currentStore().getId();
         var value = settings.findById(storeId)
                 .orElseGet(() -> new StoreDocumentPrintSettings(storeId));
-        value.updateObservations(ticket, invoice, deliveryNote);
+        value.updateObservations(ticket, invoice, deliveryNote, voucher);
         settings.save(value);
         audit.record("STORE_DOCUMENT_PRINT_OBSERVATIONS_UPDATED", AuditResult.EXITO,
                 Map.of("storeId", storeId.toString()));
@@ -79,12 +85,44 @@ public class StoreDocumentPrintConfigurationService {
         return view(storeId, value);
     }
 
+    @Transactional
+    public Configuration updateTicketPresentation(
+            TicketTemplateOrigin origin, TicketPrintStyle style) {
+        var store = organization.currentStore();
+        UUID storeId = store.getId();
+        if (origin == TicketTemplateOrigin.IMPORTED
+                && templates.findEffective(
+                        store, DocumentTemplateType.TICKET,
+                        DocumentTemplateFormat.TICKET_80)
+                        .filter(template -> !template.builtIn())
+                        .isEmpty()) {
+            throw new IllegalStateException("ticket_imported_template_required");
+        }
+        var value = settings.findById(storeId)
+                .orElseGet(() -> new StoreDocumentPrintSettings(storeId));
+        value.useTicketTemplateOrigin(origin);
+        value.useTicketStyle(style);
+        settings.save(value);
+        audit.record("STORE_TICKET_PRINT_PRESENTATION_UPDATED", AuditResult.EXITO,
+                Map.of("storeId", storeId.toString(),
+                        "origin", origin.name(), "style", style.name()));
+        return view(storeId, value);
+    }
+
     @Transactional(readOnly = true)
     public TicketPrintStyle ticketStyle() {
         UUID storeId = organization.currentStore().getId();
         return settings.findById(storeId)
                 .map(StoreDocumentPrintSettings::getTicketStyle)
                 .orElse(TicketPrintStyle.PRINCIPAL);
+    }
+
+    @Transactional(readOnly = true)
+    public TicketTemplateOrigin ticketTemplateOrigin() {
+        UUID storeId = organization.currentStore().getId();
+        return settings.findById(storeId)
+                .map(StoreDocumentPrintSettings::getTicketTemplateOrigin)
+                .orElse(TicketTemplateOrigin.INTEGRATED);
     }
 
     @Transactional
@@ -126,6 +164,7 @@ public class StoreDocumentPrintConfigurationService {
             case TICKET -> value.getTicketObservations();
             case FACTURA_VENTA -> value.getInvoiceObservations();
             case ALBARAN_VENTA -> value.getDeliveryNoteObservations();
+            case VALE -> value.getVoucherObservations();
         };
         LogoReference logo = value.getLogoId() == null ? null
                 : logos.findByIdAndStoreId(value.getLogoId(), storeId)
@@ -161,7 +200,10 @@ public class StoreDocumentPrintConfigurationService {
                 value == null ? null : value.getTicketObservations(),
                 value == null ? null : value.getInvoiceObservations(),
                 value == null ? null : value.getDeliveryNoteObservations(),
-                value == null ? TicketPrintStyle.PRINCIPAL : value.getTicketStyle());
+                value == null ? null : value.getVoucherObservations(),
+                value == null ? TicketPrintStyle.PRINCIPAL : value.getTicketStyle(),
+                value == null ? TicketTemplateOrigin.INTEGRATED
+                        : value.getTicketTemplateOrigin());
     }
 
     private static String dataUri(StoreDocumentLogo logo) {
@@ -225,7 +267,9 @@ public class StoreDocumentPrintConfigurationService {
             String ticketObservations,
             String invoiceObservations,
             String deliveryNoteObservations,
-            TicketPrintStyle ticketStyle) {
+            String voucherObservations,
+            TicketPrintStyle ticketStyle,
+            TicketTemplateOrigin ticketTemplateOrigin) {
     }
 
     public record Logo(UUID id, String contentType, String sha256,

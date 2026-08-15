@@ -120,6 +120,7 @@ class SalePaymentPositiveExchangeTest {
                 eq(snapshot), anyList(), eq(refund), eq(auth))).thenReturn(sale);
         var exchangePrint = TicketPrintView.fromExchange(sale, refund);
         when(documents.ticketPrintViewFromExchange(sale, refund)).thenReturn(exchangePrint);
+        when(documents.renderTicketPrintView(sale, exchangePrint)).thenReturn(exchangePrint);
         when(settlements.recordExistingNegativeTicket(
                 eq(refund), anyList(), eq(auth))).thenReturn(refund);
 

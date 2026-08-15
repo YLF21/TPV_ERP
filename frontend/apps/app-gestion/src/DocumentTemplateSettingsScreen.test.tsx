@@ -63,15 +63,22 @@ describe("DocumentTemplateSettingsScreen", () => {
       { token: "token" },
     ));
     expect(screen.getByText("Falta plantilla JRXML activa")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Vale" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+      "/document-templates?type=VALE&format=TICKET_80",
+      { token: "token" },
+    ));
   });
 
   it("loads and saves the ticket layout selected for the current store", async () => {
     const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
       if (path === "/store-document-print-configuration") {
-        return { ticketStyle: "COMPACTA" };
+        return { ticketStyle: "COMPACTA", ticketTemplateOrigin: "INTEGRATED" };
       }
-      if (path === "/store-document-print-configuration/ticket-style") {
-        return { ticketStyle: (options?.body as { style: string }).style };
+      if (path === "/store-document-print-configuration/ticket-presentation") {
+        const body = options?.body as { origin: string; style: string };
+        return { ticketStyle: body.style, ticketTemplateOrigin: body.origin };
       }
       return {
         effective: {
@@ -90,6 +97,8 @@ describe("DocumentTemplateSettingsScreen", () => {
     />);
 
     fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
+    const origin = await screen.findByRole("combobox", { name: "Origen del diseño" });
+    await waitFor(() => expect(origin).toHaveValue("INTEGRATED"));
     const selector = await screen.findByRole("combobox", { name: "Plantilla elegida" });
     await waitFor(() => expect(selector).toHaveValue("COMPACTA"));
     const compactPreview = screen.getByRole("img", {
@@ -100,11 +109,53 @@ describe("DocumentTemplateSettingsScreen", () => {
     fireEvent.change(selector, { target: { value: "MINIMALISTA" } });
     expect(screen.getByRole("img", { name: /Vista previa de la plantilla: Minimalista/ }))
       .not.toHaveAttribute("src", compactPreviewSource);
-    fireEvent.click(screen.getByRole("button", { name: "Guardar diseño" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/store-document-print-configuration/ticket-style",
-      { method: "PUT", token: "token", body: { style: "MINIMALISTA" } },
+      "/store-document-print-configuration/ticket-presentation",
+      { method: "PUT", token: "token", body: {
+        origin: "INTEGRATED", style: "MINIMALISTA",
+      } },
+    ));
+  });
+
+  it("selects the active imported ticket without silently showing an integrated model", async () => {
+    const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
+      if (path === "/store-document-print-configuration") {
+        return { ticketStyle: "COMPACTA", ticketTemplateOrigin: "IMPORTED" };
+      }
+      if (path === "/store-document-print-configuration/ticket-presentation") {
+        const body = options?.body as { origin: string; style: string };
+        return { ticketStyle: body.style, ticketTemplateOrigin: body.origin };
+      }
+      return {
+        effective: {
+          id: "template-2", type: "TICKET", format: "TICKET_80", scope: "STORE",
+          code: "TICKET_80", version: 2, schemaVersion: 1,
+          artifactReference: "template-2", sha256: "a".repeat(64), builtIn: false,
+        },
+        storeTemplates: [],
+      };
+    });
+
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
+    const origin = await screen.findByRole("combobox", { name: "Origen del diseño" });
+    await waitFor(() => expect(origin).toHaveValue("IMPORTED"));
+    expect(screen.getAllByText("TICKET_80")).toHaveLength(2);
+    expect(screen.queryByRole("combobox", { name: "Plantilla elegida" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/store-document-print-configuration/ticket-presentation",
+      { method: "PUT", token: "token", body: {
+        origin: "IMPORTED", style: "COMPACTA",
+      } },
     ));
   });
 });

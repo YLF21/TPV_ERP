@@ -57,7 +57,7 @@ public class SafeJrxmlCompiler {
             "java.util.stream.Collectors",
             "com.fasterxml.jackson.databind.JsonNode");
     private static final Set<String> ALLOWED_COMPONENTS = Set.of(
-            "list", "barcode4j:QRCode");
+            "list", "barcode4j:QRCode", "barcode4j:Code128");
     private static final Set<String> ALLOWED_METHODS = Set.of(
             "ByteArrayInputStream", "DecimalFormat",
             "equals", "equalsIgnoreCase", "trim", "isEmpty",

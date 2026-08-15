@@ -20,6 +20,7 @@ public class VoucherService {
     private final VoucherEventRepository events;
     private final CurrentOrganization organization;
     private final Clock clock;
+    private VoucherPresentationSnapshotFactory printSnapshots;
 
     public VoucherService(
             VoucherRepository vouchers,
@@ -30,6 +31,11 @@ public class VoucherService {
         this.events = events;
         this.organization = organization;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrintSnapshots(VoucherPresentationSnapshotFactory printSnapshots) {
+        this.printSnapshots = printSnapshots;
     }
 
     @Transactional
@@ -53,9 +59,11 @@ public class VoucherService {
         if (voucherAmount.signum() <= 0 || voucherAmount.compareTo(ticket.getTotal().abs()) > 0) {
             throw new IllegalArgumentException("el importe del vale no puede superar la devolucion");
         }
-        return vouchers.save(new Voucher(
+        var voucher = new Voucher(
                 ticket.getTiendaId(), nextCode(), voucherAmount,
-                List.of(ticket.getNumero()), Instant.now(clock)));
+                List.of(ticket.getNumero()), Instant.now(clock));
+        capturePrintSnapshot(voucher, ticket, null);
+        return vouchers.save(voucher);
     }
 
     @Transactional
@@ -102,9 +110,11 @@ public class VoucherService {
         if (voucher.balance().compareTo(requested) > 0) {
             var remaining = Money.euros(voucher.balance().subtract(requested));
             voucher.closeForReplacement();
-            replacement = Optional.of(vouchers.save(new Voucher(
+            var renewed = new Voucher(
                     purchaseTicket.getTiendaId(), nextCode(), remaining,
-                    origins(voucher, purchaseTicket), Instant.now(clock))));
+                    origins(voucher, purchaseTicket), Instant.now(clock));
+            capturePrintSnapshot(renewed, purchaseTicket, voucher);
+            replacement = Optional.of(vouchers.save(renewed));
         } else {
             voucher.consume(requested);
         }
@@ -283,6 +293,14 @@ public class VoucherService {
     private void requireCurrentStore(CommercialDocument ticket) {
         if (ticket == null || !organization.currentStore().getId().equals(ticket.getTiendaId())) {
             throw new IllegalArgumentException("documento no encontrado");
+        }
+    }
+
+    private void capturePrintSnapshot(
+            Voucher voucher, CommercialDocument sourceDocument, Voucher predecessor) {
+        if (printSnapshots != null && voucher.printSnapshot() == null) {
+            voucher.capturePrintSnapshot(
+                    printSnapshots.create(voucher, sourceDocument, predecessor));
         }
     }
 

@@ -5,7 +5,8 @@ public enum DocumentTemplateFormat {
     TICKET_80;
 
     public static DocumentTemplateFormat defaultFor(DocumentTemplateType type) {
-        return type == DocumentTemplateType.TICKET ? TICKET_80 : A4;
+        return type == DocumentTemplateType.TICKET || type == DocumentTemplateType.VALE
+                ? TICKET_80 : A4;
     }
 
     public boolean supports(DocumentTemplateType type) {
@@ -13,7 +14,8 @@ public enum DocumentTemplateFormat {
             case A4 -> type == DocumentTemplateType.FACTURA_VENTA
                     || type == DocumentTemplateType.ALBARAN_VENTA;
             case TICKET_80 -> type == DocumentTemplateType.FACTURA_VENTA
-                    || type == DocumentTemplateType.TICKET;
+                    || type == DocumentTemplateType.TICKET
+                    || type == DocumentTemplateType.VALE;
         };
     }
 }

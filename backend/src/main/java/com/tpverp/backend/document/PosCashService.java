@@ -41,7 +41,10 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PosCashService {
@@ -61,6 +64,7 @@ public class PosCashService {
     private final AuthoritativePromotionPricing promotionPricing;
     private final SaleOperationSecurityService operationSecurity;
     private final AuditService audit;
+    private final TransactionOperations transactions;
     private GiftReceiptService giftReceipts;
     private TemporaryPriceAuthorizationService temporaryPriceAuthorizations;
     private ReturnAwareSaleQuoteService returnAwareQuotes;
@@ -80,7 +84,49 @@ public class PosCashService {
             DiscountAuthorizationService discountAuthorizations,
             AuthoritativePromotionPricing promotionPricing,
             SaleOperationSecurityService operationSecurity,
+            AuditService audit,
+            PlatformTransactionManager transactionManager) {
+        this(documents, products, taxes, warehouses, paymentMethods, organization,
+                checkouts, snapshots, currentTerminal, discountAuthorizations,
+                promotionPricing, operationSecurity, audit,
+                new TransactionTemplate(transactionManager));
+    }
+
+    PosCashService(
+            DocumentService documents,
+            ProductRepository products,
+            StoreTaxRepository taxes,
+            WarehouseRepository warehouses,
+            PaymentMethodRepository paymentMethods,
+            CurrentOrganization organization,
+            PosCashCheckoutRepository checkouts,
+            PosCashTicketSnapshot snapshots,
+            CurrentTerminal currentTerminal,
+            DiscountAuthorizationService discountAuthorizations,
+            AuthoritativePromotionPricing promotionPricing,
+            SaleOperationSecurityService operationSecurity,
             AuditService audit) {
+        this(documents, products, taxes, warehouses, paymentMethods, organization,
+                checkouts, snapshots, currentTerminal, discountAuthorizations,
+                promotionPricing, operationSecurity, audit,
+                (TransactionOperations) null);
+    }
+
+    PosCashService(
+            DocumentService documents,
+            ProductRepository products,
+            StoreTaxRepository taxes,
+            WarehouseRepository warehouses,
+            PaymentMethodRepository paymentMethods,
+            CurrentOrganization organization,
+            PosCashCheckoutRepository checkouts,
+            PosCashTicketSnapshot snapshots,
+            CurrentTerminal currentTerminal,
+            DiscountAuthorizationService discountAuthorizations,
+            AuthoritativePromotionPricing promotionPricing,
+            SaleOperationSecurityService operationSecurity,
+            AuditService audit,
+            TransactionOperations transactions) {
         this.documents = documents;
         this.products = products;
         this.taxes = taxes;
@@ -94,6 +140,7 @@ public class PosCashService {
         this.promotionPricing = promotionPricing;
         this.operationSecurity = operationSecurity;
         this.audit = audit;
+        this.transactions = transactions;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -348,8 +395,21 @@ public class PosCashService {
         }
     }
 
-    @Transactional
     public Result charge(PosCashController.CashRequest request, Authentication authentication) {
+        var completed = transactions == null
+                ? chargeTransaction(request, authentication)
+                : Objects.requireNonNull(transactions.execute(
+                        ignored -> chargeTransaction(request, authentication)));
+        var result = completed.result();
+        var ticket = completed.ticket() == null
+                ? documents.loadForPrint(result.id()) : completed.ticket();
+        var printTicket = documents.renderTicketPrintView(ticket, result.printTicket());
+        return new Result(result.id(), result.number(), result.total(), result.received(),
+                result.change(), printTicket);
+    }
+
+    private TransactionalCharge chargeTransaction(
+            PosCashController.CashRequest request, Authentication authentication) {
         var companyId = organization.currentCompany().getId();
         var storeId = organization.currentStore().getId();
         var terminalId = currentTerminal.terminalId(authentication);
@@ -372,7 +432,7 @@ public class PosCashService {
             if (!existing.isCompleted()) {
                 throw new IllegalStateException("cash_checkout_in_progress");
             }
-            return resultFrom(existing);
+            return new TransactionalCharge(resultFrom(existing), null);
         }
         var prepared = prepareSale(request.sale(), authentication);
         var command = prepared.command();
@@ -410,13 +470,14 @@ public class PosCashService {
                 : documents.createApprovedCardTicketFromSnapshot(
                         snapshot(quote, cash.getId(), prepared), payment, authentication);
         completeTemporaryPriceAuthorizations("POS_CASH", request.checkoutId());
-        var printTicket = documents.renderTicketPrintView(
-                ticket, documents.ticketPrintView(ticket));
+        var printTicket = documents.ticketPrintView(ticket);
         reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
                 snapshots.serialize(printTicket), Instant.now());
         checkouts.save(reserved);
-        return new Result(ticket.getId(), ticket.getNumero(), total, received, change,
-                printTicket);
+        return new TransactionalCharge(
+                new Result(ticket.getId(), ticket.getNumero(), total, received, change,
+                        printTicket),
+                ticket);
     }
 
     @Transactional(readOnly = true)
@@ -1904,4 +1965,6 @@ public class PosCashService {
             BigDecimal received,
             BigDecimal change,
             TicketPrintView printTicket) {}
+
+    private record TransactionalCharge(Result result, CommercialDocument ticket) {}
 }

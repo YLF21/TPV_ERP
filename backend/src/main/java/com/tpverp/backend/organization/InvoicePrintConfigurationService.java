@@ -43,7 +43,7 @@ public class InvoicePrintConfigurationService {
             var current = storeDocumentPrintConfiguration.configuration();
             var saved = storeDocumentPrintConfiguration.updateObservations(
                     current.ticketObservations(), observations,
-                    current.deliveryNoteObservations());
+                    current.deliveryNoteObservations(), current.voucherObservations());
             return new Configuration(saved.invoiceObservations(), accounts(companyId, false));
         }
         InvoicePrintSettings value = settings.findById(companyId)
