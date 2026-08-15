@@ -15,9 +15,6 @@ import org.springframework.stereotype.Component;
 @Component
 class BuiltInTicketJasperBundle {
 
-    private static final String RESOURCE_ROOT = "reports/tickets/";
-    private static final String SUBREPORT_ROOT = RESOURCE_ROOT + "subreport/";
-
     private final TicketJrxmlBundleCompiler compiler;
     private final DocumentTemplateArtifactStorage storage;
     private volatile Path cachedMaster;
@@ -80,8 +77,7 @@ class BuiltInTicketJasperBundle {
     private static Map<String, byte[]> readSources() throws IOException {
         var sources = new LinkedHashMap<String, byte[]>();
         for (String filename : TicketJrxmlBundleCompiler.REQUIRED_FILENAMES) {
-            String resourceName = TicketJrxmlBundleCompiler.MASTER_FILENAME.equals(filename)
-                    ? RESOURCE_ROOT + filename : SUBREPORT_ROOT + filename;
+            String resourceName = TicketJrxmlBundleCompiler.builtInResourceName(filename);
             var resource = new ClassPathResource(resourceName);
             if (!resource.exists()) {
                 throw new IOException("ticket_jasper_builtin_source_missing:" + resourceName);

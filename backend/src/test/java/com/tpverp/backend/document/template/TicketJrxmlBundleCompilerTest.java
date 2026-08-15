@@ -31,6 +31,19 @@ class TicketJrxmlBundleCompilerTest {
     }
 
     @Test
+    void completesALoneUploadedMasterWithTheBuiltInSubreports() throws Exception {
+        var sources = repositorySources();
+        var bundle = compiler.compileUpload(java.util.Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME,
+                sources.get(TicketJrxmlBundleCompiler.MASTER_FILENAME)));
+
+        assertThat(bundle.reports()).containsOnlyKeys(
+                TicketJrxmlBundleCompiler.REQUIRED_FILENAMES);
+        assertThat(bundle.reports().values())
+                .allSatisfy(report -> assertThat(report.compiled()).isNotEmpty());
+    }
+
+    @Test
     void rejectsAnIncompleteBundleBeforeCompilation() throws Exception {
         var sources = repositorySources();
         sources.remove("ticket_pie_minimalista.jrxml");
@@ -57,9 +70,7 @@ class TicketJrxmlBundleCompilerTest {
     private static LinkedHashMap<String, byte[]> repositorySources() throws Exception {
         var sources = new LinkedHashMap<String, byte[]>();
         for (String filename : TicketJrxmlBundleCompiler.REQUIRED_FILENAMES) {
-            String resourcePath = TicketJrxmlBundleCompiler.MASTER_FILENAME.equals(filename)
-                    ? "reports/tickets/" + filename
-                    : "reports/tickets/subreport/" + filename;
+            String resourcePath = TicketJrxmlBundleCompiler.builtInResourceName(filename);
             var resource = new ClassPathResource(resourcePath);
             try (var input = resource.getInputStream()) {
                 sources.put(filename, input.readAllBytes());

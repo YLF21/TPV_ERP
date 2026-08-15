@@ -16,6 +16,7 @@ import java.util.regex.Matcher;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import net.sf.jasperreports.engine.JasperCompileManager;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Element;
 
@@ -25,6 +26,7 @@ public class TicketJrxmlBundleCompiler {
 
     public static final String MASTER_FILENAME = "ticket.jrxml";
     public static final String SUBREPORT_DIRECTORY_PARAMETER = "TPV_SUBREPORT_DIR";
+    private static final String BUILT_IN_RESOURCE_ROOT = "reports/tickets/";
     private static final Set<String> SECTIONS = Set.of(
             "ticket_cabecera", "ticket_cliente", "ticket_contenido",
             "ticket_impuesto", "ticket_pago", "ticket_pie");
@@ -52,6 +54,39 @@ public class TicketJrxmlBundleCompiler {
     private static final Pattern SUBREPORT_EXPRESSION = Pattern.compile(
             "(?s)(<element\\s+kind=\"subreport\"[^>]*>.*?<expression><!\\[CDATA\\[)"
                     + "(.*?)(]]></expression>)");
+
+    /**
+     * Compiles an uploaded ticket. A lone ticket.jrxml uses the application's
+     * built-in subreports; a complete custom bundle remains supported.
+     */
+    public CompiledBundle compileUpload(Map<String, byte[]> uploadedSources) {
+        if (uploadedSources != null
+                && uploadedSources.size() == 1
+                && uploadedSources.containsKey(MASTER_FILENAME)) {
+            var completed = new LinkedHashMap<String, byte[]>();
+            for (String filename : REQUIRED_FILENAMES) {
+                if (MASTER_FILENAME.equals(filename)) {
+                    completed.put(filename, uploadedSources.get(filename));
+                    continue;
+                }
+                var resource = new ClassPathResource(builtInResourceName(filename));
+                try (var input = resource.getInputStream()) {
+                    completed.put(filename, input.readAllBytes());
+                } catch (Exception exception) {
+                    throw new IllegalStateException(
+                            "ticket_jasper_builtin_source_missing:" + filename, exception);
+                }
+            }
+            return compile(completed);
+        }
+        return compile(uploadedSources);
+    }
+
+    static String builtInResourceName(String filename) {
+        return BUILT_IN_RESOURCE_ROOT
+                + (MASTER_FILENAME.equals(filename) ? "" : "subreport/")
+                + filename;
+    }
 
     public CompiledBundle compile(Map<String, byte[]> sources) {
         if (sources == null || !sources.keySet().equals(REQUIRED_FILENAMES)) {

@@ -36,6 +36,20 @@ const ticketStylePreviews: Record<TicketPrintStyle, string> = {
   MINIMALISTA: ticketStyleMinimalista,
 };
 
+const ticketBundleFilenames = new Set([
+  "ticket.jrxml",
+  ...["cabecera", "cliente", "contenido", "impuesto", "pago", "pie"].flatMap((section) => [
+    `ticket_${section}.jrxml`,
+    `ticket_${section}_compacta.jrxml`,
+    `ticket_${section}_minimalista.jrxml`,
+  ]),
+]);
+
+export function documentTemplateArtifactFiles(type: DocumentTemplateType, files: File[]): File[] {
+  if (type !== "TICKET") return files;
+  return files.filter((file) => ticketBundleFilenames.has(file.name.toLowerCase()));
+}
+
 function failureMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) return error.message || fallback;
   return error instanceof Error && error.message ? error.message : fallback;
@@ -327,7 +341,10 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                   multiple={template.type === "TICKET"}
                   disabled={!canManage || busyId !== null || template.status !== "DRAFT"}
                   onChange={(event) => {
-                    const files = Array.from(event.currentTarget.files ?? []);
+                    const files = documentTemplateArtifactFiles(
+                      template.type,
+                      Array.from(event.currentTarget.files ?? []),
+                    );
                     event.currentTarget.value = "";
                     void upload(template, files);
                   }}
