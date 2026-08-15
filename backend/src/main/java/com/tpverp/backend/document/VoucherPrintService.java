@@ -13,12 +13,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class VoucherPrintService {
+
+    private static final int TRACEABILITY_DOCUMENTS_PER_LINE = 3;
 
     private final CurrentOrganization organization;
     private final VoucherPresentationSnapshotFactory snapshots;
@@ -99,15 +100,16 @@ public class VoucherPrintService {
         putNullable(issuer, "email", fiscalAddress.get("email"));
         putNullable(issuer, "logoDataUri", logoDataUri);
 
-        String traceabilityDocumentNumbers = snapshot.traceability().stream()
+        List<String> traceabilityDocumentNumbers = snapshot.traceability().stream()
                 .sorted(Comparator.comparing(
                         VoucherPresentationSnapshot.TraceEntry::documentDate,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(VoucherPresentationSnapshot.TraceEntry::documentNumber)
                 .filter(value -> value != null && !value.isBlank())
                 .distinct()
-                .collect(Collectors.joining(" · "));
-        root.put("traceabilityDocumentNumbers", traceabilityDocumentNumbers);
+                .toList();
+        root.put("traceabilityDocumentNumbers",
+                formatTraceabilityDocumentNumbers(traceabilityDocumentNumbers));
 
         var trace = root.putArray("traceability");
         snapshot.traceability().forEach(entry -> {
@@ -122,6 +124,19 @@ public class VoucherPrintService {
             node.put("operation", operationLabel(entry.operation()));
         });
         return root;
+    }
+
+    private static String formatTraceabilityDocumentNumbers(List<String> documentNumbers) {
+        var formatted = new StringBuilder();
+        for (int index = 0; index < documentNumbers.size(); index++) {
+            if (index > 0) {
+                formatted.append(index % TRACEABILITY_DOCUMENTS_PER_LINE == 0
+                        ? '\n'
+                        : " · ");
+            }
+            formatted.append(documentNumbers.get(index));
+        }
+        return formatted.toString();
     }
 
     private static void putNullable(ObjectNode node, String name, String value) {

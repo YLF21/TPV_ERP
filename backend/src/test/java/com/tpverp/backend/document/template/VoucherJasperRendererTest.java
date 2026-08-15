@@ -16,6 +16,7 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -54,6 +55,11 @@ class VoucherJasperRendererTest {
                 Instant.parse("2026-08-14T10:00:00Z"));
         byte[] source = Files.readAllBytes(Path.of(
                 "..", "plantillas documentos", "VALE_TICKET_80.jrxml"));
+        String sourceText = new String(source, StandardCharsets.UTF_8);
+        assertThat(sourceText)
+                .contains("uuid=\"fa494436-b2b4-4480-9222-1427f0a82a2f\" positionType=\"Float\"")
+                .contains("fontSize=\"7.5\" bold=\"true\" textAdjust=\"StretchHeight\"")
+                .doesNotContain("fontSize=\"7.5\" bold=\"true\" textAdjust=\"ScaleFont\"");
         var compiler = new SafeJrxmlCompiler();
         var compiled = compiler.compile(source);
         var storage = new DocumentTemplateArtifactStorage(temporaryDirectory);
@@ -85,7 +91,10 @@ class VoucherJasperRendererTest {
                                 LocalDate.of(2026, 8, 14), "CONSUMO_PARCIAL"),
                         new VoucherPresentationSnapshot.TraceEntry(
                                 "T-2026-004231", CommercialDocumentType.TICKET,
-                                LocalDate.of(2026, 8, 7), "CONSUMO_PARCIAL")));
+                                LocalDate.of(2026, 8, 7), "CONSUMO_PARCIAL"),
+                        new VoucherPresentationSnapshot.TraceEntry(
+                                "T-2026-003900", CommercialDocumentType.TICKET,
+                                LocalDate.of(2026, 7, 25), "CONSUMO_PARCIAL")));
         var snapshotFactory = mock(VoucherPresentationSnapshotFactory.class);
         when(snapshotFactory.read("{}")).thenReturn(snapshot);
         when(snapshotFactory.logoDataUri(snapshot, store.getId())).thenReturn(
@@ -109,6 +118,7 @@ class VoucherJasperRendererTest {
             assertThat(text)
                     .contains("VALE", "25,50 EUR", "VABC12345678",
                             "T-2026-004587", "T-2026-004231", "R-2026-000184",
+                            "T-2026-003900",
                             "Tienda Centro", "TPV ERP SL",
                             "B12345678", "Calle Empresa 1", "928000000",
                             "Presentar el vale original")
@@ -118,6 +128,8 @@ class VoucherJasperRendererTest {
                     .isLessThan(text.indexOf("T-2026-004231"));
             assertThat(text.indexOf("T-2026-004231"))
                     .isLessThan(text.indexOf("R-2026-000184"));
+            assertThat(text.indexOf("R-2026-000184"))
+                    .isLessThan(text.indexOf("T-2026-003900"));
         }
         var raster = ImageIO.read(new ByteArrayInputStream(
                 java.util.Base64.getDecoder().decode(

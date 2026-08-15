@@ -10,7 +10,7 @@
   "storeName": "TIENDA CENTRO",
   "terminalName": "TPV-01",
   "observations": "Vale válido presentando este documento. Consulte cualquier duda con nuestro personal.",
-  "traceabilityDocumentNumbers": "T-2026-004587 · T-2026-004231 · R-2026-000184",
+  "traceabilityDocumentNumbers": "T-2026-004587 · T-2026-004231 · R-2026-000184\nT-2026-003900",
   "issuer": {
     "tradeName": "TIENDA CENTRO",
     "legalName": "EMPRESA DEMOSTRACIÓN, S.L.",
@@ -42,6 +42,12 @@
       "documentNumber": "T-2026-004587",
       "documentType": "Ticket",
       "documentDate": "14/08/2026",
+      "operation": "Consumo parcial y renovación"
+    },
+    {
+      "documentNumber": "T-2026-003900",
+      "documentType": "Ticket",
+      "documentDate": "25/07/2026",
       "operation": "Consumo parcial y renovación"
     }
   ]
