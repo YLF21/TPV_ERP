@@ -30,6 +30,7 @@ class DocumentTemplateControllerTest {
     @Autowired private MockMvc mvc;
     @MockitoBean private DocumentTemplateCatalogService service;
     @MockitoBean private DocumentTemplateArtifactService artifacts;
+    @MockitoBean private DocumentTemplatePresentationService presentations;
 
     @Test
     void listsCatalogWithoutAnEffectiveTemplateSoItCanBeConfigured() throws Exception {
@@ -53,6 +54,37 @@ class DocumentTemplateControllerTest {
                         .with(user("manager").authorities(
                                 () -> "DOCUMENT_TEMPLATES_MANAGE")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void managerCanSelectTheInvoiceOriginForOneFormat() throws Exception {
+        when(presentations.update(
+                DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.TICKET_80,
+                DocumentTemplateOrigin.IMPORTED)).thenReturn(
+                new DocumentTemplatePresentationService.Presentation(
+                        DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.TICKET_80,
+                        DocumentTemplateOrigin.IMPORTED));
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/v1/document-templates/presentation")
+                        .with(user("manager").authorities(
+                                () -> "APP_GESTION_ACCESS",
+                                () -> "DOCUMENT_TEMPLATES_MANAGE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "type": "FACTURA_VENTA",
+                                  "format": "TICKET_80",
+                                  "origin": "IMPORTED"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("FACTURA_VENTA"))
+                .andExpect(jsonPath("$.format").value("TICKET_80"))
+                .andExpect(jsonPath("$.origin").value("IMPORTED"));
     }
 
     @Test

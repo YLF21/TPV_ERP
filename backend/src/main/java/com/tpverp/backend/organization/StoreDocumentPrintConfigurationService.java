@@ -3,6 +3,8 @@ package com.tpverp.backend.organization;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateOrigin;
+import com.tpverp.backend.document.template.DocumentTemplatePresentationService;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.DocumentTemplateCatalogService;
@@ -38,6 +40,7 @@ public class StoreDocumentPrintConfigurationService {
     private final DocumentTemplateResolver templates;
     private final AuditService audit;
     private final Clock clock;
+    private DocumentTemplatePresentationService templatePresentations;
     private final DocumentTemplateCatalogService documentTemplates;
 
     public StoreDocumentPrintConfigurationService(
@@ -55,6 +58,11 @@ public class StoreDocumentPrintConfigurationService {
         this.audit = audit;
         this.clock = clock;
         this.documentTemplates = documentTemplates;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplatePresentations(DocumentTemplatePresentationService value) {
+        this.templatePresentations = value;
     }
 
     @Transactional(readOnly = true)
@@ -95,7 +103,12 @@ public class StoreDocumentPrintConfigurationService {
             TicketTemplateOrigin origin, TicketPrintStyle style) {
         var store = organization.currentStore();
         UUID storeId = store.getId();
-        if (origin == TicketTemplateOrigin.IMPORTED
+        if (templatePresentations != null) {
+            templatePresentations.update(
+                    DocumentTemplateType.TICKET,
+                    DocumentTemplateFormat.TICKET_80,
+                    DocumentTemplateOrigin.valueOf(origin.name()));
+        } else if (origin == TicketTemplateOrigin.IMPORTED
                 && templates.findEffective(
                         store, DocumentTemplateType.TICKET,
                         DocumentTemplateFormat.TICKET_80)
@@ -127,6 +140,11 @@ public class StoreDocumentPrintConfigurationService {
 
     @Transactional(readOnly = true)
     public TicketTemplateOrigin ticketTemplateOrigin() {
+        if (templatePresentations != null) {
+            return TicketTemplateOrigin.valueOf(templatePresentations.origin(
+                    DocumentTemplateType.TICKET,
+                    DocumentTemplateFormat.TICKET_80).name());
+        }
         UUID storeId = organization.currentStore().getId();
         return settings.findById(storeId)
                 .map(StoreDocumentPrintSettings::getTicketTemplateOrigin)
@@ -210,8 +228,18 @@ public class StoreDocumentPrintConfigurationService {
                 value == null ? null : value.getDeliveryNoteObservations(),
                 value == null ? null : value.getVoucherObservations(),
                 value == null ? TicketPrintStyle.PRINCIPAL : value.getTicketStyle(),
-                value == null ? TicketTemplateOrigin.INTEGRATED
-                        : value.getTicketTemplateOrigin());
+                effectiveTicketTemplateOrigin(value));
+    }
+
+    private TicketTemplateOrigin effectiveTicketTemplateOrigin(
+            StoreDocumentPrintSettings value) {
+        if (templatePresentations != null) {
+            return TicketTemplateOrigin.valueOf(templatePresentations.origin(
+                    DocumentTemplateType.TICKET,
+                    DocumentTemplateFormat.TICKET_80).name());
+        }
+        return value == null ? TicketTemplateOrigin.INTEGRATED
+                : value.getTicketTemplateOrigin();
     }
 
     private static String dataUri(StoreDocumentLogo logo) {

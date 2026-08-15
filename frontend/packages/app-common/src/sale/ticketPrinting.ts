@@ -128,6 +128,7 @@ export function ticketPrintRequest(
     total: t("print.a4.total"),
   };
   return {
+    requireRenderedDocument: true,
     documentNumber: snapshot.documentNumber,
     storeName: terminal.storeName,
     terminalCode: terminal.terminalCode,
@@ -194,12 +195,14 @@ export function ticketAsA4Document(
 ): A4DocumentPrintRequest {
   const t = createTranslator(locale);
   return {
+    requireRenderedDocument: true,
     documentType: "REPORT",
     locale,
     title: `${t("salesReport.tickets")} ${snapshot.documentNumber}`,
     storeName: terminal.storeName,
     terminalCode: terminal.terminalCode,
     issuedAt: snapshot.issuedAt,
+    renderedPdf: snapshot.ticketRenderedPdf,
     lines: snapshot.lines.map((line) => ({
       name: line.name,
       quantity: Number(line.quantity),
@@ -370,6 +373,7 @@ export function commercialDocumentAsA4Document(
   const t = createTranslator(locale);
   const invoice = invoiceLabels(locale);
   return {
+    requireRenderedDocument: true,
     documentType: pendingDocumentType(snapshot),
     locale,
     title: pendingDocumentTitle(snapshot, locale),

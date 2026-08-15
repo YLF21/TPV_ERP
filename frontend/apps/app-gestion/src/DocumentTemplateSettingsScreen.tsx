@@ -5,10 +5,13 @@ import {
   createDocumentTemplateDraft,
   downloadDocumentTemplateSource,
   loadDocumentTemplateCatalog,
+  loadDocumentTemplatePresentation,
+  saveDocumentTemplatePresentation,
   reactivateDocumentTemplate,
   uploadDocumentTemplateArtifact,
   type DocumentTemplateCatalog,
   type DocumentTemplateFormat,
+  type DocumentTemplateOrigin,
   type DocumentTemplateType,
   type DocumentTemplateView,
 } from "./documentTemplatesApi";
@@ -84,6 +87,8 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [ticketStyle, setTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
   const [ticketTemplateOrigin, setTicketTemplateOrigin] =
     useState<TicketTemplateOrigin>("INTEGRATED");
+  const [documentTemplateOrigin, setDocumentTemplateOrigin] =
+    useState<DocumentTemplateOrigin>("INTEGRATED");
   const [savedTicketStyle, setSavedTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
@@ -139,6 +144,26 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
       }));
   }, [selectedType, request, session.accessToken, t]);
 
+  useEffect(() => {
+    if (selectedType === "TICKET") return;
+    let current = true;
+    void loadDocumentTemplatePresentation(
+      selectedType, effectiveFormat, session.accessToken, request,
+    )
+      .then((value) => {
+        if (current) setDocumentTemplateOrigin(value.origin ?? "INTEGRATED");
+      })
+      .catch((error) => {
+        if (current) {
+          setMessage({
+            kind: "error",
+            text: failureMessage(error, t("gestion.documentTemplates.documentPresentationLoadError")),
+          });
+        }
+      });
+    return () => { current = false; };
+  }, [selectedType, effectiveFormat, request, session.accessToken, t]);
+
   async function updateTicketPresentation() {
     if (!canManage || busyId) return;
     setBusyId("ticket-style");
@@ -156,6 +181,31 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
       setMessage({
         kind: "error",
         text: failureMessage(error, t("gestion.documentTemplates.ticketStyleSaveError")),
+      });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function updateDocumentPresentation() {
+    if (!canManage || busyId || selectedType === "TICKET") return;
+    setBusyId("document-presentation");
+    setMessage(null);
+    try {
+      const value = await saveDocumentTemplatePresentation({
+        type: selectedType,
+        format: effectiveFormat,
+        origin: documentTemplateOrigin,
+      }, session.accessToken, request);
+      setDocumentTemplateOrigin(value.origin);
+      setMessage({
+        kind: "success",
+        text: t("gestion.documentTemplates.documentPresentationSaved"),
+      });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: failureMessage(error, t("gestion.documentTemplates.documentPresentationSaveError")),
       });
     } finally {
       setBusyId(null);
@@ -323,6 +373,56 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
           )}
         </dl>
       </section>
+
+      {selectedType !== "TICKET" && (
+        <section className="gestion-ticket-style-selector" aria-labelledby="document-presentation-title">
+          <div className="gestion-ticket-style-copy">
+            <h3 id="document-presentation-title">
+              {t("gestion.documentTemplates.documentPresentation")}
+            </h3>
+            <p>{t("gestion.documentTemplates.documentPresentationHelp")}</p>
+          </div>
+          <div className="gestion-ticket-imported-summary">
+            <strong>
+              {documentTemplateOrigin === "IMPORTED"
+                ? catalog?.effective?.code ?? t("gestion.documentTemplates.missing")
+                : t("gestion.documentTemplates.presentationOrigin.INTEGRATED")}
+            </strong>
+            {documentTemplateOrigin === "IMPORTED" && (
+              <span>{t("gestion.documentTemplates.version")} {catalog?.effective?.version ?? "-"}</span>
+            )}
+            <small>{t(documentTemplateOrigin === "IMPORTED"
+              ? "gestion.documentTemplates.presentationImportedHelp"
+              : "gestion.documentTemplates.presentationIntegratedHelp")}</small>
+          </div>
+          <div className="gestion-ticket-style-actions">
+            <label>
+              <span>{t("gestion.documentTemplates.presentationOriginLabel")}</span>
+              <select
+                value={documentTemplateOrigin}
+                disabled={!canManage || busyId !== null}
+                onChange={(event) => setDocumentTemplateOrigin(
+                  event.currentTarget.value as DocumentTemplateOrigin,
+                )}
+              >
+                <option value="INTEGRATED">
+                  {t("gestion.documentTemplates.presentationOrigin.INTEGRATED")}
+                </option>
+                <option value="IMPORTED" disabled={!catalog?.effective}>
+                  {t("gestion.documentTemplates.presentationOrigin.IMPORTED")}
+                </option>
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={!canManage || busyId !== null}
+              onClick={() => void updateDocumentPresentation()}
+            >
+              {t("gestion.documentTemplates.ticketStyleSave")}
+            </button>
+          </div>
+        </section>
+      )}
 
       {selectedType === "TICKET" && (
         <section className="gestion-ticket-style-selector" aria-labelledby="ticket-style-title">

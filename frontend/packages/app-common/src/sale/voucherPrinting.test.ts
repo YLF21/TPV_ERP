@@ -14,6 +14,7 @@ describe("voucher printing", () => {
   it("builds the separate voucher note with its exact code and origin", () => {
     expect(issuedVoucherPrintRequest(voucher, terminal, "es")).toEqual(
       expect.objectContaining({
+        requireRenderedDocument: true,
         documentNumber: "VABC123",
         total: 25.5,
         lines: [expect.objectContaining({
@@ -59,6 +60,7 @@ describe("voucher printing", () => {
 
     expect(printA4Document).toHaveBeenCalledWith(
       expect.objectContaining({
+        requireRenderedDocument: true,
         documentType: "REPORT",
         documentNumber: "VABC123",
         renderedPdf: jasperVoucher.renderedPdf,

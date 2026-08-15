@@ -3,6 +3,7 @@ import { ApiError, apiBaseUrl, apiRequest } from "@tpverp/app-common";
 export type DocumentTemplateType = "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET" | "VALE";
 export type DocumentTemplateFormat = "A4" | "TICKET_80";
 export type DocumentTemplateStatus = "DRAFT" | "VALIDATED" | "ACTIVE" | "RETIRED";
+export type DocumentTemplateOrigin = "INTEGRATED" | "IMPORTED";
 
 export type ResolvedDocumentTemplate = {
   id: string | null;
@@ -41,6 +42,12 @@ export type DocumentTemplateCatalog = {
   storeTemplates: DocumentTemplateView[];
 };
 
+export type DocumentTemplatePresentation = {
+  type: DocumentTemplateType;
+  format: DocumentTemplateFormat;
+  origin: DocumentTemplateOrigin;
+};
+
 export function loadDocumentTemplateCatalog(
   type: DocumentTemplateType,
   format: DocumentTemplateFormat,
@@ -51,6 +58,34 @@ export function loadDocumentTemplateCatalog(
     `/document-templates?type=${encodeURIComponent(type)}&format=${encodeURIComponent(format)}`,
     { token },
   );
+}
+
+export function loadDocumentTemplatePresentation(
+  type: DocumentTemplateType,
+  format: DocumentTemplateFormat,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplatePresentation>(
+    `/document-templates/presentation?type=${encodeURIComponent(type)}&format=${encodeURIComponent(format)}`,
+    { token },
+  );
+}
+
+export function saveDocumentTemplatePresentation(
+  value: {
+    type: DocumentTemplateType;
+    format: DocumentTemplateFormat;
+    origin: DocumentTemplateOrigin;
+  },
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplatePresentation>("/document-templates/presentation", {
+    method: "PUT",
+    token,
+    body: value,
+  });
 }
 
 export function createDocumentTemplateDraft(

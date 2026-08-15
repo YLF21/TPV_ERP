@@ -792,6 +792,9 @@ async function printTicket(ticket, config) {
         logoRaster = { width: size.width, height: size.height, bgra: resized.toBitmap() };
       }
     }
+    if (ticket?.requireRenderedDocument && !documentRaster) {
+      return structuredError("PRINT_FAILED", "El raster Jasper del documento es obligatorio");
+    }
     const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
     return executeEscposTicketPrint({
       sendBuffer: (buffer) => sendTicketPrinterRawBuffer(routedConfig, buffer),
@@ -830,6 +833,9 @@ async function printTicket(ticket, config) {
       "PRINT_FAILED",
       error instanceof Error ? error.message : "El PDF Jasper del ticket no es valido"
     );
+  }
+  if (ticket?.requireRenderedDocument && !jasperPdf) {
+    return structuredError("PRINT_FAILED", "El PDF Jasper del documento es obligatorio");
   }
 
   const printWindow = new BrowserWindow({
@@ -878,6 +884,9 @@ async function exportTicketPdf(ticket, defaultFileName) {
     if (jasperPdf) {
       fs.writeFileSync(result.filePath, jasperPdf);
       return { ok: true, canceled: false, filePath: result.filePath };
+    }
+    if (ticket?.requireRenderedDocument) {
+      return structuredError("PDF_EXPORT_FAILED", "El PDF Jasper del documento es obligatorio");
     }
   } catch (error) {
     return structuredError(
@@ -932,6 +941,9 @@ async function exportA4DocumentPdf(document, defaultFileName) {
       fs.writeFileSync(result.filePath, jasperPdf);
       return { ok: true, canceled: false, filePath: result.filePath };
     }
+    if (document?.requireRenderedDocument) {
+      return structuredError("PDF_EXPORT_FAILED", "El PDF Jasper del documento es obligatorio");
+    }
   } catch (error) {
     return structuredError(
       "PDF_EXPORT_FAILED",
@@ -985,6 +997,9 @@ async function printA4Document(document, config) {
       "PRINT_FAILED",
       error instanceof Error ? error.message : "El PDF Jasper no es valido"
     );
+  }
+  if (document?.requireRenderedDocument && !jasperPdf) {
+    return structuredError("PRINT_FAILED", "El PDF Jasper del documento es obligatorio");
   }
 
   if (jasperPdf && isMicrosoftPrintToPdf(printerName)) {

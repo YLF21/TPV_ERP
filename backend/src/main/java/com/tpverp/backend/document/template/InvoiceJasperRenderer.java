@@ -49,6 +49,7 @@ public class InvoiceJasperRenderer {
     private final DocumentTemplateArtifactStorage storage;
     private final SafeJrxmlCompiler compiler;
     private final ObjectMapper mapper;
+    private final BuiltInDocumentJrxmlCatalog builtInTemplates;
     private final Map<CompiledCacheKey, byte[]> compiledCache = Collections.synchronizedMap(
             new LinkedHashMap<>(16, 0.75f, true) {
                 @Override
@@ -62,11 +63,13 @@ public class InvoiceJasperRenderer {
             DocumentTemplateRepository templates,
             DocumentTemplateArtifactStorage storage,
             SafeJrxmlCompiler compiler,
-            ObjectMapper mapper) {
+            ObjectMapper mapper,
+            BuiltInDocumentJrxmlCatalog builtInTemplates) {
         this.templates = templates;
         this.storage = storage;
         this.compiler = compiler;
         this.mapper = mapper;
+        this.builtInTemplates = builtInTemplates;
     }
 
     public Optional<byte[]> render(
@@ -119,11 +122,14 @@ public class InvoiceJasperRenderer {
         Objects.requireNonNull(company, "company");
         Objects.requireNonNull(presentation, "presentation");
         Objects.requireNonNull(format, "format");
+        var templateType = templateType(document.getTipo());
+        if (templateType == null) {
+            return Optional.empty();
+        }
         var reference = format == DocumentTemplateFormat.TICKET_80
                 ? presentation.ticketTemplate() : presentation.template();
-        var templateType = templateType(document.getTipo());
-        if (templateType == null || reference == null || reference.builtIn()) {
-            return Optional.empty();
+        if (reference == null) {
+            reference = builtInTemplates.reference(templateType, format);
         }
         if (templateType == DocumentTemplateType.FACTURA_VENTA && customer == null) {
             throw new IllegalArgumentException("invoice_print_customer_required");
@@ -148,21 +154,10 @@ public class InvoiceJasperRenderer {
         Objects.requireNonNull(store, "store");
         Objects.requireNonNull(company, "company");
         Objects.requireNonNull(data, "data");
-        if (reference.builtIn()) {
-            return Optional.empty();
-        }
-        var template = templates.findPrintableTemplate(
-                        reference.id(), company.getId(), store.getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "invoice_print_template_not_available"));
-        verifyReference(template, reference, templateType, format);
         try {
-            byte[] source = storage.readSource(template.getArtifactReference());
-            if (!SafeJrxmlCompiler.sha256(source).equals(template.getSha256())) {
-                throw new IllegalStateException(
-                        "document_template_artifact_integrity_failed");
-            }
-            byte[] compiled = compiled(template, source);
+            byte[] compiled = reference.builtIn()
+                    ? builtInTemplates.compiled(reference, templateType, format)
+                    : compiledImported(reference, templateType, format, company, store);
             byte[] json = mapper.writeValueAsBytes(data);
             var parameters = new LinkedHashMap<String, Object>();
             parameters.put(JsonQueryExecuterFactory.JSON_INPUT_STREAM,
@@ -181,6 +176,25 @@ public class InvoiceJasperRenderer {
         } catch (IOException | JRException exception) {
             throw new IllegalStateException("invoice_jasper_render_failed", exception);
         }
+    }
+
+    private byte[] compiledImported(
+            InvoicePresentationSnapshot.TemplateReference reference,
+            DocumentTemplateType templateType,
+            DocumentTemplateFormat format,
+            Company company,
+            Store store) throws IOException {
+        var template = templates.findPrintableTemplate(
+                        reference.id(), company.getId(), store.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "invoice_print_template_not_available"));
+        verifyReference(template, reference, templateType, format);
+        byte[] source = storage.readSource(template.getArtifactReference());
+        if (!SafeJrxmlCompiler.sha256(source).equals(template.getSha256())) {
+            throw new IllegalStateException(
+                    "document_template_artifact_integrity_failed");
+        }
+        return compiled(template, source);
     }
 
     static byte[] ticketRaster(JasperPrint print) throws JRException, IOException {

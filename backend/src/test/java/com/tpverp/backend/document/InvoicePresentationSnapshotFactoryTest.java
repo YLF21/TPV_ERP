@@ -19,8 +19,12 @@ import com.tpverp.backend.organization.InvoicePrintSettings;
 import com.tpverp.backend.organization.InvoicePrintSettingsRepository;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
+import com.tpverp.backend.document.template.BuiltInDocumentJrxmlCatalog;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateOrigin;
+import com.tpverp.backend.document.template.DocumentTemplatePresentationService;
+import com.tpverp.backend.document.template.SafeJrxmlCompiler;
 import com.tpverp.backend.document.template.DocumentTemplateScope;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.ResolvedDocumentTemplate;
@@ -31,6 +35,66 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class InvoicePresentationSnapshotFactoryTest {
+
+    @Test
+    void freezesIndependentIntegratedAndImportedInvoiceFormats() {
+        var organization = mock(CurrentOrganization.class);
+        var licenses = mock(LicenseRepository.class);
+        var settings = mock(InvoicePrintSettingsRepository.class);
+        var accounts = mock(InvoiceBankAccountRepository.class);
+        var templates = mock(DocumentTemplateResolver.class);
+        var presentations = mock(DocumentTemplatePresentationService.class);
+        var store = mock(Store.class);
+        var company = mock(Company.class);
+        var storeId = UUID.randomUUID();
+        var companyId = UUID.randomUUID();
+        var ticketTemplateId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(company.getId()).thenReturn(companyId);
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of());
+        when(accounts.findAllByCompanyIdAndActivaTrueOrderByOrdenAscIdAsc(companyId))
+                .thenReturn(List.of());
+        when(presentations.origin(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4))
+                .thenReturn(DocumentTemplateOrigin.INTEGRATED);
+        when(presentations.origin(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.TICKET_80))
+                .thenReturn(DocumentTemplateOrigin.IMPORTED);
+        when(templates.resolve(
+                DocumentTemplateType.FACTURA_VENTA,
+                DocumentTemplateFormat.TICKET_80)).thenReturn(
+                new ResolvedDocumentTemplate(
+                        ticketTemplateId,
+                        DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.TICKET_80,
+                        DocumentTemplateScope.STORE,
+                        "FACTURA_TICKET_TIENDA",
+                        2,
+                        1,
+                        ticketTemplateId.toString(),
+                        "e".repeat(64),
+                        false));
+
+        var factory = new InvoicePresentationSnapshotFactory(
+                organization, licenses, settings, accounts, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
+        factory.setTemplateResolver(templates);
+        factory.setTemplatePresentations(presentations);
+
+        var snapshot = factory.read(factory.create());
+
+        assertThat(snapshot.template().builtIn()).isTrue();
+        assertThat(snapshot.template().code())
+                .isEqualTo("INTEGRATED_FACTURA_VENTA_A4");
+        assertThat(snapshot.ticketTemplate()).isEqualTo(
+                new InvoicePresentationSnapshot.TemplateReference(
+                        ticketTemplateId, "FACTURA_TICKET_TIENDA", 2, 1,
+                        "e".repeat(64), false));
+        verify(templates, never()).resolve(
+                DocumentTemplateType.FACTURA_VENTA, DocumentTemplateFormat.A4);
+    }
 
     @Test
     void freezesRetailIgicObservationsAndEveryActiveBankAccount() {
@@ -91,7 +155,8 @@ class InvoicePresentationSnapshotFactoryTest {
                         false));
 
         var factory = new InvoicePresentationSnapshotFactory(
-                organization, licenses, settings, accounts, new ObjectMapper());
+                organization, licenses, settings, accounts, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
         factory.setTemplateResolver(templates);
         var snapshot = factory.read(factory.create());
 
@@ -142,7 +207,8 @@ class InvoicePresentationSnapshotFactoryTest {
                         "b".repeat(64),
                         false));
         var factory = new InvoicePresentationSnapshotFactory(
-                organization, licenses, settings, accounts, new ObjectMapper());
+                organization, licenses, settings, accounts, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
         factory.setTemplateResolver(templates);
 
         var snapshot = factory.read(
@@ -194,7 +260,8 @@ class InvoicePresentationSnapshotFactoryTest {
                         "d".repeat(64),
                         false));
         var factory = new InvoicePresentationSnapshotFactory(
-                organization, licenses, settings, accounts, new ObjectMapper());
+                organization, licenses, settings, accounts, new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
         factory.setTemplateResolver(templates);
         factory.setStorePrintConfiguration(storeConfiguration);
 

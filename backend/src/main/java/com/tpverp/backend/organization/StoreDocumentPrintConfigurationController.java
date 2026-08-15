@@ -17,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/store-document-print-configuration")
-@PreAuthorize("hasRole('ADMIN')")
 public class StoreDocumentPrintConfigurationController {
 
     private final StoreDocumentPrintConfigurationService service;
@@ -28,11 +27,14 @@ public class StoreDocumentPrintConfigurationController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
+            + "hasAuthority('DOCUMENT_TEMPLATES_MANAGE'))")
     public StoreDocumentPrintConfigurationService.Configuration get() {
         return service.configuration();
     }
 
     @PutMapping("/observations")
+    @PreAuthorize("hasRole('ADMIN')")
     public StoreDocumentPrintConfigurationService.Configuration updateObservations(
             @Valid @RequestBody ObservationsRequest request) {
         return service.updateObservations(
@@ -40,24 +42,30 @@ public class StoreDocumentPrintConfigurationController {
     }
 
     @PutMapping("/ticket-style")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
+            + "hasAuthority('DOCUMENT_TEMPLATES_MANAGE'))")
     public StoreDocumentPrintConfigurationService.Configuration updateTicketStyle(
             @Valid @RequestBody TicketStyleRequest request) {
         return service.updateTicketStyle(request.style());
     }
 
     @PutMapping("/ticket-presentation")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
+            + "hasAuthority('DOCUMENT_TEMPLATES_MANAGE'))")
     public StoreDocumentPrintConfigurationService.Configuration updateTicketPresentation(
             @Valid @RequestBody TicketPresentationRequest request) {
         return service.updateTicketPresentation(request.origin(), request.style());
     }
 
     @PutMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
     public StoreDocumentPrintConfigurationService.Configuration uploadLogo(
             @RequestPart("file") MultipartFile file) throws IOException {
         return service.uploadLogo(file.getBytes());
     }
 
     @DeleteMapping("/logo")
+    @PreAuthorize("hasRole('ADMIN')")
     public StoreDocumentPrintConfigurationService.Configuration removeLogo() {
         return service.removeLogo();
     }

@@ -60,20 +60,118 @@ describe("DocumentTemplateSettingsScreen", () => {
     );
 
     expect(await screen.findByText("Falta plantilla JRXML activa")).toBeInTheDocument();
-    expect(screen.getByText(/Sin ella, la emisión y la impresión quedan bloqueadas/)).toBeInTheDocument();
+    expect(screen.getByText(/modelo integrado o una plantilla JRXML activa/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Crear borrador" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
-    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
     ));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-templates/presentation?type=ALBARAN_VENTA&format=A4",
+      { token: "token" },
+    ));
+    expect(screen.getByRole("combobox", { name: "Origen del modelo" }))
+      .toHaveValue("INTEGRATED");
     expect(screen.getByText("Falta plantilla JRXML activa")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Vale" }));
-    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/document-templates?type=VALE&format=TICKET_80",
       { token: "token" },
+    ));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-templates/presentation?type=VALE&format=TICKET_80",
+      { token: "token" },
+    ));
+  });
+
+  it("selects invoice origins independently for A4 and ticket 80", async () => {
+    const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
+      if (path.startsWith("/document-templates/presentation?")) {
+        return {
+          type: "FACTURA_VENTA",
+          format: path.includes("TICKET_80") ? "TICKET_80" : "A4",
+          origin: path.includes("TICKET_80") ? "IMPORTED" : "INTEGRATED",
+        };
+      }
+      if (path === "/document-templates/presentation") {
+        return options?.body;
+      }
+      return {
+        effective: {
+          id: "invoice-template", type: "FACTURA_VENTA",
+          format: path.includes("TICKET_80") ? "TICKET_80" : "A4",
+          scope: "STORE", code: "FACTURA_TIENDA", version: 3,
+          schemaVersion: 1, artifactReference: "invoice-template",
+          sha256: "a".repeat(64), builtIn: false,
+        },
+        storeTemplates: [],
+      };
+    });
+
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    const origin = await screen.findByRole("combobox", { name: "Origen del modelo" });
+    await waitFor(() => expect(origin).toHaveValue("INTEGRATED"));
+    fireEvent.change(origin, { target: { value: "IMPORTED" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar este diseño" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-templates/presentation",
+      { method: "PUT", token: "token", body: {
+        type: "FACTURA_VENTA", format: "A4", origin: "IMPORTED",
+      } },
+    ));
+
+    fireEvent.click(screen.getByRole("tab", { name: "Ticket 80 mm" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-templates/presentation?type=FACTURA_VENTA&format=TICKET_80",
+      { token: "token" },
+    ));
+    await waitFor(() => expect(
+      screen.getByRole("combobox", { name: "Origen del modelo" }),
+    ).toHaveValue("IMPORTED"));
+  });
+
+  it.each([
+    ["Albarán", "ALBARAN_VENTA", "A4"],
+    ["Vale", "VALE", "TICKET_80"],
+  ])("saves the imported model for %s", async (tab, type, format) => {
+    const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
+      if (path.startsWith("/document-templates/presentation?")) {
+        return { type, format, origin: "INTEGRATED" };
+      }
+      if (path === "/document-templates/presentation") return options?.body;
+      return {
+        effective: {
+          id: "template", type, format, scope: "STORE", code: `${type}_${format}`,
+          version: 2, schemaVersion: 1, artifactReference: "template",
+          sha256: "a".repeat(64), builtIn: false,
+        },
+        storeTemplates: [],
+      };
+    });
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: tab }));
+    const origin = await screen.findByRole("combobox", { name: "Origen del modelo" });
+    await waitFor(() => expect(origin).toHaveValue("INTEGRATED"));
+    fireEvent.change(origin, { target: { value: "IMPORTED" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar este diseño" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-templates/presentation",
+      { method: "PUT", token: "token", body: { type, format, origin: "IMPORTED" } },
     ));
   });
 

@@ -38,6 +38,7 @@ export function issuedVoucherPrintRequest(
   const amount = Number(voucher.amount);
   const text = copy[locale];
   return {
+    requireRenderedDocument: true,
     documentNumber: voucher.code,
     storeName: terminal.storeName,
     terminalCode: terminal.terminalCode,
@@ -115,6 +116,7 @@ function voucherAsJasperDocument(
   const text = copy[locale];
   const amount = Number(voucher.amount);
   return {
+    requireRenderedDocument: true,
     documentType: "REPORT",
     locale,
     title: text.title,
