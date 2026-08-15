@@ -47,12 +47,15 @@ public class DocumentTemplateCatalogService {
     public CatalogView currentStoreCatalog(
             DocumentTemplateType type, DocumentTemplateFormat format) {
         var store = organization.currentStore();
+        var storeTemplates = templates.findAllForStore(store.getId()).stream()
+                .filter(template -> template.getType() == type
+                        && template.getFormat() == format)
+                .toList();
         return new CatalogView(
                 resolver.findEffective(store, type, format).orElse(null),
-                templates.findAllForStore(store.getId()).stream()
-                        .filter(template -> template.getType() == type
-                                && template.getFormat() == format)
-                        .map(TemplateView::from)
+                storeTemplates.stream()
+                        .map(template -> TemplateView.from(
+                                template, isLatestVersion(template, storeTemplates)))
                         .toList());
     }
 
@@ -109,7 +112,8 @@ public class DocumentTemplateCatalogService {
                         template.getStore().getId(), template.getType(), template.getFormat())
                 .filter(active -> !active.getId().equals(template.getId()))
                 .ifPresent(active -> {
-                    active.retire(now);
+                    active.retire(now,
+                            DocumentTemplateRetirementReason.REPLACED_BY_TEMPLATE);
                     templates.saveAndFlush(active);
                     audit.record("DOCUMENT_TEMPLATE_RETIRED", AuditResult.EXITO,
                             auditDetails(active));
@@ -119,6 +123,62 @@ public class DocumentTemplateCatalogService {
         audit.record("DOCUMENT_TEMPLATE_ACTIVATED", AuditResult.EXITO,
                 auditDetails(saved));
         return TemplateView.from(saved);
+    }
+
+    /**
+     * Stops using a store-specific ticket JRXML so rendering falls back to the
+     * application-provided ticket bundle and the selected built-in layout.
+     */
+    @Transactional
+    public void useBuiltInCurrentStoreTicket() {
+        var store = organization.currentStore();
+        var now = clock.instant();
+        templates.findActiveStoreTemplateForUpdate(
+                        store.getId(), DocumentTemplateType.TICKET,
+                        DocumentTemplateFormat.TICKET_80)
+                .ifPresent(active -> {
+                    active.retire(now,
+                            DocumentTemplateRetirementReason.BUILT_IN_DESIGN_SELECTED);
+                    templates.saveAndFlush(active);
+                    audit.record("DOCUMENT_TEMPLATE_RETIRED", AuditResult.EXITO,
+                            auditDetails(active));
+                });
+    }
+
+    @Transactional
+    public TemplateView reactivateCurrentStoreTemplate(UUID templateId) {
+        var template = currentStoreTemplateForUpdate(templateId);
+        var latestVersion = templates.findMaxVersionForStore(
+                template.getStore().getId(), template.getCode());
+        if (!template.canReactivate()
+                || latestVersion == null
+                || template.getTemplateVersion() != latestVersion) {
+            throw new IllegalStateException("document_template_not_reactivatable");
+        }
+        var now = clock.instant();
+        templates.findActiveStoreTemplateForUpdate(
+                        template.getStore().getId(), template.getType(), template.getFormat())
+                .filter(active -> !active.getId().equals(template.getId()))
+                .ifPresent(active -> {
+                    active.retire(now, DocumentTemplateRetirementReason.REPLACED_BY_TEMPLATE);
+                    templates.saveAndFlush(active);
+                    audit.record("DOCUMENT_TEMPLATE_RETIRED", AuditResult.EXITO,
+                            auditDetails(active));
+                });
+        template.reactivate(now);
+        var saved = templates.saveAndFlush(template);
+        audit.record("DOCUMENT_TEMPLATE_REACTIVATED", AuditResult.EXITO,
+                auditDetails(saved));
+        return TemplateView.from(saved);
+    }
+
+    private static boolean isLatestVersion(
+            DocumentTemplate candidate, List<DocumentTemplate> storeTemplates) {
+        return storeTemplates.stream()
+                .filter(template -> template.getCode().equals(candidate.getCode()))
+                .mapToInt(DocumentTemplate::getTemplateVersion)
+                .max()
+                .orElse(Integer.MIN_VALUE) == candidate.getTemplateVersion();
     }
 
     private DocumentTemplate currentStoreTemplateForUpdate(UUID templateId) {
@@ -173,16 +233,21 @@ public class DocumentTemplateCatalogService {
             Instant createdAt,
             Instant validatedAt,
             Instant activatedAt,
-            Instant retiredAt) {
+            Instant retiredAt,
+            boolean reactivatable) {
 
         static TemplateView from(DocumentTemplate template) {
+            return from(template, true);
+        }
+
+        private static TemplateView from(DocumentTemplate template, boolean latestVersion) {
             return new TemplateView(
                     template.getId(), template.getType(), template.getFormat(), template.getScope(),
                     template.getCode(), template.getTemplateVersion(), template.getName(),
                     template.getStatus(), template.getSchemaVersion(), template.getSha256(),
                     template.getCreatedByUserId(), template.getCreatedAt(),
                     template.getValidatedAt(), template.getActivatedAt(),
-                    template.getRetiredAt());
+                    template.getRetiredAt(), latestVersion && template.canReactivate());
         }
     }
 }

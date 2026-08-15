@@ -3,6 +3,7 @@ import {
   activateDocumentTemplate,
   createDocumentTemplateDraft,
   loadDocumentTemplateCatalog,
+  reactivateDocumentTemplate,
   uploadDocumentTemplateArtifact,
 } from "./documentTemplatesApi";
 
@@ -16,6 +17,17 @@ describe("document templates API", () => {
       "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
     );
+  });
+
+  it("reactivates a recoverable retired version", async () => {
+    const request = vi.fn().mockResolvedValue({ id: "template-1", status: "ACTIVE" });
+
+    await reactivateDocumentTemplate("template-1", "token", request);
+
+    expect(request).toHaveBeenCalledWith("/document-templates/template-1/reactivate", {
+      method: "POST",
+      token: "token",
+    });
   });
 
   it("creates a store draft with its document type", async () => {

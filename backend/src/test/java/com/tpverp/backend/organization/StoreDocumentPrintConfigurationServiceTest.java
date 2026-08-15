@@ -11,6 +11,7 @@ import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateResolver;
 import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.DocumentTemplateCatalogService;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.time.Clock;
@@ -30,6 +31,7 @@ class StoreDocumentPrintConfigurationServiceTest {
         var logos = mock(StoreDocumentLogoRepository.class);
         var templates = mock(DocumentTemplateResolver.class);
         var audit = mock(AuditService.class);
+        var documentTemplates = mock(DocumentTemplateCatalogService.class);
         var store = mock(Store.class);
         var storeId = UUID.randomUUID();
         when(store.getId()).thenReturn(storeId);
@@ -47,7 +49,8 @@ class StoreDocumentPrintConfigurationServiceTest {
         when(settings.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var service = new StoreDocumentPrintConfigurationService(
                 organization, settings, logos, templates, audit,
-                Clock.fixed(Instant.parse("2026-08-10T12:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-08-10T12:00:00Z"), ZoneOffset.UTC),
+                documentTemplates);
 
         var observations = service.updateObservations(
                 "Gracias", "Factura legal", "Mercancia entregada", "Vale al portador");
@@ -64,6 +67,8 @@ class StoreDocumentPrintConfigurationServiceTest {
         assertThat(origin.ticketTemplateOrigin()).isEqualTo(TicketTemplateOrigin.INTEGRATED);
         assertThat(origin.ticketStyle()).isEqualTo(TicketPrintStyle.COMPACTA);
         assertThat(logo.storeId()).isEqualTo(storeId);
+        verify(documentTemplates, org.mockito.Mockito.times(2))
+                .useBuiltInCurrentStoreTicket();
         verify(audit, org.mockito.Mockito.times(4)).record(any(), any(), any());
     }
 
@@ -82,7 +87,8 @@ class StoreDocumentPrintConfigurationServiceTest {
         when(settings.findById(storeId)).thenReturn(Optional.of(value));
         var service = new StoreDocumentPrintConfigurationService(
                 organization, settings, logos, templates,
-                mock(AuditService.class), Clock.systemUTC());
+                mock(AuditService.class), Clock.systemUTC(),
+                mock(DocumentTemplateCatalogService.class));
 
         assertThat(service.presentation(DocumentTemplateType.TICKET).observations())
                 .isEqualTo("Ticket");
@@ -108,7 +114,8 @@ class StoreDocumentPrintConfigurationServiceTest {
                 DocumentTemplateFormat.TICKET_80)).thenReturn(Optional.empty());
         var service = new StoreDocumentPrintConfigurationService(
                 organization, settings, mock(StoreDocumentLogoRepository.class),
-                templates, mock(AuditService.class), Clock.systemUTC());
+                templates, mock(AuditService.class), Clock.systemUTC(),
+                mock(DocumentTemplateCatalogService.class));
 
         assertThatThrownBy(() -> service.updateTicketPresentation(
                 TicketTemplateOrigin.IMPORTED, TicketPrintStyle.PRINCIPAL))
