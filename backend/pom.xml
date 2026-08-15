@@ -184,7 +184,7 @@
 				<directory>../plantillas documentos/subreport</directory>
 				<targetPath>reports/tickets/subreport</targetPath>
 				<includes>
-					<include>*.jrxml</include>
+					<include>ticket*.jrxml</include>
 				</includes>
 			</resource>
 		</resources>

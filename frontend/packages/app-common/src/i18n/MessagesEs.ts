@@ -2499,7 +2499,7 @@ export class MessagesEs {
     "gestion.documentTemplates.status.ACTIVE": "Activa",
     "gestion.documentTemplates.status.RETIRED": "Retirada",
     "gestion.documentTemplates.upload": "Cargar JRXML",
-    "gestion.documentTemplates.uploadBundle": "Cargar paquete JRXML",
+    "gestion.documentTemplates.uploadBundle": "Cargar ticket.jrxml",
     "gestion.documentTemplates.ticketStyle": "Diseño de ticket",
     "gestion.documentTemplates.ticketStyleHelp": "Selecciona el diseño que utilizará esta tienda dentro del paquete de ticket activo.",
     "gestion.documentTemplates.ticketStyleLabel": "Plantilla elegida",

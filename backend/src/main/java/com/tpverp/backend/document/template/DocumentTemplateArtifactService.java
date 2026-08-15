@@ -59,7 +59,7 @@ public class DocumentTemplateArtifactService {
         String sha256;
         try {
             if (template.getType() == DocumentTemplateType.TICKET) {
-                var compiled = ticketCompiler.compile(readBundle(files));
+                var compiled = ticketCompiler.compileUpload(readBundle(files));
                 artifact = storage.writeBundle(template.getId(),
                         TicketJrxmlBundleCompiler.MASTER_FILENAME, compiled.reports());
                 sha256 = compiled.sha256();

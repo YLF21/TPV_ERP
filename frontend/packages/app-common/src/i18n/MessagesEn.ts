@@ -2496,7 +2496,7 @@ export class MessagesEn {
     "gestion.documentTemplates.status.ACTIVE": "Active",
     "gestion.documentTemplates.status.RETIRED": "Retired",
     "gestion.documentTemplates.upload": "Upload JRXML",
-    "gestion.documentTemplates.uploadBundle": "Upload JRXML bundle",
+    "gestion.documentTemplates.uploadBundle": "Upload ticket.jrxml",
     "gestion.documentTemplates.ticketStyle": "Ticket layout",
     "gestion.documentTemplates.ticketStyleHelp": "Select the layout this store will use from the active ticket bundle.",
     "gestion.documentTemplates.ticketStyleLabel": "Selected template",

@@ -2494,7 +2494,7 @@ export class MessagesZh {
     "gestion.documentTemplates.status.ACTIVE": "\u5df2\u542f\u7528",
     "gestion.documentTemplates.status.RETIRED": "\u5df2\u505c\u7528",
     "gestion.documentTemplates.upload": "\u4e0a\u4f20 JRXML",
-    "gestion.documentTemplates.uploadBundle": "\u4e0a\u4f20 JRXML \u6587\u4ef6\u5305",
+    "gestion.documentTemplates.uploadBundle": "\u4e0a\u4f20 ticket.jrxml",
     "gestion.documentTemplates.ticketStyle": "\u5c0f\u7968\u5e03\u5c40",
     "gestion.documentTemplates.ticketStyleHelp": "\u9009\u62e9\u5f53\u524d\u95e8\u5e97\u5728\u5df2\u542f\u7528\u5c0f\u7968\u5305\u4e2d\u4f7f\u7528\u7684\u5e03\u5c40\u3002",
     "gestion.documentTemplates.ticketStyleLabel": "\u5df2\u9009\u6a21\u677f",
