@@ -5,6 +5,23 @@
 	<property name="com.jaspersoft.studio.unit.pageHeight" value="mm"/>
 	<property name="com.jaspersoft.studio.unit.leftMargin" value="mm"/>
 	<property name="com.jaspersoft.studio.unit.rightMargin" value="mm"/>
+	<dataset name="VoucherTraceabilityDataset" uuid="348c8b44-934c-4dc5-a6fd-65f534219f84">
+		<field name="documentNumber" class="java.lang.String">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="documentNumber"/>
+		</field>
+		<field name="documentDate" class="java.lang.String">
+			<property name="net.sf.jasperreports.jsonql.field.expression" value="documentDate"/>
+		</field>
+		<sortField name="documentDateSort" type="Variable" order="Descending"/>
+		<sortField name="documentNumber" order="Descending"/>
+		<variable name="documentDateSort" class="java.lang.String">
+			<expression><![CDATA[$F{documentDate} == null || $F{documentDate}.length() != 10
+				? ""
+				: $F{documentDate}.substring(6, 10)
+					+ $F{documentDate}.substring(3, 5)
+					+ $F{documentDate}.substring(0, 2)]]></expression>
+		</variable>
+	</dataset>
 	<parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream" forPrompting="false"/>
 	<parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean" forPrompting="false">
 		<defaultValueExpression><![CDATA[Boolean.FALSE]]></defaultValueExpression>
@@ -125,8 +142,21 @@
 	</title>
 	<columnHeader height="18" splitType="Stretch">
 		<element kind="line" uuid="db6f4e20-c7c0-49ee-852c-cda3a706aac2" x="0" y="0" width="211" height="1"><pen lineWidth="0.7"/></element>
-		<element kind="textField" uuid="fa494436-b2b4-4480-9222-1427f0a82a2f" positionType="Float" x="0" y="3" width="211" height="12" fontName="Monospaced" fontSize="7.5" bold="true" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
-			<expression><![CDATA[$F{traceabilityDocumentNumbers}]]></expression>
+		<element kind="component" uuid="fa494436-b2b4-4480-9222-1427f0a82a2f" positionType="Float" x="0" y="3" width="211" height="12">
+			<component kind="list" printOrder="Horizontal">
+				<datasetRun uuid="85db4d47-f8c0-470d-89fd-f420a01871ca" subDataset="VoucherTraceabilityDataset">
+					<dataSourceExpression><![CDATA[SUB_DATA_SOURCE("^^.traceability.*")]]></dataSourceExpression>
+				</datasetRun>
+				<contents height="12" width="105">
+					<element kind="textField" uuid="4d2fd70c-a0a4-41b9-ab04-390bf696daf6" x="0" y="0" width="100" height="12" fontName="Monospaced" fontSize="7.5" bold="true" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+						<expression><![CDATA[$F{documentNumber}]]></expression>
+					</element>
+					<element kind="staticText" uuid="5a556a27-73db-4f40-9f6f-f2f094318ba2" x="100" y="0" width="5" height="12" fontName="Monospaced" fontSize="7.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+						<printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 1]]></printWhenExpression>
+						<text><![CDATA[·]]></text>
+					</element>
+				</contents>
+			</component>
 		</element>
 		<element kind="line" uuid="c9e74842-a174-44f9-b15a-21d739cbfa33" positionType="Float" x="0" y="17" width="211" height="1"><pen lineWidth="0.5"/></element>
 	</columnHeader>
