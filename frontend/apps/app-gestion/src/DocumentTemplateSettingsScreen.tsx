@@ -28,7 +28,7 @@ type Props = {
   request?: typeof apiRequest;
 };
 
-const documentTypes: DocumentTemplateType[] = ["FACTURA_VENTA", "ALBARAN_VENTA", "TICKET"];
+const documentTypes: DocumentTemplateType[] = ["FACTURA_VENTA", "ALBARAN_VENTA", "TICKET", "VALE"];
 
 const ticketStylePreviews: Record<TicketPrintStyle, string> = {
   PRINCIPAL: ticketStylePrincipal,
@@ -65,7 +65,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [ticketStyle, setTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
-  const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET"
+  const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET" || selectedType === "VALE"
     ? "TICKET_80"
     : selectedType === "ALBARAN_VENTA" ? "A4" : selectedFormat;
 
@@ -73,6 +73,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     if (type === "FACTURA_VENTA" && format === "TICKET_80") return "FACTURA_TICKET_80";
     if (type === "ALBARAN_VENTA") return "ALBARAN_A4";
     if (type === "TICKET") return "TICKET_80";
+    if (type === "VALE") return "VALE_TICKET_80";
     return "FACTURA_A4";
   }
 

@@ -14,6 +14,7 @@ export type StoreDocumentPrintConfiguration = {
   ticketObservations: string | null;
   invoiceObservations: string | null;
   deliveryNoteObservations: string | null;
+  voucherObservations: string | null;
   ticketStyle: TicketPrintStyle;
 };
 
@@ -30,7 +31,7 @@ export function loadStoreDocumentPrintConfiguration(
 }
 
 export function saveStoreDocumentObservations(
-  value: { ticket: string; invoice: string; deliveryNote: string },
+  value: { ticket: string; invoice: string; deliveryNote: string; voucher: string },
   token?: string,
   request: typeof apiRequest = apiRequest,
 ) {

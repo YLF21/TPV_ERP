@@ -1,5 +1,10 @@
 import { getHardwareBridge } from "../hardware/hardware";
-import type { HardwareBridge, TicketPrintRequest } from "../hardware/hardware";
+import type {
+  A4DocumentPrintRequest,
+  HardwareBridge,
+  HardwareConfig,
+  TicketPrintRequest,
+} from "../hardware/hardware";
 import type { LocaleCode, TerminalContext } from "../types";
 import type { TicketPrintOutcome } from "./ticketPrinting";
 
@@ -8,6 +13,15 @@ export type IssuedVoucherPrintSnapshot = {
   amount: number | string;
   issuedAt: string;
   originTicketNumber: string;
+  traceability?: Array<{
+    documentNumber: string;
+    documentType?: string | null;
+    documentDate?: string | null;
+    operation: string;
+  }>;
+  observations?: string | null;
+  renderedPdf?: { contentType: "application/pdf"; base64: string } | null;
+  ticketRenderedImage?: { contentType: "image/png"; base64: string } | null;
 };
 
 const copy = {
@@ -46,9 +60,23 @@ export async function outputIssuedVoucher(
   hardware: HardwareBridge = getHardwareBridge(),
 ): Promise<TicketPrintOutcome> {
   try {
-    const result = await hardware.printTicket(
-      issuedVoucherPrintRequest(voucher, terminal, locale),
-    );
+    const fallback = issuedVoucherPrintRequest(voucher, terminal, locale);
+    if (!voucher.renderedPdf || !voucher.ticketRenderedImage) {
+      const result = await hardware.printTicket(fallback);
+      return result.ok
+        ? { status: "PRINTED" }
+        : { status: "FAILED", technicalMessage: result.message };
+    }
+    const config = await hardware.getHardwareConfig();
+    const result = config.ticketPrinterDriver === "ESCPOS_RAW"
+      ? await hardware.printTicket({
+        ...fallback,
+        documentRaster: `data:${voucher.ticketRenderedImage.contentType};base64,${voucher.ticketRenderedImage.base64}`,
+      }, config)
+      : await hardware.printA4Document(
+        voucherAsJasperDocument(voucher, terminal, locale),
+        voucherTicketRoute(config),
+      );
     return result.ok
       ? { status: "PRINTED" }
       : { status: "FAILED", technicalMessage: result.message };
@@ -58,4 +86,61 @@ export async function outputIssuedVoucher(
       technicalMessage: failure instanceof Error ? failure.message : undefined,
     };
   }
+}
+
+function voucherTicketRoute(config: HardwareConfig): HardwareConfig {
+  return {
+    ...config,
+    documentPrintRoutes: [
+      ...config.documentPrintRoutes.filter((route) => route.documentType !== "REPORT"),
+      {
+        documentType: "REPORT",
+        printerTarget: "TICKET_PRINTER",
+        printerName: config.ticketPrinterName,
+        paperSize: "TICKET_80",
+        orientation: "PORTRAIT",
+        copies: 1,
+        printAutomatically: true,
+        showPrintDialog: false,
+      },
+    ],
+  };
+}
+
+function voucherAsJasperDocument(
+  voucher: IssuedVoucherPrintSnapshot,
+  terminal: TerminalContext,
+  locale: LocaleCode,
+): A4DocumentPrintRequest {
+  const text = copy[locale];
+  const amount = Number(voucher.amount);
+  return {
+    documentType: "REPORT",
+    locale,
+    title: text.title,
+    documentNumber: voucher.code,
+    storeName: terminal.storeName,
+    terminalCode: terminal.terminalCode,
+    issuedAt: voucher.issuedAt,
+    lines: [],
+    subtotal: amount,
+    tax: 0,
+    taxIncluded: true,
+    total: amount,
+    renderedPdf: voucher.renderedPdf ?? undefined,
+    notes: voucher.observations ? [voucher.observations] : [],
+    labels: {
+      terminal: "Terminal",
+      description: "Documento",
+      quantity: "Cantidad",
+      unitPrice: "Importe",
+      base: "Base",
+      tax: "Impuesto",
+      taxIncluded: "Impuestos incluidos",
+      yes: "Sí",
+      no: "No",
+      mixed: "Mixto",
+      total: "Total",
+    },
+  };
 }

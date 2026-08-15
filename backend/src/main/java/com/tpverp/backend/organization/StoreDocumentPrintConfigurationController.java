@@ -36,7 +36,7 @@ public class StoreDocumentPrintConfigurationController {
     public StoreDocumentPrintConfigurationService.Configuration updateObservations(
             @Valid @RequestBody ObservationsRequest request) {
         return service.updateObservations(
-                request.ticket(), request.invoice(), request.deliveryNote());
+                request.ticket(), request.invoice(), request.deliveryNote(), request.voucher());
     }
 
     @PutMapping("/ticket-style")
@@ -59,7 +59,8 @@ public class StoreDocumentPrintConfigurationController {
     public record ObservationsRequest(
             @Size(max = 2000) String ticket,
             @Size(max = 2000) String invoice,
-            @Size(max = 2000) String deliveryNote) {
+            @Size(max = 2000) String deliveryNote,
+            @Size(max = 2000) String voucher) {
     }
 
     public record TicketStyleRequest(@NotNull TicketPrintStyle style) {

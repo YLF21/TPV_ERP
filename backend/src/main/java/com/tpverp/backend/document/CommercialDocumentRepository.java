@@ -297,6 +297,9 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     Optional<CommercialDocument> findByTiendaIdAndTipoAndNumeroIgnoreCase(
             UUID tiendaId, CommercialDocumentType tipo, String numero);
 
+    List<CommercialDocument> findAllByTiendaIdAndNumeroIgnoreCase(
+            UUID tiendaId, String numero);
+
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     @Query("""
             select document

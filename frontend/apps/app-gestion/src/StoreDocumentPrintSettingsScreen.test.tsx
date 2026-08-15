@@ -15,13 +15,14 @@ const session: UserSession = {
 afterEach(cleanup);
 
 describe("StoreDocumentPrintSettingsScreen", () => {
-  it("shows the current store and saves three independent observations", async () => {
+  it("shows the current store and saves four independent observations", async () => {
     const initial = {
       storeId: "store-1",
       logo: null,
       ticketObservations: "Gracias",
       invoiceObservations: "Factura",
       deliveryNoteObservations: "Albaran",
+      voucherObservations: "Vale",
       ticketStyle: "PRINCIPAL",
     };
     const request = vi.fn(async (_path: string, options?: { method?: string; body?: unknown }) =>
@@ -38,11 +39,12 @@ describe("StoreDocumentPrintSettingsScreen", () => {
 
     expect(await screen.findByText("Tienda Centro")).toBeTruthy();
     const textareas = screen.getAllByRole("textbox");
-    expect(textareas).toHaveLength(3);
-    const [ticket, invoice, deliveryNote] = textareas as HTMLTextAreaElement[];
+    expect(textareas).toHaveLength(4);
+    const [ticket, invoice, deliveryNote, voucher] = textareas as HTMLTextAreaElement[];
     fireEvent.change(ticket, { target: { value: "Ticket actualizado" } });
     fireEvent.change(invoice, { target: { value: "Factura actualizada" } });
     fireEvent.change(deliveryNote, { target: { value: "Albaran actualizado" } });
+    fireEvent.change(voucher, { target: { value: "Vale actualizado" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar observaciones" }));
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
@@ -54,6 +56,7 @@ describe("StoreDocumentPrintSettingsScreen", () => {
           ticket: "Ticket actualizado",
           invoice: "Factura actualizada",
           deliveryNote: "Albaran actualizado",
+          voucher: "Vale actualizado",
         },
       },
     ));

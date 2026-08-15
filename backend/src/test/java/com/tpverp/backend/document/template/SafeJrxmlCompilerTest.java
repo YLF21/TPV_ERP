@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 class SafeJrxmlCompilerTest {
@@ -87,6 +89,14 @@ class SafeJrxmlCompilerTest {
                 + "($F{name}.length() <= 64 ? $F{name} : $F{name}.substring(0, 64))";
 
         assertThat(compiler.compile(report(expression)).compiled()).isNotEmpty();
+    }
+
+    @Test
+    void compilesVoucherTicketWithCode128Barcode() throws Exception {
+        byte[] source = Files.readAllBytes(Path.of(
+                "..", "plantillas documentos", "VALE_TICKET_80.jrxml"));
+
+        assertThat(compiler.compile(source).compiled()).isNotEmpty();
     }
 
     private static byte[] report(String expression) {

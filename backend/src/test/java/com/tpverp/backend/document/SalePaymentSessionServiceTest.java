@@ -221,12 +221,13 @@ class SalePaymentSessionServiceTest {
   var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var ticketId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
   var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("20.00"));session.addAllocation(UUID.randomUUID(),"voucher",SalePaymentAllocationKind.VOUCHER,new BigDecimal("20.00"),null,null).approve(null,null,null);session.finalizeWith(ticketId,"T-REPLACEMENT");when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));
   var print=new TicketPrintView(ticketId,"T-REPLACEMENT",java.time.Instant.parse("2026-08-09T12:00:00Z"),List.of(),List.of(),new BigDecimal("20.00"));var ticket=mock(CommercialDocument.class);when(ticket.getNumero()).thenReturn("T-REPLACEMENT");when(docs.loadTicketPrintView(ticketId)).thenReturn(print);when(docs.loadForPrint(ticketId)).thenReturn(ticket);
-  var replacement=new Voucher(storeId,"V-REMAINDER",new BigDecimal("80.00"),List.of("SOURCE","T-REPLACEMENT"),java.time.Instant.parse("2026-08-09T12:00:01Z"));when(vouchers.issuedFromTicket(ticket)).thenReturn(Optional.of(replacement));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());service.setVoucherService(vouchers);
+  var replacement=new Voucher(storeId,"V-REMAINDER",new BigDecimal("80.00"),List.of("SOURCE","T-REPLACEMENT"),java.time.Instant.parse("2026-08-09T12:00:01Z"));when(vouchers.issuedFromTicket(ticket)).thenReturn(Optional.of(replacement));var voucherPrint=mock(VoucherPrintService.class);var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());service.setVoucherService(vouchers);service.setVoucherPrintService(voucherPrint);
 
   var result=service.finalizeSession(sessionId,auth);
 
   assertThat(result.issuedVoucher()).isEqualTo(new SalePaymentSessionService.IssuedVoucher("V-REMAINDER",new BigDecimal("80.00"),java.time.Instant.parse("2026-08-09T12:00:01Z"),"T-REPLACEMENT"));
   verify(vouchers).issuedFromTicket(ticket);
+  verifyNoInteractions(voucherPrint);
  }
 
  @Test void discardsSimulationOnlyFromPersistedTestConfiguration(){

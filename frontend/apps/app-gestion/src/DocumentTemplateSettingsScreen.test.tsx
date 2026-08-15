@@ -40,6 +40,12 @@ describe("DocumentTemplateSettingsScreen", () => {
       { token: "token" },
     ));
     expect(screen.getByText("Falta plantilla JRXML activa")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Vale" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+      "/document-templates?type=VALE&format=TICKET_80",
+      { token: "token" },
+    ));
   });
 
   it("loads and saves the ticket layout selected for the current store", async () => {

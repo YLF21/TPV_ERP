@@ -1,0 +1,141 @@
+<!-- Created for Jaspersoft Studio 7 / JasperReports 7 -->
+<jasperReport name="vale_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" uuid="6bd88fe2-7c33-4dc4-9095-b88b9cbec233" ignorePagination="true">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="VALE_TICKET_80_SAMPLE.jrdax"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="mm"/>
+	<parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream" forPrompting="false"/>
+	<parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean" forPrompting="false">
+		<defaultValueExpression><![CDATA[Boolean.FALSE]]></defaultValueExpression>
+	</parameter>
+	<query language="jsonql"><![CDATA[traceability]]></query>
+	<field name="documentNumber" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="documentNumber"/>
+	</field>
+	<field name="documentType" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="documentType"/>
+	</field>
+	<field name="documentDate" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="documentDate"/>
+	</field>
+	<field name="operation" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="operation"/>
+	</field>
+	<field name="voucherCode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.code"/>
+	</field>
+	<field name="voucherBarcode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.barcode"/>
+	</field>
+	<field name="voucherAmount" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.amount"/>
+	</field>
+	<field name="voucherIssuedAt" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.issuedAt"/>
+	</field>
+	<field name="currency" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.currency"/>
+	</field>
+	<field name="storeName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.storeName"/>
+	</field>
+	<field name="terminalName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.terminalName"/>
+	</field>
+	<field name="issuerLegalName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.legalName"/>
+	</field>
+	<field name="issuerTaxId" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.taxId"/>
+	</field>
+	<field name="issuerAddress" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.line1"/>
+	</field>
+	<field name="issuerPostalCode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.postalCode"/>
+	</field>
+	<field name="issuerCity" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.city"/>
+	</field>
+	<field name="issuerProvince" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.address.province"/>
+	</field>
+	<field name="issuerPhone" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.phone"/>
+	</field>
+	<field name="observations" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.observations"/>
+	</field>
+	<field name="traceabilityDocumentNumbers" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.traceabilityDocumentNumbers"/>
+	</field>
+	<title height="201" splitType="Stretch">
+		<element kind="image" uuid="c97309b4-d63b-4925-b7c4-63368fd1cf44" x="60" y="4" width="91" height="24" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
+		</element>
+		<element kind="textField" uuid="240439de-c39e-4900-9f5c-09032496177e" x="8" y="4" width="195" height="22" fontName="SansSerif" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$F{storeName}]]></expression>
+		</element>
+		<element kind="textField" uuid="b7ba96bb-dbd2-4857-87db-31bd2bf98661" x="8" y="29" width="195" height="12" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+		</element>
+		<element kind="textField" uuid="54bf073d-17e8-4020-a2f5-c0d29fe6cf41" x="8" y="41" width="195" height="40" fontName="SansSerif" fontSize="7.4" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[($F{issuerTaxId} == null ? "" : "NIF: " + $F{issuerTaxId})
+				+ ($F{issuerAddress} == null ? "" : "\n" + $F{issuerAddress}
+					+ ($F{issuerPostalCode} == null ? "" : " · " + $F{issuerPostalCode})
+					+ ($F{issuerCity} == null ? "" : " " + $F{issuerCity})
+					+ ($F{issuerProvince} == null ? "" : " · " + $F{issuerProvince}))
+				+ ($F{issuerPhone} == null ? "" : "\n" + $F{issuerPhone})]]></expression>
+		</element>
+		<element kind="textField" uuid="118620b3-83ec-4d95-b50f-d7c83015e415" x="8" y="26" width="195" height="12" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[$F{issuerLegalName}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7d6d2dc-c763-43a4-877e-96393e3cb1da" x="8" y="38" width="195" height="43" fontName="SansSerif" fontSize="7.4" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+			<expression><![CDATA[($F{issuerTaxId} == null ? "" : "NIF: " + $F{issuerTaxId})
+				+ ($F{issuerAddress} == null ? "" : "\n" + $F{issuerAddress}
+					+ ($F{issuerPostalCode} == null ? "" : " · " + $F{issuerPostalCode})
+					+ ($F{issuerCity} == null ? "" : " " + $F{issuerCity})
+					+ ($F{issuerProvince} == null ? "" : " · " + $F{issuerProvince}))
+				+ ($F{issuerPhone} == null ? "" : "\n" + $F{issuerPhone})]]></expression>
+		</element>
+		<element kind="staticText" uuid="3714aa24-6ef5-4cc2-83e9-39b5a90a6285" x="0" y="85" width="211" height="18" fontName="SansSerif" fontSize="12.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[VALE]]></text>
+		</element>
+		<element kind="textField" uuid="0410f598-596b-4104-8715-a5da17f9845b" x="0" y="104" width="211" height="34" fontName="SansSerif" fontSize="26.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[new java.text.DecimalFormat("#0.00").format($F{voucherAmount}) + " " + $F{currency}]]></expression>
+		</element>
+		<element kind="component" uuid="c952059e-5d63-48da-bba2-bec026974a5f" x="0" y="140" width="211" height="32">
+			<component kind="barcode4j:Code128" moduleWidth="2.0" textPosition="none" quietZone="13.0" verticalQuietZone="0.0">
+				<codeExpression><![CDATA[$F{voucherBarcode}]]></codeExpression>
+			</component>
+		</element>
+		<element kind="textField" uuid="45691f88-780b-47c8-9ae4-a07bc5fa9499" x="0" y="174" width="211" height="14" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$F{voucherCode}]]></expression>
+		</element>
+		<element kind="textField" uuid="c3de7603-553f-488b-a0d8-d99cb55a9279" x="0" y="189" width="211" height="10" fontName="SansSerif" fontSize="6.8" hTextAlign="Center">
+			<expression><![CDATA["Emitido: " + $F{voucherIssuedAt} + ($F{terminalName} == null ? "" : " · Terminal: " + $F{terminalName})]]></expression>
+		</element>
+	</title>
+	<columnHeader height="18" splitType="Stretch">
+		<element kind="line" uuid="db6f4e20-c7c0-49ee-852c-cda3a706aac2" x="0" y="0" width="211" height="1"><pen lineWidth="0.7"/></element>
+		<element kind="textField" uuid="fa494436-b2b4-4480-9222-1427f0a82a2f" x="0" y="3" width="211" height="12" fontName="Monospaced" fontSize="7.5" bold="true" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{traceabilityDocumentNumbers}]]></expression>
+		</element>
+		<element kind="line" uuid="c9e74842-a174-44f9-b15a-21d739cbfa33" x="0" y="17" width="211" height="1"><pen lineWidth="0.5"/></element>
+	</columnHeader>
+	<detail/>
+	<summary height="55" splitType="Stretch">
+		<element kind="textField" uuid="ef65da57-77a7-4945-beda-fe70b05c8c3f" positionType="Float" x="0" y="8" width="211" height="38" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{observations} != null && !$F{observations}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{observations}]]></expression>
+		</element>
+		<element kind="line" uuid="8ffb07fa-5779-40d5-888f-d8220a7238a3" positionType="Float" x="15" y="54" width="181" height="1"><pen lineWidth="0.6"/></element>
+	</summary>
+</jasperReport>

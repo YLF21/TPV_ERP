@@ -34,6 +34,7 @@ export function StoreDocumentPrintSettingsScreen({
   const [ticket, setTicket] = useState("");
   const [invoice, setInvoice] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [voucher, setVoucher] = useState("");
   const [pendingLogo, setPendingLogo] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,7 @@ export function StoreDocumentPrintSettingsScreen({
     setTicket(value.ticketObservations ?? "");
     setInvoice(value.invoiceObservations ?? "");
     setDeliveryNote(value.deliveryNoteObservations ?? "");
+    setVoucher(value.voucherObservations ?? "");
   }
 
   useEffect(() => {
@@ -121,7 +123,7 @@ export function StoreDocumentPrintSettingsScreen({
     setMessage(null);
     try {
       apply(await saveStoreDocumentObservations(
-        { ticket, invoice, deliveryNote }, session.accessToken, request,
+        { ticket, invoice, deliveryNote, voucher }, session.accessToken, request,
       ));
       setMessage({ kind: "success", text: t("gestion.documentPrint.observationsSaved") });
     } catch (error) {
@@ -182,6 +184,7 @@ export function StoreDocumentPrintSettingsScreen({
                 ["ticket", ticket, setTicket],
                 ["invoice", invoice, setInvoice],
                 ["deliveryNote", deliveryNote, setDeliveryNote],
+                ["voucher", voucher, setVoucher],
               ] as const).map(([kind, value, update]) => (
                 <label key={kind}>
                   <span>{t(`gestion.documentPrint.${kind}`)}</span>

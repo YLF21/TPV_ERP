@@ -89,6 +89,32 @@ class VoucherServiceTest {
     }
 
     @Test
+    void freezesJasperPresentationForInitialAndReplacementVouchers() {
+        var snapshots = org.mockito.Mockito.mock(VoucherPresentationSnapshotFactory.class);
+        when(snapshots.create(any(), any(),
+                org.mockito.ArgumentMatchers.nullable(Voucher.class)))
+                .thenReturn("{\"schemaVersion\":1}");
+        service.setPrintSnapshots(snapshots);
+        when(vouchers.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of());
+        var source = ticket("001-260617-00001", "-100.00");
+
+        var issued = service.issueFromNegativeTicket(source);
+        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), issued.code()))
+                .thenReturn(Optional.of(issued));
+        var purchase = ticket("001-260617-00002", "20.00");
+        var replacement = service.consume(
+                issued.code(), new BigDecimal("20.00"), purchase)
+                .replacement().orElseThrow();
+
+        assertThat(issued.printSnapshot()).isEqualTo("{\"schemaVersion\":1}");
+        assertThat(replacement.printSnapshot()).isEqualTo("{\"schemaVersion\":1}");
+        verify(snapshots).create(issued, source, null);
+        verify(snapshots).create(replacement, purchase, issued);
+    }
+
+    @Test
     void cancellingThePurchaseRestoresTheOriginalVoucher() {
         var voucher = new Voucher(
                 store.getId(), "VKEEP", new BigDecimal("100.00"),

@@ -4324,7 +4324,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 
 .gestion-document-observations-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 13px;
   padding: 15px 17px;
 }

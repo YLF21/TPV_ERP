@@ -56,11 +56,12 @@ public class StoreDocumentPrintConfigurationService {
     }
 
     @Transactional
-    public Configuration updateObservations(String ticket, String invoice, String deliveryNote) {
+    public Configuration updateObservations(
+            String ticket, String invoice, String deliveryNote, String voucher) {
         UUID storeId = organization.currentStore().getId();
         var value = settings.findById(storeId)
                 .orElseGet(() -> new StoreDocumentPrintSettings(storeId));
-        value.updateObservations(ticket, invoice, deliveryNote);
+        value.updateObservations(ticket, invoice, deliveryNote, voucher);
         settings.save(value);
         audit.record("STORE_DOCUMENT_PRINT_OBSERVATIONS_UPDATED", AuditResult.EXITO,
                 Map.of("storeId", storeId.toString()));
@@ -126,6 +127,7 @@ public class StoreDocumentPrintConfigurationService {
             case TICKET -> value.getTicketObservations();
             case FACTURA_VENTA -> value.getInvoiceObservations();
             case ALBARAN_VENTA -> value.getDeliveryNoteObservations();
+            case VALE -> value.getVoucherObservations();
         };
         LogoReference logo = value.getLogoId() == null ? null
                 : logos.findByIdAndStoreId(value.getLogoId(), storeId)
@@ -161,6 +163,7 @@ public class StoreDocumentPrintConfigurationService {
                 value == null ? null : value.getTicketObservations(),
                 value == null ? null : value.getInvoiceObservations(),
                 value == null ? null : value.getDeliveryNoteObservations(),
+                value == null ? null : value.getVoucherObservations(),
                 value == null ? TicketPrintStyle.PRINCIPAL : value.getTicketStyle());
     }
 
@@ -225,6 +228,7 @@ public class StoreDocumentPrintConfigurationService {
             String ticketObservations,
             String invoiceObservations,
             String deliveryNoteObservations,
+            String voucherObservations,
             TicketPrintStyle ticketStyle) {
     }
 

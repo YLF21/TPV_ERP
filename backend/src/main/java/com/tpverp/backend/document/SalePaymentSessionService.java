@@ -30,6 +30,7 @@ public class SalePaymentSessionService {
  private final SaleOperationSecurityService operationSecurity; private final AuditService audit;
  private CustomerPendingSaleService pendingSales;
  private VoucherService voucherService;
+ private VoucherPrintService voucherPrintService;
  private StoreReturnPolicyService returnPolicy;
  private RefundSettlementRecorder refundSettlements;
  private PaymentTerminalOperationsService refundTerminalOperations;
@@ -44,6 +45,7 @@ public class SalePaymentSessionService {
  private SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,StorePaymentConfigurationRepository storePaymentConfigurations,TransactionOperations transactions,SaleOperationSecurityService operationSecurity,AuditService audit){this.sessions=sessions;this.sales=sales;this.documents=documents;this.snapshots=snapshots;this.methods=methods;this.organization=organization;this.currentTerminal=currentTerminal;this.configurations=configurations;this.operations=operations;this.cashPayments=Objects.requireNonNull(cashPayments);this.storePaymentConfigurations=storePaymentConfigurations;this.transactions=transactions;this.operationSecurity=operationSecurity;this.audit=audit;}
 
  @Autowired void setVoucherService(VoucherService voucherService){this.voucherService=voucherService;}
+ @Autowired void setVoucherPrintService(VoucherPrintService voucherPrintService){this.voucherPrintService=voucherPrintService;}
  @Autowired void setCustomerPendingSaleService(CustomerPendingSaleService pendingSales){this.pendingSales=pendingSales;}
  @Autowired void setStoreReturnPolicyService(StoreReturnPolicyService returnPolicy){this.returnPolicy=returnPolicy;}
  @Autowired void setRefundSettlementRecorder(RefundSettlementRecorder refundSettlements){this.refundSettlements=refundSettlements;}
@@ -508,7 +510,7 @@ public class SalePaymentSessionService {
          if (voucherAmount.signum() > 0) {
               var generatedVoucher = requireVoucherService()
                       .issueOrFindFromNegativeTicket(ticket, voucherAmount);
-              issuedVoucher = IssuedVoucher.from(generatedVoucher, ticket.getNumero());
+              issuedVoucher = issuedVoucher(generatedVoucher, ticket.getNumero());
          }
          printTicket = documents.renderTicketPrintView(
                  ticket, documents.ticketPrintView(ticket));
@@ -899,8 +901,13 @@ public class SalePaymentSessionService {
          return null;
      }
      return voucherService.issuedFromTicket(ticket)
-             .map(voucher -> IssuedVoucher.from(voucher, ticket.getNumero()))
+             .map(voucher -> issuedVoucher(voucher, ticket.getNumero()))
              .orElse(null);
+ }
+ private IssuedVoucher issuedVoucher(Voucher voucher,String originTicketNumber) {
+     return voucherPrintService == null || voucher.printSnapshot() == null
+             ? IssuedVoucher.from(voucher, originTicketNumber)
+             : IssuedVoucher.from(voucherPrintService.render(voucher));
  }
  private static String normalize(String value){return value==null||value.isBlank()?null:value.trim();}
  private static UserAccount requireUser(Authentication a){if(a.getPrincipal() instanceof UserAccount u)return u;throw new IllegalStateException("user_required");}
@@ -910,11 +917,26 @@ public class SalePaymentSessionService {
          String code,
          BigDecimal amount,
          java.time.Instant issuedAt,
-         String originTicketNumber) {
+         String originTicketNumber,
+         List<VoucherPrintService.TraceView> traceability,
+         String observations,
+         VoucherPrintService.RenderedContent renderedPdf,
+         VoucherPrintService.RenderedContent ticketRenderedImage) {
+     public IssuedVoucher(
+             String code, BigDecimal amount, java.time.Instant issuedAt,
+             String originTicketNumber) {
+         this(code, amount, issuedAt, originTicketNumber, List.of(), null, null, null);
+     }
      static IssuedVoucher from(Voucher voucher, String originTicketNumber) {
          return new IssuedVoucher(
                  voucher.code(), voucher.initialAmount(), voucher.createdAt(),
-                 originTicketNumber);
+                 originTicketNumber, List.of(), null, null, null);
+     }
+     static IssuedVoucher from(VoucherPrintService.PrintedVoucher voucher) {
+         return new IssuedVoucher(
+                 voucher.code(), voucher.amount(), voucher.issuedAt(),
+                 voucher.originTicketNumber(), voucher.traceability(), voucher.observations(),
+                 voucher.renderedPdf(), voucher.ticketRenderedImage());
      }
  }
  public record Finalization(

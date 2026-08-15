@@ -47,13 +47,14 @@ class StoreDocumentPrintConfigurationServiceTest {
                 Clock.fixed(Instant.parse("2026-08-10T12:00:00Z"), ZoneOffset.UTC));
 
         var observations = service.updateObservations(
-                "Gracias", "Factura legal", "Mercancia entregada");
+                "Gracias", "Factura legal", "Mercancia entregada", "Vale al portador");
         var style = service.updateTicketStyle(TicketPrintStyle.MINIMALISTA);
         var logo = service.uploadLogo(png());
 
         assertThat(observations.ticketObservations()).isEqualTo("Gracias");
         assertThat(observations.invoiceObservations()).isEqualTo("Factura legal");
         assertThat(observations.deliveryNoteObservations()).isEqualTo("Mercancia entregada");
+        assertThat(observations.voucherObservations()).isEqualTo("Vale al portador");
         assertThat(style.ticketStyle()).isEqualTo(TicketPrintStyle.MINIMALISTA);
         assertThat(logo.storeId()).isEqualTo(storeId);
         verify(audit, org.mockito.Mockito.times(3)).record(any(), any(), any());
@@ -67,7 +68,7 @@ class StoreDocumentPrintConfigurationServiceTest {
         var store = mock(Store.class);
         var storeId = UUID.randomUUID();
         var value = new StoreDocumentPrintSettings(storeId);
-        value.updateObservations("Ticket", "Factura", "Albaran");
+        value.updateObservations("Ticket", "Factura", "Albaran", "Vale");
         when(store.getId()).thenReturn(storeId);
         when(organization.currentStore()).thenReturn(store);
         when(settings.findById(storeId)).thenReturn(Optional.of(value));
@@ -80,6 +81,8 @@ class StoreDocumentPrintConfigurationServiceTest {
                 .isEqualTo("Factura");
         assertThat(service.presentation(DocumentTemplateType.ALBARAN_VENTA).observations())
                 .isEqualTo("Albaran");
+        assertThat(service.presentation(DocumentTemplateType.VALE).observations())
+                .isEqualTo("Vale");
     }
 
     @Test

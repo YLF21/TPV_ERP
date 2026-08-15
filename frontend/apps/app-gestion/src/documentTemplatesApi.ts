@@ -1,6 +1,6 @@
 import { ApiError, apiBaseUrl, apiRequest } from "@tpverp/app-common";
 
-export type DocumentTemplateType = "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET";
+export type DocumentTemplateType = "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET" | "VALE";
 export type DocumentTemplateFormat = "A4" | "TICKET_80";
 export type DocumentTemplateStatus = "DRAFT" | "VALIDATED" | "ACTIVE" | "RETIRED";
 

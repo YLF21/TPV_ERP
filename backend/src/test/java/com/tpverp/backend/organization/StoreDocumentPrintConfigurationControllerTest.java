@@ -29,7 +29,7 @@ class StoreDocumentPrintConfigurationControllerTest {
         var storeId = UUID.randomUUID();
         when(service.configuration()).thenReturn(
                 new StoreDocumentPrintConfigurationService.Configuration(
-                        storeId, null, "Ticket", "Factura", "Albaran",
+                        storeId, null, "Ticket", "Factura", "Albaran", "Vale",
                         TicketPrintStyle.PRINCIPAL));
 
         mvc.perform(get("/api/v1/store-document-print-configuration")
@@ -38,7 +38,9 @@ class StoreDocumentPrintConfigurationControllerTest {
                 .andExpect(jsonPath("$.storeId").value(storeId.toString()))
                 .andExpect(jsonPath("$.ticketObservations").value("Ticket"))
                 .andExpect(jsonPath("$.invoiceObservations").value("Factura"))
-                .andExpect(jsonPath("$.deliveryNoteObservations").value("Albaran"));
+                .andExpect(jsonPath("$.deliveryNoteObservations").value("Albaran"))
+                .andExpect(jsonPath("$.voucherObservations").value("Vale"))
+                .andExpect(jsonPath("$.ticketStyle").value("PRINCIPAL"));
     }
 
     @Test
@@ -46,7 +48,8 @@ class StoreDocumentPrintConfigurationControllerTest {
         var storeId = UUID.randomUUID();
         when(service.updateTicketStyle(TicketPrintStyle.COMPACTA)).thenReturn(
                 new StoreDocumentPrintConfigurationService.Configuration(
-                        storeId, null, null, null, null, TicketPrintStyle.COMPACTA));
+                        storeId, null, null, null, null, null,
+                        TicketPrintStyle.COMPACTA));
 
         mvc.perform(put("/api/v1/store-document-print-configuration/ticket-style")
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
