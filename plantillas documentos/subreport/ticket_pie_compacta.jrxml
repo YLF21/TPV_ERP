@@ -23,10 +23,18 @@
     COALESCE(
         cdi.observaciones_ticket,
         ''
-    ) AS observacion_ticket
+    ) AS observacion_ticket,
+    COALESCE(NULLIF(TRIM(u.user_name), ''), NULLIF(TRIM(u.nombre), '')) AS usuario_nombre,
+    NULLIF(TRIM(term.nombre), '') AS terminal_nombre
 FROM documento d
 LEFT JOIN configuracion_documento_impreso_tienda cdi
     ON cdi.tienda_id = d.tienda_id
+LEFT JOIN usuario u
+    ON u.id = COALESCE(d.confirmado_por, d.creado_por)
+   AND u.tienda_id = d.tienda_id
+LEFT JOIN terminal term
+    ON term.id = d.terminal_origen_id
+   AND term.tienda_id = d.tienda_id
 WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 	<field name="contenido_qr" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="contenido_qr"/>
@@ -36,10 +44,12 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 		<property name="com.jaspersoft.studio.field.name" value="observacion_ticket"/>
 		<property name="com.jaspersoft.studio.field.label" value="observacion_ticket"/>
 	</field>
+	<field name="usuario_nombre" class="java.lang.String"/>
+	<field name="terminal_nombre" class="java.lang.String"/>
 	<background splitType="Stretch"/>
 	<detail>
-		<band height="171" splitType="Stretch">
-			<element kind="textField" uuid="37a6f279-7859-4617-ad52-2dddbe40d066" positionType="Float" x="5" y="23" width="199" height="38" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+		<band height="198" splitType="Stretch">
+			<element kind="textField" uuid="37a6f279-7859-4617-ad52-2dddbe40d066" positionType="Float" x="5" y="50" width="199" height="38" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
 				<expression><![CDATA[$F{observacion_ticket}]]></expression>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
@@ -47,22 +57,35 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<box leftPadding="2" rightPadding="2"/>
 			</element>
-			<element kind="staticText" uuid="1c471111-2883-4068-a12e-465170b5744c" positionType="Float" x="8" y="7" width="191" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+			<element kind="staticText" uuid="b450a918-8650-40e6-94e8-3fc65d240a47" positionType="Float" x="8" y="7" width="191" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[($F{usuario_nombre} != null && !$F{usuario_nombre}.trim().isEmpty()) || ($F{terminal_nombre} != null && !$F{terminal_nombre}.trim().isEmpty())]]></printWhenExpression>
+				<text><![CDATA[ATENDIDO POR]]></text>
+			</element>
+			<element kind="textField" uuid="ad482474-a470-42d5-9874-86cbdc5a05cc" positionType="Float" x="8" y="20" width="191" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+				<expression><![CDATA[($F{usuario_nombre} == null ? "" : $F{usuario_nombre}.trim())
++ ($F{terminal_nombre} == null || $F{terminal_nombre}.trim().isEmpty()
+    ? ""
+    : (($F{usuario_nombre} == null || $F{usuario_nombre}.trim().isEmpty()) ? "" : " · ") + "Terminal: " + $F{terminal_nombre}.trim())]]></expression>
+			</element>
+			<element kind="line" uuid="0cf12b6e-c24b-4ee4-9062-42e504557b56" x="5" y="33" width="197" height="1">
+				<pen lineWidth="0.5"/>
+			</element>
+			<element kind="staticText" uuid="1c471111-2883-4068-a12e-465170b5744c" positionType="Float" x="8" y="34" width="191" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
 				<text><![CDATA[CONDICIONES DE DEVOLUCIÓN]]></text>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			</element>
-			<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a07" x="5" y="20" width="197" height="1"><pen lineWidth="0.5"/></element>
-			<element kind="staticText" uuid="4ed14df0-1037-436f-af5b-89194c98efb8" positionType="Float" x="8" y="155" width="191" height="13" fontSize="9.0" hTextAlign="Center">
+			<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a07" x="5" y="47" width="197" height="1"><pen lineWidth="0.5"/></element>
+			<element kind="staticText" uuid="4ed14df0-1037-436f-af5b-89194c98efb8" positionType="Float" x="8" y="182" width="191" height="13" fontSize="9.0" hTextAlign="Center">
 				<text><![CDATA[Gracias por su compra]]></text>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="component" uuid="12ced4b2-46ab-45b2-a35b-d0c1258445bc" positionType="Float" x="61" y="64" width="86" height="86">
+			<element kind="component" uuid="12ced4b2-46ab-45b2-a35b-d0c1258445bc" positionType="Float" x="61" y="91" width="86" height="86">
 				<component kind="barcode4j:QRCode">
 					<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
 				</component>

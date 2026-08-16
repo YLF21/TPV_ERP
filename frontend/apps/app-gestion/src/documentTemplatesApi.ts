@@ -136,6 +136,19 @@ export function reactivateDocumentTemplate(
   );
 }
 
+export function useBuiltInDocumentTemplate(
+  type: DocumentTemplateType,
+  format: DocumentTemplateFormat,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplateCatalog>("/document-templates/use-built-in", {
+    method: "POST",
+    token,
+    body: { type, format },
+  });
+}
+
 export async function downloadDocumentTemplateSource(
   template: Pick<DocumentTemplateView, "id" | "code" | "version">,
   token?: string,

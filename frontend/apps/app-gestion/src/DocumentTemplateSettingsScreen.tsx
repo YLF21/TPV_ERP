@@ -8,6 +8,7 @@ import {
   loadDocumentTemplatePresentation,
   saveDocumentTemplatePresentation,
   reactivateDocumentTemplate,
+  useBuiltInDocumentTemplate,
   uploadDocumentTemplateArtifact,
   type DocumentTemplateCatalog,
   type DocumentTemplateFormat,
@@ -24,6 +25,10 @@ import {
 import ticketStylePrincipal from "./assets/ticket-styles/principal.svg";
 import ticketStyleCompacta from "./assets/ticket-styles/compacta.svg";
 import ticketStyleMinimalista from "./assets/ticket-styles/minimalista.svg";
+import facturaA4Preview from "./assets/document-templates/factura-a4.png";
+import albaranA4Preview from "./assets/document-templates/albaran-a4.png";
+import facturaTicket80Preview from "./assets/document-templates/factura-ticket-80.png";
+import valeTicket80Preview from "./assets/document-templates/vale-ticket-80.png";
 
 type Translator = (key: string) => string;
 
@@ -39,6 +44,13 @@ const ticketStylePreviews: Record<TicketPrintStyle, string> = {
   PRINCIPAL: ticketStylePrincipal,
   COMPACTA: ticketStyleCompacta,
   MINIMALISTA: ticketStyleMinimalista,
+};
+
+const documentTemplatePreviews: Partial<Record<`${DocumentTemplateType}:${DocumentTemplateFormat}`, string>> = {
+  "FACTURA_VENTA:A4": facturaA4Preview,
+  "FACTURA_VENTA:TICKET_80": facturaTicket80Preview,
+  "ALBARAN_VENTA:A4": albaranA4Preview,
+  "VALE:TICKET_80": valeTicket80Preview,
 };
 
 const ticketBundleFilenames = new Set([
@@ -95,6 +107,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET" || selectedType === "VALE"
     ? "TICKET_80"
     : selectedType === "ALBARAN_VENTA" ? "A4" : selectedFormat;
+  const documentTemplatePreview = documentTemplatePreviews[`${selectedType}:${effectiveFormat}`];
   const selectedTicketPresentationIsActive = selectedType === "TICKET"
     && (ticketTemplateOrigin === "INTEGRATED"
       ? catalog?.effective?.builtIn === true && ticketStyle === savedTicketStyle
@@ -278,6 +291,26 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
     }
   }
 
+  async function useBuiltInTemplate() {
+    if (!canManage || busyId || selectedType === "TICKET") return;
+    setBusyId("built-in");
+    setMessage(null);
+    try {
+      const value = await useBuiltInDocumentTemplate(
+        selectedType, effectiveFormat, session.accessToken, request,
+      );
+      setCatalog(value);
+      setMessage({ kind: "success", text: t("gestion.documentTemplates.builtInSaved") });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: failureMessage(error, t("gestion.documentTemplates.builtInSaveError")),
+      });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function download(template: DocumentTemplateView) {
     setMessage(null);
     try {
@@ -363,14 +396,16 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
           <div><dt>{t("gestion.documentTemplates.version")}</dt><dd>{catalog?.effective?.version ?? "-"}</dd></div>
           <div><dt>{t("gestion.documentTemplates.origin")}</dt><dd>{originLabel(catalog?.effective?.scope, t)}</dd></div>
           <div><dt>{t("gestion.documentTemplates.schema")}</dt><dd>{catalog?.effective?.schemaVersion ?? "-"}</dd></div>
-          {selectedType === "TICKET" && (
-            <div>
-              <dt>{t("gestion.documentTemplates.activeTicketStyle")}</dt>
-              <dd>{catalog?.effective?.builtIn
-                ? t(`gestion.documentTemplates.ticketStyle.${savedTicketStyle}`)
-                : t("gestion.documentTemplates.customTicketTemplate")}</dd>
-            </div>
-          )}
+          <div>
+            <dt>{t("gestion.documentTemplates.activeTicketStyle")}</dt>
+            <dd>{selectedType === "TICKET"
+              ? (catalog?.effective?.builtIn
+                  ? t(`gestion.documentTemplates.ticketStyle.${savedTicketStyle}`)
+                  : t("gestion.documentTemplates.customTicketTemplate"))
+              : (catalog?.effective?.builtIn
+                  ? t("gestion.documentTemplates.builtInDesign")
+                  : t("gestion.documentTemplates.customTicketTemplate"))}</dd>
+          </div>
         </dl>
       </section>
 
@@ -487,6 +522,47 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                 : ticketTemplateOrigin === "INTEGRATED" && catalog?.effective?.builtIn === false
                   ? t("gestion.documentTemplates.ticketStyleReplace")
                   : t("gestion.documentTemplates.ticketStyleSave")}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {selectedType !== "TICKET" && (
+        <section className="gestion-ticket-style-selector" aria-labelledby="document-built-in-title">
+          <div className="gestion-ticket-style-copy">
+            <h3 id="document-built-in-title">{t("gestion.documentTemplates.builtInTitle")}</h3>
+            <p>{catalog?.effective?.builtIn
+              ? t("gestion.documentTemplates.builtInHelp")
+              : t("gestion.documentTemplates.builtInReplacesCustomHelp")}</p>
+          </div>
+          {documentTemplatePreview ? (
+            <figure className={`gestion-document-template-preview ${effectiveFormat === "A4" ? "is-a4" : "is-ticket"}`}>
+              <img
+                src={documentTemplatePreview}
+                alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.type.${selectedType}`)} · ${t(`gestion.documentTemplates.format.${effectiveFormat}`)}`}
+              />
+              <figcaption>
+                {t(`gestion.documentTemplates.type.${selectedType}`)} · {t(`gestion.documentTemplates.format.${effectiveFormat}`)}
+              </figcaption>
+            </figure>
+          ) : (
+            <div className="gestion-ticket-imported-summary">
+              <strong>{t(`gestion.documentTemplates.type.${selectedType}`)}</strong>
+              <span>{t(`gestion.documentTemplates.format.${effectiveFormat}`)}</span>
+              <small>{catalog?.effective?.builtIn
+                ? t("gestion.documentTemplates.builtInActiveHelp")
+                : t("gestion.documentTemplates.customActiveHelp")}</small>
+            </div>
+          )}
+          <div className="gestion-ticket-style-actions">
+            <button
+              type="button"
+              disabled={!canManage || busyId !== null || catalog?.effective?.builtIn === true}
+              onClick={() => void useBuiltInTemplate()}
+            >
+              {catalog?.effective?.builtIn
+                ? t("gestion.documentTemplates.ticketStyleActive")
+                : t("gestion.documentTemplates.useBuiltIn")}
             </button>
           </div>
         </section>

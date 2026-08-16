@@ -59,6 +59,20 @@ class TicketJrxmlBundleCompilerTest {
     }
 
     @Test
+    void compilesTheEditableStandaloneTicketExample() throws Exception {
+        byte[] source = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
+                "..", "plantillas documentos", "ticekt_v1.jrxml"));
+
+        var bundle = compiler.compileUpload(java.util.Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME, source));
+
+        assertThat(bundle.reports()).containsOnlyKeys(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME);
+        assertThat(bundle.reports().get(TicketJrxmlBundleCompiler.MASTER_FILENAME).compiled())
+                .isNotEmpty();
+    }
+
+    @Test
     void allowsReadOnlyCommonTableExpressionsInASelfContainedTicket() {
         byte[] source = standaloneTicketWithQuery("""
                 WITH cabecera AS (
@@ -74,6 +88,27 @@ class TicketJrxmlBundleCompilerTest {
                 SELECT c.documento_id, l.nombre
                 FROM cabecera c
                 LEFT JOIN lineas l ON l.documento_id = c.documento_id
+                """);
+
+        var bundle = compiler.compileUpload(java.util.Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME, source));
+
+        assertThat(bundle.reports()).containsOnlyKeys(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME);
+    }
+
+    @Test
+    void allowsPersistedOperatorAndOriginTerminalInATicketQuery() {
+        byte[] source = standaloneTicketWithQuery("""
+                SELECT 1 AS dummy
+                FROM documento d
+                LEFT JOIN usuario u
+                    ON u.id = COALESCE(d.confirmado_por, d.creado_por)
+                   AND u.tienda_id = d.tienda_id
+                LEFT JOIN terminal term
+                    ON term.id = d.terminal_origen_id
+                   AND term.tienda_id = d.tienda_id
+                WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
                 """);
 
         var bundle = compiler.compileUpload(java.util.Map.of(

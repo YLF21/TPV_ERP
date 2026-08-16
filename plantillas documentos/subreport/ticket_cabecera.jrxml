@@ -209,15 +209,15 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<expression><![CDATA[$F{nombre_empresa_secundario}]]></expression>
 			</element>
 			<element kind="textField" uuid="e049cb9b-b1ce-4584-b328-6ae23d6c8429" positionType="Float" x="5" y="88" width="197" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
-				<expression><![CDATA["Factura simplificada:  " + $F{numero_ticket}]]></expression>
+				<expression><![CDATA["Factura simplificada:  " + ($F{numero_ticket} == null ? "" : $F{numero_ticket}.trim().replaceAll("[^0-9A-Za-z]+", "-"))]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
-			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="8" y="109" width="191" height="34" style="BarcodeCentrado">
-				<component kind="barcode4j:Code128" textPosition="none">
-					<codeExpression><![CDATA[$F{numero_ticket}]]></codeExpression>
+			<element kind="component" uuid="0e8fe138-5d66-4b1e-b550-58c7dacefe82" positionType="Float" x="0" y="109" width="207" height="34" style="BarcodeCentrado">
+				<component kind="barcode4j:Code128" moduleWidth="2.0" textPosition="none" quietZone="13.0" verticalQuietZone="0.0">
+					<codeExpression><![CDATA[$F{numero_ticket} == null ? "" : $F{numero_ticket}.trim().replaceAll("[^0-9A-Za-z]+", "-")]]></codeExpression>
 				</component>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -233,7 +233,7 @@ WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			</element>
 			<element kind="textField" uuid="119dd9b7-866c-411e-aa63-6c8c43fb9695" positionType="Float" x="5" y="31" width="194" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
-				<expression><![CDATA[($F{cif} == null ? "" : "CIF: " + $F{cif})
+				<expression><![CDATA[($F{cif} == null ? "" : "NIF: " + $F{cif})
 +
 ($F{telefono} == null || $F{telefono}.trim().isEmpty()
     ? ""
