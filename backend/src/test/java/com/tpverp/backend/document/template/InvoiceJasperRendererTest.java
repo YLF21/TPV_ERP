@@ -166,7 +166,7 @@ class InvoiceJasperRendererTest {
     }
 
     @Test
-    void builtInTemplateRendersPackagedJrxml() {
+    void builtInTemplateRendersPackagedJrxmlWithExpectedContent() throws Exception {
         var fixture = fixture();
         var builtIns = new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler());
         var renderer = new InvoiceJasperRenderer(
@@ -180,9 +180,15 @@ class InvoiceJasperRendererTest {
                 builtIns.reference(DocumentTemplateType.FACTURA_VENTA,
                         DocumentTemplateFormat.A4));
 
-        assertThat(renderer.render(
+        var pdf = renderer.render(
                 fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
-                snapshot, null).orElseThrow()).startsWith(0x25, 0x50, 0x44, 0x46);
+                snapshot, null).orElseThrow();
+
+        assertThat(pdf).startsWith(0x25, 0x50, 0x44, 0x46);
+        try (var rendered = Loader.loadPDF(pdf)) {
+            assertThat(new PDFTextStripper().getText(rendered))
+                    .contains("FACTURA", "FV-2026-1", "TPV ERP SL");
+        }
     }
 
     @Test

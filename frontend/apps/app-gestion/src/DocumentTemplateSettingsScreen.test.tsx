@@ -45,7 +45,7 @@ describe("DocumentTemplateSettingsScreen", () => {
     expect(documentTemplateArtifactFiles("TICKET", [custom])).toEqual([custom]);
   });
 
-  it("keeps the manual workflow available when the active JRXML is missing", async () => {
+  it("keeps the default and manual workflows available when the catalog has no effective entry", async () => {
     const request = vi.fn().mockImplementation(async () => ({
       effective: null,
       storeTemplates: [],
@@ -61,6 +61,8 @@ describe("DocumentTemplateSettingsScreen", () => {
 
     expect(await screen.findByText("Falta plantilla JRXML activa")).toBeInTheDocument();
     expect(screen.getByText(/modelo integrado o una plantilla JRXML activa/)).toBeInTheDocument();
+    expect(screen.getByText("Diseño predeterminado")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Usar diseño predeterminado" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Crear borrador" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
@@ -175,6 +177,138 @@ describe("DocumentTemplateSettingsScreen", () => {
     ));
   });
 
+  it("retires the active custom invoice when the user selects the default design", async () => {
+    const customCatalog = {
+      effective: {
+        id: "invoice-2", type: "FACTURA_VENTA", format: "A4", scope: "STORE",
+        code: "FACTURA_A4", version: 2, schemaVersion: 1,
+        artifactReference: "invoice-2", sha256: "a".repeat(64), builtIn: false,
+      },
+      storeTemplates: [],
+    };
+    const builtInCatalog = {
+      effective: {
+        id: null, type: "FACTURA_VENTA", format: "A4", scope: "SYSTEM",
+        code: "FACTURA_A4", version: 1, schemaVersion: 1,
+        artifactReference: "builtin:factura_venta:a4", sha256: null, builtIn: true,
+      },
+      storeTemplates: [],
+    };
+    const request = vi.fn().mockImplementation(async (path: string) =>
+      path === "/document-templates/use-built-in" ? builtInCatalog : customCatalog);
+
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Usar diseño predeterminado" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-templates/use-built-in",
+      { method: "POST", token: "token", body: { type: "FACTURA_VENTA", format: "A4" } },
+    ));
+    expect(await screen.findByText("Diseño predeterminado del sistema"))
+      .toBeInTheDocument();
+  });
+
+  it("shows the real preview for the built-in 80 mm invoice", async () => {
+    const request = vi.fn().mockResolvedValue({
+      effective: {
+        id: null, type: "FACTURA_VENTA", format: "TICKET_80", scope: "SYSTEM",
+        code: "FACTURA_TICKET_80", version: 1, schemaVersion: 1,
+        artifactReference: "builtin:factura_venta:ticket_80", sha256: null, builtIn: true,
+      },
+      storeTemplates: [],
+    });
+
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Ticket 80 mm" }));
+
+    const preview = await screen.findByRole("img", {
+      name: /Vista previa de la plantilla: Factura · Ticket 80 mm/,
+    });
+    expect(preview).toHaveAttribute("src", expect.stringContaining("factura-ticket-80"));
+  });
+
+  it("shows the supplied A4 previews for invoices and delivery notes", async () => {
+    const request = vi.fn().mockImplementation(async (path: string) => {
+      const isDeliveryNote = path.includes("ALBARAN_VENTA");
+      const type = isDeliveryNote ? "ALBARAN_VENTA" : "FACTURA_VENTA";
+
+      return {
+        effective: {
+          id: null,
+          type,
+          format: "A4",
+          scope: "SYSTEM",
+          code: isDeliveryNote ? "ALBARAN_A4" : "FACTURA_A4",
+          version: 1,
+          schemaVersion: 1,
+          artifactReference: isDeliveryNote
+            ? "builtin:albaran_venta:a4"
+            : "builtin:factura_venta:a4",
+          sha256: null,
+          builtIn: true,
+        },
+        storeTemplates: [],
+      };
+    });
+
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    expect(await screen.findByRole("img", {
+      name: /Vista previa de la plantilla: Factura · A4/,
+    })).toHaveAttribute("src", expect.stringContaining("factura-a4"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
+
+    expect(await screen.findByRole("img", {
+      name: /Vista previa de la plantilla: Albarán · A4/,
+    })).toHaveAttribute("src", expect.stringContaining("albaran-a4"));
+  });
+
+  it("shows the supplied 80 mm voucher preview", async () => {
+    const request = vi.fn().mockImplementation(async (path: string) => ({
+      effective: {
+        id: null, type: path.includes("VALE") ? "VALE" : "FACTURA_VENTA",
+        format: path.includes("VALE") ? "TICKET_80" : "A4", scope: "SYSTEM",
+        code: path.includes("VALE") ? "VALE_TICKET_80" : "FACTURA_A4",
+        version: 1, schemaVersion: 1,
+        artifactReference: path.includes("VALE")
+          ? "builtin:vale:ticket_80"
+          : "builtin:factura_venta:a4",
+        sha256: null, builtIn: true,
+      },
+      storeTemplates: [],
+    }));
+
+    render(<DocumentTemplateSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request}
+    />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Vale" }));
+
+    const preview = await screen.findByRole("img", {
+      name: /Vista previa de la plantilla: Vale · Ticket 80 mm/,
+    });
+    expect(preview).toHaveAttribute("src", expect.stringContaining("vale-ticket-80"));
+    expect(screen.queryByText("La emisión y la impresión utilizarán este diseño del sistema."))
+      .not.toBeInTheDocument();
+  });
+
   it("loads and saves the ticket layout selected for the current store", async () => {
     const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
       if (path === "/store-document-print-configuration") {
@@ -201,8 +335,6 @@ describe("DocumentTemplateSettingsScreen", () => {
     />);
 
     fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
-    const origin = await screen.findByRole("combobox", { name: "Origen del diseño" });
-    await waitFor(() => expect(origin).toHaveValue("INTEGRATED"));
     const selector = await screen.findByRole("combobox", { name: "Plantilla elegida" });
     await waitFor(() => expect(selector).toHaveValue("COMPACTA"));
     expect(screen.getByText("Versión JRXML en uso")).toBeInTheDocument();
@@ -228,7 +360,7 @@ describe("DocumentTemplateSettingsScreen", () => {
     ));
   });
 
-  it("selects the active imported ticket without silently showing an integrated model", async () => {
+  it("lets an imported ticket switch explicitly to an integrated model", async () => {
     const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
       if (path === "/store-document-print-configuration") {
         return { ticketStyle: "COMPACTA", ticketTemplateOrigin: "IMPORTED" };
@@ -256,9 +388,12 @@ describe("DocumentTemplateSettingsScreen", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
     const origin = await screen.findByRole("combobox", { name: "Origen del diseño" });
     await waitFor(() => expect(origin).toHaveValue("IMPORTED"));
-    expect(screen.getAllByText("TICKET_80")).toHaveLength(2);
     expect(screen.queryByRole("combobox", { name: "Plantilla elegida" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Diseño activo" })).toBeDisabled();
+
+    fireEvent.change(origin, { target: { value: "INTEGRATED" } });
+    const selector = await screen.findByRole("combobox", { name: "Plantilla elegida" });
+    await waitFor(() => expect(selector).toHaveValue("COMPACTA"));
+    expect(screen.getByRole("button", { name: "Cambiar a este diseño" })).toBeEnabled();
   });
 
   it("explains that saving a default design replaces the active custom JRXML", async () => {

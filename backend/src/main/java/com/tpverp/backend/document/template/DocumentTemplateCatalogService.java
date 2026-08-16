@@ -131,11 +131,21 @@ public class DocumentTemplateCatalogService {
      */
     @Transactional
     public void useBuiltInCurrentStoreTicket() {
+        useBuiltInCurrentStoreTemplate(
+                DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80);
+    }
+
+    /** Retires the active store JRXML so resolution falls back to the application design. */
+    @Transactional
+    public void useBuiltInCurrentStoreTemplate(
+            DocumentTemplateType type, DocumentTemplateFormat format) {
+        if (!format.supports(type)) {
+            throw new IllegalArgumentException("document_template_format_not_supported");
+        }
         var store = organization.currentStore();
         var now = clock.instant();
         templates.findActiveStoreTemplateForUpdate(
-                        store.getId(), DocumentTemplateType.TICKET,
-                        DocumentTemplateFormat.TICKET_80)
+                        store.getId(), type, format)
                 .ifPresent(active -> {
                     active.retire(now,
                             DocumentTemplateRetirementReason.BUILT_IN_DESIGN_SELECTED);

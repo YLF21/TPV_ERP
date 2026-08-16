@@ -14,18 +14,36 @@ public record ResolvedDocumentTemplate(
         String sha256,
         boolean builtIn) {
 
-    static ResolvedDocumentTemplate builtInTicket() {
+    static ResolvedDocumentTemplate builtIn(
+            DocumentTemplateType type, DocumentTemplateFormat format) {
+        if (!format.supports(type)) {
+            throw new IllegalArgumentException("document_template_format_not_supported");
+        }
+        String code = switch (type) {
+            case FACTURA_VENTA -> format == DocumentTemplateFormat.A4
+                    ? "FACTURA_A4" : "FACTURA_TICKET_80";
+            case ALBARAN_VENTA -> "ALBARAN_A4";
+            case TICKET -> "TICKET_80";
+            case VALE -> "VALE_TICKET_80";
+        };
         return new ResolvedDocumentTemplate(
                 null,
-                DocumentTemplateType.TICKET,
-                DocumentTemplateFormat.TICKET_80,
+                type,
+                format,
                 DocumentTemplateScope.SYSTEM,
-                "TICKET_80",
+                code,
                 1,
                 SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
-                "builtin:ticket",
+                type == DocumentTemplateType.TICKET
+                        ? "builtin:ticket"
+                        : "builtin:" + type.name().toLowerCase(java.util.Locale.ROOT)
+                                + ":" + format.name().toLowerCase(java.util.Locale.ROOT),
                 null,
                 true);
+    }
+
+    static ResolvedDocumentTemplate builtInTicket() {
+        return builtIn(DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80);
     }
 
     static ResolvedDocumentTemplate from(DocumentTemplate template) {

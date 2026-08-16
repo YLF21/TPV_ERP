@@ -63,9 +63,8 @@ public class DocumentTemplateResolver {
         if (systemTemplate.isPresent()) {
             return systemTemplate;
         }
-        if (type == DocumentTemplateType.TICKET
-                && format == DocumentTemplateFormat.TICKET_80) {
-            return Optional.of(ResolvedDocumentTemplate.builtInTicket());
+        if (format.supports(type)) {
+            return Optional.of(ResolvedDocumentTemplate.builtIn(type, format));
         }
         return Optional.empty();
     }

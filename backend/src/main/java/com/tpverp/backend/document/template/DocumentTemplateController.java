@@ -88,6 +88,13 @@ public class DocumentTemplateController {
         return artifacts.reactivate(templateId);
     }
 
+    @PostMapping("/use-built-in")
+    public DocumentTemplateCatalogService.CatalogView useBuiltIn(
+            @Valid @RequestBody BuiltInRequest request) {
+        service.useBuiltInCurrentStoreTemplate(request.type(), request.format());
+        return service.currentStoreCatalog(request.type(), request.format());
+    }
+
     @GetMapping("/{templateId}/source")
     public ResponseEntity<byte[]> source(@PathVariable UUID templateId) {
         var source = artifacts.source(templateId);
@@ -113,5 +120,10 @@ public class DocumentTemplateController {
             @NotNull DocumentTemplateType type,
             @NotNull DocumentTemplateFormat format,
             @NotNull DocumentTemplateOrigin origin) {
+    }
+
+    public record BuiltInRequest(
+            @NotNull DocumentTemplateType type,
+            @NotNull DocumentTemplateFormat format) {
     }
 }

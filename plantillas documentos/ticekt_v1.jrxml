@@ -36,11 +36,17 @@
         c.client_id AS codigo_cliente,
         c.telefono AS telefono_cliente,
         c.tarifa,
-        c.descuento AS porcentaje_descuento_cliente
+        c.descuento AS porcentaje_descuento_cliente,
+        COALESCE(NULLIF(TRIM(u.user_name), ''), NULLIF(TRIM(u.nombre), '')) AS usuario_nombre,
+        NULLIF(TRIM(term.nombre), '') AS terminal_nombre
     FROM documento d
     INNER JOIN tienda t ON t.id = d.tienda_id
     INNER JOIN empresa e ON e.id = t.empresa_id
     LEFT JOIN cliente c ON c.id = d.cliente_id
+    LEFT JOIN usuario u ON u.id = COALESCE(d.confirmado_por, d.creado_por)
+        AND u.tienda_id = d.tienda_id
+    LEFT JOIN terminal term ON term.id = d.terminal_origen_id
+        AND term.tienda_id = d.tienda_id
     LEFT JOIN configuracion_documento_impreso_tienda cdi ON cdi.tienda_id = t.id
     LEFT JOIN logo_documento_tienda ldt ON ldt.id = cdi.logo_id AND ldt.tienda_id = t.id
     WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
@@ -177,6 +183,7 @@ SELECT
     c.nombre_cabecera, c.cif, c.telefono, c.email, c.direccion, c.codigo_postal, c.ciudad, c.pais,
     c.numero_ticket, c.fecha_ticket, c.total_ticket, c.logo_contenido, c.contenido_qr, c.observacion_ticket,
     c.nombre_cliente, c.codigo_cliente, c.telefono_cliente, c.tarifa, c.porcentaje_descuento_cliente,
+    c.usuario_nombre, c.terminal_nombre,
     l.posicion, l.articulo, l.cantidad, l.precio, l.descuento_linea, l.importe_bruto, l.importe_descuento, l.total_linea,
     t.subtotal_bruto, t.descuento_total,
     p.pago_etiquetas, p.pago_importes,
@@ -206,6 +213,8 @@ ORDER BY l.posicion NULLS LAST]]></query>
 	<field name="telefono_cliente" class="java.lang.String"/>
 	<field name="tarifa" class="java.lang.String"/>
 	<field name="porcentaje_descuento_cliente" class="java.math.BigDecimal"/>
+	<field name="usuario_nombre" class="java.lang.String"/>
+	<field name="terminal_nombre" class="java.lang.String"/>
 	<field name="posicion" class="java.lang.Integer"/>
 	<field name="articulo" class="java.lang.String"/>
 	<field name="cantidad" class="java.math.BigDecimal"/>
@@ -231,7 +240,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			<expression><![CDATA[$F{nombre_cabecera}]]></expression>
 		</element>
 		<element kind="textField" uuid="e39e8175-146c-4efe-859d-a72c19bb6bd4" x="4" y="49" width="199" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
-			<expression><![CDATA[($F{cif} == null || $F{cif}.trim().isEmpty() ? "" : "CIF: " + $F{cif}.trim()) + ($F{telefono} == null || $F{telefono}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono}.trim())]]></expression>
+			<expression><![CDATA[($F{cif} == null || $F{cif}.trim().isEmpty() ? "" : "NIF: " + $F{cif}.trim()) + ($F{telefono} == null || $F{telefono}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono}.trim())]]></expression>
 		</element>
 		<element kind="textField" uuid="e3afac92-cbd8-4519-90e1-cb93bc39027d" x="4" y="62" width="199" height="12" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Center">
 			<expression><![CDATA[($F{direccion} == null ? "" : $F{direccion}.trim()) + ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty() ? "" : " · " + $F{codigo_postal}.trim()) + ($F{ciudad} == null || $F{ciudad}.trim().isEmpty() ? "" : " " + $F{ciudad}.trim()) + ($F{pais} == null || $F{pais}.trim().isEmpty() ? "" : " · " + $F{pais}.trim())]]></expression>
@@ -288,7 +297,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			</element>
 		</band>
 	</detail>
-	<summary height="352" splitType="Stretch">
+	<summary height="381" splitType="Stretch">
 		<element kind="line" uuid="f8f69da9-f809-4141-8c4f-445204a94cbc" x="2" y="1" width="203" height="1">
 			<pen lineWidth="0.6" lineStyle="Dashed"/>
 		</element>
@@ -360,22 +369,35 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			<printWhenExpression><![CDATA[$F{porcentaje_descuento_cliente} != null && $F{porcentaje_descuento_cliente}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
 			<expression><![CDATA["Descuento socio: " + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_cliente}) + "%"]]></expression>
 		</element>
-		<element kind="staticText" uuid="5058e582-e00a-46a3-bd18-916437ff5885" x="3" y="241" width="201" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="842215b5-327b-49d8-b601-f723784ad82f" x="3" y="241" width="201" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[($F{usuario_nombre} != null && !$F{usuario_nombre}.trim().isEmpty()) || ($F{terminal_nombre} != null && !$F{terminal_nombre}.trim().isEmpty())]]></printWhenExpression>
+			<text><![CDATA[ATENDIDO POR]]></text>
+		</element>
+		<element kind="textField" uuid="de28df7a-5ca3-4586-b2ee-f714ce8f953f" x="3" y="254" width="201" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
+			<expression><![CDATA[($F{usuario_nombre} == null ? "" : $F{usuario_nombre}.trim())
++ ($F{terminal_nombre} == null || $F{terminal_nombre}.trim().isEmpty()
+    ? ""
+    : (($F{usuario_nombre} == null || $F{usuario_nombre}.trim().isEmpty()) ? "" : " · ") + "Terminal: " + $F{terminal_nombre}.trim())]]></expression>
+		</element>
+		<element kind="line" uuid="c283629a-eb11-49ad-ac79-913c90871909" x="2" y="268" width="203" height="1">
+			<pen lineWidth="0.5" lineStyle="Dashed"/>
+		</element>
+		<element kind="staticText" uuid="5058e582-e00a-46a3-bd18-916437ff5885" x="3" y="270" width="201" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{observacion_ticket} != null && !$F{observacion_ticket}.trim().isEmpty()]]></printWhenExpression>
 			<text><![CDATA[CONDICIONES DE DEVOLUCIÓN]]></text>
 		</element>
-		<element kind="line" uuid="12d4459f-0bd3-492c-b742-bfa69df15bee" x="2" y="254" width="203" height="1">
+		<element kind="line" uuid="12d4459f-0bd3-492c-b742-bfa69df15bee" x="2" y="283" width="203" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="textField" uuid="ff9393b1-e24c-4ba6-aa9f-10035779b68e" x="3" y="258" width="201" height="36" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+		<element kind="textField" uuid="ff9393b1-e24c-4ba6-aa9f-10035779b68e" x="3" y="287" width="201" height="36" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
 			<expression><![CDATA[$F{observacion_ticket}]]></expression>
 		</element>
-		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="65" y="297" width="76" height="45">
+		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="65" y="326" width="76" height="45">
 			<component kind="barcode4j:QRCode">
 				<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="staticText" uuid="cc188b24-3997-433b-a9af-340657f81e98" x="3" y="340" width="201" height="12" fontSize="9.0" hTextAlign="Center">
+		<element kind="staticText" uuid="cc188b24-3997-433b-a9af-340657f81e98" x="3" y="369" width="201" height="12" fontSize="9.0" hTextAlign="Center">
 			<text><![CDATA[Gracias por su compra v1]]></text>
 		</element>
 	</summary>
