@@ -4,6 +4,8 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +23,9 @@ public class VoucherService {
     private final CurrentOrganization organization;
     private final Clock clock;
     private VoucherPresentationSnapshotFactory printSnapshots;
+    private StoreVoucherConfigurationRepository voucherConfigurations;
+    private VoucherFamilyRepository voucherFamilies;
+    private VoucherFamilyNumberAllocator familyNumbers;
 
     public VoucherService(
             VoucherRepository vouchers,
@@ -36,6 +41,19 @@ public class VoucherService {
     @org.springframework.beans.factory.annotation.Autowired
     void setPrintSnapshots(VoucherPresentationSnapshotFactory printSnapshots) {
         this.printSnapshots = printSnapshots;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setVoucherConfigurations(StoreVoucherConfigurationRepository voucherConfigurations) {
+        this.voucherConfigurations = voucherConfigurations;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setVoucherFamilies(
+            VoucherFamilyRepository voucherFamilies,
+            VoucherFamilyNumberAllocator familyNumbers) {
+        this.voucherFamilies = voucherFamilies;
+        this.familyNumbers = familyNumbers;
     }
 
     @Transactional
@@ -59,9 +77,12 @@ public class VoucherService {
         if (voucherAmount.signum() <= 0 || voucherAmount.compareTo(ticket.getTotal().abs()) > 0) {
             throw new IllegalArgumentException("el importe del vale no puede superar la devolucion");
         }
+        var issuedAt = Instant.now(clock);
+        var family = createFamily(issuedAt);
         var voucher = new Voucher(
-                ticket.getTiendaId(), nextCode(), voucherAmount,
-                List.of(ticket.getNumero()), Instant.now(clock));
+                family, ticket.getTiendaId(), nextCode(), voucherAmount,
+                List.of(ticket.getNumero()), issuedAt,
+                expirationFor(ticket.getTiendaId(), issuedAt));
         capturePrintSnapshot(voucher, ticket, null);
         return vouchers.save(voucher);
     }
@@ -111,8 +132,8 @@ public class VoucherService {
             var remaining = Money.euros(voucher.balance().subtract(requested));
             voucher.closeForReplacement();
             var renewed = new Voucher(
-                    purchaseTicket.getTiendaId(), nextCode(), remaining,
-                    origins(voucher, purchaseTicket), Instant.now(clock));
+                    voucher.family(), purchaseTicket.getTiendaId(), nextCode(), remaining,
+                    origins(voucher, purchaseTicket), Instant.now(clock), voucher.expiresOn());
             capturePrintSnapshot(renewed, purchaseTicket, voucher);
             replacement = Optional.of(vouchers.save(renewed));
         } else {
@@ -125,8 +146,8 @@ public class VoucherService {
 
     @Transactional(readOnly = true)
     public List<Voucher> list() {
-        return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(
-                organization.currentStore().getId());
+        return vouchers.findAllByCompanyIdOrderByCreatedAtDesc(
+                organization.currentCompany().getId());
     }
 
     @Transactional(readOnly = true)
@@ -134,8 +155,8 @@ public class VoucherService {
         if (code == null || code.isBlank()) {
             return Optional.empty();
         }
-        return vouchers.findByTiendaIdAndCodeIgnoreCase(
-                organization.currentStore().getId(), code.trim());
+        return vouchers.findByCompanyIdAndCodeIgnoreCase(
+                organization.currentCompany().getId(), code.trim());
     }
 
     @Transactional(readOnly = true)
@@ -161,7 +182,7 @@ public class VoucherService {
                 .toList();
         var generated = vouchers.findAllByOriginTicket(
                 ticket.getTiendaId(), ticket.getNumero());
-        requireGeneratedVouchersUnused(ticket, generated);
+        requireGeneratedVouchersUnused(generated);
         return new VoucherCancellationPlan(
                 !consumedCodes.isEmpty() || !generated.isEmpty(),
                 consumedCodes,
@@ -177,7 +198,8 @@ public class VoucherService {
         var restored = new ArrayList<Voucher>();
         var now = Instant.now(clock);
         for (var code : plan.consumedVoucherCodes()) {
-            var voucher = vouchers.findLockedByTiendaIdAndCode(ticket.getTiendaId(), code)
+            var voucher = vouchers.findLockedByCompanyIdAndCode(
+                            organization.currentCompany().getId(), code)
                     .orElseThrow(() -> new IllegalStateException(
                             "el vale consumido por el ticket no existe: " + code));
             if (voucher.status() == VoucherStatus.INVALIDATED) {
@@ -198,7 +220,7 @@ public class VoucherService {
         var invalidated = new ArrayList<Voucher>();
         var generated = vouchers.findAllLockedByOriginTicket(
                 ticket.getTiendaId(), ticket.getNumero());
-        requireGeneratedVouchersUnused(ticket, generated);
+        requireGeneratedVouchersUnused(generated);
         for (var voucher : generated) {
             if (voucher.status() == VoucherStatus.INVALIDATED) {
                 invalidated.add(voucher);
@@ -222,24 +244,17 @@ public class VoucherService {
                 List.copyOf(restored), List.copyOf(invalidated));
     }
 
-    private static void requireGeneratedVouchersUnused(
-            CommercialDocument ticket,
-            List<Voucher> generated) {
-        var used = generated.stream()
-                .filter(voucher -> voucher.status() == VoucherStatus.CONSUMED)
-                .map(Voucher::code)
-                .toList();
-        if (!used.isEmpty()) {
-            throw new IllegalStateException(
-                    "no se puede anular el ticket porque un vale generado fue utilizado: "
-                            + String.join(", ", used)
-                            + ". Anule primero el ticket dependiente");
+    private static void requireGeneratedVouchersUnused(List<Voucher> generated) {
+        if (generated.stream().anyMatch(voucher -> voucher.status() == VoucherStatus.CONSUMED)) {
+            throw new TicketGeneratedVoucherAlreadyUsedException();
         }
     }
 
     private Voucher findActive(String code) {
-        return vouchers.findLockedByTiendaIdAndCode(organization.currentStore().getId(), code)
-                .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
+        var today = storeDate(Instant.now(clock));
+        return vouchers.findLockedByCompanyIdAndCode(
+                        organization.currentCompany().getId(), code)
+                .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE && !voucher.isExpired(today))
                 .orElseThrow(() -> new IllegalArgumentException("vale activo no encontrado"));
     }
 
@@ -263,8 +278,11 @@ public class VoucherService {
         if (ticket == null || ticket.getNumero() == null || ticket.getNumero().isBlank()) {
             return Optional.empty();
         }
-        return vouchers.findAllByOriginTicket(ticket.getTiendaId(), ticket.getNumero()).stream()
+        var issued = vouchers.findAllByOriginTicket(
+                        ticket.getTiendaId(), ticket.getNumero()).stream()
                 .max(java.util.Comparator.comparing(Voucher::createdAt));
+        issued.ifPresent(Voucher::familyIdentifier);
+        return issued;
     }
 
     private boolean generatedVoucherExists(CommercialDocument ticket) {
@@ -284,8 +302,10 @@ public class VoucherService {
 
     @Transactional(readOnly = true)
     public BigDecimal availableBalance(String code) {
-        return vouchers.findByTiendaIdAndCode(organization.currentStore().getId(), code)
-                .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
+        var today = storeDate(Instant.now(clock));
+        return vouchers.findByCompanyIdAndCodeIgnoreCase(
+                        organization.currentCompany().getId(), code)
+                .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE && !voucher.isExpired(today))
                 .map(Voucher::balance)
                 .orElseThrow(() -> new IllegalArgumentException("vale activo no encontrado"));
     }
@@ -310,6 +330,32 @@ public class VoucherService {
             origins.add(ticket.getNumero());
         }
         return List.copyOf(origins);
+    }
+
+    private LocalDate expirationFor(UUID storeId, Instant issuedAt) {
+        var configuration = voucherConfigurations == null
+                ? new StoreVoucherConfiguration(storeId)
+                : voucherConfigurations.findById(storeId)
+                        .orElseGet(() -> new StoreVoucherConfiguration(storeId));
+        return configuration.expirationFor(storeDate(issuedAt));
+    }
+
+    private LocalDate storeDate(Instant instant) {
+        return instant.atZone(ZoneId.of(organization.currentStore().getTimezone())).toLocalDate();
+    }
+
+    private VoucherFamily createFamily(Instant issuedAt) {
+        if (voucherFamilies == null || familyNumbers == null) {
+            throw new IllegalStateException("voucher_family_service_unavailable");
+        }
+        var store = organization.currentStore();
+        var family = new VoucherFamily(
+                organization.currentCompany().getId(),
+                store.getId(),
+                store.getCodigoTienda(),
+                familyNumbers.next(store.getId()),
+                issuedAt);
+        return voucherFamilies.save(family);
     }
 
     private static String nextCode() {

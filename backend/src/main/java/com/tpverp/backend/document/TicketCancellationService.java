@@ -34,6 +34,7 @@ public class TicketCancellationService {
     private final CommercialDocumentRepository documentRepository;
     private final TicketCancellationOperationRepository operations;
     private final VoucherEventRepository voucherEvents;
+    private final VoucherPrintService voucherPrinting;
     private final SaleOperationSecurityService operationSecurity;
     private final UserAccountRepository users;
     private final PaymentTerminalOperationsService cardTerminals;
@@ -47,6 +48,7 @@ public class TicketCancellationService {
             CommercialDocumentRepository documentRepository,
             TicketCancellationOperationRepository operations,
             VoucherEventRepository voucherEvents,
+            VoucherPrintService voucherPrinting,
             SaleOperationSecurityService operationSecurity,
             UserAccountRepository users,
             PaymentTerminalOperationsService cardTerminals,
@@ -58,6 +60,7 @@ public class TicketCancellationService {
         this.documentRepository = documentRepository;
         this.operations = operations;
         this.voucherEvents = voucherEvents;
+        this.voucherPrinting = voucherPrinting;
         this.operationSecurity = operationSecurity;
         this.users = users;
         this.cardTerminals = cardTerminals;
@@ -170,8 +173,7 @@ public class TicketCancellationService {
             return new CancellationResult(
                     applied.ticket(),
                     applied.vouchers().restored().stream()
-                            .map(voucher -> new RestoredVoucher(
-                                    voucher.code(), voucher.balance()))
+                            .map(this::restoredVoucher)
                             .toList(),
                     applied.vouchers().invalidated().stream()
                             .map(Voucher::code)
@@ -290,8 +292,7 @@ public class TicketCancellationService {
                 operation.getTicketId());
         var restored = events.stream()
                 .filter(event -> event.getType() == VoucherEventType.RESTORED)
-                .map(event -> new RestoredVoucher(
-                        event.getVoucher().code(), event.getAmount()))
+                .map(event -> restoredVoucher(event.getVoucher(), event.getAmount()))
                 .toList();
         var invalidated = events.stream()
                 .filter(event -> event.getType() == VoucherEventType.INVALIDATED)
@@ -509,6 +510,23 @@ public class TicketCancellationService {
             String reference) {
     }
 
-    public record RestoredVoucher(String code, BigDecimal balance) {
+    private RestoredVoucher restoredVoucher(Voucher voucher) {
+        return restoredVoucher(voucher, voucher.balance());
+    }
+
+    private RestoredVoucher restoredVoucher(Voucher voucher, BigDecimal balance) {
+        VoucherPrintService.PrintedVoucher printDocument = null;
+        try {
+            printDocument = voucherPrinting.render(voucher);
+        } catch (RuntimeException ignored) {
+            // La anulación ya está completada. La impresión se informa como reintentable.
+        }
+        return new RestoredVoucher(voucher.code(), balance, printDocument);
+    }
+
+    public record RestoredVoucher(
+            String code,
+            BigDecimal balance,
+            VoucherPrintService.PrintedVoucher printDocument) {
     }
 }

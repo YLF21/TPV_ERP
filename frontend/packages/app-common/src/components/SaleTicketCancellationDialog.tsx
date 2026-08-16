@@ -3,6 +3,10 @@ import { apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { formatEuroAmount } from "../money";
+import {
+  outputIssuedVoucher,
+  type IssuedVoucherPrintSnapshot,
+} from "../sale/voucherPrinting";
 import type { LocaleCode, Permission, TerminalContext } from "../types";
 import {
   saleOperationAuthorizationComplete,
@@ -39,7 +43,11 @@ type CancellationPreview = {
 
 type CancellationResult = {
   ticket: Ticket;
-  restoredVouchers: Array<{ code: string; balance: number | string }>;
+  restoredVouchers: Array<{
+    code: string;
+    balance: number | string;
+    printDocument?: IssuedVoucherPrintSnapshot | null;
+  }>;
   invalidatedVoucherCodes: string[];
   openCashDrawer: boolean;
   receipt: CancellationReceipt;
@@ -70,6 +78,7 @@ type StoredCancellationAttempt = {
 };
 
 const TICKET_HAS_PREVIOUS_RETURNS = "TICKET_HAS_PREVIOUS_RETURNS";
+const TICKET_GENERATED_VOUCHER_ALREADY_USED = "TICKET_GENERATED_VOUCHER_ALREADY_USED";
 const TICKET_NOT_FOUND = "TICKET_NOT_FOUND";
 
 type Props = {
@@ -176,6 +185,8 @@ export function SaleTicketCancellationDialog({
         }
       } else if (problemCode === TICKET_HAS_PREVIOUS_RETURNS) {
         setWarning(t("sale.ticketCancel.warning.previousReturns"));
+      } else if (problemCode === TICKET_GENERATED_VOUCHER_ALREADY_USED) {
+        setError(t("sale.ticketCancel.error.generatedVoucherUsed"));
       } else {
         setError(failure instanceof Error ? failure.message : t("sale.ticketCancel.error.load"));
       }
@@ -207,26 +218,23 @@ export function SaleTicketCancellationDialog({
   }, [busy, invoiceNumberToRectify, onClose]);
 
   async function printRestoredVouchers(
-    vouchers: Array<{ code: string; balance: number | string }>,
+    vouchers: CancellationResult["restoredVouchers"],
   ) {
-    const hardware = getHardwareBridge();
     for (const voucher of vouchers) {
-      const balance = Number(voucher.balance);
-      const result = await hardware.printTicket({
-        documentNumber: voucher.code,
-        storeName: terminalContext.storeName,
-        terminalCode: terminalContext.terminalCode,
-        issuedAt: new Date().toISOString(),
-        lines: [{
-          name: t("sale.ticketCancel.restoredVoucher"),
-          quantity: 1,
-          price: balance,
-          total: balance,
-        }],
-        payments: [],
-        total: balance,
-      });
-      if (!result.ok) throw new Error(result.message);
+      if (!voucher.printDocument?.renderedPdf
+          || !voucher.printDocument.ticketRenderedImage) {
+        throw new Error(t("sale.ticketCancel.error.voucherPrint"));
+      }
+      const outcome = await outputIssuedVoucher(
+        voucher.printDocument,
+        terminalContext,
+        locale,
+      );
+      if (outcome.status !== "PRINTED") {
+        throw new Error(
+          outcome.technicalMessage || t("sale.ticketCancel.error.voucherPrint"),
+        );
+      }
     }
   }
 
@@ -373,7 +381,11 @@ export function SaleTicketCancellationDialog({
         : t("sale.ticketCancel.success"));
     } catch (failure) {
       setPassword("");
-      setError(failure instanceof Error ? failure.message : t("sale.ticketCancel.error.cancel"));
+      setError(apiProblemCode(failure) === TICKET_GENERATED_VOUCHER_ALREADY_USED
+        ? t("sale.ticketCancel.error.generatedVoucherUsed")
+        : failure instanceof Error
+          ? failure.message
+          : t("sale.ticketCancel.error.cancel"));
     } finally {
       setBusy(false);
     }

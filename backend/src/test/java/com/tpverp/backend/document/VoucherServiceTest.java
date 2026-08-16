@@ -38,6 +38,12 @@ class VoucherServiceTest {
     private CurrentOrganization organization;
     @Mock
     private VoucherEventRepository voucherEvents;
+    @Mock
+    private StoreVoucherConfigurationRepository voucherConfigurations;
+    @Mock
+    private VoucherFamilyRepository voucherFamilies;
+    @Mock
+    private VoucherFamilyNumberAllocator familyNumbers;
 
     private VoucherService service;
     private Store store;
@@ -55,9 +61,14 @@ class VoucherServiceTest {
                 "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
         lenient().when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
+        lenient().when(familyNumbers.next(store.getId())).thenReturn(1);
+        lenient().when(voucherFamilies.save(any())).thenAnswer(call -> call.getArgument(0));
         service = new VoucherService(
                 vouchers, voucherEvents, organization,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        service.setVoucherConfigurations(voucherConfigurations);
+        service.setVoucherFamilies(voucherFamilies, familyNumbers);
     }
 
     @Test
@@ -68,7 +79,9 @@ class VoucherServiceTest {
         var sourceTicket = ticket("001-260617-00001", "-100.00");
 
         var issued = service.issueFromNegativeTicket(sourceTicket);
-        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), issued.code()))
+        assertThat(issued.familyIdentifier()).isEqualTo("001-000001");
+        assertThat(issued.expiresOn()).isEqualTo(LocalDate.of(2027, 6, 17));
+        when(vouchers.findLockedByCompanyIdAndCode(store.getEmpresa().getId(), issued.code()))
                 .thenReturn(Optional.of(issued));
 
         var purchase = ticket("001-260617-00002", "20.00");
@@ -80,12 +93,96 @@ class VoucherServiceTest {
         assertThat(result.consumedAmount()).isEqualByComparingTo("20.00");
         assertThat(result.replacement()).isPresent().get().satisfies(replacement -> {
             assertThat(replacement.code()).isNotEqualTo(issued.code());
+            assertThat(replacement.family()).isSameAs(issued.family());
+            assertThat(replacement.familyIdentifier()).isEqualTo("001-000001");
             assertThat(replacement.balance()).isEqualByComparingTo("80.00");
             assertThat(replacement.status()).isEqualTo(VoucherStatus.ACTIVE);
+            assertThat(replacement.expiresOn()).isEqualTo(issued.expiresOn());
             assertThat(replacement.originTickets())
                     .containsExactly("001-260617-00001", purchase.getNumero());
         });
-        verify(vouchers).findLockedByTiendaIdAndCode(store.getId(), issued.code());
+        verify(vouchers).findLockedByCompanyIdAndCode(
+                store.getEmpresa().getId(), issued.code());
+    }
+
+    @Test
+    void voucherCanBeConsumedInAnotherStoreOfTheSameCompanyAndKeepsItsFamily() {
+        when(vouchers.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of());
+        var issued = service.issueFromNegativeTicket(
+                ticket("001-260617-00001", "-100.00"));
+        var secondStore = new Store(
+                store.getEmpresa(), "002", "Second store",
+                Map.of(
+                        "linea1", "Calle 2",
+                        "ciudad", "Las Palmas",
+                        "codigoPostal", "35002",
+                        "provincia", "Las Palmas",
+                        "pais", "ES"),
+                "hash-2", "Atlantic/Canary", "EUR", "es-ES");
+        when(organization.currentStore()).thenReturn(secondStore);
+        when(vouchers.findLockedByCompanyIdAndCode(
+                store.getEmpresa().getId(), issued.code()))
+                .thenReturn(Optional.of(issued));
+
+        var result = service.consume(
+                issued.code(), new BigDecimal("20.00"),
+                ticket(secondStore, "002-260617-00001", "20.00"));
+
+        assertThat(result.replacement()).isPresent().get().satisfies(replacement -> {
+            assertThat(replacement.storeId()).isEqualTo(secondStore.getId());
+            assertThat(replacement.family()).isSameAs(issued.family());
+            assertThat(replacement.familyIdentifier()).isEqualTo("001-000001");
+        });
+    }
+
+    @Test
+    void validityStartsFromTheStoreCalendarDateRatherThanUtc() {
+        service = new VoucherService(
+                vouchers, voucherEvents, organization,
+                Clock.fixed(Instant.parse("2026-06-17T23:30:00Z"), ZoneOffset.UTC));
+        service.setVoucherConfigurations(voucherConfigurations);
+        service.setVoucherFamilies(voucherFamilies, familyNumbers);
+        when(vouchers.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of());
+
+        var issued = service.issueFromNegativeTicket(ticket("001-260617-00001", "-25.00"));
+
+        assertThat(issued.expiresOn()).isEqualTo(LocalDate.of(2027, 6, 18));
+    }
+
+    @Test
+    void appliesTheConfiguredValidityPeriodOnlyWhenIssuingANewVoucher() {
+        var configuration = new StoreVoucherConfiguration(store.getId());
+        configuration.update(VoucherExpirationMode.DAYS, 90);
+        when(voucherConfigurations.findById(store.getId()))
+                .thenReturn(Optional.of(configuration));
+        when(vouchers.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of());
+
+        var issued = service.issueFromNegativeTicket(
+                ticket("001-260617-00001", "-25.00"));
+
+        assertThat(issued.expiresOn()).isEqualTo(LocalDate.of(2026, 9, 15));
+    }
+
+    @Test
+    void issuesFutureVouchersWithoutExpiryWhenTheStorePolicyIsNever() {
+        var configuration = new StoreVoucherConfiguration(store.getId());
+        configuration.update(VoucherExpirationMode.NEVER, 365);
+        when(voucherConfigurations.findById(store.getId()))
+                .thenReturn(Optional.of(configuration));
+        when(vouchers.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of());
+
+        var issued = service.issueFromNegativeTicket(
+                ticket("001-260617-00001", "-25.00"));
+
+        assertThat(issued.expiresOn()).isNull();
     }
 
     @Test
@@ -101,7 +198,7 @@ class VoucherServiceTest {
         var source = ticket("001-260617-00001", "-100.00");
 
         var issued = service.issueFromNegativeTicket(source);
-        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), issued.code()))
+        when(vouchers.findLockedByCompanyIdAndCode(store.getEmpresa().getId(), issued.code()))
                 .thenReturn(Optional.of(issued));
         var purchase = ticket("001-260617-00002", "20.00");
         var replacement = service.consume(
@@ -128,7 +225,7 @@ class VoucherServiceTest {
         voucher.closeForReplacement();
         when(vouchers.findAllByOriginTicket(store.getId(), purchase.getNumero()))
                 .thenReturn(List.of());
-        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), voucher.code()))
+        when(vouchers.findLockedByCompanyIdAndCode(store.getEmpresa().getId(), voucher.code()))
                 .thenReturn(Optional.of(voucher));
         when(vouchers.findAllLockedByOriginTicket(store.getId(), purchase.getNumero()))
                 .thenReturn(List.of());
@@ -158,7 +255,7 @@ class VoucherServiceTest {
                 List.of("001-260617-00001", purchase.getNumero()), NOW);
         when(vouchers.findAllByOriginTicket(store.getId(), purchase.getNumero()))
                 .thenReturn(List.of(replacement));
-        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), original.code()))
+        when(vouchers.findLockedByCompanyIdAndCode(store.getEmpresa().getId(), original.code()))
                 .thenReturn(Optional.of(original));
         when(vouchers.findAllLockedByOriginTicket(store.getId(), purchase.getNumero()))
                 .thenReturn(List.of(replacement));
@@ -169,6 +266,20 @@ class VoucherServiceTest {
         assertThat(original.status()).isEqualTo(VoucherStatus.ACTIVE);
         assertThat(replacement.balance()).isZero();
         assertThat(replacement.status()).isEqualTo(VoucherStatus.INVALIDATED);
+    }
+
+    @Test
+    void cancellingATicketWhoseGeneratedVoucherWasUsedIsBlocked() {
+        var source = ticket("001-260617-00001", "-100.00");
+        var generated = new Voucher(
+                store.getId(), "VUSED", new BigDecimal("100.00"),
+                List.of(source.getNumero()), NOW);
+        generated.consume(new BigDecimal("100.00"));
+        when(vouchers.findAllByOriginTicket(store.getId(), source.getNumero()))
+                .thenReturn(List.of(generated));
+
+        assertThatThrownBy(() -> service.cancellationPlan(source))
+                .isInstanceOf(TicketGeneratedVoucherAlreadyUsedException.class);
     }
 
     @Test
@@ -228,7 +339,7 @@ class VoucherServiceTest {
         var voucher = new Voucher(
                 store.getId(), "VLOCKED", new BigDecimal("10.00"),
                 List.of("001-260617-00001"), NOW);
-        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), "VLOCKED"))
+        when(vouchers.findLockedByCompanyIdAndCode(store.getEmpresa().getId(), "VLOCKED"))
                 .thenReturn(Optional.of(voucher));
 
         assertThatThrownBy(() -> service.consumeExact(
@@ -244,7 +355,7 @@ class VoucherServiceTest {
         var voucher = new Voucher(
                 store.getId(), "VABC123", new BigDecimal("25.00"),
                 List.of("001-260617-00001"), NOW);
-        when(vouchers.findByTiendaIdAndCodeIgnoreCase(store.getId(), "vabc123"))
+        when(vouchers.findByCompanyIdAndCodeIgnoreCase(store.getEmpresa().getId(), "vabc123"))
                 .thenReturn(Optional.of(voucher));
 
         var found = service.findByCode("  vabc123  ");
@@ -252,7 +363,8 @@ class VoucherServiceTest {
         assertThat(found).contains(voucher);
         assertThat(found.orElseThrow().balance()).isEqualByComparingTo("25.00");
         assertThat(found.orElseThrow().status()).isEqualTo(VoucherStatus.ACTIVE);
-        verify(vouchers).findByTiendaIdAndCodeIgnoreCase(store.getId(), "vabc123");
+        verify(vouchers).findByCompanyIdAndCodeIgnoreCase(
+                store.getEmpresa().getId(), "vabc123");
     }
 
     @Test
@@ -272,8 +384,12 @@ class VoucherServiceTest {
     }
 
     private CommercialDocument ticket(String number, String total) {
+        return ticket(store, number, total);
+    }
+
+    private CommercialDocument ticket(Store targetStore, String number, String total) {
         var document = new CommercialDocument(
-                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                targetStore.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 17), UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, new BigDecimal(total).signum(),

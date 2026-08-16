@@ -90,7 +90,19 @@ const StoreDocumentPrintSettingsScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "stock" | "users" | "roles" | "paymentMethods" | "salesOperationSecurity" | "internalEan" | "documentTemplates" | "documentPrintSettings";
+const VoucherManagementScreen = lazy(() =>
+  import("./VoucherManagementScreen").then(({ VoucherManagementScreen }) => ({
+    default: VoucherManagementScreen
+  }))
+);
+
+const VoucherSettingsScreen = lazy(() =>
+  import("./VoucherSettingsScreen").then(({ VoucherSettingsScreen }) => ({
+    default: VoucherSettingsScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "paymentMethods" | "salesOperationSecurity" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -166,6 +178,7 @@ function App() {
           setSalesReport(report);
           setModule("sales");
         }}
+        onOpenVouchers={() => setModule("vouchers")}
         onOpenPromotions={() => setModule("promotions")}
         onOpenUsers={() => setModule("users")}
         onOpenRoles={() => setModule("roles")}
@@ -174,6 +187,7 @@ function App() {
         onOpenInternalEan={() => setModule("internalEan")}
         onOpenDocumentTemplates={() => setModule("documentTemplates")}
         onOpenDocumentPrintSettings={() => setModule("documentPrintSettings")}
+        onOpenVoucherSettings={() => setModule("voucherSettings")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
@@ -198,6 +212,7 @@ function GestionScreen({
   onOpenCashClosures,
   onOpenCashCurrentBalances,
   onOpenSales,
+  onOpenVouchers,
   onOpenPromotions,
   onOpenUsers,
   onOpenRoles,
@@ -206,6 +221,7 @@ function GestionScreen({
   onOpenInternalEan,
   onOpenDocumentTemplates,
   onOpenDocumentPrintSettings,
+  onOpenVoucherSettings,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -222,6 +238,7 @@ function GestionScreen({
   onOpenCashClosures: () => void;
   onOpenCashCurrentBalances: () => void;
   onOpenSales: (report: string) => void;
+  onOpenVouchers: () => void;
   onOpenPromotions: () => void;
   onOpenUsers: () => void;
   onOpenRoles: () => void;
@@ -230,6 +247,7 @@ function GestionScreen({
   onOpenInternalEan: () => void;
   onOpenDocumentTemplates: () => void;
   onOpenDocumentPrintSettings: () => void;
+  onOpenVoucherSettings: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
@@ -240,9 +258,10 @@ function GestionScreen({
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
   const canManageDocumentTemplates = modules.includes("gestion.documentTemplates");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
-    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "internalEan" || module === "documentPrintSettings")
+    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "internalEan" || module === "documentPrintSettings" || module === "voucherSettings")
       && !canConfigurePaymentMethods)
     || (module === "documentTemplates" && !canManageDocumentTemplates)
+    || (module === "vouchers" && !modules.includes("gestion.sales"))
     ? "dashboard"
     : module;
   const canManageProducts = session.permissions.includes("ADMIN")
@@ -372,7 +391,10 @@ function GestionScreen({
       ? [{
           key: "sales",
           label: t("gestion.sales"),
-          children: reports.map((report) => ({ key: report, label: t(report), onOpen: () => onOpenSales(report) }))
+          children: [
+            ...reports.map((report) => ({ key: report, label: t(report), onOpen: () => onOpenSales(report) })),
+            { key: "vouchers", label: t("gestion.vouchers.navigation"), onOpen: onOpenVouchers }
+          ]
         }]
       : []),
     ...(modules.includes("gestion.stock")
@@ -401,6 +423,10 @@ function GestionScreen({
             key: "documentPrintSettings",
             label: t("gestion.documentPrint.navigation"),
             onOpen: onOpenDocumentPrintSettings
+          }, {
+            key: "voucherSettings",
+            label: t("gestion.voucherSettings.navigation"),
+            onOpen: onOpenVoucherSettings
           }, {
             key: "paymentMethods",
             label: t("gestion.paymentMethods.navigation"),
@@ -446,6 +472,15 @@ function GestionScreen({
         onLocaleChange={onLocaleChange}
         embedded
         initialReport={salesReport}
+      />
+    );
+  } else if (effectiveModule === "vouchers" && modules.includes("gestion.sales")) {
+    content = (
+      <VoucherManagementScreen
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        t={t}
       />
     );
   } else if (effectiveModule === "stock" && stockContentItems.some((item) => item.key === stockSelection.key)) {
@@ -513,6 +548,8 @@ function GestionScreen({
     content = <DocumentTemplateSettingsScreen session={session} t={t} />;
   } else if (effectiveModule === "documentPrintSettings" && canConfigurePaymentMethods) {
     content = <StoreDocumentPrintSettingsScreen session={session} storeName={terminalContext.storeName} t={t} />;
+  } else if (effectiveModule === "voucherSettings" && canConfigurePaymentMethods) {
+    content = <VoucherSettingsScreen session={session} storeName={terminalContext.storeName} t={t} />;
   } else {
     content = (
       <GestionDashboard

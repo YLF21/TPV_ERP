@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.document.Voucher;
+import com.tpverp.backend.document.VoucherFamily;
 import com.tpverp.backend.document.VoucherPresentationSnapshot;
 import com.tpverp.backend.document.VoucherPresentationSnapshotFactory;
 import com.tpverp.backend.document.VoucherPrintService;
@@ -58,7 +59,7 @@ class VoucherJasperRendererTest {
         String sourceText = new String(source, StandardCharsets.UTF_8);
         assertThat(sourceText)
                 .contains("uuid=\"fa494436-b2b4-4480-9222-1427f0a82a2f\" positionType=\"Float\"")
-                .contains("fontSize=\"7.5\" bold=\"true\" textAdjust=\"StretchHeight\"")
+                .contains("fontSize=\"7.5\" textAdjust=\"StretchHeight\" bold=\"true\"")
                 .doesNotContain("fontSize=\"7.5\" bold=\"true\" textAdjust=\"ScaleFont\"");
         var compiler = new SafeJrxmlCompiler();
         var compiled = compiler.compile(source);
@@ -73,9 +74,18 @@ class VoucherJasperRendererTest {
                 .thenReturn(Optional.of(template));
 
         var voucher = new Voucher(
+                new VoucherFamily(company.getId(), store.getId(), "001", 1,
+                        Instant.parse("2026-08-14T11:30:00Z")),
                 store.getId(), "VABC12345678", new BigDecimal("25.50"),
-                List.of("T-2026-17"), Instant.parse("2026-08-14T11:30:00Z"));
+                List.of("T-2026-17"), Instant.parse("2026-08-14T11:30:00Z"),
+                LocalDate.of(2027, 8, 14));
         voucher.capturePrintSnapshot("{}");
+        var voucherWithoutExpiration = new Voucher(
+                new VoucherFamily(company.getId(), store.getId(), "001", 2,
+                        Instant.parse("2025-08-14T11:30:00Z")),
+                store.getId(), "VLEGACY123456", new BigDecimal("10.00"),
+                List.of("T-2025-12"), Instant.parse("2025-08-14T11:30:00Z"));
+        voucherWithoutExpiration.capturePrintSnapshot("{}");
         var snapshot = new VoucherPresentationSnapshot(
                 1, "Presentar el vale original.",
                 new InvoicePresentationSnapshot.TemplateReference(
@@ -112,13 +122,15 @@ class VoucherJasperRendererTest {
 
         var rendered = service.render(voucher);
         var renderedWithLogo = service.render(voucher);
+        var renderedWithoutExpiration = service.render(voucherWithoutExpiration);
 
         byte[] pdf = java.util.Base64.getDecoder().decode(rendered.renderedPdf().base64());
         try (var document = Loader.loadPDF(pdf)) {
             assertThat(document.getPage(0).getMediaBox().getWidth()).isEqualTo(227f);
             String text = new PDFTextStripper().getText(document);
             assertThat(text)
-                    .contains("VALE", "25,50 EUR", "VABC12345678",
+                    .contains("VALE", "25,50 EUR", "VABC12345678", "001-000001",
+                            "Fecha de caducidad: 14/08/2027",
                             "T-2026-004587", "T-2026-004231", "R-2026-000184",
                             "T-2026-003900",
                             "Tienda Centro", "TPV ERP SL",
@@ -132,6 +144,13 @@ class VoucherJasperRendererTest {
                     .isLessThan(text.indexOf("R-2026-000184"));
             assertThat(text.indexOf("R-2026-000184"))
                     .isLessThan(text.indexOf("T-2026-003900"));
+        }
+        byte[] pdfWithoutExpiration = java.util.Base64.getDecoder().decode(
+                renderedWithoutExpiration.renderedPdf().base64());
+        try (var document = Loader.loadPDF(pdfWithoutExpiration)) {
+            assertThat(new PDFTextStripper().getText(document))
+                    .contains("VLEGACY123456", "Este documento no tiene caducidad.")
+                    .doesNotContain("Fecha de caducidad:");
         }
         var raster = ImageIO.read(new ByteArrayInputStream(
                 java.util.Base64.getDecoder().decode(

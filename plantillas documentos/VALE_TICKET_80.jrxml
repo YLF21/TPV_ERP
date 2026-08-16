@@ -1,4 +1,4 @@
-<!-- Created for Jaspersoft Studio 7 / JasperReports 7 -->
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
 <jasperReport name="vale_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" uuid="6bd88fe2-7c33-4dc4-9095-b88b9cbec233" ignorePagination="true">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="VALE_TICKET_80_SAMPLE.jrdax"/>
 	<property name="com.jaspersoft.studio.unit.pageWidth" value="mm"/>
@@ -12,7 +12,7 @@
 		<field name="documentDate" class="java.lang.String">
 			<property name="net.sf.jasperreports.jsonql.field.expression" value="documentDate"/>
 		</field>
-		<sortField name="documentDateSort" type="Variable" order="Descending"/>
+		<sortField name="documentDateSort" order="Descending" type="Variable"/>
 		<sortField name="documentNumber" order="Descending"/>
 		<variable name="documentDateSort" class="java.lang.String">
 			<expression><![CDATA[$F{documentDate} == null || $F{documentDate}.length() != 10
@@ -22,8 +22,8 @@
 					+ $F{documentDate}.substring(0, 2)]]></expression>
 		</variable>
 	</dataset>
-	<parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream" forPrompting="false"/>
-	<parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean" forPrompting="false">
+	<parameter name="TPV_ISSUER_LOGO_STREAM" forPrompting="false" class="java.io.InputStream"/>
+	<parameter name="TPV_ISSUER_LOGO_PRESENT" forPrompting="false" class="java.lang.Boolean">
 		<defaultValueExpression><![CDATA[Boolean.FALSE]]></defaultValueExpression>
 	</parameter>
 	<query language="jsonql"><![CDATA[traceability]]></query>
@@ -42,6 +42,9 @@
 	<field name="voucherCode" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.code"/>
 	</field>
+	<field name="voucherIdentifier" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.identifier"/>
+	</field>
 	<field name="voucherBarcode" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.barcode"/>
 	</field>
@@ -50,6 +53,9 @@
 	</field>
 	<field name="voucherIssuedAt" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.issuedAt"/>
+	</field>
+	<field name="voucherExpiresOn" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.voucher.expiresOn"/>
 	</field>
 	<field name="currency" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.currency"/>
@@ -95,12 +101,12 @@
 	</field>
 	<title height="50" splitType="Stretch">
 		<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
-		<element kind="image" uuid="c97309b4-d63b-4925-b7c4-63368fd1cf44" x="17" y="2" width="177" height="46" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+		<element kind="image" uuid="c97309b4-d63b-4925-b7c4-63368fd1cf44" x="17" y="2" width="177" height="46" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
 			<expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
 		</element>
 	</title>
-	<pageHeader height="216" splitType="Stretch">
+	<pageHeader height="239" splitType="Stretch">
 		<element kind="textField" uuid="240439de-c39e-4900-9f5c-09032496177e" x="8" y="0" width="195" height="20" fontName="SansSerif" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$F{issuerHeaderPrimaryName}]]></expression>
 		</element>
@@ -126,22 +132,32 @@
 				<codeExpression><![CDATA[$F{voucherBarcode}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="textField" uuid="45691f88-780b-47c8-9ae4-a07bc5fa9499" x="0" y="190" width="211" height="14" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="45691f88-780b-47c8-9ae4-a07bc5fa9499" x="0" y="180" width="211" height="24" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Bottom">
 			<expression><![CDATA[$F{voucherCode}]]></expression>
 		</element>
-		<element kind="textField" uuid="c3de7603-553f-488b-a0d8-d99cb55a9279" x="0" y="205" width="211" height="10" fontName="SansSerif" fontSize="6.8" hTextAlign="Center">
+		<element kind="textField" uuid="d24d697c-2905-49ec-bb96-57632d8c8dd5" x="0" y="205" width="211" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["Identificador: " + $F{voucherIdentifier}]]></expression>
+		</element>
+		<element kind="textField" uuid="c3de7603-553f-488b-a0d8-d99cb55a9279" x="0" y="216" width="211" height="10" fontName="SansSerif" fontSize="7.2" hTextAlign="Center">
 			<expression><![CDATA["Emitido: " + $F{voucherIssuedAt} + ($F{terminalName} == null ? "" : " · Terminal: " + $F{terminalName})]]></expression>
+		</element>
+		<element kind="textField" uuid="d81778db-efca-424a-b622-f24a8adfc74f" x="0" y="227" width="211" height="11" fontName="SansSerif" fontSize="7.2" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{voucherExpiresOn} == null || $F{voucherExpiresOn}.trim().isEmpty()
+				? "Este documento no tiene caducidad."
+				: "Fecha de caducidad: " + $F{voucherExpiresOn}]]></expression>
 		</element>
 	</pageHeader>
 	<columnHeader height="18" splitType="Stretch">
-		<element kind="line" uuid="db6f4e20-c7c0-49ee-852c-cda3a706aac2" x="0" y="0" width="211" height="1"><pen lineWidth="0.7"/></element>
+		<element kind="line" uuid="db6f4e20-c7c0-49ee-852c-cda3a706aac2" x="0" y="0" width="211" height="1">
+			<pen lineWidth="0.7"/>
+		</element>
 		<element kind="component" uuid="fa494436-b2b4-4480-9222-1427f0a82a2f" positionType="Float" x="0" y="3" width="211" height="12">
 			<component kind="list" printOrder="Horizontal">
 				<datasetRun uuid="85db4d47-f8c0-470d-89fd-f420a01871ca" subDataset="VoucherTraceabilityDataset">
 					<dataSourceExpression><![CDATA[SUB_DATA_SOURCE("^^.traceability.*")]]></dataSourceExpression>
 				</datasetRun>
 				<contents height="12" width="105">
-					<element kind="textField" uuid="4d2fd70c-a0a4-41b9-ab04-390bf696daf6" x="0" y="0" width="100" height="12" fontName="Monospaced" fontSize="7.5" bold="true" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+					<element kind="textField" uuid="4d2fd70c-a0a4-41b9-ab04-390bf696daf6" x="0" y="0" width="100" height="12" fontName="Monospaced" fontSize="7.5" textAdjust="StretchHeight" bold="true" hTextAlign="Center" vTextAlign="Middle">
 						<expression><![CDATA[$F{documentNumber}]]></expression>
 					</element>
 					<element kind="staticText" uuid="5a556a27-73db-4f40-9f6f-f2f094318ba2" x="100" y="0" width="5" height="12" fontName="Monospaced" fontSize="7.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
@@ -151,13 +167,17 @@
 				</contents>
 			</component>
 		</element>
-		<element kind="line" uuid="c9e74842-a174-44f9-b15a-21d739cbfa33" positionType="Float" x="0" y="17" width="211" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="line" uuid="c9e74842-a174-44f9-b15a-21d739cbfa33" positionType="Float" x="0" y="17" width="211" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
 	</columnHeader>
 	<summary height="55" splitType="Stretch">
 		<element kind="textField" uuid="ef65da57-77a7-4945-beda-fe70b05c8c3f" positionType="Float" x="0" y="8" width="211" height="38" fontName="SansSerif" fontSize="8.0" textAdjust="StretchHeight" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{observations} != null && !$F{observations}.trim().isEmpty()]]></printWhenExpression>
 			<expression><![CDATA[$F{observations}]]></expression>
 		</element>
-		<element kind="line" uuid="8ffb07fa-5779-40d5-888f-d8220a7238a3" positionType="Float" x="15" y="54" width="181" height="1"><pen lineWidth="0.6"/></element>
+		<element kind="line" uuid="8ffb07fa-5779-40d5-888f-d8220a7238a3" positionType="Float" x="15" y="54" width="181" height="1">
+			<pen lineWidth="0.6"/>
+		</element>
 	</summary>
 </jasperReport>

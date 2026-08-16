@@ -4258,6 +4258,149 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   box-shadow: 0 2px 8px rgba(18, 48, 78, .07);
 }
 
+.gestion-vouchers-workspace {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gestion-vouchers-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--gestion-border);
+}
+
+.gestion-vouchers-header h2,
+.gestion-vouchers-header p { margin: 0; }
+.gestion-vouchers-header h2 { margin-top: 3px; }
+.gestion-vouchers-header p { margin-top: 5px; color: var(--gestion-muted); }
+.gestion-vouchers-header > button,
+.gestion-voucher-filters button,
+.gestion-voucher-list footer button,
+.gestion-voucher-detail button {
+  min-height: 34px;
+  border: 1px solid #58718b;
+  border-radius: 0;
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--gestion-text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.gestion-vouchers-workspace button.primary {
+  border-color: var(--gestion-navy);
+  background: var(--gestion-navy);
+  color: #fff;
+}
+.gestion-vouchers-workspace button:disabled { cursor: not-allowed; opacity: .52; }
+
+.gestion-voucher-message {
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid;
+  font-weight: 700;
+}
+.gestion-voucher-message.success { border-color: #6b9677; background: #edf6ef; color: #234e2d; }
+.gestion-voucher-message.error { border-color: #b66d6d; background: #fff1f1; color: #7b2020; }
+
+.gestion-voucher-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) 180px 145px 145px auto;
+  align-items: end;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #aebdcb;
+  background: #eef2f5;
+}
+.gestion-voucher-filters label > span { display: block; margin-bottom: 4px; color: #30475f; font-size: 12px; font-weight: 800; }
+.gestion-voucher-filters input { width: 100%; min-height: 35px; box-sizing: border-box; border: 1px solid #7f95aa; border-radius: 0; padding: 6px 8px; background: #fff; font: inherit; }
+.gestion-voucher-filters .erp-select__trigger { min-height: 35px; border-radius: 0; }
+.gestion-voucher-filters > div { display: flex; gap: 6px; }
+
+.gestion-voucher-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+.gestion-voucher-content.has-detail { grid-template-columns: minmax(620px, 1fr) 340px; }
+.gestion-voucher-list { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; border: 1px solid #9dafc0; background: #fff; }
+.gestion-voucher-table { min-height: 0; overflow: auto; }
+.gestion-voucher-row {
+  display: grid;
+  min-width: max-content;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid #d8e0e7;
+  border-radius: 0;
+  padding: 0;
+  background: #fff;
+  color: var(--gestion-text);
+  text-align: left;
+  font: inherit;
+}
+button.gestion-voucher-row { cursor: pointer; }
+button.gestion-voucher-row:hover { background: #f2f6f9; }
+button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; background: #eaf2f8; }
+.gestion-voucher-row > span { min-width: 0; box-sizing: border-box; padding: 9px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gestion-voucher-row.head { position: sticky; top: 0; z-index: 2; min-height: 38px; background: #dfe7ee; color: #263d54; font-size: 12px; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; }
+.gestion-voucher-row.head > span { display: flex; align-items: center; border-right: 1px solid #c1cdd8; }
+.gestion-voucher-status { display: inline-block; width: fit-content; padding: 2px 7px; border: 1px solid; font-size: 11px; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
+.gestion-voucher-status.active { border-color: #568266; background: #eaf5ed; color: #245332; }
+.gestion-voucher-status.expired { border-color: #aa7824; background: #fff4dc; color: #714b0a; }
+.gestion-voucher-status.consumed { border-color: #728497; background: #edf1f4; color: #3d4f60; }
+.gestion-voucher-status.invalidated { border-color: #a85e5e; background: #fff0f0; color: #782626; }
+.gestion-voucher-state { display: grid; place-items: center; min-height: 170px; color: var(--gestion-muted); font-weight: 800; }
+.gestion-voucher-state.error { color: #8a2929; }
+.gestion-voucher-list > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 45px; padding: 6px 10px; border-top: 1px solid #b8c6d3; background: #f2f5f7; font-size: 13px; font-weight: 700; }
+.gestion-voucher-list > footer div { display: flex; align-items: center; gap: 8px; }
+
+.gestion-voucher-detail { min-height: 0; overflow: auto; border: 1px solid #869bae; background: #f8fafb; box-shadow: -4px 0 12px rgb(24 48 70 / 8%); }
+.gestion-voucher-detail > header { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: start; padding: 13px 14px; border-bottom: 3px solid #b88a22; background: var(--gestion-navy); color: #fff; }
+.gestion-voucher-detail > header span { color: #cad6e1; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.gestion-voucher-detail > header h3 { margin: 3px 0 0; font-size: 19px; letter-spacing: .04em; }
+.gestion-voucher-detail > header button { min-width: 32px; min-height: 30px; padding: 2px; border-color: #8499ab; background: transparent; color: #fff; font-size: 20px; }
+.gestion-voucher-detail dl { display: grid; grid-template-columns: 1fr 1fr; margin: 0; border-bottom: 1px solid #c2ced8; }
+.gestion-voucher-detail dl div { padding: 10px 12px; border-right: 1px solid #d4dde5; border-bottom: 1px solid #d4dde5; }
+.gestion-voucher-detail dt { color: var(--gestion-muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.gestion-voucher-detail dd { margin: 3px 0 0; font-weight: 900; }
+.gestion-voucher-detail > section { padding: 12px; border-bottom: 1px solid #ccd6df; }
+.gestion-voucher-detail h4,
+.gestion-voucher-detail p { margin: 0; }
+.gestion-voucher-detail h4 { color: #334c64; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; }
+.gestion-voucher-detail section > p { margin-top: 6px; color: var(--gestion-muted); line-height: 1.45; }
+.gestion-voucher-detail-actions { display: flex; gap: 7px; padding: 12px; border-bottom: 1px solid #ccd6df; background: #eef3f6; }
+.gestion-voucher-reactivation { display: grid; gap: 10px; padding: 12px; border-bottom: 1px solid #c9b67e; background: #fff8e6; }
+.gestion-voucher-reactivation label span { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 800; }
+.gestion-voucher-reactivation input,
+.gestion-voucher-reactivation textarea { width: 100%; box-sizing: border-box; border: 1px solid #8d805e; border-radius: 0; padding: 7px; background: #fff; font: inherit; }
+.gestion-voucher-reactivation textarea { min-height: 75px; resize: vertical; }
+.gestion-voucher-events article { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 9px; padding-top: 9px; border-top: 1px solid #d7e0e7; }
+.gestion-voucher-events article strong { font-size: 13px; }
+.gestion-voucher-events article time,
+.gestion-voucher-events article span { color: var(--gestion-muted); font-size: 11px; }
+.gestion-voucher-events article span { grid-column: 1 / -1; }
+.gestion-voucher-events article p { grid-column: 1 / -1; margin-top: 3px; font-size: 12px; }
+
+@media (max-width: 1180px) {
+  .gestion-voucher-filters { grid-template-columns: 1fr 180px 145px 145px; }
+  .gestion-voucher-filters > div { grid-column: 1 / -1; justify-content: flex-end; }
+  .gestion-voucher-content.has-detail { grid-template-columns: minmax(560px, 1fr) 320px; }
+}
+
+@media (max-width: 900px) {
+  .gestion-vouchers-workspace { overflow: auto; }
+  .gestion-voucher-filters,
+  .gestion-voucher-content.has-detail { grid-template-columns: 1fr; }
+  .gestion-voucher-detail { max-height: none; }
+}
+
 .gestion-document-logo-panel {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);

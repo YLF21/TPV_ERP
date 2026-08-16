@@ -6,6 +6,7 @@ import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
+import com.tpverp.backend.document.TicketGeneratedVoucherAlreadyUsedException;
 import com.tpverp.backend.document.TicketNotFoundException;
 import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
@@ -189,6 +190,24 @@ public class ApiExceptionHandler {
                 TicketAlreadyInvoicedException.CODE,
                 localizedExceptionDetail(
                         exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language,
+                request);
+    }
+
+    @ExceptionHandler(TicketGeneratedVoucherAlreadyUsedException.class)
+    ProblemDetail ticketGeneratedVoucherAlreadyUsed(
+            TicketGeneratedVoucherAlreadyUsedException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "This ticket cannot be cancelled because it generated a voucher that has already been used.";
+            case ZH -> "无法作废此小票，因为它生成的代金券已被使用。";
+            default -> "No se puede anular este ticket porque generó un vale que ya se ha utilizado.";
+        };
+        return problem(
+                HttpStatus.CONFLICT,
+                TicketGeneratedVoucherAlreadyUsedException.CODE,
+                detail,
                 language,
                 request);
     }

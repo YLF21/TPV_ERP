@@ -1,9 +1,12 @@
 {
   "voucher": {
     "code": "V202608140001",
+    "identifier": "001-000001",
     "barcode": "V202608140001",
     "amount": 37.50,
+    "amountFormatted": "37,50",
     "issuedAt": "14/08/2026 18:45",
+    "expiresOn": "14/08/2027",
     "status": "ACTIVE"
   },
   "currency": "EUR",

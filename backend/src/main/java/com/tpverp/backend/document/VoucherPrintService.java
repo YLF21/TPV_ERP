@@ -4,11 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.BuiltInDocumentJrxmlCatalog;
 import com.tpverp.backend.document.template.InvoiceJasperRenderer;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
@@ -26,6 +30,8 @@ public class VoucherPrintService {
     private final VoucherPresentationSnapshotFactory snapshots;
     private final InvoiceJasperRenderer jasper;
     private final ObjectMapper mapper;
+    private StoreRepository stores;
+    private BuiltInDocumentJrxmlCatalog builtInTemplates;
 
     public VoucherPrintService(
             CurrentOrganization organization,
@@ -38,17 +44,28 @@ public class VoucherPrintService {
         this.mapper = mapper;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    void setStores(StoreRepository stores) {
+        this.stores = stores;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setBuiltInTemplates(BuiltInDocumentJrxmlCatalog builtInTemplates) {
+        this.builtInTemplates = builtInTemplates;
+    }
+
     @Transactional(readOnly = true)
     public PrintedVoucher render(Voucher voucher) {
-        var store = organization.currentStore();
         var company = organization.currentCompany();
-        if (!store.getId().equals(voucher.storeId())) {
-            throw new IllegalArgumentException("vale no encontrado");
-        }
+        var store = voucherStore(voucher, company.getId());
         var snapshot = snapshots.read(voucher.printSnapshot());
         String logoDataUri = snapshots.logoDataUri(snapshot, store.getId());
+        var templateReference = snapshot.template().builtIn() && builtInTemplates != null
+                ? builtInTemplates.reference(
+                        DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80)
+                : snapshot.template();
         var rendered = jasper.renderPayload(
-                        snapshot.template(), DocumentTemplateType.VALE,
+                        templateReference, DocumentTemplateType.VALE,
                         DocumentTemplateFormat.TICKET_80, store, company,
                         data(voucher, snapshot, logoDataUri), logoDataUri)
                 .orElseThrow(() -> new IllegalStateException(
@@ -57,7 +74,8 @@ public class VoucherPrintService {
                 .map(TraceView::from)
                 .toList();
         return new PrintedVoucher(
-                voucher.code(), voucher.initialAmount(), voucher.createdAt(),
+                voucher.code(), voucher.familyIdentifier(),
+                voucher.initialAmount(), voucher.createdAt(), voucher.expiresOn(),
                 traceability.get(traceability.size() - 1).documentNumber(),
                 traceability,
                 snapshot.observations(),
@@ -71,16 +89,23 @@ public class VoucherPrintService {
             Voucher voucher,
             VoucherPresentationSnapshot snapshot,
             String logoDataUri) {
-        var store = organization.currentStore();
         var company = organization.currentCompany();
+        var store = voucherStore(voucher, company.getId());
         var root = mapper.createObjectNode();
         var voucherNode = root.putObject("voucher");
         voucherNode.put("code", voucher.code());
+        voucherNode.put("identifier", voucher.familyIdentifier());
         voucherNode.put("barcode", voucher.code());
         voucherNode.put("amount", voucher.initialAmount());
         voucherNode.put("amountFormatted", formatAmount(voucher.initialAmount()));
         voucherNode.put("issuedAt", DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
                 .withZone(ZoneId.of(store.getTimezone())).format(voucher.createdAt()));
+        if (voucher.expiresOn() == null) {
+            voucherNode.putNull("expiresOn");
+        } else {
+            voucherNode.put("expiresOn", DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                    .format(voucher.expiresOn()));
+        }
         voucherNode.put("status", voucher.status().name());
         root.put("currency", store.getMoneda());
         root.put("storeName", store.getNombreEfectivo());
@@ -134,6 +159,19 @@ public class VoucherPrintService {
         return root;
     }
 
+    private Store voucherStore(Voucher voucher, java.util.UUID companyId) {
+        var current = organization.currentStore();
+        if (current.getId().equals(voucher.storeId())) {
+            return current;
+        }
+        if (stores == null) {
+            throw new IllegalArgumentException("vale no encontrado");
+        }
+        return stores.findWithCompanyById(voucher.storeId())
+                .filter(store -> store.getEmpresa().getId().equals(companyId))
+                .orElseThrow(() -> new IllegalArgumentException("vale no encontrado"));
+    }
+
     private static String formatTraceabilityDocumentNumbers(List<String> documentNumbers) {
         var formatted = new StringBuilder();
         for (int index = 0; index < documentNumbers.size(); index++) {
@@ -181,8 +219,10 @@ public class VoucherPrintService {
 
     public record PrintedVoucher(
             String code,
+            String familyIdentifier,
             BigDecimal amount,
             Instant issuedAt,
+            LocalDate expiresOn,
             String originTicketNumber,
             List<TraceView> traceability,
             String observations,

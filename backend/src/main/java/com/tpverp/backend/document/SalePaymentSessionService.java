@@ -952,8 +952,10 @@ public class SalePaymentSessionService {
  private static String hashText(String value){try{var md=MessageDigest.getInstance("SHA-256");return java.util.HexFormat.of().formatHex(md.digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
  public record IssuedVoucher(
          String code,
+         String familyIdentifier,
          BigDecimal amount,
          java.time.Instant issuedAt,
+         java.time.LocalDate expiresOn,
          String originTicketNumber,
          List<VoucherPrintService.TraceView> traceability,
          String observations,
@@ -962,17 +964,18 @@ public class SalePaymentSessionService {
      public IssuedVoucher(
              String code, BigDecimal amount, java.time.Instant issuedAt,
              String originTicketNumber) {
-         this(code, amount, issuedAt, originTicketNumber, List.of(), null, null, null);
+         this(code, null, amount, issuedAt, null, originTicketNumber, List.of(), null, null, null);
      }
      static IssuedVoucher from(Voucher voucher, String originTicketNumber) {
          return new IssuedVoucher(
-                 voucher.code(), voucher.initialAmount(), voucher.createdAt(),
-                 originTicketNumber, List.of(), null, null, null);
+                 voucher.code(), voucher.familyIdentifier(),
+                 voucher.initialAmount(), voucher.createdAt(),
+                 voucher.expiresOn(), originTicketNumber, List.of(), null, null, null);
      }
      static IssuedVoucher from(VoucherPrintService.PrintedVoucher voucher) {
          return new IssuedVoucher(
-                 voucher.code(), voucher.amount(), voucher.issuedAt(),
-                 voucher.originTicketNumber(), voucher.traceability(), voucher.observations(),
+                 voucher.code(), voucher.familyIdentifier(), voucher.amount(), voucher.issuedAt(),
+                 voucher.expiresOn(), voucher.originTicketNumber(), voucher.traceability(), voucher.observations(),
                  voucher.renderedPdf(), voucher.ticketRenderedImage());
      }
  }
