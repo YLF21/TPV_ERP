@@ -721,7 +721,15 @@ describe("SalesDocumentScreen", () => {
     await waitFor(() => expect(
       screen.getByRole("button", { name: /confirmar y cobrar/i }),
     ).toBeEnabled());
-    fireEvent.keyDown(window, { key: "PageDown" });
+    await waitFor(() => {
+      const checkoutShortcut = new KeyboardEvent("keydown", {
+        key: "PageDown",
+        bubbles: true,
+        cancelable: true,
+      });
+      window.dispatchEvent(checkoutShortcut);
+      expect(checkoutShortcut.defaultPrevented).toBe(true);
+    });
     expect(await screen.findByRole("dialog", { name: "COBRO" })).toBeInTheDocument();
   });
 
