@@ -12,10 +12,10 @@ class BuiltInDocumentTemplateCompilationTest {
     void compilesEveryPredeterminedDocumentTemplate() {
         var compiler = new SafeJrxmlCompiler();
         var resources = List.of(
-                "reports/documents/FACTURA_VENTA_A4.jrxml",
-                "reports/documents/FACTURA_VENTA_TICKET_80.jrxml",
-                "reports/documents/ALBARAN_VENTA_A4.jrxml",
-                "reports/documents/VALE_TICKET_80.jrxml");
+                "reports/documents/v1/FACTURA_VENTA_A4.jrxml",
+                "reports/documents/v1/FACTURA_VENTA_TICKET_80.jrxml",
+                "reports/documents/v1/ALBARAN_VENTA_A4.jrxml",
+                "reports/documents/v1/VALE_TICKET_80.jrxml");
 
         for (String resource : resources) {
             assertThatCode(() -> {
