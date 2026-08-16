@@ -135,8 +135,10 @@ describe("SessionHomeScreen", () => {
     ] as const;
 
     for (const [key, callback] of cases) {
-      const event = dispatchShortcut(key);
-      expect(event.defaultPrevented).toBe(true);
+      await waitFor(() => {
+        const event = dispatchShortcut(key);
+        expect(event.defaultPrevented).toBe(true);
+      });
       expect(callback).toHaveBeenCalledOnce();
     }
   });
