@@ -157,11 +157,13 @@ describe("SessionHomeScreen", () => {
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "VENTA" })).toBeEnabled());
 
-    const saleEvent = dispatchShortcut("F1");
+    await waitFor(() => {
+      const saleEvent = dispatchShortcut("F1");
+      expect(saleEvent.defaultPrevented).toBe(true);
+    });
     const stockEvent = dispatchShortcut("F2");
     const reportEvent = dispatchShortcut("F4");
 
-    expect(saleEvent.defaultPrevented).toBe(true);
     expect(onOpenSales).toHaveBeenCalledOnce();
     expect(stockEvent.defaultPrevented).toBe(false);
     expect(reportEvent.defaultPrevented).toBe(false);

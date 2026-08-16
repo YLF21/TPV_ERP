@@ -106,8 +106,10 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={onPaid}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Tarjeta" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    await waitFor(() => expect(cardButton).toBeEnabled());
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
@@ -209,7 +211,9 @@ describe("CustomerReceivablePaymentDialog", () => {
     await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
     expect(onPaid).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("55,00"));
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(
@@ -302,8 +306,10 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={vi.fn()}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Tarjeta" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    await waitFor(() => expect(cardButton).toBeEnabled());
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     const amount = screen.getByLabelText("IMPORTE / RECIBIDO");
     fireEvent.change(amount, { target: { value: "30" } });
     fireEvent.keyDown(amount, { key: "Enter" });

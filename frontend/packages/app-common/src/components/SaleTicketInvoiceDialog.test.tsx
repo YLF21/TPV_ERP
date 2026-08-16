@@ -73,9 +73,11 @@ describe("SaleTicketInvoiceDialog", () => {
     expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Buscar" })).not.toBeInTheDocument();
     const ticketNumber = screen.getByLabelText("Código de ticket") as HTMLInputElement;
-    expect(ticketNumber).toHaveFocus();
-    expect(ticketNumber.selectionStart).toBe(0);
-    expect(ticketNumber.selectionEnd).toBe(ticketNumber.value.length);
+    await waitFor(() => {
+      expect(ticketNumber).toHaveFocus();
+      expect(ticketNumber.selectionStart).toBe(0);
+      expect(ticketNumber.selectionEnd).toBe(ticketNumber.value.length);
+    });
     fireEvent.submit(ticketNumber.closest("form")!);
     const customerSearch = screen.getByLabelText("Buscar cliente fiscal");
     await waitFor(() => expect(customerSearch).toHaveFocus());
