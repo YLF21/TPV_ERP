@@ -4,6 +4,7 @@ import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
+import com.tpverp.backend.document.TicketGeneratedVoucherAlreadyUsedException;
 import com.tpverp.backend.document.TicketNotFoundException;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
@@ -236,6 +237,26 @@ class ApiExceptionHandlerTest {
                 TicketAlreadyInvoicedException.CODE,
                 problem.getProperties().get("code"));
         assertEquals("Este ticket ya está facturado", problem.getDetail());
+    }
+
+    @Test
+    void reportsUsedGeneratedVoucherWithoutOperationalDetails() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.ticketGeneratedVoucherAlreadyUsed(
+                new TicketGeneratedVoucherAlreadyUsedException(),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(
+                TicketGeneratedVoucherAlreadyUsedException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals(
+                "No se puede anular este ticket porque generó un vale que ya se ha utilizado.",
+                problem.getDetail());
+        assertEquals(false, problem.getProperties().containsKey("voucherCodes"));
+        assertEquals(false, problem.getProperties().containsKey("dependentTicketNumbers"));
     }
 
     @Test

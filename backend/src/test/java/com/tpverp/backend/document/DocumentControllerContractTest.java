@@ -64,6 +64,30 @@ class DocumentControllerContractTest {
     }
 
     @Test
+    void voucherManagementSeparatesSalesManagementFromAdminMutations()
+            throws NoSuchMethodException {
+        var list = VoucherController.class.getDeclaredMethod(
+                "managementList", String.class, VoucherEffectiveStatus.class,
+                java.time.LocalDate.class, java.time.LocalDate.class,
+                int.class, int.class);
+        var reactivate = VoucherController.class.getDeclaredMethod(
+                "reactivate", String.class,
+                VoucherController.ReactivateVoucherRequest.class,
+                org.springframework.security.core.Authentication.class);
+        var configuration = VoucherController.class.getDeclaredMethod(
+                "updateConfiguration",
+                VoucherController.VoucherConfigurationRequest.class,
+                org.springframework.security.core.Authentication.class);
+
+        assertThat(list.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
+        assertThat(reactivate.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasRole('ADMIN')");
+        assertThat(configuration.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasRole('ADMIN')");
+    }
+
+    @Test
     void exposesTicketReturnPreviewWithoutDirectDatafonoPermission() throws NoSuchMethodException {
         var preview = TicketController.class.getDeclaredMethod(
                 "returnPreview", String.class);

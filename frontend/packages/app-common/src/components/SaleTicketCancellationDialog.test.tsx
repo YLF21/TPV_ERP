@@ -423,4 +423,161 @@ describe("SaleTicketCancellationDialog", () => {
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("hides voucher, dependent ticket and technical reference when a generated voucher was used", async () => {
+    request.mockRejectedValue(Object.assign(
+      new Error(
+        "No se puede anular este ticket porque el vale V9D94009FFCC1 se utilizó en "
+          + "el ticket 001-260816-00002. (Ref: technical-reference)",
+      ),
+      { problem: { code: "TICKET_GENERATED_VOUCHER_ALREADY_USED" } },
+    ));
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="BY_NUMBER"
+        initialTicketNumber="001-260816-00001"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(
+      "No se puede anular este ticket porque generó un vale que ya se ha utilizado.",
+    );
+    expect(error).not.toHaveTextContent("V9D94009FFCC1");
+    expect(error).not.toHaveTextContent("001-260816-00002");
+    expect(error).not.toHaveTextContent("Ref:");
+  });
+
+  it("also hides operational details if the voucher conflict occurs while confirming", async () => {
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/cancellation-preview/last") {
+        return { ...preview, manualReferences: [] } as never;
+      }
+      if (path === "/tickets/ticket-1/cancel") {
+        throw Object.assign(
+          new Error("Vale V-SECRET usado en T-SECRET. (Ref: technical-reference)"),
+          { problem: { code: "TICKET_GENERATED_VOUCHER_ALREADY_USED" } },
+        );
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="LAST"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("T-001")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Motivo"), {
+      target: { value: "Error de cobro" },
+    });
+    fireEvent.change(screen.getByLabelText(/contrase/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Anular y compensar" }));
+
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(
+      "No se puede anular este ticket porque generó un vale que ya se ha utilizado.",
+    );
+    expect(error).not.toHaveTextContent("V-SECRET");
+    expect(error).not.toHaveTextContent("T-SECRET");
+    expect(error).not.toHaveTextContent("Ref:");
+  });
+
+  it("prints a restored voucher with its backend Jasper document", async () => {
+    const printA4Document = vi.fn().mockResolvedValue({ ok: true });
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    hardware.mockReturnValue({
+      getHardwareConfig: vi.fn().mockResolvedValue({
+        ticketPrinterDriver: "WINDOWS_DRIVER",
+        ticketPrinterName: "EPSON",
+        documentPrintRoutes: [],
+      }),
+      printA4Document,
+      printTicket,
+      openCashDrawer: vi.fn().mockResolvedValue({ ok: true }),
+    } as never);
+    const renderedPdf = { contentType: "application/pdf" as const, base64: "JVBERi0=" };
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/cancellation-preview/last") {
+        return { ...preview, manualReferences: [] } as never;
+      }
+      if (path === "/tickets/ticket-1/cancel") {
+        return {
+          ticket: preview.ticket,
+          restoredVouchers: [{
+            code: "V-RESTORED",
+            balance: "25.00",
+            printDocument: {
+              code: "V-RESTORED",
+              amount: "25.00",
+              issuedAt: "2026-07-30T10:00:00Z",
+              originTicketNumber: "T-ORIGIN",
+              renderedPdf,
+              ticketRenderedImage: {
+                contentType: "image/png",
+                base64: "iVBORw0=",
+              },
+            },
+          }],
+          invalidatedVoucherCodes: [],
+          openCashDrawer: false,
+          receipt: cancellationReceipt,
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="LAST"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("T-001")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Motivo"), {
+      target: { value: "Error de cobro" },
+    });
+    fireEvent.change(screen.getByLabelText(/contrase/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Anular y compensar" }));
+
+    await waitFor(() => expect(printA4Document).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentNumber: "V-RESTORED",
+        renderedPdf,
+      }),
+      expect.objectContaining({
+        documentPrintRoutes: expect.arrayContaining([
+          expect.objectContaining({
+            printerName: "EPSON",
+            paperSize: "TICKET_80",
+          }),
+        ]),
+      }),
+    ));
+    expect(printTicket).toHaveBeenCalledTimes(1);
+    expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
+      layout: "CANCELLATION_RECEIPT",
+    }));
+  });
 });

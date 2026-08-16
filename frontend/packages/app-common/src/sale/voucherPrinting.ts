@@ -10,8 +10,10 @@ import type { TicketPrintOutcome } from "./ticketPrinting";
 
 export type IssuedVoucherPrintSnapshot = {
   code: string;
+  familyIdentifier?: string | null;
   amount: number | string;
   issuedAt: string;
+  expiresOn?: string | null;
   originTicketNumber: string;
   traceability?: Array<{
     documentNumber: string;
@@ -25,9 +27,9 @@ export type IssuedVoucherPrintSnapshot = {
 };
 
 const copy = {
-  es: { title: "VALE DE DEVOLUCIÓN", origin: "Ticket de origen" },
-  en: { title: "REFUND VOUCHER", origin: "Original ticket" },
-  zh: { title: "退款代金券", origin: "原始小票" },
+  es: { title: "VALE DE DEVOLUCIÓN", identifier: "Identificador", origin: "Ticket de origen", expiry: "Caducidad" },
+  en: { title: "REFUND VOUCHER", identifier: "Identifier", origin: "Original ticket", expiry: "Expiry" },
+  zh: { title: "退款代金券", identifier: "识别码", origin: "原始小票", expiry: "有效期至" },
 } as const;
 
 export function issuedVoucherPrintRequest(
@@ -37,6 +39,15 @@ export function issuedVoucherPrintRequest(
 ): TicketPrintRequest {
   const amount = Number(voucher.amount);
   const text = copy[locale];
+  const expiration = voucher.expiresOn
+    ? `\n${text.expiry}: ${new Intl.DateTimeFormat(
+        locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
+        { dateStyle: "short" }
+      ).format(localDate(voucher.expiresOn))}`
+    : "";
+  const identifier = voucher.familyIdentifier
+    ? `\n${text.identifier}: ${voucher.familyIdentifier}`
+    : "";
   return {
     requireRenderedDocument: true,
     documentNumber: voucher.code,
@@ -44,7 +55,7 @@ export function issuedVoucherPrintRequest(
     terminalCode: terminal.terminalCode,
     issuedAt: voucher.issuedAt,
     lines: [{
-      name: `${text.title}\n${text.origin}: ${voucher.originTicketNumber}`,
+      name: `${text.title}${identifier}\n${text.origin}: ${voucher.originTicketNumber}${expiration}`,
       quantity: 1,
       price: amount,
       total: amount,
@@ -52,6 +63,11 @@ export function issuedVoucherPrintRequest(
     payments: [],
     total: amount,
   };
+}
+
+function localDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day, 12);
 }
 
 export async function outputIssuedVoucher(

@@ -4,6 +4,7 @@ import { issuedVoucherPrintRequest, outputIssuedVoucher } from "./voucherPrintin
 
 const voucher = {
   code: "VABC123",
+  familyIdentifier: "001-000001",
   amount: "25.50",
   issuedAt: "2026-08-04T12:00:00Z",
   originTicketNumber: "R-1",
@@ -12,17 +13,24 @@ const terminal = { storeName: "Tienda", terminalCode: "T1" };
 
 describe("voucher printing", () => {
   it("builds the separate voucher note with its exact code and origin", () => {
-    expect(issuedVoucherPrintRequest(voucher, terminal, "es")).toEqual(
+    const request = issuedVoucherPrintRequest({
+      ...voucher,
+      expiresOn: "2027-08-04",
+    }, terminal, "es");
+
+    expect(request).toEqual(
       expect.objectContaining({
         requireRenderedDocument: true,
         documentNumber: "VABC123",
         total: 25.5,
         lines: [expect.objectContaining({
-          name: expect.stringContaining("R-1"),
+          name: expect.stringMatching(/R-1[\s\S]*Caducidad: 4\/8\/27/),
           total: 25.5,
         })],
       }),
     );
+    expect(request.lines[0]?.name).not.toContain("00:00");
+    expect(request.lines[0]?.name).toContain("Identificador: 001-000001");
   });
 
   it("returns a retryable failure without issuing another voucher", async () => {

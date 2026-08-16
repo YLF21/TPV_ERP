@@ -94,6 +94,8 @@ export type {
   HardwareResult,
   TicketPrintRequest
 } from "./hardware/hardware";
+export { outputIssuedVoucher } from "./sale/voucherPrinting";
+export type { IssuedVoucherPrintSnapshot } from "./sale/voucherPrinting";
 export {
   canonicalProductQuantity,
   formatProductQuantity,

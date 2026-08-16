@@ -5,11 +5,15 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -28,6 +32,9 @@ public class Voucher {
     private UUID tiendaId;
     @Column(name = "codigo", nullable = false, length = 32)
     private String code;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "familia_id", nullable = false)
+    private VoucherFamily family;
     @Column(name = "importe_inicial", nullable = false, precision = 19, scale = 2)
     private BigDecimal initialAmount;
     @Column(name = "saldo", nullable = false, precision = 19, scale = 2)
@@ -37,6 +44,8 @@ public class Voucher {
     private VoucherStatus status;
     @Column(name = "creado_en", nullable = false)
     private Instant createdAt;
+    @Column(name = "caduca_el")
+    private LocalDate expiresOn;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "tickets_origen", nullable = false, columnDefinition = "jsonb")
     private List<String> originTickets = new ArrayList<>();
@@ -52,13 +61,35 @@ public class Voucher {
     public Voucher(
             UUID storeId, String code, BigDecimal amount,
             List<String> originTickets, Instant createdAt) {
+        this(storeId, code, amount, originTickets, createdAt, null);
+    }
+
+    public Voucher(
+            VoucherFamily family,
+            UUID storeId, String code, BigDecimal amount,
+            List<String> originTickets, Instant createdAt) {
+        this(family, storeId, code, amount, originTickets, createdAt, null);
+    }
+
+    public Voucher(
+            UUID storeId, String code, BigDecimal amount,
+            List<String> originTickets, Instant createdAt, LocalDate expiresOn) {
+        this(null, storeId, code, amount, originTickets, createdAt, expiresOn);
+    }
+
+    public Voucher(
+            VoucherFamily family,
+            UUID storeId, String code, BigDecimal amount,
+            List<String> originTickets, Instant createdAt, LocalDate expiresOn) {
         id = UUID.randomUUID();
+        this.family = family;
         tiendaId = Objects.requireNonNull(storeId, "storeId");
         this.code = required(code, "codigo");
         initialAmount = positive(amount);
         balance = initialAmount;
         this.originTickets = List.copyOf(originTickets);
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+        this.expiresOn = expiresOn;
         status = VoucherStatus.ACTIVE;
     }
 
@@ -72,6 +103,14 @@ public class Voucher {
 
     public String code() {
         return code;
+    }
+
+    public VoucherFamily family() {
+        return family;
+    }
+
+    public String familyIdentifier() {
+        return family == null ? null : family.identifier();
     }
 
     public BigDecimal initialAmount() {
@@ -88,6 +127,33 @@ public class Voucher {
 
     public Instant createdAt() {
         return createdAt;
+    }
+
+    public LocalDate expiresOn() {
+        return expiresOn;
+    }
+
+    public boolean isExpired(LocalDate today) {
+        return status == VoucherStatus.ACTIVE
+                && expiresOn != null
+                && expiresOn.isBefore(Objects.requireNonNull(today, "today"));
+    }
+
+    public VoucherEffectiveStatus effectiveStatus(LocalDate today) {
+        if (isExpired(today)) return VoucherEffectiveStatus.EXPIRED;
+        return VoucherEffectiveStatus.valueOf(status.name());
+    }
+
+    public void reactivate(LocalDate newExpiresOn, LocalDate today) {
+        Objects.requireNonNull(newExpiresOn, "newExpiresOn");
+        Objects.requireNonNull(today, "today");
+        if (!isExpired(today)) {
+            throw new IllegalStateException("voucher_only_expired_can_reactivate");
+        }
+        if (newExpiresOn.isBefore(today)) {
+            throw new IllegalArgumentException("voucher_reactivation_expiration_must_be_today_or_future");
+        }
+        expiresOn = newExpiresOn;
     }
 
     public List<String> originTickets() {

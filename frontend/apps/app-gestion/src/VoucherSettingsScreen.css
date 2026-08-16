@@ -1,0 +1,168 @@
+.gestion-voucher-settings-workspace {
+  --voucher-settings-ink: #132c4f;
+  --voucher-settings-muted: #617082;
+  --voucher-settings-line: #c7d0da;
+  --voucher-settings-accent: #b67b08;
+  display: grid;
+  gap: 18px;
+}
+
+.gestion-voucher-settings-header {
+  align-items: end;
+  border-bottom: 1px solid #aeb9c5;
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0 15px;
+}
+
+.gestion-voucher-settings-header > div > span {
+  color: var(--voucher-settings-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.gestion-voucher-settings-header h2 {
+  color: var(--voucher-settings-ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 30px;
+  margin: 4px 0 3px;
+}
+
+.gestion-voucher-settings-header p,
+.gestion-voucher-settings-header aside small {
+  color: var(--voucher-settings-muted);
+  margin: 0;
+}
+
+.gestion-voucher-settings-header aside {
+  border-left: 3px solid var(--voucher-settings-accent);
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+  padding: 5px 0 5px 12px;
+}
+
+.gestion-voucher-settings-message,
+.gestion-voucher-settings-loading {
+  border: 1px solid var(--voucher-settings-line);
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.gestion-voucher-settings-message.success { background: #edf7ef; border-color: #8eb398; color: #214f2d; }
+.gestion-voucher-settings-message.error { background: #fff0ef; border-color: #d48c86; color: #7b241f; }
+
+.gestion-voucher-settings-panel {
+  background: #f8fafc;
+  border: 1px solid var(--voucher-settings-line);
+  box-shadow: 0 5px 14px rgba(19, 44, 79, .08);
+  max-width: 820px;
+}
+
+.gestion-voucher-settings-intro {
+  align-items: start;
+  background: #eef2f6;
+  border-bottom: 1px solid var(--voucher-settings-line);
+  display: flex;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.gestion-voucher-settings-index {
+  color: var(--voucher-settings-accent);
+  font-family: Consolas, monospace;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.gestion-voucher-settings-intro h3 { color: var(--voucher-settings-ink); margin: 0 0 4px; }
+.gestion-voucher-settings-intro p { color: var(--voucher-settings-muted); margin: 0; }
+
+.gestion-voucher-settings-panel fieldset {
+  border: 0;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 20px;
+}
+
+.gestion-voucher-settings-panel legend {
+  color: var(--voucher-settings-ink);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 0 9px;
+  text-transform: uppercase;
+}
+
+.gestion-voucher-mode-option {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--voucher-settings-line);
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 18px 1fr;
+  padding: 15px 16px;
+}
+
+.gestion-voucher-mode-option.selected {
+  border-color: var(--voucher-settings-ink);
+  box-shadow: inset 4px 0 0 var(--voucher-settings-accent);
+}
+
+.gestion-voucher-mode-option input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.gestion-voucher-mode-marker { border: 2px solid #8290a0; border-radius: 50%; height: 14px; position: relative; width: 14px; }
+.gestion-voucher-mode-option.selected .gestion-voucher-mode-marker { border-color: var(--voucher-settings-ink); }
+.gestion-voucher-mode-option.selected .gestion-voucher-mode-marker::after { background: var(--voucher-settings-accent); border-radius: 50%; content: ""; inset: 3px; position: absolute; }
+.gestion-voucher-mode-option > span:last-child { display: grid; gap: 3px; }
+.gestion-voucher-mode-option strong { color: var(--voucher-settings-ink); }
+.gestion-voucher-mode-option small { color: var(--voucher-settings-muted); }
+
+.gestion-voucher-days-control {
+  border-left: 1px dashed #aeb9c5;
+  display: grid;
+  gap: 6px;
+  margin: 0 0 0 25px;
+  opacity: .5;
+  padding: 8px 0 8px 20px;
+}
+
+.gestion-voucher-days-control.enabled { opacity: 1; }
+.gestion-voucher-days-control > label { color: var(--voucher-settings-ink); font-size: 12px; font-weight: 800; }
+.gestion-voucher-days-control > div { align-items: center; display: flex; gap: 9px; }
+.gestion-voucher-days-control input { border: 1px solid #8e9ba8; font-size: 17px; font-weight: 700; padding: 8px 10px; width: 130px; }
+.gestion-voucher-days-control small { color: var(--voucher-settings-muted); }
+
+.gestion-voucher-settings-panel footer {
+  align-items: center;
+  border-top: 1px solid var(--voucher-settings-line);
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.gestion-voucher-settings-panel footer > div { display: grid; gap: 3px; }
+.gestion-voucher-settings-panel footer strong { color: var(--voucher-settings-ink); }
+.gestion-voucher-settings-panel footer small { color: var(--voucher-settings-muted); }
+
+.gestion-voucher-settings-panel button {
+  background: var(--voucher-settings-ink);
+  border: 1px solid var(--voucher-settings-ink);
+  border-radius: 0;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  min-height: 36px;
+  padding: 7px 16px;
+}
+
+.gestion-voucher-settings-panel button:disabled { cursor: not-allowed; opacity: .5; }
+
+@media (max-width: 760px) {
+  .gestion-voucher-settings-header,
+  .gestion-voucher-settings-panel footer { align-items: stretch; flex-direction: column; gap: 12px; }
+  .gestion-voucher-settings-header aside { min-width: 0; }
+}

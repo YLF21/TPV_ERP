@@ -79,6 +79,19 @@ class TicketCancellationServiceTest {
         var voucherEvents = mock(VoucherEventRepository.class);
         when(voucherEvents.findAllByDocumentIdOrderByOccurredAtAsc(ticketId))
                 .thenReturn(List.of(restoredEvent, invalidatedEvent));
+        var voucherPrinting = mock(VoucherPrintService.class);
+        var printDocument = new VoucherPrintService.PrintedVoucher(
+                "VALE-REST",
+                "001-000001",
+                new BigDecimal("12.50"),
+                Instant.parse("2026-07-30T10:00:00Z"),
+                null,
+                "T-ORIGEN",
+                List.of(),
+                null,
+                new VoucherPrintService.RenderedContent("application/pdf", "JVBERi0="),
+                new VoucherPrintService.RenderedContent("image/png", "iVBORw0="));
+        when(voucherPrinting.render(restoredVoucher)).thenReturn(printDocument);
         var users = mock(UserAccountRepository.class);
         when(authorizer.getUserName()).thenReturn("ADMIN");
         when(users.findById(authorizerId)).thenReturn(Optional.of(authorizer));
@@ -91,6 +104,7 @@ class TicketCancellationServiceTest {
                 mock(CommercialDocumentRepository.class),
                 operations,
                 voucherEvents,
+                voucherPrinting,
                 operationSecurity,
                 users,
                 mock(PaymentTerminalOperationsService.class),
@@ -110,7 +124,7 @@ class TicketCancellationServiceTest {
         assertThat(result.ticket()).isSameAs(ticket);
         assertThat(result.restoredVouchers())
                 .containsExactly(new TicketCancellationService.RestoredVoucher(
-                        "VALE-REST", new BigDecimal("12.50")));
+                        "VALE-REST", new BigDecimal("12.50"), printDocument));
         assertThat(result.invalidatedVoucherCodes()).containsExactly("VALE-INVALID");
         assertThat(result.openCashDrawer()).isFalse();
         assertThat(result.receipt().operationId()).isEqualTo(requestId);
