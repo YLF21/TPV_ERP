@@ -106,8 +106,10 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={onPaid}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Tarjeta" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    await waitFor(() => expect(cardButton).toBeEnabled());
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
@@ -142,7 +144,7 @@ describe("CustomerReceivablePaymentDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.change(screen.getByLabelText("Nº DOCUMENTO"), { target: { value: "TR-123" } });
-    const transferDate = screen.getByLabelText("FECHA DE TRANSFERENCIA");
+    const transferDate = await screen.findByLabelText("FECHA DE TRANSFERENCIA");
     fireEvent.change(transferDate, { target: { value: "2026-08-10" } });
     fireEvent.keyDown(transferDate, { key: "Enter" });
 
@@ -209,7 +211,9 @@ describe("CustomerReceivablePaymentDialog", () => {
     await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
     expect(onPaid).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("55,00"));
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(
@@ -232,7 +236,7 @@ describe("CustomerReceivablePaymentDialog", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
-    const input = screen.getByLabelText("FECHA DE TRANSFERENCIA");
+    const input = await screen.findByLabelText("FECHA DE TRANSFERENCIA");
     expect(input).toHaveAttribute("type", "date");
     expect(input).toHaveAttribute("max", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
   });
@@ -302,8 +306,10 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={vi.fn()}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Tarjeta" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Tarjeta" }));
+    const cardButton = await screen.findByRole("button", { name: "Tarjeta" });
+    await waitFor(() => expect(cardButton).toBeEnabled());
+    fireEvent.click(cardButton);
+    await waitFor(() => expect(cardButton).toHaveClass("selected"));
     const amount = screen.getByLabelText("IMPORTE / RECIBIDO");
     fireEvent.change(amount, { target: { value: "30" } });
     fireEvent.keyDown(amount, { key: "Enter" });
@@ -382,7 +388,7 @@ describe("CustomerReceivablePaymentDialog", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
-    const date = screen.getByLabelText("FECHA DE TRANSFERENCIA");
+    const date = await screen.findByLabelText("FECHA DE TRANSFERENCIA");
     fireEvent.change(date, { target: { value: "2026-08-10" } });
     fireEvent.keyDown(date, { key: "Enter" });
 
@@ -430,7 +436,7 @@ describe("CustomerReceivablePaymentDialog", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
-    const date = screen.getByLabelText("FECHA DE TRANSFERENCIA");
+    const date = await screen.findByLabelText("FECHA DE TRANSFERENCIA");
     fireEvent.change(date, { target: { value: "2026-08-10" } });
     fireEvent.keyDown(date, { key: "Enter" });
 
