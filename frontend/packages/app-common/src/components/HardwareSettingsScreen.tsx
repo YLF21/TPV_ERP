@@ -620,6 +620,19 @@ export function HardwareSettingsScreen({
                     { value: "NETWORK", label: "LAN" },
                   ] satisfies readonly ErpSelectOption[]} />
               </label>
+              <label><span>{t("hardware.escposAdditionalFeedLines")}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={12}
+                  step={1}
+                  aria-describedby="escpos-additional-feed-help"
+                  value={config.escposAdditionalFeedLines}
+                  onChange={(event) => updateConfig({
+                    escposAdditionalFeedLines: Math.min(12, Math.max(0, Math.trunc(Number(event.target.value) || 0))),
+                  })}
+                />
+              </label>
               {config.ticketPrinterConnection === "WINDOWS_PRINTER" && <label><span>{t("hardware.windowsPrinter")}</span>
                 <ErpSelect aria-label={`${t("hardware.windowsPrinter")} ESC/POS`} value={config.ticketPrinterName}
                   onChange={(value) => updateConfig({ ticketPrinterName: value })}
@@ -647,6 +660,9 @@ export function HardwareSettingsScreen({
                 </label>
               </>}
             </div>
+            <p id="escpos-additional-feed-help" className="hardware-desktop-note">
+              {t("hardware.escposAdditionalFeedLinesHelp")}
+            </p>
           </section>
         </div>}
 

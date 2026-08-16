@@ -35,6 +35,7 @@ import { ModuleNavBackButton } from "./ModuleNavBackButton";
 import { ModuleNavItem } from "./ModuleNavItem";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { SalesActivityPanel } from "./SalesActivityPanel";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
@@ -156,6 +157,7 @@ function showPdfPreview(preview: Window, pdf: Blob): void {
 
 const reportIcon: Record<string, string> = {
   "salesReport.dailySales": dailySalesIcon,
+  "salesReport.salesDocuments": ticketIcon,
   "salesReport.tickets": ticketIcon,
   "salesReport.deliveryNotes": deliveryNoteIcon,
   "salesReport.invoices": invoiceIcon,
@@ -799,6 +801,12 @@ const reportSamples: Record<string, ReportSample> = {
     defaultVisibleAttributes: ["date", "user", "terminal", "tickets", "invoice", "total"],
     rows: [],
     totals: { date: "salesReport.total", tickets: "0", invoice: "0", invoicedTicketTotal: "0.00", total: "0.00" }
+  },
+  "salesReport.salesDocuments": {
+    availableAttributes: [],
+    defaultVisibleAttributes: [],
+    rows: [],
+    totals: {}
   },
   "salesReport.tickets": {
     availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
@@ -1955,12 +1963,14 @@ export function SalesReportScreen({
   const sample = reports[selectedReport] ?? reportSamples["salesReport.dailySales"];
   const visualSample = reports[visualReport] ?? reportSamples["salesReport.dailySales"];
   const isDailySalesReport = selectedReport === "salesReport.dailySales";
+  const isSalesDocumentsReport = selectedReport === "salesReport.salesDocuments";
+  const isSalesActivityReport = isDailySalesReport || isSalesDocumentsReport;
   const isDailyVisualReport = visualReport === "salesReport.dailySales";
   const selectedColumnDefinitions = buildReportColumnDefinitions(sample);
   const selectedReportTableLayout = useTableLayoutPreference({
     app,
     username: session.username,
-    accessToken: isDailySalesReport ? undefined : session.accessToken,
+    accessToken: isSalesActivityReport ? undefined : session.accessToken,
     tableKey: reportTableKey(selectedReport),
     definitions: selectedColumnDefinitions
   });
@@ -1976,7 +1986,7 @@ export function SalesReportScreen({
   const visualTableLayout = visualReport === selectedReport
     ? selectedReportTableLayout
     : inactiveVisualTableLayout;
-  const visibleColumnLayout = isDailySalesReport
+  const visibleColumnLayout = isSalesActivityReport
     ? []
     : visibleTableColumns(selectedReportTableLayout.layout);
   const reportTableWidth = visibleColumnLayout.reduce((width, column) => width + column.width, 0);
@@ -2087,10 +2097,10 @@ export function SalesReportScreen({
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
   useEffect(() => {
-    if (!isDailySalesReport) {
+    if (!isSalesActivityReport) {
       normalizeRequiredTotal(selectedReportTableLayout);
     }
-  }, [isDailySalesReport, selectedReport, selectedReportTableLayout.layout]);
+  }, [isSalesActivityReport, selectedReport, selectedReportTableLayout.layout]);
 
   useEffect(() => {
     if (visualReport !== selectedReport && !isDailyVisualReport) {
@@ -2205,27 +2215,6 @@ export function SalesReportScreen({
       cancelled = true;
     };
   }, [request, session, terminalContext, reportReloadKey]);
-
-  useEffect(() => {
-    const generation = ++dailyReportGeneration.current;
-    if (!session.accessToken || selectedReport !== "salesReport.dailySales" || !filters.dateFrom) {
-      setDailyCommercialReport(null);
-      setDailyReportLoading(false); setDailyReportError("");
-      return;
-    }
-    setDailyCommercialReport(null); setDailyReportLoading(true); setDailyReportError("");
-    void request<DailyCommercialReport>(
-      `/commercial-reports/daily?dateFrom=${encodeURIComponent(filters.dateFrom)}&dateTo=${encodeURIComponent(filters.dateTo || filters.dateFrom)}`,
-      { token: session.accessToken }
-    ).then((report) => {
-      if (generation === dailyReportGeneration.current) setDailyCommercialReport(report);
-    }).catch((failure) => {
-      if (generation === dailyReportGeneration.current) setDailyReportError(failure instanceof Error ? failure.message : t("salesReport.daily.loadError"));
-    }).finally(() => {
-      if (generation === dailyReportGeneration.current) setDailyReportLoading(false);
-    });
-    return () => { if (generation === dailyReportGeneration.current) dailyReportGeneration.current += 1; };
-  }, [dailyReportReload, filters.dateFrom, filters.dateTo, request, selectedReport, session.accessToken]);
 
   useEffect(() => {
     function updateConnectionStatus() {
@@ -3628,7 +3617,7 @@ export function SalesReportScreen({
           <header className="report-options">
             <div className="report-heading">
               <h1>{t(selectedReport)}</h1>
-              {activeFilterDetails.length > 0 && (
+              {!isSalesActivityReport && activeFilterDetails.length > 0 && (
                 <div className="active-filter-summary" aria-label={t("salesReport.filter")}>
                   {activeFilterDetails.map((filter) => (
                     <span key={`${filter.label}-${filter.value}`}>
@@ -3638,7 +3627,7 @@ export function SalesReportScreen({
                   ))}
                 </div>
               )}
-              <div className="report-print-meta">
+              {!isSalesActivityReport && <div className="report-print-meta">
                 <span>
                   {`${t("salesReport.generatedAt")}: ${new Intl.DateTimeFormat(localeTag(locale), {
                     dateStyle: "short",
@@ -3646,14 +3635,19 @@ export function SalesReportScreen({
                   }).format(new Date())}`}
                 </span>
                 <span>{`${t("salesReport.visibleLines")}: ${filteredRows.length}`}</span>
-              </div>
+              </div>}
             </div>
           </header>
-          {isDailySalesReport ? (
-            <div className="daily-summary-data">
-              {renderReportToolbar()}
-              {renderDailySalesSummary()}
-            </div>
+          {isSalesActivityReport ? (
+            <SalesActivityPanel
+              app={app}
+              mode={isDailySalesReport ? "daily" : "documents"}
+              locale={locale}
+              username={session.username}
+              token={session.accessToken}
+              terminalContext={terminalContext}
+              request={request}
+            />
           ) : (
             <div className="report-data">
               {renderReportToolbar()}

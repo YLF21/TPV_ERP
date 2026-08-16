@@ -112,6 +112,25 @@ describe("HardwareSettingsScreen", () => {
     expect(screen.getByRole("button", { name: "Prueba cobro" })).toBeTruthy();
   });
 
+  it("configures only additional ESC/POS feed while preserving the current minimum", async () => {
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    installHardware(createHardwareBridge({ saveHardwareConfig }));
+    renderHardware();
+
+    fireEvent.click(screen.getByRole("button", { name: "Lector y conexión" }));
+    const input = screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" });
+    expect(input).toHaveAttribute("min", "0");
+    expect(input).toHaveAttribute("max", "12");
+    expect(input).toHaveValue(0);
+
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ escposAdditionalFeedLines: 5 }),
+    ));
+  });
+
   it("keeps documentRoutingOnly compatible and renders all four real routes", async () => {
     installHardware(createHardwareBridge());
     renderHardware({ documentRoutingOnly: true });

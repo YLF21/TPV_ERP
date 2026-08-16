@@ -37,6 +37,7 @@ import {
 import type { TableLayout } from "./tableLayoutPreferences";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import type { TerminalContext, UserSession } from "../types";
+import { defaultHardwareConfig } from "../hardware/hardware";
 
 const session: UserSession = {
   username: "admin",
@@ -801,7 +802,7 @@ describe("SalesReportScreen", () => {
     expect(html).toContain("APP VENTA");
     expect(html).toContain("Salidas");
     expect(html).toContain("Entradas");
-    expect(html).toContain('class="report-data-toolbar"');
+    expect(html).toContain('class="sales-activity-toolbar"');
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain('class="report-user-button"');
     expect(html).toContain('class="top-date-time"');
@@ -916,52 +917,28 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain('class="report-user-button"');
   });
 
-  it("renders ticket sales with the daily accounting buckets from the authoritative backend report", async () => {
+  it("renders the reconciled daily sales summary from the new sales activity API", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
-      if (path.startsWith("/commercial-reports/daily")) {
+      if (path.startsWith("/sales-activity/daily")) {
         return Promise.resolve({
           storeId: "store-1",
+          companyName: "EMPRESA PRUEBA",
+          storeCode: "001",
           date: "2026-07-16",
-          invoiced: "100.00",
-          ticketSales: "40.00",
-          collectedCurrent: "70.00",
-          newPending: "70.00",
-          priorDebtCollected: "20.00",
-          refunds: "15.00",
-          cashInflow: "90.00",
-          ticketCount: 3,
-          invoiceCount: 2,
-          salesTotal: "125.00",
-          salesByPaymentMethod: {
-            cash: "45.00", card: "40.00", transfer: "20.00",
-            voucher: "10.00", pending: "10.00", other: "0.00"
-          },
-          pendingCollectionsByPaymentMethod: {
-            cash: "5.00", card: "10.00", transfer: "5.00",
-            voucher: "0.00", pending: "0.00", other: "0.00"
-          },
-          refundsByPaymentMethod: {
-            cash: "5.00", card: "5.00", transfer: "2.00",
-            voucher: "3.00", pending: "0.00", other: "0.00"
-          },
-          openingCashFund: "50.00",
-          cashEntries: "10.00",
-          cashWithdrawals: "5.00",
-          expectedCash: "90.00",
-          days: [
-            {
-              date: "2026-07-15", invoiced: "40.00", ticketSales: "10.00",
-              collectedCurrent: "30.00", newPending: "10.00",
-              priorDebtCollected: "5.00", refunds: "5.00", cashInflow: "35.00",
-              ticketCount: 1, invoiceCount: 1, salesTotal: "45.00"
-            },
-            {
-              date: "2026-07-16", invoiced: "60.00", ticketSales: "30.00",
-              collectedCurrent: "40.00", newPending: "60.00",
-              priorDebtCollected: "15.00", refunds: "10.00", cashInflow: "55.00",
-              ticketCount: 2, invoiceCount: 1, salesTotal: "80.00"
-            }
-          ]
+          netSalesTotal: "125.00",
+          paymentMethods: [
+            { method: "EFECTIVO", operationCount: 2, amount: "95.00" },
+            { method: "PENDIENTE", operationCount: 1, amount: "30.00" }
+          ],
+          counts: { sales: 3, returns: 2, cancelled: 4, pending: 5 },
+          users: [{
+            userId: "user-1", userName: "ANA", netSalesTotal: "125.00",
+            paymentMethods: [
+              { method: "EFECTIVO", operationCount: 2, amount: "95.00" },
+              { method: "PENDIENTE", operationCount: 1, amount: "30.00" }
+            ],
+            counts: { sales: 3, returns: 2, cancelled: 4, pending: 5 }
+          }]
         });
       }
       if (path === "/tickets") {
@@ -985,66 +962,28 @@ describe("SalesReportScreen", () => {
     );
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      expect.stringMatching(/^\/commercial-reports\/daily\?dateFrom=.*&dateTo=.*/),
+      expect.stringMatching(/^\/sales-activity\/daily\?date=\d{4}-\d{2}-\d{2}$/),
       { token: "token" }
     ));
-    const summary = await screen.findByRole("region", { name: "Resumen contable diario" });
-    expect(within(summary).getByText("125.00 €")).toBeVisible();
-    expect(within(summary).getByText("Vales entrantes")).toBeVisible();
-    expect(within(summary).getByText("Cobros de pendientes")).toBeVisible();
-    expect(within(summary).getByText("Devoluciones")).toBeVisible();
-    expect(within(summary).getByText("Vales salientes")).toBeVisible();
-    expect(within(summary).getByText("Fondo inicial")).toBeVisible();
-    expect(within(summary).getByText("Esperado en efectivo")).toBeVisible();
-    expect(within(summary).queryByText("Otros")).not.toBeInTheDocument();
-    expect(screen.getByText("Resumen diario")).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Número de tickets" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Número de facturas" })).toBeVisible();
-    expect(screen.getAllByText("45.00 €").length).toBeGreaterThan(0);
-    expect(screen.getByText("80.00 €")).toBeVisible();
-    expect(screen.getByText("15/7/2026")).toBeVisible();
-    expect(screen.getByText("16/7/2026")).toBeVisible();
+    expect((await screen.findAllByText(/125,00/)).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Efectivo: (2)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Pendiente de cobro: (1)").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Tarjeta")).not.toBeInTheDocument();
+    expect(screen.queryByText("T-001 → FV-001")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Ventas").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Devoluciones").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Anulados").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Pendientes").length).toBeGreaterThan(0);
+    expect(screen.getByText("ANA")).toBeVisible();
   });
 
-  it("keeps the requested detail table when the selected period contains one day", async () => {
+  it("uses one query date and reloads the daily report when it changes", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
-      if (path.startsWith("/commercial-reports/daily")) {
+      if (path.startsWith("/sales-activity/daily")) {
         return Promise.resolve({
-          storeId: "store-1",
-          date: "2026-08-09",
-          invoiced: "20.00",
-          ticketSales: "10.00",
-          collectedCurrent: "25.00",
-          newPending: "5.00",
-          priorDebtCollected: "2.00",
-          cashInflow: "27.00",
-          ticketCount: 1,
-          invoiceCount: 1,
-          salesTotal: "30.00",
-          salesByPaymentMethod: {
-            cash: "25.00", card: "0.00", transfer: "0.00",
-            voucher: "0.00", pending: "5.00", other: "0.00"
-          },
-          pendingCollectionsByPaymentMethod: {
-            cash: "0.00", card: "0.00", transfer: "0.00",
-            voucher: "0.00", pending: "0.00", other: "0.00"
-          },
-          refundsByPaymentMethod: {
-            cash: "0.00", card: "0.00", transfer: "0.00",
-            voucher: "0.00", pending: "0.00", other: "0.00"
-          },
-          openingCashFund: "20.00", cashEntries: "0.00",
-          cashWithdrawals: "0.00", expectedCash: "45.00",
-          days: [{
-            date: "2026-08-09",
-            invoiced: "20.00",
-            ticketSales: "10.00",
-            collectedCurrent: "25.00",
-            newPending: "5.00",
-            priorDebtCollected: "2.00",
-            cashInflow: "27.00",
-            ticketCount: 1, invoiceCount: 1, salesTotal: "30.00"
-          }]
+          storeId: "store-1", companyName: "EMPRESA", storeCode: "001",
+          date: path.split("date=")[1], netSalesTotal: "0.00",
+          paymentMethods: [], counts: { sales: 0, returns: 0, cancelled: 0, pending: 0 }, users: []
         });
       }
       if (path === "/tickets") return Promise.resolve([]);
@@ -1064,46 +1003,26 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    await waitFor(() => expect(screen.getByText("Resumen del período")).toBeVisible());
-    expect(screen.getByRole("region", { name: "Resumen diario" })).toBeVisible();
-    expect(screen.queryByText("Cobros de pendientes")).not.toBeInTheDocument();
-    expect(screen.queryByText("Devoluciones")).not.toBeInTheDocument();
-  });
-
-  it("applies two different dates to the daily sales report", async () => {
-    const request = vi.fn().mockImplementation((path: string) => {
-      if (path.startsWith("/commercial-reports/daily")) {
-        return Promise.resolve({
-          storeId: "store-1", date: "2026-07-01", invoiced: "0.00", ticketSales: "0.00",
-          collectedCurrent: "0.00", newPending: "0.00", priorDebtCollected: "0.00", cashInflow: "0.00"
-        });
-      }
-      if (path === "/tickets") return Promise.resolve([]);
-      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
-    });
-
-    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
-    const rangeInput = screen.getByPlaceholderText("01/07/2026-04/07/2026");
-    fireEvent.change(rangeInput, { target: { value: "01/07/2026-05/07/2026" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
-
+    const dateInput = await screen.findByLabelText("Fecha de consulta");
+    expect(screen.getAllByLabelText("Fecha de consulta")).toHaveLength(1);
+    fireEvent.change(dateInput, { target: { value: "2026-07-05" } });
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/commercial-reports/daily?dateFrom=2026-07-01&dateTo=2026-07-05",
-      { token: "token" }
+      "/sales-activity/daily?date=2026-07-05", { token: "token" }
     ));
   });
 
-  it("shows translated authoritative loading/error and retries without local totals", async () => {
+  it("shows the new daily report error and retries without calculating local totals", async () => {
     let dailyAttempts = 0;
     const request = vi.fn().mockImplementation((path: string) => {
-      if (path.startsWith("/commercial-reports/daily")) {
+      if (path.startsWith("/sales-activity/daily")) {
         dailyAttempts += 1;
         return dailyAttempts === 1
           ? Promise.reject(new Error("sin red"))
           : Promise.resolve({
-            storeId: "store-1", date: "2026-07-16", invoiced: "1.00", ticketSales: "0.00", collectedCurrent: "0.00",
-            newPending: "1.00", priorDebtCollected: "0.00", cashInflow: "0.00"
+            storeId: "store-1", companyName: "EMPRESA", storeCode: "001",
+            date: "2026-07-16", netSalesTotal: "1.00",
+            paymentMethods: [{ method: "PENDIENTE", operationCount: 1, amount: "1.00" }],
+            counts: { sales: 1, returns: 0, cancelled: 0, pending: 1 }, users: []
           });
       }
       if (path === "/tickets") {
@@ -1113,12 +1032,226 @@ describe("SalesReportScreen", () => {
     });
     render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
-    expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
-    expect((await screen.findAllByText("1.00 €")).length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText("Fondo inicial")).not.toBeInTheDocument();
-    expect(screen.queryByText("Esperado en efectivo")).not.toBeInTheDocument();
-    expect(request.mock.calls.filter(([path]) => String(path).startsWith("/commercial-reports/daily"))).toHaveLength(2);
+    expect(screen.queryByText("Total de ventas netas")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect((await screen.findAllByText(/1,00/)).length).toBeGreaterThanOrEqual(2);
+    expect(request.mock.calls.filter(([path]) => String(path).startsWith("/sales-activity/daily"))).toHaveLength(2);
+  });
+
+  it("renders the sales document ledger with bottom period filters and Excel-style totals", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        return Promise.resolve({
+          items: [{
+            id: "document-1", date: "2026-08-16", occurredAt: "2026-08-16T10:15:00Z",
+            ticketNumber: "T-001", invoiceNumber: "FV-001", userName: "ANA",
+            paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "25.00"
+          }, {
+            id: "document-2", date: "2026-08-16", occurredAt: "2026-08-16T11:00:00Z",
+            ticketNumber: "", invoiceNumber: "FV-002", userName: "BRUNO",
+            paymentMethods: ["TARJETA"], kind: "SALE", status: "PAGADO", total: "75.00"
+          }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 2,
+          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+
+    expect(await screen.findByRole("columnheader", { name: "Número de ticket" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Número de factura" })).toBeVisible();
+    expect(screen.getByText("T-001")).toBeVisible();
+    expect(screen.getByText("FV-002")).toBeVisible();
+    expect(screen.getByText("Tickets: 1")).toBeVisible();
+    expect(screen.getByText("Facturas: 2")).toBeVisible();
+    expect(screen.getByText(/100,00/)).toBeVisible();
+    const dock = screen.getByLabelText("Periodo seleccionado");
+    expect(within(dock).getByRole("button", { name: "Hoy" })).toBeVisible();
+    expect(within(dock).getByRole("button", { name: "Ayer" })).toBeVisible();
+    expect(within(dock).getByRole("button", { name: "Semana actual" })).toBeVisible();
+    expect(within(dock).getByRole("button", { name: "Periodo personalizado" })).toBeVisible();
+  });
+
+  it("shows direct output shortcuts and document visualization buttons without a print dialog", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+
+    expect(await screen.findByRole("button", { name: "Por día" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Por documento" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Imprimir" })).toHaveAttribute("aria-keyshortcuts", "F5");
+    expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute("aria-keyshortcuts", "F6");
+    expect(screen.getByRole("button", { name: "PDF" })).toHaveAttribute("aria-keyshortcuts", "F7");
+    expect(screen.queryByText("Opciones de impresión")).not.toBeInTheDocument();
+  });
+
+  it("exports Excel with F6 and PDF with F7", async () => {
+    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+    const previousDesktop = window.tpvDesktop;
+    Object.defineProperty(window, "tpvDesktop", {
+      configurable: true,
+      writable: true,
+      value: { reports: { saveFile } }
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+    );
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.includes("/sales-activity/daily/render")) {
+        return Promise.resolve({
+          renderedPdf: { contentType: "application/pdf", base64: window.btoa("pdf") },
+          renderedImage: null
+        });
+      }
+      if (path.startsWith("/sales-activity/daily")) {
+        return Promise.resolve({
+          storeId: "store-1", companyName: "EMPRESA", storeCode: "001", date: "2026-08-16",
+          netSalesTotal: "0.00", paymentMethods: [],
+          counts: { sales: 0, returns: 0, cancelled: 0, pending: 0 }, users: []
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    try {
+      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+      await screen.findByText("EMPRESA");
+
+      fireEvent.keyDown(window, { key: "F6" });
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/sales-activity/daily/excel?date="),
+        { headers: { Authorization: "Bearer token" } }
+      ));
+      await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+
+      fireEvent.keyDown(window, { key: "F7" });
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/sales-activity\/daily\/render\?date=.*&format=A4$/),
+        { token: "token" }
+      ));
+      await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2));
+      expect(saveFile.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+        defaultFileName: expect.stringMatching(/^resumen-ventas-.*\.pdf$/)
+      }));
+    } finally {
+      fetchSpy.mockRestore();
+      Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: previousDesktop });
+    }
+  });
+
+  it("prints directly on the ticket printer with F5 using the selected document visualization", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const previousDesktop = window.tpvDesktop;
+    Object.defineProperty(window, "tpvDesktop", {
+      configurable: true,
+      writable: true,
+      value: {
+        hardware: {
+          getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+          printTicket
+        }
+      }
+    });
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.includes("/sales-activity/documents/render")) {
+        return Promise.resolve({
+          renderedPdf: { contentType: "application/pdf", base64: window.btoa("pdf") },
+          renderedImage: { contentType: "image/png", base64: window.btoa("png") }
+        });
+      }
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "15.50", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    try {
+      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
+      fireEvent.keyDown(window, { key: "F5" });
+
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        expect.stringMatching(/\/sales-activity\/documents\/render\?.*grouping=DOCUMENT.*format=TICKET_80/),
+        { token: "token" }
+      ));
+      await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+      expect(printTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ requireRenderedDocument: true, total: 15.5 }),
+        expect.objectContaining({
+          documentPrintRoutes: expect.arrayContaining([
+            expect.objectContaining({ documentType: "TICKET", printerTarget: "TICKET_PRINTER", paperSize: "TICKET_80" })
+          ])
+        })
+      );
+    } finally {
+      Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: previousDesktop });
+    }
+  });
+
+  it("sorts sales documents from the header arrows without exposing a Columns button", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        return Promise.resolve({
+          items: [{
+            id: "document-1", date: "2026-08-16", occurredAt: "2026-08-16T10:15:00Z",
+            ticketNumber: "T-001", invoiceNumber: "", userName: "ANA",
+            paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "25.00"
+          }, {
+            id: "document-2", date: "2026-08-16", occurredAt: "2026-08-16T11:15:00Z",
+            ticketNumber: "T-002", invoiceNumber: "", userName: "BRUNO",
+            paymentMethods: ["TARJETA"], kind: "SALE", status: "CONFIRMADO", total: "75.00"
+          }],
+          nextCursor: null, hasMore: false, ticketCount: 2, invoiceCount: 0,
+          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    const { container } = render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+
+    expect(await screen.findByRole("button", { name: "Modificar ancho Número de ticket" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Columnas" })).not.toBeInTheDocument();
+    const totalSort = screen.getByRole("button", { name: "Total Ordenar" });
+    expect(totalSort).toHaveAttribute("data-sort-direction", "none");
+
+    fireEvent.click(totalSort);
+    expect(totalSort).toHaveAttribute("data-sort-direction", "asc");
+    expect(container.querySelector(".sales-documents-table tbody tr:first-child")).toHaveTextContent("25,00");
+
+    fireEvent.click(totalSort);
+    expect(totalSort).toHaveAttribute("data-sort-direction", "desc");
+    expect(container.querySelector(".sales-documents-table tbody tr:first-child")).toHaveTextContent("75,00");
   });
 
   it("keeps reports read-only and leaves document creation to operational modules", () => {

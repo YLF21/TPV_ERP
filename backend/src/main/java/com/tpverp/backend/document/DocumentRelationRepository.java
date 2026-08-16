@@ -86,6 +86,24 @@ public interface DocumentRelationRepository
             @Param("storeId") UUID storeId,
             @Param("date") java.time.LocalDate date);
 
+    @Query("""
+            select count(distinct relation.documento.id)
+            from DocumentRelation relation
+            where relation.origen.tiendaId = :storeId
+              and relation.origen.fecha between :from and :to
+              and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+              and relation.origen.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+              and relation.documento.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+              and relation.documento.estado not in (
+                  com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                  com.tpverp.backend.document.DocumentStatus.ANULADO)
+            """)
+    long countActiveInvoicesForSalesActivityTickets(
+            @Param("storeId") UUID storeId,
+            @Param("from") java.time.LocalDate from,
+            @Param("to") java.time.LocalDate to);
+
     interface RelatedDocument {
         UUID getOriginId();
 

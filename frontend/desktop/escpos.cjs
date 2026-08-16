@@ -3,6 +3,17 @@ const net = require("node:net");
 
 const ESC = 0x1b;
 const GS = 0x1d;
+const MAX_ADDITIONAL_FEED_LINES = 12;
+
+function additionalFeedLines(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.min(MAX_ADDITIONAL_FEED_LINES, Math.max(0, Math.trunc(numeric)));
+}
+
+function finalFeedBuffer(baseLines, configuredAdditionalLines) {
+  return Buffer.alloc(baseLines + additionalFeedLines(configuredAdditionalLines), 0x0a);
+}
 
 function textBuffer(value = "") {
   // Raw ESC/POS is configured for a single-byte Latin code page. Unsupported
@@ -65,7 +76,7 @@ function buildRasterImageBuffer(raster, appendLineFeed = true) {
   ]);
 }
 
-function buildRasterDocumentBuffer(raster) {
+function buildRasterDocumentBuffer(raster, configuredAdditionalLines = 0) {
   if (!raster || !Number.isInteger(raster.width) || !Number.isInteger(raster.height)
       || raster.width <= 0 || raster.height <= 0 || raster.width > 576
       || raster.height > 30000 || !Buffer.isBuffer(raster.bgra)
@@ -83,12 +94,12 @@ function buildRasterDocumentBuffer(raster) {
       bgra: raster.bgra.subarray(y * rowBytes, (y + height) * rowBytes)
     }, false));
   }
-  chunks.push(Buffer.from([0x0a, 0x0a, 0x0a, 0x0a]));
+  chunks.push(finalFeedBuffer(4, configuredAdditionalLines));
   chunks.push(Buffer.from([GS, 0x56, 0x00]));
   return Buffer.concat(chunks);
 }
 
-function buildTicketBuffer(ticket) {
+function buildTicketBuffer(ticket, configuredAdditionalLines = 0) {
   const suppliedLabels = ticket.escposLabels || ticket.labels;
   const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
   const raw = ticket.escposContent;
@@ -163,7 +174,7 @@ function buildTicketBuffer(ticket) {
     chunks.push(line("------------------------------------------"));
     for (const note of notes) chunks.push(line(String(note).slice(0, 500)));
   }
-  chunks.push(Buffer.from([0x0a, 0x0a, 0x0a]));
+  chunks.push(finalFeedBuffer(3, configuredAdditionalLines));
   chunks.push(Buffer.from([GS, 0x56, 0x00]));
 
   return Buffer.concat(chunks);

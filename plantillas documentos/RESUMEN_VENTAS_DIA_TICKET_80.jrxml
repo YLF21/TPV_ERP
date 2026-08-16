@@ -1,0 +1,107 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="resumen_ventas_dia_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" uuid="be4e818d-f2cd-44be-ab48-24c3d2f461b1" ignorePagination="true">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="RESUMEN_VENTAS_DIA_80_SAMPLE.jrdax"/>
+	<query language="jsonql"><![CDATA[lines]]></query>
+	<field name="lineType" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="lineType"/>
+	</field>
+	<field name="label" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="label"/>
+	</field>
+	<field name="value" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="value"/>
+	</field>
+	<field name="title" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.title"/>
+	</field>
+	<field name="companyName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.companyName"/>
+	</field>
+	<field name="storeCode" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.storeCode"/>
+	</field>
+	<field name="dataPeriod" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.dataPeriod"/>
+	</field>
+	<field name="printedAt" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.printedAt"/>
+	</field>
+	<title height="104">
+		<element kind="textField" uuid="e53efc5f-9bba-4ba3-9008-565b4cc7365f" x="0" y="0" width="211" height="20" fontName="SansSerif" fontSize="13.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$F{companyName}]]></expression>
+		</element>
+		<element kind="textField" uuid="c3d800cb-4f60-46aa-ae91-4d13c1217e2c" x="0" y="23" width="211" height="18" fontName="SansSerif" fontSize="11.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$F{title}]]></expression>
+		</element>
+		<element kind="staticText" uuid="af45bb12-f96e-4519-a480-4c26b012442d" x="0" y="45" width="52" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">
+			<text><![CDATA[TIENDA:]]></text>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="textField" uuid="b4955b5c-e2f7-445a-9a53-2693c5d10725" x="55" y="45" width="156" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">
+			<expression><![CDATA[$F{storeCode}]]></expression>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="staticText" uuid="66d99b11-f27a-4730-92d0-cd5b306fc2ee" x="0" y="61" width="52" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">
+			<text><![CDATA[DATOS:]]></text>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="textField" uuid="3decc12b-bef6-4178-bc06-363d3d4bce4f" x="55" y="61" width="156" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">
+			<expression><![CDATA[$F{dataPeriod}]]></expression>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="staticText" uuid="78f460e3-011a-4346-806b-e97b842ab070" x="0" y="77" width="52" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">
+			<text><![CDATA[IMPRESO:]]></text>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="textField" uuid="2a3427b0-74d7-4658-a821-743c6fba9e61" x="55" y="77" width="156" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">
+			<expression><![CDATA[$F{printedAt}]]></expression>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+		<element kind="line" uuid="73d09a6d-73d5-46ef-bfbd-aad0d66f07d5" x="0" y="99" width="211" height="1"/>
+	</title>
+	<detail>
+		<band height="25" splitType="Prevent">
+			<element kind="textField" uuid="58c12e35-aa0c-4386-8026-a6aa88214edf" x="0" y="4" width="100" height="14" fontName="Monospaced" fontSize="8.2" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["PAYMENT".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{label}]]></expression>
+			</element>
+			<element kind="textField" uuid="44880443-25fc-425e-a956-b89ea9ecbff7" x="100" y="4" width="90" height="14" fontName="Monospaced" fontSize="8.2" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["PAYMENT".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{value}]]></expression>
+			</element>
+			<element kind="line" uuid="4bc429c3-dd48-426b-a7ab-40242eb4f751" x="0" y="1" width="211" height="1">
+				<printWhenExpression><![CDATA["TOTAL".equals($F{lineType})]]></printWhenExpression>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<pen lineWidth="0.5" lineStyle="Dashed"/>
+			</element>
+			<element kind="textField" uuid="3bbdc36f-1626-40f8-8885-9571a65c4347" x="0" y="5" width="100" height="15" fontName="Monospaced" fontSize="11.0" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["TOTAL".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{label}]]></expression>
+			</element>
+			<element kind="textField" uuid="c8b129f8-a884-45dc-af0d-e228b2fd6f0d" x="128" y="5" width="62" height="15" fontName="Monospaced" fontSize="11.0" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["TOTAL".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{value}]]></expression>
+			</element>
+			<element kind="line" uuid="6f2f7a4b-4df8-4ed8-badf-9821cb32530d" x="0" y="23" width="211" height="1">
+				<printWhenExpression><![CDATA["TOTAL".equals($F{lineType})]]></printWhenExpression>
+				<pen lineWidth="0.5" lineStyle="Solid"/>
+			</element>
+			<element kind="textField" uuid="aa991a95-5d72-49be-b060-f177467c9859" x="0" y="4" width="100" height="14" fontName="Monospaced" fontSize="8.2" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["COUNT".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{label}]]></expression>
+			</element>
+			<element kind="textField" uuid="29911f0a-6746-4cff-82d8-bd8ebf53914f" x="145" y="4" width="45" height="14" fontName="Monospaced" fontSize="8.2" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["COUNT".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{value}]]></expression>
+			</element>
+			<element kind="textField" uuid="f3620990-bfe7-4536-9c05-000c7dd8af73" x="0" y="6" width="211" height="15" fontName="Monospaced" fontSize="9.0" blankWhenNull="true" bold="true">
+				<printWhenExpression><![CDATA["SECTION".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{label}]]></expression>
+			</element>
+			<element kind="line" uuid="4b9ae69e-80ca-4dfc-9154-bcc48e208cd7" x="0" y="10" width="211" height="1">
+				<printWhenExpression><![CDATA["END".equals($F{lineType})]]></printWhenExpression>
+			</element>
+		</band>
+	</detail>
+	<summary height="24"/>
+</jasperReport>

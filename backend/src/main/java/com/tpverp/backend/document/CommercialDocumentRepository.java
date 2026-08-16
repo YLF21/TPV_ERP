@@ -497,6 +497,169 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     List<CommercialDocument> findAllByTiendaIdAndFecha(UUID tiendaId, LocalDate fecha);
 
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.anuladoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
+            """)
+    List<CommercialDocument> findSalesActivityDocuments(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+              and (
+                  document.fecha < :cursorDate
+                  or (
+                      document.fecha = :cursorDate
+                      and (
+                          coalesce(document.confirmadoEn, document.anuladoEn, document.creadoEn) < :cursorOccurredAt
+                          or (
+                              coalesce(document.confirmadoEn, document.anuladoEn, document.creadoEn) = :cursorOccurredAt
+                              and cast(document.id as string) < :cursorId
+                          )
+                      )
+                  )
+              )
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.anuladoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
+            """)
+    List<CommercialDocument> findSalesActivityDocumentsAfter(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorOccurredAt") Instant cursorOccurredAt,
+            @Param("cursorId") String cursorId,
+            Pageable pageable);
+
+    @Query("""
+            select min(document.fecha)
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+            """)
+    LocalDate findFirstSalesActivityDate(@Param("storeId") UUID storeId);
+
+    @Query("""
+            select count(document)
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+            """)
+    long countSalesActivityTickets(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    @Query("""
+            select count(document)
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+            """)
+    long countSalesActivityInvoiceDocuments(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    @Query("""
+            select coalesce(sum(
+                case
+                    when document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                        then 0
+                    else document.total
+                end), 0)
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+            """)
+    BigDecimal sumSalesActivityTotal(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
     @EntityGraph(attributePaths = {"lineas"})
     @Query("""
             select document

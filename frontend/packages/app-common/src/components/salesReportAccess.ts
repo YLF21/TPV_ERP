@@ -2,6 +2,7 @@ import type { UserSession } from "../types";
 
 export const outputReports = [
   "salesReport.dailySales",
+  "salesReport.salesDocuments",
   "salesReport.tickets",
   "salesReport.deliveryNotes",
   "salesReport.invoices",

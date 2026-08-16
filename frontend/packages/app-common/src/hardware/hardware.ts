@@ -57,6 +57,7 @@ export type HardwareConfig = {
   escposSerialBaudRate: number;
   escposHost: string;
   escposPort: number;
+  escposAdditionalFeedLines: number;
   cashDrawerDevicePath: string;
   cashDrawerSerialBaudRate: number;
   cashDrawerHost: string;
@@ -314,6 +315,7 @@ export const defaultHardwareConfig: HardwareConfig = {
   escposSerialBaudRate: 9600,
   escposHost: "",
   escposPort: 9100,
+  escposAdditionalFeedLines: 0,
   cashDrawerDevicePath: "",
   cashDrawerSerialBaudRate: 9600,
   cashDrawerHost: "",
@@ -412,6 +414,9 @@ export function normalizeHardwareConfigForUi(
   return {
     ...defaultHardwareConfig,
     ...config,
+    escposAdditionalFeedLines: Math.min(12, Math.max(0, Math.trunc(
+      Number(config?.escposAdditionalFeedLines ?? defaultHardwareConfig.escposAdditionalFeedLines) || 0,
+    ))),
     defaultProductLabelProfileId,
     productLabelProfiles,
   };

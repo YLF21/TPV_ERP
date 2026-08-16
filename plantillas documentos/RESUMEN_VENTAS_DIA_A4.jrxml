@@ -1,0 +1,34 @@
+<!-- Integrated, immutable sales report template. -->
+<jasperReport name="resumen_ventas_dia_a4" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="3a2e9314-4bca-4c23-9092-31905df9f624">
+  <query language="jsonql"><![CDATA[lines]]></query>
+  <field name="lineType" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="lineType"/></field>
+  <field name="label" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="label"/></field>
+  <field name="value" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="value"/></field>
+  <field name="title" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.title"/></field>
+  <field name="companyName" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.companyName"/></field>
+  <field name="storeCode" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.storeCode"/></field>
+  <field name="dataPeriod" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.dataPeriod"/></field>
+  <field name="printedAt" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.printedAt"/></field>
+  <title height="92">
+    <element kind="textField" uuid="9955aecd-81cf-47e6-b880-0ed35b49201e" x="0" y="0" width="555" height="25" fontName="SansSerif" fontSize="16" bold="true"><expression><![CDATA[$F{title}]]></expression></element>
+    <element kind="textField" uuid="c94cb04b-d7ee-453a-b6af-01b98dfab01e" x="0" y="30" width="355" height="18" fontName="SansSerif" fontSize="10" bold="true"><expression><![CDATA[$F{companyName}]]></expression></element>
+    <element kind="staticText" uuid="b0c23a89-f4f1-44c2-b95b-0b245d44ad2a" x="375" y="30" width="70" height="18" fontName="SansSerif" fontSize="9" bold="true"><text><![CDATA[ID tienda:]]></text></element>
+    <element kind="textField" uuid="40c98132-5ef1-4819-9b27-2fd77e242258" x="445" y="30" width="110" height="18" fontName="SansSerif" fontSize="9"><expression><![CDATA[$F{storeCode}]]></expression></element>
+    <element kind="staticText" uuid="a1761019-69d2-434e-ac26-e66bd4b6651c" x="0" y="54" width="95" height="16" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[Fecha consulta:]]></text></element>
+    <element kind="textField" uuid="97021458-a7e0-48dc-91de-bc159bd3b241" x="95" y="54" width="160" height="16" fontName="SansSerif" fontSize="8"><expression><![CDATA[$F{dataPeriod}]]></expression></element>
+    <element kind="staticText" uuid="c1e22dc4-51ee-441e-b6fe-8e587742a4af" x="300" y="54" width="105" height="16" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[Fecha impresión:]]></text></element>
+    <element kind="textField" uuid="8c67532c-2f66-485a-af82-da0282734dad" x="405" y="54" width="150" height="16" fontName="SansSerif" fontSize="8"><expression><![CDATA[$F{printedAt}]]></expression></element>
+    <element kind="line" uuid="71bcfc5f-0ef4-40f2-b619-e69929841503" x="0" y="82" width="555" height="1" forecolor="#0A2F56"/>
+  </title>
+  <columnHeader height="20">
+    <element kind="staticText" uuid="5df777d4-03f4-4f3a-a67d-dfdc20e5c726" x="0" y="0" width="415" height="20" backcolor="#0A2F56" forecolor="#FFFFFF" mode="Opaque" fontName="SansSerif" fontSize="9" bold="true" vTextAlign="Middle"><text><![CDATA[Concepto]]></text></element>
+    <element kind="staticText" uuid="2e638aa9-e9b1-4445-9280-487d0eefc61d" x="415" y="0" width="140" height="20" backcolor="#0A2F56" forecolor="#FFFFFF" mode="Opaque" fontName="SansSerif" fontSize="9" bold="true" hTextAlign="Right" vTextAlign="Middle"><text><![CDATA[Importe / cantidad]]></text></element>
+  </columnHeader>
+  <detail>
+    <band height="26" splitType="Stretch">
+      <element kind="textField" uuid="270a4dd9-2265-486b-a89b-70ac03a318ee" x="0" y="2" width="180" height="20" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="StretchHeight" blankWhenNull="true"><expression><![CDATA[$F{label}]]></expression></element>
+      <element kind="textField" uuid="9562370b-6a40-4c04-8615-4108dd3c3ed8" x="185" y="2" width="370" height="20" fontName="SansSerif" fontSize="8.5" hTextAlign="Right" textAdjust="StretchHeight" blankWhenNull="true"><expression><![CDATA[$F{value}]]></expression></element>
+      <element kind="line" uuid="dd057dc4-58a9-4a16-b269-637716471482" x="0" y="25" width="555" height="1" forecolor="#D4DEE8"/>
+    </band>
+  </detail>
+</jasperReport>

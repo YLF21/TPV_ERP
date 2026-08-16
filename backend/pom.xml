@@ -198,6 +198,17 @@
 					<include>VALE_TICKET_80.jrxml</include>
 				</includes>
 			</resource>
+			<!-- Immutable operational sales reports; these are not user-editable templates. -->
+			<resource>
+				<directory>../plantillas documentos</directory>
+				<targetPath>reports/sales-activity</targetPath>
+				<includes>
+					<include>RESUMEN_VENTAS_DIA_A4.jrxml</include>
+					<include>RESUMEN_VENTAS_DIA_TICKET_80.jrxml</include>
+					<include>DOCUMENTOS_VENTAS_A4.jrxml</include>
+					<include>DOCUMENTOS_VENTAS_TICKET_80.jrxml</include>
+				</includes>
+			</resource>
 		</resources>
 		<plugins>
 			<plugin>

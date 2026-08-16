@@ -19,6 +19,16 @@ describe("escpos command builder", () => {
     expect([...buffer.subarray(0, 2)]).toEqual([0x1b, 0x40]);
     expect(buffer.toString("latin1")).toContain("Tienda");
     expect(buffer.toString("latin1")).toContain("T-1");
+    expect([...buffer.subarray(-6, -3)]).toEqual([0x0a, 0x0a, 0x0a]);
+    expect([...buffer.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
+  });
+
+  it("adds configured final feed lines without reducing the existing ticket minimum", () => {
+    const buffer = buildTicketBuffer({
+      storeName: "Tienda", terminalCode: "01", lines: [], payments: [], total: 0,
+    }, 4);
+
+    expect([...buffer.subarray(-10, -3)]).toEqual(Array(7).fill(0x0a));
     expect([...buffer.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
   });
 
@@ -122,6 +132,17 @@ describe("escpos command builder", () => {
     expect(buffer[firstBandEnd]).toBe(0x1d);
     expect(buffer.subarray(rasterCommands[0], rasterCommands[1])).not.toContain(0x0a);
     expect([...buffer.subarray(-7, -3)]).toEqual([0x0a, 0x0a, 0x0a, 0x0a]);
+    expect([...buffer.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
+  });
+
+  it("adds configured final feed lines after a Jasper raster", () => {
+    const buffer = buildRasterDocumentBuffer({
+      width: 8,
+      height: 1,
+      bgra: Buffer.alloc(8 * 4, 0),
+    }, 2);
+
+    expect([...buffer.subarray(-9, -3)]).toEqual(Array(6).fill(0x0a));
     expect([...buffer.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
   });
 

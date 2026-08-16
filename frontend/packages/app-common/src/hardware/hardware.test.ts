@@ -7,7 +7,8 @@ import {
   createA4TestDocument,
   createTestTicket,
   defaultHardwareConfig,
-  getHardwareBridge
+  getHardwareBridge,
+  normalizeHardwareConfigForUi,
 } from "./hardware";
 
 describe("hardware facade", () => {
@@ -26,6 +27,7 @@ describe("hardware facade", () => {
       escposSerialBaudRate: 9600,
       escposHost: "",
       escposPort: 9100,
+      escposAdditionalFeedLines: 0,
       cashDrawerDevicePath: "",
       cashDrawerSerialBaudRate: 9600,
       cashDrawerHost: "",
@@ -99,6 +101,12 @@ describe("hardware facade", () => {
         }
       ]
     });
+  });
+
+  it("keeps the current ESC/POS feed as the minimum and clamps additional lines", () => {
+    expect(normalizeHardwareConfigForUi({ escposAdditionalFeedLines: -4 }).escposAdditionalFeedLines).toBe(0);
+    expect(normalizeHardwareConfigForUi({ escposAdditionalFeedLines: 7.9 }).escposAdditionalFeedLines).toBe(7);
+    expect(normalizeHardwareConfigForUi({ escposAdditionalFeedLines: 99 }).escposAdditionalFeedLines).toBe(12);
   });
 
   it("returns a controlled unavailable result outside Electron", async () => {

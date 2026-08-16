@@ -39,6 +39,7 @@ const defaultHardwareConfig = {
   escposSerialBaudRate: 9600,
   escposHost: "",
   escposPort: 9100,
+  escposAdditionalFeedLines: 0,
   cashDrawerDevicePath: "",
   cashDrawerSerialBaudRate: 9600,
   cashDrawerHost: "",
@@ -332,6 +333,10 @@ function normalizeHardwareConfig(config) {
   if (!Array.isArray(nextConfig.cashDrawerOpeningPaymentMethods)) {
     nextConfig.cashDrawerOpeningPaymentMethods = ["EFECTIVO"];
   }
+  const configuredAdditionalFeedLines = Number(nextConfig.escposAdditionalFeedLines);
+  nextConfig.escposAdditionalFeedLines = Number.isFinite(configuredAdditionalFeedLines)
+    ? Math.min(12, Math.max(0, Math.trunc(configuredAdditionalFeedLines)))
+    : 0;
   const configuredRoutes = Array.isArray(config?.documentPrintRoutes) ? config.documentPrintRoutes : [];
   nextConfig.documentPrintRoutes = defaultHardwareConfig.documentPrintRoutes.map((defaultRoute) => {
     const configuredRoute = configuredRoutes.find((route) => route.documentType === defaultRoute.documentType) || {};
@@ -799,8 +804,8 @@ async function printTicket(ticket, config) {
     return executeEscposTicketPrint({
       sendBuffer: (buffer) => sendTicketPrinterRawBuffer(routedConfig, buffer),
       ticketBuffer: documentRaster
-        ? buildRasterDocumentBuffer(documentRaster)
-        : buildTicketBuffer({ ...ticket, logoRaster }),
+        ? buildRasterDocumentBuffer(documentRaster, nextConfig.escposAdditionalFeedLines)
+        : buildTicketBuffer({ ...ticket, logoRaster }, nextConfig.escposAdditionalFeedLines),
       drawerBuffer: shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
         ? buildCashDrawerBuffer()
         : undefined,
