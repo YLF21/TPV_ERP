@@ -331,7 +331,7 @@ ORDER BY dl.posicion]]></query>
         : $F{importe_descuento_socio})
     .max(java.math.BigDecimal.ZERO)
     .compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
-			<expression><![CDATA["Descuento Adicional"]]></expression>
+			<expression><![CDATA["Descuento:"]]></expression>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			<property name="com.jaspersoft.studio.unit.x" value="px"/>
@@ -360,7 +360,6 @@ ORDER BY dl.posicion]]></query>
                     ? java.math.BigDecimal.ZERO
                     : $F{importe_descuento_socio})
                 .max(java.math.BigDecimal.ZERO)
-                .negate()
         ) + " €"]]></expression>
 			<property name="com.jaspersoft.studio.unit.x" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>

@@ -987,46 +987,7 @@ public class DocumentService {
     private static void applyCheckoutDiscount(
             CommercialDocument ticket,
             BigDecimal requestedDiscount) {
-        if (requestedDiscount == null || requestedDiscount.signum() == 0) {
-            return;
-        }
-        var discount = Money.euros(requestedDiscount);
-        if (discount.signum() <= 0 || discount.compareTo(ticket.getTotal()) >= 0) {
-            throw new IllegalArgumentException("checkout_discount_exceeds_total");
-        }
-        var sources = ticket.getLineas().stream()
-                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
-                .filter(line -> line.getTotal().signum() > 0)
-                .toList();
-        if (sources.isEmpty()) {
-            throw new IllegalStateException("checkout_discount_without_eligible_lines");
-        }
-        var gross = sources.stream().map(DocumentLine::getTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var remaining = discount;
-        var position = ticket.getLineas().stream().mapToInt(DocumentLine::getPosicion)
-                .max().orElse(0) + 1;
-        for (int index = 0; index < sources.size() && remaining.signum() > 0; index++) {
-            var source = sources.get(index);
-            var allocated = index == sources.size() - 1
-                    ? remaining
-                    : Money.euros(discount.multiply(source.getTotal())
-                    .divide(gross, Money.SCALE + 4, Money.ROUNDING)).min(remaining);
-            if (allocated.signum() <= 0) {
-                continue;
-            }
-            ticket.addLine(DocumentLine.manualDiscount(
-                    ticket,
-                    position++,
-                    allocated.negate(),
-                    source.isImpuestosIncluidos(),
-                    source.getRegimenImpuesto(),
-                    source.getPorcentajeImpuesto()));
-            remaining = Money.euros(remaining.subtract(allocated));
-        }
-        if (remaining.signum() != 0) {
-            throw new IllegalStateException("checkout_discount_allocation_mismatch");
-        }
+        CheckoutDiscountAllocator.apply(ticket, requestedDiscount);
     }
 
     private static boolean hasText(String value) {

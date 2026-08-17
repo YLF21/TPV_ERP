@@ -143,7 +143,6 @@ lineas_fiscales AS (
         LIMIT 1
     ) licencia_actual ON TRUE
     WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
-      AND dl.tipo_linea <> 'MANUAL_DISCOUNT'
 ),
 impuesto_agrupado AS (
     SELECT

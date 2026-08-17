@@ -221,6 +221,23 @@ class TicketReturnValuationServiceTest {
         assertThat(total.remainingBasketValue()).isEqualByComparingTo("0.00");
     }
 
+    @Test
+    void partialReturnKeepsTheProportionalPersistedF11Discount() {
+        var fixture = ticketWithoutPromotion(2, "20.00");
+        CheckoutDiscountAllocator.apply(fixture.ticket(), new BigDecimal("5.00"));
+
+        var partial = service().value(
+                fixture.ticket(), Map.of(fixture.productLine().getId(), BigDecimal.ONE));
+        var total = service().value(
+                fixture.ticket(),
+                Map.of(fixture.productLine().getId(), new BigDecimal("2.000")));
+
+        assertThat(partial.refundableAmount()).isEqualByComparingTo("17.50");
+        assertThat(partial.remainingBasketValue()).isEqualByComparingTo("17.50");
+        assertThat(total.refundableAmount()).isEqualByComparingTo("35.00");
+        assertThat(total.remainingBasketValue()).isEqualByComparingTo("0.00");
+    }
+
     private TicketReturnValuationService service() {
         return new TicketReturnValuationService(
                 documents, products, loyaltyLines, loyaltySettlements,

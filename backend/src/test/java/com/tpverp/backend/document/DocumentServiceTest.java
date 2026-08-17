@@ -467,6 +467,57 @@ class DocumentServiceTest {
     }
 
     @Test
+    void f11QuotePersistedSalePaymentAndFiscalSnapshotShareTheSameReducedTaxTotals() {
+        var productId = UUID.randomUUID();
+        var command = command(
+                CommercialDocumentType.TICKET,
+                List.of(line(productId, "P-F11", "Producto F11", new BigDecimal("40.00"))));
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(documentRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(stockGateway.confirm(any())).thenReturn(false);
+
+        var quote = service.quoteTicket(
+                command, null, new BigDecimal("5.00"), authentication());
+        var sale = service.createTicket(
+                command,
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("35.00"), true,
+                        new BigDecimal("35.00"), BigDecimal.ZERO)),
+                null,
+                new BigDecimal("5.00"),
+                authentication());
+        var fiscalSnapshot = new com.tpverp.backend.verifactu.FiscalSnapshotFactory()
+                .create(
+                        sale,
+                        "B12345674",
+                        com.tpverp.backend.verifactu.FiscalRecordOperation.ALTA,
+                        com.tpverp.backend.verifactu.FiscalDocumentType.F2,
+                        null);
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("35.00");
+        assertThat(quote.getBaseTotal()).isEqualByComparingTo("28.93");
+        assertThat(quote.getImpuestoTotal()).isEqualByComparingTo("6.07");
+        assertThat(sale.getTotal()).isEqualByComparingTo(quote.getTotal());
+        assertThat(sale.getBaseTotal()).isEqualByComparingTo(quote.getBaseTotal());
+        assertThat(sale.getImpuestoTotal()).isEqualByComparingTo(quote.getImpuestoTotal());
+        assertThat(sale.getPaidTotal()).isEqualByComparingTo(sale.getTotal());
+        assertThat(sale.getBaseTotal().add(sale.getImpuestoTotal()))
+                .isEqualByComparingTo(sale.getTotal());
+        assertThat(fiscalSnapshot)
+                .containsEntry("baseTotal", sale.getBaseTotal())
+                .containsEntry("impuestoTotal", sale.getImpuestoTotal())
+                .containsEntry("total", sale.getTotal());
+        assertThat(TicketPrintView.from(sale).checkoutDiscountTotal())
+                .isEqualByComparingTo("5.00");
+    }
+
+    @Test
     void unitProductRejectsDecimalQuantity() {
         var command = new DocumentCommand(
                 UUID.randomUUID(),

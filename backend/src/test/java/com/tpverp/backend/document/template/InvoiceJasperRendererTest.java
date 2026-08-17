@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentLineCommand;
+import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.document.InvoiceFiscalProfile;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.organization.Company;
@@ -262,6 +264,50 @@ class InvoiceJasperRendererTest {
         assertThat(companyOnlyJson.at("/issuer/headerPrimaryName").asText())
                 .isEqualTo("TPV ERP SL");
         assertThat(companyOnlyJson.at("/issuer/headerSecondaryName").isNull()).isTrue();
+    }
+
+    @Test
+    void a4AndTicketInvoiceDataUseThePersistedF11TaxBreakdown() {
+        var fixture = fixture();
+        var document = new CommercialDocument(
+                fixture.store().getId(), UUID.randomUUID(),
+                CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.of(2026, 8, 17), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE,
+                "P-F11", "Producto F11", "VENTA", new BigDecimal("40.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        document.addLine(new DocumentLineCommand(
+                null, BigDecimal.ONE, "DESCUENTO", "Descuento", null,
+                new BigDecimal("-5.00"), BigDecimal.ZERO, true,
+                "IVA", new BigDecimal("21.00"),
+                DocumentLineType.MANUAL_DISCOUNT, null, null, null)
+                .toEntity(document, 2));
+        document.confirm("FV-2026-F11", UUID.randomUUID(),
+                Instant.parse("2026-08-17T09:00:00Z"), false);
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                new SafeJrxmlCompiler(),
+                new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
+
+        var json = renderer.data(
+                document, fixture.store(), fixture.company(), fixture.customer(),
+                new InvoicePresentationSnapshot(
+                        2, InvoiceFiscalProfile.IVA, null, List.of()),
+                null, null);
+
+        assertThat(json.at("/totals/grandTotal").decimalValue())
+                .isEqualByComparingTo("35.00");
+        assertThat(json.at("/totals/taxableBase").decimalValue())
+                .isEqualByComparingTo("28.93");
+        assertThat(json.at("/totals/taxTotal").decimalValue())
+                .isEqualByComparingTo("6.07");
+        assertThat(json.at("/taxBreakdown/0/taxableBase").decimalValue())
+                .isEqualByComparingTo("28.93");
+        assertThat(json.at("/taxBreakdown/0/taxAmount").decimalValue())
+                .isEqualByComparingTo("6.07");
     }
 
     @Test

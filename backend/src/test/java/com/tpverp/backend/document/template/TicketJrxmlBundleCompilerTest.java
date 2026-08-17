@@ -31,6 +31,41 @@ class TicketJrxmlBundleCompilerTest {
     }
 
     @Test
+    void builtInTaxSubreportsIncludeThePersistedF11FiscalAllocation() throws Exception {
+        var sources = repositorySources();
+
+        assertThat(java.util.List.of(
+                        "ticket_impuesto.jrxml",
+                        "ticket_impuesto_compacta.jrxml",
+                        "ticket_impuesto_minimalista.jrxml"))
+                .allSatisfy(filename -> {
+                    var source = new String(
+                            sources.get(filename), java.nio.charset.StandardCharsets.UTF_8);
+                    assertThat(source)
+                            .contains("SUM(base)", "SUM(impuesto)")
+                            .doesNotContain("tipo_linea <> 'MANUAL_DISCOUNT'");
+                });
+    }
+
+    @Test
+    void builtInContentSubreportsHideTechnicalF11LinesAndPrintOneCommercialDiscount() throws Exception {
+        var sources = repositorySources();
+
+        assertThat(java.util.List.of(
+                        "ticket_contenido.jrxml",
+                        "ticket_contenido_compacta.jrxml",
+                        "ticket_contenido_minimalista.jrxml"))
+                .allSatisfy(filename -> {
+                    var source = new String(
+                            sources.get(filename), java.nio.charset.StandardCharsets.UTF_8);
+                    assertThat(source)
+                            .contains("tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')")
+                            .contains("<![CDATA[\"Descuento:\"]]>")
+                            .doesNotContain("Descuento Adicional");
+                });
+    }
+
+    @Test
     void completesALoneUploadedMasterWithTheBuiltInSubreports() throws Exception {
         var sources = repositorySources();
         var bundle = compiler.compileUpload(java.util.Map.of(
