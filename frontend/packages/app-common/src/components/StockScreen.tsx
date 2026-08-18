@@ -6641,7 +6641,7 @@ export function StockScreen({
     if (!stockExportNotice || stockExportNoticeView !== selectedView) return null;
     return (
       <div
-        className={`stock-export-notice ${stockExportNoticeKind}`}
+        className={`settings-inline-message stock-export-notice ${stockExportNoticeKind}`}
         role={stockExportNoticeKind === "error" ? "alert" : "status"}
       >
         {stockExportNotice}

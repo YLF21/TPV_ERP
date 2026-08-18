@@ -36,7 +36,7 @@
 		<element kind="textField" uuid="e53efc5f-9bba-4ba3-9008-565b4cc7365f" x="0" y="0" width="211" height="20" fontName="SansSerif" fontSize="13.0" bold="true" hTextAlign="Center">
 			<expression><![CDATA[$F{companyName}]]></expression>
 		</element>
-		<element kind="textField" uuid="c3d800cb-4f60-46aa-ae91-4d13c1217e2c" x="0" y="23" width="211" height="18" fontName="SansSerif" fontSize="9.0" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="c3d800cb-4f60-46aa-ae91-4d13c1217e2c" x="0" y="23" width="211" height="18" fontName="SansSerif" fontSize="9.0" textAdjust="ScaleFont" bold="true" hTextAlign="Center">
 			<expression><![CDATA[$F{title}]]></expression>
 		</element>
 		<element kind="staticText" uuid="af45bb12-f96e-4519-a480-4c26b012442d" x="0" y="45" width="52" height="15" fontName="Monospaced" fontSize="10.0" bold="true" hTextAlign="Left" vTextAlign="Bottom">

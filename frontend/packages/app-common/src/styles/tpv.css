@@ -6546,20 +6546,9 @@ textarea {
   color: #ffffff;
 }
 
-.stock-toolbar {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) 132px 124px minmax(150px, max-content);
-  gap: 12px;
-  align-items: end;
-  padding: 16px 18px 0;
-}
-
+.stock-toolbar,
 .stock-top-sales-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) 132px 124px;
-  gap: 12px;
-  align-items: end;
-  padding: 16px 18px 0;
 }
 
 .stock-search-stack {
@@ -6596,59 +6585,18 @@ textarea {
 }
 
 .stock-export-button {
-  min-height: 34px;
-  height: 34px;
-  width: max-content;
-  justify-self: start;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid #244e86;
-  border-radius: 11px;
-  background: #244e86;
-  color: #ffffff;
-  cursor: pointer;
-  padding: 0 10px;
-  font-size: 12px;
-  font-weight: 900;
-  white-space: nowrap;
 }
 
 .stock-export-button:disabled {
-  cursor: wait;
   opacity: 0.65;
-}
-
-.stock-export-notice {
-  margin: 2px 0 8px;
-  padding: 9px 12px;
-  border: 1px solid #b8c9dc;
-  background: #f3f7fb;
-  color: #29435f;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .stock-inventory-controls {
   min-width: 0;
-  display: grid;
-  align-content: start;
-}
-
-.stock-export-notice.success {
-  border-color: #9dcdb3;
-  background: #edf8f2;
-  color: #17603a;
-}
-
-.stock-export-notice.error {
-  border-color: #e3a3a3;
-  background: #fff1f1;
-  color: #9a2020;
 }
 
 .stock-filter-button .report-action-icon {
@@ -9778,38 +9726,23 @@ textarea {
 .table-layout-drag-handle {
   position: absolute;
   z-index: 7;
-  top: 50%;
-  left: 0;
+  inset: 2px auto 2px 0;
   width: 20px;
-  height: calc(100% - 4px);
-  transform: translateY(-50%);
-  border-radius: 2px;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.25px, transparent 1.5px);
-  background-position: center;
-  background-size: 6px 6px;
-  cursor: grab;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.25px, transparent 1.5px) center / 6px 6px;
   opacity: 0.62;
   touch-action: none;
 }
 
 .table-layout-drag-handle:hover,
 .table-layout-header-cell.dragging .table-layout-drag-handle {
-  background-color: rgba(255, 255, 255, 0.16);
   opacity: 1;
-}
-
-.table-layout-drag-handle:active {
-  cursor: grabbing;
 }
 
 .table-layout-header-cell.movable > .table-layout-header-label {
   padding-left: 22px;
 }
 
-.table-layout-header-cell.movable > .table-layout-sort-button {
-  padding-left: 30px;
-}
-
+.table-layout-header-cell.movable > .table-layout-sort-button,
 .table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button {
   padding-left: 30px;
 }
@@ -16793,51 +16726,31 @@ textarea:focus,
 }
 
 /* Lift list controls and place filter summaries below the search box. */
-.stock-toolbar {
-  grid-template-columns: minmax(280px, max-content) max-content max-content minmax(24px, 1fr) max-content !important;
-  justify-content: stretch !important;
-  align-items: start !important;
-  width: 100% !important;
-  padding: 4px 18px 6px 0 !important;
-  gap: 8px !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-}
-
+.stock-toolbar,
 .stock-top-sales-toolbar {
   grid-template-columns: minmax(280px, max-content) max-content max-content minmax(24px, 1fr) max-content !important;
-  justify-content: stretch !important;
   align-items: start !important;
-  width: 100% !important;
   padding: 4px 18px 6px 0 !important;
   gap: 8px !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
+  overflow: auto hidden !important;
 }
 
 .stock-screen .stock-export-button {
   grid-column: 5 !important;
   justify-self: end !important;
-  align-self: start !important;
   min-height: 34px !important;
-  height: 34px !important;
-  width: max-content !important;
   padding: 0 12px !important;
   border: 1px solid var(--tpv-v3-blue) !important;
   border-radius: 0 !important;
   background: var(--tpv-v3-blue) !important;
   color: #ffffff !important;
-  box-shadow: none !important;
   font-size: 12px !important;
-  font-weight: 900 !important;
   white-space: nowrap !important;
 }
 
 .stock-screen .stock-export-button:hover:not(:disabled),
 .stock-screen .stock-export-button:focus-visible:not(:disabled) {
-  border-color: #174c82 !important;
   background: #174c82 !important;
-  color: #ffffff !important;
 }
 
 .stock-search-stack {
