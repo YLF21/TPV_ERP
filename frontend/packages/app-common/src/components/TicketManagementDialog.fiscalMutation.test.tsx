@@ -166,7 +166,9 @@ describe("TicketManagementDialog onFiscalMutation", () => {
     fireEvent.change(await screen.findByLabelText("Motivo de anulación"), {
       target: { value: "Operación inválida" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Anular ticket" }));
+    const cancelButton = screen.getByRole("button", { name: "Anular ticket" });
+    await waitFor(() => expect(cancelButton).toBeEnabled());
+    fireEvent.click(cancelButton);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("operación rechazada");
     expect(onFiscalMutation).not.toHaveBeenCalled();

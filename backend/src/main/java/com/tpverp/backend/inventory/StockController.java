@@ -95,12 +95,15 @@ public class StockController {
             @RequestParam(required = false) UUID familyId,
             @RequestParam(required = false) UUID taxId,
             @RequestParam(required = false) Boolean offerActive,
+            @RequestParam(required = false) String stockStatus,
+            @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam String sortBy,
             @RequestParam(defaultValue = "asc") String sortDirection,
             Authentication authentication) {
         return service.stockPage(
                 limit, cursor, search, view, type, discount, familyId, taxId, offerActive,
+                stockStatus, supplierId,
                 warehouseId, sortBy, sortDirection,
                 PermissionChecks.hasProductManagement(authentication));
     }

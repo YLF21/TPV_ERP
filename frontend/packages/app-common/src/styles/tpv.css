@@ -1929,6 +1929,7 @@ textarea {
 .shutdown-overlay {
   position: fixed;
   inset: 0;
+  z-index: 10000;
   display: grid;
   place-items: center;
   background: rgba(20, 34, 56, 0.34);
@@ -6545,20 +6546,9 @@ textarea {
   color: #ffffff;
 }
 
-.stock-toolbar {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) 132px 124px minmax(0, 1fr);
-  gap: 12px;
-  align-items: end;
-  padding: 16px 18px 0;
-}
-
+.stock-toolbar,
 .stock-top-sales-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) 132px 124px minmax(0, 1fr);
-  gap: 12px;
-  align-items: end;
-  padding: 16px 18px 0;
 }
 
 .stock-search-stack {
@@ -6578,8 +6568,7 @@ textarea {
   line-height: 1.1;
 }
 
-.stock-filter-button,
-.stock-columns-button {
+.stock-filter-button {
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -6595,15 +6584,27 @@ textarea {
   box-shadow: none;
 }
 
-.stock-filter-button .report-action-icon,
-.stock-columns-button .report-action-icon {
+.stock-export-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.stock-export-button:disabled {
+  opacity: 0.65;
+}
+
+.stock-inventory-controls {
+  min-width: 0;
+}
+
+.stock-filter-button .report-action-icon {
   filter: none;
 }
 
 .stock-filter-button:hover,
-.stock-filter-button:focus-visible,
-.stock-columns-button:hover,
-.stock-columns-button:focus-visible {
+.stock-filter-button:focus-visible {
   border-color: #9db8db;
   background: #f3f7fb;
   color: #17233b;
@@ -9722,6 +9723,30 @@ textarea {
   cursor: grab;
 }
 
+.table-layout-drag-handle {
+  position: absolute;
+  z-index: 7;
+  inset: 2px auto 2px 0;
+  width: 20px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.25px, transparent 1.5px) center / 6px 6px;
+  opacity: 0.62;
+  touch-action: none;
+}
+
+.table-layout-drag-handle:hover,
+.table-layout-header-cell.dragging .table-layout-drag-handle {
+  opacity: 1;
+}
+
+.table-layout-header-cell.movable > .table-layout-header-label {
+  padding-left: 22px;
+}
+
+.table-layout-header-cell.movable > .table-layout-sort-button,
+.table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button {
+  padding-left: 30px;
+}
+
 .table-layout-header-cell.movable:active {
   cursor: grabbing;
 }
@@ -9862,88 +9887,6 @@ textarea {
 .table-layout-column-resizer:focus-visible::after {
   width: 2px;
   background: #ffffff;
-}
-
-.stock-columns-overlay {
-  z-index: 7;
-}
-
-.stock-columns-dialog {
-  width: min(560px, calc(100vw - 42px));
-  height: min(690px, calc(100vh - 42px));
-}
-
-.stock-column-editor {
-  min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  overflow: auto;
-  padding-top: 8px;
-}
-
-.stock-column-editor-row {
-  min-height: 28px;
-  display: grid;
-  grid-template-columns: 22px 28px minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: center;
-  border: 1px solid #d7e0ea;
-  border-radius: 0;
-  background: #ffffff;
-  padding: 3px 6px;
-  cursor: grab;
-}
-
-.stock-column-editor-row:active {
-  cursor: grabbing;
-}
-
-.stock-column-editor-row.hidden {
-  color: #6d7890;
-  background: #f3f6fa;
-}
-
-.stock-column-drag-handle {
-  color: #244e86;
-  font-weight: 900;
-  line-height: 1;
-  text-align: center;
-}
-
-.stock-column-visible {
-  display: grid;
-  place-items: center;
-}
-
-.stock-column-visible input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-}
-
-.stock-column-editor-row strong {
-  min-width: 0;
-  color: #17233b;
-  font-weight: 900;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stock-column-editor-row.hidden strong {
-  color: #6d7890;
-}
-
-.stock-column-order-actions {
-  gap: 3px;
-}
-
-.stock-column-order-actions button {
-  width: 24px;
-  height: 24px;
-  padding: 0;
 }
 
 .stock-top-sales-table .stock-row b {
@@ -16785,12 +16728,29 @@ textarea:focus,
 /* Lift list controls and place filter summaries below the search box. */
 .stock-toolbar,
 .stock-top-sales-toolbar {
-  grid-template-columns: minmax(280px, max-content) auto auto minmax(0, 1fr) !important;
+  grid-template-columns: minmax(280px, max-content) max-content max-content minmax(24px, 1fr) max-content !important;
   align-items: start !important;
-  padding: 4px 0 6px !important;
+  padding: 4px 18px 6px 0 !important;
   gap: 8px !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
+  overflow: auto hidden !important;
+}
+
+.stock-screen .stock-export-button {
+  grid-column: 5 !important;
+  justify-self: end !important;
+  min-height: 34px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--tpv-v3-blue) !important;
+  border-radius: 0 !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  white-space: nowrap !important;
+}
+
+.stock-screen .stock-export-button:hover:not(:disabled),
+.stock-screen .stock-export-button:focus-visible:not(:disabled) {
+  background: #174c82 !important;
 }
 
 .stock-search-stack {
@@ -16871,6 +16831,14 @@ textarea:focus,
 
 .stock-row-head {
   margin-top: 0 !important;
+}
+
+/* Keep the reorder/sort bar visible while the product grid scrolls. */
+.stock-table > .stock-row-head {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 12 !important;
+  box-shadow: 0 2px 5px rgba(8, 45, 91, 0.24) !important;
 }
 
 .bulk-edit-toolbar {

@@ -116,7 +116,7 @@ describe("SessionHomeScreen", () => {
   it("wires product and warehouse buttons to their callbacks", () => {
     const callbacks = renderHome();
 
-    fireEvent.click(screen.getByRole("button", { name: "PRODUCTO" }));
+    fireEvent.click(screen.getByRole("button", { name: "GESTIÓN" }));
     fireEvent.click(screen.getByRole("button", { name: "ALMACÉN" }));
 
     expect(callbacks.onOpenStock).toHaveBeenCalledOnce();
@@ -168,7 +168,7 @@ describe("SessionHomeScreen", () => {
     expect(stockEvent.defaultPrevented).toBe(false);
     expect(reportEvent.defaultPrevented).toBe(false);
     expect(onOpenStock).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "PRODUCTO" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "GESTIÓN" })).toBeNull();
     expect(screen.queryByRole("button", { name: "INFORME VENTAS" })).toBeNull();
   });
 

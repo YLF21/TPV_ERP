@@ -8,6 +8,50 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 afterEach(cleanup);
 
 describe("TableLayoutHeaderCell sorting", () => {
+  it("provides a dedicated drag handle so sorting controls do not block column reordering", () => {
+    const onReorder = vi.fn();
+    const stored = new Map<string, string>();
+    const dataTransfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: (type: string, value: string) => stored.set(type, value),
+      getData: (type: string) => stored.get(type) ?? ""
+    };
+    const { container } = render(
+      <div>
+        <TableLayoutHeaderCell
+          as="span"
+          column={{ key: "name", width: 180, visible: true }}
+          sortLabel="Ordenar por nombre"
+          onSort={vi.fn()}
+          resizeLabel="Cambiar ancho de nombre"
+          onReorder={onReorder}
+          onMove={vi.fn()}
+          onResize={vi.fn()}
+        >Nombre</TableLayoutHeaderCell>
+        <TableLayoutHeaderCell
+          as="span"
+          column={{ key: "total", width: 120, visible: true }}
+          resizeLabel="Cambiar ancho de total"
+          onReorder={onReorder}
+          onMove={vi.fn()}
+          onResize={vi.fn()}
+        >Total</TableLayoutHeaderCell>
+      </div>
+    );
+
+    const source = container.querySelector('[data-column-key="name"]') as HTMLElement;
+    const handle = source.querySelector(".table-layout-drag-handle") as HTMLElement;
+    const target = container.querySelector('[data-column-key="total"]') as HTMLElement;
+    expect(handle).toHaveAttribute("draggable", "true");
+
+    fireEvent.dragStart(handle, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    expect(onReorder).toHaveBeenCalledWith("name", "total");
+  });
+
   it("shows the neutral arrow and reports the selected column", () => {
     const onSort = vi.fn();
     render(

@@ -76,6 +76,14 @@ export function TableLayoutHeaderCell<Key extends string>({
     window.addEventListener("pointercancel", stop);
   }
 
+  function startDrag(event: DragEvent<HTMLElement>) {
+    if (!movable) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(tableColumnDragType, column.key);
+    event.dataTransfer.setData("text/plain", column.key);
+    setDragging(true);
+  }
+
   const classes = [
     "table-layout-header-cell",
     className,
@@ -97,13 +105,7 @@ export function TableLayoutHeaderCell<Key extends string>({
         : undefined,
       "aria-keyshortcuts": movable ? "Control+ArrowLeft Control+ArrowRight" : undefined,
       onKeyDown: handleKeyboardMove,
-      onDragStart: (event: DragEvent<HTMLElement>) => {
-        if (!movable) return;
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData(tableColumnDragType, column.key);
-        event.dataTransfer.setData("text/plain", column.key);
-        setDragging(true);
-      },
+      onDragStart: startDrag,
       onDragEnd: () => {
         setDragging(false);
         setDragOver(false);
@@ -130,6 +132,13 @@ export function TableLayoutHeaderCell<Key extends string>({
         }
       }
     },
+    movable && (
+      <span
+        className="table-layout-drag-handle"
+        draggable
+        aria-hidden="true"
+      />
+    ),
     headerAction ? (
       <div className="table-layout-header-controls">
         {onSort ? (

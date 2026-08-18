@@ -1,7 +1,8 @@
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, CSSProperties, DragEvent, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
+import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
   ChartLineUp,
+  FileXls,
   IdentificationBadge,
   IdentificationCard,
   Megaphone,
@@ -339,6 +340,7 @@ export type StockInventoryRow = {
   stockMin?: string;
   stockMax?: string;
   supplierName?: string;
+  supplierIds?: string[];
   salePrice: string;
   memberPrice: string;
   wholesalePrice: string;
@@ -404,6 +406,16 @@ export type StockInventoryFilters = {
   tax: string;
   offerActive: "" | "yes" | "no";
   warehouse: string;
+  status?: string;
+  supplier?: string;
+};
+
+type StockExcelExportJob = {
+  id: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  processedRows: number;
+  fileSize: number;
+  error?: string | null;
 };
 
 export type StockColumnSetting = {
@@ -460,7 +472,9 @@ const defaultStockInventoryFilters: StockInventoryFilters = {
   family: "",
   tax: "",
   offerActive: "",
-  warehouse: ""
+  warehouse: "",
+  status: "",
+  supplier: ""
 };
 
 type StockColumnDefinition = {
@@ -664,7 +678,6 @@ export type StockColumnSettingsByView = Record<StockViewKey, StockColumnSetting[
 type StockTableFocusState = {
   inventoryFilterOpen: boolean;
   productCreateOpen: boolean;
-  stockColumnsOpen: boolean;
   topSalesFilterOpen: boolean;
 };
 
@@ -906,7 +919,6 @@ export function stockTableShouldAutoFocus(selectedView: StockViewKey, state: Sto
   return selectedView !== "stock.topSales"
     && !state.inventoryFilterOpen
     && !state.productCreateOpen
-    && !state.stockColumnsOpen
     && !state.topSalesFilterOpen;
 }
 
@@ -1094,7 +1106,11 @@ function stockBulkPersistedProductData<T extends Partial<StockInventoryRow>>(val
       return [[key, String(fieldValue)]];
     }
     return [[key, fieldValue]];
-  })) as T;
+  })) as unknown as T;
+}
+
+function isStockAsyncExportView(view: StockViewKey) {
+  return view !== "stock.bulkEdit";
 }
 
 export function normalizeStockBulkContent(rows: StockBulkEditRowData[]) {
@@ -1371,7 +1387,8 @@ function attachSupplierNamesToStockRows(rows: StockInventoryRow[], links: StockB
   }
   return rows.map((row) => ({
     ...row,
-    supplierName: supplierNameForStockRow(row.productId, links)
+    supplierName: supplierNameForStockRow(row.productId, links),
+    supplierIds: links.filter((link) => link.productId === row.productId).map((link) => link.supplierId)
   }));
 }
 
@@ -1419,6 +1436,12 @@ export async function loadStockInventoryRows(loaders: {
 }
 
 function stockPageView(view: StockViewKey) {
+  if (view === "stock.topSales") {
+    return "top_sales";
+  }
+  if (view === "stock.promotions") {
+    return "promotions";
+  }
   if (view === "stock.offers") {
     return "offers";
   }
@@ -1469,9 +1492,18 @@ export function stockPagePath(
   if (filters.offerActive) {
     parameters.set("offerActive", filters.offerActive === "yes" ? "true" : "false");
   }
-  if (sort) {
-    parameters.set("sortBy", sort.column);
-    parameters.set("sortDirection", sort.direction);
+  if (filters.status) {
+    parameters.set("stockStatus", filters.status);
+  }
+  if (filters.supplier && isUuid(filters.supplier)) {
+    parameters.set("supplierId", filters.supplier);
+  }
+  const effectiveSort = sort ?? (filters.status || filters.supplier
+    ? { column: "name", direction: "asc" as const }
+    : null);
+  if (effectiveSort) {
+    parameters.set("sortBy", effectiveSort.column);
+    parameters.set("sortDirection", effectiveSort.direction);
     if (isUuid(warehouseId)) {
       parameters.set("warehouseId", warehouseId);
     }
@@ -1623,6 +1655,12 @@ export function filterStockInventoryRows(
       return false;
     }
     if (filters.warehouse && row.warehouseId !== filters.warehouse && row.warehouseName !== filters.warehouse) {
+      return false;
+    }
+    if (filters.status && stockInventoryStatus(row.quantity, row.active !== "common.no") !== `stock.status.${filters.status}`) {
+      return false;
+    }
+    if (filters.supplier && !row.supplierIds?.includes(filters.supplier)) {
       return false;
     }
     if (normalizedSearch.length === 0) {
@@ -1974,6 +2012,10 @@ export function StockScreen({
   }>({ families: [], subfamilies: [], taxes: [], promotions: [] });
   const [defaultWarehouseId, setDefaultWarehouseId] = useState("");
   const [status, setStatus] = useState("stock.status.noData");
+  const [stockExportBusy, setStockExportBusy] = useState(false);
+  const [stockExportNotice, setStockExportNotice] = useState("");
+  const [stockExportNoticeView, setStockExportNoticeView] = useState<StockViewKey | null>(null);
+  const [stockExportNoticeKind, setStockExportNoticeKind] = useState<"info" | "success" | "error">("info");
   const [stockRefreshCounter, setStockRefreshCounter] = useState(0);
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [topSalesRows, setTopSalesRows] = useState<StockTopSalesRow[]>([]);
@@ -2011,7 +2053,6 @@ export function StockScreen({
     return formatStockDateRange(range.dateFrom, range.dateTo, locale);
   });
   const [topSalesDateRangeStart, setTopSalesDateRangeStart] = useState<string | null>(null);
-  const [stockColumnsOpen, setStockColumnsOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [familyPickerOpen, setFamilyPickerOpen] = useState(false);
   const [expandedFamilies, setExpandedFamilies] = useState<Record<string, boolean>>({});
@@ -2299,6 +2340,14 @@ export function StockScreen({
       .map((warehouse) => ({ value: warehouse.id, label: valueText(warehouse.name ?? warehouse.id) })),
     { value: "TOTAL", label: t("stock.warehouse.total") }
   ], [warehouseCatalog, t]);
+  const inventorySupplierOptions = useMemo(() => {
+    const suppliers = new Map<string, string>();
+    bulkProductSupplierLinks.forEach((link) => {
+      suppliers.set(link.supplierId, link.tradeName || link.legalName || link.supplierCode);
+    });
+    return Array.from(suppliers, ([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, locale, { sensitivity: "base" }));
+  }, [bulkProductSupplierLinks, locale]);
   const calendarLocale = locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES";
   const calendarTitle = new Intl.DateTimeFormat(calendarLocale, { month: "long", year: "numeric" }).format(calendarMonth);
   const selectedViewLabel = t(selectedView);
@@ -2642,13 +2691,12 @@ export function StockScreen({
     if (!stockTableShouldAutoFocus(selectedView, {
       inventoryFilterOpen,
       productCreateOpen,
-      stockColumnsOpen,
       topSalesFilterOpen
     })) {
       return;
     }
     stockTableRef.current?.focus({ preventScroll: true });
-  }, [inventoryFilterOpen, productCreateOpen, selectedView, stockColumnsOpen, topSalesFilterOpen]);
+  }, [inventoryFilterOpen, productCreateOpen, selectedView, topSalesFilterOpen]);
 
   useEffect(() => {
     if (!detailRow) {
@@ -4326,10 +4374,6 @@ export function StockScreen({
 
   function reorderSelectedColumn(columnKey: string, targetKey: string) {
     stockTableLayout.reorderColumns(columnKey, targetKey);
-  }
-
-  function toggleSelectedColumnVisibility(columnKey: string) {
-    stockTableLayout.toggleColumnVisibility(columnKey);
   }
 
   function resizeSelectedColumn(columnKey: string, width: number) {
@@ -6529,6 +6573,13 @@ export function StockScreen({
     if (inventoryFilters.offerActive) {
       items.push(`${t("stock.column.offerActive")}: ${t(inventoryFilters.offerActive === "yes" ? "common.yes" : "common.no")}`);
     }
+    if (inventoryFilters.status) {
+      items.push(`${t("stock.column.status")}: ${t(`stock.status.${inventoryFilters.status}`)}`);
+    }
+    if (inventoryFilters.supplier) {
+      const supplier = inventorySupplierOptions.find((candidate) => candidate.value === inventoryFilters.supplier);
+      items.push(`${t("stock.column.supplier")}: ${supplier?.label ?? inventoryFilters.supplier}`);
+    }
     const warehouseLabel = effectiveWarehouseId === "TOTAL"
       ? t("stock.warehouse.total")
       : inventoryWarehouseOptions.find((warehouse) => warehouse.value === effectiveWarehouseId)?.label
@@ -6566,11 +6617,135 @@ export function StockScreen({
           {t("salesReport.filter")}
         </button>
         <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>
-        {selectedView !== "stock.promotions" && (
-          <button type="button" className="stock-columns-button" onClick={() => setStockColumnsOpen(true)}>{t("stock.columns")}</button>
-        )}
+        {renderStockExportButton()}
       </div>
     );
+  }
+
+  function renderStockExportButton() {
+    if (!isStockAsyncExportView(selectedView)) return null;
+    return (
+      <button
+        type="button"
+        className="stock-export-button"
+        disabled={stockExportBusy || !session.accessToken}
+        onClick={() => void exportStockExcel()}
+      >
+        <FileXls size={16} weight="bold" aria-hidden="true" />
+        {stockExportBusy ? t("stock.exportExcel.exporting") : t("stock.exportExcel")}
+      </button>
+    );
+  }
+
+  function renderStockExportNotice() {
+    if (!stockExportNotice || stockExportNoticeView !== selectedView) return null;
+    return (
+      <div
+        className={`settings-inline-message stock-export-notice ${stockExportNoticeKind}`}
+        role={stockExportNoticeKind === "error" ? "alert" : "status"}
+      >
+        {stockExportNotice}
+      </div>
+    );
+  }
+
+  async function exportStockExcel() {
+    if (!session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView)) return;
+    const exportView = selectedView;
+    setStockExportBusy(true);
+    setStockExportNoticeView(exportView);
+    setStockExportNoticeKind("info");
+    setStockExportNotice(t("stock.exportExcel.starting"));
+    try {
+      let job = await apiRequest<StockExcelExportJob>("/stock/exports", {
+        method: "POST",
+        token: session.accessToken,
+        body: {
+          view: stockPageView(selectedView),
+          search: selectedView === "stock.topSales" ? topSalesFilters.search : searchText,
+          productType: inventoryFilters.type || null,
+          priceUseMode: inventoryFilters.discount || null,
+          familyId: isUuid(inventoryFilters.family) ? inventoryFilters.family : null,
+          taxId: isUuid(inventoryFilters.tax) ? inventoryFilters.tax : null,
+          offerActive: inventoryFilters.offerActive
+            ? inventoryFilters.offerActive === "yes"
+            : null,
+          stockStatus: inventoryFilters.status || null,
+          supplierId: inventoryFilters.supplier && isUuid(inventoryFilters.supplier)
+            ? inventoryFilters.supplier
+            : null,
+          warehouseId: selectedView === "stock.topSales"
+            ? (topSalesFilters.warehouse && isUuid(topSalesFilters.warehouse) ? topSalesFilters.warehouse : null)
+            : (isUuid(effectiveWarehouseId) ? effectiveWarehouseId : null),
+          sortBy: selectedView === "stock.topSales"
+            ? (topSalesSorting.sort?.column ?? "ranking")
+            : (inventorySort?.column ?? "name"),
+          sortDirection: selectedView === "stock.topSales"
+            ? (topSalesSorting.sort?.direction ?? "asc")
+            : (inventorySort?.direction ?? "asc"),
+          language: locale,
+          dateFrom: selectedView === "stock.topSales" ? topSalesDateFrom : null,
+          dateTo: selectedView === "stock.topSales" ? topSalesDateTo : null,
+          topSalesFamily: selectedView === "stock.topSales" ? topSalesFilters.family : null,
+          topSalesSubfamily: selectedView === "stock.topSales" ? topSalesFilters.subfamily : null,
+          topSalesSupplier: selectedView === "stock.topSales" ? topSalesFilters.supplier : null,
+          columns: selectedColumnSettings.map((column) => ({
+            key: column.key,
+            label: t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)
+          }))
+        }
+      });
+      while (job.status === "QUEUED" || job.status === "RUNNING") {
+        setStockExportNotice(t("stock.exportExcel.progress")
+          .replace("{count}", String(job.processedRows)));
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 650));
+        job = await apiRequest<StockExcelExportJob>(`/stock/exports/${encodeURIComponent(job.id)}`, {
+          token: session.accessToken
+        });
+      }
+      if (job.status !== "COMPLETED") {
+        throw new Error(job.error || t("stock.exportExcel.error"));
+      }
+      const response = await fetch(`${apiBaseUrl}/stock/exports/${encodeURIComponent(job.id)}/file`, {
+        headers: { Authorization: `Bearer ${session.accessToken}` }
+      });
+      if (!response.ok) throw new Error(t("stock.exportExcel.error"));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const fileName = `stock-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      if (window.tpvDesktop?.reports) {
+        const result = await window.tpvDesktop.reports.saveFile({
+          defaultFileName: fileName,
+          filters: [{ name: "Excel", extensions: ["xlsx"] }],
+          bytes
+        });
+        if (!result.ok) throw new Error(result.message);
+        if (result.canceled) {
+          setStockExportNotice("");
+          setStockExportNoticeView(null);
+          return;
+        }
+      } else {
+        const blobBytes = bytes.slice();
+        const url = URL.createObjectURL(new Blob([blobBytes.buffer as ArrayBuffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+      setStockExportNoticeKind("success");
+      setStockExportNotice(t("stock.exportExcel.success")
+        .replace("{count}", String(job.processedRows)));
+    } catch (error) {
+      setStockExportNoticeKind("error");
+      setStockExportNotice(error instanceof ApiError && error.status === 404
+        ? t("stock.exportExcel.unavailable")
+        : error instanceof Error ? error.message : t("stock.exportExcel.error"));
+    } finally {
+      setStockExportBusy(false);
+    }
   }
 
   function activeTopSalesSummary() {
@@ -6716,10 +6891,9 @@ export function StockScreen({
                   {t("salesReport.filter")}
                 </button>
                 <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleTopSalesRows.length))}</span>
-                <button type="button" className="stock-columns-button" onClick={() => setStockColumnsOpen(true)}>
-                  {t("stock.columns")}
-                </button>
+                {renderStockExportButton()}
               </div>
+              {renderStockExportNotice()}
               <div className="stock-table stock-top-sales-table">
                 {renderStockHeader()}
                 {visibleTopSalesRows.length === 0 && <div className="stock-empty-state">{topSalesRows.length === 0 ? t(topSalesStatus) : t("stock.status.noResults")}</div>}
@@ -6738,7 +6912,10 @@ export function StockScreen({
             bulkWorkspaceView === "editor" ? renderBulkEditScreen() : renderBulkWorkspaceManager()
           ) : selectedView === "stock.promotions" ? (
             <>
-              {renderInventoryToolbar()}
+              <div className="stock-inventory-controls">
+                {renderInventoryToolbar()}
+                {renderStockExportNotice()}
+              </div>
               <StockPromotionGroups
                 locale={locale}
                 app={app}
@@ -6752,7 +6929,10 @@ export function StockScreen({
             </>
           ) : (
             <>
-              {renderInventoryToolbar()}
+              <div className="stock-inventory-controls">
+                {renderInventoryToolbar()}
+                {renderStockExportNotice()}
+              </div>
               <div
                 className="stock-table"
                 ref={stockTableRef}
@@ -7016,6 +7196,23 @@ export function StockScreen({
                 draftInventoryFilters.warehouse,
                 inventoryWarehouseOptions
               )}
+              {renderInventoryFilterDropdown(
+                "status",
+                t("stock.column.status"),
+                draftInventoryFilters.status ?? "",
+                [
+                  { value: "ok", label: t("stock.status.ok") },
+                  { value: "low", label: t("stock.status.low") },
+                  { value: "empty", label: t("stock.status.empty") },
+                  { value: "inactive", label: t("stock.status.inactive") }
+                ]
+              )}
+              {canManageProducts && renderInventoryFilterDropdown(
+                "supplier",
+                t("stock.column.supplier"),
+                draftInventoryFilters.supplier ?? "",
+                inventorySupplierOptions
+              )}
             </div>
             <footer className="filter-actions">
               <button type="button" onClick={clearInventoryFilters}>{t("salesReport.filter.clear")}</button>
@@ -7068,78 +7265,6 @@ export function StockScreen({
               <button type="button" onClick={() => setSelectedInventoryFamily("")}>{t("salesReport.filter.clear")}</button>
               <button type="button" onClick={applyInventoryFamilySelection}>{t("stock.filter.apply")}</button>
             </footer>
-          </section>
-        </div>
-      )}
-
-      {stockColumnsOpen && (
-        <div className="visualization-overlay stock-columns-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-columns-title">
-          <section className="visualization-dialog stock-columns-dialog">
-            <header className="visualization-header">
-              <h2 id="stock-columns-title">{t("stock.columns.title")}</h2>
-              <button type="button" onClick={() => setStockColumnsOpen(false)}>{t("common.close")}</button>
-            </header>
-            <div className="stock-column-editor">
-              {selectedColumnSettings.map((column, index) => {
-                const definition = selectedColumnDefinitionByKey.get(column.key);
-                const label = t(definition?.labelKey ?? column.key);
-                const visibleColumns = selectedColumnSettings.filter((setting) => setting.visible !== false).length;
-                const canHide = column.visible === false || visibleColumns > 1;
-                return (
-                  <div
-                    className={`stock-column-editor-row ${column.visible === false ? "hidden" : ""}`}
-                    draggable
-                    key={column.key}
-                    onDragStart={(event: DragEvent<HTMLDivElement>) => {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", column.key);
-                    }}
-                    onDragOver={(event: DragEvent<HTMLDivElement>) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDrop={(event: DragEvent<HTMLDivElement>) => {
-                      event.preventDefault();
-                      const draggedKey = event.dataTransfer.getData("text/plain");
-                      if (draggedKey) {
-                        reorderSelectedColumn(draggedKey, column.key);
-                      }
-                    }}
-                  >
-                    <span className="stock-column-drag-handle" aria-hidden="true">::</span>
-                    <label className="stock-column-visible">
-                      <input
-                        type="checkbox"
-                        checked={column.visible !== false}
-                        disabled={!canHide}
-                        onChange={() => toggleSelectedColumnVisibility(column.key)}
-                      />
-                    </label>
-                    <strong>{label}</strong>
-                    <div className="attribute-actions stock-column-order-actions">
-                      <button
-                        type="button"
-                        aria-label={t("salesReport.moveUp")}
-                        title={t("salesReport.moveUp")}
-                        disabled={index === 0}
-                        onClick={() => moveSelectedColumn(column.key, -1)}
-                      >
-                        {"^"}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t("salesReport.moveDown")}
-                        title={t("salesReport.moveDown")}
-                        disabled={index === selectedColumnSettings.length - 1}
-                        onClick={() => moveSelectedColumn(column.key, 1)}
-                      >
-                        {"v"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </section>
         </div>
       )}

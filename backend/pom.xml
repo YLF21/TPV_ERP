@@ -178,6 +178,7 @@
 				<targetPath>reports/tickets</targetPath>
 				<includes>
 					<include>ticket.jrxml</include>
+					<include>TICKET_ANULADO_TICKET_80.jrxml</include>
 				</includes>
 			</resource>
 			<resource>

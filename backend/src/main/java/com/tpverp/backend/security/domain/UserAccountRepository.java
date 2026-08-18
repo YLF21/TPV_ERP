@@ -15,10 +15,26 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
 
     @Query("""
             select user from UserAccount user
+            where user.tienda is null and upper(user.userName) = :userName
+            """)
+    Optional<UserAccount> findGlobalByUserName(
+            @Param("userName") String userName);
+
+    @Query("""
+            select user from UserAccount user
             where user.tienda.empresa.id = :companyId and user.nombre = :nombre
             """)
     Optional<UserAccount> findByEmpresaIdAndNombre(
             @Param("companyId") UUID companyId, @Param("nombre") String nombre);
+
+    @Query("""
+            select user from UserAccount user
+            where user.tienda.empresa.id = :companyId
+              and upper(user.userName) = :userName
+            """)
+    Optional<UserAccount> findByEmpresaIdAndUserName(
+            @Param("companyId") UUID companyId,
+            @Param("userName") String userName);
 
     Optional<UserAccount> findByIdAndTiendaId(UUID id, UUID tiendaId);
 

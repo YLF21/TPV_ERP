@@ -90,14 +90,20 @@ public class StockTopSalesService {
     @Transactional(readOnly = true)
     public List<StockTopSalesRow> topSales(
             LocalDate dateFrom, LocalDate dateTo, UUID warehouseId) {
+        return topSales(organization.currentStore().getId(), dateFrom, dateTo, warehouseId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StockTopSalesRow> topSales(
+            UUID storeId, LocalDate dateFrom, LocalDate dateTo, UUID warehouseId) {
         var selectedFrom = Objects.requireNonNull(dateFrom, "dateFrom");
         var selectedTo = Objects.requireNonNull(dateTo, "dateTo");
         var startDate = selectedFrom.isAfter(selectedTo) ? selectedTo : selectedFrom;
         var endDate = selectedFrom.isAfter(selectedTo) ? selectedFrom : selectedTo;
-        var store = organization.currentStore();
+        var selectedStoreId = Objects.requireNonNull(storeId, "storeId");
         var totals = new HashMap<ProductWarehouse, Totals>();
         documents.findTopSalesDocuments(
-                        store.getId(),
+                        selectedStoreId,
                         startDate,
                         endDate,
                         SALE_TYPES,
@@ -116,7 +122,7 @@ public class StockTopSalesService {
                 .map(ProductWarehouse::productId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        var productsById = products.findAllByStoreIdAndIdIn(store.getId(), positiveProductIds).stream()
+        var productsById = products.findAllByStoreIdAndIdIn(selectedStoreId, positiveProductIds).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
         var familyIds = productsById.values().stream()
                 .map(Product::getFamilyId)
@@ -137,7 +143,7 @@ public class StockTopSalesService {
                 .collect(Collectors.toMap(Warehouse::getId, Warehouse::getName));
 
         return positiveKeys.stream()
-                .map(key -> row(store.getId(), key, productsById.get(key.productId()), totals.get(key),
+                .map(key -> row(selectedStoreId, key, productsById.get(key.productId()), totals.get(key),
                         familiesById, subfamiliesById, warehousesById))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(StockTopSalesRow::soldQuantity).reversed()

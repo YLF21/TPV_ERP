@@ -197,6 +197,27 @@ public class InventoryService {
             UUID familyId,
             UUID taxId,
             Boolean offerActive,
+            UUID warehouseId,
+            String sortBy,
+            String sortDirection,
+            boolean includePurchaseFields) {
+        return stockPage(
+                requestedLimit, cursor, search, view, productType, priceUseMode,
+                familyId, taxId, offerActive, null, null, warehouseId,
+                sortBy, sortDirection, includePurchaseFields);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<StockPageItem> stockPage(
+            Integer requestedLimit,
+            String cursor,
+            String search,
+            String view,
+            String productType,
+            String priceUseMode,
+            UUID familyId,
+            UUID taxId,
+            Boolean offerActive,
             boolean includePurchaseFields) {
         UUID storeId = currentStore().getId();
         var limit = normalizedLimit(requestedLimit);
@@ -242,6 +263,8 @@ public class InventoryService {
             UUID familyId,
             UUID taxId,
             Boolean offerActive,
+            String stockStatus,
+            UUID supplierId,
             UUID warehouseId,
             String sortBy,
             String sortDirection,
@@ -249,25 +272,22 @@ public class InventoryService {
         UUID storeId = currentStore().getId();
         var limit = normalizedLimit(requestedLimit);
         var filters = StockPageFilters.from(
-                search, view, productType, priceUseMode, familyId, taxId, offerActive);
+                search, view, productType, priceUseMode, familyId, taxId, offerActive,
+                stockStatus, supplierId);
         var normalizedSortBy = normalizedStockSort(sortBy, includePurchaseFields);
         var normalizedDirection = normalizedSortDirection(sortDirection);
         var parsedCursor = parseSortCursor(cursor, normalizedSortBy, normalizedDirection);
-        var orderedIds = stockPageOrderRepository.findProductIds(
-                storeId,
-                filters.search(),
-                filters.productType(),
-                filters.priceUseMode(),
-                filters.discountType(),
-                filters.offersOnly(),
-                filters.familyId(),
-                filters.taxId(),
-                filters.offerActive(),
-                warehouseId,
-                normalizedSortBy,
-                normalizedDirection,
-                parsedCursor.productId(),
-                limit + 1);
+        var orderedIds = filters.stockStatus() == null && filters.supplierId() == null
+                ? stockPageOrderRepository.findProductIds(
+                        storeId, filters.search(), filters.productType(), filters.priceUseMode(),
+                        filters.discountType(), filters.offersOnly(), filters.familyId(), filters.taxId(),
+                        filters.offerActive(), warehouseId, normalizedSortBy, normalizedDirection,
+                        parsedCursor.productId(), limit + 1)
+                : stockPageOrderRepository.findProductIds(
+                        storeId, filters.search(), filters.productType(), filters.priceUseMode(),
+                        filters.discountType(), filters.offersOnly(), filters.familyId(), filters.taxId(),
+                        filters.offerActive(), filters.stockStatus(), filters.supplierId(), warehouseId,
+                        normalizedSortBy, normalizedDirection, parsedCursor.productId(), limit + 1);
         boolean hasMore = orderedIds.size() > limit;
         var pageIds = hasMore ? orderedIds.subList(0, limit) : orderedIds;
         var productsById = productRepository.findAllByStoreIdAndIdIn(storeId, pageIds).stream()
@@ -488,7 +508,9 @@ public class InventoryService {
             boolean offersOnly,
             UUID familyId,
             UUID taxId,
-            Boolean offerActive) {
+            Boolean offerActive,
+            String stockStatus,
+            UUID supplierId) {
 
         static StockPageFilters from(
                 String search,
@@ -498,8 +520,22 @@ public class InventoryService {
                 UUID familyId,
                 UUID taxId,
                 Boolean offerActive) {
+            return from(search, view, productType, priceUseMode, familyId, taxId, offerActive, null, null);
+        }
+
+        static StockPageFilters from(
+                String search,
+                String view,
+                String productType,
+                String priceUseMode,
+                UUID familyId,
+                UUID taxId,
+                Boolean offerActive,
+                String stockStatus,
+                UUID supplierId) {
             var normalizedView = optionalUpper(view);
             var normalizedPriceUseMode = enumValue(PriceUseMode.class, priceUseMode);
+            var normalizedStockStatus = normalizedStockStatus(stockStatus);
             DiscountType discountType = null;
             if ("OFFERS".equals(normalizedView)) {
                 return new StockPageFilters(
@@ -510,7 +546,9 @@ public class InventoryService {
                         true,
                         familyId,
                         taxId,
-                        offerActive);
+                        offerActive,
+                        normalizedStockStatus,
+                        supplierId);
             } else if ("MEMBER_PRICE".equals(normalizedView)) {
                 normalizedPriceUseMode = PriceUseMode.MEMBER_PRICE;
             } else if ("NO_DISCOUNT".equals(normalizedView)) {
@@ -524,8 +562,18 @@ public class InventoryService {
                     false,
                     familyId,
                     taxId,
-                    offerActive);
+                    offerActive,
+                    normalizedStockStatus,
+                    supplierId);
         }
+    }
+
+    private static String normalizedStockStatus(String value) {
+        var normalized = optionalUpper(value);
+        if (normalized == null || java.util.Set.of("OK", "LOW", "EMPTY", "INACTIVE").contains(normalized)) {
+            return normalized;
+        }
+        throw new IllegalArgumentException("Estado de stock no valido");
     }
 
     private static String optionalUpper(String value) {
