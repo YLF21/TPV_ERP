@@ -116,6 +116,22 @@ class StockPageOrderRepositoryPostgreSqlTest {
     }
 
     @Test
+    void filtersProductsByCalculatedStockStatus() {
+        var context = insertContext();
+
+        assertThat(repository.findProductIds(
+                context.storeId(), null, null, null, null, false,
+                null, null, null, "LOW", null, context.warehouseId(),
+                "name", "asc", null, 10))
+                .containsExactlyInAnyOrder(context.middleId(), context.expensiveId());
+        assertThat(repository.findProductIds(
+                context.storeId(), null, null, null, null, false,
+                null, null, null, "OK", null, context.warehouseId(),
+                "name", "asc", null, 10))
+                .containsExactly(context.cheapestId());
+    }
+
+    @Test
     void sortsEveryInventoryViewWithItsRealFilterAndNoResolvedWarehouse() {
         var context = insertContext();
 

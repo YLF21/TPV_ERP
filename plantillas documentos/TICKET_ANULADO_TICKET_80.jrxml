@@ -1,0 +1,62 @@
+<!-- Plantilla integrada para el comprobante no fiscal de anulación de ticket. -->
+<jasperReport name="ticket_anulado_ticket_80" language="java" pageWidth="227" pageHeight="1200" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" uuid="ea403bc8-472f-4eb1-bbd4-cb3ee76559d6" ignorePagination="true">
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="mm"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="mm"/>
+	<parameter name="ISSUER_NAME" class="java.lang.String"/>
+	<parameter name="STORE_NAME" class="java.lang.String"/>
+	<parameter name="ISSUER_TAX_ID" class="java.lang.String"/>
+	<parameter name="ORIGINAL_TICKET_NUMBER" class="java.lang.String"/>
+	<parameter name="ORIGINAL_ISSUED_AT" class="java.lang.String"/>
+	<parameter name="CANCELLED_AT" class="java.lang.String"/>
+	<parameter name="TOTAL_FORMATTED" class="java.lang.String"/>
+	<parameter name="REASON" class="java.lang.String"/>
+	<parameter name="OPERATOR_USERNAME" class="java.lang.String"/>
+	<parameter name="AUTHORIZER_USERNAME" class="java.lang.String"/>
+	<parameter name="AUTHORIZATION_TYPE" class="java.lang.String"/>
+	<parameter name="PAYMENTS_TEXT" class="java.lang.String"/>
+	<parameter name="OPERATION_ID" class="java.lang.String"/>
+	<detail>
+		<band height="430" splitType="Stretch">
+			<element kind="textField" uuid="3e13bc37-7885-497e-bd72-4f7c6873db14" x="0" y="0" width="211" height="20" fontName="SansSerif" fontSize="13.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$P{STORE_NAME}]]></expression>
+			</element>
+			<element kind="textField" uuid="e343051c-0087-403a-8bc4-702da322f1a1" x="0" y="20" width="211" height="14" fontName="SansSerif" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$P{ISSUER_NAME}]]></expression>
+			</element>
+			<element kind="textField" uuid="181de146-ce41-4b56-8683-ea80a1e70fca" x="0" y="34" width="211" height="12" fontName="SansSerif" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA["NIF: " + $P{ISSUER_TAX_ID}]]></expression>
+			</element>
+			<element kind="line" uuid="d15ba7c9-d493-4cfa-893c-c3e5f152e4af" x="0" y="52" width="211" height="1"><pen lineWidth="0.8"/></element>
+			<element kind="staticText" uuid="44c5314b-1049-4b68-8d91-c2957fde71b4" x="0" y="60" width="211" height="25" fontName="SansSerif" fontSize="11.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[COMPROBANTE DE ANULACIÓN]]></text>
+			</element>
+			<element kind="staticText" uuid="44852de7-1dca-4ccd-9da1-42ba90d29513" x="25" y="88" width="161" height="18" mode="Opaque" backcolor="#FFFFFF" fontName="SansSerif" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<box><pen lineWidth="0.8"/></box><text><![CDATA[DOCUMENTO NO FISCAL]]></text>
+			</element>
+			<element kind="staticText" uuid="b59e4447-0f28-4a8e-9996-4b03ea46928c" x="0" y="117" width="78" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[Ticket original]]></text></element>
+			<element kind="textField" uuid="e77c9fef-5104-45ec-83a0-e8ee7fbb3a07" x="78" y="117" width="133" height="13" fontName="Monospaced" fontSize="8.0" bold="true" hTextAlign="Right"><expression><![CDATA[$P{ORIGINAL_TICKET_NUMBER}]]></expression></element>
+			<element kind="staticText" uuid="8337ec07-6fe2-4513-a169-968e49a2d5a7" x="0" y="133" width="78" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[Fecha original]]></text></element>
+			<element kind="textField" uuid="cb154ade-9536-40c7-b7ca-48453b019b1f" x="78" y="133" width="133" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$P{ORIGINAL_ISSUED_AT}]]></expression></element>
+			<element kind="staticText" uuid="0e7577c9-c24d-42a5-9bb5-c1ce4f685cf3" x="0" y="149" width="78" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[Fecha anulación]]></text></element>
+			<element kind="textField" uuid="c9ec0cea-8228-4167-beb0-adc84aabf829" x="78" y="149" width="133" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$P{CANCELLED_AT}]]></expression></element>
+			<element kind="line" uuid="23de550b-135b-49ad-8133-e58572c34f92" x="0" y="168" width="211" height="1"><pen lineStyle="Dashed" lineWidth="0.5"/></element>
+			<element kind="staticText" uuid="bc450096-1c2b-4636-ad15-7ebc58eef11f" x="0" y="176" width="211" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[MOTIVO DE ANULACIÓN]]></text></element>
+			<element kind="textField" uuid="30d391b1-7484-4765-afbc-e58a82602560" x="0" y="190" width="211" height="30" fontName="SansSerif" fontSize="8.5" textAdjust="StretchHeight"><expression><![CDATA[$P{REASON}]]></expression></element>
+			<element kind="staticText" uuid="76cca2aa-a2c0-4ba3-a65c-43e2d71f50d9" positionType="Float" x="0" y="226" width="70" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[Operador]]></text></element>
+			<element kind="textField" uuid="08c303a8-8f89-450c-b115-e87636c93100" positionType="Float" x="70" y="226" width="141" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$P{OPERATOR_USERNAME}]]></expression></element>
+			<element kind="staticText" uuid="fda4ea07-c9f6-4635-baae-913e3dded6fb" positionType="Float" x="0" y="242" width="70" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[Autorizado por]]></text></element>
+			<element kind="textField" uuid="1c632f00-1fda-4bed-81bf-b44687bd6133" positionType="Float" x="70" y="242" width="141" height="13" fontName="SansSerif" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$P{AUTHORIZER_USERNAME}]]></expression></element>
+			<element kind="textField" uuid="e556b6d9-9f3d-4df6-aa38-48ba22b61f8a" positionType="Float" x="0" y="257" width="211" height="12" fontName="SansSerif" fontSize="7.0" italic="true" hTextAlign="Right"><expression><![CDATA[$P{AUTHORIZATION_TYPE}]]></expression></element>
+			<element kind="line" uuid="32755f23-a7c0-4dbb-87f6-96c3bf7423a2" positionType="Float" x="0" y="275" width="211" height="1"><pen lineStyle="Dashed" lineWidth="0.5"/></element>
+			<element kind="staticText" uuid="1acd237d-4265-42f3-87e1-6d8ce76dd37c" positionType="Float" x="0" y="283" width="211" height="13" fontName="SansSerif" fontSize="8.0" bold="true"><text><![CDATA[COMPENSACIÓN DE PAGOS]]></text></element>
+			<element kind="textField" uuid="e29f1835-99f9-4566-94b4-e71c26e4e28e" positionType="Float" x="0" y="297" width="211" height="38" fontName="Monospaced" fontSize="7.5" textAdjust="StretchHeight"><expression><![CDATA[$P{PAYMENTS_TEXT}]]></expression></element>
+			<element kind="line" uuid="7290eecb-69be-4d27-94a9-0a99fe862827" positionType="Float" x="0" y="341" width="211" height="1"><pen lineWidth="0.8"/></element>
+			<element kind="staticText" uuid="b3548625-d6ab-4d1c-80f3-1b21a2794d1c" positionType="Float" x="0" y="350" width="105" height="24" fontName="SansSerif" fontSize="10.0" bold="true" vTextAlign="Middle"><text><![CDATA[TOTAL ANULADO]]></text></element>
+			<element kind="textField" uuid="96ac3ba6-c4b6-4773-a87e-b48da167ea04" positionType="Float" x="105" y="350" width="106" height="24" fontName="SansSerif" fontSize="15.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$P{TOTAL_FORMATTED}]]></expression></element>
+			<element kind="component" uuid="338634da-71a2-4d93-b702-9b9ece234dd8" positionType="Float" x="20" y="382" width="171" height="25">
+				<component kind="barcode4j:Code128" moduleWidth="1.0" textPosition="none" quietZone="5.0" verticalQuietZone="0.0"><codeExpression><![CDATA[$P{OPERATION_ID}]]></codeExpression></component>
+			</element>
+			<element kind="textField" uuid="57ecb9c7-cdb0-4798-ac04-463048332a01" positionType="Float" x="0" y="408" width="211" height="10" fontName="Monospaced" fontSize="6.0" hTextAlign="Center"><expression><![CDATA[$P{OPERATION_ID}]]></expression></element>
+		</band>
+	</detail>
+</jasperReport>

@@ -135,7 +135,7 @@ describe("StockBulkWorkspaceList", () => {
     ]);
     expect(keys.slice(9, 18)).toEqual(keys.slice(0, 9));
     expect(html).toContain('style="width:136px"');
-    expect(html.match(/draggable="true"/g)).toHaveLength(9);
+    expect(html.match(/draggable="true"/g)).toHaveLength(18);
     expect(html.match(/aria-keyshortcuts="Control\+ArrowLeft Control\+ArrowRight"/g)).toHaveLength(9);
     expect(html.match(/table-layout-column-resizer/g)).toHaveLength(9);
   });

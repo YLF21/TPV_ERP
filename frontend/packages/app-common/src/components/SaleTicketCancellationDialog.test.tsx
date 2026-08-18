@@ -48,6 +48,14 @@ const cancellationReceipt = {
     amount: "25.00",
     reference: "DEV-123",
   }],
+  renderedPdf: {
+    contentType: "application/pdf" as const,
+    base64: "JVBERi0xLjc=",
+  },
+  ticketRenderedImage: {
+    contentType: "image/png" as const,
+    base64: "iVBORw0KGgo=",
+  },
 };
 
 describe("SaleTicketCancellationDialog", () => {
@@ -133,6 +141,9 @@ describe("SaleTicketCancellationDialog", () => {
       documentNumber: "AN-T-001",
       title: "COMPROBANTE DE ANULACIÓN",
       notice: "DOCUMENTO NO FISCAL",
+      requireRenderedDocument: true,
+      renderedPdf: cancellationReceipt.renderedPdf,
+      documentRaster: "data:image/png;base64,iVBORw0KGgo=",
       total: 25,
       payments: [{
         method: "TRANSFERENCIA",

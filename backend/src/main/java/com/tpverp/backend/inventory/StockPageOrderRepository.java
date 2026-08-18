@@ -33,6 +33,29 @@ public class StockPageOrderRepository {
             String sortDirection,
             UUID cursorId,
             int limit) {
+        return findProductIds(
+                storeId, search, productType, priceUseMode, discountType, offersOnly,
+                familyId, taxId, offerActive, null, null, warehouseId,
+                sortBy, sortDirection, cursorId, limit);
+    }
+
+    public List<UUID> findProductIds(
+            UUID storeId,
+            String search,
+            ProductType productType,
+            PriceUseMode priceUseMode,
+            DiscountType discountType,
+            boolean offersOnly,
+            UUID familyId,
+            UUID taxId,
+            Boolean offerActive,
+            String stockStatus,
+            UUID supplierId,
+            UUID warehouseId,
+            String sortBy,
+            String sortDirection,
+            UUID cursorId,
+            int limit) {
         String expression = sortExpression(sortBy);
         String direction = sortDirection(sortDirection);
         String comparison = "asc".equals(direction) ? ">" : "<";
@@ -46,6 +69,8 @@ public class StockPageOrderRepository {
                 .addValue("familyId", familyId)
                 .addValue("taxId", taxId)
                 .addValue("offerActive", offerActive)
+                .addValue("stockStatus", stockStatus)
+                .addValue("supplierId", supplierId)
                 .addValue("warehouseId", warehouseId)
                 .addValue("cursorId", cursorId)
                 .addValue("limit", limit);
@@ -116,6 +141,17 @@ public class StockPageOrderRepository {
                         or product.impuesto_id = cast(:taxId as uuid))
                       and (cast(:offerActive as boolean) is null
                         or product.oferta_activa = cast(:offerActive as boolean))
+                      and (cast(:supplierId as uuid) is null or exists (
+                        select 1
+                        from producto_proveedor filtered_supplier
+                        where filtered_supplier.producto_id = product.id
+                          and filtered_supplier.proveedor_id = cast(:supplierId as uuid)
+                      ))
+                      and (cast(:stockStatus as varchar) is null
+                        or (cast(:stockStatus as varchar) = 'INACTIVE' and not product.activo)
+                        or (cast(:stockStatus as varchar) = 'EMPTY' and product.activo and stock.local_stock <= 0)
+                        or (cast(:stockStatus as varchar) = 'LOW' and product.activo and stock.local_stock > 0 and stock.local_stock <= 5)
+                        or (cast(:stockStatus as varchar) = 'OK' and product.activo and stock.local_stock > 5))
                 ),
                 cursor_row as (
                     select sort_value

@@ -260,7 +260,7 @@ describe("StockPromotionGroups", () => {
     expect(keys.slice(6, 12)).toEqual(keys.slice(0, 6));
     expect(html).toContain('grid-template-columns:38px 98px 172px 236px');
     expect(html).toContain('<span aria-hidden="true"></span><span class="table-layout-header-cell');
-    expect(html.match(/draggable="true"/g)).toHaveLength(6);
+    expect(html.match(/draggable="true"/g)).toHaveLength(12);
     expect(html.match(/aria-keyshortcuts="Control\+ArrowLeft Control\+ArrowRight"/g)).toHaveLength(6);
     expect(html.match(/table-layout-column-resizer/g)).toHaveLength(6);
   });
@@ -288,7 +288,7 @@ describe("StockPromotionGroups", () => {
     expect(keys.slice(0, 5)).toEqual(["stock", "name", "code", "family", "subfamily"]);
     expect(keys.slice(5, 10)).toEqual(keys.slice(0, 5));
     expect(tableHtml).toContain('style="width:94px"');
-    expect(tableHtml.match(/draggable="true"/g)).toHaveLength(5);
+    expect(tableHtml.match(/draggable="true"/g)).toHaveLength(10);
     expect(tableHtml.match(/aria-keyshortcuts="Control\+ArrowLeft Control\+ArrowRight"/g)).toHaveLength(5);
     expect(tableHtml.match(/table-layout-column-resizer/g)).toHaveLength(5);
   });

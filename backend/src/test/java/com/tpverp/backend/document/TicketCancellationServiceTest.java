@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.document.template.TicketCancellationJasperRenderer;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserAccountRepository;
@@ -80,6 +82,11 @@ class TicketCancellationServiceTest {
         when(voucherEvents.findAllByDocumentIdOrderByOccurredAtAsc(ticketId))
                 .thenReturn(List.of(restoredEvent, invalidatedEvent));
         var voucherPrinting = mock(VoucherPrintService.class);
+        var cancellationPrinting = mock(TicketCancellationJasperRenderer.class);
+        when(cancellationPrinting.render(any(), any())).thenReturn(
+                new TicketCancellationJasperRenderer.RenderedCancellation(
+                        "%PDF cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "PNG cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         var printDocument = new VoucherPrintService.PrintedVoucher(
                 "VALE-REST",
                 "001-000001",
@@ -99,16 +106,19 @@ class TicketCancellationServiceTest {
         var transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any()))
                 .thenReturn(mock(TransactionStatus.class));
+        var organization = mock(CurrentOrganization.class);
+        when(organization.currentStore()).thenReturn(mock(Store.class));
         var service = new TicketCancellationService(
                 documents,
                 mock(CommercialDocumentRepository.class),
                 operations,
                 voucherEvents,
                 voucherPrinting,
+                cancellationPrinting,
                 operationSecurity,
                 users,
                 mock(PaymentTerminalOperationsService.class),
-                mock(CurrentOrganization.class),
+                organization,
                 mock(CurrentTerminal.class),
                 Clock.fixed(Instant.parse("2026-07-30T12:00:00Z"), ZoneOffset.UTC),
                 transactionManager);
@@ -133,6 +143,14 @@ class TicketCancellationServiceTest {
         assertThat(result.receipt().operatorUsername()).isEqualTo("ADMIN");
         assertThat(result.receipt().authorizerUsername()).isEqualTo("ADMIN");
         assertThat(result.receipt().delegated()).isFalse();
+        assertThat(result.receipt().renderedPdf().contentType())
+                .isEqualTo("application/pdf");
+        assertThat(java.util.Base64.getDecoder().decode(
+                result.receipt().renderedPdf().base64()))
+                .isEqualTo("%PDF cancellation".getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(result.receipt().ticketRenderedImage().contentType())
+                .isEqualTo("image/png");
         verify(operationSecurity).authorize(
                 org.mockito.ArgumentMatchers.eq(SaleOperationCode.CANCEL_TICKET),
                 org.mockito.ArgumentMatchers.isNull(),

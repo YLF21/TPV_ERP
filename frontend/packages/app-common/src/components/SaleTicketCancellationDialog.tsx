@@ -68,6 +68,8 @@ type CancellationReceipt = {
     amount: number | string;
     reference?: string | null;
   }>;
+  renderedPdf?: { contentType: "application/pdf"; base64: string } | null;
+  ticketRenderedImage?: { contentType: "image/png"; base64: string } | null;
 };
 
 type StoredCancellationAttempt = {
@@ -250,7 +252,15 @@ export function SaleTicketCancellationDialog({
   }
 
   async function printCancellationReceipt(receipt: CancellationReceipt) {
+    const renderedDocument = receipt.renderedPdf && receipt.ticketRenderedImage
+      ? {
+          requireRenderedDocument: true,
+          renderedPdf: receipt.renderedPdf,
+          documentRaster: `data:${receipt.ticketRenderedImage.contentType};base64,${receipt.ticketRenderedImage.base64}`,
+        }
+      : {};
     const result = await getHardwareBridge().printTicket({
+      ...renderedDocument,
       layout: "CANCELLATION_RECEIPT",
       title: t("sale.ticketCancel.receipt.title"),
       notice: t("sale.ticketCancel.receipt.nonFiscal"),

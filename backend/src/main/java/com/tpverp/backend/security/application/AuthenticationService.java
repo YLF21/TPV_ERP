@@ -45,7 +45,7 @@ public class AuthenticationService {
 	@Transactional
 	// Permite al ADMIN global entrar antes de que existan tienda y terminal.
 	public LoginResult installationLogin(String userName, String password) {
-		var user = usuarioRepository.findByNombreAndTiendaIsNull(normalize(userName))
+		var user = usuarioRepository.findGlobalByUserName(normalize(userName))
 				.filter(value -> value.isProtegido() && value.isActivo())
 				.orElseThrow(AuthenticationFailedException::new);
 		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
@@ -88,9 +88,9 @@ public class AuthenticationService {
 			throw new AuthenticationFailedException();
 		}
 		var normalizedName = userName == null ? "" : userName.trim().toUpperCase(Locale.ROOT);
-		var user = usuarioRepository.findByEmpresaIdAndNombre(
+		var user = usuarioRepository.findByEmpresaIdAndUserName(
 						terminal.getTienda().getEmpresa().getId(), normalizedName)
-				.or(() -> usuarioRepository.findByNombreAndTiendaIsNull(normalizedName)
+				.or(() -> usuarioRepository.findGlobalByUserName(normalizedName)
 						.filter(value -> value.isProtegido()))
 				.filter(value -> value.isActivo())
 				.filter(value -> value.isProtegido()

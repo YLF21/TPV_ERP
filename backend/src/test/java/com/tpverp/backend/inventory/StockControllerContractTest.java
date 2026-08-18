@@ -73,7 +73,7 @@ class StockControllerContractTest {
     void exposesServerSortedPagedStockEndpoint() throws NoSuchMethodException {
         var method = StockController.class.getDeclaredMethod(
                 "page", Integer.class, String.class, String.class, String.class, String.class, String.class,
-                UUID.class, UUID.class, Boolean.class, UUID.class, String.class, String.class,
+                UUID.class, UUID.class, Boolean.class, String.class, UUID.class, UUID.class, String.class, String.class,
                 Authentication.class);
 
         assertThat(method.getAnnotation(GetMapping.class).value())
@@ -84,7 +84,7 @@ class StockControllerContractTest {
                 .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
-                .hasSize(12);
+                .hasSize(14);
     }
 
     @Test

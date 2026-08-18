@@ -91,6 +91,31 @@ describe("StockScreen", () => {
     expect(path).toContain("warehouseId=11111111-1111-4111-8111-111111111111");
   });
 
+  it("serializes stock status and supplier filters using a stable server order", () => {
+    const path = stockPagePath(
+      null,
+      "stock.current",
+      "",
+      {
+        type: "",
+        discount: "",
+        family: "",
+        tax: "",
+        offerActive: "",
+        warehouse: "11111111-1111-4111-8111-111111111111",
+        status: "low",
+        supplier: "22222222-2222-4222-8222-222222222222"
+      },
+      null,
+      "11111111-1111-4111-8111-111111111111"
+    );
+
+    expect(path).toContain("stockStatus=low");
+    expect(path).toContain("supplierId=22222222-2222-4222-8222-222222222222");
+    expect(path).toContain("sortBy=name");
+    expect(path).toContain("warehouseId=11111111-1111-4111-8111-111111111111");
+  });
+
   it("combines backend products, warehouses and stock into inventory rows", () => {
     const rows = buildStockInventoryRows(
       [
@@ -948,6 +973,16 @@ describe("StockScreen", () => {
       offerActive: "",
       warehouse: ""
     })).toEqual([]);
+
+    expect(filterStockInventoryRows(rows, "stock.current", "", {
+      type: "",
+      discount: "",
+      family: "",
+      tax: "",
+      offerActive: "",
+      warehouse: "",
+      status: "low"
+    })).toEqual([expect.objectContaining({ code: "B002" })]);
   });
 
   it("derives a row status from quantity", () => {
@@ -1126,19 +1161,16 @@ describe("StockScreen", () => {
     expect(stockTableShouldAutoFocus("stock.current", {
       inventoryFilterOpen: false,
       productCreateOpen: false,
-      stockColumnsOpen: false,
       topSalesFilterOpen: false
     })).toBe(true);
     expect(stockTableShouldAutoFocus("stock.topSales", {
       inventoryFilterOpen: false,
       productCreateOpen: false,
-      stockColumnsOpen: false,
       topSalesFilterOpen: false
     })).toBe(false);
     expect(stockTableShouldAutoFocus("stock.current", {
       inventoryFilterOpen: true,
       productCreateOpen: false,
-      stockColumnsOpen: false,
       topSalesFilterOpen: false
     })).toBe(false);
   });
@@ -1217,7 +1249,7 @@ describe("StockScreen", () => {
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="report-footer-context"');
-    expect(html).toContain("PRODUCTO");
+    expect(html).toContain("GESTIÓN");
     expect(html).toContain("Top ventas");
     expect(html).toContain("Añadir producto");
     expect(html).toContain("Filtrar");

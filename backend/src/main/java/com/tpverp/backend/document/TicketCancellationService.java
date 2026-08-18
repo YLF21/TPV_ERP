@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.tpverp.backend.document.template.TicketCancellationJasperRenderer;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
 import com.tpverp.backend.security.domain.UserAccountRepository;
@@ -26,15 +27,21 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class TicketCancellationService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+            TicketCancellationService.class);
 
     private final DocumentService documents;
     private final CommercialDocumentRepository documentRepository;
     private final TicketCancellationOperationRepository operations;
     private final VoucherEventRepository voucherEvents;
     private final VoucherPrintService voucherPrinting;
+    private final TicketCancellationJasperRenderer cancellationPrinting;
     private final SaleOperationSecurityService operationSecurity;
     private final UserAccountRepository users;
     private final PaymentTerminalOperationsService cardTerminals;
@@ -49,6 +56,7 @@ public class TicketCancellationService {
             TicketCancellationOperationRepository operations,
             VoucherEventRepository voucherEvents,
             VoucherPrintService voucherPrinting,
+            TicketCancellationJasperRenderer cancellationPrinting,
             SaleOperationSecurityService operationSecurity,
             UserAccountRepository users,
             PaymentTerminalOperationsService cardTerminals,
@@ -61,6 +69,7 @@ public class TicketCancellationService {
         this.operations = operations;
         this.voucherEvents = voucherEvents;
         this.voucherPrinting = voucherPrinting;
+        this.cancellationPrinting = cancellationPrinting;
         this.operationSecurity = operationSecurity;
         this.users = users;
         this.cardTerminals = cardTerminals;
@@ -322,7 +331,7 @@ public class TicketCancellationService {
                                 payment.getCardAuthorizationCode(),
                                 payment.getVoucherCode())))
                 .toList();
-        return new CancellationReceipt(
+        var receipt = new CancellationReceipt(
                 operation.getId(),
                 ticket.getNumero(),
                 ticket.getConfirmadoEn() == null
@@ -334,6 +343,16 @@ public class TicketCancellationService {
                 username(operation.getAuthorizerUserId()),
                 !operation.getOperatorUserId().equals(operation.getAuthorizerUserId()),
                 payments);
+        if (cancellationPrinting == null) return receipt;
+        try {
+            var rendered = cancellationPrinting.render(
+                    receipt, organization.currentStore());
+            return receipt.withRenderedDocument(rendered.pdf(), rendered.png());
+        } catch (RuntimeException failure) {
+            LOGGER.warn("Could not render cancellation receipt {} with Jasper",
+                    operation.getId(), failure);
+            return receipt;
+        }
     }
 
     private String username(UUID userId) {
@@ -501,7 +520,46 @@ public class TicketCancellationService {
             String operatorUsername,
             String authorizerUsername,
             boolean delegated,
-            List<CancellationReceiptPayment> payments) {
+            List<CancellationReceiptPayment> payments,
+            RenderedContent renderedPdf,
+            RenderedContent ticketRenderedImage) {
+
+        public CancellationReceipt(
+                UUID operationId,
+                String originalTicketNumber,
+                java.time.Instant originalIssuedAt,
+                java.time.Instant cancelledAt,
+                BigDecimal total,
+                String reason,
+                String operatorUsername,
+                String authorizerUsername,
+                boolean delegated,
+                List<CancellationReceiptPayment> payments) {
+            this(operationId, originalTicketNumber, originalIssuedAt, cancelledAt,
+                    total, reason, operatorUsername, authorizerUsername, delegated,
+                    payments, null, null);
+        }
+
+        CancellationReceipt withRenderedDocument(byte[] pdf, byte[] png) {
+            return new CancellationReceipt(
+                    operationId, originalTicketNumber, originalIssuedAt, cancelledAt,
+                    total, reason, operatorUsername, authorizerUsername, delegated,
+                    payments,
+                    new RenderedContent("application/pdf",
+                            java.util.Base64.getEncoder().encodeToString(pdf)),
+                    new RenderedContent("image/png",
+                            java.util.Base64.getEncoder().encodeToString(png)));
+        }
+    }
+
+    public record RenderedContent(String contentType, String base64) {
+        public RenderedContent {
+            if (contentType == null || contentType.isBlank()
+                    || base64 == null || base64.isBlank()) {
+                throw new IllegalArgumentException(
+                        "ticket_cancellation_rendered_content_invalid");
+            }
+        }
     }
 
     public record CancellationReceiptPayment(

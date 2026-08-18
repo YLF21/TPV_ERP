@@ -138,7 +138,7 @@ describe("PartyDirectoryPanel", () => {
       session: layoutSession
     }));
     expect(html.match(/data-column-key=/g)).toHaveLength(7);
-    expect(html.match(/draggable="true"/g)).toHaveLength(7);
+    expect(html.match(/draggable="true"/g)).toHaveLength(14);
     expect(html.match(/aria-keyshortcuts="Control\+ArrowLeft Control\+ArrowRight"/g)).toHaveLength(7);
     expect(html.match(/table-layout-column-resizer/g)).toHaveLength(7);
   });

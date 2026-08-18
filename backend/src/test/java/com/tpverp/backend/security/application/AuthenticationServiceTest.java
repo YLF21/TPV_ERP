@@ -44,7 +44,7 @@ class AuthenticationServiceTest {
 		var role = new Role(store, "ADMIN");
 		var user = new UserAccount(store, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
-		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
+		when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
 		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
@@ -68,9 +68,9 @@ class AuthenticationServiceTest {
 		var role = new Role(null, "ADMIN");
 		var user = new UserAccount(null, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
-		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
+		when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.empty());
-		when(usuarioRepository.findByNombreAndTiendaIsNull("ADMIN")).thenReturn(Optional.of(user));
+		when(usuarioRepository.findGlobalByUserName("ADMIN")).thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
 		when(passwordEncoder.matches("1234", "password-hash")).thenReturn(true);
 
@@ -88,7 +88,7 @@ class AuthenticationServiceTest {
 		var role = new Role(null, "ADMIN");
 		var user = new UserAccount(null, "ADMIN", "password-hash", role);
 		user.requirePasswordChange();
-		when(usuarioRepository.findByNombreAndTiendaIsNull("ADMIN")).thenReturn(Optional.of(user));
+		when(usuarioRepository.findGlobalByUserName("ADMIN")).thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
 
 		var result = service().installationLogin("admin", "0000");
@@ -171,7 +171,7 @@ class AuthenticationServiceTest {
 		var role = new Role(store, "ADMIN");
 		var user = new UserAccount(store, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
-		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
+		when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
 		when(passwordEncoder.matches("bad", "password-hash")).thenReturn(false);
