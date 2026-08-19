@@ -109,6 +109,8 @@ export type CustomerReceivablePaymentReceiptSnapshot = {
   amount: NumericValue;
   remaining: NumericValue;
   transferDate?: string | null;
+  renderedPdf?: { contentType: "application/pdf"; base64: string } | null;
+  ticketRenderedImage?: { contentType: "image/png"; base64: string } | null;
 };
 
 export function ticketPrintRequest(
@@ -573,7 +575,11 @@ export async function printCustomerReceivablePaymentReceipt(
         documentNumber: `Shoukuan ${snapshot.paymentId}`,
         lineNames: [`Kehu ${snapshot.documentNumber.replace(/[^\x20-\x7e]/g, "") || snapshot.paymentId}`],
         paymentMethods: ["Fangshi CARD"]
-      } : undefined
+      } : undefined,
+      ...(snapshot.renderedPdf ? { renderedPdf: snapshot.renderedPdf } : {}),
+      ...(snapshot.ticketRenderedImage ? {
+        documentRaster: `data:${snapshot.ticketRenderedImage.contentType};base64,${snapshot.ticketRenderedImage.base64}`,
+      } : {}),
     }, config);
     return result.ok
       ? { status: "PRINTED" }

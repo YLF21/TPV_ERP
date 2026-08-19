@@ -304,6 +304,10 @@ export function SaleTicketCancellationDialog({
         price: "",
         total: t("sale.ticketCancel.receipt.total"),
       },
+      ...(receipt.renderedPdf ? { renderedPdf: receipt.renderedPdf } : {}),
+      ...(receipt.ticketRenderedImage ? {
+        documentRaster: `data:${receipt.ticketRenderedImage.contentType};base64,${receipt.ticketRenderedImage.base64}`,
+      } : {}),
     });
     if (!result.ok) {
       throw new Error(result.message || t("sale.ticketCancel.receipt.printFailed"));

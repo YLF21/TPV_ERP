@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.document.template.InvoiceJasperRenderer;
+import com.tpverp.backend.document.template.OperationalReceiptJasperRenderer;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
@@ -97,7 +98,7 @@ class CustomerReceivablePrintServiceTest {
         when(organization.currentCompany()).thenReturn(company);
         when(customers.findByIdAndCompanyId(document.getClienteId(), company.getId()))
                 .thenReturn(Optional.of(customer));
-        var service = new CustomerReceivablePrintService(documents, payments, organization, customers);
+        var receiptRenderer = mock(OperationalReceiptJasperRenderer.class);
         var payment = new DocumentPayment(document,
                 new PaymentMethod(UUID.randomUUID(), "TRANSFERENCIA", true), 1,
                 new BigDecimal("20.00"), true, null, null, null, "TR-1",
@@ -108,6 +109,14 @@ class CustomerReceivablePrintServiceTest {
         when(documents.findCustomerDocumentForPrint(document.getId(), storeId)).thenReturn(Optional.of(document));
         when(payments.findByRequestId(payment.getRequestId())).thenReturn(Optional.of(payment));
         when(payments.findAllByDocumentoId(document.getId())).thenReturn(List.of(payment));
+        when(receiptRenderer.renderPendingCollection(
+                document.getId(), payment.getRequestId())).thenReturn(
+                new OperationalReceiptJasperRenderer.RenderedReceipt(
+                        "%PDF".getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                        new byte[] {4, 5, 6}));
+        var service = new CustomerReceivablePrintService(
+                documents, payments, organization, customers, null, null, null,
+                null, receiptRenderer);
 
         var printable = service.document(document.getId());
         var receipt = service.paymentReceipt(document.getId(), payment.getRequestId());
@@ -123,6 +132,10 @@ class CustomerReceivablePrintServiceTest {
         assertThat(receipt.remaining()).isEqualByComparingTo("80.00");
         assertThat(receipt.reference()).isEqualTo("TR-1");
         assertThat(receipt.transferDate()).isEqualTo(LocalDate.of(2026, 7, 19));
+        assertThat(java.util.Base64.getDecoder().decode(receipt.renderedPdf().base64()))
+                .startsWith((byte) '%', (byte) 'P', (byte) 'D', (byte) 'F');
+        assertThat(java.util.Base64.getDecoder().decode(
+                receipt.ticketRenderedImage().base64())).containsExactly(4, 5, 6);
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CompanyPrintIdentityView;
 import com.tpverp.backend.document.template.InvoiceJasperRenderer;
+import com.tpverp.backend.document.template.OperationalReceiptJasperRenderer;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.party.Customer;
@@ -19,9 +20,13 @@ import java.util.UUID;
 import java.util.Base64;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class CustomerReceivablePrintService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+            CustomerReceivablePrintService.class);
     private final CommercialDocumentRepository documents;
     private final DocumentPaymentRepository payments;
     private final CurrentOrganization organization;
@@ -30,6 +35,7 @@ public class CustomerReceivablePrintService {
     private final DocumentFiscalQrService fiscalQr;
     private final com.tpverp.backend.verifactu.FiscalQrImageService fiscalQrImages;
     private final InvoiceJasperRenderer jasperRenderer;
+    private final OperationalReceiptJasperRenderer receiptRenderer;
 
     public CustomerReceivablePrintService(CommercialDocumentRepository documents,
             DocumentPaymentRepository payments, CurrentOrganization organization,
@@ -60,7 +66,18 @@ public class CustomerReceivablePrintService {
             DocumentFiscalQrService fiscalQr,
             com.tpverp.backend.verifactu.FiscalQrImageService fiscalQrImages) {
         this(documents, payments, organization, customers, presentationSnapshots,
-                fiscalQr, fiscalQrImages, null);
+                fiscalQr, fiscalQrImages, null, null);
+    }
+
+    CustomerReceivablePrintService(CommercialDocumentRepository documents,
+            DocumentPaymentRepository payments, CurrentOrganization organization,
+            CustomerRepository customers,
+            InvoicePresentationSnapshotFactory presentationSnapshots,
+            DocumentFiscalQrService fiscalQr,
+            com.tpverp.backend.verifactu.FiscalQrImageService fiscalQrImages,
+            InvoiceJasperRenderer jasperRenderer) {
+        this(documents, payments, organization, customers, presentationSnapshots,
+                fiscalQr, fiscalQrImages, jasperRenderer, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -70,13 +87,15 @@ public class CustomerReceivablePrintService {
             InvoicePresentationSnapshotFactory presentationSnapshots,
             DocumentFiscalQrService fiscalQr,
             com.tpverp.backend.verifactu.FiscalQrImageService fiscalQrImages,
-            InvoiceJasperRenderer jasperRenderer) {
+            InvoiceJasperRenderer jasperRenderer,
+            OperationalReceiptJasperRenderer receiptRenderer) {
         this.documents = documents; this.payments = payments; this.organization = organization;
         this.customers = customers;
         this.presentationSnapshots = presentationSnapshots;
         this.fiscalQr = fiscalQr;
         this.fiscalQrImages = fiscalQrImages;
         this.jasperRenderer = jasperRenderer;
+        this.receiptRenderer = receiptRenderer;
     }
 
     @Transactional(readOnly = true)
@@ -174,10 +193,27 @@ public class CustomerReceivablePrintService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var printablePaymentId = payment.getRequestId() == null
                 ? payment.getId() : payment.getRequestId();
+        var rendered = renderPaymentReceipt(document.getId(), printablePaymentId);
         return new PaymentReceipt(printablePaymentId, document.getId(), document.getNumero(),
                 document.getClienteId(), payment.getCreadoEn(), payment.getMetodoPago().getNombre(),
                 payment.getImporte(), payment.getReferencia(), payment.getTransferDate(),
-                Money.euros(document.getTotal()).subtract(paidThroughReceipt).max(BigDecimal.ZERO));
+                Money.euros(document.getTotal()).subtract(paidThroughReceipt).max(BigDecimal.ZERO),
+                rendered == null ? null : new RenderedPdf(
+                        "application/pdf", Base64.getEncoder().encodeToString(rendered.pdf())),
+                rendered == null ? null : new RenderedImage(
+                        "image/png", Base64.getEncoder().encodeToString(rendered.png())));
+    }
+
+    private OperationalReceiptJasperRenderer.RenderedReceipt renderPaymentReceipt(
+            UUID documentId, UUID paymentId) {
+        if (receiptRenderer == null) return null;
+        try {
+            return receiptRenderer.renderPendingCollection(documentId, paymentId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("No se pudo renderizar el justificante Jasper del cobro {} para {}",
+                    paymentId, documentId, exception);
+            return null;
+        }
     }
 
     private static int compare(DocumentPayment left, DocumentPayment right) {
@@ -322,5 +358,6 @@ public class CustomerReceivablePrintService {
     }
     public record PaymentReceipt(UUID paymentId, UUID documentId, String documentNumber,
             UUID customerId, Instant collectedAt, String method, BigDecimal amount,
-            String reference, LocalDate transferDate, BigDecimal remaining) {}
+            String reference, LocalDate transferDate, BigDecimal remaining,
+            RenderedPdf renderedPdf, RenderedImage ticketRenderedImage) {}
 }
