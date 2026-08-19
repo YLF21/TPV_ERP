@@ -1,0 +1,229 @@
+<!-- Plantilla de comprobante de anulacion para ticket termico de 80 mm. -->
+<!-- JasperReports/Jaspersoft Studio 7.0.6. Parametro requerido: DOCUMENTO_ID. -->
+<jasperReport name="ticket_anulado" language="java" columnCount="1" pageWidth="227" pageHeight="842" columnWidth="207" leftMargin="10" rightMargin="10" topMargin="5" bottomMargin="5" uuid="5fa837cc-6ef4-43b8-92ff-f4808772ca9e" ignorePagination="true">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<style name="Texto" fontName="DejaVu Sans" fontSize="8.0"/>
+	<style name="Centrado" style="Texto" hTextAlign="Center"/>
+	<style name="Derecha" style="Texto" hTextAlign="Right"/>
+	<style name="BarcodeCentrado" hImageAlign="Center" vImageAlign="Middle"/>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<description><![CDATA[UUID del ticket original, que debe encontrarse en estado ANULADO.]]></description>
+	</parameter>
+	<query language="sql"><![CDATA[
+SELECT
+    CASE
+        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+            THEN COALESCE(NULLIF(TRIM(t.nombre), ''), NULLIF(TRIM(e.razon_social), ''))
+        ELSE COALESCE(NULLIF(TRIM(e.razon_social), ''), NULLIF(TRIM(t.nombre), ''))
+    END AS tienda,
+    CASE
+        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+            THEN NULLIF(TRIM(e.razon_social), '')
+        ELSE NULL
+    END AS razon_social,
+    t.telefono,
+    t.email,
+    e.tax_id AS nif,
+    CONCAT_WS(' · ',
+        NULLIF(TRIM(jsonb_extract_path_text(t.direccion, 'linea1')), ''),
+        NULLIF(TRIM(CONCAT_WS(' ',
+            jsonb_extract_path_text(t.direccion, 'codigoPostal'),
+            jsonb_extract_path_text(t.direccion, 'ciudad'))), '')
+    ) AS direccion_tienda,
+    ldt.contenido AS logo_contenido,
+    d.numero AS numero_ticket,
+    COALESCE(d.confirmado_en, d.creado_en) AS fecha_original,
+    d.anulado_en AS fecha_anulacion,
+    COALESCE(NULLIF(TRIM(op.motivo), ''), NULLIF(TRIM(d.motivo_anulacion), ''), 'Sin motivo indicado') AS motivo,
+    COALESCE(NULLIF(TRIM(uop.user_name), ''), NULLIF(TRIM(uop.nombre), ''), '—') AS operador,
+    COALESCE(NULLIF(TRIM(uau.user_name), ''), NULLIF(TRIM(uau.nombre), ''), '—') AS autorizador,
+    COALESCE(NULLIF(TRIM(term.nombre), ''), '—') AS terminal,
+    d.total AS total_anulado,
+    COALESCE(pagos.resumen, 'Sin información de pago') AS resumen_pagos,
+    dl.posicion,
+    NULLIF(TRIM(dl.codigo), '') AS codigo_articulo,
+    dl.nombre AS articulo,
+    dl.cantidad,
+    dl.precio_unitario AS precio_unitario,
+    dl.total AS total_linea,
+    series.numeros_serie
+FROM documento d
+INNER JOIN tienda t ON t.id = d.tienda_id
+INNER JOIN empresa e ON e.id = t.empresa_id
+LEFT JOIN configuracion_documento_impreso_tienda cdi ON cdi.tienda_id = t.id
+LEFT JOIN logo_documento_tienda ldt ON ldt.id = cdi.logo_id AND ldt.tienda_id = t.id
+LEFT JOIN LATERAL (
+    SELECT tao.*
+    FROM ticket_anulacion_operacion tao
+    WHERE tao.ticket_id = d.id
+      AND tao.estado = 'COMPLETED'
+    ORDER BY tao.completado_en DESC NULLS LAST, tao.creado_en DESC
+    LIMIT 1
+) op ON TRUE
+LEFT JOIN usuario uop ON uop.id = COALESCE(op.operador_usuario_id, d.anulado_por)
+LEFT JOIN usuario uau ON uau.id = COALESCE(op.autorizador_usuario_id, d.anulado_por)
+LEFT JOIN terminal term ON term.id = COALESCE(op.terminal_id, d.terminal_origen_id)
+LEFT JOIN LATERAL (
+    SELECT string_agg(
+        COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO')
+        || ': ' || TO_CHAR(dp.importe, 'FM999999990.00') || ' €'
+        || CASE
+            WHEN COALESCE(
+                NULLIF(op.compensaciones_manuales ->> CAST(dp.id AS text), ''),
+                NULLIF(dp.referencia, ''),
+                NULLIF(dp.autorizacion_tarjeta, ''),
+                NULLIF(dp.codigo_vale, '')
+            ) IS NULL THEN ''
+            ELSE '  Ref. ' || COALESCE(
+                NULLIF(op.compensaciones_manuales ->> CAST(dp.id AS text), ''),
+                NULLIF(dp.referencia, ''),
+                NULLIF(dp.autorizacion_tarjeta, ''),
+                NULLIF(dp.codigo_vale, '')
+            )
+        END,
+        E'\n' ORDER BY dp.posicion, dp.creado_en
+    ) AS resumen
+    FROM documento_pago dp
+    LEFT JOIN metodo_pago mp ON mp.id = dp.metodo_pago_id
+    WHERE dp.documento_id = d.id
+) pagos ON TRUE
+LEFT JOIN documento_linea dl
+    ON dl.documento_id = d.id
+   AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')
+LEFT JOIN LATERAL (
+    SELECT string_agg(dlns.numero_serie, ', ' ORDER BY dlns.posicion) AS numeros_serie
+    FROM documento_linea_numero_serie dlns
+    WHERE dlns.documento_linea_id = dl.id
+) series ON TRUE
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+  AND d.tipo = 'TICKET'
+  AND d.estado = 'ANULADO'
+ORDER BY dl.posicion NULLS LAST
+]]></query>
+	<field name="tienda" class="java.lang.String"/>
+	<field name="razon_social" class="java.lang.String"/>
+	<field name="telefono" class="java.lang.String"/>
+	<field name="email" class="java.lang.String"/>
+	<field name="nif" class="java.lang.String"/>
+	<field name="direccion_tienda" class="java.lang.String"/>
+	<field name="logo_contenido" class="byte[]"/>
+	<field name="numero_ticket" class="java.lang.String"/>
+	<field name="fecha_original" class="java.sql.Timestamp"/>
+	<field name="fecha_anulacion" class="java.sql.Timestamp"/>
+	<field name="motivo" class="java.lang.String"/>
+	<field name="operador" class="java.lang.String"/>
+	<field name="autorizador" class="java.lang.String"/>
+	<field name="terminal" class="java.lang.String"/>
+	<field name="total_anulado" class="java.math.BigDecimal"/>
+	<field name="resumen_pagos" class="java.lang.String"/>
+	<field name="posicion" class="java.lang.Integer"/>
+	<field name="codigo_articulo" class="java.lang.String"/>
+	<field name="articulo" class="java.lang.String"/>
+	<field name="cantidad" class="java.math.BigDecimal"/>
+	<field name="precio_unitario" class="java.math.BigDecimal"/>
+	<field name="total_linea" class="java.math.BigDecimal"/>
+	<field name="numeros_serie" class="java.lang.String"/>
+	<background splitType="Stretch"/>
+	<title height="291" splitType="Stretch">
+		<element kind="image" uuid="1984079b-e2a8-49b5-bd8a-9b043379efbd" x="35" y="0" width="137" height="42" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+			<printWhenExpression><![CDATA[$F{logo_contenido} != null && $F{logo_contenido}.length > 0]]></printWhenExpression>
+			<expression><![CDATA[new java.io.ByteArrayInputStream($F{logo_contenido})]]></expression>
+		</element>
+		<element kind="textField" uuid="6e2f0aeb-bf3a-4f02-b386-c09d7d9c5a85" style="Centrado" x="3" y="44" width="201" height="16" fontSize="12.0" bold="true" textAdjust="StretchHeight">
+			<expression><![CDATA[$F{tienda}]]></expression>
+		</element>
+		<element kind="textField" uuid="8cc637ae-0604-44e9-8c63-d60fd35baac5" style="Centrado" x="3" y="61" width="201" height="12" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{razon_social}]]></expression>
+		</element>
+		<element kind="textField" uuid="e7926c77-313f-43a3-858c-55f7710ac53c" style="Centrado" x="3" y="74" width="201" height="12" removeLineWhenBlank="true">
+			<expression><![CDATA[($F{nif} == null ? "" : "NIF: " + $F{nif}) + ($F{telefono} == null || $F{telefono}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono}.trim())]]></expression>
+		</element>
+		<element kind="textField" uuid="e13d4f32-74d1-4bbf-9570-d023e545311e" style="Centrado" x="3" y="87" width="201" height="22" textAdjust="StretchHeight" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{direccion_tienda}]]></expression>
+		</element>
+		<element kind="textField" uuid="74070bee-7390-48a6-933c-a560cbb3d080" style="Centrado" x="3" y="100" width="201" height="12" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{email} == null || $F{email}.trim().isEmpty() ? "" : $F{email}.trim()]]></expression>
+		</element>
+		<element kind="line" uuid="b5646d2e-8f5b-41d9-b89d-ee136218b11b" x="5" y="112" width="197" height="1"><pen lineWidth="0.8"/></element>
+		<element kind="staticText" uuid="5a3d61d4-b20e-43c6-8157-35130c61ff76" x="3" y="117" width="201" height="19" fontName="DejaVu Sans" fontSize="13.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[COMPROBANTE DE ANULACIÓN]]></text>
+		</element>
+		<element kind="staticText" uuid="2b0318b5-2e9c-4845-805c-b12aaf71d52a" x="20" y="139" width="167" height="18" fontName="DejaVu Sans" fontSize="10.0" bold="true" hTextAlign="Center" mode="Opaque" backcolor="#EEEEEE">
+			<box><pen lineWidth="1.0"/></box>
+			<text><![CDATA[DOCUMENTO NO FISCAL]]></text>
+		</element>
+		<element kind="textField" uuid="a20c049a-0917-405f-be4d-48df812ec54e" style="Centrado" x="3" y="162" width="201" height="13" bold="true">
+			<expression><![CDATA["Ticket original: " + $F{numero_ticket}]]></expression>
+		</element>
+		<element kind="component" uuid="4f47542f-2b6d-46ee-bf18-4c7511890257" x="9" y="178" width="189" height="34" style="BarcodeCentrado">
+			<component kind="barcode4j:Code128" moduleWidth="1.3" textPosition="none" quietZone="7.0" verticalQuietZone="0.0">
+				<codeExpression><![CDATA[$F{numero_ticket} == null ? "" : $F{numero_ticket}.trim().replaceAll("[^0-9A-Za-z]+", "-")]]></codeExpression>
+			</component>
+		</element>
+		<element kind="textField" uuid="078fc4dd-176a-4cff-b699-1d66c190ed04" style="Texto" x="5" y="217" width="197" height="13">
+			<expression><![CDATA["Fecha original: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($F{fecha_original})]]></expression>
+		</element>
+		<element kind="textField" uuid="ea79a983-643b-4c51-8465-1275d16f2262" style="Texto" x="5" y="231" width="197" height="13">
+			<expression><![CDATA["Fecha anulación: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($F{fecha_anulacion})]]></expression>
+		</element>
+		<element kind="textField" uuid="935217bc-239f-4c69-8f0b-b05a66759b60" style="Texto" x="5" y="245" width="197" height="13">
+			<expression><![CDATA["Terminal: " + $F{terminal}]]></expression>
+		</element>
+		<element kind="textField" uuid="974b7cd7-e71c-4054-953e-e254fb54069e" style="Texto" x="5" y="259" width="197" height="13">
+			<expression><![CDATA["Operador: " + $F{operador} + " · Autoriza: " + $F{autorizador}]]></expression>
+		</element>
+		<element kind="textField" uuid="93441bd4-e480-43b6-9c32-25fa4861a8a7" style="Texto" x="5" y="273" width="197" height="18" textAdjust="StretchHeight">
+			<expression><![CDATA["Motivo: " + $F{motivo}]]></expression>
+		</element>
+	</title>
+	<columnHeader height="21">
+		<element kind="line" uuid="14a52741-ec27-48a8-b7a6-28ab379b2af5" x="5" y="1" width="197" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="staticText" uuid="7d68df17-2ab1-432e-883d-bd3444f53bca" style="Texto" x="5" y="5" width="106" height="13" bold="true"><text><![CDATA[ARTÍCULO ANULADO]]></text></element>
+		<element kind="staticText" uuid="3f5597a4-9aa7-466b-b479-6c84247e6329" style="Derecha" x="112" y="5" width="28" height="13" bold="true"><text><![CDATA[CANT.]]></text></element>
+		<element kind="staticText" uuid="ae99ca92-8179-44c8-ab6f-7468655729be" style="Derecha" x="142" y="5" width="60" height="13" bold="true"><text><![CDATA[TOTAL]]></text></element>
+		<element kind="line" uuid="27b20ac4-4699-4026-bf67-0885fa63cabe" x="5" y="19" width="197" height="1"><pen lineWidth="0.5"/></element>
+	</columnHeader>
+	<detail>
+		<band height="31" splitType="Stretch">
+			<element kind="textField" uuid="095cd08c-a281-4c3d-a73b-c7562617d39f" style="Texto" x="5" y="1" width="106" height="14" bold="true" textAdjust="StretchHeight">
+				<expression><![CDATA[($F{codigo_articulo} == null ? "" : $F{codigo_articulo} + " · ") + $F{articulo}]]></expression>
+			</element>
+			<element kind="textField" uuid="8d1f28ab-0454-4cd7-88bd-4fe54c0fb01b" style="Derecha" x="112" y="1" width="28" height="14">
+				<expression><![CDATA[$F{cantidad} == null ? "" : $F{cantidad}.stripTrailingZeros().toPlainString()]]></expression>
+			</element>
+			<element kind="textField" uuid="e375bef2-acfd-4675-a68e-f809c732d70d" style="Derecha" x="142" y="1" width="60" height="14">
+				<expression><![CDATA[$F{total_linea} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{total_linea}) + " €"]]></expression>
+			</element>
+			<element kind="textField" uuid="663f5172-109c-4cb3-80cf-52533e248840" style="Texto" x="10" y="16" width="190" height="13" textAdjust="StretchHeight">
+				<expression><![CDATA[($F{precio_unitario} == null ? "" : "Precio unitario: " + new java.text.DecimalFormat("#,##0.00").format($F{precio_unitario}) + " €") + ($F{numeros_serie} == null ? "" : " · S/N: " + $F{numeros_serie})]]></expression>
+			</element>
+		</band>
+	</detail>
+	<summary height="154" splitType="Stretch">
+		<element kind="line" uuid="11d5b174-1369-47f8-8c7a-694881336e8c" x="5" y="2" width="197" height="1"><pen lineWidth="0.8"/></element>
+		<element kind="staticText" uuid="d476cf4a-f875-41c6-bb07-f8bec5f10135" style="Texto" x="5" y="7" width="197" height="13" bold="true" hTextAlign="Center"><text><![CDATA[COMPENSACIÓN DE PAGOS]]></text></element>
+		<element kind="textField" uuid="231828bd-a5ea-4ce2-ab0d-1af7bc08cd30" style="Texto" x="5" y="22" width="197" height="34" textAdjust="StretchHeight">
+			<expression><![CDATA[$F{resumen_pagos}]]></expression>
+		</element>
+		<element kind="line" uuid="7f92436e-b11d-4b55-b7dd-bb6f3e6dfb00" x="5" y="60" width="197" height="1"><pen lineWidth="1.0"/></element>
+		<element kind="staticText" uuid="5d4e0c4d-d16b-4b89-aaf4-6fa2c4110d3f" x="5" y="66" width="112" height="22" fontName="DejaVu Sans" fontSize="12.0" bold="true"><text><![CDATA[TOTAL ANULADO]]></text></element>
+		<element kind="textField" uuid="79478754-a5e4-4ac9-a2ae-64359c08f765" x="118" y="66" width="84" height="22" fontName="DejaVu Sans" fontSize="12.0" bold="true" hTextAlign="Right">
+			<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{total_anulado}) + " €"]]></expression>
+		</element>
+		<element kind="staticText" uuid="85d48d6a-8956-4353-bd13-860ee4f83b27" x="20" y="94" width="167" height="19" fontName="DejaVu Sans" fontSize="10.0" bold="true" hTextAlign="Center" mode="Opaque" backcolor="#EEEEEE">
+			<box><pen lineWidth="1.0"/></box>
+			<text><![CDATA[TICKET ANULADO]]></text>
+		</element>
+		<element kind="staticText" uuid="de944bd2-5696-4c16-97a0-4bbe04cfc84e" style="Centrado" x="5" y="119" width="197" height="28" fontSize="7.0">
+			<text><![CDATA[Este comprobante acredita una anulación interna y no sustituye a una factura ni constituye un documento fiscal.]]></text>
+		</element>
+	</summary>
+</jasperReport>

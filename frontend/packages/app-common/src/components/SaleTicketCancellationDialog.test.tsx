@@ -150,6 +150,8 @@ describe("SaleTicketCancellationDialog", () => {
         amount: 25,
         reference: "DEV-123",
       }],
+      renderedPdf: cancellationReceipt.renderedPdf,
+      documentRaster: "data:image/png;base64,iVBORw0KGgo=",
     }));
   });
 

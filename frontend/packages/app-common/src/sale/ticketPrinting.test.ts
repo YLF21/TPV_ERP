@@ -432,14 +432,18 @@ describe("confirmed ticket printing", () => {
       collectedAt: "2026-07-20T09:00:00Z",
       method: "TRANSFERENCIA",
       amount: "20.00",
-      remaining: "50.00"
+      remaining: "50.00",
+      renderedPdf: { contentType: "application/pdf", base64: "JVBERi0=" },
+      ticketRenderedImage: { contentType: "image/png", base64: "iVBORw0KGgo=" }
     }, terminal, hardware)).resolves.toEqual({ status: "PRINTED" });
 
     expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
       documentNumber: "COBRO FV-1 / pay-1",
       issuedAt: "2026-07-20T09:00:00Z",
       payments: [{ method: "TRANSFERENCIA", amount: 20 }],
-      total: 20
+      total: 20,
+      renderedPdf: { contentType: "application/pdf", base64: "JVBERi0=" },
+      documentRaster: "data:image/png;base64,iVBORw0KGgo="
     }), expect.anything());
   });
 

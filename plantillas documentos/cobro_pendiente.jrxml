@@ -1,0 +1,215 @@
+<!-- Justificante de cobro de un documento pendiente para impresora termica de 80 mm. -->
+<!-- JasperReports/Jaspersoft Studio 7.0.6. Parametros: DOCUMENTO_ID y PAGO_ID. -->
+<jasperReport name="cobro_pendiente" language="java" columnCount="1" pageWidth="227" pageHeight="842" columnWidth="207" leftMargin="10" rightMargin="10" topMargin="5" bottomMargin="5" uuid="ad5bd189-8c89-4638-865f-635637caf794" ignorePagination="true">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="TPV ERP PostgreSQL"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<style name="Texto" fontName="DejaVu Sans" fontSize="8.0"/>
+	<style name="Centrado" style="Texto" hTextAlign="Center"/>
+	<style name="Derecha" style="Texto" hTextAlign="Right"/>
+	<style name="BarcodeCentrado" hImageAlign="Center" vImageAlign="Middle"/>
+	<parameter name="DOCUMENTO_ID" class="java.lang.String">
+		<description><![CDATA[UUID del albaran, factura o ticket con saldo pendiente.]]></description>
+	</parameter>
+	<parameter name="PAGO_ID" class="java.lang.String">
+		<description><![CDATA[UUID interno del pago o su request_id idempotente.]]></description>
+	</parameter>
+	<query language="sql"><![CDATA[
+WITH pago_objetivo AS (
+    SELECT dp.*
+    FROM documento_pago dp
+    WHERE dp.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+      AND (dp.id = CAST($P{PAGO_ID} AS uuid)
+           OR dp.request_id = CAST($P{PAGO_ID} AS uuid))
+    ORDER BY CASE WHEN dp.request_id = CAST($P{PAGO_ID} AS uuid) THEN 0 ELSE 1 END
+    LIMIT 1
+)
+SELECT
+    CASE
+        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+            THEN COALESCE(NULLIF(TRIM(t.nombre), ''), NULLIF(TRIM(e.razon_social), ''))
+        ELSE COALESCE(NULLIF(TRIM(e.razon_social), ''), NULLIF(TRIM(t.nombre), ''))
+    END AS nombre_cabecera,
+    CASE
+        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+            THEN NULLIF(TRIM(e.razon_social), '')
+        ELSE NULL
+    END AS nombre_empresa_secundario,
+    t.telefono,
+    t.email,
+    jsonb_extract_path_text(t.direccion, 'linea1') AS direccion,
+    jsonb_extract_path_text(t.direccion, 'codigoPostal') AS codigo_postal,
+    jsonb_extract_path_text(t.direccion, 'ciudad') AS ciudad,
+    jsonb_extract_path_text(t.direccion, 'pais') AS pais,
+    e.tax_id AS cif,
+    ldt.contenido AS logo_contenido,
+    d.numero AS numero_documento,
+    CAST(COALESCE(po.request_id, po.id) AS varchar) AS numero_cobro,
+    po.creado_en AS fecha_cobro,
+    COALESCE(NULLIF(TRIM(term.nombre), ''), '—') AS terminal,
+    COALESCE(NULLIF(TRIM(c.nombre_fiscal), ''), '—') AS cliente,
+    c.client_id AS codigo_cliente,
+    c.numero_documento AS documento_cliente,
+    COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO') AS metodo_pago,
+    po.importe AS importe_cobrado,
+    COALESCE(NULLIF(TRIM(po.referencia), ''), NULLIF(TRIM(po.autorizacion_tarjeta), ''),
+             NULLIF(TRIM(po.codigo_vale), '')) AS referencia,
+    po.fecha_transferencia,
+    GREATEST(
+        d.total - COALESCE((
+            SELECT SUM(anterior.importe)
+            FROM documento_pago anterior
+            WHERE anterior.documento_id = d.id
+              AND (
+                    anterior.posicion < po.posicion
+                 OR (anterior.posicion = po.posicion AND anterior.creado_en < po.creado_en)
+                 OR (anterior.posicion = po.posicion AND anterior.creado_en = po.creado_en
+                     AND anterior.id <= po.id)
+              )
+        ), 0::numeric),
+        0::numeric
+    ) AS saldo_pendiente
+FROM pago_objetivo po
+INNER JOIN documento d ON d.id = po.documento_id
+INNER JOIN tienda t ON t.id = d.tienda_id
+INNER JOIN empresa e ON e.id = t.empresa_id
+INNER JOIN cliente c ON c.id = d.cliente_id
+INNER JOIN metodo_pago mp ON mp.id = po.metodo_pago_id
+LEFT JOIN configuracion_documento_impreso_tienda cdi ON cdi.tienda_id = t.id
+LEFT JOIN logo_documento_tienda ldt ON ldt.id = cdi.logo_id AND ldt.tienda_id = t.id
+LEFT JOIN LATERAL (
+    SELECT evento.terminal_id
+    FROM documento_evento_operativo evento
+    WHERE evento.documento_id = d.id
+      AND evento.tipo = 'COBRADO'
+    ORDER BY ABS(EXTRACT(EPOCH FROM (evento.ocurrido_en - po.creado_en))), evento.id
+    LIMIT 1
+) evento_cobro ON TRUE
+LEFT JOIN terminal term
+    ON term.id = COALESCE(evento_cobro.terminal_id, d.terminal_origen_id)
+   AND term.tienda_id = d.tienda_id
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+  AND d.tipo IN ('ALBARAN_VENTA', 'FACTURA_VENTA', 'TICKET')
+  AND (d.tipo <> 'TICKET' OR d.cuenta_cobrar = TRUE)
+  AND d.estado NOT IN ('BORRADOR', 'ANULADO')
+]]></query>
+	<field name="nombre_cabecera" class="java.lang.String"/>
+	<field name="nombre_empresa_secundario" class="java.lang.String"/>
+	<field name="telefono" class="java.lang.String"/>
+	<field name="email" class="java.lang.String"/>
+	<field name="direccion" class="java.lang.String"/>
+	<field name="codigo_postal" class="java.lang.String"/>
+	<field name="ciudad" class="java.lang.String"/>
+	<field name="pais" class="java.lang.String"/>
+	<field name="cif" class="java.lang.String"/>
+	<field name="logo_contenido" class="byte[]"/>
+	<field name="numero_documento" class="java.lang.String"/>
+	<field name="numero_cobro" class="java.lang.String"/>
+	<field name="fecha_cobro" class="java.sql.Timestamp"/>
+	<field name="terminal" class="java.lang.String"/>
+	<field name="cliente" class="java.lang.String"/>
+	<field name="codigo_cliente" class="java.lang.String"/>
+	<field name="documento_cliente" class="java.lang.String"/>
+	<field name="metodo_pago" class="java.lang.String"/>
+	<field name="importe_cobrado" class="java.math.BigDecimal"/>
+	<field name="referencia" class="java.lang.String"/>
+	<field name="fecha_transferencia" class="java.sql.Date"/>
+	<field name="saldo_pendiente" class="java.math.BigDecimal"/>
+	<background splitType="Stretch"/>
+	<title height="283" splitType="Stretch">
+		<element kind="image" uuid="b19607c4-dd16-4d78-bbb9-2931448b2d56" x="35" y="0" width="137" height="42" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+			<printWhenExpression><![CDATA[$F{logo_contenido} != null && $F{logo_contenido}.length > 0]]></printWhenExpression>
+			<expression><![CDATA[new java.io.ByteArrayInputStream($F{logo_contenido})]]></expression>
+		</element>
+		<element kind="textField" uuid="07ab86c2-4895-4514-ab3a-e341576c7f38" style="Centrado" x="5" y="44" width="197" height="18" fontSize="12.0" bold="true" textAdjust="StretchHeight">
+			<expression><![CDATA[$F{nombre_cabecera}]]></expression>
+		</element>
+		<element kind="textField" uuid="08ad566e-4ce2-4c94-86de-4d6a9448e16b" style="Centrado" x="5" y="62" width="197" height="13" fontSize="9.0" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{nombre_empresa_secundario}]]></expression>
+		</element>
+		<element kind="textField" uuid="87be69a4-3a64-490a-a720-d1650d0e0fbf" style="Centrado" x="5" y="75" width="197" height="13" fontSize="9.0" removeLineWhenBlank="true">
+			<expression><![CDATA[($F{cif} == null ? "" : "NIF: " + $F{cif}) + ($F{telefono} == null || $F{telefono}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono}.trim())]]></expression>
+		</element>
+		<element kind="textField" uuid="5cc3b884-37f9-45c4-a449-99a6892053b1" style="Centrado" x="5" y="88" width="197" height="13" fontSize="9.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+			<expression><![CDATA[($F{direccion} == null || $F{direccion}.trim().isEmpty() ? "" : $F{direccion}.trim()) + ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty() ? "" : (($F{direccion} == null || $F{direccion}.trim().isEmpty()) ? "" : " · ") + $F{codigo_postal}.trim()) + ($F{ciudad} == null || $F{ciudad}.trim().isEmpty() ? "" : " " + $F{ciudad}.trim()) + ($F{pais} == null || $F{pais}.trim().isEmpty() ? "" : " · " + $F{pais}.trim())]]></expression>
+		</element>
+		<element kind="textField" uuid="c0d742ff-0fb7-4b1e-8011-82560d49a109" style="Centrado" x="5" y="101" width="197" height="13" fontSize="9.0" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{email} == null || $F{email}.trim().isEmpty() ? "" : $F{email}.trim()]]></expression>
+		</element>
+		<element kind="line" uuid="1c0cb9fd-62b1-44cb-8dbe-d440c4bb414d" x="5" y="117" width="197" height="1"><pen lineWidth="0.8"/></element>
+		<element kind="staticText" uuid="4780ae25-7634-4637-a7e7-48d739439a20" x="5" y="122" width="197" height="19" fontName="DejaVu Sans" fontSize="13.0" bold="true" hTextAlign="Center"><text><![CDATA[JUSTIFICANTE DE COBRO]]></text></element>
+		<element kind="staticText" uuid="50a9d066-6d1f-4cf7-b2ab-b0c557a52fcb" x="20" y="143" width="167" height="18" fontName="DejaVu Sans" fontSize="9.0" bold="true" hTextAlign="Center" mode="Opaque" backcolor="#EEEEEE">
+			<box><pen lineWidth="1.0"/></box><text><![CDATA[DOCUMENTO NO FISCAL]]></text>
+		</element>
+		<element kind="textField" uuid="c669fb92-2a77-4b1f-bba5-978311aa30fb" style="Centrado" x="5" y="165" width="197" height="28" fontSize="8.0" bold="true" textAdjust="StretchHeight">
+			<expression><![CDATA["COBRO " + $F{numero_documento} + " / " + $F{numero_cobro}]]></expression>
+		</element>
+		<element kind="component" uuid="eb25af37-e9e1-43d4-b04e-27dc61b35b93" x="8" y="195" width="191" height="30" style="BarcodeCentrado">
+			<component kind="barcode4j:Code128" moduleWidth="0.38" textPosition="none" quietZone="2.0" verticalQuietZone="0.0">
+				<codeExpression><![CDATA[$F{numero_cobro}]]></codeExpression>
+			</component>
+		</element>
+		<element kind="textField" uuid="8e6ead19-26d2-4410-b1cf-fc3133a63543" style="Centrado" x="5" y="227" width="197" height="13" fontSize="7.0">
+			<expression><![CDATA[$F{numero_cobro}]]></expression>
+		</element>
+		<element kind="textField" uuid="70c23169-ea09-4cf2-99e8-8e2500e9d6b5" style="Texto" x="5" y="243" width="197" height="13">
+			<expression><![CDATA["Fecha de cobro: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($F{fecha_cobro})]]></expression>
+		</element>
+		<element kind="textField" uuid="4c32c665-cc4e-4637-aa32-73978a682cf3" style="Texto" x="5" y="256" width="197" height="13">
+			<expression><![CDATA["Terminal: " + $F{terminal}]]></expression>
+		</element>
+		<element kind="textField" uuid="217b5418-6e80-4d32-97e4-666928197509" style="Texto" x="5" y="269" width="197" height="14" textAdjust="StretchHeight">
+			<expression><![CDATA["Cliente: " + $F{cliente} + ($F{codigo_cliente} == null ? "" : " · " + $F{codigo_cliente}) + ($F{documento_cliente} == null ? "" : " · " + $F{documento_cliente})]]></expression>
+		</element>
+	</title>
+	<columnHeader height="22">
+		<element kind="line" uuid="d9677571-e042-4bb8-9950-f4fd446c4d64" x="5" y="1" width="197" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="staticText" uuid="ec00db65-67ed-492d-b3de-8676733c99ef" style="Texto" x="5" y="5" width="92" height="13" bold="true"><text><![CDATA[CONCEPTO]]></text></element>
+		<element kind="staticText" uuid="de79eb08-5ca3-4ed9-a697-c7f53e70e4f2" style="Derecha" x="99" y="5" width="24" height="13" bold="true"><text><![CDATA[CANT.]]></text></element>
+		<element kind="staticText" uuid="90a7055c-d3f6-48cd-b99c-6c6672a97c69" style="Derecha" x="125" y="5" width="36" height="13" bold="true"><text><![CDATA[PRECIO]]></text></element>
+		<element kind="staticText" uuid="08d5b819-efca-42f6-a348-d3957de301a2" style="Derecha" x="163" y="5" width="39" height="13" bold="true"><text><![CDATA[TOTAL]]></text></element>
+		<element kind="line" uuid="a271932a-a5fb-47e8-868b-f578e10fda1c" x="5" y="20" width="197" height="1"><pen lineWidth="0.5"/></element>
+	</columnHeader>
+	<detail>
+		<band height="43" splitType="Stretch">
+			<element kind="textField" uuid="c53e8970-a652-4640-bb80-159ed49ecc6e" style="Texto" x="5" y="1" width="92" height="26" textAdjust="StretchHeight">
+				<expression><![CDATA["Cobro de " + $F{numero_documento} + "\nPendiente: " + new java.text.DecimalFormat("#,##0.00").format($F{saldo_pendiente}) + " €"]]></expression>
+			</element>
+			<element kind="staticText" uuid="6d3d1797-1a00-4315-be0e-338c9920dc5a" style="Derecha" x="99" y="1" width="24" height="13"><text><![CDATA[1]]></text></element>
+			<element kind="textField" uuid="35523058-7ff3-4d96-ac6e-34acbf7b5adb" style="Derecha" x="125" y="1" width="36" height="13">
+				<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{importe_cobrado})]]></expression>
+			</element>
+			<element kind="textField" uuid="9a23305e-f2f1-436d-aec5-0447f302ca31" style="Derecha" x="163" y="1" width="39" height="13">
+				<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{importe_cobrado})]]></expression>
+			</element>
+			<element kind="line" uuid="59880d59-f345-47c5-b30d-65bf38d0ef76" x="5" y="40" width="197" height="1"><pen lineWidth="0.5" lineStyle="Dashed"/></element>
+		</band>
+	</detail>
+	<summary height="132" splitType="Stretch">
+		<element kind="textField" uuid="6b49aa5d-2ee4-4dcc-8267-f1ce6203839f" style="Texto" x="5" y="4" width="122" height="14" fontSize="9.0" bold="true">
+			<expression><![CDATA[$F{metodo_pago}]]></expression>
+		</element>
+		<element kind="textField" uuid="fb45314e-bf34-4991-bf80-809914966a89" style="Derecha" x="129" y="4" width="73" height="14" fontSize="9.0" bold="true">
+			<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{importe_cobrado}) + " €"]]></expression>
+		</element>
+		<element kind="textField" uuid="1d0baeb9-147c-424b-ac71-c57be60ef439" style="Texto" x="10" y="20" width="192" height="13" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{referencia} == null ? "" : "Referencia: " + $F{referencia}]]></expression>
+		</element>
+		<element kind="textField" uuid="e577a01d-fd44-4285-8c22-88d119c1b900" style="Texto" x="10" y="33" width="192" height="13" removeLineWhenBlank="true">
+			<expression><![CDATA[$F{fecha_transferencia} == null ? "" : "Fecha transferencia: " + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{fecha_transferencia})]]></expression>
+		</element>
+		<element kind="line" uuid="1d6159db-fdf6-4e1d-bfb4-9812e541f416" x="5" y="50" width="197" height="1"><pen lineWidth="0.8"/></element>
+		<element kind="staticText" uuid="926ed17d-7029-457a-953c-b7e301796596" x="5" y="57" width="117" height="21" fontName="DejaVu Sans" fontSize="12.0" bold="true"><text><![CDATA[TOTAL COBRADO]]></text></element>
+		<element kind="textField" uuid="97246740-46e5-44d4-9e42-226b48c665a0" x="124" y="57" width="78" height="21" fontName="DejaVu Sans" fontSize="12.0" bold="true" hTextAlign="Right">
+			<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{importe_cobrado}) + " €"]]></expression>
+		</element>
+		<element kind="staticText" uuid="da9a78cd-2a17-461e-8fc0-e324f1f82fb5" style="Texto" x="5" y="83" width="117" height="16" bold="true"><text><![CDATA[SALDO PENDIENTE]]></text></element>
+		<element kind="textField" uuid="321cb38f-c56c-4e12-a6cb-dc3b494647a5" style="Derecha" x="124" y="83" width="78" height="16" bold="true">
+			<expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{saldo_pendiente}) + " €"]]></expression>
+		</element>
+		<element kind="line" uuid="c9244a3f-c1f7-445a-bf7f-bf34943d822d" x="5" y="103" width="197" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="staticText" uuid="a98ce7a7-1e43-4c11-aabe-b60706f3b997" style="Centrado" x="5" y="109" width="197" height="18" fontSize="7.0"><text><![CDATA[Justificante de cobro. Conserve este documento como comprobante del pago realizado.]]></text></element>
+	</summary>
+</jasperReport>
