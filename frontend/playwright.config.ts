@@ -45,7 +45,7 @@ export default defineConfig({
       },
       stdout: "pipe",
       stderr: "pipe",
-      url: `${backendUrl}/actuator/health`,
+      url: `${backendUrl}/api/v1/installation/status`,
       reuseExistingServer: true,
       timeout: 120_000
     },
