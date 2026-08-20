@@ -16,7 +16,7 @@ export async function loginUi(
 
 export async function openStock(page: Page, app: "venta" | "gestion") {
   if (app === "venta") {
-    await page.getByRole("button", { name: "PRODUCTO", exact: true }).click();
+    await page.keyboard.press("F2");
   } else {
     const stockGroup = page.locator(".gestion-nav-item.group").filter({
       has: page.getByRole("button", { name: "Stock", exact: true })
