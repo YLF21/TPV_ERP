@@ -16,7 +16,7 @@ CREATE TABLE member_category_bootstrap_upload (
     CONSTRAINT uk_member_category_bootstrap_upload_snapshot UNIQUE (snapshot_id),
     CONSTRAINT fk_member_category_bootstrap_upload_snapshot
         FOREIGN KEY (snapshot_id)
-        REFERENCES member_category_bootstrap_snapshot (id)
+        REFERENCES member_category_bootstrap_snapshot (snapshot_id)
         ON DELETE CASCADE,
     CONSTRAINT ck_member_category_bootstrap_upload_status CHECK (
         status IN ('PENDING', 'UPLOADING', 'WAITING_CENTRAL', 'APPLIED', 'CONFLICT')

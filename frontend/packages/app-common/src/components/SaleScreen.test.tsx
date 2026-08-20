@@ -2591,8 +2591,10 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "End" });
     const dialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
     expect(within(dialog).getByRole("button", { name: /Nuevo cliente.*F5/ })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: /Modificar cliente.*Ctrl\+F7/ })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: /Cobrar deuda.*Enter/ })).toBeEnabled();
+    await waitFor(() => {
+      expect(within(dialog).getByRole("button", { name: /Modificar cliente.*Ctrl\+F7/ })).toBeEnabled();
+      expect(within(dialog).getByRole("button", { name: /Cobrar deuda.*Enter/ })).toBeEnabled();
+    });
     expect(within(dialog).getByText("40,00 €")).toHaveClass("debt");
     expect(within(dialog).getByText("15,00 €")).toHaveClass("overdue-debt");
 

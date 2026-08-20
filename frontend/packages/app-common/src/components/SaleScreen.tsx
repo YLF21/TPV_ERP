@@ -1764,7 +1764,7 @@ export function SaleScreen({
     ? Math.round(Number(authoritativeQuote.memberBalanceTotal ?? 0) * 100)
     : memberBalanceCents;
   const memberBalanceReservation = useMemberBalanceReservation({
-    token: session.accessToken,
+    token: session.accessToken ?? "",
     customerId: selectedCustomer?.activeMember ? selectedCustomer.id : null,
     heartbeatPaused: paymentLocked && acceptedMemberBalanceCents > 0,
   });
