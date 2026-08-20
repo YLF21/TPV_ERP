@@ -246,7 +246,7 @@ class DevSampleDataSeederPostgreSqlTest {
     @Test
     void seedsOperationalAdminForTheDemoTerminal() {
         var admin = jdbc.queryForMap("""
-                select u.password_hash, u.protegido, u.activo, u.must_change_password,
+                select u.user_name, u.password_hash, u.protegido, u.activo, u.must_change_password,
                        u.tienda_id, r.nombre as rol, r.protegido as rol_protegido
                 from usuario u
                 join rol r on r.id = u.rol_id
@@ -255,6 +255,7 @@ class DevSampleDataSeederPostgreSqlTest {
 
         assertThat(passwordEncoder.matches("0000", admin.get("password_hash").toString())).isTrue();
         assertThat(admin)
+                .containsEntry("user_name", "ADMIN")
                 .containsEntry("protegido", true)
                 .containsEntry("activo", true)
                 .containsEntry("must_change_password", false)
