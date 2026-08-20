@@ -311,6 +311,7 @@ public class DailyCommercialReportService {
             case VOUCHER -> PaymentBucket.VOUCHER;
             case TRANSFER -> PaymentBucket.TRANSFER;
             case EXCHANGE -> PaymentBucket.COMPENSATION;
+            case MEMBER_CREDIT -> PaymentBucket.OTHER;
             case CARD -> tender.getTerminalOperationId() == null
                     && "TRANSFERENCIA".equals(originalPaymentMethods.get(tender.getOriginalPaymentId()))
                     ? PaymentBucket.TRANSFER
