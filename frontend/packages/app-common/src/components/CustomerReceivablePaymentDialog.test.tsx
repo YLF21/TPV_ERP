@@ -281,7 +281,7 @@ describe("CustomerReceivablePaymentDialog", () => {
       entregado: "20.00",
       cambio: "0.00",
     });
-    fireEvent.keyDown(document.body, { key: "Enter" });
+    fireEvent.keyDown(window, { key: "Enter" });
     await waitFor(() => expect(onPayment)
       .toHaveBeenCalledWith(paymentResult.receivable, undefined));
     expect(onPaid).not.toHaveBeenCalled();
