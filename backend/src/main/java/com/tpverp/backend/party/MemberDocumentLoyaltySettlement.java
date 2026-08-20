@@ -151,6 +151,20 @@ public class MemberDocumentLoyaltySettlement {
             long points,
             long availablePoints,
             long debtPoints,
+            BigDecimal balance,
+            BigDecimal availableBalance,
+            BigDecimal debtBalance,
+            Instant now) {
+        recordAccrual(
+                eligiblePaid, points, availablePoints, debtPoints, 0L,
+                balance, availableBalance, debtBalance, now);
+    }
+
+    public void recordAccrual(
+            BigDecimal eligiblePaid,
+            long points,
+            long availablePoints,
+            long debtPoints,
             long deferredPoints,
             BigDecimal balance,
             BigDecimal availableBalance,
@@ -251,6 +265,14 @@ public class MemberDocumentLoyaltySettlement {
                 targetDebtBalance.subtract(previousDebtBalance),
                 targetRestored,
                 targetRestored.subtract(restoredMemberBalance));
+    }
+
+    public void recordReversal(
+            ReversalPlan plan,
+            long pointsDebtCreated,
+            BigDecimal balanceDebtCreated,
+            Instant now) {
+        recordReversal(plan, pointsDebtCreated, balanceDebtCreated, 0L, now);
     }
 
     public void recordReversal(

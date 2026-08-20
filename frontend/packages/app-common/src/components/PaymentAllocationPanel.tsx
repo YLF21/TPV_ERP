@@ -354,8 +354,9 @@ export function PaymentAllocationPanel({
     if (next === "TRANSFER") return !refund && transferEnabled;
     if (next === "PENDING") return !refund && pendingVisible && pendingEnabled;
     if (next === "MEMBER_BALANCE") return !refund && customerSelected
-      && Boolean(onMemberWallet) && Boolean(memberWallet) && memberWalletLimit > 0
-      && effectiveRows.length === 0;
+      && Boolean(onMemberWallet || onMemberBalance)
+      && (!onMemberWallet || Boolean(memberWallet))
+      && memberBalanceLimit > 0 && effectiveRows.length === 0;
     if (next === "MEMBER_CREDIT") return refund && customerSelected && Boolean(memberWallet);
     if (next === "DISCOUNT") return !refund && discountVisible;
     return effectiveRows.length === 0;
@@ -443,7 +444,7 @@ export function PaymentAllocationPanel({
 
   function selectMethod(next: CheckoutMethod) {
     if (!allowAdd || compensationRequired || busy || !methodAvailable(next)) return;
-    if (next === "MEMBER_BALANCE") {
+    if (next === "MEMBER_BALANCE" && onMemberWallet) {
       setValidation("");
       setWalletOpen(true);
       return;
@@ -678,7 +679,7 @@ export function PaymentAllocationPanel({
     { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
     { value: "PENDING", shortcut: "F8", visible: !refund && pendingVisible, disabled: !pendingEnabled },
     { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
-    { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet), disabled: !customerSelected || !memberWallet || memberWalletLimit <= 0 || effectiveRows.length > 0 },
+    { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet || onMemberBalance), disabled: !customerSelected || (Boolean(onMemberWallet) && !memberWallet) || memberBalanceLimit <= 0 || effectiveRows.length > 0 },
     { value: "MEMBER_CREDIT", shortcut: "F10", visible: refund, disabled: !customerSelected || !memberWallet },
     { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: effectiveRows.length > 0 },
   ];

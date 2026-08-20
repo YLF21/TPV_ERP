@@ -115,7 +115,9 @@ describe("customer credit full flow", () => {
         onPayment={paid}
         onPaid={paid}
       />);
-      await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
+      const transfer = await screen.findByRole("button", { name: "Transferencia" });
+      await waitFor(() => expect(transfer).toBeEnabled());
+      fireEvent.click(transfer);
       const amountInput = screen.getByLabelText("IMPORTE / RECIBIDO");
       await waitFor(() => expect(amountInput).toBeEnabled());
       fireEvent.change(amountInput, { target: { value: amount } });

@@ -37,7 +37,8 @@ class SalePaymentSessionMemberBalanceTest {
                 fixture.terminalId,
                 sessionId.toString(),
                 sessionId,
-                new BigDecimal("10.00")))
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO))
                 .thenThrow(new IllegalStateException("saas_unavailable"));
 
         var session = fixture.service.reserve(
@@ -64,7 +65,8 @@ class SalePaymentSessionMemberBalanceTest {
                 fixture.terminalId,
                 sessionId.toString(),
                 sessionId,
-                new BigDecimal("10.00")))
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO))
                 .thenReturn(mock(LocalMemberBalanceReservation.class));
 
         var session = fixture.service.reserve(

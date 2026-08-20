@@ -34,7 +34,10 @@ afterEach(() => {
 
 describe("MemberLoyaltySettingsScreen", () => {
   it("saves both proportional rules and remains editable after the response", async () => {
-    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/commercial-contact-channels")) {
+        return response([]);
+      }
       if (init?.method === "PUT") {
         return response(JSON.parse(String(init.body)));
       }
@@ -54,8 +57,8 @@ describe("MemberLoyaltySettingsScreen", () => {
     expect(screen.getByText("4 puntos")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    const savedBody = JSON.parse(String(fetch.mock.calls[1][1]?.body));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    const savedBody = JSON.parse(String(fetch.mock.calls[2][1]?.body));
     expect(savedBody).toMatchObject({
       pointsAccrualBaseAmount: 10,
       pointsPerEuro: 3,

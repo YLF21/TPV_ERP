@@ -277,7 +277,7 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
       </div>
 
       <section className="member-settings-panel member-settings-channels">
-        <header><div><span className="member-settings-index">05</span><h2>{t("party.members.channelsTitle")}</h2></div></header>
+        <header><div><span className="member-settings-index">{String(5).padStart(2, "0")}</span><h2>{t("party.members.channelsTitle")}</h2></div></header>
         <p>{t("party.members.channelsHint")}</p>
         <form onSubmit={(event) => void saveChannel(event)}>
           <label className="member-settings-field"><span>{t("party.code")}</span><input value={channelDraft.code} disabled={disabled} onChange={(event) => setChannelDraft({ ...channelDraft, code: event.target.value })} /></label>
