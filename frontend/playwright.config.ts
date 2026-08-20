@@ -38,6 +38,7 @@ export default defineConfig({
       env: {
         ...process.env,
         SPRING_PROFILES_ACTIVE: process.env.SPRING_PROFILES_ACTIVE ?? "dev",
+        MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true",
         TPV_SERVER_ADDRESS: "127.0.0.1",
         TPV_SERVER_PORT: new URL(backendUrl).port || "18080",
         TPV_DB_USERNAME: process.env.E2E_DB_USERNAME ?? process.env.TPV_DB_USERNAME ?? "tpv_erp",
@@ -45,7 +46,7 @@ export default defineConfig({
       },
       stdout: "pipe",
       stderr: "pipe",
-      url: `${backendUrl}/api/v1/installation/status`,
+      url: `${backendUrl}/actuator/health/readiness`,
       reuseExistingServer: true,
       timeout: 120_000
     },
