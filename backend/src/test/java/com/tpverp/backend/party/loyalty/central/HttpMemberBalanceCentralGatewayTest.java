@@ -98,7 +98,7 @@ class HttpMemberBalanceCentralGatewayTest {
             AtomicReference<JsonNode> received,
             AtomicReference<String> token) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/api/v1/loyalty/member-balance/reservations", exchange -> {
+        server.createContext("/api/v2/loyalty/member-wallet/reservations", exchange -> {
             received.set(mapper.readTree(exchange.getRequestBody()));
             token.set(exchange.getRequestHeaders().getFirst("X-TPV-Installation-Token"));
             byte[] body = responseBody.getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -116,11 +116,16 @@ class HttpMemberBalanceCentralGatewayTest {
                   "reservationId":"%s",
                   "memberId":"00000000-0000-0000-0000-000000000001",
                   "status":"ACTIVE",
-                  "reservedTotal":10.00,
-                  "preparedAmount":0.00,
+                  "reservedLoyaltyAmount":10.00,
+                  "reservedReturnCreditAmount":0.00,
+                  "preparedLoyaltyAmount":0.00,
+                  "preparedReturnCreditAmount":0.00,
                   "prepareOperationId":null,
-                  "consumedTotal":0.00,
-                  "accountBalance":10.00,
+                  "consumedLoyaltyAmount":0.00,
+                  "consumedReturnCreditAmount":0.00,
+                  "accountLoyaltyBalance":10.00,
+                  "accountReturnCreditBalance":0.00,
+                  "reservedLots":[],
                   "heartbeatAt":"2026-08-18T12:00:00Z",
                   "leaseExpiresAt":"2026-08-18T12:02:00Z",
                   "heartbeatIntervalSeconds":30,

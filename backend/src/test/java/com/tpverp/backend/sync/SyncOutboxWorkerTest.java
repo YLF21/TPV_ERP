@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -31,7 +32,11 @@ class SyncOutboxWorkerTest {
     @Test
     void enviaPendientesYMarcaEnviado() {
         var event = event();
-        when(outbox.pending()).thenReturn(List.of(event));
+        var claimToken = UUID.randomUUID();
+        event.claim(claimToken, NOW);
+        when(outbox.claimBatch(100, Duration.ofMinutes(2))).thenReturn(List.of(event));
+        when(outbox.markSent(event.getEventId(), claimToken))
+                .thenAnswer(ignored -> event.markSent(claimToken, NOW));
         var worker = worker();
 
         int sent = worker.runOnce();
@@ -42,14 +47,25 @@ class SyncOutboxWorkerTest {
         assertThat(event.getAttempts()).isOne();
         InOrder order = Mockito.inOrder(sender, outbox);
         order.verify(sender).send(event);
-        order.verify(outbox).save(event);
+        order.verify(outbox).markSent(event.getEventId(), claimToken);
     }
 
     @Test
     void marcaErrorYContinuaConElSiguienteEvento() {
         var first = event();
         var second = event();
-        when(outbox.pending()).thenReturn(List.of(first, second));
+        var firstClaimToken = UUID.randomUUID();
+        var secondClaimToken = UUID.randomUUID();
+        first.claim(firstClaimToken, NOW);
+        second.claim(secondClaimToken, NOW);
+        when(outbox.claimBatch(100, Duration.ofMinutes(2))).thenReturn(List.of(first, second));
+        when(outbox.markFailed(
+                first.getEventId(), firstClaimToken, "saas caido", 10,
+                Duration.ofSeconds(5), Duration.ofMinutes(15)))
+                .thenAnswer(ignored -> first.markRetry(
+                        firstClaimToken, "saas caido", NOW.plusSeconds(5), NOW));
+        when(outbox.markSent(second.getEventId(), secondClaimToken))
+                .thenAnswer(ignored -> second.markSent(secondClaimToken, NOW));
         doThrow(new IllegalStateException("saas caido")).when(sender).send(first);
         var worker = worker();
 
@@ -60,8 +76,10 @@ class SyncOutboxWorkerTest {
         assertThat(first.getLastError()).isEqualTo("saas caido");
         assertThat(first.getAttempts()).isOne();
         assertThat(second.getStatus()).isEqualTo(SyncOutboxStatus.ENVIADO);
-        verify(outbox).save(first);
-        verify(outbox).save(second);
+        verify(outbox).markFailed(
+                first.getEventId(), firstClaimToken, "saas caido", 10,
+                Duration.ofSeconds(5), Duration.ofMinutes(15));
+        verify(outbox).markSent(second.getEventId(), secondClaimToken);
     }
 
     private SyncOutboxWorker worker() {

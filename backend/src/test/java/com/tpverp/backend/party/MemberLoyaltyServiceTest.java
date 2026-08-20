@@ -102,13 +102,14 @@ class MemberLoyaltyServiceTest {
         when(categories.findByCompanyIdAndActiveTrueOrderByMinPointsDesc(company.getId()))
                 .thenReturn(java.util.List.of());
         when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(lots.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service().recordPaidSale(document, new BigDecimal("15.00"));
 
         assertThat(member.getMemberPoints()).isEqualTo(4);
         assertThat(member.getMemberBalance()).isEqualByComparingTo("1.50");
         verify(lots).save(any(MemberBalanceLot.class));
-        verify(syncOutbox, org.mockito.Mockito.times(2)).enqueue(any());
+        verify(syncOutbox, org.mockito.Mockito.times(3)).enqueue(any());
     }
 
     @Test

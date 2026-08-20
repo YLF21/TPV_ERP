@@ -202,10 +202,8 @@ public class SalePaymentSessionService {
                   requestedMemberBalance,
                   Money.euros(BigDecimal.ZERO));
       } else if (requestedMemberBalance.signum() > 0) {
-          session.memberWalletUnavailable(
-                  memberBalanceReservationId,
+          session.memberBalanceUnavailable(
                   requestedMemberBalance,
-                  Money.euros(BigDecimal.ZERO),
                   Objects.requireNonNullElse(
                           memberBalanceFailureCode, "member_balance_unavailable"));
       } else if (memberBalanceReservationId != null) {
@@ -570,9 +568,12 @@ public class SalePaymentSessionService {
      if (!session.isCovered()) {
          throw new IllegalStateException("payment_session_not_covered");
      }
-     var approved = session.getAllocations().stream()
-             .filter(a -> a.getStatus() == PaymentTerminalOperationStatus.APPROVED).toList();
-     var pendingAmount = approved.stream()
+      var approved = session.getAllocations().stream()
+              .filter(a -> a.getStatus() == PaymentTerminalOperationStatus.APPROVED).toList();
+      approved.stream().filter(a -> a.getKind() == SalePaymentAllocationKind.INTEGRATED_CARD
+             && session.getDirection() == SalePaymentSessionDirection.SALE)
+             .forEach(a -> operations.requireFinalizableApprovedCharge(a.getOperationId()));
+      var pendingAmount = approved.stream()
              .filter(a -> a.getKind() == SalePaymentAllocationKind.PENDING)
              .map(SalePaymentAllocation::getAmount)
              .reduce(Money.euros(BigDecimal.ZERO), BigDecimal::add);
@@ -619,9 +620,6 @@ public class SalePaymentSessionService {
                            preparedLoyaltyAmount,
                            preparedReturnCreditAmount);
        }
-      approved.stream().filter(a -> a.getKind() == SalePaymentAllocationKind.INTEGRATED_CARD
-             && session.getDirection() == SalePaymentSessionDirection.SALE)
-             .forEach(a -> operations.requireFinalizableApprovedCharge(a.getOperationId()));
      var company = organization.currentCompany();
      PaymentMethod cash = payableAllocations.stream().anyMatch(a -> a.getKind() == SalePaymentAllocationKind.CASH)
              ? methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(), "EFECTIVO").orElseThrow()
