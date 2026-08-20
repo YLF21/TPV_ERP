@@ -10,6 +10,7 @@ import { CashPaymentDialog } from "./CashPaymentDialog";
 import { CashPaymentResultDialog } from "./CashPaymentResultDialog";
 import { CardPaymentDialog } from "./CardPaymentDialog";
 import { readCashInputMode, type CashInputMode } from "../sale/cashInputMode";
+import { useMemberBalanceReservation } from "../sale/memberBalanceReservation";
 import { PromotionPreviewPanel, type PromotionPreview } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
@@ -82,7 +83,11 @@ import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
 import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
 import { SaleCustomerReceivablesDialog } from "./SaleCustomerReceivablesDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
-import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
+import {
+  ProductCreateDialog,
+  type ProductCreateEditProduct,
+  type ProductCreateResponse,
+} from "./ProductCreateDialog";
 import {
   createCashCloseUiFlow,
   SaleCashSessionDialog,
@@ -319,6 +324,7 @@ const previousTicketImportTimeoutMs = 12_000;
 type PosAuthoritativeQuote = {
   total: number | string;
   productTotal: number | string;
+  memberBalanceTotal?: number | string;
   promotionPreview: PromotionPreview;
   pricingVersion?: number;
   quoteFingerprint?: string;
@@ -1626,6 +1632,7 @@ export function SaleScreen({
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
+  const [memberBalanceCents, setMemberBalanceCents] = useState(0);
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
   const [parkedSaleSaving, setParkedSaleSaving] = useState(false);
   const [parkedSaleAuthorizationOpen, setParkedSaleAuthorizationOpen] = useState(false);
@@ -1639,6 +1646,7 @@ export function SaleScreen({
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
+  const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [productInformationProduct, setProductInformationProduct] = useState<SaleProduct | null>(null);
   const [consultationMode, setConsultationMode] = useState<"PRICE" | "STOCK" | null>(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -1732,6 +1740,9 @@ export function SaleScreen({
     document.querySelector<HTMLElement>(`[data-cart-line-id="${escaped}"]`)
       ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [selectedLineId]);
+  useEffect(() => {
+    setMemberBalanceCents(0);
+  }, [selectedCustomer?.id]);
   const activeMember = selectedCustomer?.activeMember === true;
   const visibleCartColumns = visibleSaleCartColumns(cartTableLayout.layout);
   const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
@@ -1749,6 +1760,18 @@ export function SaleScreen({
   const authoritativeQuoteReady = authoritativeQuoteRequestKey === currentSaleRequestKey
     && isCompleteAuthoritativeQuote(authoritativeQuote);
   const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
+  const acceptedMemberBalanceCents = authoritativeQuoteReady
+    ? Math.round(Number(authoritativeQuote.memberBalanceTotal ?? 0) * 100)
+    : memberBalanceCents;
+  const memberBalanceReservation = useMemberBalanceReservation({
+    token: session.accessToken,
+    customerId: selectedCustomer?.activeMember ? selectedCustomer.id : null,
+    heartbeatPaused: paymentLocked && acceptedMemberBalanceCents > 0,
+  });
+  const availableMemberBalanceCents = selectedCustomer?.activeMember
+    && memberBalanceReservation.status === "ACTIVE"
+    ? Math.max(0, Math.round(Number(selectedCustomer.memberBalance ?? 0) * 100))
+    : 0;
   const authoritativeLineBreakdown = authoritativeQuoteReady ? authoritativeQuote.lineBreakdown : null;
   const currentPromotionPreview = authoritativeQuoteReady
     ? authoritativeQuote?.promotionPreview ?? null
@@ -3287,6 +3310,23 @@ export function SaleScreen({
     requestAddProduct(product);
   }
 
+  function openProductCreationFromSearch() {
+    if (!userCanManageStockProducts(session)) return;
+    setProductSearchOpen(false);
+    setProductCreateOpen(true);
+  }
+
+  function closeProductCreationFromSearch() {
+    setProductCreateOpen(false);
+    setProductSearchOpen(true);
+  }
+
+  function handleProductCreatedFromSearch(product: ProductCreateResponse) {
+    setCatalogReload((current) => current + 1);
+    setProductSearchQuery(product.code?.trim() || product.name?.trim() || productSearchQuery);
+    setProductSearchSelectedId(product.id);
+  }
+
   function openProductSalesHistory() {
     if (paymentLocked) return;
     setSalesHistoryProduct(selectedLine?.product ?? lines.at(-1)?.product ?? null);
@@ -3517,6 +3557,9 @@ export function SaleScreen({
       ...(checkoutDiscountCents > 0 && lines.some((line) => !line.previousTicketImportOrigin)
         ? { checkoutDiscountAmount: checkoutDiscountCents / 100 }
         : {}),
+      ...(memberBalanceCents > 0 && selectedCustomer?.activeMember
+        ? { memberBalanceAmount: memberBalanceCents / 100 }
+        : {}),
       ...(saleComment ? { internalComment: saleComment } : {}),
     };
   }
@@ -3528,6 +3571,7 @@ export function SaleScreen({
     setSelectedCustomer(null);
     setQuery("");
     setCheckoutDiscountCents(0);
+    setMemberBalanceCents(0);
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
     setSaleComment("");
@@ -3849,6 +3893,7 @@ export function SaleScreen({
       setAuthoritativeQuoteLoading(false);
       setAuthoritativeQuoteError("");
       setCheckoutDiscountCents(0);
+      setMemberBalanceCents(0);
       return;
     }
     if (!previousTicketImportSerialsReady) {
@@ -4915,6 +4960,11 @@ export function SaleScreen({
               voucherOnlyRefund={authoritativeTotal < 0 && lines.some((line) =>
                 line.returnOrigin?.sourceType === "GIFT_RECEIPT")}
               checkoutDiscountCents={checkoutDiscountCents}
+              memberBalanceCents={acceptedMemberBalanceCents}
+              memberBalanceAvailableCents={availableMemberBalanceCents}
+              pricingReady={authoritativeQuoteReady}
+              preferredSessionId={memberBalanceReservation.saleId ?? undefined}
+              memberBalanceReservationId={memberBalanceReservation.reservationId ?? undefined}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               manualCardPaymentAuthorization={manualCardPaymentAuthorization}
               transferPaymentAuthorization={transferPaymentAuthorization}
@@ -4930,6 +4980,9 @@ export function SaleScreen({
               onPending={openPendingSale}
               onDiscount={currentEconomicLines.length > 0
                 ? setCheckoutDiscountCents
+                : undefined}
+              onMemberBalance={currentEconomicLines.length > 0 && selectedCustomer?.activeMember
+                ? setMemberBalanceCents
                 : undefined}
               onHydrationChange={setPaymentHydrated}
               onLockedChange={(locked, reservedTotalCents) => {
@@ -4955,6 +5008,7 @@ export function SaleScreen({
                 setSalePrintMode("DEFAULT");
                 setPrintModeInput("DEFAULT");
                 setCheckoutDiscountCents(0);
+                setMemberBalanceCents(0);
                 setReservedPaymentTotalCents(null);
                 setLastPrintMode(completedPrintMode);
                 const result = paymentResultFromFinalization(printTicket, summary);
@@ -5048,13 +5102,17 @@ export function SaleScreen({
       />
 
       <ProductCreateDialog
-        open={Boolean(editingProduct && productEditAuthorizationId)}
+        open={productCreateOpen || Boolean(editingProduct && productEditAuthorizationId)}
         locale={locale}
         token={session.accessToken}
-        operationalAuthorizationId={productEditAuthorizationId}
-        editProduct={editingProduct}
-        onClose={closeProductEditor}
-        onCreated={() => {
+        operationalAuthorizationId={productCreateOpen ? undefined : productEditAuthorizationId}
+        editProduct={productCreateOpen ? null : editingProduct}
+        onClose={productCreateOpen ? closeProductCreationFromSearch : closeProductEditor}
+        onCreated={(product) => {
+          if (productCreateOpen) {
+            handleProductCreatedFromSearch(product);
+            return;
+          }
           setCatalogReload((current) => current + 1);
           setShortcutStatus(t("sale.productEdit.saved"));
         }}
@@ -5165,6 +5223,8 @@ export function SaleScreen({
           }}
           products={selectableProducts}
           token={session.accessToken}
+          createProductLabel={t("product.create.button")}
+          onCreateProduct={userCanManageStockProducts(session) ? openProductCreationFromSearch : undefined}
           onInspect={openProductInformation}
           onQueryChange={setProductSearchQuery}
           onSelectionChange={setProductSearchSelectedId}

@@ -29,11 +29,19 @@ public class MemberSettings {
     private Company company;
     @Column(name = "balance_accrual_percent", nullable = false, precision = 5, scale = 2)
     private BigDecimal balanceAccrualPercent = BigDecimal.ZERO.setScale(2);
+    @Column(name = "balance_accrual_base_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal balanceAccrualBaseAmount = BigDecimal.ONE.setScale(2);
+    @Column(name = "balance_accrual_enabled", nullable = false)
+    private boolean balanceAccrualEnabled;
     @Enumerated(EnumType.STRING)
     @Column(name = "balance_expiration_policy", nullable = false, length = 16)
     private BalanceExpirationPolicy balanceExpirationPolicy = BalanceExpirationPolicy.NO_CADUCA;
     @Column(name = "points_per_euro", nullable = false, precision = 8, scale = 2)
     private BigDecimal pointsPerEuro = BigDecimal.ONE.setScale(2);
+    @Column(name = "points_accrual_base_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal pointsAccrualBaseAmount = BigDecimal.ONE.setScale(2);
+    @Column(name = "points_accrual_enabled", nullable = false)
+    private boolean pointsAccrualEnabled = true;
     @Column(name = "category_auto_enabled", nullable = false)
     private boolean categoryAutoEnabled = true;
     @Column(name = "member_welcome_enabled", nullable = false)
@@ -56,11 +64,19 @@ public class MemberSettings {
         this.companyId = company.getId();
     }
 
-    public void update(BigDecimal balanceAccrualPercent, BalanceExpirationPolicy expirationPolicy,
+    public void update(boolean balanceAccrualEnabled, BigDecimal balanceAccrualBaseAmount,
+            BigDecimal balanceAccrualPercent, BalanceExpirationPolicy expirationPolicy,
+            boolean pointsAccrualEnabled, BigDecimal pointsAccrualBaseAmount,
             BigDecimal pointsPerEuro, boolean categoryAutoEnabled, boolean welcomeEnabled,
             MemberCardCodeFormat cardFormat, String subject, String body) {
+        this.balanceAccrualEnabled = balanceAccrualEnabled;
+        this.balanceAccrualBaseAmount = positiveMoney(
+                balanceAccrualBaseAmount, "balanceAccrualBaseAmount");
         this.balanceAccrualPercent = PartyValues.discount(balanceAccrualPercent);
         this.balanceExpirationPolicy = Objects.requireNonNull(expirationPolicy, "expirationPolicy");
+        this.pointsAccrualEnabled = pointsAccrualEnabled;
+        this.pointsAccrualBaseAmount = positiveMoney(
+                pointsAccrualBaseAmount, "pointsAccrualBaseAmount");
         this.pointsPerEuro = PartyValues.money(pointsPerEuro);
         this.categoryAutoEnabled = categoryAutoEnabled;
         this.memberWelcomeEnabled = welcomeEnabled;
@@ -77,12 +93,28 @@ public class MemberSettings {
         return balanceAccrualPercent;
     }
 
+    public BigDecimal getBalanceAccrualBaseAmount() {
+        return balanceAccrualBaseAmount;
+    }
+
+    public boolean isBalanceAccrualEnabled() {
+        return balanceAccrualEnabled;
+    }
+
     public BalanceExpirationPolicy getBalanceExpirationPolicy() {
         return balanceExpirationPolicy;
     }
 
     public BigDecimal getPointsPerEuro() {
         return pointsPerEuro;
+    }
+
+    public BigDecimal getPointsAccrualBaseAmount() {
+        return pointsAccrualBaseAmount;
+    }
+
+    public boolean isPointsAccrualEnabled() {
+        return pointsAccrualEnabled;
     }
 
     public boolean isCategoryAutoEnabled() {
@@ -103,5 +135,13 @@ public class MemberSettings {
 
     public String getWelcomeBodyTemplate() {
         return welcomeBodyTemplate;
+    }
+
+    private static BigDecimal positiveMoney(BigDecimal value, String field) {
+        var amount = PartyValues.money(value);
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException(field + " debe ser mayor que cero");
+        }
+        return amount;
     }
 }

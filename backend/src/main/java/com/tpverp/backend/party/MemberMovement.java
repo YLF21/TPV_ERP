@@ -46,6 +46,10 @@ public class MemberMovement {
     private UUID previousCategoryId;
     @Column(name = "new_category_id")
     private UUID newCategoryId;
+    @Column(name = "category_assignment_action", length = 8)
+    private String categoryAssignmentAction;
+    @Column(name = "category_lock_automatic")
+    private Boolean categoryLockAutomatic;
     private String reason;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id")
@@ -96,6 +100,15 @@ public class MemberMovement {
     }
     // Marks movements created from SaaS events so repeated inbound events stay idempotent.
 
+    public void setCategoryAssignmentMetadata(boolean lockAutomatic) {
+        if (type != MemberMovementType.CAMBIO_CATEGORIA) {
+            throw new IllegalStateException(
+                    "Los metadatos de categoria solo admiten CAMBIO_CATEGORIA");
+        }
+        categoryAssignmentAction = newCategoryId == null ? "CLEAR" : "SET";
+        categoryLockAutomatic = newCategoryId == null ? false : lockAutomatic;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -118,6 +131,22 @@ public class MemberMovement {
 
     public long getPointsAmount() {
         return pointsAmount;
+    }
+
+    public UUID getPreviousCategoryId() {
+        return previousCategoryId;
+    }
+
+    public UUID getNewCategoryId() {
+        return newCategoryId;
+    }
+
+    public String getCategoryAssignmentAction() {
+        return categoryAssignmentAction;
+    }
+
+    public Boolean getCategoryLockAutomatic() {
+        return categoryLockAutomatic;
     }
 
     public String getReason() {

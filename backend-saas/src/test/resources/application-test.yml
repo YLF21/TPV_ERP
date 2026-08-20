@@ -3,10 +3,10 @@ spring:
     activate:
       on-profile: test
   datasource:
-    url: jdbc:h2:mem:tpv_saas;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:tc:postgresql:17-alpine:///tpv_saas
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    username: test
+    password: test
   jpa:
     hibernate:
       ddl-auto: validate

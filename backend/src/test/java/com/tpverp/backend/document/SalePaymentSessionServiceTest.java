@@ -75,6 +75,19 @@ class SalePaymentSessionServiceTest {
   verify(fixture.repo,times(1)).save(any(SalePaymentSession.class));
  }
 
+ @Test void paymentSessionHashIncludesNormalizedMemberBalanceWithoutChangingLegacyRequests(){
+  var productId=UUID.randomUUID();var lines=List.of(new PosCashController.LineRequest(productId,BigDecimal.ONE,BigDecimal.ZERO));
+  var legacy=new PosCashController.SaleRequest(null,lines);
+  var first=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,null,new BigDecimal("4.0"));
+  var sameNormalized=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,null,new BigDecimal("4.00"));
+  var different=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,null,new BigDecimal("5.00"));
+
+  assertThat(SalePaymentSessionService.hash(first,BigDecimal.TEN))
+          .isEqualTo(SalePaymentSessionService.hash(sameNormalized,BigDecimal.TEN))
+          .isNotEqualTo(SalePaymentSessionService.hash(different,BigDecimal.TEN))
+          .isNotEqualTo(SalePaymentSessionService.hash(legacy,BigDecimal.TEN));
+ }
+
  private static ReservationFixture reservationFixture(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
   var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var warehouseId=UUID.randomUUID();var productId=UUID.randomUUID();var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);

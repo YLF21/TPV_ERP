@@ -16,6 +16,7 @@ import com.tpverp.backend.security.sales.SaleOperationAuthorizationDeniedExcepti
 import com.tpverp.backend.security.sales.SaleOperationAuthorizationThrottledException;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
+import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralException;
 import com.tpverp.backend.verifactu.VerifactuCertificateApiException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
@@ -50,6 +51,43 @@ public class ApiExceptionHandler {
     @ExceptionHandler(PaymentTerminalApiException.class)
     ProblemDetail paymentTerminalProblem(PaymentTerminalApiException exception, HttpServletRequest request) {
         return problem(exception.status(), exception.code(), exception.getMessage(), language(request), request);
+    }
+
+    @ExceptionHandler(MemberBalanceCentralException.class)
+    ProblemDetail memberBalanceCentralProblem(
+            MemberBalanceCentralException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        HttpStatus status = switch (exception.getKind()) {
+            case CONFLICT -> HttpStatus.CONFLICT;
+            case REJECTED -> HttpStatus.UNPROCESSABLE_CONTENT;
+            case INVALID_RESPONSE -> HttpStatus.BAD_GATEWAY;
+            case UNAVAILABLE, UNAUTHORIZED -> HttpStatus.SERVICE_UNAVAILABLE;
+        };
+        String code = "MEMBER_BALANCE_CENTRAL_" + exception.getKind().name();
+        String detail = switch (language) {
+            case EN -> switch (exception.getKind()) {
+                case CONFLICT -> "The member balance is reserved at another checkout";
+                case REJECTED -> "The member balance operation was rejected";
+                default -> "The central member balance service is unavailable";
+            };
+            case ZH -> switch (exception.getKind()) {
+                case CONFLICT -> "会员余额已在其他收银台预留";
+                case REJECTED -> "会员余额操作被拒绝";
+                default -> "中央会员余额服务当前不可用";
+            };
+            default -> switch (exception.getKind()) {
+                case CONFLICT -> "El saldo del socio esta reservado en otra caja";
+                case REJECTED -> "La operacion de saldo socio ha sido rechazada";
+                default -> "El servicio central de saldo socio no esta disponible";
+            };
+        };
+        var problem = problem(status, code, detail, language, request);
+        problem.setProperty("loyaltyFailure", exception.getKind().name());
+        if (exception.getStatusCode() != null) {
+            problem.setProperty("centralStatus", exception.getStatusCode());
+        }
+        return problem;
     }
 
     @ExceptionHandler(VerifactuCertificateApiException.class)

@@ -1,13 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
-  commercialChannelColumnDefinitions,
   loadMemberLoyalty,
   memberCardDeliveryColumnDefinitions,
-  memberCategoryColumnDefinitions,
   memberLoyaltyAdjustmentBody,
   memberLoyaltyPermissions,
   memberLoyaltyTableKeys,
+  memberMovementPresentation,
   memberMovementColumnDefinitions,
   MemberLoyaltyPanel
 } from "./MemberLoyaltyPanel";
@@ -46,16 +45,32 @@ describe("MemberLoyaltyPanel", () => {
     expect(html).toContain('role="tablist"');
   });
 
-  it("defines the four loyalty preference namespaces and their data columns", () => {
+  it("defines the member-specific loyalty preference namespaces and their data columns", () => {
     expect(memberLoyaltyTableKeys).toEqual({
       movements: "party.members.movements",
-      categories: "party.memberCategories",
-      channels: "party.commercialChannels",
       deliveries: "party.memberCardDeliveries"
     });
     expect(memberMovementColumnDefinitions.map((column) => column.key)).toEqual(["date", "movement", "amount", "reason"]);
-    expect(memberCategoryColumnDefinitions.map((column) => column.key)).toEqual(["code", "name", "minPoints", "discount", "status"]);
-    expect(commercialChannelColumnDefinitions.map((column) => column.key)).toEqual(["code", "name", "status"]);
     expect(memberCardDeliveryColumnDefinitions.map((column) => column.key)).toEqual(["email", "status", "date"]);
+  });
+
+  it("presents credits, debits, manual adjustments and category changes explicitly", () => {
+    const translate = (key: string) => key.split(".").at(-1)!;
+    const movement = (type: string, balanceAmount: number, pointsAmount = 0) => ({
+      id: type, type, balanceAmount, pointsAmount, createdAt: "2026-08-19T20:00:00Z"
+    });
+
+    expect(memberMovementPresentation(movement("ACUMULACION_PUNTOS", 0, 2), [], translate, "es-ES"))
+      .toEqual({ tone: "credit", label: "ACUMULACION_PUNTOS", amount: "+2 pt" });
+    expect(memberMovementPresentation(movement("USO_SALDO", -4.85), [], translate, "es-ES"))
+      .toEqual({ tone: "debit", label: "USO_SALDO", amount: "-4,85 €" });
+    expect(memberMovementPresentation(movement("AJUSTE_MANUAL_SALDO", -1), [], translate, "es-ES").tone)
+      .toBe("manual");
+    expect(memberMovementPresentation({
+      ...movement("CAMBIO_CATEGORIA", 0), previousCategoryId: "silver", newCategoryId: "gold"
+    }, [
+      { id: "silver", code: "PLATA", name: "Plata", minPoints: 0, discountPercent: 0, discountEnabled: true, manualOnly: false, active: true, sortOrder: 1 },
+      { id: "gold", code: "ORO", name: "Oro", minPoints: 100, discountPercent: 5, discountEnabled: true, manualOnly: false, active: true, sortOrder: 2 }
+    ], translate, "es-ES").amount).toBe("Plata → Oro");
   });
 });

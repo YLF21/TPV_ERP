@@ -532,6 +532,39 @@ describe("PaymentAllocationPanel", () => {
     expect(html).toMatch(/disabled=""><span>Descuento/);
   });
 
+  it("uses contextual F10 to apply all or part of the available member balance", () => {
+    const onAdd = vi.fn();
+    const onMemberBalance = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceAvailableCents={900}
+      onMemberBalance={onMemberBalance} onAdd={onAdd} onQuery={vi.fn()}
+    />);
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    expect(amount).toHaveValue("9,00");
+    fireEvent.change(amount, { target: { value: "4,50" } });
+    fireEvent.keyDown(amount, { key: "Enter" });
+
+    expect(onMemberBalance).toHaveBeenCalledWith(450);
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("shows member balance separately from the F11 discount", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceCents={300}
+      memberBalanceAvailableCents={900} checkoutDiscountCents={200}
+      onMemberBalance={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    expect(html).toContain("Saldo socio");
+    expect(html).toContain("-3,00 €");
+    expect(html).toContain("-2,00 €");
+    expect(html).toContain('<kbd aria-hidden="true">F10</kbd>');
+  });
+
   it("renders the numeric keypad only in touch mode and hides shortcut labels", () => {
     const html = renderToStaticMarkup(<PaymentAllocationPanel
       locale="es" session={{ ...session, allocations: [] }} providers={[]}

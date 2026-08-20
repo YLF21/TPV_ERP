@@ -39,6 +39,11 @@ export { createTranslator, LocalizedMessages, messages } from "./i18n/LocalizedM
 export type { AppKind, LocaleCode, Permission, TerminalContext, UserSession } from "./types";
 export { addLocalDays, pendingCreateBody, pendingSummary } from "./sale/customerReceivables";
 export { resolvePendingCardPaymentMode } from "./sale/customerReceivables";
+export { useMemberBalanceReservation } from "./sale/memberBalanceReservation";
+export type {
+  MemberBalanceReservationState,
+  MemberBalanceReservationStatus,
+} from "./sale/memberBalanceReservation";
 export type {
   PendingCardPaymentMode,
   PendingPaymentAllocation,

@@ -184,6 +184,8 @@
 	</field>
 	<field name="discountTotal" class="java.math.BigDecimal">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.discountTotal"/>
+	</field>	<field name="memberBalanceTotal" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.memberBalanceTotal"/>
 	</field>
 	<field name="taxableBaseTotal" class="java.math.BigDecimal">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.taxableBase"/>
@@ -548,35 +550,43 @@
 		<element kind="textField" uuid="0a99df63-80cf-4bd9-95fc-b1cc7591ab22" x="460" y="34" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$F{discountTotal}]]></expression>
 		</element>
-		<element kind="staticText" uuid="793cfb3d-2e1d-4a97-af8b-e2a76ca55efc" x="315" y="48" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+				<element kind="staticText" uuid="73000000-0000-4000-8000-000000000001" x="315" y="48" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$F{memberBalanceTotal} != null && $F{memberBalanceTotal}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<text><![CDATA[Saldo socio]]></text>
+		</element>
+		<element kind="textField" uuid="73000000-0000-4000-8000-000000000002" x="460" y="48" width="95" height="14" fontName="SansSerif" fontSize="8.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$F{memberBalanceTotal} != null && $F{memberBalanceTotal}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+			<expression><![CDATA[$F{memberBalanceTotal}.negate()]]></expression>
+		</element>
+		<element kind="staticText" uuid="793cfb3d-2e1d-4a97-af8b-e2a76ca55efc" x="315" y="62" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
 			<text><![CDATA[Base imponible]]></text>
 		</element>
-		<element kind="textField" uuid="c71dd227-077f-470d-9010-bb37eb043d64" x="460" y="48" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="c71dd227-077f-470d-9010-bb37eb043d64" x="460" y="62" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$F{taxableBaseTotal}]]></expression>
 		</element>
-		<element kind="staticText" uuid="9dcf80eb-82f9-4589-bd0d-0e9cbf5bc647" x="315" y="62" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+		<element kind="staticText" uuid="9dcf80eb-82f9-4589-bd0d-0e9cbf5bc647" x="315" y="76" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Impuestos]]></text>
 		</element>
-		<element kind="textField" uuid="f3a96a36-ce3c-4be5-ae8e-84362b166489" x="460" y="62" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="f3a96a36-ce3c-4be5-ae8e-84362b166489" x="460" y="76" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{taxTotal}]]></expression>
 		</element>
-		<element kind="staticText" uuid="dfed254b-56f4-4efb-a475-89ae8c88fcb3" x="315" y="78" width="145" height="22" fontName="SansSerif" fontSize="12.0" bold="true" vTextAlign="Middle" forecolor="#17324D">
+		<element kind="staticText" uuid="dfed254b-56f4-4efb-a475-89ae8c88fcb3" x="315" y="92" width="145" height="22" fontName="SansSerif" fontSize="12.0" bold="true" vTextAlign="Middle" forecolor="#17324D">
 			<text><![CDATA[TOTAL A PAGAR]]></text>
 			<box>
 				<topPen lineWidth="0.75"/>
 				<bottomPen lineWidth="0.75"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="4ab79c5a-f6de-45f0-8030-467f157f4b86" x="460" y="78" width="95" height="22" fontName="SansSerif" fontSize="11.0" blankWhenNull="true" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="4ab79c5a-f6de-45f0-8030-467f157f4b86" x="460" y="92" width="95" height="22" fontName="SansSerif" fontSize="11.0" blankWhenNull="true" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[($F{grandTotal} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{grandTotal})) + ($F{currency} == null ? "" : " " + $F{currency})]]></expression>
 			<box>
 				<topPen lineWidth="0.75"/>
 				<bottomPen lineWidth="0.75"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="7d46fc51-b1e7-4d50-841c-d512c021a59b" x="315" y="104" width="240" height="14" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="7d46fc51-b1e7-4d50-841c-d512c021a59b" x="315" y="118" width="240" height="14" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<printWhenExpression><![CDATA["IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Comerciante minorista]]></text>
 		</element>

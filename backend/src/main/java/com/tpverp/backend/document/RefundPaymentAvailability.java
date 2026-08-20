@@ -69,6 +69,7 @@ public final class RefundPaymentAvailability {
             case "TARJETA" -> payment.getCardMode() == PaymentCardMode.INTEGRATED
                     ? SalePaymentAllocationKind.INTEGRATED_CARD
                     : SalePaymentAllocationKind.MANUAL_CARD;
+            case "CREDITO_DEVOLUCION" -> SalePaymentAllocationKind.MEMBER_CREDIT;
             case "TRANSFERENCIA" -> SalePaymentAllocationKind.TRANSFER;
             case "VALE" -> SalePaymentAllocationKind.VOUCHER;
             default -> null;

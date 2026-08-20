@@ -78,7 +78,7 @@ class MemberLoyaltyServiceTest {
     }
 
     @Test
-    void accruesPointsBalanceLotAndSyncFromPaidSalesAmount() {
+    void accruesProportionalPointsBalanceLotAndSyncFromPaidSalesAmount() {
         var company = PartyTestData.company();
         var store = PartyTestData.store(company);
         var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
@@ -86,8 +86,9 @@ class MemberLoyaltyServiceTest {
                 null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
         var settings = new MemberSettings(company);
-        settings.update(new BigDecimal("10.00"), BalanceExpirationPolicy.NO_CADUCA,
-                BigDecimal.ONE, true, false, MemberCardCodeFormat.QR, null, null);
+        settings.update(true, new BigDecimal("10.00"), new BigDecimal("10.00"),
+                BalanceExpirationPolicy.NO_CADUCA, true, new BigDecimal("10.00"),
+                new BigDecimal("3.00"), true, false, MemberCardCodeFormat.QR, null, null);
         var document = org.mockito.Mockito.mock(CommercialDocument.class);
         when(document.getTipo()).thenReturn(CommercialDocumentType.TICKET);
         when(document.getClienteId()).thenReturn(customer.getId());
@@ -102,10 +103,10 @@ class MemberLoyaltyServiceTest {
                 .thenReturn(java.util.List.of());
         when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service().recordPaidSale(document, new BigDecimal("25.99"));
+        service().recordPaidSale(document, new BigDecimal("15.00"));
 
-        assertThat(member.getMemberPoints()).isEqualTo(25);
-        assertThat(member.getMemberBalance()).isEqualByComparingTo("2.59");
+        assertThat(member.getMemberPoints()).isEqualTo(4);
+        assertThat(member.getMemberBalance()).isEqualByComparingTo("1.50");
         verify(lots).save(any(MemberBalanceLot.class));
         verify(syncOutbox, org.mockito.Mockito.times(2)).enqueue(any());
     }
@@ -158,7 +159,8 @@ class MemberLoyaltyServiceTest {
         var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
         member.addLoyaltyDebt(new BigDecimal("5.00"), 30);
         var settings = new MemberSettings(company);
-        settings.update(new BigDecimal("10.00"), BalanceExpirationPolicy.NO_CADUCA,
+        settings.update(true, BigDecimal.ONE, new BigDecimal("10.00"),
+                BalanceExpirationPolicy.NO_CADUCA, true, BigDecimal.ONE,
                 BigDecimal.ONE, true, false, MemberCardCodeFormat.QR, null, null);
         var document = org.mockito.Mockito.mock(CommercialDocument.class);
         when(document.getTipo()).thenReturn(CommercialDocumentType.TICKET);
@@ -193,7 +195,8 @@ class MemberLoyaltyServiceTest {
                 null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
         var settings = new MemberSettings(company);
-        settings.update(BigDecimal.ZERO, BalanceExpirationPolicy.NO_CADUCA,
+        settings.update(false, BigDecimal.ONE, BigDecimal.ZERO,
+                BalanceExpirationPolicy.NO_CADUCA, true, BigDecimal.ONE,
                 BigDecimal.ONE, true, false, MemberCardCodeFormat.QR, null, null);
         var document = org.mockito.Mockito.mock(CommercialDocument.class);
         var documentId = UUID.randomUUID();
@@ -339,6 +342,70 @@ class MemberLoyaltyServiceTest {
 
         assertThat(member.getMemberBalance()).isEqualByComparingTo("8.00");
         assertThat(sourceLot.getAmountRemaining()).isEqualByComparingTo("8.00");
+        assertThat(settlement.getRestoredMemberBalance()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void confirmedPartialReturnRestoresBalanceUsingOriginalExpiryFifoOrder() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.applyBalance(new BigDecimal("10.00"));
+        member.applyBalance(new BigDecimal("-4.00"));
+        var originalId = UUID.randomUUID();
+        var returnId = UUID.randomUUID();
+        var olderMovement = new MemberMovement(
+                member, store, user, UUID.randomUUID(), MemberMovementType.ACUMULACION_SALDO,
+                new BigDecimal("5.00"), 0, null, null, "origen antiguo",
+                Instant.parse("2026-07-01T10:00:00Z"));
+        var expiringMovement = new MemberMovement(
+                member, store, user, UUID.randomUUID(), MemberMovementType.ACUMULACION_SALDO,
+                new BigDecimal("5.00"), 0, null, null, "origen con caducidad",
+                Instant.parse("2026-07-02T10:00:00Z"));
+        var olderLot = new MemberBalanceLot(
+                member, olderMovement, new BigDecimal("5.00"),
+                Instant.parse("2026-07-01T10:00:00Z"), null);
+        var expiringLot = new MemberBalanceLot(
+                member, expiringMovement, new BigDecimal("5.00"),
+                Instant.parse("2026-07-02T10:00:00Z"),
+                Instant.parse("2026-07-31T23:59:59Z"));
+        expiringLot.consume(new BigDecimal("2.00"));
+        olderLot.consume(new BigDecimal("2.00"));
+        var usageMovement = new MemberMovement(
+                member, store, user, originalId, MemberMovementType.USO_SALDO,
+                new BigDecimal("-4.00"), 0, null, null, "pago", Instant.now());
+        var expiringConsumption = new MemberBalanceLotConsumption(
+                usageMovement, expiringLot, new BigDecimal("2.00"));
+        var olderConsumption = new MemberBalanceLotConsumption(
+                usageMovement, olderLot, new BigDecimal("2.00"));
+        var settlement = new MemberDocumentLoyaltySettlement(
+                originalId, member, new BigDecimal("10.00"),
+                BigDecimal.ZERO, Instant.parse("2026-07-02T12:00:00Z"));
+        settlement.updateMemberBalanceUsed(new BigDecimal("4.00"), Instant.now());
+        var original = org.mockito.Mockito.mock(CommercialDocument.class);
+        var returned = org.mockito.Mockito.mock(CommercialDocument.class);
+        when(original.getId()).thenReturn(originalId);
+        when(original.getNumero()).thenReturn("001-260702-00001");
+        when(returned.getId()).thenReturn(returnId);
+        when(loyaltySettlements.findById(originalId)).thenReturn(Optional.of(settlement));
+        when(movements.findByDocumentIdOrderByCreatedAtAsc(originalId))
+                .thenReturn(java.util.List.of(usageMovement));
+        when(lotConsumptions.findByMovement_Id(usageMovement.getId()))
+                .thenReturn(java.util.List.of(olderConsumption, expiringConsumption));
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().reverseConfirmedReturn(
+                original, returned, new BigDecimal("5.00"), BigDecimal.ZERO);
+
+        assertThat(member.getMemberBalance()).isEqualByComparingTo("8.00");
+        assertThat(expiringLot.getAmountRemaining()).isEqualByComparingTo("5.00");
+        assertThat(olderLot.getAmountRemaining()).isEqualByComparingTo("3.00");
         assertThat(settlement.getRestoredMemberBalance()).isEqualByComparingTo("2.00");
     }
 
@@ -498,6 +565,75 @@ class MemberLoyaltyServiceTest {
     }
 
     @Test
+    void rejectsBalanceThatExpiredAtTheCurrentInstant() {
+        var company = PartyTestData.company();
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.applyBalance(new BigDecimal("5.00"));
+        member.applyOfficialState(new BigDecimal("5.00"), 0, null,
+                Instant.parse("2026-07-02T11:58:00Z"));
+        var expiredLot = new MemberBalanceLot(
+                member, null, new BigDecimal("5.00"),
+                Instant.parse("2026-07-01T12:00:00Z"),
+                Instant.parse("2026-07-02T12:00:00Z"));
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        when(lots.findByMemberIdAndAmountRemainingGreaterThan(member.getId(), BigDecimal.ZERO))
+                .thenReturn(java.util.List.of(expiredLot));
+
+        assertThatThrownBy(() -> service().validateBalanceForCheckout(
+                customer.getId(), BigDecimal.ONE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.member.balance_insufficient_or_expired");
+        verify(movements, org.mockito.Mockito.never()).save(any());
+        verify(lotConsumptions, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void consumesAvailableBalanceByExpirationAndThenCreationOrder() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.applyBalance(new BigDecimal("10.00"));
+        member.applyOfficialState(new BigDecimal("10.00"), 0, null,
+                Instant.parse("2026-07-02T11:58:00Z"));
+        var laterExpiration = new MemberBalanceLot(
+                member, null, new BigDecimal("5.00"),
+                Instant.parse("2026-06-01T12:00:00Z"),
+                Instant.parse("2026-08-31T23:59:59Z"));
+        var earlierExpiration = new MemberBalanceLot(
+                member, null, new BigDecimal("5.00"),
+                Instant.parse("2026-07-01T12:00:00Z"),
+                Instant.parse("2026-07-31T23:59:59Z"));
+        var document = org.mockito.Mockito.mock(CommercialDocument.class);
+        var movement = org.mockito.Mockito.mock(MemberMovement.class);
+        when(document.getClienteId()).thenReturn(customer.getId());
+        when(document.getId()).thenReturn(UUID.randomUUID());
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        when(movements.save(any())).thenReturn(movement);
+        when(movement.getId()).thenReturn(UUID.randomUUID());
+        when(lots.findByMemberIdAndAmountRemainingGreaterThan(member.getId(), BigDecimal.ZERO))
+                .thenReturn(java.util.List.of(laterExpiration, earlierExpiration));
+
+        service().consumeBalanceForSaleReduction(document, new BigDecimal("6.00"));
+
+        assertThat(earlierExpiration.getAmountRemaining()).isZero();
+        assertThat(laterExpiration.getAmountRemaining()).isEqualByComparingTo("4.00");
+        assertThat(member.getMemberBalance()).isEqualByComparingTo("4.00");
+        verify(lotConsumptions, org.mockito.Mockito.times(2))
+                .save(any(MemberBalanceLotConsumption.class));
+    }
+
+    @Test
     void activationAssignsLowestNonManualCategoryAndRecordsMovement() {
         var company = PartyTestData.company();
         var store = PartyTestData.store(company);
@@ -531,7 +667,8 @@ class MemberLoyaltyServiceTest {
                 null, null, "cliente@example.com", null, CustomerRate.VENTA, BigDecimal.ZERO);
         var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
         var config = new MemberSettings(company);
-        config.update(BigDecimal.ZERO, BalanceExpirationPolicy.NO_CADUCA, BigDecimal.ONE,
+        config.update(false, BigDecimal.ONE, BigDecimal.ZERO,
+                BalanceExpirationPolicy.NO_CADUCA, true, BigDecimal.ONE, BigDecimal.ONE,
                 true, true, MemberCardCodeFormat.QR, "Bienvenido", "Codigo {memberId}");
         when(context.currentCompany()).thenReturn(company);
         when(context.currentStore()).thenReturn(store);
@@ -624,7 +761,7 @@ class MemberLoyaltyServiceTest {
         when(cardDeliveries.findByCompanyIdAndStatus(company.getId(), MemberCardDeliveryStatus.PENDIENTE))
                 .thenReturn(java.util.List.of(delivery));
 
-        var result = service().cardDeliveries(MemberCardDeliveryStatus.PENDIENTE);
+        var result = service().cardDeliveries(MemberCardDeliveryStatus.PENDIENTE, null);
 
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().email()).isEqualTo("cliente@example.com");
@@ -658,8 +795,9 @@ class MemberLoyaltyServiceTest {
         when(smtpSettings.findById(company.getId())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service().updateSettings(new MemberLoyaltyService.MemberSettingsCommand(
-                BigDecimal.ZERO, BalanceExpirationPolicy.NO_CADUCA, BigDecimal.ONE,
-                true, true, MemberCardCodeFormat.QR, "Bienvenido", "Codigo {memberId}")))
+                false, BigDecimal.ONE, BigDecimal.ZERO, BalanceExpirationPolicy.NO_CADUCA,
+                true, BigDecimal.ONE, BigDecimal.ONE, true, true,
+                MemberCardCodeFormat.QR, "Bienvenido", "Codigo {memberId}")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("message.member_welcome.smtp_required");
     }

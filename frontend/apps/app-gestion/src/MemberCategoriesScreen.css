@@ -1,0 +1,15 @@
+.member-categories-screen { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; background: #fff; }
+.member-categories-table { flex: 1 1 auto; min-height: 0; }
+.member-category-row { min-width: 1120px; }
+.member-category-row > * { display: flex; align-items: center; }
+.member-category-cell-order, .member-category-cell-minPoints, .member-category-cell-discount { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.member-category-cell-code { font-family: inherit; font-size: 12px; }
+.member-category-actions-header { padding: 9px 10px; border-right: 1px solid #e5eaf0; }
+.member-category-row-actions { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-right: 0; }
+.member-category-dialog { width: min(820px, calc(100vw - 92px)) !important; }
+.member-category-form fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; margin: 0; padding: 16px; border: 0; }
+.member-category-form .product-create-check { align-self: end; min-height: 40px; }
+.member-category-manual-check { grid-column: 1 / -1; }
+.member-category-manual-check span, .member-category-manual-check small { display: block; }
+.member-category-manual-check small { margin-top: 3px; color: #64748b; font-weight: 400; }
+@media (max-width: 760px) { .member-category-form fieldset { grid-template-columns: 1fr; } .member-category-manual-check { grid-column: auto; } }

@@ -28,6 +28,7 @@
     vale.concepto_vale,
     vale.codigo_vale,
     COALESCE(vale.importe_descuento_vale, 0::numeric) AS importe_descuento_vale,
+    COALESCE(saldo_socio.importe_saldo_socio, 0::numeric) AS importe_saldo_socio,
     GREATEST(
         SUM(dl.total) OVER () - d.total,
         0::numeric
@@ -106,8 +107,14 @@ LEFT JOIN LATERAL (
     WHERE vl.documento_id = d.id
       AND vl.tipo_linea = 'PROMOTIONAL_COUPON'
 ) vale ON TRUE
+LEFT JOIN LATERAL (
+    SELECT SUM(ABS(mbl.total)) AS importe_saldo_socio
+    FROM documento_linea mbl
+    WHERE mbl.documento_id = d.id
+      AND mbl.tipo_linea = 'MEMBER_BALANCE'
+) saldo_socio ON TRUE
 WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
-  AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')
+  AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON', 'MEMBER_BALANCE')
 ORDER BY dl.posicion]]></query>
 	<field name="posicion" class="java.lang.Integer">
 		<property name="com.jaspersoft.studio.field.name" value="posicion"/>
@@ -155,6 +162,7 @@ ORDER BY dl.posicion]]></query>
 	<field name="concepto_vale" class="java.lang.String"/>
 	<field name="codigo_vale" class="java.lang.String"/>
 	<field name="importe_descuento_vale" class="java.math.BigDecimal"/>
+	<field name="importe_saldo_socio" class="java.math.BigDecimal"/>
 	<field name="importe_descuento_ticket" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="importe_descuento_ticket"/>
 		<property name="com.jaspersoft.studio.field.label" value="importe_descuento_ticket"/>
@@ -259,16 +267,16 @@ ORDER BY dl.posicion]]></query>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</band>
 	</detail>
-	<summary height="98">
-		<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a02" positionType="Float" x="5" y="73" width="197" height="1"><pen lineWidth="0.5"/></element>
-		<element kind="staticText" uuid="d4c5be3a-c031-4fa3-8c71-8d40ab61818e" positionType="Float" x="8" y="79" width="117" height="18" fontSize="10.0" bold="true">
+	<summary height="111">
+		<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a02" positionType="Float" x="5" y="86" width="197" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="staticText" uuid="d4c5be3a-c031-4fa3-8c71-8d40ab61818e" positionType="Float" x="8" y="92" width="117" height="18" fontSize="10.0" bold="true">
 			<text><![CDATA[TOTAL A PAGAR]]></text>
 			<property name="com.jaspersoft.studio.unit.x" value="px"/>
 			<property name="com.jaspersoft.studio.unit.y" value="px"/>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</element>
-		<element kind="textField" uuid="bc55553c-cebb-46bf-a905-552a0cf0e316" positionType="Float" x="130" y="78" width="69" height="20" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Right">
+		<element kind="textField" uuid="bc55553c-cebb-46bf-a905-552a0cf0e316" positionType="Float" x="130" y="91" width="69" height="20" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Right">
 			<expression><![CDATA[$F{total_ticket} == null
     ? ""
     : new java.text.DecimalFormat("#,##0.00")
@@ -323,7 +331,7 @@ ORDER BY dl.posicion]]></query>
 				<expression><![CDATA[$F{codigo_vale}]]></expression>
 			</element>
 		</element>
-		<element kind="frame" uuid="5bc92810-5884-457d-8e11-b9440375513b" positionType="Float" x="5" y="41" width="195" height="13" removeLineWhenBlank="true">
+		<element kind="frame" uuid="5bc92810-5884-457d-8e11-b9440375513b" positionType="Float" x="5" y="67" width="195" height="13" removeLineWhenBlank="true">
 		<element kind="textField" uuid="bf44a667-1274-4598-878e-13022b8dc04c" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
 			<printWhenExpression><![CDATA[$F{importe_descuento_ticket} != null
 && $F{importe_descuento_ticket}
@@ -333,6 +341,9 @@ ORDER BY dl.posicion]]></query>
     .subtract($F{importe_descuento_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_descuento_socio})
+    .subtract($F{importe_saldo_socio} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_saldo_socio})
     .max(java.math.BigDecimal.ZERO)
     .compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
 			<expression><![CDATA["Descuento:"]]></expression>
@@ -350,6 +361,9 @@ ORDER BY dl.posicion]]></query>
     .subtract($F{importe_descuento_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_descuento_socio})
+    .subtract($F{importe_saldo_socio} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_saldo_socio})
     .max(java.math.BigDecimal.ZERO)
     .compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
 			<expression><![CDATA[$F{importe_descuento_ticket} == null
@@ -363,13 +377,16 @@ ORDER BY dl.posicion]]></query>
                 .subtract($F{importe_descuento_socio} == null
                     ? java.math.BigDecimal.ZERO
                     : $F{importe_descuento_socio})
+    .subtract($F{importe_saldo_socio} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_saldo_socio})
                 .max(java.math.BigDecimal.ZERO)
         ) + " €"]]></expression>
 			<property name="com.jaspersoft.studio.unit.x" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</element>
 		</element>
-		<element kind="frame" uuid="4b093d67-cff7-47be-b996-d1ae21155b2b" positionType="Float" x="5" y="54" width="195" height="13" removeLineWhenBlank="true">
+		<element kind="frame" uuid="4b093d67-cff7-47be-b996-d1ae21155b2b" positionType="Float" x="5" y="41" width="195" height="13" removeLineWhenBlank="true">
 		<element kind="textField" uuid="382b80f0-7062-4fa5-b62e-c7ae68c1c66f" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
 			<printWhenExpression><![CDATA[$F{importe_descuento_socio} != null
 && $F{importe_descuento_socio}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
@@ -384,5 +401,17 @@ ORDER BY dl.posicion]]></query>
     .format($F{importe_descuento_socio}.negate()) + " €"]]></expression>
 		</element>
 		</element>
-	</summary>
+		<element kind="frame" uuid="70000000-0000-4000-8000-000000000003" positionType="Float" x="5" y="54" width="195" height="13" removeLineWhenBlank="true">
+			<element kind="staticText" uuid="71000000-0000-4000-8000-000000000003" x="0" y="0" width="120" height="13" fontSize="8.0">
+				<printWhenExpression><![CDATA[$F{importe_saldo_socio} != null
+&& $F{importe_saldo_socio}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<text><![CDATA[Saldo socio]]></text>
+			</element>
+			<element kind="textField" uuid="72000000-0000-4000-8000-000000000003" x="125" y="0" width="70" height="13" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA[$F{importe_saldo_socio} != null
+&& $F{importe_saldo_socio}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<expression><![CDATA[new java.text.DecimalFormat("#,##0.00")
+    .format($F{importe_saldo_socio}.negate()) + " €"]]></expression>
+			</element>
+		</element>	</summary>
 </jasperReport>

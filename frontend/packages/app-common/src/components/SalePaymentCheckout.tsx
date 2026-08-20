@@ -5,6 +5,8 @@ import {
  LegacyPaymentAllocationPanel,
  PaymentAllocationPanel,
  type CheckoutMethod,
+ type MemberWalletSelection,
+ type MemberWalletView,
  type VoucherLookup,
 } from "./PaymentAllocationPanel";
 import type { PaymentSession } from "../sale/paymentOrchestration";
@@ -48,13 +50,14 @@ type Sale = {
   quoteFingerprint?: string;
   promotionalCouponCode?: string;
   checkoutDiscountAmount?: number;
+  memberBalanceAmount?: number;
 };
-export type ServerSession = { id: string; total: number | string; documentTotal?: number | string; direction?: "SALE"|"REFUND"|"ZERO"; status: string; ticketId?: string; ticketNumber?: string; printTicket?: ConfirmedTicketPrintSnapshot; issuedVoucher?: IssuedVoucherPrintSnapshot; allocations: Array<{ id: string; idempotencyKey: string; kind: "CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"|"VOUCHER"|"TRANSFER"|"PENDING"; amount: number|string; delivered?: number|string; change?: number|string; comment?: string; provider?: string; operationId?: string; originalPaymentId?: string; status: string; voucherCode?: string; reference?: string; authorization?: string; message?: string }>; refundPaymentAvailability?: Array<{ paymentMethod:string; kind?:"CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"|"VOUCHER"|"TRANSFER"|"PENDING"|null; originalAmount:number|string; refundedAmount:number|string; reservedAmount:number|string; availableAmount:number|string }>; voucherOnlyRefund?: boolean };
+export type ServerSession = { id: string; total: number | string; documentTotal?: number | string; direction?: "SALE"|"REFUND"|"ZERO"; status: string; ticketId?: string; ticketNumber?: string; printTicket?: ConfirmedTicketPrintSnapshot; issuedVoucher?: IssuedVoucherPrintSnapshot; memberBalanceReservationId?: string; memberBalanceRequestedAmount?: number|string; memberBalanceAppliedAmount?: number|string; memberBalanceFailureCode?: string; allocations: Array<{ id: string; idempotencyKey: string; kind: "CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"|"VOUCHER"|"TRANSFER"|"PENDING"|"MEMBER_CREDIT"; amount: number|string; delivered?: number|string; change?: number|string; comment?: string; provider?: string; operationId?: string; originalPaymentId?: string; status: string; voucherCode?: string; reference?: string; authorization?: string; message?: string }>; refundPaymentAvailability?: Array<{ paymentMethod:string; kind?:"CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"|"VOUCHER"|"TRANSFER"|"PENDING"|"MEMBER_CREDIT"|null; originalAmount:number|string; refundedAmount:number|string; reservedAmount:number|string; availableAmount:number|string }>; voucherOnlyRefund?: boolean };
 export type PaymentFinalizationSummary = (
  | { kind: "CASH"; totalCents: number; receivedCents: number }
  | { kind: "CARD" | "VOUCHER" | "MIXED" | "REFUND" | "ZERO"; totalCents: number; receivedCents?: never }
 ) & { issuedVoucher?: IssuedVoucherPrintSnapshot };
-type Props = { locale: LocaleCode; currentUsername?: string; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; customerSelected?: boolean; voucherOnlyRefund?: boolean; testCashEnabled?: boolean; saleMutationAuthorizations?: readonly SaleMutationAuthorizationRequirement[] | null; manualCardPaymentAuthorization?: SaleOperationAuthorization | null; transferPaymentAuthorization?: SaleOperationAuthorization | null; refundPolicyOverrideAuthorization?: SaleOperationAuthorization | null; refundTenderOverrideAuthorization?: SaleOperationAuthorization | null; paymentTerminalVoidAuthorization?: SaleOperationAuthorization | null; paymentTerminalRefundAuthorization?: SaleOperationAuthorization | null; paymentCompensationAuthorization?: SaleOperationAuthorization | null; createPendingAuthorization?: SaleOperationAuthorization | null; creditOverrideAuthorization?: SaleOperationAuthorization | null; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
+type Props = { locale: LocaleCode; currentUsername?: string; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; memberBalanceCents?: number; memberBalanceAvailableCents?: number; pricingReady?: boolean; preferredSessionId?: string; memberBalanceReservationId?: string; customerSelected?: boolean; voucherOnlyRefund?: boolean; testCashEnabled?: boolean; saleMutationAuthorizations?: readonly SaleMutationAuthorizationRequirement[] | null; manualCardPaymentAuthorization?: SaleOperationAuthorization | null; transferPaymentAuthorization?: SaleOperationAuthorization | null; refundPolicyOverrideAuthorization?: SaleOperationAuthorization | null; refundTenderOverrideAuthorization?: SaleOperationAuthorization | null; paymentTerminalVoidAuthorization?: SaleOperationAuthorization | null; paymentTerminalRefundAuthorization?: SaleOperationAuthorization | null; paymentCompensationAuthorization?: SaleOperationAuthorization | null; createPendingAuthorization?: SaleOperationAuthorization | null; creditOverrideAuthorization?: SaleOperationAuthorization | null; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onMemberBalance?: (amountCents:number)=>void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
 type AuthorizationAction = { kind: "VOID" | "REFUND"; authorization: SaleOperationAuthorization; amount: string; options: PaymentRefundLineOption[]; lines: PaymentRefundLineSelection[] };
 type PaymentAllocationInput = {kind:string;amountCents:number;provider?:string;voucherCode?:string;reference?:string;deliveredCents?:number;changeCents?:number;comment?:string};
 type AllocationAuthorizationAction = {
@@ -166,7 +169,7 @@ export function paymentFinalizationSummary(session:ServerSession,cashAttempt?:Ca
  const hasCash=effective.some(allocation=>allocation.kind==="CASH");
  const hasCard=effective.some(allocation=>allocation.kind==="MANUAL_CARD"||allocation.kind==="INTEGRATED_CARD");
  const hasVoucher=effective.some(allocation=>allocation.kind==="VOUCHER");
- const hasOther=effective.some(allocation=>allocation.kind==="TRANSFER"||allocation.kind==="PENDING");
+ const hasOther=effective.some(allocation=>allocation.kind==="TRANSFER"||allocation.kind==="PENDING"||allocation.kind==="MEMBER_CREDIT");
  if([hasCash,hasCard,hasVoucher,hasOther].filter(Boolean).length>1)return {kind:"MIXED",totalCents};
  if(hasCard)return {kind:"CARD",totalCents};
  if(hasVoucher)return {kind:"VOUCHER",totalCents};
@@ -212,7 +215,7 @@ export function shouldOfferTestCashSession(enabled:boolean,status:string|undefin
 export async function authorizationPasswordIsEphemeral<T>(password:string,clear:(value:string)=>void,operation:(password:string)=>Promise<T>){clear("");try{return await operation(password);}finally{clear("");}}
 export async function compensationNoteIsEphemeral<T>(note:string,clear:(value:string)=>void,operation:(note:string)=>Promise<T>){const normalized=note.trim();clear("");try{return await operation(normalized);}finally{clear("");}}
 
-export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,currentUsername="",totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,customerSelected=false,voucherOnlyRefund=false,testCashEnabled=false,saleMutationAuthorizations=[],manualCardPaymentAuthorization,transferPaymentAuthorization,refundPolicyOverrideAuthorization,refundTenderOverrideAuthorization,paymentTerminalVoidAuthorization,paymentTerminalRefundAuthorization,paymentCompensationAuthorization,createPendingAuthorization,creditOverrideAuthorization,onCash,onPending,onDiscount,onHydrationChange,onLockedChange,onFinalized},ref){
+export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,currentUsername="",totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,memberBalanceCents=0,memberBalanceAvailableCents=0,pricingReady=true,preferredSessionId,memberBalanceReservationId,customerSelected=false,voucherOnlyRefund=false,testCashEnabled=false,saleMutationAuthorizations=[],manualCardPaymentAuthorization,transferPaymentAuthorization,refundPolicyOverrideAuthorization,refundTenderOverrideAuthorization,paymentTerminalVoidAuthorization,paymentTerminalRefundAuthorization,paymentCompensationAuthorization,createPendingAuthorization,creditOverrideAuthorization,onCash,onPending,onDiscount,onMemberBalance,onHydrationChange,onLockedChange,onFinalized},ref){
  const t=createTranslator(locale);
  const legacyPasswordAuthorization:SaleOperationAuthorization={mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true};
  const legacyDirectAuthorization:SaleOperationAuthorization={mode:"DIRECT",requireUsername:false,requirePassword:false};
@@ -258,6 +261,13 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const [paymentMethods,setPaymentMethods]=useState(defaultCheckoutPaymentMethodConfiguration);
  const [returnPolicy,setReturnPolicy]=useState<"REFUND_ALLOWED"|"EXCHANGE_OR_VOUCHER_ONLY">("REFUND_ALLOWED");
  const [vouchers,setVouchers]=useState<Array<{code:string;balance:number|string}>>([]);
+ const [memberWallet,setMemberWallet]=useState<MemberWalletView|null>(null);
+ const [pendingMemberWallet,setPendingMemberWallet]=useState<{
+  requestedCents:number;
+  desiredLoyaltyCents:number;
+  returnCreditAvailableCents:number;
+ }|null>(null);
+ const memberWalletApplicationRef=useRef(false);
  const [voucherOpen,setVoucherOpen]=useState(false);const [voucherCode,setVoucherCode]=useState("");const [voucherAmount,setVoucherAmount]=useState("");
  const [safeRetry,setSafeRetry]=useState(false);
  const [testCashRequired,setTestCashRequired]=useState(false);
@@ -274,6 +284,30 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  useEffect(()=>{void loadPaymentMethods(token).then(methods=>setPaymentMethods(resolveCheckoutPaymentMethodConfiguration(methods))).catch(()=>setPaymentMethods(defaultCheckoutPaymentMethodConfiguration));},[token]);
  useEffect(()=>{void apiRequest<{policy:"REFUND_ALLOWED"|"EXCHANGE_OR_VOUCHER_ONLY"}>("/return-policy",{token}).then(value=>setReturnPolicy(value.policy)).catch(()=>setReturnPolicy("REFUND_ALLOWED"));},[token]);
   useEffect(()=>{void apiRequest<Array<{code:string;balance:number|string;status:string}>>("/vouchers",{token}).then(values=>setVouchers(values.filter(value=>value.status==="ACTIVE"))).catch(()=>setVouchers([]));},[token]);
+  useEffect(()=>{
+   let current=true;
+   if(!sale.customerId||!memberBalanceReservationId){setMemberWallet(null);return()=>{current=false;};}
+   setMemberWallet(null);
+   void apiRequest<MemberWalletView>(`/customers/${sale.customerId}/member-wallet`,{token})
+    .then(wallet=>{if(current)setMemberWallet({...wallet,lots:wallet.lots.map(lot=>({...lot,expiresAt:lot.expiresAt??undefined}))});})
+    .catch(()=>{if(current)setMemberWallet(null);});
+   return()=>{current=false;};
+  },[memberBalanceReservationId,sale.customerId,token]);
+  useEffect(()=>{
+   if(!pendingMemberWallet||!pricingReady||serverRef.current||memberWalletApplicationRef.current)return;
+   const requestedSaleLoyaltyCents=Math.max(0,Math.round(Number(sale.memberBalanceAmount??0)*100));
+   if(requestedSaleLoyaltyCents!==pendingMemberWallet.desiredLoyaltyCents)return;
+   const returnCreditCents=Math.min(
+    Math.max(0,pendingMemberWallet.requestedCents-memberBalanceCents),
+    pendingMemberWallet.returnCreditAvailableCents,
+    Math.max(0,totalCents),
+   );
+   memberWalletApplicationRef.current=true;
+   setPendingMemberWallet(null);
+   if(returnCreditCents>0){
+    requestAllocation({kind:"MEMBER_CREDIT",amountCents:returnCreditCents});
+   }
+  },[memberBalanceCents,pendingMemberWallet,pricingReady,sale.memberBalanceAmount,totalCents]);
   async function resolveVoucher(code:string):Promise<VoucherLookup|null>{
    try{
     return await apiRequest<VoucherLookup>(`/vouchers/${encodeURIComponent(code.trim())}`,{token});
@@ -288,20 +322,21 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  useEffect(()=>onLockedChange?.(paymentSessionLocksSale(server?.status),server?Math.round(Number(server.total)*100):undefined),[server,onLockedChange]);
  useEffect(()=>{if(unifiedCheckout&&server&&server.status!=="FINALIZED"&&server.status!=="CANCELLED")setCheckoutOpen(true);},[server?.id,server?.status,unifiedCheckout]);
  function clearRecoveryStorage(expectedSessionId?:string){const storedSessionId=globalThis.sessionStorage?.getItem(storageKey);const ownsStoredSession=!expectedSessionId||storedSessionId===expectedSessionId;if(ownsStoredSession)globalThis.sessionStorage?.removeItem(storageKey);const storedAttempt=globalThis.localStorage?.getItem(attemptKey);let attemptSessionId:string|undefined;try{attemptSessionId=storedAttempt?(JSON.parse(storedAttempt) as {sessionId?:string}).sessionId:undefined;}catch{/* Legacy malformed attempts belong to the matching stored session only. */}if(!expectedSessionId||attemptSessionId===expectedSessionId||(ownsStoredSession&&!attemptSessionId))globalThis.localStorage?.removeItem(attemptKey);}
- function clearRecoveredSession(expectedSessionId?:string){clearRecoveryStorage(expectedSessionId);if(expectedSessionId)simulatorDiscardAttemptedRef.current.delete(expectedSessionId);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setCompensationDialog(false);setCompensationNote("");setCompensationUsername("");setCompensationPassword("");setPendingFinalizeAuthorization(null);setPendingUsername("");setPendingPassword("");setCreditOverrideReason("");setCreditOverrideUsername("");setCreditOverridePassword("");setAllocationAuthorizationAction(null);setReservationAuthorizations(null);setAuthorization(null);setAuthorizationUsername("");setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
+ function clearRecoveredSession(expectedSessionId?:string){clearRecoveryStorage(expectedSessionId);if(expectedSessionId)simulatorDiscardAttemptedRef.current.delete(expectedSessionId);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setCompensationDialog(false);setCompensationNote("");setCompensationUsername("");setCompensationPassword("");setPendingFinalizeAuthorization(null);setPendingMemberWallet(null);setPendingUsername("");setPendingPassword("");setCreditOverrideReason("");setCreditOverrideUsername("");setCreditOverridePassword("");setAllocationAuthorizationAction(null);setReservationAuthorizations(null);setAuthorization(null);setAuthorizationUsername("");setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
  async function ensure(operationAuthorizations:SaleMutationOperationAuthorizations={}){
   if(serverRef.current)return serverRef.current;
   if(ensureFlightRef.current)return ensureFlightRef.current;
   const flight=(async()=>{
    const reservedSale=saleWithOperationAuthorizations(sale,operationAuthorizations);
    const storedId=globalThis.sessionStorage?.getItem(storageKey);
-   const id=storedId??uuid();
+   const id=storedId??preferredSessionId??uuid();
+   const reservationId=id===preferredSessionId?memberBalanceReservationId:undefined;
    globalThis.sessionStorage?.setItem(storageKey,id);
    let created:ServerSession;
    try{
     created=await apiRequest<ServerSession>("/pos/payment-sessions",{
      token,
-     body:{sessionId:id,sale:reservedSale},
+     body:{sessionId:id,sale:reservedSale,...(reservationId?{memberBalanceReservationId:reservationId}:{})},
     });
    }catch(failure){
     if(!(failure instanceof ApiError)||failure.status!==409)throw failure;
@@ -309,8 +344,13 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
     if(!active)throw failure;
     created=await apiRequest<ServerSession>("/pos/payment-sessions",{
      token,
-     body:{sessionId:active.id,sale:reservedSale},
+     body:{sessionId:active.id,sale:reservedSale,...(active.id===preferredSessionId&&memberBalanceReservationId?{memberBalanceReservationId}:{})},
     });
+   }
+   if(created.memberBalanceFailureCode&&memberBalanceCents>0){
+    const applied=Math.max(0,Math.round(Number(created.memberBalanceAppliedAmount??0)*100));
+    onMemberBalance?.(applied);
+    setError(t("payment.memberBalance.unavailable"));
    }
    globalThis.sessionStorage?.setItem(storageKey,created.id);
    serverRef.current=created;
@@ -624,14 +664,14 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const authorization=paymentAuthorizationFor(input.kind);
   const refundCheckout=(server?.direction??(totalCents<0?"REFUND":"SALE"))==="REFUND";
   const effectiveVoucherOnlyRefund=server?.voucherOnlyRefund??voucherOnlyRefund;
-  if(refundCheckout&&effectiveVoucherOnlyRefund&&input.kind!=="VOUCHER"){
+  if(refundCheckout&&effectiveVoucherOnlyRefund&&input.kind!=="VOUCHER"&&input.kind!=="MEMBER_CREDIT"){
    if(input.kind==="MANUAL_CARD"||input.kind==="INTEGRATED_CARD")cardGuardRef.current=false;
    if(input.kind==="CASH")cashGuardRef.current=false;
    setError(locale==="es"
-    ?"Los tickets regalo solo pueden devolverse mediante un vale."
+    ?"Los tickets regalo solo pueden devolverse mediante un vale o saldo a favor."
     :locale==="en"
-     ?"Gift receipt returns can only be refunded as a voucher."
-     :"礼品小票退货只能退还为代金券。");
+     ?"Gift receipt returns can only be refunded as a voucher or return credit."
+     :"礼品小票退货只能退还为代金券或退货余额。");
    return;
   }
   const refundPolicyRequired=refundCheckout
@@ -738,6 +778,33 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
   }
   setAllocationAuthorizationAction(null);
  }
+ async function applyMemberWalletSelection(selection:MemberWalletSelection){
+  if(!onMemberBalance||busy)return;
+  const current=serverRef.current;
+  const hasEffectiveAllocation=current?.allocations.some(
+   allocation=>!["DECLINED","ERROR","CANCELLED"].includes(allocation.status),
+  )??false;
+  if(hasEffectiveAllocation){
+   setError(locale==="es"
+    ?"El saldo debe aplicarse antes de registrar otros pagos."
+    :locale==="en"
+     ?"Member balance must be applied before recording other payments."
+     :"会员余额必须在登记其他付款前使用。");
+   return;
+  }
+  if(current){
+   const cancelled=await cancel();
+   if(cancelled!=="CANCELLED")return;
+  }
+  setError("");
+  memberWalletApplicationRef.current=false;
+  setPendingMemberWallet({
+   requestedCents:selection.requestedCents,
+   desiredLoyaltyCents:selection.loyaltyCents,
+   returnCreditAvailableCents:selection.returnCreditAvailableCents,
+  });
+  onMemberBalance(selection.loyaltyCents);
+ }
  function confirmCash(receivedCents:number){if(cashGuardRef.current)return;cashGuardRef.current=true;const cashAttempt={receivedCents};cashAttemptRef.current=cashAttempt;requestAllocation({kind:"CASH",amountCents:totalCents},false,cashAttempt);}
  function startCard(){if(cardGuardRef.current)return;if(providers[0]){cardGuardRef.current=true;requestAllocation({kind:"INTEGRATED_CARD",amountCents:totalCents,provider:providers[0]});}else if(manual){setManualCardOpen(true);}}
  function confirmManualCard(reference:string){if(cardGuardRef.current)return;cardGuardRef.current=true;setManualCardOpen(false);requestAllocation({kind:"MANUAL_CARD",amountCents:totalCents,reference});}
@@ -817,6 +884,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
   if(!server){
    setReservationAuthorizations(null);
    if(checkoutDiscountCents>0)onDiscount?.(0);
+   if(memberBalanceCents>0)onMemberBalance?.(0);
    if(closeAfter)setCheckoutOpen(false);
    return;
   }
@@ -827,6 +895,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
    cashGuardRef.current=false;
    cardGuardRef.current=false;
    if(checkoutDiscountCents>0)onDiscount?.(0);
+   if(memberBalanceCents>0)onMemberBalance?.(0);
    if(closeAfter)setCheckoutOpen(false);
   }
  }
@@ -941,7 +1010,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const presentation=checkoutPresentation(server?.status,server?.allocations.map(allocation=>allocation.status),safeRetry);
  const activePresentation=!unifiedCheckout&&testCashEnabled&&cashOpen&&presentation==="FINALIZE_RETRY"?"INDIVIDUAL_ACTIONS":presentation;
  if(!hydrationComplete&&hydrationFailed)return <div className="sale-payment-hydration-error" role="alert"><span>{t("payment.hydration.error")}</span><button type="button" onClick={()=>setHydrationRetry(value=>value+1)}>{t("payment.hydration.retry")}</button></div>;
- if(checkoutOpen){const panelSession:PaymentSession=server?map(server):{id:"new",totalCents:Math.abs(totalCents),direction:totalCents<0?"REFUND":totalCents===0?"ZERO":"SALE",status:"COLLECTING",allocations:[]};const isNewEmptyCollectingSession=server?.status==="COLLECTING"&&server.allocations.length===0&&entryHydratedSessionIdRef.current!==server.id;const checkoutAllowsAdd=!disabled&&(isNewEmptyCollectingSession||presentation==="INDIVIDUAL_ACTIONS"||presentation==="SPLIT");return <><PaymentAllocationPanel locale={locale} session={panelSession} providers={providers} manualCardEnabled={manual} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive} voucherEnabled={paymentMethods.voucherActive} transferEnabled={paymentMethods.transferActive} manualCardRequiresReference={paymentMethods.cardRequiresReference} transferRequiresReference={paymentMethods.transferRequiresReference} vouchers={vouchers} interfaceMode={interfaceMode} initialMethod={initialMethod} customerSelected={customerSelected} pendingEnabled={pendingEnabled} checkoutDiscountCents={checkoutDiscountCents} voucherOnlyRefund={server?.voucherOnlyRefund??voucherOnlyRefund} busy={busy} error={error} allowAdd={checkoutAllowsAdd} acceptSubmitsCurrent acceptWithLockedIntegratedPayment onResolveVoucher={resolveVoucher} onAdd={(input,options)=>requestAllocation(input,options?.finalizeWhenCovered)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} onClear={()=>void clearCheckout(false)} onClose={()=>void clearCheckout(true)} onAccept={()=>void retryFinish()} onDiscount={onDiscount}/>{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}{reservationAuthorizationDialog}</>;}
+ if(checkoutOpen){const panelSession:PaymentSession=server?map(server):{id:"new",totalCents:Math.abs(totalCents),direction:totalCents<0?"REFUND":totalCents===0?"ZERO":"SALE",status:"COLLECTING",allocations:[]};const isNewEmptyCollectingSession=server?.status==="COLLECTING"&&server.allocations.length===0&&entryHydratedSessionIdRef.current!==server.id;const checkoutAllowsAdd=!disabled&&(isNewEmptyCollectingSession||presentation==="INDIVIDUAL_ACTIONS"||presentation==="SPLIT");return <><PaymentAllocationPanel locale={locale} session={panelSession} providers={providers} manualCardEnabled={manual} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive} voucherEnabled={paymentMethods.voucherActive} transferEnabled={paymentMethods.transferActive} manualCardRequiresReference={paymentMethods.cardRequiresReference} transferRequiresReference={paymentMethods.transferRequiresReference} vouchers={vouchers} interfaceMode={interfaceMode} initialMethod={initialMethod} customerSelected={customerSelected} pendingEnabled={pendingEnabled} checkoutDiscountCents={checkoutDiscountCents} memberBalanceCents={memberBalanceCents} memberBalanceAvailableCents={memberBalanceAvailableCents} memberWallet={memberWallet} voucherOnlyRefund={server?.voucherOnlyRefund??voucherOnlyRefund} busy={busy} error={error} allowAdd={checkoutAllowsAdd} acceptSubmitsCurrent acceptWithLockedIntegratedPayment onResolveVoucher={resolveVoucher} onAdd={(input,options)=>requestAllocation(input,options?.finalizeWhenCovered)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} onClear={()=>void clearCheckout(false)} onClose={()=>void clearCheckout(true)} onAccept={()=>void retryFinish()} onDiscount={onDiscount} onMemberBalance={onMemberBalance} onMemberWallet={onMemberBalance?selection=>void applyMemberWalletSelection(selection):undefined}/>{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}{reservationAuthorizationDialog}</>;}
  if(activePresentation==="INDIVIDUAL_ACTIONS"&&!checkoutOpen)return <>{showIndividualActions&&<IndividualPaymentActions locale={locale} disabled={!!disabled||totalCents<=0} busy={busy} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive&&(manual||providers.length>0)} pendingEnabled={pendingEnabled} voucherEnabled={paymentMethods.voucherActive&&vouchers.length>0} onCash={unifiedCheckout?()=>openCheckout("CASH"):triggerCash} onCard={unifiedCheckout?()=>openCheckout("CARD"):triggerCard} onPending={unifiedCheckout?()=>openCheckout("PENDING"):triggerPending} onVoucher={unifiedCheckout?()=>openCheckout("VOUCHER"):openVoucher}/>} {cashDialog}{manualCardDialog}{voucherDialog}{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}{error&&!cashOpen&&<p role="alert">{error}</p>}</>;
  if(presentation==="FINALIZE_RETRY")return <><div aria-busy={busy}><LegacyPaymentAllocationPanel locale={locale} session={map(server!)} providers={providers} manualCardEnabled={manual} onAdd={input=>requestAllocation(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)}/><button type="button" disabled={!canManuallyFinalizePayment(server!.status,busy)} onClick={()=>void retryFinish()}>{t("payment.split.finalize")}</button><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{error&&<p role="alert">{error}</p>}{testCashStatus&&<p className="test-cash-session-status" role="status">{testCashStatus}</p>}{shouldOfferTestCashSession(testCashEnabled,server!.status,testCashRequired,terminal.terminalId)&&<button className="test-cash-session-button" type="button" disabled={busy} onClick={()=>void openTestCashSession()}>{busy?t("payment.testCash.opening"):t("payment.testCash.open")}</button>}</div>{cashDialog}{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}</>;
  if(!server)return null;

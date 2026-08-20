@@ -1,6 +1,6 @@
 import { ApiError } from "../api/client";
 
-export type AllocationKind = "CASH" | "MANUAL_CARD" | "INTEGRATED_CARD" | "VOUCHER" | "TRANSFER" | "PENDING";
+export type AllocationKind = "CASH" | "MANUAL_CARD" | "INTEGRATED_CARD" | "VOUCHER" | "TRANSFER" | "PENDING" | "MEMBER_CREDIT";
 export type AllocationStatus = "READY" | "PENDING" | "APPROVED" | "DECLINED" | "TIMEOUT" | "ERROR" | "CANCELLED";
 
 export type PaymentAllocation = {

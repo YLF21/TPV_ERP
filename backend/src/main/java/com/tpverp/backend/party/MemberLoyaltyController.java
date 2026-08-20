@@ -22,9 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class MemberLoyaltyController {
 
     private final MemberLoyaltyService service;
+    private final MemberCategoryAuthorityRoutingService categoryAuthority;
 
-    public MemberLoyaltyController(MemberLoyaltyService service) {
+    public MemberLoyaltyController(
+            MemberLoyaltyService service,
+            MemberCategoryAuthorityRoutingService categoryAuthority) {
         this.service = service;
+        this.categoryAuthority = categoryAuthority;
     }
 
     @GetMapping("/api/v1/members")
@@ -43,6 +47,12 @@ public class MemberLoyaltyController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.MemberMovementView> movements(@PathVariable UUID id) {
         return service.movements(id);
+    }
+
+    @GetMapping("/api/v1/customers/{customerId}/member-wallet")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR','VENTA')")
+    public MemberLoyaltyService.MemberWalletView wallet(@PathVariable UUID customerId) {
+        return service.wallet(customerId);
     }
 
     @PostMapping("/api/v1/members/{id}/balance-adjustments")
@@ -66,7 +76,11 @@ public class MemberLoyaltyController {
     public MemberLoyaltyService.MemberView setCategory(
             @PathVariable UUID id,
             @Valid @RequestBody SetCategoryRequest request) {
-        return service.setCategory(id, request.categoryId(), request.lockAutomatic(), request.reason());
+        return categoryAuthority.centralizedOrThrow()
+                ? categoryAuthority.setCategory(
+                        id, request.categoryId(), request.lockAutomatic(), request.reason())
+                : service.setCategory(
+                        id, request.categoryId(), request.lockAutomatic(), request.reason());
     }
 
     @GetMapping("/api/v1/member-categories")
@@ -76,25 +90,43 @@ public class MemberLoyaltyController {
     }
 
     @PostMapping("/api/v1/member-categories")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public MemberLoyaltyService.MemberCategoryView createCategory(
             @Valid @RequestBody CategoryRequest request) {
-        return service.createCategory(request.command());
+        var command = request.command();
+        return categoryAuthority.centralizedOrThrow()
+                ? categoryAuthority.createCategory(command)
+                : service.createCategory(command);
     }
 
     @PutMapping("/api/v1/member-categories/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public MemberLoyaltyService.MemberCategoryView updateCategory(
             @PathVariable UUID id,
             @Valid @RequestBody CategoryRequest request) {
-        return service.updateCategory(id, request.command());
+        var command = request.command();
+        return categoryAuthority.centralizedOrThrow()
+                ? categoryAuthority.updateCategory(id, command)
+                : service.updateCategory(id, command);
     }
 
     @PatchMapping("/api/v1/member-categories/{id}/deactivate")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deactivateCategory(@PathVariable UUID id) {
-        service.deactivateCategory(id);
+        if (categoryAuthority.centralizedOrThrow()) {
+            categoryAuthority.deactivateCategory(id);
+        } else {
+            service.deactivateCategory(id);
+        }
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/api/v1/member-categories/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public MemberLoyaltyService.MemberCategoryView activateCategory(@PathVariable UUID id) {
+        return categoryAuthority.centralizedOrThrow()
+                ? categoryAuthority.activateCategory(id)
+                : service.activateCategory(id);
     }
 
     @GetMapping("/api/v1/member-settings")
@@ -104,7 +136,7 @@ public class MemberLoyaltyController {
     }
 
     @PutMapping("/api/v1/member-settings")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public MemberLoyaltyService.MemberSettingsView updateSettings(
             @Valid @RequestBody SettingsRequest request) {
         return service.updateSettings(request.command());
@@ -134,8 +166,9 @@ public class MemberLoyaltyController {
     @GetMapping("/api/v1/member-card-deliveries")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.MemberCardDeliveryView> cardDeliveries(
-            @RequestParam(required = false) MemberCardDeliveryStatus status) {
-        return service.cardDeliveries(status);
+            @RequestParam(required = false) MemberCardDeliveryStatus status,
+            @RequestParam(required = false) UUID memberId) {
+        return service.cardDeliveries(status, memberId);
     }
 
     @PatchMapping("/api/v1/member-card-deliveries/{id}/retry")
@@ -155,21 +188,35 @@ public class MemberLoyaltyController {
 
     public record CategoryRequest(
             @NotBlank String name,
-            long minPoints,
+            @jakarta.validation.constraints.Min(0) long minPoints,
             @NotNull BigDecimal discountPercent,
             boolean discountEnabled,
+            boolean manualOnly,
             int sortOrder) {
+
+        public CategoryRequest(String name, long minPoints, BigDecimal discountPercent,
+                boolean discountEnabled, int sortOrder) {
+            this(name, minPoints, discountPercent, discountEnabled, false, sortOrder);
+        }
 
         MemberLoyaltyService.MemberCategoryCommand command() {
             return new MemberLoyaltyService.MemberCategoryCommand(
-                    name, minPoints, discountPercent, discountEnabled, sortOrder);
+                    name, minPoints, discountPercent, discountEnabled, manualOnly, sortOrder);
         }
     }
 
     public record SettingsRequest(
-            @NotNull BigDecimal balanceAccrualPercent,
+            boolean balanceAccrualEnabled,
+            @NotNull @jakarta.validation.constraints.DecimalMin("0.01")
+            BigDecimal balanceAccrualBaseAmount,
+            @NotNull @jakarta.validation.constraints.DecimalMin("0.00")
+            @jakarta.validation.constraints.DecimalMax("100.00") BigDecimal balanceAccrualPercent,
             @NotNull BalanceExpirationPolicy balanceExpirationPolicy,
-            @NotNull BigDecimal pointsPerEuro,
+            boolean pointsAccrualEnabled,
+            @NotNull @jakarta.validation.constraints.DecimalMin("0.01")
+            BigDecimal pointsAccrualBaseAmount,
+            @NotNull @jakarta.validation.constraints.DecimalMin("0.00")
+            @jakarta.validation.constraints.DecimalMax("1000.00") BigDecimal pointsPerEuro,
             boolean categoryAutoEnabled,
             boolean memberWelcomeEnabled,
             @NotNull MemberCardCodeFormat memberCardCodeFormat,
@@ -178,7 +225,9 @@ public class MemberLoyaltyController {
 
         MemberLoyaltyService.MemberSettingsCommand command() {
             return new MemberLoyaltyService.MemberSettingsCommand(
-                    balanceAccrualPercent, balanceExpirationPolicy, pointsPerEuro,
+                    balanceAccrualEnabled, balanceAccrualBaseAmount,
+                    balanceAccrualPercent, balanceExpirationPolicy,
+                    pointsAccrualEnabled, pointsAccrualBaseAmount, pointsPerEuro,
                     categoryAutoEnabled, memberWelcomeEnabled, memberCardCodeFormat,
                     welcomeSubjectTemplate, welcomeBodyTemplate);
         }

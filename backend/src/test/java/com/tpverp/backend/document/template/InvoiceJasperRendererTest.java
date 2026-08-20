@@ -311,6 +311,51 @@ class InvoiceJasperRendererTest {
     }
 
     @Test
+    void separatesMemberBalanceFromInvoiceArticlesAndDiscounts() {
+        var fixture = fixture();
+        var document = new CommercialDocument(
+                fixture.store().getId(), UUID.randomUUID(),
+                CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.of(2026, 8, 19), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE,
+                "P-SOCIO", "Producto socio", "VENTA", new BigDecimal("20.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        document.addLine(new DocumentLineCommand(
+                null, BigDecimal.ONE, "SALDO SOCIO", "Saldo socio", null,
+                new BigDecimal("-6.00"), BigDecimal.ZERO, true,
+                "IVA", new BigDecimal("21.00"),
+                DocumentLineType.MEMBER_BALANCE, null, null, null)
+                .toEntity(document, 2));
+        document.confirm("FV-2026-SOCIO", UUID.randomUUID(),
+                Instant.parse("2026-08-19T09:00:00Z"), false);
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                new SafeJrxmlCompiler(),
+                new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
+
+        var json = renderer.data(
+                document, fixture.store(), fixture.company(), fixture.customer(),
+                new InvoicePresentationSnapshot(
+                        2, InvoiceFiscalProfile.IVA, null, List.of()),
+                null, null);
+
+        assertThat(json.at("/lines").size()).isEqualTo(1);
+        assertThat(json.at("/lines/0/articleName").asText()).isEqualTo("Producto socio");
+        assertThat(json.at("/totals/memberBalanceTotal").decimalValue())
+                .isEqualByComparingTo("6.00");
+        assertThat(json.at("/totals/discountTotal").decimalValue()).isZero();
+        assertThat(json.at("/totals/grandTotal").decimalValue())
+                .isEqualByComparingTo("14.00");
+        assertThat(json.at("/totals/taxableBase").decimalValue())
+                .isEqualByComparingTo("11.57");
+        assertThat(json.at("/totals/taxTotal").decimalValue())
+                .isEqualByComparingTo("2.43");
+    }
+
+    @Test
     void rendersValuedDeliveryNoteWithoutCustomerAndNeverExposesFiscalQrOrPayments()
             throws Exception {
         var fixture = fixture();

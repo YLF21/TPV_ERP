@@ -40,6 +40,7 @@ export type ConfirmedTicketPrintSnapshot = {
   baseTotal?: NumericValue;
   taxTotal?: NumericValue;
   checkoutDiscountTotal?: NumericValue;
+  memberBalanceTotal?: NumericValue;
   observations?: string;
   logo?: string;
   ticketRenderedPdf?: { contentType: "application/pdf"; base64: string };
@@ -100,6 +101,17 @@ function invoiceLabels(locale: LocaleCode) {
   return { phone: "Teléfono", paymentMethod: "Forma de pago", code: "Código" };
 }
 
+function paymentMethodLabel(method: string, locale: LocaleCode) {
+  const normalized = method.trim().toUpperCase();
+  if (normalized === "CREDITO_DEVOLUCION" || normalized === "MEMBER_CREDIT") {
+    return locale === "es" ? "Saldo a favor" : locale === "en" ? "Return credit" : "退货余额";
+  }
+  if (normalized === "SALDO_MIEMBRO" || normalized === "MEMBER_BALANCE") {
+    return locale === "es" ? "Saldo socio" : locale === "en" ? "Member balance" : "会员余额";
+  }
+  return method;
+}
+
 export type CustomerReceivablePaymentReceiptSnapshot = {
   kind: "PAYMENT_RECEIPT";
   paymentId: string;
@@ -143,7 +155,7 @@ export function ticketPrintRequest(
       ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {})
     })),
     payments: snapshot.payments.map((payment) => ({
-      method: payment.method,
+      method: paymentMethodLabel(payment.method, locale),
       amount: Number(payment.amount)
     })),
     total: Number(snapshot.total),
@@ -151,9 +163,12 @@ export function ticketPrintRequest(
     ...(snapshot.checkoutDiscountTotal == null
       ? {}
       : { discount: Number(snapshot.checkoutDiscountTotal) }),
+    ...(snapshot.memberBalanceTotal == null
+      ? {}
+      : { memberBalance: Number(snapshot.memberBalanceTotal) }),
     ...(snapshot.taxTotal == null ? {} : { tax: Number(snapshot.taxTotal) }),
-    labels,
-    escposLabels: labels,
+    labels: { ...labels, memberBalance: t("print.ticket.memberBalance") },
+    escposLabels: { ...labels, memberBalance: t("print.ticket.memberBalance") },
     ...(snapshot.logo ? { logo: snapshot.logo } : {}),
     ...(snapshot.ticketRenderedPdf ? { renderedPdf: snapshot.ticketRenderedPdf } : {}),
     ...(snapshot.ticketRenderedImage
@@ -220,7 +235,7 @@ export function ticketAsA4Document(
     ...(snapshot.logo ? { logo: snapshot.logo } : {}),
     ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
     metadata: snapshot.payments.map((payment) => ({
-      label: payment.method,
+      label: paymentMethodLabel(payment.method, locale),
       value: Number(payment.amount).toFixed(2),
     })),
     labels: {
@@ -384,7 +399,7 @@ export function commercialDocumentAsA4Document(
     issuer: snapshot.issuer,
     customer: snapshot.customer,
     payments: (snapshot.payments ?? []).map((payment) => ({
-      method: payment.method,
+      method: paymentMethodLabel(payment.method, locale),
       amount: Number(payment.amount),
       reference: payment.reference,
     })),

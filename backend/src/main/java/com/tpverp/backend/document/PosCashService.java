@@ -244,15 +244,19 @@ public class PosCashService {
             Authentication authentication) {
         var command = prepared.command();
         var checkoutDiscount = effectiveCheckoutDiscount(request, prepared.replay());
+        var memberBalance = effectiveMemberBalance(request);
         CommercialDocument ticket = null;
         if (!command.lineas().isEmpty()) {
-            ticket = checkoutDiscount.signum() > 0
+            ticket = memberBalance.signum() > 0
                     ? documents.quoteTicket(command, request.promotionalCouponCode(),
-                            checkoutDiscount, authentication)
+                            checkoutDiscount, memberBalance, authentication)
+                    : checkoutDiscount.signum() > 0
+                            ? documents.quoteTicket(command, request.promotionalCouponCode(),
+                                    checkoutDiscount, authentication)
                     : hasText(request.promotionalCouponCode())
                             ? documents.quoteTicket(command, request.promotionalCouponCode(), authentication)
                             : documents.quoteTicket(command, authentication);
-        } else if (checkoutDiscount.signum() > 0
+        } else if (checkoutDiscount.signum() > 0 || memberBalance.signum() > 0
                 || hasText(request.promotionalCouponCode())) {
             throw new IllegalArgumentException(
                     "Los descuentos y cupones nuevos necesitan articulos actuales");
@@ -396,6 +400,9 @@ public class PosCashService {
     }
 
     public Result charge(PosCashController.CashRequest request, Authentication authentication) {
+        if (hasMemberBalance(request.sale())) {
+            throw new IllegalArgumentException("member_balance_requires_payment_session");
+        }
         var completed = transactions == null
                 ? chargeTransaction(request, authentication)
                 : Objects.requireNonNull(transactions.execute(
@@ -446,11 +453,14 @@ public class PosCashService {
         if (request.quotedTotal() != null && Money.euros(request.quotedTotal()).compareTo(total) != 0) {
             throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
         }
+        var change = Money.euros(received.subtract(total));
         var cash = paymentMethods.findByEmpresaIdAndNombreAndActivoTrue(
                         organization.currentCompany().getId(), "EFECTIVO")
-                .orElseThrow(() -> new IllegalStateException("El metodo EFECTIVO no esta activo"));
-        var change = Money.euros(received.subtract(total));
-        var payment = List.of(new PaymentCommand(cash.getId(), total, true, received, change));
+                .orElseThrow(() -> new IllegalStateException(
+                        "El metodo EFECTIVO no esta activo"));
+        var payment = total.signum() == 0
+                ? List.<PaymentCommand>of()
+                : List.of(new PaymentCommand(cash.getId(), total, true, received, change));
         authorizeSensitiveOperations(
                 prepared,
                 request.sale(),
@@ -459,10 +469,15 @@ public class PosCashService {
                 "POS_CASH",
                 request.checkoutId());
         var ticket = prepared.replay() == null
-                ? hasCheckoutDiscount(request.sale())
+                ? hasMemberBalance(request.sale())
                         ? documents.createTicket(command, payment,
                                 request.sale().promotionalCouponCode(),
-                                request.sale().checkoutDiscountAmount(), authentication)
+                                request.sale().checkoutDiscountAmount(),
+                                request.sale().memberBalanceAmount(), authentication)
+                        : hasCheckoutDiscount(request.sale())
+                                ? documents.createTicket(command, payment,
+                                        request.sale().promotionalCouponCode(),
+                                        request.sale().checkoutDiscountAmount(), authentication)
                         : hasText(request.sale().promotionalCouponCode())
                                 ? documents.createTicket(command, payment,
                                         request.sale().promotionalCouponCode(), authentication)
@@ -1211,6 +1226,13 @@ public class PosCashService {
         return Money.euros(requested.add(preserved));
     }
 
+    private static BigDecimal effectiveMemberBalance(
+            PosCashController.SaleRequest request) {
+        return request.memberBalanceAmount() == null
+                ? BigDecimal.ZERO.setScale(Money.SCALE)
+                : Money.euros(request.memberBalanceAmount());
+    }
+
     static BigDecimal authoritativeUnitPrice(
             BigDecimal catalogSalePrice,
             BigDecimal requestedOpenUnitPrice) {
@@ -1263,6 +1285,7 @@ public class PosCashService {
             BigDecimal baseTotal,
             BigDecimal taxTotal,
             BigDecimal discountTotal,
+            BigDecimal memberBalanceTotal,
             String currency,
             UUID storeId,
             UUID customerId,
@@ -1317,6 +1340,11 @@ public class PosCashService {
                             .thenComparing(TaxBreakdown::percentage))
                     .toList();
             var discountTotal = Money.euros(listTotal.subtract(ticket.getTotal()).max(BigDecimal.ZERO));
+            var memberBalanceTotal = Money.euros(ticket.getLineas().stream()
+                    .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                    .map(DocumentLine::getTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .negate());
             var fingerprint = PosCashService.quoteFingerprint(ticket, quoteLines);
             var breakdown = authoritativeLineBreakdown(
                     ticket, request, catalog, customer,
@@ -1325,13 +1353,36 @@ public class PosCashService {
             return new Quote(
                     ticket.getTotal(), productTotal, new PromotionPreviewView(promotions),
                     ticket.getBaseTotal(), ticket.getImpuestoTotal(), discountTotal,
+                    memberBalanceTotal,
                     ticket.getMoneda(), ticket.getTiendaId(), ticket.getClienteId(),
                     fingerprint, quoteLines, taxes, 1, breakdown);
         }
 
         public Quote(BigDecimal total) {
             this(total, total, new PromotionPreviewView(List.of()), total, BigDecimal.ZERO,
-                    BigDecimal.ZERO, "EUR", null, null, "", List.of(), List.of(), 1, List.of());
+                    BigDecimal.ZERO, BigDecimal.ZERO, "EUR", null, null, "", List.of(),
+                    List.of(), 1, List.of());
+        }
+
+        public Quote(
+                BigDecimal total,
+                BigDecimal productTotal,
+                PromotionPreviewView promotionPreview,
+                BigDecimal baseTotal,
+                BigDecimal taxTotal,
+                BigDecimal discountTotal,
+                String currency,
+                UUID storeId,
+                UUID customerId,
+                String quoteFingerprint,
+                List<QuoteLine> lines,
+                List<TaxBreakdown> taxes,
+                int pricingVersion,
+                List<AuthoritativeLineBreakdown> lineBreakdown) {
+            this(total, productTotal, promotionPreview, baseTotal, taxTotal,
+                    discountTotal, BigDecimal.ZERO.setScale(Money.SCALE), currency,
+                    storeId, customerId, quoteFingerprint, lines, taxes,
+                    pricingVersion, lineBreakdown);
         }
     }
 
@@ -1799,7 +1850,7 @@ public class PosCashService {
     static String requestHash(PosCashController.CashRequest request) {
         var internalComment = normalize(request.sale().internalComment());
         if (request.sale().previousTicketImport() == null
-                && !hasCheckoutDiscount(request.sale()) && internalComment.isEmpty()
+                && !hasCheckoutReduction(request.sale()) && internalComment.isEmpty()
                 && normalize(request.sale().quoteFingerprint()).isEmpty()) {
             return legacyRequestHash(request);
         }
@@ -1811,7 +1862,10 @@ public class PosCashService {
         var hasTemporaryNames = request.sale().lines().stream()
                 .anyMatch(line -> line.temporaryName() != null
                         && !line.temporaryName().isBlank());
-        var canonical = new StringBuilder(request.sale().previousTicketImport() != null
+        var canonical = new StringBuilder(request.sale().memberBalanceAmount() != null
+                && Money.euros(request.sale().memberBalanceAmount()).signum() > 0
+                ? "v9-member-balance|"
+                : request.sale().previousTicketImport() != null
                 ? "v8-previous-ticket-import|"
                 : hasTemporaryNames
                 ? "v7-temporary-name|"
@@ -1834,6 +1888,9 @@ public class PosCashService {
         canonical
                 .append(request.sale().checkoutDiscountAmount() == null
                         ? "0.00" : Money.euros(request.sale().checkoutDiscountAmount()))
+                .append('|')
+                .append(request.sale().memberBalanceAmount() == null
+                        ? "0.00" : Money.euros(request.sale().memberBalanceAmount()))
                 .append('|')
                 .append(normalize(request.sale().quoteFingerprint())).append('|')
                 .append(Money.euros(request.received())).append('|')
@@ -1943,6 +2000,15 @@ public class PosCashService {
     private static boolean hasCheckoutDiscount(PosCashController.SaleRequest request) {
         return request.checkoutDiscountAmount() != null
                 && Money.euros(request.checkoutDiscountAmount()).signum() > 0;
+    }
+
+    private static boolean hasMemberBalance(PosCashController.SaleRequest request) {
+        return request.memberBalanceAmount() != null
+                && Money.euros(request.memberBalanceAmount()).signum() > 0;
+    }
+
+    private static boolean hasCheckoutReduction(PosCashController.SaleRequest request) {
+        return hasCheckoutDiscount(request) || hasMemberBalance(request);
     }
 
     private Result resultFrom(PosCashCheckout checkout) {

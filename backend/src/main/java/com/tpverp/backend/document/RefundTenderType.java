@@ -5,5 +5,6 @@ public enum RefundTenderType {
     CARD,
     VOUCHER,
     TRANSFER,
-    EXCHANGE
+    EXCHANGE,
+    MEMBER_CREDIT
 }

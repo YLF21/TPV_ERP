@@ -181,6 +181,31 @@ describe("SaleProductSearchDialog", () => {
     expect(onSelect).toHaveBeenCalledWith(products[0]);
   });
 
+  it("opens product creation from the F5 button or keyboard shortcut", () => {
+    const onCreateProduct = vi.fn();
+    render(
+      <SaleProductSearchDialog
+        initialQuery="cafe"
+        interfaceMode="KEYBOARD"
+        labels={labels}
+        products={products}
+        createProductLabel="Añadir producto"
+        onCreateProduct={onCreateProduct}
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", { name: /Añadir producto/ });
+    expect(createButton).toHaveAttribute("aria-keyshortcuts", "F5");
+    expect(createButton.closest(".sale-product-search-field")).not.toBeNull();
+    expect(createButton.closest(".sale-product-search-keyboard-actions")).toBeNull();
+    fireEvent.click(createButton);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: labels.query }), { key: "F5" });
+
+    expect(onCreateProduct).toHaveBeenCalledTimes(2);
+  });
+
   it("selects with one touch and uses explicit information and add actions", () => {
     const onInspect = vi.fn();
     const onSelect = vi.fn();

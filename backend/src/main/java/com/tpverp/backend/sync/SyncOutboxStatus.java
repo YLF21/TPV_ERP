@@ -4,5 +4,6 @@ public enum SyncOutboxStatus {
     PENDIENTE,
     ENVIANDO,
     ENVIADO,
-    ERROR
+    ERROR,
+    DEAD_LETTER
 }

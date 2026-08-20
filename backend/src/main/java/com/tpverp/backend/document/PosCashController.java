@@ -53,7 +53,8 @@ public class PosCashController {
             @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
                     operationAuthorizations,
             @Valid PreviousTicketImportRequest previousTicketImport,
-            @Size(max = 64) String quoteFingerprint) {
+            @Size(max = 64) String quoteFingerprint,
+            @DecimalMin("0.00") BigDecimal memberBalanceAmount) {
 
         public SaleRequest {
             lines = List.copyOf(lines == null ? List.of() : lines);
@@ -62,7 +63,7 @@ public class PosCashController {
         }
 
         public SaleRequest(UUID customerId, List<LineRequest> lines) {
-            this(customerId, lines, null, null, null, null, Map.of(), null, null);
+            this(customerId, lines, null, null, null, null, Map.of(), null, null, null);
         }
 
         public SaleRequest(
@@ -70,7 +71,7 @@ public class PosCashController {
                 List<LineRequest> lines,
                 String discountAuthorizationToken) {
             this(customerId, lines, discountAuthorizationToken, null, null, null,
-                    Map.of(), null, null);
+                    Map.of(), null, null, null);
         }
 
         public SaleRequest(
@@ -79,7 +80,7 @@ public class PosCashController {
                 String discountAuthorizationToken,
                 String promotionalCouponCode) {
             this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
-                    null, null, Map.of(), null, null);
+                    null, null, Map.of(), null, null, null);
         }
 
         public SaleRequest(
@@ -89,7 +90,7 @@ public class PosCashController {
                 String promotionalCouponCode,
                 BigDecimal checkoutDiscountAmount) {
             this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
-                    checkoutDiscountAmount, null, Map.of(), null, null);
+                    checkoutDiscountAmount, null, Map.of(), null, null, null);
         }
 
         public SaleRequest(
@@ -100,7 +101,7 @@ public class PosCashController {
                 BigDecimal checkoutDiscountAmount,
                 String internalComment) {
             this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
-                    checkoutDiscountAmount, internalComment, Map.of(), null, null);
+                    checkoutDiscountAmount, internalComment, Map.of(), null, null, null);
         }
 
         /**
@@ -117,7 +118,7 @@ public class PosCashController {
                 Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations) {
             this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
                     checkoutDiscountAmount, internalComment, operationAuthorizations,
-                    null, null);
+                    null, null, null);
         }
 
         public SaleRequest(
@@ -131,7 +132,22 @@ public class PosCashController {
                 PreviousTicketImportRequest previousTicketImport) {
             this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
                     checkoutDiscountAmount, internalComment, operationAuthorizations,
-                    previousTicketImport, null);
+                    previousTicketImport, null, null);
+        }
+
+        public SaleRequest(
+                UUID customerId,
+                List<LineRequest> lines,
+                String discountAuthorizationToken,
+                String promotionalCouponCode,
+                BigDecimal checkoutDiscountAmount,
+                String internalComment,
+                Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations,
+                PreviousTicketImportRequest previousTicketImport,
+                String quoteFingerprint) {
+            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
+                    checkoutDiscountAmount, internalComment, operationAuthorizations,
+                    previousTicketImport, quoteFingerprint, null);
         }
 
         public OperationAuthorizationRequest authorizationFor(SaleOperationCode code) {
@@ -245,6 +261,6 @@ public class PosCashController {
     public record CashRequest(
             @NotNull UUID checkoutId,
             @NotNull @Valid SaleRequest sale,
-            @NotNull @DecimalMin("0.01") BigDecimal received,
-            @NotNull @DecimalMin("0.01") BigDecimal quotedTotal) {}
+            @NotNull @DecimalMin("0.00") BigDecimal received,
+            @NotNull @DecimalMin("0.00") BigDecimal quotedTotal) {}
 }

@@ -21,6 +21,8 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -242,7 +244,7 @@ public class AdminService {
                 "WARNING",
                 "Revisar facturación",
                 rs.getString("billing_status"),
-                now), now.plus(Duration.ofDays(15)));
+                now), sqlTimestamp(now.plus(Duration.ofDays(15))));
         return java.util.stream.Stream.of(licenseNotifications, installationNotifications, billingNotifications)
                 .flatMap(List::stream)
                 .sorted(Comparator.comparing(AdminNotificationResponse::severity).thenComparing(AdminNotificationResponse::companyName))
@@ -255,7 +257,7 @@ public class AdminService {
                 insert into saas_admin_notification_read(username, notification_id, read_at)
                 values (?, ?, ?)
                 on conflict (username, notification_id) do update set read_at = excluded.read_at
-                """, currentAdminUsername(), notificationId, clock.instant());
+                """, currentAdminUsername(), notificationId, sqlTimestamp(clock.instant()));
         audit.log("READ_NOTIFICATION", "ADMIN_NOTIFICATION", notificationId);
     }
 
@@ -265,7 +267,7 @@ public class AdminService {
         Long eventsToday = jdbc.queryForObject("""
                 select count(*) from saas_sync_event
                 where received_at >= ?
-                """, Long.class, now.minus(Duration.ofDays(1)));
+                """, Long.class, sqlTimestamp(now.minus(Duration.ofDays(1))));
         Long openTickets = jdbc.queryForObject("""
                 select count(*) from saas_support_ticket
                 where status <> 'RESUELTO'
@@ -273,7 +275,7 @@ public class AdminService {
         Long staleInstallations = jdbc.queryForObject("""
                 select count(*) from saas_installation
                 where last_validated_at is null or last_validated_at < ?
-                """, Long.class, now.minus(Duration.ofHours(48)));
+                """, Long.class, sqlTimestamp(now.minus(Duration.ofHours(48))));
         Instant lastSyncAt = jdbc.query("""
                 select max(received_at) as last_sync_at from saas_sync_event
                 """, rs -> rs.next() && rs.getTimestamp("last_sync_at") != null
@@ -354,7 +356,9 @@ public class AdminService {
                     from saas_company c
                     left join saas_company_operations o on o.company_id = c.id
                     order by c.name asc
-                    """, (rs, rowNum) -> customerHealth(rs, now), now.minus(Duration.ofHours(48)), now.minus(Duration.ofDays(7)));
+                    """, (rs, rowNum) -> customerHealth(rs, now),
+                    sqlTimestamp(now.minus(Duration.ofHours(48))),
+                    sqlTimestamp(now.minus(Duration.ofDays(7))));
         } catch (BadSqlGrammarException exception) {
             if (missingOperationalTables(exception)) {
                 return fallbackCustomerHealth(now);
@@ -422,13 +426,13 @@ public class AdminService {
                 """,
                 planName,
                 billingStatus,
-                request.renewalDate(),
+                sqlTimestamp(request.renewalDate()),
                 blankToNull(request.monthlyPrice()),
                 supportStatus,
                 blankToNull(request.contactName()),
                 blankToNull(request.contactEmail()),
                 blankToNull(request.notes()),
-                now,
+                sqlTimestamp(now),
                 companyId);
         if (updated == 0) {
             jdbc.update("""
@@ -440,13 +444,13 @@ public class AdminService {
                     companyId,
                     planName,
                     billingStatus,
-                    request.renewalDate(),
+                    sqlTimestamp(request.renewalDate()),
                     blankToNull(request.monthlyPrice()),
                     supportStatus,
                     blankToNull(request.contactName()),
                     blankToNull(request.contactEmail()),
                     blankToNull(request.notes()),
-                    now);
+                    sqlTimestamp(now));
         }
         audit.log("UPDATE_COMPANY_OPERATIONS", "COMPANY", companyId.toString());
         return companyOperations(companyId);
@@ -482,8 +486,8 @@ public class AdminService {
                 "ABIERTO",
                 defaultText(request.priority(), "NORMAL"),
                 currentAdminUsername(),
-                now,
-                now);
+                sqlTimestamp(now),
+                sqlTimestamp(now));
         audit.log("CREATE_SUPPORT_TICKET", "COMPANY", companyId.toString());
         return supportTicket(ticketId);
     }
@@ -497,7 +501,7 @@ public class AdminService {
                 update saas_support_ticket
                 set status = ?, priority = ?, updated_at = ?
                 where id = ?
-                """, status, priority, clock.instant(), ticketId);
+                """, status, priority, sqlTimestamp(clock.instant()), ticketId);
         audit.log("UPDATE_SUPPORT_TICKET", "SUPPORT_TICKET", ticketId.toString());
         return supportTicket(ticketId);
     }
@@ -521,12 +525,12 @@ public class AdminService {
         jdbc.update("""
                 insert into saas_support_ticket_comment(id, ticket_id, author, message, created_at)
                 values (?, ?, ?, ?, ?)
-                """, commentId, ticketId, currentAdminUsername(), request.message().trim(), now);
+                """, commentId, ticketId, currentAdminUsername(), request.message().trim(), sqlTimestamp(now));
         jdbc.update("""
                 update saas_support_ticket
                 set updated_at = ?
                 where id = ?
-                """, now, ticketId);
+                """, sqlTimestamp(now), ticketId);
         audit.log("ADD_SUPPORT_TICKET_COMMENT", "SUPPORT_TICKET", ticketId.toString());
         return supportTicketComment(commentId);
     }
@@ -656,9 +660,9 @@ public class AdminService {
                     money(request.amount()),
                     defaultText(request.currency(), "EUR"),
                     "PENDIENTE",
-                    request.issuedAt(),
-                    request.dueAt(),
-                    clock.instant());
+                    sqlTimestamp(request.issuedAt()),
+                    sqlTimestamp(request.dueAt()),
+                    sqlTimestamp(clock.instant()));
             audit.log("CREATE_BILLING_INVOICE", "COMPANY", companyId.toString());
             return billingInvoice(invoiceId);
         } catch (BadSqlGrammarException exception) {
@@ -684,8 +688,8 @@ public class AdminService {
                 money(request.amount()),
                 defaultText(request.method(), "TRANSFERENCIA"),
                 blankToNull(request.reference()),
-                request.paidAt(),
-                now);
+                sqlTimestamp(request.paidAt()),
+                sqlTimestamp(now));
         updateInvoiceStatus(invoiceId, amount(invoice.amount()));
         audit.log("CREATE_BILLING_PAYMENT", "BILLING_INVOICE", invoiceId.toString());
         return billingPayment(paymentId);
@@ -727,8 +731,8 @@ public class AdminService {
                 money(request.total()),
                 defaultText(request.currency(), "EUR"),
                 defaultText(request.status(), "CONFIRMADA"),
-                request.issuedAt(),
-                clock.instant());
+                sqlTimestamp(request.issuedAt()),
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_SALES_DOCUMENT", "COMPANY", companyId.toString());
         return salesDocument(id);
     }
@@ -768,8 +772,8 @@ public class AdminService {
                 defaultText(request.movementType(), "ENTRADA"),
                 money(request.quantity()),
                 blankToNull(request.reason()),
-                request.movedAt(),
-                clock.instant());
+                sqlTimestamp(request.movedAt()),
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_INVENTORY_MOVEMENT", "COMPANY", companyId.toString());
         return inventoryMovement(id);
     }
@@ -832,9 +836,9 @@ public class AdminService {
                 defaultText(request.billingCycle(), "MENSUAL"),
                 money(request.amount()),
                 defaultText(request.currency(), "EUR"),
-                request.startedAt(),
-                request.nextBillingAt(),
-                clock.instant());
+                sqlTimestamp(request.startedAt()),
+                sqlTimestamp(request.nextBillingAt()),
+                sqlTimestamp(clock.instant()));
         jdbc.update("""
                 insert into saas_company_operations(company_id, plan_name, billing_status, renewal_date, monthly_price, support_status, updated_at)
                 values (?, ?, 'PENDIENTE', ?, ?, 'NORMAL', ?)
@@ -843,7 +847,8 @@ public class AdminService {
                     renewal_date = excluded.renewal_date,
                     monthly_price = excluded.monthly_price,
                     updated_at = excluded.updated_at
-                """, companyId, request.planName().trim(), request.nextBillingAt(), money(request.amount()), clock.instant());
+                """, companyId, request.planName().trim(), sqlTimestamp(request.nextBillingAt()),
+                money(request.amount()), sqlTimestamp(clock.instant()));
         audit.log("CREATE_SUBSCRIPTION", "COMPANY", companyId.toString());
         return subscription(id);
     }
@@ -854,7 +859,7 @@ public class AdminService {
                 update saas_subscription
                 set status = 'CANCELADA', cancelled_at = ?
                 where id = ?
-                """, clock.instant(), subscriptionId);
+                """, sqlTimestamp(clock.instant()), subscriptionId);
         audit.log("CANCEL_SUBSCRIPTION", "SUBSCRIPTION", subscriptionId.toString());
         return subscription(subscriptionId);
     }
@@ -893,14 +898,15 @@ public class AdminService {
                 defaultText(request.status(), "ACTIVA"),
                 blankToNull(request.targetUrl()),
                 integrationSecrets.encrypt(request.apiKey()),
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_INTEGRATION", "INTEGRATION", id.toString());
         return integration(id);
     }
 
     @Transactional
     public IntegrationEndpointResponse markIntegrationSynced(UUID integrationId) {
-        jdbc.update("update saas_integration_endpoint set last_sync_at = ? where id = ?", clock.instant(), integrationId);
+        jdbc.update("update saas_integration_endpoint set last_sync_at = ? where id = ?",
+                sqlTimestamp(clock.instant()), integrationId);
         audit.log("SYNC_INTEGRATION", "INTEGRATION", integrationId.toString());
         return integration(integrationId);
     }
@@ -966,7 +972,7 @@ public class AdminService {
                 blankToNull(request.email()),
                 blankToNull(request.phone()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_ERP_CUSTOMER", "COMPANY", companyId.toString());
         return erpCustomer(id);
     }
@@ -1010,7 +1016,7 @@ public class AdminService {
                 money(request.taxRate()),
                 money(request.minStock()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_ERP_PRODUCT", "COMPANY", companyId.toString());
         return erpProduct(id);
     }
@@ -1053,7 +1059,7 @@ public class AdminService {
                 blankToNull(request.email()),
                 blankToNull(request.phone()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_ERP_SUPPLIER", "COMPANY", companyId.toString());
         return erpSupplier(id);
     }
@@ -1094,7 +1100,7 @@ public class AdminService {
                 request.name().trim(),
                 blankToNull(request.address()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         audit.log("CREATE_ERP_WAREHOUSE", "COMPANY", companyId.toString());
         return erpWarehouse(id);
     }
@@ -1347,7 +1353,7 @@ public class AdminService {
                 from saas_billing_invoice i
                 join saas_company c on c.id = i.company_id
                 left join saas_billing_payment p on p.invoice_id = i.id
-                """ + where + """
+                """ + where + "\n" + """
                 group by i.id, i.company_id, c.name, i.number, i.concept, i.amount, i.currency,
                          i.status, i.issued_at, i.due_at, i.created_at
                 order by i.issued_at desc, i.number desc
@@ -1678,6 +1684,10 @@ public class AdminService {
         } catch (NumberFormatException exception) {
             return BigDecimal.ZERO;
         }
+    }
+
+    private static OffsetDateTime sqlTimestamp(Instant value) {
+        return value == null ? null : value.atOffset(ZoneOffset.UTC);
     }
 
     private static void requirePositiveMoney(String value, String message) {

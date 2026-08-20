@@ -1,5 +1,7 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.party.MemberDocumentLoyaltyLine;
+
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
@@ -138,11 +140,7 @@ public class TicketReturnValuationService {
         }
         var eligibleSelectedGross = eligibleSelectedGross(
                 original, selectedByLine, globalFactor);
-        var eligibleRefund = selectedGross.signum() == 0
-                ? Money.euros(BigDecimal.ZERO)
-                : Money.euros(currentRefund.multiply(eligibleSelectedGross)
-                        .divide(selectedGross, Money.SCALE + 4, Money.ROUNDING))
-                        .min(currentRefund);
+        var eligibleRefund = Money.euros(eligibleSelectedGross.min(currentRefund));
         var previouslyReversedEligible = loyaltySettlements.findById(original.getId())
                 .map(settlement -> settlement.getReversedEligibleAmount())
                 .orElse(Money.euros(BigDecimal.ZERO));
@@ -262,10 +260,14 @@ public class TicketReturnValuationService {
         var manualDiscount = remainingManualDiscount(
                 original, productGross, globalFactor);
         allocateDiscount(taxTotals, selectedTaxTotals(remaining, globalFactor), manualDiscount);
+        var memberBalance = remainingMemberBalance(
+                original, remaining, globalFactor, productMap);
+        allocateDiscount(taxTotals, memberBalance.taxWeights(), memberBalance.amount());
         var total = Money.euros(productGross
                 .subtract(directDiscount)
                 .subtract(couponDiscount)
-                .subtract(manualDiscount))
+                .subtract(manualDiscount)
+                .subtract(memberBalance.amount()))
                 .max(Money.euros(BigDecimal.ZERO));
         reconcileTaxTotal(taxTotals, total, taxTotals.keySet());
         return new BasketValuation(total, taxTotals);
@@ -486,6 +488,62 @@ public class TicketReturnValuationService {
                 .min(remainingGross);
     }
 
+    private MemberBalanceRemainder remainingMemberBalance(
+            CommercialDocument original,
+            Map<DocumentLine, BigDecimal> remaining,
+            BigDecimal globalFactor,
+            Map<UUID, Product> productMap) {
+        var originalBalance = Money.euros(original.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .map(DocumentLine::getTotal)
+                .map(BigDecimal::abs)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        if (originalBalance.signum() == 0 || remaining.isEmpty()) {
+            return new MemberBalanceRemainder(
+                    Money.euros(BigDecimal.ZERO), Map.of());
+        }
+        var originalProducts = original.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .collect(Collectors.toMap(
+                        Function.identity(), line -> line.getCantidad().abs(),
+                        BigDecimal::add, LinkedHashMap::new));
+        var originalEligible = eligibleSelectedGross(
+                original, originalProducts, globalFactor);
+        var remainingEligible = eligibleSelectedGross(
+                original, remaining, globalFactor);
+        if (originalEligible.signum() == 0 || remainingEligible.signum() == 0) {
+            return new MemberBalanceRemainder(
+                    Money.euros(BigDecimal.ZERO), Map.of());
+        }
+        var amount = Money.euros(originalBalance.multiply(remainingEligible)
+                .divide(originalEligible, Money.SCALE + 4, Money.ROUNDING))
+                .min(remainingEligible);
+        var snapshots = loyaltyLines.findAllById(remaining.keySet().stream()
+                .map(DocumentLine::getId)
+                .toList());
+        Map<DocumentLine, BigDecimal> eligibleRemaining;
+        if (!snapshots.isEmpty()) {
+            var eligibleIds = snapshots.stream()
+                    .filter(MemberDocumentLoyaltyLine::isEligible)
+                    .map(MemberDocumentLoyaltyLine::getDocumentLineId)
+                    .collect(Collectors.toSet());
+            eligibleRemaining = remaining.entrySet().stream()
+                    .filter(entry -> eligibleIds.contains(entry.getKey().getId()))
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey, Map.Entry::getValue,
+                            BigDecimal::add, LinkedHashMap::new));
+        } else {
+            eligibleRemaining = remaining.entrySet().stream()
+                    .filter(entry -> productMap.get(entry.getKey().getProductoId())
+                            .getDiscountType() != DiscountType.NONE)
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey, Map.Entry::getValue,
+                            BigDecimal::add, LinkedHashMap::new));
+        }
+        return new MemberBalanceRemainder(
+                amount, selectedTaxTotals(eligibleRemaining, globalFactor));
+    }
+
     private static PromotionEvaluationLine evaluationLine(
             DocumentLine line,
             BigDecimal quantity,
@@ -561,6 +619,11 @@ public class TicketReturnValuationService {
             String taxRegime,
             BigDecimal taxPercentage,
             BigDecimal amount) {
+    }
+
+    private record MemberBalanceRemainder(
+            BigDecimal amount,
+            Map<TaxKey, BigDecimal> taxWeights) {
     }
 
     private record BasketValuation(

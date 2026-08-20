@@ -26,4 +26,6 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
          """)
  List<SalePaymentAllocation> findActiveRefundReservations(
          @Param("originalPaymentIds") Collection<UUID> originalPaymentIds);
+ java.util.List<SalePaymentSession> findTop100ByTicketIdIsNotNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc();
+ java.util.List<SalePaymentSession> findTop100ByStatusAndTicketIdIsNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc(SalePaymentSessionStatus status);
 }

@@ -113,7 +113,7 @@ class TicketPrintViewTest {
     }
 
     @Test
-    void printsF11OnceInTheSummaryInsteadOfAsFiscalAllocationLines() {
+    void printsCheckoutAdjustmentsOnceInTheSummaryInsteadOfAsFiscalAllocationLines() {
         var document = new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 8, 9), UUID.randomUUID(), BigDecimal.ZERO);
@@ -122,11 +122,12 @@ class TicketPrintViewTest {
                 null, new BigDecimal("20.00"), BigDecimal.ZERO, true,
                 "IVA", new BigDecimal("21.00")));
         document.addLine(DocumentLine.manualDiscount(
-                document, 2, new BigDecimal("-6.00"), true,
+                document, 2, new BigDecimal("-4.00"), true,
                 "IVA", new BigDecimal("21.00")));
-        document.addLine(DocumentLine.manualDiscount(
-                document, 3, new BigDecimal("-4.00"), true,
-                "IVA", new BigDecimal("21.00")));
+        document.addLine(DocumentLine.special(
+                document, 3, "SALDO SOCIO", new BigDecimal("-6.00"), true,
+                "IVA", new BigDecimal("21.00"), null, null, null,
+                DocumentLineType.MEMBER_BALANCE));
         document.confirm("001-260809-000001", UUID.randomUUID(),
                 Instant.parse("2026-08-09T10:15:30Z"), false);
 
@@ -134,7 +135,8 @@ class TicketPrintViewTest {
 
         assertThat(view.lines()).extracting(TicketPrintView.Line::name)
                 .containsExactly("Articulo");
-        assertThat(view.checkoutDiscountTotal()).isEqualByComparingTo("10.00");
+        assertThat(view.checkoutDiscountTotal()).isEqualByComparingTo("4.00");
+        assertThat(view.memberBalanceTotal()).isEqualByComparingTo("6.00");
         assertThat(view.total()).isEqualByComparingTo("10.00");
     }
 

@@ -46,6 +46,9 @@ public class Member {
     @Column(name = "member_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal memberBalance;
 
+    @Column(name = "return_credit_balance", nullable = false, precision = 19, scale = 2)
+    private BigDecimal returnCreditBalance;
+
     @Column(name = "member_points", nullable = false)
     private long memberPoints;
 
@@ -64,6 +67,9 @@ public class Member {
 
     @Column(name = "official_member_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal officialMemberBalance;
+
+    @Column(name = "official_return_credit_balance", nullable = false, precision = 19, scale = 2)
+    private BigDecimal officialReturnCreditBalance;
 
     @Column(name = "official_member_points", nullable = false)
     private long officialMemberPoints;
@@ -91,8 +97,10 @@ public class Member {
         this.memberId = PartyValues.required(code, "memberId");
         this.memberSince = Objects.requireNonNull(date, "memberSince");
         this.memberBalance = BigDecimal.ZERO.setScale(2);
+        this.returnCreditBalance = BigDecimal.ZERO.setScale(2);
         this.loyaltyBalanceDebt = BigDecimal.ZERO.setScale(2);
         this.officialMemberBalance = BigDecimal.ZERO.setScale(2);
+        this.officialReturnCreditBalance = BigDecimal.ZERO.setScale(2);
         this.active = true;
     }
 
@@ -143,6 +151,27 @@ public class Member {
             throw new IllegalArgumentException("El saldo no puede ser negativo");
         }
         memberBalance = updated;
+    }
+
+    public void applyReturnCredit(BigDecimal amount) {
+        if (!active) {
+            throw new IllegalStateException(
+                    "Solo los clientes MEMBER activos tienen saldo a favor");
+        }
+        changeReturnCredit(amount);
+    }
+
+    public void expireReturnCredit(BigDecimal amount) {
+        changeReturnCredit(PartyValues.money(amount).negate());
+    }
+
+    private void changeReturnCredit(BigDecimal amount) {
+        var updated = returnCreditBalance.add(PartyValues.money(amount));
+        if (updated.signum() < 0) {
+            throw new IllegalArgumentException(
+                    "El saldo a favor no puede ser negativo");
+        }
+        returnCreditBalance = updated;
     }
 
     public void applyPoints(long points) {
@@ -202,6 +231,41 @@ public class Member {
     }
     // Applies the SaaS authoritative member state to the local store copy.
 
+    public void applyOfficialPoints(long points, long pointsDebt, Instant syncedAt) {
+        if (points < 0 || pointsDebt < 0) {
+            throw new IllegalArgumentException(
+                    "Los puntos y la deuda oficiales no pueden ser negativos");
+        }
+        memberPoints = points;
+        loyaltyPointsDebt = pointsDebt;
+        officialMemberPoints = points;
+        officialSyncedAt = Objects.requireNonNull(syncedAt, "syncedAt");
+    }
+
+    public void refreshOfficialWallet(
+            BigDecimal loyaltyBalance,
+            BigDecimal returnCreditBalance,
+            Instant syncedAt) {
+        var loyaltyValue = PartyValues.money(loyaltyBalance);
+        var returnCreditValue = PartyValues.money(returnCreditBalance);
+        var synchronizedAt = Objects.requireNonNull(syncedAt, "syncedAt");
+        if (loyaltyValue.signum() < 0) {
+            throw new IllegalArgumentException("message.member.balance_invalid");
+        }
+        if (returnCreditValue.signum() < 0) {
+            throw new IllegalArgumentException("message.member.return_credit_invalid");
+        }
+        officialMemberBalance = loyaltyValue;
+        officialReturnCreditBalance = returnCreditValue;
+        officialSyncedAt = synchronizedAt;
+    }
+    // Refreshes both authoritative wallet balances as one in-memory state change.
+
+    public void refreshOfficialBalance(BigDecimal balance, Instant syncedAt) {
+        refreshOfficialWallet(balance, officialReturnCreditBalance, syncedAt);
+    }
+    // Refreshes balance authority without overwriting local points, category or pending movements.
+
     public UUID getId() {
         return id;
     }
@@ -230,6 +294,10 @@ public class Member {
         return memberBalance;
     }
 
+    public BigDecimal getReturnCreditBalance() {
+        return returnCreditBalance;
+    }
+
     public long getMemberPoints() {
         return memberPoints;
     }
@@ -252,6 +320,10 @@ public class Member {
 
     public BigDecimal getOfficialMemberBalance() {
         return officialMemberBalance;
+    }
+
+    public BigDecimal getOfficialReturnCreditBalance() {
+        return officialReturnCreditBalance;
     }
 
     public long getOfficialMemberPoints() {
