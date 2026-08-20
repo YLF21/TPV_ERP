@@ -245,10 +245,11 @@ public class DevSampleDataSeeder {
                 insert into usuario
                     (id, tienda_id, nombre, user_id, user_name, password_hash, rol_id,
                      protegido, activo, idioma, must_change_password)
-                values (?, ?, 'ADMIN', 'E-999000', 'Administrador demo', ?, ?,
+                values (?, ?, 'ADMIN', 'E-999000', 'ADMIN', ?, ?,
                     true, true, 'ES', false)
                 on conflict (id) do update
                 set tienda_id = excluded.tienda_id,
+                    user_name = excluded.user_name,
                     password_hash = excluded.password_hash,
                     rol_id = excluded.rol_id,
                     protegido = true,
