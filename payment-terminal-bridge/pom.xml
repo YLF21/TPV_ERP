@@ -22,7 +22,7 @@
     </modules>
     <properties>
         <java.version>25</java.version>
-        <jackson.version>2.22.1</jackson.version>
+        <jackson.version>2.22.2</jackson.version>
         <jna.version>5.19.1</jna.version>
     </properties>
     <dependencyManagement>
