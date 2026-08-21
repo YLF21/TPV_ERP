@@ -5,5 +5,6 @@ public enum SalePaymentAllocationKind {
     INTEGRATED_CARD,
     VOUCHER,
     TRANSFER,
-    PENDING
+    PENDING,
+    MEMBER_CREDIT
 }

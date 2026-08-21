@@ -321,6 +321,7 @@ public class SalesActivityReportService {
             case VOUCHER -> SalesActivityPaymentMethod.VALE;
             case TRANSFER -> SalesActivityPaymentMethod.TRANSFERENCIA;
             case EXCHANGE -> SalesActivityPaymentMethod.OTROS;
+            case MEMBER_CREDIT -> SalesActivityPaymentMethod.OTROS;
             case CARD -> tender.getTerminalOperationId() == null
                     && "TRANSFERENCIA".equals(originalMethods.get(tender.getOriginalPaymentId()))
                     ? SalesActivityPaymentMethod.TRANSFERENCIA
@@ -341,6 +342,7 @@ public class SalesActivityReportService {
                 case TRANSFER -> "TRANSFERENCIA";
                 case VOUCHER -> "VALE";
                 case EXCHANGE -> "OTROS";
+                case MEMBER_CREDIT -> "OTROS";
             }));
             if (values.isEmpty()) values.add("OTROS");
             return List.copyOf(values);

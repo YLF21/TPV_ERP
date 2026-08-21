@@ -5,6 +5,9 @@ import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.party.MemberLoyaltyService;
+import com.tpverp.backend.party.loyalty.central.LocalMemberBalanceReservationStatus;
+import com.tpverp.backend.party.loyalty.central.MemberBalanceCheckoutProtocolService;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
@@ -31,6 +34,7 @@ public class SalePaymentSessionService {
  private final PaymentMethodRepository methods; private final CurrentOrganization organization; private final CurrentTerminal currentTerminal; private final CardTerminalConfigurationReader configurations; private final PaymentTerminalOperationService operations;
  private final CashPaymentRecorder cashPayments; private final TransactionOperations transactions; private final StorePaymentConfigurationRepository storePaymentConfigurations;
  private final SaleOperationSecurityService operationSecurity; private final AuditService audit;
+ private MemberBalanceCheckoutProtocolService memberBalanceProtocol;
  private CustomerPendingSaleService pendingSales;
  private VoucherService voucherService;
  private VoucherPrintService voucherPrintService;
@@ -41,6 +45,7 @@ public class SalePaymentSessionService {
  private RefundTenderRepository refundTenders;
  private TicketReturnValuationService returnValuations;
  private DocumentPaymentRepository documentPayments;
+ private MemberLoyaltyService memberLoyalty;
  @Autowired public SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,StorePaymentConfigurationRepository storePaymentConfigurations,SaleOperationSecurityService operationSecurity,AuditService audit,org.springframework.transaction.PlatformTransactionManager manager){this(sessions,sales,documents,snapshots,methods,organization,currentTerminal,configurations,operations,cashPayments,storePaymentConfigurations,new TransactionTemplate(manager),operationSecurity,audit);}
  SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments){this(sessions,sales,documents,snapshots,methods,organization,currentTerminal,configurations,operations,cashPayments,null,new TransactionOperations(){public <T>T execute(org.springframework.transaction.support.TransactionCallback<T> action){return action.doInTransaction(null);}},null,null);}
  SalePaymentSessionService(SalePaymentSessionRepository sessions,PosCashService sales,DocumentService documents,PosCardDocumentSnapshot snapshots,PaymentMethodRepository methods,CurrentOrganization organization,CurrentTerminal currentTerminal,CardTerminalConfigurationReader configurations,PaymentTerminalOperationService operations,CashPaymentRecorder cashPayments,StorePaymentConfigurationRepository storePaymentConfigurations){this(sessions,sales,documents,snapshots,methods,organization,currentTerminal,configurations,operations,cashPayments,storePaymentConfigurations,new TransactionOperations(){public <T>T execute(org.springframework.transaction.support.TransactionCallback<T> action){return action.doInTransaction(null);}},null,null);}
@@ -57,11 +62,20 @@ public class SalePaymentSessionService {
  @Autowired void setRefundTenders(RefundTenderRepository refundTenders){this.refundTenders=refundTenders;}
  @Autowired void setTicketReturnValuationService(TicketReturnValuationService returnValuations){this.returnValuations=returnValuations;}
  @Autowired void setDocumentPaymentRepository(DocumentPaymentRepository documentPayments){this.documentPayments=documentPayments;}
+ @Autowired void setMemberBalanceCheckoutProtocolService(MemberBalanceCheckoutProtocolService memberBalanceProtocol){this.memberBalanceProtocol=memberBalanceProtocol;}
+ @Autowired void setMemberLoyaltyService(MemberLoyaltyService memberLoyalty){this.memberLoyalty=memberLoyalty;}
 
- @Transactional
  public SalePaymentSession reserve(
          UUID id,
          PosCashController.SaleRequest sale,
+         Authentication auth) {
+     return reserve(id, sale, null, auth);
+ }
+
+ public SalePaymentSession reserve(
+         UUID id,
+         PosCashController.SaleRequest sale,
+         UUID memberBalanceReservationId,
          Authentication auth) {
      // Resolve an existing idempotency key before rebuilding the quote. A historical
      // replay changes which ticket is "previous" after completion, but retrying the
@@ -72,21 +86,95 @@ public class SalePaymentSessionService {
          // The request hash is built from the signed document total. Refund
          // sessions expose getTotal() as the positive amount still to settle,
          // while their immutable quote used the negative document total.
-         var existingRequestHash = hash(sale, current.getDocumentTotal());
+          var existingRequestHash = hash(
+                  sale, current.getDocumentTotal(), memberBalanceReservationId);
          if (!current.getRequestHash().equals(existingRequestHash)) {
              throw new IllegalStateException(
                      "payment_session_idempotency_conflict");
          }
          return current;
      }
-     var prepared = sales.prepareSale(sale, auth);
-     var command = prepared.command();
-     var quoted = sales.quotePreparedSale(prepared, sale, auth);
-     sales.validateQuoteFingerprint(sale, quoted);
-     var requestHash = hash(sale, quoted.getTotal());
+      var effectiveSale = sale;
+      var prepared = sales.prepareSale(effectiveSale, auth);
+      var quoted = sales.quotePreparedSale(prepared, effectiveSale, auth);
+      sales.validateQuoteFingerprint(effectiveSale, quoted);
+      var requestedMemberBalance = requestedMemberBalance(sale);
+      UUID preparedReservationId = null;
+      String memberBalanceFailureCode = null;
+      var terminal = currentTerminal.terminalId(auth);
+      if (requestedMemberBalance.signum() > 0) {
+          try {
+              if (memberBalanceReservationId == null || memberBalanceProtocol == null) {
+                  throw new IllegalStateException("member_balance_reservation_unavailable");
+              }
+               memberBalanceProtocol.prepare(
+                       memberBalanceReservationId,
+                       quoted.getTiendaId(),
+                       terminal,
+                       id.toString(),
+                       id,
+                       requestedMemberBalance,
+                       Money.euros(BigDecimal.ZERO));
+              preparedReservationId = memberBalanceReservationId;
+          } catch (RuntimeException error) {
+              LOGGER.warn(
+                      "No se pudo preparar el saldo socio de la sesion {}; se continuara sin saldo",
+                      id, error);
+              memberBalanceFailureCode = "member_balance_unavailable";
+              effectiveSale = withoutMemberBalance(sale);
+              prepared = sales.prepareSale(effectiveSale, auth);
+              quoted = sales.quotePreparedSale(prepared, effectiveSale, auth);
+          }
+      }
+      var requestHash = hash(sale, quoted.getTotal(), memberBalanceReservationId);
+      var finalSale = effectiveSale;
+      var finalPrepared = prepared;
+      var finalQuoted = quoted;
+      var finalPreparedReservationId = preparedReservationId;
+      var finalFailureCode = memberBalanceFailureCode;
+      try {
+          var result = Objects.requireNonNull(transactions.execute(ignored ->
+                   reserveTransaction(
+                           id, sale, finalSale, finalPrepared, finalQuoted, requestHash,
+                           terminal, memberBalanceReservationId, finalPreparedReservationId,
+                           requestedMemberBalance,
+                           finalFailureCode, auth)));
+          if (finalPreparedReservationId != null
+                  && !finalPreparedReservationId.equals(result.getMemberBalanceReservationId())) {
+              safeAbortPrepared(finalPreparedReservationId);
+          }
+          return result;
+      } catch (RuntimeException error) {
+          if (finalPreparedReservationId != null) {
+              safeAbortPrepared(finalPreparedReservationId);
+          }
+          throw error;
+      }
+ }
+
+ private SalePaymentSession reserveTransaction(
+         UUID id,
+         PosCashController.SaleRequest requestedSale,
+         PosCashController.SaleRequest effectiveSale,
+         PosCashService.PreparedSale prepared,
+         CommercialDocument quoted,
+         String requestHash,
+         UUID terminal,
+         UUID memberBalanceReservationId,
+         UUID preparedReservationId,
+         BigDecimal requestedMemberBalance,
+         String memberBalanceFailureCode,
+         Authentication auth) {
+     var existing = sessions.findState(id);
+     if (existing.isPresent()) {
+         var current = scoped(existing.orElseThrow(), auth);
+         if (!current.getRequestHash().equals(requestHash)) {
+             throw new IllegalStateException("payment_session_idempotency_conflict");
+         }
+         return current;
+     }
      var company = organization.currentCompany();
      var user = requireUser(auth);
-     var terminal = currentTerminal.terminalId(auth);
      var active = sessions.findActive(quoted.getTiendaId(), terminal, user.getId());
      if (active.isPresent()) {
          var current = scoped(active.orElseThrow(), auth);
@@ -104,20 +192,47 @@ public class SalePaymentSessionService {
              .orElseThrow();
      var snapshot = sales.snapshot(quoted, placeholder.getId(), prepared);
      sales.authorizeSensitiveOperations(
-             prepared,
-             sale,
-             quoted.getTotal(),
-             auth,
-             "PAYMENT_SESSION",
-             id);
-     return sessions.save(SalePaymentSession.reserve(
-             id,
-             quoted.getTiendaId(),
-             terminal,
-             user.getId(),
-             requestHash,
-             snapshots.serialize(snapshot),
-             quoted.getTotal()));
+             prepared, effectiveSale, quoted.getTotal(), auth, "PAYMENT_SESSION", id);
+     var session = SalePaymentSession.reserve(
+             id, quoted.getTiendaId(), terminal, user.getId(), requestHash,
+             snapshots.serialize(snapshot), quoted.getTotal());
+      if (preparedReservationId != null) {
+          session.memberWalletPrepared(
+                  preparedReservationId,
+                  requestedMemberBalance,
+                  Money.euros(BigDecimal.ZERO));
+      } else if (requestedMemberBalance.signum() > 0) {
+          session.memberBalanceUnavailable(
+                  requestedMemberBalance,
+                  Objects.requireNonNullElse(
+                          memberBalanceFailureCode, "member_balance_unavailable"));
+      } else if (memberBalanceReservationId != null) {
+          session.memberWalletLinked(memberBalanceReservationId);
+      }
+     return sessions.save(session);
+ }
+
+ private static BigDecimal requestedMemberBalance(PosCashController.SaleRequest sale) {
+     return sale.memberBalanceAmount() == null
+             ? Money.euros(BigDecimal.ZERO)
+             : Money.euros(sale.memberBalanceAmount());
+ }
+
+ private static PosCashController.SaleRequest withoutMemberBalance(
+         PosCashController.SaleRequest sale) {
+     return new PosCashController.SaleRequest(
+             sale.customerId(), sale.lines(), sale.discountAuthorizationToken(),
+             sale.promotionalCouponCode(), sale.checkoutDiscountAmount(),
+             sale.internalComment(), sale.operationAuthorizations(),
+             sale.previousTicketImport(), null, null);
+ }
+
+ private void safeAbortPrepared(UUID reservationId) {
+     try {
+         memberBalanceProtocol.abortPrepared(reservationId);
+     } catch (RuntimeException error) {
+         LOGGER.warn("No se pudo abortar la preparacion de saldo socio {}", reservationId, error);
+     }
  }
  @Transactional(readOnly=true) public SalePaymentSession get(UUID id,Authentication auth){return scoped(sessions.findState(id).orElseThrow(),auth);}
  @Transactional(readOnly=true) public Optional<SalePaymentSession> active(Authentication auth){var user=requireUser(auth);return sessions.findActive(organization.currentStore().getId(),currentTerminal.terminalId(auth),user.getId());}
@@ -226,8 +341,8 @@ public class SalePaymentSessionService {
                  throw new IllegalArgumentException("voucher_balance_insufficient");
              }
          }
-         var prior = session.getAllocations().stream()
-                 .filter(a -> a.getIdempotencyKey().equals(key)).findFirst();
+          var prior = session.getAllocations().stream()
+                  .filter(a -> a.getIdempotencyKey().equals(key)).findFirst();
          if (prior.isPresent()) {
              var existing = prior.orElseThrow();
              if (existing.getKind() != kind
@@ -245,8 +360,29 @@ public class SalePaymentSessionService {
                      || !Objects.equals(existing.getComment(), normalize(comment))) {
                  throw new IllegalStateException("allocation_idempotency_conflict");
              }
-             return session;
-          }
+              if (refund || kind != SalePaymentAllocationKind.MEMBER_CREDIT) {
+                  return session;
+              }
+           }
+           BigDecimal loyaltyToPrepare = null;
+           BigDecimal returnCreditToPrepare = null;
+           if (!refund && kind == SalePaymentAllocationKind.MEMBER_CREDIT) {
+               var alreadyApproved = session.getAllocations().stream()
+                       .filter(allocation -> allocation.getKind()
+                               == SalePaymentAllocationKind.MEMBER_CREDIT)
+                      .filter(allocation -> allocation.getStatus()
+                              == PaymentTerminalOperationStatus.APPROVED)
+                       .map(SalePaymentAllocation::getAmount)
+                       .reduce(Money.euros(BigDecimal.ZERO), BigDecimal::add);
+               loyaltyToPrepare = walletAmount(session.getMemberBalanceAppliedAmount());
+               returnCreditToPrepare = prior.isPresent()
+                       ? Money.euros(alreadyApproved)
+                       : Money.euros(alreadyApproved.add(normalized));
+               validateMemberCredit(
+                       snapshots.deserialize(session.getSnapshot()).customerId(),
+                       session.getDirection(),
+                       returnCreditToPrepare);
+           }
            var authorization = authorizeManualPayment(
                    kind,
                    operationAuthorization,
@@ -277,7 +413,9 @@ public class SalePaymentSessionService {
              throw new IllegalArgumentException("pending_amount_already_allocated");
          }
          DocumentPayment originalRefundPayment = null;
-         if (refund && kind != SalePaymentAllocationKind.VOUCHER) {
+         if (refund
+                 && kind != SalePaymentAllocationKind.VOUCHER
+                 && kind != SalePaymentAllocationKind.MEMBER_CREDIT) {
              originalRefundPayment = resolveMatchingOriginalPayment(
                      session, kind, normalized).orElse(null);
              if (originalRefundPayment == null) {
@@ -290,23 +428,31 @@ public class SalePaymentSessionService {
                  originalRefundPayment = resolveAnyOriginalPayment(session, normalized);
              }
          }
-         var mode = kind == SalePaymentAllocationKind.MANUAL_CARD ? "MANUAL"
-                 : kind == SalePaymentAllocationKind.INTEGRATED_CARD ? "INTEGRATED"
-                 : kind == SalePaymentAllocationKind.VOUCHER ? "VOUCHER"
-                 : kind == SalePaymentAllocationKind.TRANSFER ? "TRANSFER"
-                 : kind == SalePaymentAllocationKind.PENDING ? "PENDING" : null;
-          var allocation = session.addAllocation(allocationId, key, kind, normalized, provider, mode,
-                  delivered, change, comment);
+          var mode = kind == SalePaymentAllocationKind.MANUAL_CARD ? "MANUAL"
+                  : kind == SalePaymentAllocationKind.INTEGRATED_CARD ? "INTEGRATED"
+                  : kind == SalePaymentAllocationKind.VOUCHER ? "VOUCHER"
+                  : kind == SalePaymentAllocationKind.TRANSFER ? "TRANSFER"
+                  : kind == SalePaymentAllocationKind.PENDING ? "PENDING" : null;
+           if (prior.isPresent()) {
+               prepareMemberWallet(session, loyaltyToPrepare, returnCreditToPrepare);
+               return sessions.save(session);
+           }
+           var allocation = session.addAllocation(allocationId, key, kind, normalized, provider, mode,
+                   delivered, change, comment);
           if (kind == SalePaymentAllocationKind.VOUCHER && !refund) {
               allocation.assignVoucherCode(normalize(voucherCode));
           }
-          if (originalRefundPayment != null) {
-              allocation.assignOriginalPaymentId(originalRefundPayment.getId());
+           if (originalRefundPayment != null) {
+               allocation.assignOriginalPaymentId(originalRefundPayment.getId());
+           }
+          if (!refund && kind == SalePaymentAllocationKind.MEMBER_CREDIT) {
+              prepareMemberWallet(session, loyaltyToPrepare, returnCreditToPrepare);
           }
-         if (kind == SalePaymentAllocationKind.CASH) {
+          if (kind == SalePaymentAllocationKind.CASH) {
              allocation.approve(null, null, null);
          } else if (kind == SalePaymentAllocationKind.MANUAL_CARD
                  || kind == SalePaymentAllocationKind.VOUCHER
+                 || kind == SalePaymentAllocationKind.MEMBER_CREDIT
                  || kind == SalePaymentAllocationKind.TRANSFER
                  || kind == SalePaymentAllocationKind.PENDING) {
              allocation.approve(null, normalize(reference), null);
@@ -381,7 +527,7 @@ public class SalePaymentSessionService {
          String creditOverrideAuthorizerUsername,
          String creditOverrideAuthorizerPassword,
          Authentication auth) {
-     var finalized = Objects.requireNonNull(transactions.execute(tx ->
+      var finalized = Objects.requireNonNull(transactions.execute(tx ->
              finalizeTransaction(
                      id,
                      creditOverrideReason,
@@ -389,8 +535,9 @@ public class SalePaymentSessionService {
                      authorizerPassword,
                      creditOverrideAuthorizerUsername,
                      creditOverrideAuthorizerPassword,
-                     auth)));
-     var printTicket = documents.renderTicketPrintView(
+                      auth)));
+      queueMemberBalanceFinalization(finalized.session());
+      var printTicket = documents.renderTicketPrintView(
              finalized.ticket(), finalized.printTicket());
      return new Finalization(
              finalized.session(),
@@ -421,13 +568,30 @@ public class SalePaymentSessionService {
      if (!session.isCovered()) {
          throw new IllegalStateException("payment_session_not_covered");
      }
-     var approved = session.getAllocations().stream()
-             .filter(a -> a.getStatus() == PaymentTerminalOperationStatus.APPROVED).toList();
-     var pendingAmount = approved.stream()
+      var approved = session.getAllocations().stream()
+              .filter(a -> a.getStatus() == PaymentTerminalOperationStatus.APPROVED).toList();
+      approved.stream().filter(a -> a.getKind() == SalePaymentAllocationKind.INTEGRATED_CARD
+             && session.getDirection() == SalePaymentSessionDirection.SALE)
+             .forEach(a -> operations.requireFinalizableApprovedCharge(a.getOperationId()));
+      var pendingAmount = approved.stream()
              .filter(a -> a.getKind() == SalePaymentAllocationKind.PENDING)
              .map(SalePaymentAllocation::getAmount)
              .reduce(Money.euros(BigDecimal.ZERO), BigDecimal::add);
      var snapshot = snapshots.deserialize(session.getSnapshot());
+      var memberCreditAmount = approved.stream()
+             .filter(allocation -> allocation.getKind()
+                     == SalePaymentAllocationKind.MEMBER_CREDIT)
+             .map(SalePaymentAllocation::getAmount)
+             .reduce(Money.euros(BigDecimal.ZERO), BigDecimal::add);
+      validateMemberCredit(
+              snapshot.customerId(), session.getDirection(), memberCreditAmount);
+      var preparedLoyaltyAmount = walletAmount(session.getMemberBalanceAppliedAmount());
+      var preparedReturnCreditAmount = walletAmount(
+              session.getMemberReturnCreditAppliedAmount());
+      if (session.getDirection() == SalePaymentSessionDirection.SALE
+              && preparedReturnCreditAmount.compareTo(memberCreditAmount) != 0) {
+          throw new IllegalStateException("member_return_credit_preparation_mismatch");
+      }
      CustomerPendingSaleService.PendingCreditAuthorization creditAuthorization = null;
      if (pendingAmount.signum() > 0) {
          creditAuthorization = Objects.requireNonNull(
@@ -444,12 +608,18 @@ public class SalePaymentSessionService {
                          normalize(creditOverrideAuthorizerUsername),
                          creditOverrideAuthorizerPassword,
                          auth);
-     }
-     var payableAllocations = approved.stream()
-             .filter(a -> a.getKind() != SalePaymentAllocationKind.PENDING).toList();
-     approved.stream().filter(a -> a.getKind() == SalePaymentAllocationKind.INTEGRATED_CARD
-             && session.getDirection() == SalePaymentSessionDirection.SALE)
-             .forEach(a -> operations.requireFinalizableApprovedCharge(a.getOperationId()));
+      }
+      var payableAllocations = approved.stream()
+              .filter(a -> a.getKind() != SalePaymentAllocationKind.PENDING).toList();
+       if (session.getDirection() == SalePaymentSessionDirection.SALE
+               && preparedLoyaltyAmount.add(preparedReturnCreditAmount).signum() > 0) {
+           Objects.requireNonNull(memberBalanceProtocol, "member balance checkout protocol")
+                   .authorizePreparedLocalConsumption(
+                           session.getMemberBalanceReservationId(),
+                           snapshot.customerId(),
+                           preparedLoyaltyAmount,
+                           preparedReturnCreditAmount);
+       }
      var company = organization.currentCompany();
      PaymentMethod cash = payableAllocations.stream().anyMatch(a -> a.getKind() == SalePaymentAllocationKind.CASH)
              ? methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(), "EFECTIVO").orElseThrow()
@@ -462,6 +632,11 @@ public class SalePaymentSessionService {
      PaymentMethod voucher = payableAllocations.stream().anyMatch(a -> a.getKind() == SalePaymentAllocationKind.VOUCHER)
              ? methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(), "VALE").orElseThrow()
              : null;
+     PaymentMethod memberCredit = payableAllocations.stream().anyMatch(
+             a -> a.getKind() == SalePaymentAllocationKind.MEMBER_CREDIT)
+             ? methods.findByEmpresaIdAndNombreAndActivoTrue(
+                     company.getId(), "CREDITO_DEVOLUCION").orElseThrow()
+             : null;
      PaymentMethod transfer = payableAllocations.stream().anyMatch(a -> a.getKind() == SalePaymentAllocationKind.TRANSFER)
              ? methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(), "TRANSFERENCIA").orElseThrow()
              : null;
@@ -471,6 +646,7 @@ public class SalePaymentSessionService {
          var kind = allocation.getKind();
          var methodId = kind == SalePaymentAllocationKind.CASH ? cash.getId()
                  : kind == SalePaymentAllocationKind.VOUCHER ? voucher.getId()
+                 : kind == SalePaymentAllocationKind.MEMBER_CREDIT ? memberCredit.getId()
                  : kind == SalePaymentAllocationKind.TRANSFER ? transfer.getId() : card.getId();
          commands.add(new PaymentCommand(
                  methodId,
@@ -501,6 +677,8 @@ public class SalePaymentSessionService {
                                  ? RefundTenderType.CASH
                                  : allocation.getKind() == SalePaymentAllocationKind.VOUCHER
                                          ? RefundTenderType.VOUCHER
+                                         : allocation.getKind() == SalePaymentAllocationKind.MEMBER_CREDIT
+                                                 ? RefundTenderType.MEMBER_CREDIT
                                          : allocation.getKind() == SalePaymentAllocationKind.TRANSFER
                                                  ? RefundTenderType.TRANSFER
                                          : RefundTenderType.CARD,
@@ -617,8 +795,75 @@ public class SalePaymentSessionService {
      return new TransactionalFinalization(
              saved, ticket, printTicket, issuedVoucher, ticket.getNumero());
  }
- @Transactional public SalePaymentSession cancel(UUID id,Authentication auth){var s=scoped(sessions.findLocked(id).orElseThrow(),auth);s.cancel();sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}
- @Transactional public SalePaymentSession discardSimulation(UUID id,String reason,Authentication auth){var normalizedReason=SimulatorDiscardReason.require(reason);var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var configuration=configurations.required(s.getTerminalId());if(!configuration.terminalId().equals(s.getTerminalId())||!configuration.storeId().equals(s.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(!configuration.testMode())throw new IllegalStateException("simulator_discard_requires_test_mode");s.discardSimulation(normalizedReason,requireUser(auth).getId());sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}
+ public SalePaymentSession cancel(UUID id,Authentication auth){return Objects.requireNonNull(transactions.execute(ignored->{var s=scoped(sessions.findLocked(id).orElseThrow(),auth);s.cancel();sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));}
+ public SalePaymentSession discardSimulation(UUID id,String reason,Authentication auth){return Objects.requireNonNull(transactions.execute(ignored->{var normalizedReason=SimulatorDiscardReason.require(reason);var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var configuration=configurations.required(s.getTerminalId());if(!configuration.terminalId().equals(s.getTerminalId())||!configuration.storeId().equals(s.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(!configuration.testMode())throw new IllegalStateException("simulator_discard_requires_test_mode");s.discardSimulation(normalizedReason,requireUser(auth).getId());sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));}
+
+ public void recoverMemberBalanceFinalization(UUID sessionId) {
+     var session = transactions.execute(ignored -> sessions.findState(sessionId).orElse(null));
+      if (session == null || session.getTicketId() == null
+              || session.getMemberBalanceReservationId() == null
+              || !hasPreparedWalletConsumption(session)
+              || session.getMemberBalanceSynchronizedAt() != null) {
+         return;
+     }
+     try {
+         memberBalanceProtocol.markTicketCommitted(
+                 session.getMemberBalanceReservationId(), session.getTicketId());
+         var reservation = memberBalanceProtocol.finalizePrepared(
+                 session.getMemberBalanceReservationId());
+         if (reservation.getStatus() == LocalMemberBalanceReservationStatus.CONSUMED) {
+             markMemberBalanceSynchronized(sessionId);
+         }
+     } catch (RuntimeException error) {
+         LOGGER.warn("Queda pendiente finalizar el saldo socio de la sesion {}", sessionId, error);
+     }
+ }
+
+ public void recoverMemberBalanceAbort(UUID sessionId) {
+     var session = transactions.execute(ignored -> sessions.findState(sessionId).orElse(null));
+      if (session == null || session.getTicketId() != null
+              || session.getMemberBalanceReservationId() == null
+              || !hasPreparedWalletConsumption(session)
+              || session.getMemberBalanceSynchronizedAt() != null
+             || session.getStatus() != SalePaymentSessionStatus.CANCELLED) {
+         return;
+     }
+     try {
+         var reservation = memberBalanceProtocol.abortPrepared(
+                 session.getMemberBalanceReservationId());
+         if (reservation.isClosed()) {
+             markMemberBalanceSynchronized(sessionId);
+         }
+     } catch (RuntimeException error) {
+         LOGGER.warn("Queda pendiente abortar el saldo socio de la sesion {}", sessionId, error);
+     }
+ }
+
+  private void queueMemberBalanceFinalization(SalePaymentSession session) {
+      if (session.getMemberBalanceReservationId() == null || session.getTicketId() == null
+              || !hasPreparedWalletConsumption(session)) {
+          return;
+      }
+     try {
+         memberBalanceProtocol.markTicketCommitted(
+                 session.getMemberBalanceReservationId(), session.getTicketId());
+     } catch (RuntimeException error) {
+         LOGGER.warn(
+                 "El ticket {} esta confirmado; su saldo socio queda pendiente de sincronizar",
+                 session.getTicketId(), error);
+     }
+ }
+
+ private void markMemberBalanceSynchronized(UUID sessionId) {
+     transactions.execute(ignored -> {
+         var current = sessions.findLocked(sessionId).orElseThrow();
+         if (current.getMemberBalanceSynchronizedAt() == null) {
+             current.markMemberBalanceSynchronized(java.time.Instant.now());
+             sessions.save(current);
+         }
+         return null;
+     });
+ }
  @Transactional public SalePaymentSession acknowledgeCompensation(UUID id,String note,String authorizerUsername,String authorizerPassword,Authentication auth){var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var unresolved=s.getAllocations().stream().filter(a->a.getKind()==SalePaymentAllocationKind.INTEGRATED_CARD&&(a.getOperationId()!=null||a.requiresCompensationOnCancel())).anyMatch(this::hasUnresolvedDurableOperation);if(unresolved)throw new IllegalStateException("integrated_compensation_unresolved");if(operationSecurity==null||audit==null)throw new IllegalStateException("sale_operation_security_unavailable");var authorization=operationSecurity.authorize(SaleOperationCode.PAYMENT_COMPENSATION_ACK,authorizerUsername,authorizerPassword,auth);s.acknowledgeCompensation(note,authorization.authorizer().getId());var saved=sessions.save(s);var details=new LinkedHashMap<String,Object>();details.put("operationCode",SaleOperationCode.PAYMENT_COMPENSATION_ACK.name());details.put("paymentSessionId",s.getId().toString());details.put("operatorId",authorization.operator().getId().toString());details.put("operatorUsername",authorization.operator().getUserName());details.put("authorizerId",authorization.authorizer().getId().toString());details.put("authorizerUsername",authorization.authorizer().getUserName());details.put("delegated",authorization.delegated());audit.record("PAYMENT_COMPENSATION_ACKNOWLEDGED",AuditResult.EXITO,Map.copyOf(details));return saved;}
  private SalePaymentSession scoped(SalePaymentSession s,Authentication auth){if(!s.getStoreId().equals(organization.currentStore().getId())||!s.getTerminalId().equals(currentTerminal.terminalId(auth))||!s.getUserId().equals(requireUser(auth).getId()))throw new NoSuchElementException();return s;}
  private boolean hasUnresolvedDurableOperation(SalePaymentAllocation allocation){if(allocation.getOperationId()==null)return true;return operations.find(allocation.getOperationId()).map(operation->switch(operation.getStatus()){case CANCELLED,REFUNDED,DECLINED->false;default->true;}).orElse(true);}
@@ -679,7 +924,8 @@ public class SalePaymentSessionService {
          OperationAuthorizationRequest request,
          Authentication auth) {
      if (session.getDirection() != SalePaymentSessionDirection.REFUND
-             || kind == SalePaymentAllocationKind.VOUCHER) {
+             || kind == SalePaymentAllocationKind.VOUCHER
+             || kind == SalePaymentAllocationKind.MEMBER_CREDIT) {
          return null;
      }
      var snapshot = snapshots.deserialize(session.getSnapshot());
@@ -921,7 +1167,52 @@ public class SalePaymentSessionService {
  }
  private PaymentTerminalOperationsService requireRefundTerminalOperations(){if(refundTerminalOperations==null)throw new IllegalStateException("refund_terminal_service_unavailable");return refundTerminalOperations;}
  private void validateIntegratedConfiguration(CardTerminalConfiguration config,SalePaymentSession state,String provider){if(!config.enabled())throw new IllegalArgumentException("payment_terminal_configuration_not_enabled");if(config.mode()!=PaymentCardMode.INTEGRATED)throw new IllegalArgumentException("payment_terminal_configuration_not_integrated");if(config.provider()==null||config.provider()==PaymentTerminalProvider.NONE)throw new IllegalArgumentException("payment_terminal_provider_required");if(!config.terminalId().equals(state.getTerminalId())||!config.storeId().equals(state.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(provider==null||!config.provider().name().equals(provider))throw new IllegalArgumentException("provider_not_configured");if(storePaymentConfigurations!=null){var rules=storePaymentConfigurations.findByStoreId(state.getStoreId()).orElse(null);if(rules!=null&&(!rules.isIntegratedCardEnabled()||!List.of(rules.getAllowedPaymentTerminalProviders().split(",")).contains(config.provider().name())))throw new IllegalArgumentException("payment_terminal_provider_not_allowed");}}
- private PaymentMethod activeMethod(SalePaymentAllocationKind kind){var name=switch(kind){case CASH->"EFECTIVO";case MANUAL_CARD,INTEGRATED_CARD->"TARJETA";case VOUCHER->"VALE";case TRANSFER->"TRANSFERENCIA";default->null;};var company=organization.currentCompany();return name==null||company==null?null:methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(),name).orElseThrow();}
+ private void validateMemberCredit(
+         UUID customerId,
+         SalePaymentSessionDirection direction,
+         BigDecimal requestedAmount) {
+     var amount = Money.euros(requestedAmount);
+     if (amount.signum() <= 0) {
+         return;
+     }
+     if (customerId == null) {
+         throw new IllegalArgumentException("member_credit_customer_required");
+     }
+     var wallet = requireMemberLoyaltyService().wallet(customerId);
+     if (direction == SalePaymentSessionDirection.SALE
+             && wallet.returnCreditAvailable().compareTo(amount) < 0) {
+         throw new IllegalArgumentException("member_credit_balance_insufficient");
+     }
+ }
+ private void prepareMemberWallet(
+         SalePaymentSession session,
+         BigDecimal loyaltyAmount,
+         BigDecimal returnCreditAmount) {
+     var reservationId = session.getMemberBalanceReservationId();
+     if (reservationId == null || memberBalanceProtocol == null) {
+         throw new IllegalStateException("member_wallet_reservation_unavailable");
+     }
+     try {
+         memberBalanceProtocol.prepare(
+                 reservationId,
+                 session.getStoreId(),
+                 session.getTerminalId(),
+                 session.getId().toString(),
+                 session.getId(),
+                 Objects.requireNonNull(loyaltyAmount),
+                 Objects.requireNonNull(returnCreditAmount));
+     } catch (RuntimeException error) {
+         LOGGER.warn(
+                 "No se pudo preparar el monedero del socio para la sesion {}",
+                 session.getId(), error);
+         throw error;
+     }
+     session.memberWalletPrepared(reservationId, loyaltyAmount, returnCreditAmount);
+ }
+ private static boolean hasPreparedWalletConsumption(SalePaymentSession session){return walletAmount(session.getMemberBalanceAppliedAmount()).add(walletAmount(session.getMemberReturnCreditAppliedAmount())).signum()>0;}
+ private static BigDecimal walletAmount(BigDecimal amount){return amount==null?Money.euros(BigDecimal.ZERO):Money.euros(amount);}
+ private MemberLoyaltyService requireMemberLoyaltyService(){if(memberLoyalty==null)throw new IllegalStateException("member_loyalty_service_unavailable");return memberLoyalty;}
+ private PaymentMethod activeMethod(SalePaymentAllocationKind kind){var name=switch(kind){case CASH->"EFECTIVO";case MANUAL_CARD,INTEGRATED_CARD->"TARJETA";case VOUCHER->"VALE";case MEMBER_CREDIT->"CREDITO_DEVOLUCION";case TRANSFER->"TRANSFERENCIA";default->null;};var company=organization.currentCompany();return name==null||company==null?null:methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(),name).orElseThrow();}
  private VoucherService requireVoucherService(){if(voucherService==null)throw new IllegalStateException("voucher_service_unavailable");return voucherService;}
  private Voucher issuedVoucherFor(CommercialDocument ticket) {
      if (voucherService == null || ticket == null) {
@@ -948,7 +1239,8 @@ public class SalePaymentSessionService {
  }
  private static String normalize(String value){return value==null||value.isBlank()?null:value.trim();}
  private static UserAccount requireUser(Authentication a){if(a.getPrincipal() instanceof UserAccount u)return u;throw new IllegalStateException("user_required");}
- static String hash(PosCashController.SaleRequest sale,BigDecimal total){var coupon=sale.promotionalCouponCode();var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();var hasOpenPrice=sale.lines().stream().anyMatch(line->line.openUnitPrice()!=null);var hasSerialNumbers=sale.lines().stream().anyMatch(line->line.serialNumbers()!=null&&!line.serialNumbers().isEmpty());var hasTemporaryNames=sale.lines().stream().anyMatch(line->line.temporaryName()!=null&&!line.temporaryName().isBlank());var canonical=new StringBuilder(sale.previousTicketImport()!=null?"sale-payment-session-v8-previous-ticket-import|":hasTemporaryNames?"sale-payment-session-v7-temporary-name|":!internalComment.isEmpty()?"sale-payment-session-v6-internal-comment|":hasSerialNumbers?"sale-payment-session-v5-serials|":"sale-payment-session-v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');if(!internalComment.isEmpty())canonical.append(internalComment.length()).append(':').append(internalComment).append('|');canonical.append(coupon==null?"":coupon.trim()).append('|').append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|').append(sale.quoteFingerprint()==null?"":sale.quoteFingerprint().trim()).append('|').append(Money.euros(total));sale.lines().forEach(line->{canonical.append('|').append(line.productId()).append(':').append(line.quantity().stripTrailingZeros().toPlainString()).append(':').append(line.discount().stripTrailingZeros().toPlainString()).append(':').append(hasOpenPrice?(line.openUnitPrice()==null?"-":Money.euros(line.openUnitPrice()).toPlainString()):"-");if(hasSerialNumbers)canonical.append(':').append(PosCashService.canonicalSerialNumbers(line.serialNumbers()));if(hasTemporaryNames)canonical.append(':').append(PosCashService.canonicalText(line.temporaryName()));});return hashText(canonical.toString());}
+  static String hash(PosCashController.SaleRequest sale,BigDecimal total){return hash(sale,total,null);}
+  static String hash(PosCashController.SaleRequest sale,BigDecimal total,UUID memberBalanceReservationId){var coupon=sale.promotionalCouponCode();var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();var hasOpenPrice=sale.lines().stream().anyMatch(line->line.openUnitPrice()!=null);var hasSerialNumbers=sale.lines().stream().anyMatch(line->line.serialNumbers()!=null&&!line.serialNumbers().isEmpty());var hasTemporaryNames=sale.lines().stream().anyMatch(line->line.temporaryName()!=null&&!line.temporaryName().isBlank());var hasMemberBalance=sale.memberBalanceAmount()!=null&&Money.euros(sale.memberBalanceAmount()).signum()>0;var canonical=new StringBuilder(hasMemberBalance&&memberBalanceReservationId!=null?"sale-payment-session-v10-member-balance-reservation|":hasMemberBalance?"sale-payment-session-v9-member-balance|":sale.previousTicketImport()!=null?"sale-payment-session-v8-previous-ticket-import|":hasTemporaryNames?"sale-payment-session-v7-temporary-name|":!internalComment.isEmpty()?"sale-payment-session-v6-internal-comment|":hasSerialNumbers?"sale-payment-session-v5-serials|":"sale-payment-session-v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');if(!internalComment.isEmpty())canonical.append(internalComment.length()).append(':').append(internalComment).append('|');canonical.append(coupon==null?"":coupon.trim()).append('|').append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');if(hasMemberBalance){canonical.append(Money.euros(sale.memberBalanceAmount())).append('|');if(memberBalanceReservationId!=null)canonical.append(memberBalanceReservationId).append('|');}canonical.append(sale.quoteFingerprint()==null?"":sale.quoteFingerprint().trim()).append('|').append(Money.euros(total));sale.lines().forEach(line->{canonical.append('|').append(line.productId()).append(':').append(line.quantity().stripTrailingZeros().toPlainString()).append(':').append(line.discount().stripTrailingZeros().toPlainString()).append(':').append(hasOpenPrice?(line.openUnitPrice()==null?"-":Money.euros(line.openUnitPrice()).toPlainString()):"-");if(hasSerialNumbers)canonical.append(':').append(PosCashService.canonicalSerialNumbers(line.serialNumbers()));if(hasTemporaryNames)canonical.append(':').append(PosCashService.canonicalText(line.temporaryName()));});return hashText(canonical.toString());}
  private static String hashText(String value){try{var md=MessageDigest.getInstance("SHA-256");return java.util.HexFormat.of().formatHex(md.digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
  public record IssuedVoucher(
          String code,

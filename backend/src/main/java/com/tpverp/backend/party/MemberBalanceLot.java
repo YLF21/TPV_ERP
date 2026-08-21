@@ -2,6 +2,8 @@ package com.tpverp.backend.party;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -24,6 +26,9 @@ public class MemberBalanceLot {
     private Member member;
     @Column(name = "documento_id")
     private UUID documentId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "balance_type", nullable = false, length = 24)
+    private MemberBalanceLotType balanceType;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_movement_id")
     private MemberMovement sourceMovement;
@@ -45,6 +50,12 @@ public class MemberBalanceLot {
 
     public MemberBalanceLot(Member member, MemberMovement movement, BigDecimal amount,
             Instant createdAt, Instant expiresAt) {
+        this(member, movement, MemberBalanceLotType.LOYALTY, amount, createdAt, expiresAt);
+    }
+
+    public MemberBalanceLot(Member member, MemberMovement movement,
+            MemberBalanceLotType balanceType, BigDecimal amount,
+            Instant createdAt, Instant expiresAt) {
         var value = PartyValues.money(amount);
         if (value.signum() < 0) {
             throw new IllegalArgumentException("message.member.balance_invalid");
@@ -52,6 +63,8 @@ public class MemberBalanceLot {
         id = UUID.randomUUID();
         this.member = Objects.requireNonNull(member, "member");
         this.sourceMovement = movement;
+        this.documentId = movement == null ? null : movement.getDocumentId();
+        this.balanceType = Objects.requireNonNull(balanceType, "balanceType");
         this.amountOriginal = value;
         this.amountRemaining = value;
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
@@ -103,6 +116,14 @@ public class MemberBalanceLot {
 
     public UUID getId() {
         return id;
+    }
+
+    public UUID getDocumentId() {
+        return documentId;
+    }
+
+    public MemberBalanceLotType getBalanceType() {
+        return balanceType;
     }
 
     public BigDecimal getAmountRemaining() {

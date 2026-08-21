@@ -24,6 +24,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -159,7 +161,7 @@ public class TenantService {
                 blankToNull(request.email()),
                 blankToNull(request.phone()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         return erpCustomer(id);
     }
 
@@ -191,7 +193,7 @@ public class TenantService {
                 money(request.taxRate()),
                 money(request.minStock()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         return erpProduct(id);
     }
 
@@ -222,7 +224,7 @@ public class TenantService {
                 blankToNull(request.email()),
                 blankToNull(request.phone()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         return erpSupplier(id);
     }
 
@@ -251,7 +253,7 @@ public class TenantService {
                 request.name().trim(),
                 blankToNull(request.address()),
                 true,
-                clock.instant());
+                sqlTimestamp(clock.instant()));
         return erpWarehouse(id);
     }
 
@@ -272,8 +274,8 @@ public class TenantService {
                 "ABIERTO",
                 defaultText(request.priority(), "NORMAL"),
                 "tenant:" + context.username().toLowerCase(),
-                now,
-                now);
+                sqlTimestamp(now),
+                sqlTimestamp(now));
         return ticket(ticketId, context.companyId());
     }
 
@@ -297,8 +299,9 @@ public class TenantService {
         jdbc.update("""
                 insert into saas_support_ticket_comment(id, ticket_id, author, message, created_at)
                 values (?, ?, ?, ?, ?)
-                """, commentId, ticketId, "tenant:" + context.username().toLowerCase(), request.message().trim(), now);
-        jdbc.update("update saas_support_ticket set updated_at = ? where id = ?", now, ticketId);
+                """, commentId, ticketId, "tenant:" + context.username().toLowerCase(), request.message().trim(),
+                sqlTimestamp(now));
+        jdbc.update("update saas_support_ticket set updated_at = ? where id = ?", sqlTimestamp(now), ticketId);
         return supportTicketComment(commentId);
     }
 
@@ -384,7 +387,7 @@ public class TenantService {
                 from saas_billing_invoice i
                 join saas_company c on c.id = i.company_id
                 left join saas_billing_payment p on p.invoice_id = i.id
-                """ + where + """
+                """ + where + "\n" + """
                 group by i.id, i.company_id, c.name, i.number, i.concept, i.amount, i.currency,
                          i.status, i.issued_at, i.due_at, i.created_at
                 order by i.issued_at desc, i.number desc
@@ -521,6 +524,10 @@ public class TenantService {
 
     private static String defaultText(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private static OffsetDateTime sqlTimestamp(Instant value) {
+        return value == null ? null : value.atOffset(ZoneOffset.UTC);
     }
 
     private static String blankToNull(String value) {

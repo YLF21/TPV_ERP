@@ -35,6 +35,9 @@ public class SaasSyncEvent {
     @JoinColumn(name = "installation_id")
     private SaasInstallation installation;
 
+    @Column(name = "store_sequence")
+    private Long storeSequence;
+
     @Column(name = "entity_type", nullable = false)
     private String entityType;
 
@@ -48,6 +51,22 @@ public class SaasSyncEvent {
     @Column(nullable = false, columnDefinition = "text")
     private String payload;
 
+    @Column(name = "payload_hash", nullable = false, length = 64)
+    private String payloadHash;
+
+    @Column(name = "schema_version", nullable = false)
+    private int schemaVersion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "projection_status", nullable = false, length = 24)
+    private ProjectionStatus projectionStatus;
+
+    @Column(name = "projected_at")
+    private Instant projectedAt;
+
+    @Column(name = "projection_error", columnDefinition = "text")
+    private String projectionError;
+
     @Column(name = "received_at", nullable = false)
     private Instant receivedAt;
 
@@ -59,20 +78,67 @@ public class SaasSyncEvent {
             SaasCompany company,
             SaasStore store,
             SaasInstallation installation,
+            Long storeSequence,
             String entityType,
             UUID entityId,
             SyncOperation operation,
             String payload,
+            String payloadHash,
+            int schemaVersion,
             Instant receivedAt) {
         this.eventId = eventId;
         this.company = company;
         this.store = store;
         this.installation = installation;
+        this.storeSequence = storeSequence;
         this.entityType = entityType;
         this.entityId = entityId;
         this.operation = operation;
         this.payload = payload;
+        this.payloadHash = payloadHash;
+        this.schemaVersion = schemaVersion;
+        this.projectionStatus = ProjectionStatus.RECEIVED;
         this.receivedAt = receivedAt;
+    }
+
+    public SaasSyncEvent(
+            UUID eventId,
+            SaasCompany company,
+            SaasStore store,
+            SaasInstallation installation,
+            String entityType,
+            UUID entityId,
+            SyncOperation operation,
+            String payload,
+            String payloadHash,
+            int schemaVersion,
+            Instant receivedAt) {
+        this(eventId, company, store, installation, null, entityType, entityId, operation,
+                payload, payloadHash, schemaVersion, receivedAt);
+    }
+
+    public void markProjected(Instant now) {
+        projectionStatus = ProjectionStatus.PROJECTED;
+        projectedAt = now;
+        projectionError = null;
+    }
+
+    public void markIgnored(Instant now) {
+        projectionStatus = ProjectionStatus.IGNORED;
+        projectedAt = now;
+        projectionError = null;
+    }
+
+    public void markFailed(String error) {
+        projectionStatus = ProjectionStatus.ERROR;
+        projectedAt = null;
+        projectionError = error == null || error.isBlank()
+                ? "Error de proyeccion sin detalle"
+                : error;
+    }
+
+    public void recordConflict(String error) {
+        projectionError = error;
     }
 
     public UUID getEventId() {
@@ -91,6 +157,10 @@ public class SaasSyncEvent {
         return installation;
     }
 
+    public Long getStoreSequence() {
+        return storeSequence;
+    }
+
     public String getEntityType() {
         return entityType;
     }
@@ -107,7 +177,34 @@ public class SaasSyncEvent {
         return payload;
     }
 
+    public String getPayloadHash() {
+        return payloadHash;
+    }
+
+    public int getSchemaVersion() {
+        return schemaVersion;
+    }
+
+    public ProjectionStatus getProjectionStatus() {
+        return projectionStatus;
+    }
+
+    public Instant getProjectedAt() {
+        return projectedAt;
+    }
+
+    public String getProjectionError() {
+        return projectionError;
+    }
+
     public Instant getReceivedAt() {
         return receivedAt;
+    }
+
+    public enum ProjectionStatus {
+        RECEIVED,
+        PROJECTED,
+        IGNORED,
+        ERROR
     }
 }

@@ -139,10 +139,11 @@ export type TicketPrintRequest = {
   payments: TicketPaymentPrint[];
   subtotal?: number;
   discount?: number;
+  memberBalance?: number;
   tax?: number;
   total: number;
-  labels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; base?: string; tax?: string };
-  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; base?: string; tax?: string };
+  labels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; memberBalance?: string; base?: string; tax?: string };
+  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; memberBalance?: string; base?: string; tax?: string };
   escposContent?: { storeName: string; terminalCode: string; documentNumber: string; lineNames: string[]; paymentMethods: string[] };
   issuer?: { name: string; taxId: string; address: string; logo?: string };
   customer?: { name: string; taxId: string; address: string };

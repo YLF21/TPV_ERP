@@ -2591,8 +2591,10 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "End" });
     const dialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
     expect(within(dialog).getByRole("button", { name: /Nuevo cliente.*F5/ })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: /Modificar cliente.*Ctrl\+F7/ })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: /Cobrar deuda.*Enter/ })).toBeEnabled();
+    await waitFor(() => {
+      expect(within(dialog).getByRole("button", { name: /Modificar cliente.*Ctrl\+F7/ })).toBeEnabled();
+      expect(within(dialog).getByRole("button", { name: /Cobrar deuda.*Enter/ })).toBeEnabled();
+    });
     expect(within(dialog).getByText("40,00 €")).toHaveClass("debt");
     expect(within(dialog).getByText("15,00 €")).toHaveClass("overdue-debt");
 
@@ -2941,6 +2943,42 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();
     expect(search).toHaveValue("");
     await waitFor(() => expect(search).toHaveFocus());
+  });
+
+  it("opens product creation with F5 from product search only for product managers", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products.slice(0, 2)), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.keyDown(search, { key: "Delete" });
+
+    const productSearch = await screen.findByRole("dialog", { name: "Buscador de productos" });
+    const createButton = within(productSearch).getByRole("button", { name: /Añadir producto/ });
+    expect(createButton).toHaveAttribute("aria-keyshortcuts", "F5");
+    fireEvent.keyDown(within(productSearch).getByRole("combobox"), { key: "F5" });
+
+    expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();
+    const createDialog = await screen.findByRole("dialog", { name: "Añadir producto" });
+    fireEvent.click(within(createDialog).getAllByRole("button", { name: "Cerrar" })[0]);
+    expect(await screen.findByRole("dialog", { name: "Buscador de productos" })).toBeInTheDocument();
+
+    cleanup();
+    renderSaleScreen(vi.fn(), "es", {
+      session: { ...session, role: "VENTA", permissions: ["VENTA"] },
+    });
+    const restrictedSearch = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(restrictedSearch).toBeEnabled());
+    fireEvent.keyDown(restrictedSearch, { key: "Delete" });
+    expect(screen.queryByRole("button", { name: /Añadir producto/ })).not.toBeInTheDocument();
   });
 
   it("does not start cash payment from PageDown when checkout is disabled for an empty sale", async () => {

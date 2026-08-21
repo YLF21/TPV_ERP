@@ -6,6 +6,7 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
+import "./SaleProductSearchDialog.css";
 
 export type SaleProductSearchOption = {
   id: string;
@@ -49,6 +50,8 @@ type SaleProductSearchDialogProps<T extends SaleProductSearchOption> = {
   products: T[];
   token?: string;
   onClose: () => void;
+  createProductLabel?: string;
+  onCreateProduct?: () => void;
   onInspect?: (product: T) => void;
   onQueryChange?: (query: string) => void;
   onSelectionChange?: (productId: string) => void;
@@ -83,6 +86,8 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   products,
   token,
   onClose,
+  createProductLabel,
+  onCreateProduct,
   onInspect,
   onQueryChange,
   onSelectionChange,
@@ -143,6 +148,12 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "F5" && onCreateProduct) {
+      event.preventDefault();
+      event.stopPropagation();
+      onCreateProduct();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -217,9 +228,10 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
           <button type="button" aria-label={labels.close} onClick={onClose}>×</button>
         </header>
 
-        <label className="sale-product-search-field">
-          <span>{labels.query}</span>
+        <div className="sale-product-search-field">
+          <label htmlFor="sale-product-search-query">{labels.query}</label>
           <input
+            id="sale-product-search-query"
             ref={inputRef}
             role="combobox"
             aria-autocomplete="list"
@@ -238,7 +250,18 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               onSelectionChange?.("");
             }}
           />
-        </label>
+          {interfaceMode === "KEYBOARD" && onCreateProduct && createProductLabel && (
+            <button
+              type="button"
+              className="sale-product-search-create-action"
+              aria-keyshortcuts="F5"
+              onClick={onCreateProduct}
+            >
+              <kbd aria-hidden="true">F5</kbd>
+              <span>{createProductLabel}</span>
+            </button>
+          )}
+        </div>
 
         <div className="sale-product-search-table">
           <div className="sale-product-search-head">

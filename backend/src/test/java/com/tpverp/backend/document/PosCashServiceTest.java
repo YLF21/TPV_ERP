@@ -581,6 +581,44 @@ class PosCashServiceTest {
     }
 
     @Test
+    void cashIdempotencyHashIncludesNormalizedMemberBalanceAmount() {
+        var line = new PosCashController.LineRequest(
+                UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO);
+        var checkoutId = UUID.randomUUID();
+        var first = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, null, Map.of(),
+                        null, null, new BigDecimal("4.0")),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+        var sameNormalized = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, null, Map.of(),
+                        null, null, new BigDecimal("4.00")),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+        var different = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, null, Map.of(),
+                        null, null, new BigDecimal("5.00")),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+        var absent = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(line)),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+
+        assertThat(PosCashService.requestHash(first))
+                .isEqualTo(PosCashService.requestHash(sameNormalized))
+                .isNotEqualTo(PosCashService.requestHash(different))
+                .isNotEqualTo(PosCashService.requestHash(absent));
+    }
+
+    @Test
     void cashIdempotencyHashIncludesNormalizedInternalCommentWithoutChangingBlankRequests() {
         var line = new PosCashController.LineRequest(
                 UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO);

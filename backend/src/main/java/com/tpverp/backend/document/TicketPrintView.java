@@ -17,6 +17,7 @@ public record TicketPrintView(
         BigDecimal baseTotal,
         BigDecimal taxTotal,
         BigDecimal checkoutDiscountTotal,
+        BigDecimal memberBalanceTotal,
         String observations,
         String logo,
         RenderedPdf ticketRenderedPdf,
@@ -30,7 +31,7 @@ public record TicketPrintView(
             List<Payment> payments,
             BigDecimal total) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                null, null, BigDecimal.ZERO, null, null, null, null);
+                null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null);
     }
 
     public TicketPrintView(
@@ -43,7 +44,8 @@ public record TicketPrintView(
             BigDecimal baseTotal,
             BigDecimal taxTotal) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                baseTotal, taxTotal, BigDecimal.ZERO, null, null, null, null);
+                baseTotal, taxTotal, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, null);
     }
 
     public static TicketPrintView from(CommercialDocument document) {
@@ -55,8 +57,7 @@ public record TicketPrintView(
         return new TicketPrintView(
                 document.getId(), document.getNumero(), document.getConfirmadoEn(),
                 document.getLineas().stream()
-                        .filter(line -> line.getLineType()
-                                != DocumentLineType.MANUAL_DISCOUNT)
+                        .filter(TicketPrintView::isPrintableDetail)
                         .map(line -> new Line(line.getNombre(), line.getCantidad(),
                                 line.getPrecioUnitario(), line.getTotal(),
                                 line.getSerialNumbers(), line.getCodigo(),
@@ -65,7 +66,8 @@ public record TicketPrintView(
                 refundPayouts == null || refundPayouts.isEmpty()
                         ? document.getPagos().stream()
                                 .map(payment -> new Payment(
-                                        payment.getMetodoPago().getNombre(), payment.getImporte()))
+                                        printablePaymentMethod(payment.getMetodoPago().getNombre()),
+                                        payment.getImporte()))
                                 .toList()
                         : refundPayouts.stream()
                                 .map(payout -> new Payment(
@@ -75,12 +77,14 @@ public record TicketPrintView(
                                             case VOUCHER -> "VALE";
                                             case TRANSFER -> "TRANSFERENCIA";
                                             case EXCHANGE -> "COMPENSACION DE CAMBIO";
+                                            case MEMBER_CREDIT -> "SALDO A FAVOR";
                                         }, payout.getAmount().negate()))
                                 .toList(),
                 document.getTotal(),
                 document.getBaseTotal(),
                 document.getImpuestoTotal(),
                 checkoutDiscountTotal(document.getLineas()),
+                DocumentLineTotals.memberBalanceTotal(document.getLineas()),
                 null,
                 null,
                 null,
@@ -97,7 +101,7 @@ public record TicketPrintView(
         requirePrintable(sale);
         requirePrintable(refund);
         var lines = Stream.concat(refund.getLineas().stream(), sale.getLineas().stream())
-                .filter(line -> line.getLineType() != DocumentLineType.MANUAL_DISCOUNT)
+                .filter(TicketPrintView::isPrintableDetail)
                 .map(line -> new Line(line.getNombre(), line.getCantidad(),
                         line.getPrecioUnitario(), line.getTotal(), line.getSerialNumbers(),
                         line.getCodigo(), line.getCodigoBarras()))
@@ -106,7 +110,8 @@ public record TicketPrintView(
                 .filter(payment -> !PaymentMethodService.EXCHANGE_COMPENSATION_METHOD
                         .equals(payment.getMetodoPago().getNombre()))
                 .map(payment -> new Payment(
-                        payment.getMetodoPago().getNombre(), payment.getImporte()))
+                        printablePaymentMethod(payment.getMetodoPago().getNombre()),
+                        payment.getImporte()))
                 .toList();
         return new TicketPrintView(
                 sale.getId(), sale.getNumero(), sale.getConfirmadoEn(), lines, payments,
@@ -115,6 +120,8 @@ public record TicketPrintView(
                 Money.euros(sale.getImpuestoTotal().add(refund.getImpuestoTotal())),
                 Money.euros(checkoutDiscountTotal(sale.getLineas())
                         .add(checkoutDiscountTotal(refund.getLineas()))),
+                Money.euros(DocumentLineTotals.memberBalanceTotal(sale.getLineas())
+                        .add(DocumentLineTotals.memberBalanceTotal(refund.getLineas()))),
                 null,
                 null,
                 null,
@@ -124,14 +131,16 @@ public record TicketPrintView(
     public TicketPrintView withPresentation(String observations, String logo) {
         return new TicketPrintView(
                 documentId, documentNumber, issuedAt, lines, payments, total,
-                baseTotal, taxTotal, checkoutDiscountTotal, observations, logo,
+                baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
+                observations, logo,
                 ticketRenderedPdf, ticketRenderedImage);
     }
 
     public TicketPrintView withRenderedDocument(byte[] pdf, byte[] png) {
         return new TicketPrintView(
                 documentId, documentNumber, issuedAt, lines, payments, total,
-                baseTotal, taxTotal, checkoutDiscountTotal, observations, logo,
+                baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
+                observations, logo,
                 new RenderedPdf("application/pdf", Base64.getEncoder().encodeToString(pdf)),
                 new RenderedImage("image/png", Base64.getEncoder().encodeToString(png)));
     }
@@ -142,6 +151,11 @@ public record TicketPrintView(
                 .map(DocumentLine::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .negate());
+    }
+
+    private static boolean isPrintableDetail(DocumentLine line) {
+        return line.getLineType() != DocumentLineType.MANUAL_DISCOUNT
+                && line.getLineType() != DocumentLineType.MEMBER_BALANCE;
     }
 
     private static void requirePrintable(CommercialDocument document) {
@@ -172,6 +186,16 @@ public record TicketPrintView(
         public Line(String name, BigDecimal quantity, BigDecimal price, BigDecimal total) {
             this(name, quantity, price, total, List.of(), null, null);
         }
+    }
+
+    private static String printablePaymentMethod(String method) {
+        if ("CREDITO_DEVOLUCION".equals(method)) {
+            return "SALDO A FAVOR";
+        }
+        if ("SALDO_MIEMBRO".equals(method)) {
+            return "SALDO SOCIO";
+        }
+        return method;
     }
 
     public record Payment(String method, BigDecimal amount) {}

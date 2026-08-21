@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentLineTotals;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.organization.Company;
@@ -390,19 +391,25 @@ public class InvoiceJasperRenderer {
 
         var lines = root.putArray("lines");
         document.getLineas().stream()
+                .filter(line -> !DocumentLineTotals.isMemberBalance(line))
                 .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
                 .forEach(line -> line(lines.addObject(), line));
         taxBreakdown(root.putArray("taxBreakdown"), document);
 
         var totals = root.putObject("totals");
         var gross = document.getLineas().stream()
+                .filter(line -> !DocumentLineTotals.isMemberBalance(line))
                 .map(line -> Money.euros(
                         netUnitPrice(line).multiply(line.getCantidad())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var memberBalance = DocumentLineTotals.memberBalanceTotal(document.getLineas());
+        var memberBalanceBase = DocumentLineTotals.memberBalanceBaseTotal(document.getLineas());
         totals.put("grandTotal", document.getTotal());
         totals.put("grossAmount", Money.euros(gross));
         totals.put("discountTotal", Money.euros(
-                gross.subtract(document.getBaseTotal())).max(BigDecimal.ZERO));
+                gross.subtract(document.getBaseTotal()).subtract(memberBalanceBase))
+                .max(BigDecimal.ZERO));
+        totals.put("memberBalanceTotal", memberBalance);
         totals.put("taxableBase", document.getBaseTotal());
         totals.put("taxTotal", document.getImpuestoTotal());
         totals.put("amountPaid", document.getPaidTotal());

@@ -101,7 +101,7 @@ function buildRasterDocumentBuffer(raster, configuredAdditionalLines = 0) {
 
 function buildTicketBuffer(ticket, configuredAdditionalLines = 0) {
   const suppliedLabels = ticket.escposLabels || ticket.labels;
-  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
+  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", memberBalance: "Saldo socio", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
   const raw = ticket.escposContent;
   const giftReceipt = ticket.layout === "GIFT_RECEIPT";
   const cancellationReceipt = ticket.layout === "CANCELLATION_RECEIPT";
@@ -149,6 +149,9 @@ function buildTicketBuffer(ticket, configuredAdditionalLines = 0) {
     for (const [index, payment] of (ticket.payments || []).entries()) {
       chunks.push(line(padColumns(raw?.paymentMethods?.[index] || payment.method || "", money(payment.amount))));
       if (payment.reference) chunks.push(line(`  ${String(payment.reference).slice(0, 40)}`));
+    }
+    if (Number(ticket.memberBalance || 0) !== 0) {
+      chunks.push(line(padColumns(labels.memberBalance, `-${money(Math.abs(ticket.memberBalance))}`)));
     }
     if (Number(ticket.discount || 0) !== 0) {
       chunks.push(line(padColumns(labels.discount, `-${money(Math.abs(ticket.discount))}`)));

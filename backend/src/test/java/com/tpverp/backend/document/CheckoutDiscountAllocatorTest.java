@@ -159,6 +159,65 @@ class CheckoutDiscountAllocatorTest {
         assertBalanced(document);
     }
 
+    @Test
+    void memberBalanceCanReduceTheEligibleTicketToZeroAndKeepsTaxesBalanced() {
+        var document = document();
+        var productId = UUID.randomUUID();
+        document.addLine(new DocumentLine(
+                document, productId, 1, BigDecimal.ONE, "P-1", "Producto", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00")));
+
+        CheckoutDiscountAllocator.applyMemberBalance(
+                document, new BigDecimal("10.00"), java.util.Set.of(productId));
+
+        assertThat(document.getTotal()).isZero();
+        assertThat(document.getBaseTotal()).isZero();
+        assertThat(document.getImpuestoTotal()).isZero();
+        assertThat(memberBalance(document).getTotal()).isEqualByComparingTo("-10.00");
+        assertBalanced(document);
+    }
+
+    @Test
+    void memberBalanceUsesMixedTaxWeightsAndLeavesBlockedProductsUntouched() {
+        var document = document();
+        var standardTaxProductId = UUID.randomUUID();
+        var reducedTaxProductId = UUID.randomUUID();
+        var blockedProductId = UUID.randomUUID();
+        document.addLine(new DocumentLine(
+                document, standardTaxProductId, 1, BigDecimal.ONE,
+                "P-1", "Producto IVA general", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00")));
+        document.addLine(new DocumentLine(
+                document, reducedTaxProductId, 2, BigDecimal.ONE,
+                "P-2", "Producto IVA reducido", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("10.00")));
+        document.addLine(new DocumentLine(
+                document, blockedProductId, 3, BigDecimal.ONE,
+                "P-3", "Producto excluido", "VENTA",
+                new BigDecimal("20.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("4.00")));
+
+        CheckoutDiscountAllocator.applyMemberBalance(
+                document,
+                new BigDecimal("4.00"),
+                java.util.Set.of(standardTaxProductId, reducedTaxProductId));
+
+        assertThat(memberBalanceAt(document, "21.00").getTotal())
+                .isEqualByComparingTo("-2.00");
+        assertThat(memberBalanceAt(document, "10.00").getTotal())
+                .isEqualByComparingTo("-2.00");
+        assertThat(document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .filter(line -> line.getPorcentajeImpuesto()
+                        .compareTo(new BigDecimal("4.00")) == 0))
+                .isEmpty();
+        assertThat(document.getTotal()).isEqualByComparingTo("36.00");
+        assertBalanced(document);
+    }
+
     private static CommercialDocument document() {
         return new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
@@ -182,6 +241,22 @@ class CheckoutDiscountAllocatorTest {
     private static DocumentLine manualDiscount(CommercialDocument document) {
         return document.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.MANUAL_DISCOUNT)
+                .findFirst().orElseThrow();
+    }
+
+    private static DocumentLine memberBalance(CommercialDocument document) {
+        return document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .findFirst().orElseThrow();
+    }
+
+    private static DocumentLine memberBalanceAt(
+            CommercialDocument document,
+            String taxPercentage) {
+        return document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .filter(line -> line.getPorcentajeImpuesto()
+                        .compareTo(new BigDecimal(taxPercentage)) == 0)
                 .findFirst().orElseThrow();
     }
 

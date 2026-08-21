@@ -97,6 +97,7 @@ public class DocumentService {
             CommercialDocumentType.FACTURA_VENTA,
             CommercialDocumentType.ALBARAN_VENTA);
     private static final String MEMBER_BALANCE_METHOD = "SALDO_MIEMBRO";
+    private static final String RETURN_CREDIT_METHOD = "CREDITO_DEVOLUCION";
     private static final String VOUCHER_METHOD = "VALE";
 
     private final CommercialDocumentRepository documents;
@@ -473,6 +474,17 @@ public class DocumentService {
             String promotionalCouponCode,
             BigDecimal checkoutDiscountAmount,
             Authentication authentication) {
+        return quoteTicket(command, promotionalCouponCode, checkoutDiscountAmount,
+                null, authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument quoteTicket(
+            DocumentCommand command,
+            String promotionalCouponCode,
+            BigDecimal checkoutDiscountAmount,
+            BigDecimal memberBalanceAmount,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -481,7 +493,7 @@ public class DocumentService {
         applyDirectPromotions(ticket, promotionContext(ticket, customer));
         applyPromotionalCouponPreview(
                 ticket, customer, promotionalCouponCode, authentication);
-        applyCheckoutDiscount(ticket, checkoutDiscountAmount);
+        applyCheckoutReductions(ticket, memberBalanceAmount, checkoutDiscountAmount);
         validateInactiveSaleProducts(ticket);
         return ticket;
     }
@@ -511,6 +523,18 @@ public class DocumentService {
             String promotionalCouponCode,
             BigDecimal checkoutDiscountAmount,
             Authentication authentication) {
+        return createTicket(command, payments, promotionalCouponCode,
+                checkoutDiscountAmount, null, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument createTicket(
+            DocumentCommand command,
+            List<PaymentCommand> payments,
+            String promotionalCouponCode,
+            BigDecimal checkoutDiscountAmount,
+            BigDecimal memberBalanceAmount,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -526,7 +550,7 @@ public class DocumentService {
             applyPromotionalCouponRedemption(
                     ticket, customer, promotionalCouponCode, authentication);
         }
-        applyCheckoutDiscount(ticket, checkoutDiscountAmount);
+        applyCheckoutReductions(ticket, memberBalanceAmount, checkoutDiscountAmount);
         validateInactiveSaleProducts(ticket);
         if (ticket.getTotal().signum() > 0) {
             requirePaymentsPresent(payments);
@@ -548,6 +572,7 @@ public class DocumentService {
         }
         // Stock movements reference the document, so its row must exist before the gateway inserts them.
         documents.saveAndFlush(ticket);
+        consumeMemberBalance(ticket, currentMemberBalanceTotal(ticket, null));
         recordCreated(ticket);
         recordConfirmed(ticket, terminalId);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
@@ -609,6 +634,8 @@ public class DocumentService {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
         }
         documents.saveAndFlush(ticket);
+        consumeMemberBalance(ticket, currentMemberBalanceTotal(
+                ticket, snapshot.historicalReplay()));
         recordCreated(ticket);
         recordConfirmed(ticket, terminalId);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
@@ -984,10 +1011,66 @@ public class DocumentService {
         }
     }
 
-    private static void applyCheckoutDiscount(
+    private void applyCheckoutReductions(
             CommercialDocument ticket,
-            BigDecimal requestedDiscount) {
-        CheckoutDiscountAllocator.apply(ticket, requestedDiscount);
+            BigDecimal memberBalanceAmount,
+            BigDecimal checkoutDiscountAmount) {
+        var memberBalance = memberBalanceAmount == null
+                ? BigDecimal.ZERO.setScale(Money.SCALE)
+                : Money.euros(memberBalanceAmount);
+        var checkoutDiscount = checkoutDiscountAmount == null
+                ? BigDecimal.ZERO.setScale(Money.SCALE)
+                : Money.euros(checkoutDiscountAmount);
+        if (memberBalance.signum() == 0 && checkoutDiscount.signum() == 0) {
+            return;
+        }
+        var eligibleProductIds = discountEligibleProductIds(ticket);
+        if (memberBalance.signum() > 0) {
+            memberLoyalty.validateBalanceForCheckout(
+                    ticket.getClienteId(), memberBalance);
+            CheckoutDiscountAllocator.applyMemberBalance(
+                    ticket, memberBalance, eligibleProductIds);
+        }
+        if (checkoutDiscount.signum() > 0) {
+            CheckoutDiscountAllocator.apply(
+                    ticket, checkoutDiscount, eligibleProductIds);
+        }
+    }
+
+    private java.util.Set<UUID> discountEligibleProductIds(
+            CommercialDocument ticket) {
+        var ids = ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .map(DocumentLine::getProductoId)
+                .distinct()
+                .toList();
+        return products.findAllByStoreIdAndIdIn(ticket.getTiendaId(), ids).stream()
+                .filter(product -> product.getDiscountType() != DiscountType.NONE)
+                .map(Product::getId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private void consumeMemberBalance(
+            CommercialDocument ticket,
+            BigDecimal amount) {
+        if (amount == null || Money.euros(amount).signum() == 0) {
+            return;
+        }
+        memberLoyalty.consumeBalanceForSaleReduction(ticket, amount);
+    }
+
+    private static BigDecimal currentMemberBalanceTotal(
+            CommercialDocument ticket,
+            HistoricalTicketReplayMetadata historicalReplay) {
+        var historicalLineCount = historicalReplay == null
+                || historicalReplay.historicalLineCount() == null
+                        ? 0 : historicalReplay.historicalLineCount();
+        return Money.euros(ticket.getLineas().stream()
+                .filter(line -> line.getPosicion() > historicalLineCount)
+                .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .negate());
     }
 
     private static boolean hasText(String value) {
@@ -2121,6 +2204,7 @@ public class DocumentService {
                         payment.getImporte()))
                 .toList();
         var cashAmount = ticket.getPagos().stream()
+                .filter(payment -> !isReturnCreditPayment(payment))
                 .filter(payment -> payment.getMetodoPago().isCash())
                 .map(DocumentPayment::getImporte)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -2137,6 +2221,7 @@ public class DocumentService {
                 integratedCardPayments,
                 Money.euros(cashAmount),
                 ticket.getPagos().stream()
+                        .filter(payment -> !isReturnCreditPayment(payment))
                         .anyMatch(payment -> payment.getMetodoPago().isCash()
                                 && payment.getMetodoPago().isAbreCajaRegistradora()));
     }
@@ -2157,13 +2242,21 @@ public class DocumentService {
         var validation = validateCancellationDetails(ticket);
         requireManualCancellationReferences(
                 validation.manualReferences(), manualCompensations);
+        var cancelledAt = Instant.now(clock);
+        var returnCreditAmount = returnCreditPaymentTotal(ticket);
         var voucherResult = vouchers.compensateCancellation(ticket, authorizerUserId);
         memberLoyalty.compensateTicketCancellation(ticket);
+        if (returnCreditAmount.signum() > 0) {
+            memberLoyalty.restoreReturnCreditAfterTicketCancellation(
+                    ticket,
+                    returnCreditAmount,
+                    vouchers.expirationInstantFor(
+                            ticket.getTiendaId(), cancelledAt));
+        }
         var terminalId = currentTerminal.terminalId(authentication);
         cashPayments.recordTicketCancellation(
                 terminalId, ticket, validation.cashAmount(), authorizerUserId);
         var operator = organization.currentUser(authentication);
-        var cancelledAt = Instant.now(clock);
         ticket.cancel(operator.getId(), cancelledAt, reason);
         if (ticket.isOrigenStock()) {
             stockGateway.cancel(ticket);
@@ -2209,6 +2302,7 @@ public class DocumentService {
                         payment.getId(), payment.getImporte()))
                 .toList();
         var cashAmount = ticket.getPagos().stream()
+                .filter(payment -> !isReturnCreditPayment(payment))
                 .filter(payment -> payment.getMetodoPago().isCash())
                 .map(DocumentPayment::getImporte)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -2216,6 +2310,7 @@ public class DocumentService {
                 ticket, voucherPlan, manualReferences, integrated,
                 Money.euros(cashAmount),
                 ticket.getPagos().stream()
+                        .filter(payment -> !isReturnCreditPayment(payment))
                         .anyMatch(payment -> payment.getMetodoPago().isCash()
                                 && payment.getMetodoPago().isAbreCajaRegistradora()));
     }
@@ -2238,11 +2333,24 @@ public class DocumentService {
 
     private static boolean requiresManualCancellationReference(
             DocumentPayment payment) {
-        return payment.getMetodoPago().isRequiereReferencia()
+        return !isReturnCreditPayment(payment)
+                && payment.getMetodoPago().isRequiereReferencia()
                 && (payment.getCardMode()
                                 == com.tpverp.backend.terminal.PaymentCardMode.MANUAL
                         || "TRANSFERENCIA".equalsIgnoreCase(
                                 payment.getMetodoPago().getNombre()));
+    }
+
+    private static boolean isReturnCreditPayment(DocumentPayment payment) {
+        return RETURN_CREDIT_METHOD.equalsIgnoreCase(
+                payment.getMetodoPago().getNombre());
+    }
+
+    private static BigDecimal returnCreditPaymentTotal(CommercialDocument ticket) {
+        return Money.euros(ticket.getPagos().stream()
+                .filter(DocumentService::isReturnCreditPayment)
+                .map(DocumentPayment::getImporte)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
     private static void requireManualCancellationReferences(
@@ -3052,6 +3160,16 @@ public class DocumentService {
                     null, null, null, null, null, command.requestId(), command.comment(),
                     command.transferDate());
         }
+        if (RETURN_CREDIT_METHOD.equals(method.getNombre())) {
+            rejectVoucherCode(command, "codigo de vale no permitido con CREDITO_DEVOLUCION");
+            var consumed = memberLoyalty.consumeReturnCreditForPayment(
+                    document, command.importe());
+            return new PaymentCommand(
+                    command.metodoPagoId(), consumed, command.principal(),
+                    command.entregado(), command.cambio(), null, command.reference(),
+                    null, null, null, null, null, command.requestId(), command.comment(),
+                    command.transferDate());
+        }
         if (!VOUCHER_METHOD.equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
                 throw new IllegalArgumentException("codigo de vale solo permitido con metodo VALE");
@@ -3217,6 +3335,7 @@ public class DocumentService {
 
     private static void requireReferenceIfNeeded(PaymentMethod method, PaymentCommand command) {
         if (!VOUCHER_METHOD.equals(method.getNombre())
+                && !RETURN_CREDIT_METHOD.equals(method.getNombre())
                 && method.isRequiereReferencia()
                 && (command.reference() == null || command.reference().isBlank())) {
             throw new IllegalArgumentException("message.payment.reference_required");

@@ -206,12 +206,24 @@ public class License {
         return tienda.getId();
     }
 
+    public UUID getLocalCompanyId() {
+        return tienda.getEmpresa().getId();
+    }
+
     public UUID getInstalacionId() {
         return instalacion.getId();
     }
 
     public String getInstalacionReferencia() {
         return instalacion.getReferencia();
+    }
+
+    public UUID getSaasCompanyId() {
+        return metadataUuid("saasCompanyId");
+    }
+
+    public UUID getSaasStoreId() {
+        return metadataUuid("saasStoreId");
     }
 
     public String getReferencia() {
@@ -365,5 +377,20 @@ public class License {
             throw new IllegalArgumentException(field + " es obligatorio");
         }
         return value.trim();
+    }
+
+    private UUID metadataUuid(String key) {
+        if (metadataImportacion == null) {
+            return null;
+        }
+        Object value = metadataImportacion.get(key);
+        if (value == null || value.toString().isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value.toString().trim());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("Metadato SaaS invalido: " + key, exception);
+        }
     }
 }

@@ -77,6 +77,7 @@ public class HttpSyncEventSender implements SyncEventSender {
         payload.put("companyId", event.getCompanyId());
         payload.put("storeId", event.getStoreId());
         payload.put("terminalId", event.getTerminalId());
+        payload.put("storeSequence", event.getStoreSequence());
         payload.put("entityType", event.getEntityType());
         payload.put("entityId", event.getEntityId());
         payload.put("operation", event.getOperation());

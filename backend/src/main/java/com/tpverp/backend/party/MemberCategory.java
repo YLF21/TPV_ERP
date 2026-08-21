@@ -47,7 +47,12 @@ public class MemberCategory {
 
     public MemberCategory(Company company, String name, long minPoints, BigDecimal discountPercent,
             boolean discountEnabled, int sortOrder) {
-        this(company, name, code(name), minPoints, discountPercent, discountEnabled, false, sortOrder);
+        this(company, name, minPoints, discountPercent, discountEnabled, false, sortOrder);
+    }
+
+    public MemberCategory(Company company, String name, long minPoints, BigDecimal discountPercent,
+            boolean discountEnabled, boolean manualOnly, int sortOrder) {
+        this(company, name, code(name), minPoints, discountPercent, discountEnabled, manualOnly, sortOrder);
     }
 
     public MemberCategory(Company company, String name, String code, long minPoints, BigDecimal discountPercent,
@@ -55,12 +60,16 @@ public class MemberCategory {
         id = UUID.randomUUID();
         this.company = Objects.requireNonNull(company, "company");
         this.code = code(code);
-        this.manualOnly = manualOnly;
-        update(name, minPoints, discountPercent, discountEnabled, sortOrder);
+        update(name, minPoints, discountPercent, discountEnabled, manualOnly, sortOrder);
     }
 
     public void update(String name, long minPoints, BigDecimal discountPercent,
             boolean discountEnabled, int sortOrder) {
+        update(name, minPoints, discountPercent, discountEnabled, manualOnly, sortOrder);
+    }
+
+    public void update(String name, long minPoints, BigDecimal discountPercent,
+            boolean discountEnabled, boolean manualOnly, int sortOrder) {
         if (minPoints < 0) {
             throw new IllegalArgumentException("message.member_category.min_points_invalid");
         }
@@ -68,7 +77,12 @@ public class MemberCategory {
         this.minPoints = minPoints;
         this.discountPercent = PartyValues.discount(discountPercent);
         this.discountEnabled = discountEnabled;
+        this.manualOnly = manualOnly;
         this.sortOrder = sortOrder;
+    }
+
+    public void activate() {
+        active = true;
     }
 
     public void deactivate() {

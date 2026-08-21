@@ -112,6 +112,25 @@ describe("confirmed ticket printing", () => {
     }));
   });
 
+  it("maps member balance separately from F11 in the printable summary", () => {
+    const request = ticketPrintRequest({
+      ...snapshot,
+      memberBalanceTotal: "4.85",
+      checkoutDiscountTotal: "1.00",
+      total: "1.15",
+    }, terminal, "es");
+
+    expect(request).toEqual(expect.objectContaining({
+      memberBalance: 4.85,
+      discount: 1,
+      total: 1.15,
+      labels: expect.objectContaining({ memberBalance: "Saldo socio" }),
+      escposLabels: expect.objectContaining({ memberBalance: "Saldo socio" }),
+    }));
+    expect(buildTicketBuffer(request).toString("latin1"))
+      .toContain("Saldo socio                          -4.85");
+  });
+
   it("prints confirmed tickets even when a legacy route disabled automatic printing", async () => {
     const printTicket = vi.fn().mockResolvedValue({ ok: true });
     const hardware = {

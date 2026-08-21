@@ -3,7 +3,9 @@ package com.tpverp.backend.document;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
 
 /**
  * Materializes the fixed checkout discount as hidden fiscal lines. The customer-facing
@@ -19,18 +21,64 @@ final class CheckoutDiscountAllocator {
     }
 
     static void apply(CommercialDocument document, BigDecimal requestedDiscount) {
+        apply(document, requestedDiscount, null);
+    }
+
+    static void apply(
+            CommercialDocument document,
+            BigDecimal requestedDiscount,
+            Set<UUID> eligibleProductIds) {
+        applyReduction(
+                document,
+                requestedDiscount,
+                eligibleProductIds,
+                DocumentLineType.MANUAL_DISCOUNT,
+                "DESCUENTO",
+                false,
+                "checkout_discount");
+    }
+
+    static void applyMemberBalance(
+            CommercialDocument document,
+            BigDecimal requestedAmount,
+            Set<UUID> eligibleProductIds) {
+        applyReduction(
+                document,
+                requestedAmount,
+                eligibleProductIds,
+                DocumentLineType.MEMBER_BALANCE,
+                "SALDO SOCIO",
+                true,
+                "member_balance");
+    }
+
+    private static void applyReduction(
+            CommercialDocument document,
+            BigDecimal requestedDiscount,
+            Set<UUID> eligibleProductIds,
+            DocumentLineType lineType,
+            String description,
+            boolean allowZeroTotal,
+            String errorPrefix) {
         if (requestedDiscount == null || requestedDiscount.signum() == 0) {
             return;
         }
         var discount = Money.euros(requestedDiscount);
-        if (discount.signum() <= 0 || discount.compareTo(document.getTotal()) >= 0) {
-            throw new IllegalArgumentException("checkout_discount_exceeds_total");
+        if (discount.signum() <= 0
+                || discount.compareTo(document.getTotal()) > 0
+                || (!allowZeroTotal && discount.compareTo(document.getTotal()) == 0)) {
+            throw new IllegalArgumentException(errorPrefix + "_exceeds_total");
         }
         var totalBeforeDiscount = document.getTotal();
 
-        var fiscalWeights = finalPositiveSaleTotals(document);
+        var fiscalWeights = finalPositiveSaleTotals(document, eligibleProductIds);
         if (fiscalWeights.isEmpty()) {
-            throw new IllegalStateException("checkout_discount_without_eligible_lines");
+            throw new IllegalStateException(errorPrefix + "_without_eligible_lines");
+        }
+        var eligibleTotal = Money.euros(fiscalWeights.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        if (discount.compareTo(eligibleTotal) > 0) {
+            throw new IllegalArgumentException(errorPrefix + "_exceeds_eligible_total");
         }
         var allocations = Money.allocateByLargestRemainder(
                 discount, fiscalWeights.values().stream().toList());
@@ -44,31 +92,36 @@ final class CheckoutDiscountAllocator {
                 continue;
             }
             var key = entry.getKey();
-            // F11 is a tax-included amount paid by the customer. Storing the adjustment
-            // as tax included guarantees that its persisted total is exactly the amount
-            // allocated, also for products whose catalogue price excludes tax.
-            document.addLine(DocumentLine.manualDiscount(
+            // Both F10 and F11 are tax-included reductions. Persisting one fiscal line
+            // per tax group keeps the accepted amount exact for mixed tax rates.
+            document.addLine(DocumentLine.special(
                     document,
                     position++,
+                    description,
                     allocated.negate(),
                     true,
                     key.regime(),
-                    key.percentage()));
+                    key.percentage(),
+                    null,
+                    null,
+                    null,
+                    lineType));
         }
         var expectedTotal = Money.euros(totalBeforeDiscount.subtract(discount));
         if (document.getTotal().compareTo(expectedTotal) != 0
                 || document.getBaseTotal().add(document.getImpuestoTotal())
                         .compareTo(document.getTotal()) != 0) {
-            throw new IllegalStateException("checkout_discount_fiscal_mismatch");
+            throw new IllegalStateException(errorPrefix + "_fiscal_mismatch");
         }
     }
 
     private static Map<TaxKey, BigDecimal> finalPositiveSaleTotals(
-            CommercialDocument document) {
+            CommercialDocument document,
+            Set<UUID> eligibleProductIds) {
         var totals = new TreeMap<TaxKey, BigDecimal>(TAX_ORDER);
         document.getLineas().stream()
                 .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
-                .filter(CheckoutDiscountAllocator::belongsToCurrentPositiveSale)
+                .filter(line -> belongsToCurrentPositiveSale(line, eligibleProductIds))
                 .forEach(line -> totals.merge(
                         new TaxKey(line.getRegimenImpuesto(), line.getPorcentajeImpuesto()),
                         line.getTotal(),
@@ -78,12 +131,17 @@ final class CheckoutDiscountAllocator {
         return totals;
     }
 
-    private static boolean belongsToCurrentPositiveSale(DocumentLine line) {
+    private static boolean belongsToCurrentPositiveSale(
+            DocumentLine line,
+            Set<UUID> eligibleProductIds) {
         if (line.getLineType() == DocumentLineType.PRODUCT) {
-            return line.getTotal().signum() > 0;
+            return line.getTotal().signum() > 0
+                    && (eligibleProductIds == null
+                            || eligibleProductIds.contains(line.getProductoId()));
         }
         return (line.getLineType() == DocumentLineType.PROMOTION
-                || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON)
+                || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON
+                || line.getLineType() == DocumentLineType.MEMBER_BALANCE)
                 && line.getTotal().signum() < 0;
     }
 

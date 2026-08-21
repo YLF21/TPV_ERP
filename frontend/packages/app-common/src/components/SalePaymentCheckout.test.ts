@@ -77,7 +77,43 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(clearButton);
 
   expect(onDiscount).toHaveBeenCalledOnce();
-  expect(onDiscount).toHaveBeenCalledWith(0);
+ expect(onDiscount).toHaveBeenCalledWith(0);
+ });
+
+ it("continues the local checkout and removes member balance rejected by the server", async () => {
+  const collecting:ServerSession={
+   id:"member-balance-fallback",total:"10.00",documentTotal:"10.00",direction:"SALE",
+   status:"COLLECTING",memberBalanceRequestedAmount:"5.00",memberBalanceAppliedAmount:"0.00",
+   memberBalanceFailureCode:"member_balance_unavailable",allocations:[],
+  };
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/member-balance-fallback/allocations")return collecting;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onMemberBalance=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:500,
+   sale:{customerId:"customer-1",memberBalanceAmount:5,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+   customerSelected:true,memberBalanceCents:500,memberBalanceAvailableCents:500,
+   onMemberBalance,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  fireEvent.click(await screen.findByRole("button",{name:"ACEPTAR"}));
+
+  await waitFor(()=>expect(onMemberBalance).toHaveBeenCalledWith(0));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+   "El saldo socio no está disponible. Continúa el cobro sin utilizarlo.",
+  );
+  expect(screen.getAllByText("10,00 €")).toHaveLength(2);
  });
 
  it("forwards the authoritative quote fingerprint when reserving an imported ticket", async () => {

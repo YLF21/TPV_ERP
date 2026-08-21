@@ -340,6 +340,24 @@ public class VoucherService {
         return configuration.expirationFor(storeDate(issuedAt));
     }
 
+    @Transactional(readOnly = true)
+    public Instant expirationInstantFor(UUID storeId, Instant issuedAt) {
+        if (storeId == null || issuedAt == null) {
+            throw new IllegalArgumentException("store_and_issued_at_required");
+        }
+        var store = organization.currentStore();
+        if (!store.getId().equals(storeId)) {
+            throw new IllegalArgumentException("tienda no encontrada");
+        }
+        var expiresOn = expirationFor(storeId, issuedAt);
+        if (expiresOn == null) {
+            return null;
+        }
+        return expiresOn.plusDays(1)
+                .atStartOfDay(ZoneId.of(store.getTimezone()))
+                .toInstant();
+    }
+
     private LocalDate storeDate(Instant instant) {
         return instant.atZone(ZoneId.of(organization.currentStore().getTimezone())).toLocalDate();
     }

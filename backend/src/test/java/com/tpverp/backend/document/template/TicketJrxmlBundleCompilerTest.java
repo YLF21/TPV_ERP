@@ -59,7 +59,7 @@ class TicketJrxmlBundleCompilerTest {
                     var source = new String(
                             sources.get(filename), java.nio.charset.StandardCharsets.UTF_8);
                     assertThat(source)
-                            .contains("tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')")
+                            .contains("tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON', 'MEMBER_BALANCE')")
                             .contains("<![CDATA[\"Descuento:\"]]>")
                             .doesNotContain("Descuento Adicional");
                 });

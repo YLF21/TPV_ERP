@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentTerminalOperationService;
 import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
@@ -22,6 +23,8 @@ public class RefundSettlementRecorder {
     private final CurrentTerminal currentTerminal;
     private final PaymentTerminalOperationService terminalOperations;
     private final Clock clock;
+    private final MemberLoyaltyService memberLoyalty;
+    private final VoucherService vouchers;
 
     public RefundSettlementRecorder(
             DocumentService documents,
@@ -30,12 +33,27 @@ public class RefundSettlementRecorder {
             CurrentTerminal currentTerminal,
             PaymentTerminalOperationService terminalOperations,
             Clock clock) {
+        this(documents, tenders, cash, currentTerminal, terminalOperations, clock, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RefundSettlementRecorder(
+            DocumentService documents,
+            RefundTenderRepository tenders,
+            CashPaymentRecorder cash,
+            CurrentTerminal currentTerminal,
+            PaymentTerminalOperationService terminalOperations,
+            Clock clock,
+            MemberLoyaltyService memberLoyalty,
+            VoucherService vouchers) {
         this.documents = documents;
         this.tenders = tenders;
         this.cash = cash;
         this.currentTerminal = currentTerminal;
         this.terminalOperations = terminalOperations;
         this.clock = clock;
+        this.memberLoyalty = memberLoyalty;
+        this.vouchers = vouchers;
     }
 
     @Transactional
@@ -88,6 +106,7 @@ public class RefundSettlementRecorder {
                         payout.reference(),
                         Instant.now(clock)));
             }
+            creditMemberReturnBalance(refund, payouts);
             var cashAmount = payouts.stream()
                     .filter(value -> value.type() == RefundTenderType.CASH)
                     .map(TenderCommand::amount)
@@ -145,6 +164,7 @@ public class RefundSettlementRecorder {
                     payout.reference(),
                     Instant.now(clock)));
         }
+        creditMemberReturnBalance(refund, payouts);
         var cashAmount = payouts.stream()
                 .filter(value -> value.type() == RefundTenderType.CASH)
                 .map(TenderCommand::amount)
@@ -156,5 +176,30 @@ public class RefundSettlementRecorder {
                 .forEach(value -> terminalOperations.linkDocument(
                         value.terminalOperationId(), refund.getId(), null));
         return refund;
+    }
+
+    private void creditMemberReturnBalance(
+            CommercialDocument refund,
+            List<TenderCommand> payouts) {
+        var amount = payouts.stream()
+                .filter(value -> value.type() == RefundTenderType.MEMBER_CREDIT)
+                .map(TenderCommand::amount)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (amount.signum() == 0) {
+            return;
+        }
+        if (refund.getClienteId() == null) {
+            throw new IllegalArgumentException("member_credit_requires_customer");
+        }
+        if (memberLoyalty == null || vouchers == null) {
+            throw new IllegalStateException("member_credit_service_unavailable");
+        }
+        var issuedAt = Instant.now(clock);
+        memberLoyalty.creditReturnBalance(
+                refund.getClienteId(),
+                refund.getId(),
+                Money.euros(amount),
+                vouchers.expirationInstantFor(refund.getTiendaId(), issuedAt));
     }
 }

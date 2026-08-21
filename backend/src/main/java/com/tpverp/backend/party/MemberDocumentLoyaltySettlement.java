@@ -44,6 +44,9 @@ public class MemberDocumentLoyaltySettlement {
     @Column(name = "points_applied_to_debt", nullable = false)
     private long pointsAppliedToDebt;
 
+    @Column(name = "deferred_points", nullable = false)
+    private long deferredPoints;
+
     @Column(name = "generated_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal generatedBalance;
 
@@ -61,6 +64,9 @@ public class MemberDocumentLoyaltySettlement {
 
     @Column(name = "reversed_points", nullable = false)
     private long reversedPoints;
+
+    @Column(name = "reversed_deferred_points", nullable = false)
+    private long reversedDeferredPoints;
 
     @Column(name = "reversed_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal reversedBalance;
@@ -149,13 +155,30 @@ public class MemberDocumentLoyaltySettlement {
             BigDecimal availableBalance,
             BigDecimal debtBalance,
             Instant now) {
+        recordAccrual(
+                eligiblePaid, points, availablePoints, debtPoints, 0L,
+                balance, availableBalance, debtBalance, now);
+    }
+
+    public void recordAccrual(
+            BigDecimal eligiblePaid,
+            long points,
+            long availablePoints,
+            long debtPoints,
+            long deferredPoints,
+            BigDecimal balance,
+            BigDecimal availableBalance,
+            BigDecimal debtBalance,
+            Instant now) {
         var paid = nonNegativeMoney(eligiblePaid, "eligiblePaid");
         var generatedBalanceValue = nonNegativeMoney(balance, "balance");
         var availableBalanceValue = nonNegativeMoney(
                 availableBalance, "availableBalance");
         var debtBalanceValue = nonNegativeMoney(debtBalance, "debtBalance");
-        if (points < 0 || availablePoints < 0 || debtPoints < 0
-                || Math.addExact(availablePoints, debtPoints) != points
+        if (points < 0 || availablePoints < 0 || debtPoints < 0 || deferredPoints < 0
+                || Math.addExact(
+                        Math.addExact(availablePoints, debtPoints),
+                        deferredPoints) != points
                 || availableBalanceValue.add(debtBalanceValue)
                         .compareTo(generatedBalanceValue) != 0) {
             throw new IllegalArgumentException(
@@ -170,6 +193,7 @@ public class MemberDocumentLoyaltySettlement {
         generatedPoints = Math.addExact(generatedPoints, points);
         grantedPoints = Math.addExact(grantedPoints, availablePoints);
         pointsAppliedToDebt = Math.addExact(pointsAppliedToDebt, debtPoints);
+        this.deferredPoints = Math.addExact(this.deferredPoints, deferredPoints);
         generatedBalance = generatedBalance.add(generatedBalanceValue);
         grantedBalance = grantedBalance.add(availableBalanceValue);
         balanceAppliedToDebt = balanceAppliedToDebt.add(debtBalanceValue);
@@ -207,6 +231,10 @@ public class MemberDocumentLoyaltySettlement {
                 pointsAppliedToDebt, reversedEligibleAmount, eligibleDocumentAmount);
         var targetDebtPoints = proratedPoints(
                 pointsAppliedToDebt, eligibleRefund, eligibleDocumentAmount);
+        var previousDeferredPoints = proratedPoints(
+                deferredPoints, reversedEligibleAmount, eligibleDocumentAmount);
+        var targetDeferredPoints = proratedPoints(
+                deferredPoints, eligibleRefund, eligibleDocumentAmount);
 
         var previousBalance = proratedMoney(
                 generatedBalance, reversedEligibleAmount, eligibleDocumentAmount);
@@ -227,9 +255,10 @@ public class MemberDocumentLoyaltySettlement {
         return new ReversalPlan(
                 eligibleRefund,
                 targetPoints,
-                (targetPoints - targetDebtPoints)
-                        - (previousPoints - previousDebtPoints),
+                (targetPoints - targetDebtPoints - targetDeferredPoints)
+                        - (previousPoints - previousDebtPoints - previousDeferredPoints),
                 targetDebtPoints - previousDebtPoints,
+                targetDeferredPoints - previousDeferredPoints,
                 targetBalance,
                 targetBalance.subtract(targetDebtBalance)
                         .subtract(previousBalance.subtract(previousDebtBalance)),
@@ -243,10 +272,19 @@ public class MemberDocumentLoyaltySettlement {
             long pointsDebtCreated,
             BigDecimal balanceDebtCreated,
             Instant now) {
+        recordReversal(plan, pointsDebtCreated, balanceDebtCreated, 0L, now);
+    }
+
+    public void recordReversal(
+            ReversalPlan plan,
+            long pointsDebtCreated,
+            BigDecimal balanceDebtCreated,
+            long deferredReversalPoints,
+            Instant now) {
         Objects.requireNonNull(plan, "plan");
         var balanceDebt = nonNegativeMoney(
                 balanceDebtCreated, "balanceDebtCreated");
-        if (pointsDebtCreated < 0) {
+        if (pointsDebtCreated < 0 || deferredReversalPoints < 0) {
             throw new IllegalArgumentException(
                     "La deuda de puntos creada no puede ser negativa");
         }
@@ -259,6 +297,8 @@ public class MemberDocumentLoyaltySettlement {
         }
         reversedEligibleAmount = plan.eligibleAmount();
         reversedPoints = plan.points();
+        reversedDeferredPoints = Math.addExact(
+                reversedDeferredPoints, deferredReversalPoints);
         reversedBalance = plan.balance();
         restoredMemberBalance = plan.restoredMemberBalance();
         returnPointsDebtCreated = Math.addExact(
@@ -341,6 +381,10 @@ public class MemberDocumentLoyaltySettlement {
         return pointsAppliedToDebt;
     }
 
+    public long getDeferredPoints() {
+        return deferredPoints;
+    }
+
     public BigDecimal getGeneratedBalance() {
         return generatedBalance;
     }
@@ -363,6 +407,15 @@ public class MemberDocumentLoyaltySettlement {
 
     public long getReversedPoints() {
         return reversedPoints;
+    }
+
+    public long getReversedDeferredPoints() {
+        return reversedDeferredPoints;
+    }
+
+    public void deferCancellation(Instant now) {
+        reversedDeferredPoints = generatedPoints;
+        updatedAt = Objects.requireNonNull(now, "now");
     }
 
     public BigDecimal getReversedBalance() {
@@ -400,6 +453,7 @@ public class MemberDocumentLoyaltySettlement {
             long points,
             long grantedPointsDelta,
             long debtPointsDelta,
+            long deferredPointsDelta,
             BigDecimal balance,
             BigDecimal grantedBalanceDelta,
             BigDecimal debtBalanceDelta,

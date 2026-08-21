@@ -8,8 +8,23 @@ import {
 } from "../hardware/scannerTimingDetection";
 import { remainingPaymentCents, type AllocationKind, type PaymentSession } from "../sale/paymentOrchestration";
 import type { LocaleCode } from "../types";
+import { MemberWalletDialog, type MemberWalletLot } from "./MemberWalletDialog";
 
-export type CheckoutMethod = "CASH" | "CARD" | "VOUCHER" | "PENDING" | "TRANSFER" | "DISCOUNT";
+export type CheckoutMethod = "CASH" | "CARD" | "VOUCHER" | "PENDING" | "TRANSFER" | "MEMBER_BALANCE" | "MEMBER_CREDIT" | "DISCOUNT";
+
+export type MemberWalletView = {
+  loyaltyAvailable: number | string;
+  returnCreditAvailable: number | string;
+  totalAvailable: number | string;
+  lots: MemberWalletLot[];
+};
+
+export type MemberWalletSelection = {
+  requestedCents: number;
+  loyaltyCents: number;
+  returnCreditCents: number;
+  returnCreditAvailableCents: number;
+};
 
 export type PaymentAllocationInput = {
   kind: AllocationKind;
@@ -61,6 +76,9 @@ type Props = {
   closeDisabled?: boolean;
   commentEnabled?: boolean;
   checkoutDiscountCents?: number;
+  memberBalanceCents?: number;
+  memberBalanceAvailableCents?: number;
+  memberWallet?: MemberWalletView | null;
   voucherOnlyRefund?: boolean;
   onResolveVoucher?: (code: string) => Promise<VoucherLookup | null>;
   onAdd: (input: PaymentAllocationInput, options?: AddOptions) => void;
@@ -70,6 +88,8 @@ type Props = {
   onAccept?: () => void;
   onClose?: () => void;
   onDiscount?: (amountCents: number) => void;
+  onMemberBalance?: (amountCents: number) => void;
+  onMemberWallet?: (selection: MemberWalletSelection) => void;
   allowAdd?: boolean;
   busy?: boolean;
   error?: string;
@@ -88,7 +108,7 @@ const labels = {
   es: {
     title: "COBRO", amount: "IMPORTE / RECIBIDO", document: "Nº DOCUMENTO", comment: "COMENTARIO",
     cash: "Efectivo", card: "Tarjeta", voucher: "Vale", pending: "Pendiente",
-    transfer: "Transferencia", discount: "Descuento", method: "FORMA DE PAGO",
+    transfer: "Transferencia", memberBalance: "Saldo socio", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
     tableAmount: "IMPORTE", change: "Cambio", total: "TOTAL A COBRAR", paid: "COBRADO",
     remaining: "FALTA", accept: "ACEPTAR", cancel: "CANCELAR", exact: "Exacto",
     clear: "Eliminar pagos", customerRequired: "Selecciona un cliente para dejar el ticket pendiente",
@@ -104,7 +124,7 @@ const labels = {
   en: {
     title: "CHECKOUT", amount: "AMOUNT / RECEIVED", document: "DOCUMENT No.", comment: "COMMENT",
     cash: "Cash", card: "Card", voucher: "Voucher", pending: "Pending",
-    transfer: "Transfer", discount: "Discount", method: "PAYMENT METHOD",
+    transfer: "Transfer", memberBalance: "Member balance", returnCredit: "Return credit", discount: "Discount", method: "PAYMENT METHOD",
     tableAmount: "AMOUNT", change: "Change", total: "TOTAL DUE", paid: "PAID",
     remaining: "REMAINING", accept: "ACCEPT", cancel: "CANCEL", exact: "Exact",
     clear: "Clear payments", customerRequired: "Select a customer before leaving the ticket pending",
@@ -120,7 +140,7 @@ const labels = {
   zh: {
     title: "收款", amount: "金额 / 实收", document: "单据号", comment: "备注",
     cash: "现金", card: "银行卡", voucher: "代金券", pending: "挂账",
-    transfer: "转账", discount: "折扣", method: "付款方式",
+    transfer: "转账", memberBalance: "会员余额", returnCredit: "退货余额", discount: "折扣", method: "付款方式",
     tableAmount: "金额", change: "找零", total: "应收合计", paid: "已收",
     remaining: "未收", accept: "确认", cancel: "取消", exact: "正好",
     clear: "清除付款", customerRequired: "挂账前请选择客户",
@@ -142,7 +162,13 @@ const methodLabels = (locale: LocaleCode) => ({
   VOUCHER: labels[locale].voucher,
   PENDING: labels[locale].pending,
   TRANSFER: labels[locale].transfer,
+  MEMBER_CREDIT: labels[locale].returnCredit,
 });
+
+function decimalCents(value: number | string | undefined) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100)) : 0;
+}
 
 export function hasLockedIntegratedPayment(
   allocations: ReadonlyArray<{ kind: string; status: string }>,
@@ -195,6 +221,9 @@ export function PaymentAllocationPanel({
   closeDisabled = false,
   commentEnabled = true,
   checkoutDiscountCents = 0,
+  memberBalanceCents = 0,
+  memberBalanceAvailableCents = 0,
+  memberWallet = null,
   voucherOnlyRefund = false,
   onResolveVoucher,
   onAdd,
@@ -204,6 +233,8 @@ export function PaymentAllocationPanel({
   onAccept,
   onClose,
   onDiscount,
+  onMemberBalance,
+  onMemberWallet,
   allowAdd = true,
   busy = false,
   error = "",
@@ -223,6 +254,21 @@ export function PaymentAllocationPanel({
   const hasVoucherOnlyRemainder = refund && !voucherOnlyRefund
     && monetaryRefundAvailable < session.totalCents;
   const approved = session.totalCents - remaining;
+  const walletLoyaltyAvailableCents = memberWallet
+    ? decimalCents(memberWallet.loyaltyAvailable)
+    : memberBalanceAvailableCents;
+  const walletReturnCreditAvailableCents = memberWallet
+    ? decimalCents(memberWallet.returnCreditAvailable)
+    : 0;
+  const preWalletTotalCents = session.totalCents + memberBalanceCents;
+  const memberBalanceLimit = Math.min(
+    walletLoyaltyAvailableCents,
+    preWalletTotalCents,
+  );
+  const memberWalletLimit = Math.min(
+    walletLoyaltyAvailableCents + walletReturnCreditAvailableCents,
+    preWalletTotalCents,
+  );
   const [method, setMethod] = useState<CheckoutMethod>(initialMethod);
   const [amount, setAmount] = useState(centsInput(remaining));
   const [voucherCode, setVoucherCode] = useState("");
@@ -231,6 +277,7 @@ export function PaymentAllocationPanel({
   const [comment, setComment] = useState("");
   const [validation, setValidation] = useState("");
   const [voucherResolving, setVoucherResolving] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
   const [focusAmountAfterSubmit, setFocusAmountAfterSubmit] = useState(false);
   const [focusVoucherAfterResolve, setFocusVoucherAfterResolve] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -265,7 +312,7 @@ export function PaymentAllocationPanel({
 
   function refundAvailabilityForMethod(value: CheckoutMethod) {
     if (!refund) return undefined;
-    if (value === "VOUCHER") return remaining;
+    if (value === "VOUCHER" || value === "MEMBER_CREDIT") return remaining;
     const kinds: AllocationKind[] = value === "CASH"
       ? ["CASH"]
       : value === "CARD"
@@ -293,25 +340,31 @@ export function PaymentAllocationPanel({
         : "MANUAL_CARD";
 
   useEffect(() => {
-    setAmount(centsInput(remaining));
-  }, [remaining]);
+    setAmount(centsInput(method === "MEMBER_BALANCE" ? memberBalanceLimit : remaining));
+  }, [memberBalanceLimit, method, remaining]);
 
   function methodAvailable(next: CheckoutMethod) {
     if (refund && voucherOnlyRefund) {
-      return next === "VOUCHER" && voucherEnabled;
+      return (next === "VOUCHER" && voucherEnabled)
+        || (next === "MEMBER_CREDIT" && customerSelected && Boolean(memberWallet));
     }
     if (next === "CASH") return cashEnabled;
     if (next === "CARD") return cardEnabled && (manualCardEnabled || providers.length > 0);
     if (next === "VOUCHER") return voucherEnabled;
     if (next === "TRANSFER") return !refund && transferEnabled;
     if (next === "PENDING") return !refund && pendingVisible && pendingEnabled;
+    if (next === "MEMBER_BALANCE") return !refund && customerSelected
+      && Boolean(onMemberWallet || onMemberBalance)
+      && (!onMemberWallet || Boolean(memberWallet))
+      && memberBalanceLimit > 0 && effectiveRows.length === 0;
+    if (next === "MEMBER_CREDIT") return refund && customerSelected && Boolean(memberWallet);
     if (next === "DISCOUNT") return !refund && discountVisible;
     return effectiveRows.length === 0;
   }
 
   function availableMethod(preferred: CheckoutMethod) {
     const candidates: CheckoutMethod[] = [
-      preferred, "CASH", "CARD", "TRANSFER", "VOUCHER", "PENDING", "DISCOUNT",
+      preferred, "CASH", "CARD", "TRANSFER", "VOUCHER", "MEMBER_CREDIT", "PENDING", "MEMBER_BALANCE", "DISCOUNT",
     ];
     return candidates.find((candidate, index) =>
       candidates.indexOf(candidate) === index && methodAvailable(candidate)) ?? preferred;
@@ -328,8 +381,9 @@ export function PaymentAllocationPanel({
       target?.select();
     });
   }, [
-    cardEnabled, cashEnabled, discountVisible, initialMethod, manualCardEnabled, pendingEnabled,
-    pendingVisible, providers.length, transferEnabled, voucherEnabled, voucherOnlyRefund,
+    cardEnabled, cashEnabled, customerSelected, discountVisible, initialMethod, manualCardEnabled,
+    memberWallet, memberWalletLimit, onMemberWallet, pendingEnabled, pendingVisible, providers.length,
+    transferEnabled, voucherEnabled, voucherOnlyRefund,
   ]);
 
   useEffect(() => {
@@ -390,9 +444,14 @@ export function PaymentAllocationPanel({
 
   function selectMethod(next: CheckoutMethod) {
     if (!allowAdd || compensationRequired || busy || !methodAvailable(next)) return;
+    if (next === "MEMBER_BALANCE" && onMemberWallet) {
+      setValidation("");
+      setWalletOpen(true);
+      return;
+    }
     setMethod(next);
     setValidation("");
-    setAmount(centsInput(remaining));
+    setAmount(centsInput(next === "MEMBER_BALANCE" ? memberBalanceLimit : remaining));
     queueMicrotask(() => {
       const target = next === "VOUCHER" && !refund
         ? voucherCodeRef.current
@@ -469,8 +528,17 @@ export function PaymentAllocationPanel({
       return;
     }
     if ((method !== "VOUCHER" || refund)
-        && (amountCents <= 0 || (method !== "CASH" && amountCents > remaining))) {
+        && (amountCents <= 0 || (method !== "CASH" && method !== "MEMBER_BALANCE" && amountCents > remaining))) {
       setValidation(copy.invalid);
+      return;
+    }
+    if (method === "MEMBER_BALANCE") {
+      if (!onMemberBalance || effectiveRows.length > 0 || amountCents > memberBalanceLimit) {
+        setValidation(copy.invalid);
+        return;
+      }
+      onMemberBalance(amountCents);
+      setValidation("");
       return;
     }
     if (method === "DISCOUNT") {
@@ -528,6 +596,8 @@ export function PaymentAllocationPanel({
         ...common,
         ...(transferDateEnabled && transferDate ? { transferDate } : {}),
       }, { finalizeWhenCovered });
+    } else if (method === "MEMBER_CREDIT") {
+      onAdd({ kind: "MEMBER_CREDIT", ...common }, { finalizeWhenCovered });
     } else {
       onAdd({ kind: "PENDING", ...common }, { finalizeWhenCovered });
     }
@@ -554,6 +624,7 @@ export function PaymentAllocationPanel({
   useEffect(() => {
     if (interfaceMode !== "KEYBOARD") return;
     const handleKey = (event: KeyboardEvent) => {
+      if (walletOpen) return;
       if (event.ctrlKey && event.key.toLocaleLowerCase() === "o") {
         event.preventDefault();
         document.getElementById("checkout-comment")?.focus();
@@ -566,7 +637,7 @@ export function PaymentAllocationPanel({
       }
       const methodKey: Partial<Record<string, CheckoutMethod>> = {
         "*": "CASH", "+": "CARD", F9: "VOUCHER", F8: "PENDING",
-        F7: "TRANSFER", F11: "DISCOUNT",
+        F7: "TRANSFER", F10: refund ? "MEMBER_CREDIT" : "MEMBER_BALANCE", F11: "DISCOUNT",
       };
       const next = methodKey[event.key];
       if (next) {
@@ -596,9 +667,10 @@ export function PaymentAllocationPanel({
     allowAdd, amountCents, busy, cashAppliedCents, cashChangeCents, checkoutDiscountCents,
     closeDisabled, comment, compensationRequired, customerSelected, effectiveRows.length, integratedPaymentLocked, interfaceMode,
     cardEnabled, cashEnabled, commentEnabled, manualCardEnabled, manualCardRequiresReference, method,
-    onClear, onClose, onDiscount, pendingEnabled, providers, reference, remaining,
+    memberBalanceAvailableCents, memberBalanceCents, memberWallet, memberWalletLimit, onClear, onClose, onDiscount,
+    onMemberBalance, onMemberWallet, pendingEnabled, providers, reference, refund, remaining,
     session.totalCents, transferDate, transferDateEnabled, transferEnabled, transferRequiresReference, voucherCode,
-    voucherEnabled, voucherOnlyRefund, voucherResolving, onResolveVoucher,
+    voucherEnabled, voucherOnlyRefund, voucherResolving, onResolveVoucher, walletOpen,
   ]);
 
   const allMethods: Array<{ value: CheckoutMethod; shortcut: string; visible?: boolean; disabled?: boolean }> = [
@@ -607,15 +679,19 @@ export function PaymentAllocationPanel({
     { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
     { value: "PENDING", shortcut: "F8", visible: !refund && pendingVisible, disabled: !pendingEnabled },
     { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
+    { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet || onMemberBalance), disabled: !customerSelected || (Boolean(onMemberWallet) && !memberWallet) || memberBalanceLimit <= 0 || effectiveRows.length > 0 },
+    { value: "MEMBER_CREDIT", shortcut: "F10", visible: refund, disabled: !customerSelected || !memberWallet },
     { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: effectiveRows.length > 0 },
   ];
   const methods = allMethods.filter((item) => item.visible !== false);
   const buttonLabel = (value: CheckoutMethod) => ({
     CASH: copy.cash, CARD: copy.card, VOUCHER: copy.voucher,
-    PENDING: copy.pending, TRANSFER: copy.transfer, DISCOUNT: copy.discount,
+    PENDING: copy.pending, TRANSFER: copy.transfer, MEMBER_BALANCE: copy.memberBalance,
+    MEMBER_CREDIT: copy.returnCredit,
+    DISCOUNT: copy.discount,
   })[value];
 
-  return <div className="sale-checkout-overlay" role="presentation">
+  return <><div className="sale-checkout-overlay" role="presentation">
     <section className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}`}
       role="dialog" aria-modal="true" aria-labelledby="sale-checkout-title" aria-busy={busy}>
       <header className="sale-checkout-header">
@@ -694,6 +770,9 @@ export function PaymentAllocationPanel({
                 <th>{copy.document}</th><th>{copy.comment}</th>
               </tr></thead>
               <tbody>
+                {memberBalanceCents > 0 && <tr className="discount-row">
+                  <td>{copy.memberBalance}</td><td>-{money(memberBalanceCents)} €</td><td>—</td><td>—</td>
+                </tr>}
                 {checkoutDiscountCents > 0 && <tr className="discount-row">
                   <td>{copy.discount}</td><td>-{money(checkoutDiscountCents)} €</td><td>—</td><td>—</td>
                 </tr>}
@@ -717,7 +796,7 @@ export function PaymentAllocationPanel({
                     {allocation.message && <small>{localizePaymentDiagnostic(t, allocation.message, allocation.status)}</small>}
                   </td>
                 </tr>)}
-                {session.allocations.length === 0 && checkoutDiscountCents === 0 &&
+                {session.allocations.length === 0 && memberBalanceCents === 0 && checkoutDiscountCents === 0 &&
                   <tr className="empty-row"><td colSpan={4}>—</td></tr>}
               </tbody>
             </table>
@@ -735,7 +814,7 @@ export function PaymentAllocationPanel({
           <footer className="sale-checkout-footer">
             {clearVisible && <button type="button" className="clear"
               disabled={busy || integratedPaymentLocked
-                || (session.allocations.length === 0 && checkoutDiscountCents === 0)}
+                || (session.allocations.length === 0 && memberBalanceCents === 0 && checkoutDiscountCents === 0)}
               onClick={onClear}>{interfaceMode === "KEYBOARD" && <kbd>F12</kbd>}{copy.clear}</button>}
             <span />
             <button type="button" disabled={busy || integratedPaymentLocked || closeDisabled}
@@ -767,7 +846,31 @@ export function PaymentAllocationPanel({
         </aside>}
       </div>
     </section>
-  </div>;
+  </div>
+    {walletOpen && memberWallet && <MemberWalletDialog
+      locale={locale}
+      lots={memberWallet.lots}
+      maxAmountCents={memberWalletLimit}
+      busy={busy}
+      error={error || undefined}
+      onCancel={() => setWalletOpen(false)}
+      onConfirm={(requestedCents) => {
+        const loyaltyCents = Math.min(requestedCents, walletLoyaltyAvailableCents, preWalletTotalCents);
+        const returnCreditCents = Math.min(
+          requestedCents - loyaltyCents,
+          walletReturnCreditAvailableCents,
+          preWalletTotalCents - loyaltyCents,
+        );
+        onMemberWallet?.({
+          requestedCents,
+          loyaltyCents,
+          returnCreditCents,
+          returnCreditAvailableCents: walletReturnCreditAvailableCents,
+        });
+        setWalletOpen(false);
+      }}
+    />}
+  </>;
 }
 
 type ManualCardDialogState = { open: boolean; reference: string };

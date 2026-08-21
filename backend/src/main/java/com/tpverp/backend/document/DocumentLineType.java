@@ -4,6 +4,7 @@ public enum DocumentLineType {
     PRODUCT,
     PROMOTION,
     PROMOTIONAL_COUPON,
+    MEMBER_BALANCE,
     MANUAL_DISCOUNT,
     RETURN_ADJUSTMENT
 }
