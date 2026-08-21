@@ -60,6 +60,12 @@ import warehouseInputIcon from "../assets/reports/warehouse-input.png";
 import warehouseOutputIcon from "../assets/reports/warehouse-output.png";
 import filterIcon from "../assets/reports/filter.png";
 
+const REPORT_OUTPUT_SHORTCUTS = {
+  print: "F5",
+  excel: "F6",
+  pdf: "F7"
+} as const;
+
 const SaleTicketInvoiceDialog = lazy(() => import("./SaleTicketInvoiceDialog")
   .then((module) => ({ default: module.SaleTicketInvoiceDialog })));
 const SaleTicketCancellationDialog = lazy(() => import("./SaleTicketCancellationDialog")
@@ -3543,7 +3549,7 @@ export function SalesReportScreen({
               disabled={!selectedDocumentCanPrint}
               onClick={() => void printSelectedDocument()}
             >
-              <span>{t("salesReport.print")}</span><kbd aria-hidden="true">F5</kbd>
+              <span>{t("salesReport.print")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.print}</kbd>
             </button>
             <button
               type="button"
@@ -3552,7 +3558,7 @@ export function SalesReportScreen({
               disabled={reportExportBusy}
               onClick={() => void exportExcelReport()}
             >
-              <span>{t("salesReport.excel")}</span><kbd aria-hidden="true">F6</kbd>
+              <span>{t("salesReport.excel")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.excel}</kbd>
             </button>
             <button
               type="button"
@@ -3561,7 +3567,7 @@ export function SalesReportScreen({
               disabled={reportExportBusy}
               onClick={() => void exportPdfReport()}
             >
-              <span>{t("salesReport.pdf")}</span><kbd aria-hidden="true">F7</kbd>
+              <span>{t("salesReport.pdf")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.pdf}</kbd>
             </button>
           </div>
         </div>
