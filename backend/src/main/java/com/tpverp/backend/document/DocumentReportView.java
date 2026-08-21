@@ -46,7 +46,8 @@ public record DocumentReportView(
             PartySummary supplier,
             String warehouseName,
             DocumentAttributionResolver.Attribution attribution,
-            BigDecimal refundedAmount) {
+            BigDecimal refundedAmount,
+            BigDecimal appliedMemberBalance) {
         var resolvedAttribution = attribution == null
                 ? DocumentAttributionResolver.Attribution.empty(document)
                 : attribution;
@@ -63,7 +64,7 @@ public record DocumentReportView(
                 document.getTotal(),
                 pendingAmount(document, refundedAmount),
                 document.getDescuentoGlobal(),
-                DocumentLineTotals.memberBalanceTotal(document.getLineas()),
+                memberBalanceTotal(document, appliedMemberBalance),
                 document.getNumTicket(),
                 document.isOrigenStock(),
                 document.getClienteId(),
@@ -85,6 +86,14 @@ public record DocumentReportView(
                         .map(DocumentView.PaymentView::from)
                         .toList(),
                 document.getComentarioInterno());
+    }
+
+    private static BigDecimal memberBalanceTotal(
+            CommercialDocument document, BigDecimal appliedMemberBalance) {
+        if (appliedMemberBalance != null) {
+            return Money.euros(appliedMemberBalance).abs();
+        }
+        return DocumentLineTotals.memberBalanceTotal(document.getLineas());
     }
 
     static BigDecimal pendingAmount(

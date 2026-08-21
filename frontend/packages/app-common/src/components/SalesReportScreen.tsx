@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { lazy, Suspense } from "react";
 import type { UIEvent } from "react";
@@ -299,6 +299,35 @@ export function buildReportColumnDefinitions(report: ReportSample): TableColumnD
 
 export function reportTableKey(reportKey: string) {
   return `reports.${reportKey}`;
+}
+
+const customerDisplayReportKeys = [
+  "salesReport.tickets",
+  "salesReport.deliveryNotes",
+  "salesReport.invoices"
+] as const;
+
+export function supportsCustomerDisplayToggle(reportKey: string) {
+  return customerDisplayReportKeys.some((candidate) => candidate === reportKey);
+}
+
+export function reportExportColumnKeys(
+  reportKey: string,
+  visibleKeys: string[],
+  includeCustomerIdentity = false
+) {
+  const keys = visibleKeys.filter((key) => key !== "customerName");
+  if (!includeCustomerIdentity || !supportsCustomerDisplayToggle(reportKey)) {
+    return keys;
+  }
+  const customerIndex = keys.indexOf("customer");
+  if (customerIndex >= 0) {
+    keys.splice(customerIndex + 1, 0, "customerName");
+    return keys;
+  }
+  const totalIndex = keys.indexOf("total");
+  keys.splice(totalIndex >= 0 ? totalIndex : keys.length, 0, "customer", "customerName");
+  return keys;
 }
 
 export function moveVisibleReportColumn(
@@ -742,27 +771,22 @@ export type ReportSort = {
   direction: "asc" | "desc";
 };
 
-type SavedReportView = {
-  id: string;
-  name: string;
-  reportKey: string;
-  filters: ReportFilters;
-  search: string;
-  sort: ReportSort | null;
-  layout: TableLayout<string>;
-};
+type CustomerDisplayMode = "code" | "name";
 
-type TicketCustomerDisplayMode = "code" | "name";
+const customerDisplayStorageKey = (app: AppKind, username: string, reportKey: string) =>
+  `tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:customer-display:${encodeURIComponent(reportKey)}`;
 
-const reportSavedViewsStorageKey = (app: AppKind, username: string) =>
-  `tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:report-views`;
-
-const ticketCustomerDisplayStorageKey = (app: AppKind, username: string) =>
-  `tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:ticket-customer-display`;
-
-function readTicketCustomerDisplayMode(app: AppKind, username: string): TicketCustomerDisplayMode {
+function readCustomerDisplayMode(
+  app: AppKind,
+  username: string,
+  reportKey: string
+): CustomerDisplayMode {
   try {
-    return localStorage.getItem(ticketCustomerDisplayStorageKey(app, username)) === "name"
+    const saved = localStorage.getItem(customerDisplayStorageKey(app, username, reportKey));
+    const legacyTicketMode = reportKey === "salesReport.tickets"
+      ? localStorage.getItem(`tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:ticket-customer-display`)
+      : null;
+    return (saved ?? legacyTicketMode) === "name"
       ? "name"
       : "code";
   } catch {
@@ -802,23 +826,6 @@ export function quickDateRange(kind: "today" | "week" | "month", now = new Date(
   return { dateFrom: toIsoDate(start), dateTo: end };
 }
 
-function readSavedReportViews(app: AppKind, username: string): SavedReportView[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(reportSavedViewsStorageKey(app, username)) ?? "[]");
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((view): view is SavedReportView =>
-      view && typeof view.id === "string" && typeof view.name === "string"
-      && typeof view.reportKey === "string" && Array.isArray(view.layout)
-    );
-  } catch {
-    return [];
-  }
-}
-
-function writeSavedReportViews(app: AppKind, username: string, views: SavedReportView[]) {
-  localStorage.setItem(reportSavedViewsStorageKey(app, username), JSON.stringify(views));
-}
-
 const reportSamples: Record<string, ReportSample> = {
   "salesReport.dailySales": {
     // Daily sales is an aggregated accounting summary. There is no single
@@ -835,19 +842,19 @@ const reportSamples: Record<string, ReportSample> = {
     totals: {}
   },
   "salesReport.tickets": {
-    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "memberBalance", "total"],
+    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "customer", "payment", "comment", "base", "tax", "discount", "memberBalance", "total"],
     defaultVisibleAttributes: ["date", "time", "status", "terminal", "customer", "payment", "invoiced", "total"],
     rows: [],
     totals: { date: "salesReport.total", base: "0.00", tax: "0.00", discount: "0.00", memberBalance: "0.00", total: "0.00" }
   },
   "salesReport.deliveryNotes": {
-    availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "customer", "customerName", "comment", "status", "base", "tax", "discount", "total"],
+    availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "customer", "comment", "status", "base", "tax", "discount", "total"],
     defaultVisibleAttributes: ["deliveryNote", "customer", "date", "status", "total"],
     rows: [],
     totals: { deliveryNote: "salesReport.total", status: "0", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.invoices": {
-    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "customerName", "payment", "status", "pending", "comment", "base", "tax", "discount", "memberBalance", "total"],
+    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "payment", "status", "pending", "comment", "base", "tax", "discount", "memberBalance", "total"],
     defaultVisibleAttributes: ["invoice", "documentType", "customer", "status", "pending", "total"],
     rows: [],
     totals: { invoice: "salesReport.total", status: "0", pending: "0.00", base: "0.00", tax: "0.00", discount: "0.00", memberBalance: "0.00", total: "0.00" }
@@ -1934,17 +1941,14 @@ export function SalesReportScreen({
   const [reportExportProgress, setReportExportProgress] = useState(0);
   const [reportNotice, setReportNotice] = useState<ReportNotice | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [viewsOpen, setViewsOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [reportDocumentPrinting, setReportDocumentPrinting] = useState(false);
-  const [savedViews, setSavedViews] = useState<SavedReportView[]>(() =>
-    readSavedReportViews(app, session.username)
-  );
-  const [savedViewName, setSavedViewName] = useState("");
-  const [selectedSavedViewId, setSelectedSavedViewId] = useState("");
   const [sortByReport, setSortByReport] = useState<Record<string, ReportSort | null>>({});
-  const [ticketCustomerDisplayMode, setTicketCustomerDisplayMode] = useState<TicketCustomerDisplayMode>(() =>
-    readTicketCustomerDisplayMode(app, session.username)
+  const [customerDisplayModes, setCustomerDisplayModes] = useState<Record<string, CustomerDisplayMode>>(() =>
+    Object.fromEntries(customerDisplayReportKeys.map((reportKey) => [
+      reportKey,
+      readCustomerDisplayMode(app, session.username, reportKey)
+    ]))
   );
   const printMenuRef = useRef<HTMLDivElement | null>(null);
   const moreActionsRef = useRef<HTMLDivElement | null>(null);
@@ -2031,7 +2035,8 @@ export function SalesReportScreen({
     : visibleTableColumns(selectedReportTableLayout.layout);
   const reportTableWidth = visibleColumnLayout.reduce((width, column) => width + column.width, 0);
   const matchingRows = sample.rows.filter((row) => rowMatchesFilters(row, filters) && rowMatchesSearch(row, reportSearch, t));
-  const displayedRows = selectedReport === "salesReport.tickets" && ticketCustomerDisplayMode === "name"
+  const customerDisplayMode = customerDisplayModes[selectedReport] ?? "code";
+  const displayedRows = supportsCustomerDisplayToggle(selectedReport) && customerDisplayMode === "name"
     ? matchingRows.map((row) => ({ ...row, customer: row.customerName || row.customer }))
     : matchingRows;
   const activeSort = sortByReport[selectedReport] ?? null;
@@ -2096,17 +2101,6 @@ export function SalesReportScreen({
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        ticketCustomerDisplayStorageKey(app, session.username),
-        ticketCustomerDisplayMode
-      );
-    } catch {
-      // The preference is optional when local storage is unavailable.
-    }
-  }, [app, session.username, ticketCustomerDisplayMode]);
 
   useEffect(() => {
     if (reportNotice?.kind !== "success") return;
@@ -2632,11 +2626,17 @@ export function SalesReportScreen({
     return `${label || "informe"}.${extension}`;
   }
 
-  function exportColumns() {
-    const keys = isDailySalesReport
+  function exportColumns(includeCustomerIdentity = false) {
+    const visibleKeys = isDailySalesReport
       ? visibleAttributesByReport[selectedReport]
       : visibleColumnLayout.map((column) => column.key);
-    return keys.map((key) => ({ key, label: t(reportAttributeLabelKey(selectedReport, key)) }));
+    const keys = reportExportColumnKeys(selectedReport, visibleKeys, includeCustomerIdentity);
+    return keys.map((key) => ({
+      key,
+      label: t(key === "customer" && includeCustomerIdentity
+        ? "salesReport.column.customerCode"
+        : reportAttributeLabelKey(selectedReport, key))
+    }));
   }
 
   async function saveExportBytes(
@@ -2684,7 +2684,7 @@ export function SalesReportScreen({
           reportKey: selectedReport,
           filters,
           search: reportSearch,
-          columns: exportColumns()
+          columns: exportColumns(true)
         })
       });
       if (!response.ok) throw new Error(await salesReportResponseError(response));
@@ -2800,6 +2800,22 @@ export function SalesReportScreen({
   function updateReportSearch(value: string) {
     setReportSearch(value);
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
+  }
+
+  function toggleCustomerDisplayMode(reportKey: string) {
+    if (!supportsCustomerDisplayToggle(reportKey)) return;
+    setCustomerDisplayModes((current) => {
+      const nextMode: CustomerDisplayMode = current[reportKey] === "name" ? "code" : "name";
+      try {
+        localStorage.setItem(
+          customerDisplayStorageKey(app, session.username, reportKey),
+          nextMode
+        );
+      } catch {
+        // The in-memory preference remains usable when local storage is unavailable.
+      }
+      return { ...current, [reportKey]: nextMode };
+    });
   }
 
   async function loadMoreReportRows() {
@@ -3142,49 +3158,6 @@ export function SalesReportScreen({
     setDateRangeText(formatDateRange(next, locale));
     selectRow(-1);
   }
-
-  function saveCurrentView() {
-    const name = savedViewName.trim();
-    if (!name) return;
-    const view: SavedReportView = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name,
-      reportKey: selectedReport,
-      filters,
-      search: reportSearch,
-      sort: activeSort,
-      layout: selectedReportTableLayout.layout
-    };
-    const next = [...savedViews.filter((candidate) =>
-      candidate.reportKey !== selectedReport || candidate.name.toLocaleLowerCase() !== name.toLocaleLowerCase()
-    ), view];
-    setSavedViews(next);
-    writeSavedReportViews(app, session.username, next);
-    setSelectedSavedViewId(view.id);
-    setSavedViewName("");
-    setReportNotice({ kind: "success", message: t("salesReport.views.saved") });
-  }
-
-  function applySavedView() {
-    const view = savedViews.find((candidate) => candidate.id === selectedSavedViewId);
-    if (!view || view.reportKey !== selectedReport) return;
-    setFilters(view.filters);
-    setDraftFilters(view.filters);
-    setReportSearch(view.search);
-    setSortByReport((current) => ({ ...current, [selectedReport]: view.sort }));
-    selectedReportTableLayout.replaceLayout(view.layout);
-    setDateRangeText(formatDateRange(view.filters, locale));
-    setViewsOpen(false);
-    selectRow(-1);
-  }
-
-  function deleteSavedView() {
-    const next = savedViews.filter((candidate) => candidate.id !== selectedSavedViewId);
-    setSavedViews(next);
-    writeSavedReportViews(app, session.username, next);
-    setSelectedSavedViewId("");
-  }
-
   function genericTableLayout(reportKey: string): ReportTableLayout | null {
     if (reportKey === "salesReport.dailySales") {
       return null;
@@ -3617,12 +3590,6 @@ export function SalesReportScreen({
             </button>
             {moreActionsOpen && (
               <div className="report-more-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => {
-                setMoreActionsOpen(false);
-                setViewsOpen((open) => !open);
-              }}>
-                {t("salesReport.views")}
-              </button>
               {hasStatusFilter && selectedReport !== "salesReport.tickets" && (
                 <button type="button" role="menuitem" onClick={() => {
                   setMoreActionsOpen(false);
@@ -3860,32 +3827,6 @@ export function SalesReportScreen({
           ) : (
             <div className="report-data">
               {renderReportToolbar()}
-              {viewsOpen && (
-                <section className="report-saved-views" aria-label={t("salesReport.views")}>
-                  <div className="report-saved-views__group">
-                    <label className="report-saved-views__field report-saved-views__field--select">
-                      <span>{t("salesReport.views.available")}</span>
-                      <select value={selectedSavedViewId} onChange={(event) => setSelectedSavedViewId(event.target.value)}>
-                        <option value="">{t("salesReport.views.select")}</option>
-                        {savedViews.filter((view) => view.reportKey === selectedReport).map((view) => (
-                          <option key={view.id} value={view.id}>{view.name}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="report-saved-views__actions">
-                      <button type="button" disabled={!selectedSavedViewId} onClick={applySavedView}>{t("common.apply")}</button>
-                      <button className="report-saved-views__delete" type="button" disabled={!selectedSavedViewId} onClick={deleteSavedView}>{t("common.delete")}</button>
-                    </div>
-                  </div>
-                  <div className="report-saved-views__group report-saved-views__group--create">
-                    <label className="report-saved-views__field report-saved-views__field--name">
-                      <span>{t("salesReport.views.name")}</span>
-                      <input value={savedViewName} onChange={(event) => setSavedViewName(event.target.value)} />
-                    </label>
-                    <button className="report-saved-views__save" type="button" disabled={!savedViewName.trim()} onClick={saveCurrentView}>{t("salesReport.views.save")}</button>
-                  </div>
-                </section>
-              )}
               <div className="report-table-region">
                 {isWarehouseDocumentReport(selectedReport) && (
                   <section className="warehouse-reconciliation" aria-label={t("salesReport.reconciliation")}>
@@ -3943,24 +3884,24 @@ export function SalesReportScreen({
                           sortDirection={activeSort?.attribute === column.key ? activeSort.direction : null}
                           sortLabel={`${t(reportAttributeLabelKey(selectedReport, column.key))} ${t("salesReport.sort")}`}
                           onSort={() => toggleSort(column.key)}
-                          headerAction={selectedReport === "salesReport.tickets" && column.key === "customer" ? (
+                          headerAction={supportsCustomerDisplayToggle(selectedReport) && column.key === "customer" ? (
                             <button
                               type="button"
                               className="report-customer-display-toggle"
                               draggable={false}
-                              aria-label={t(ticketCustomerDisplayMode === "code"
+                              aria-label={t(customerDisplayMode === "code"
                                 ? "salesReport.customerDisplay.showName"
                                 : "salesReport.customerDisplay.showCode")}
-                              title={t(ticketCustomerDisplayMode === "code"
+                              title={t(customerDisplayMode === "code"
                                 ? "salesReport.customerDisplay.showName"
                                 : "salesReport.customerDisplay.showCode")}
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setTicketCustomerDisplayMode((current) => current === "code" ? "name" : "code");
+                                toggleCustomerDisplayMode(selectedReport);
                               }}
                             >
-                              {ticketCustomerDisplayMode === "code" ? "N" : "C"}
+                              {customerDisplayMode === "code" ? "N" : "C"}
                             </button>
                           ) : undefined}
                           resizeLabel={`${t("stock.columns.resize")} ${t(reportAttributeLabelKey(selectedReport, column.key))}`}

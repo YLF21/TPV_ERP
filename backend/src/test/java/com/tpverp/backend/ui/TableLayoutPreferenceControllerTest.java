@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +37,8 @@ class TableLayoutPreferenceControllerTest {
                         new TableLayoutPreferenceService.PreferenceView(
                                 "venta",
                                 "stock.current",
-                                List.of(new TableLayoutColumn("name", 220, true))))));
+                                List.of(new TableLayoutColumn("name", 220, true)),
+                                Instant.parse("2026-08-21T12:00:00Z")))));
 
         mvc.perform(get("/api/v1/ui/table-preferences/venta")
                         .with(user("cashier")))
@@ -44,6 +46,7 @@ class TableLayoutPreferenceControllerTest {
                 .andExpect(jsonPath("$.app").value("venta"))
                 .andExpect(jsonPath("$.preferences[0].app").value("venta"))
                 .andExpect(jsonPath("$.preferences[0].tableKey").value("stock.current"))
+                .andExpect(jsonPath("$.preferences[0].updatedAt").value("2026-08-21T12:00:00Z"))
                 .andExpect(jsonPath("$.preferences[0].columns[0].key").value("name"));
 
         verify(service).list(eq("venta"), any(Authentication.class));
@@ -53,7 +56,7 @@ class TableLayoutPreferenceControllerTest {
     void getsOnePreferenceWithEmptyColumnsWhenMissing() throws Exception {
         when(service.get(eq("gestion"), eq("products.list"), any(Authentication.class)))
                 .thenReturn(new TableLayoutPreferenceService.PreferenceView(
-                        "gestion", "products.list", List.of()));
+                        "gestion", "products.list", List.of(), null));
 
         mvc.perform(get("/api/v1/ui/table-preferences/gestion/products.list")
                         .with(user("manager")))
@@ -71,7 +74,10 @@ class TableLayoutPreferenceControllerTest {
                     var request = call.getArgument(
                             2, TableLayoutPreferenceService.SavePreferenceRequest.class);
                     return new TableLayoutPreferenceService.PreferenceView(
-                            request.app(), request.tableKey(), request.columns());
+                            request.app(),
+                            request.tableKey(),
+                            request.columns(),
+                            Instant.parse("2026-08-21T12:01:00Z"));
                 });
 
         mvc.perform(put("/api/v1/ui/table-preferences/venta/stock.current")
@@ -90,6 +96,7 @@ class TableLayoutPreferenceControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.columns.length()").value(2))
+                .andExpect(jsonPath("$.updatedAt").value("2026-08-21T12:01:00Z"))
                 .andExpect(jsonPath("$.columns[0].visible").value(true))
                 .andExpect(jsonPath("$.columns[1].width").doesNotExist())
                 .andExpect(jsonPath("$.columns[1].visible").value(false));

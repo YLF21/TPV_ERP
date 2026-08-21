@@ -16,14 +16,17 @@ public class DocumentViewAssembler {
     private final CustomerRepository customers;
     private final CurrentOrganization organization;
     private final DocumentAttributionResolver attributions;
+    private final DocumentMemberBalanceResolver memberBalances;
 
     public DocumentViewAssembler(
             CustomerRepository customers,
             CurrentOrganization organization,
-            DocumentAttributionResolver attributions) {
+            DocumentAttributionResolver attributions,
+            DocumentMemberBalanceResolver memberBalances) {
         this.customers = customers;
         this.organization = organization;
         this.attributions = attributions;
+        this.memberBalances = memberBalances;
     }
 
     public DocumentView documentView(CommercialDocument document) {
@@ -32,7 +35,9 @@ public class DocumentViewAssembler {
 
     public DocumentView documentView(CommercialDocument document, String qrUrl) {
         var attribution = attributions.resolve(List.of(document)).get(document.getId());
-        return DocumentView.from(document, customerName(document), qrUrl, attribution);
+        var memberBalance = memberBalances.resolve(List.of(document)).amountFor(document);
+        return DocumentView.from(
+                document, customerName(document), qrUrl, attribution, memberBalance);
     }
 
     public List<DocumentView> documentViews(
@@ -43,6 +48,7 @@ public class DocumentViewAssembler {
         }
 
         var attributionIndex = attributions.resolve(documents);
+        var memberBalanceIndex = memberBalances.resolve(documents);
         var customerIds = documents.stream()
                 .map(CommercialDocument::getClienteId)
                 .filter(java.util.Objects::nonNull)
@@ -65,7 +71,8 @@ public class DocumentViewAssembler {
                             document,
                             customerId == null ? null : customerNames.get(customerId),
                             qrUrlResolver.apply(document.getId()),
-                            attributionIndex.get(document.getId()));
+                            attributionIndex.get(document.getId()),
+                            memberBalanceIndex.amountFor(document));
                 })
                 .toList();
     }

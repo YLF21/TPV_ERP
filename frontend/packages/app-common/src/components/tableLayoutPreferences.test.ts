@@ -6,6 +6,7 @@ import {
   loadAllTablePreferences,
   loadTablePreference,
   moveTableColumnByKeyboard,
+  readStoredTablePreference,
   reorderTableColumns,
   resizeTableColumn,
   sanitizeSavedTableLayout,
@@ -13,7 +14,8 @@ import {
   tableLayoutGridTemplate,
   tableLayoutStorageKey,
   toggleTableColumnVisibility,
-  visibleTableColumns
+  visibleTableColumns,
+  writeStoredTableLayout
 } from "./tableLayoutPreferences";
 
 vi.mock("../api/client", () => ({
@@ -126,6 +128,42 @@ describe("table layout preferences", () => {
     expect(tableLayoutStorageKey("gestion", "ADMIN/One", "stock/current")).not.toBe(
       tableLayoutStorageKey("venta", "ADMIN/One", "stock/current")
     );
+  });
+
+  it("migrates legacy layouts and stores an updated-at envelope", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+      key: (index: number) => [...values.keys()][index] ?? null,
+      get length() { return values.size; }
+    } as Storage;
+    const key = tableLayoutStorageKey("venta", "ADMIN", "reports.tickets");
+    storage.setItem(key, JSON.stringify([
+      { key: "name", width: 300, visible: false },
+      { key: "code", width: 100, visible: true }
+    ]));
+
+    const legacy = readStoredTablePreference(
+      "venta", "ADMIN", "reports.tickets", definitions, storage
+    );
+    expect(legacy.legacy).toBe(true);
+    expect(legacy.layout[0]).toEqual({ key: "name", width: 300, visible: false });
+
+    writeStoredTableLayout(
+      "venta",
+      "ADMIN",
+      "reports.tickets",
+      legacy.layout,
+      storage,
+      "2026-08-21T12:00:00Z"
+    );
+    expect(JSON.parse(storage.getItem(key) ?? "{}")).toEqual({
+      columns: legacy.layout,
+      updatedAt: "2026-08-21T12:00:00Z"
+    });
   });
 
   it("uses the relative load-all and load-one API contracts", async () => {

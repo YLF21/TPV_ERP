@@ -18,12 +18,14 @@ import {
   moveReportColumnBeforeTotal,
   moveVisibleReportColumn,
   normalizeRequiredTotal,
+  reportExportColumnKeys,
   reportAttributeLabelKey,
   reportTableKey,
   quickDateRange,
   salesReportResponseError,
   salesReportAccess,
   sortReportRows,
+  supportsCustomerDisplayToggle,
   visibleSalesReports,
   SalesReportScreen
 } from "./SalesReportScreen";
@@ -252,7 +254,9 @@ describe("SalesReportScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mostrar nombre del cliente" }));
     expect(screen.getByText("Cliente Cinco")).toBeVisible();
     expect(screen.getByRole("button", { name: "Mostrar código del cliente" })).toBeVisible();
-    expect(localStorage.getItem("tpv-erp:venta:user:admin:ticket-customer-display")).toBe("name");
+    expect(localStorage.getItem(
+      "tpv-erp:venta:user:admin:customer-display:salesReport.tickets"
+    )).toBe("name");
     expect(container.querySelector('th[data-column-key="total"]')).toHaveClass("report-column-numeric");
     expect(container.querySelector('td[data-column-key="total"]')).toHaveClass("report-column-numeric");
     fireEvent.click(container.querySelector("tbody tr")!);
@@ -718,6 +722,23 @@ describe("SalesReportScreen", () => {
     expect(rows[3]).toEqual(expect.objectContaining({
       payment: "salesReport.payment.returnCredit"
     }));
+  });
+
+  it("exports both customer identities while keeping one configurable screen column", () => {
+    expect(supportsCustomerDisplayToggle("salesReport.tickets")).toBe(true);
+    expect(supportsCustomerDisplayToggle("salesReport.deliveryNotes")).toBe(true);
+    expect(supportsCustomerDisplayToggle("salesReport.invoices")).toBe(true);
+    expect(supportsCustomerDisplayToggle("salesReport.inputInvoices")).toBe(false);
+    expect(reportExportColumnKeys(
+      "salesReport.invoices",
+      ["invoice", "customer", "total"],
+      true
+    )).toEqual(["invoice", "customer", "customerName", "total"]);
+    expect(reportExportColumnKeys(
+      "salesReport.deliveryNotes",
+      ["deliveryNote", "total"],
+      true
+    )).toEqual(["deliveryNote", "customer", "customerName", "total"]);
   });
 
   it("shows Descuento only for the F11 checkout method", () => {

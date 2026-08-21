@@ -57,6 +57,7 @@ class DocumentViewTest {
         var customers = mock(CustomerRepository.class);
         var organization = mock(CurrentOrganization.class);
         var attributions = mock(DocumentAttributionResolver.class);
+        var memberBalances = mock(DocumentMemberBalanceResolver.class);
         var company = mock(Company.class);
         var customer = mock(Customer.class);
         when(organization.currentCompany()).thenReturn(company);
@@ -66,8 +67,10 @@ class DocumentViewTest {
         when(customer.getFiscalName()).thenReturn("CLIENTE AUTORIZADO");
         when(attributions.resolve(List.of(document))).thenReturn(Map.of(
                 document.getId(), DocumentAttributionResolver.Attribution.empty(document)));
+        when(memberBalances.resolve(List.of(document)))
+                .thenReturn(DocumentMemberBalanceResolver.Resolution.empty());
 
-        var view = new DocumentViewAssembler(customers, organization, attributions)
+        var view = new DocumentViewAssembler(customers, organization, attributions, memberBalances)
                 .documentView(document);
 
         assertThat(view.customerId()).isEqualTo(customerId);
@@ -88,6 +91,7 @@ class DocumentViewTest {
         var customers = mock(CustomerRepository.class);
         var organization = mock(CurrentOrganization.class);
         var attributions = mock(DocumentAttributionResolver.class);
+        var memberBalances = mock(DocumentMemberBalanceResolver.class);
         var company = mock(Company.class);
         var customer = mock(Customer.class);
         when(organization.currentCompany()).thenReturn(company);
@@ -98,8 +102,10 @@ class DocumentViewTest {
         when(customer.getFiscalName()).thenReturn("CLIENTE ORO DEMO");
         when(attributions.resolve(List.of(document))).thenReturn(Map.of(
                 document.getId(), DocumentAttributionResolver.Attribution.empty(document)));
+        when(memberBalances.resolve(List.of(document)))
+                .thenReturn(DocumentMemberBalanceResolver.Resolution.empty());
 
-        var views = new DocumentViewAssembler(customers, organization, attributions)
+        var views = new DocumentViewAssembler(customers, organization, attributions, memberBalances)
                 .documentViews(List.of(document), id -> "qr:" + id);
 
         assertThat(views).hasSize(1);
@@ -117,10 +123,13 @@ class DocumentViewTest {
         var customers = mock(CustomerRepository.class);
         var organization = mock(CurrentOrganization.class);
         var attributions = mock(DocumentAttributionResolver.class);
+        var memberBalances = mock(DocumentMemberBalanceResolver.class);
         when(attributions.resolve(List.of(document))).thenReturn(Map.of(
                 document.getId(), DocumentAttributionResolver.Attribution.empty(document)));
+        when(memberBalances.resolve(List.of(document)))
+                .thenReturn(DocumentMemberBalanceResolver.Resolution.empty());
 
-        var views = new DocumentViewAssembler(customers, organization, attributions)
+        var views = new DocumentViewAssembler(customers, organization, attributions, memberBalances)
                 .documentViews(List.of(document), id -> null);
 
         assertThat(views).hasSize(1);
@@ -144,6 +153,20 @@ class DocumentViewTest {
         assertThat(view.payments()).hasSize(1);
         assertThat(view.payments().getFirst().methodName()).isEqualTo("VALE");
         assertThat(view.payments().getFirst().voucherCode()).isEqualTo("VABC123");
+    }
+
+    @Test
+    void prefersThePersistedAppliedMemberBalanceOverLegacyDocumentLines() {
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 19), UUID.randomUUID(), BigDecimal.ZERO);
+
+        var view = DocumentView.from(
+                document, null, null,
+                DocumentAttributionResolver.Attribution.empty(document),
+                new BigDecimal("0.03"));
+
+        assertThat(view.saldoSocio()).isEqualByComparingTo("0.03");
     }
 
     @Test

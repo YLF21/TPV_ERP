@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.security.core.Authentication;
@@ -54,7 +55,7 @@ public class TableLayoutPreferenceService {
         return preferences.findByUserAndAppAndTableKey(user, normalizedApp, normalizedTableKey)
                 .map(PreferenceView::from)
                 .orElseGet(() -> new PreferenceView(
-                        normalizedApp, normalizedTableKey, List.of()));
+                        normalizedApp, normalizedTableKey, List.of(), null));
     }
 
     @Transactional
@@ -96,7 +97,8 @@ public class TableLayoutPreferenceService {
     public record PreferenceView(
             String app,
             String tableKey,
-            List<TableLayoutColumn> columns) {
+            List<TableLayoutColumn> columns,
+            Instant updatedAt) {
 
         public PreferenceView {
             columns = List.copyOf(columns);
@@ -106,7 +108,8 @@ public class TableLayoutPreferenceService {
             return new PreferenceView(
                     preference.getApp(),
                     preference.getTableKey(),
-                    preference.getColumns());
+                    preference.getColumns(),
+                    preference.getUpdatedAt());
         }
     }
 

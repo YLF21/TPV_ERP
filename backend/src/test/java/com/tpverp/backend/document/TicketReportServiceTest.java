@@ -135,6 +135,19 @@ class TicketReportServiceTest {
                 });
     }
 
+    @Test
+    void reportsPersistedMemberBalanceAppliedAtCheckout() {
+        var fixture = fixture(new BigDecimal("45.00"));
+        when(fixture.customers().findByCompanyIdAndIdIn(
+                eq(fixture.companyId()), anyCollection())).thenReturn(List.of());
+        when(fixture.memberBalanceResolution().amountFor(fixture.ticket()))
+                .thenReturn(new BigDecimal("5.00"));
+
+        assertThat(fixture.service().list(500, null).items()).singleElement()
+                .extracting(TicketReportView::saldoSocio)
+                .isEqualTo(new BigDecimal("5.00"));
+    }
+
     private static Fixture fixture(BigDecimal total) {
         var storeId = UUID.randomUUID();
         var companyId = UUID.randomUUID();
@@ -150,6 +163,8 @@ class TicketReportServiceTest {
         var relations = mock(DocumentRelationRepository.class);
         var refundTenders = mock(RefundTenderRepository.class);
         var invoiceRectifications = mock(SalesInvoiceRectificationRepository.class);
+        var memberBalances = mock(DocumentMemberBalanceResolver.class);
+        var memberBalanceResolution = mock(DocumentMemberBalanceResolver.Resolution.class);
 
         when(store.getId()).thenReturn(storeId);
         when(company.getId()).thenReturn(companyId);
@@ -165,6 +180,7 @@ class TicketReportServiceTest {
         when(ticket.getTotal()).thenReturn(total);
         when(ticket.getDescuentoGlobal()).thenReturn(BigDecimal.ZERO);
         when(ticket.getClienteId()).thenReturn(customerId);
+        when(ticket.getLineas()).thenReturn(List.of());
         when(ticket.getPagos()).thenReturn(List.of());
         when(ticket.getOperationalOccurredAt()).thenReturn(Instant.parse("2026-08-10T15:09:00Z"));
         when(documents.findReportDocuments(eq(storeId), anyCollection(), any(Pageable.class)))
@@ -178,13 +194,15 @@ class TicketReportServiceTest {
                 .thenReturn(List.of());
         when(refundTenders.findAllByRefundDocumentIds(eq(storeId), anyCollection()))
                 .thenReturn(List.of());
+        when(memberBalances.resolve(anyCollection())).thenReturn(memberBalanceResolution);
 
         var service = new TicketReportService(
                 documents, organization, customers, attributions, relations,
-                refundTenders, invoiceRectifications);
+                refundTenders, invoiceRectifications, memberBalances);
         return new Fixture(
                 service, ticket, ticketId, customerId, storeId, companyId,
-                customers, relations, refundTenders, invoiceRectifications);
+                customers, relations, refundTenders, invoiceRectifications,
+                memberBalanceResolution);
     }
 
     private static DocumentRelationRepository.RelatedDocument related(
@@ -220,6 +238,7 @@ class TicketReportServiceTest {
             CustomerRepository customers,
             DocumentRelationRepository relations,
             RefundTenderRepository refundTenders,
-            SalesInvoiceRectificationRepository invoiceRectifications) {
+            SalesInvoiceRectificationRepository invoiceRectifications,
+            DocumentMemberBalanceResolver.Resolution memberBalanceResolution) {
     }
 }
