@@ -33,6 +33,125 @@ import org.springframework.transaction.TransactionStatus;
 class TicketCancellationServiceTest {
 
     @Test
+    void rebuildsALegacyCancellationReceiptWithoutAnOperationRecord() {
+        var ticketId = UUID.randomUUID();
+        var storeId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var ticket = mock(CommercialDocument.class);
+        when(ticket.getEstado()).thenReturn(DocumentStatus.ANULADO);
+        when(ticket.getNumero()).thenReturn("T-LEGACY");
+        when(ticket.getConfirmadoEn()).thenReturn(Instant.parse("2026-07-18T13:06:00Z"));
+        when(ticket.getAnuladoEn()).thenReturn(Instant.parse("2026-07-31T10:00:00Z"));
+        when(ticket.getAnuladoPor()).thenReturn(userId);
+        when(ticket.getMotivoAnulacion()).thenReturn("Anulación importada");
+        when(ticket.getTotal()).thenReturn(new BigDecimal("6.05"));
+        when(ticket.getPagos()).thenReturn(List.of());
+
+        var documents = mock(DocumentService.class);
+        when(documents.findDetailed(ticketId)).thenReturn(ticket);
+        var operations = mock(TicketCancellationOperationRepository.class);
+        when(operations.findFirstByTicketIdAndStoreIdAndStatusOrderByCompletedAtDesc(
+                ticketId, storeId, TicketCancellationStatus.COMPLETED))
+                .thenReturn(Optional.empty());
+        var user = mock(UserAccount.class);
+        when(user.getUserName()).thenReturn("ADMIN");
+        var users = mock(UserAccountRepository.class);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        var renderer = mock(TicketCancellationJasperRenderer.class);
+        when(renderer.render(any(), any())).thenReturn(
+                new TicketCancellationJasperRenderer.RenderedCancellation(
+                        "%PDF legacy".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "PNG legacy".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        var store = mock(Store.class);
+        when(store.getId()).thenReturn(storeId);
+        var organization = mock(CurrentOrganization.class);
+        when(organization.currentStore()).thenReturn(store);
+        var transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any()))
+                .thenReturn(mock(TransactionStatus.class));
+        var service = new TicketCancellationService(
+                documents, mock(CommercialDocumentRepository.class), operations,
+                mock(VoucherEventRepository.class), mock(VoucherPrintService.class), renderer,
+                mock(SaleOperationSecurityService.class), users,
+                mock(PaymentTerminalOperationsService.class), organization,
+                mock(CurrentTerminal.class),
+                Clock.fixed(Instant.parse("2026-08-20T12:00:00Z"), ZoneOffset.UTC),
+                transactionManager);
+
+        var receipt = service.cancellationReceipt(ticketId);
+
+        assertThat(receipt.originalTicketNumber()).isEqualTo("T-LEGACY");
+        assertThat(receipt.reason()).isEqualTo("Anulación importada");
+        assertThat(receipt.operatorUsername()).isEqualTo("ADMIN");
+        assertThat(receipt.authorizerUsername()).isEqualTo("ADMIN");
+        assertThat(receipt.renderedPdf().contentType()).isEqualTo("application/pdf");
+        assertThat(receipt.operationId()).isEqualTo(UUID.nameUUIDFromBytes(
+                ("legacy-cancellation:" + ticketId)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void rebuildsTheCancellationReceiptForPrinting() {
+        var ticketId = UUID.randomUUID();
+        var storeId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var operationId = UUID.randomUUID();
+        var ticket = mock(CommercialDocument.class);
+        when(ticket.getEstado()).thenReturn(DocumentStatus.ANULADO);
+        when(ticket.getNumero()).thenReturn("T-ANULADO");
+        when(ticket.getConfirmadoEn()).thenReturn(Instant.parse("2026-08-20T10:00:00Z"));
+        when(ticket.getAnuladoEn()).thenReturn(Instant.parse("2026-08-20T10:05:00Z"));
+        when(ticket.getTotal()).thenReturn(new BigDecimal("6.05"));
+        when(ticket.getPagos()).thenReturn(List.of());
+
+        var operation = mock(TicketCancellationOperation.class);
+        when(operation.getId()).thenReturn(operationId);
+        when(operation.getReason()).thenReturn("Error de cobro");
+        when(operation.getOperatorUserId()).thenReturn(userId);
+        when(operation.getAuthorizerUserId()).thenReturn(userId);
+
+        var documents = mock(DocumentService.class);
+        when(documents.findDetailed(ticketId)).thenReturn(ticket);
+        var operations = mock(TicketCancellationOperationRepository.class);
+        when(operations.findFirstByTicketIdAndStoreIdAndStatusOrderByCompletedAtDesc(
+                ticketId, storeId, TicketCancellationStatus.COMPLETED))
+                .thenReturn(Optional.of(operation));
+        var user = mock(UserAccount.class);
+        when(user.getUserName()).thenReturn("ADMIN");
+        var users = mock(UserAccountRepository.class);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        var renderer = mock(TicketCancellationJasperRenderer.class);
+        when(renderer.render(any(), any())).thenReturn(
+                new TicketCancellationJasperRenderer.RenderedCancellation(
+                        "%PDF cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "PNG cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        var store = mock(Store.class);
+        when(store.getId()).thenReturn(storeId);
+        var organization = mock(CurrentOrganization.class);
+        when(organization.currentStore()).thenReturn(store);
+        var transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any()))
+                .thenReturn(mock(TransactionStatus.class));
+        var service = new TicketCancellationService(
+                documents, mock(CommercialDocumentRepository.class), operations,
+                mock(VoucherEventRepository.class), mock(VoucherPrintService.class), renderer,
+                mock(SaleOperationSecurityService.class), users,
+                mock(PaymentTerminalOperationsService.class), organization,
+                mock(CurrentTerminal.class),
+                Clock.fixed(Instant.parse("2026-08-20T12:00:00Z"), ZoneOffset.UTC),
+                transactionManager);
+
+        var receipt = service.cancellationReceipt(ticketId);
+
+        assertThat(receipt.originalTicketNumber()).isEqualTo("T-ANULADO");
+        assertThat(receipt.reason()).isEqualTo("Error de cobro");
+        assertThat(receipt.operatorUsername()).isEqualTo("ADMIN");
+        assertThat(receipt.renderedPdf().contentType()).isEqualTo("application/pdf");
+        verify(operations).findFirstByTicketIdAndStoreIdAndStatusOrderByCompletedAtDesc(
+                ticketId, storeId, TicketCancellationStatus.COMPLETED);
+    }
+
+    @Test
     void completedRetryRebuildsVoucherResultWithoutOpeningDrawerAgain() {
         var ticketId = UUID.randomUUID();
         var requestId = UUID.randomUUID();

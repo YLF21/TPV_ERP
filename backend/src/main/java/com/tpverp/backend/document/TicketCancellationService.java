@@ -20,12 +20,14 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -316,6 +318,54 @@ public class TicketCancellationService {
                 cancellationReceipt(ticket, operation));
     }
 
+    @Transactional(readOnly = true)
+    public CancellationReceipt cancellationReceipt(UUID ticketId) {
+        var ticket = documents.findDetailed(Objects.requireNonNull(ticketId, "ticketId"));
+        if (ticket.getEstado() != DocumentStatus.ANULADO) {
+            throw new IllegalArgumentException("ticket_cancellation_receipt_requires_cancelled_ticket");
+        }
+        var storeId = organization.currentStore().getId();
+        var operation = operations
+                .findFirstByTicketIdAndStoreIdAndStatusOrderByCompletedAtDesc(
+                        ticketId, storeId, TicketCancellationStatus.COMPLETED);
+        if (operation.isPresent()) {
+            return cancellationReceipt(ticket, operation.orElseThrow());
+        }
+        return legacyCancellationReceipt(ticketId, ticket);
+    }
+
+    private CancellationReceipt legacyCancellationReceipt(
+            UUID ticketId,
+            CommercialDocument ticket) {
+        var payments = ticket.getPagos().stream()
+                .sorted(java.util.Comparator.comparingInt(DocumentPayment::getPosicion))
+                .map(payment -> new CancellationReceiptPayment(
+                        payment.getMetodoPago().getNombre(),
+                        payment.getImporte(),
+                        firstText(
+                                payment.getReferencia(),
+                                payment.getCardAuthorizationCode(),
+                                payment.getVoucherCode())))
+                .toList();
+        var cancellationUserId = ticket.getAnuladoPor();
+        var cancellationUsername = cancellationUserId == null
+                ? "No disponible" : username(cancellationUserId);
+        var receipt = new CancellationReceipt(
+                UUID.nameUUIDFromBytes(("legacy-cancellation:" + ticketId)
+                        .getBytes(StandardCharsets.UTF_8)),
+                ticket.getNumero(),
+                ticket.getConfirmadoEn() == null
+                        ? ticket.getCreadoEn() : ticket.getConfirmadoEn(),
+                ticket.getAnuladoEn(),
+                ticket.getTotal(),
+                firstText(ticket.getMotivoAnulacion(), "Anulación histórica"),
+                cancellationUsername,
+                cancellationUsername,
+                false,
+                payments);
+        return renderCancellationReceipt(receipt);
+    }
+
     private CancellationReceipt cancellationReceipt(
             CommercialDocument ticket,
             TicketCancellationOperation operation) {
@@ -343,6 +393,10 @@ public class TicketCancellationService {
                 username(operation.getAuthorizerUserId()),
                 !operation.getOperatorUserId().equals(operation.getAuthorizerUserId()),
                 payments);
+        return renderCancellationReceipt(receipt);
+    }
+
+    private CancellationReceipt renderCancellationReceipt(CancellationReceipt receipt) {
         if (cancellationPrinting == null) return receipt;
         try {
             var rendered = cancellationPrinting.render(
@@ -350,7 +404,7 @@ public class TicketCancellationService {
             return receipt.withRenderedDocument(rendered.pdf(), rendered.png());
         } catch (RuntimeException failure) {
             LOGGER.warn("Could not render cancellation receipt {} with Jasper",
-                    operation.getId(), failure);
+                    receipt.operationId(), failure);
             return receipt;
         }
     }

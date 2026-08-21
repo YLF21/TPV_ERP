@@ -32,6 +32,12 @@ public interface TicketCancellationOperationRepository
     Optional<TicketCancellationOperation> findActiveByTicketId(
             @Param("ticketId") UUID ticketId);
 
+    Optional<TicketCancellationOperation>
+            findFirstByTicketIdAndStoreIdAndStatusOrderByCompletedAtDesc(
+                    UUID ticketId,
+                    UUID storeId,
+                    TicketCancellationStatus status);
+
     default boolean hasActiveCancellation(UUID ticketId) {
         return findActiveByTicketId(ticketId).isPresent();
     }

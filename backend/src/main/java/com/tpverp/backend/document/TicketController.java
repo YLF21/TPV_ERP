@@ -83,6 +83,13 @@ public class TicketController {
         return service.loadRenderedTicketPrintView(id);
     }
 
+    @GetMapping("/{id}/cancellation-receipt")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
+    public TicketCancellationService.CancellationReceipt cancellationReceipt(
+            @PathVariable UUID id) {
+        return cancellations.cancellationReceipt(id);
+    }
+
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public ResponseEntity<byte[]> pdf(

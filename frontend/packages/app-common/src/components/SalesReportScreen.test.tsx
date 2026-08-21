@@ -239,8 +239,9 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    const convertButton = screen.getByRole("button", { name: "Convertir ticket a factura" });
     const cancelButton = screen.getByRole("button", { name: "Anular ticket" });
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
+    const convertButton = screen.getByRole("menuitem", { name: "Convertir ticket a factura" });
     expect(convertButton).toBeDisabled();
     expect(cancelButton).toBeDisabled();
     await waitFor(() => expect(container.querySelector("tbody tr")).not.toBeNull());
@@ -903,7 +904,10 @@ describe("SalesReportScreen", () => {
     expect(html).toContain('class="report-total-row"');
     expect(html).toContain(`class="report-table" data-report-key="${reportKey}"`);
     expect(html).toContain('style="width:100%;min-width:');
-    expect(html).toContain("Vistas");
+    expect(html).toContain("Más acciones");
+    expect(html).toContain('aria-keyshortcuts="F5"');
+    expect(html).toContain('aria-keyshortcuts="F6"');
+    expect(html).toContain('aria-keyshortcuts="F7"');
   });
 
   it("loads the next report page automatically without a load-more button", async () => {
@@ -1366,50 +1370,36 @@ describe("SalesReportScreen", () => {
     });
   });
 
-  it("closes the print actions before opening the browser print dialog", async () => {
+  it("exposes direct F5/F6/F7 actions and disables F5 without a selected document", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
       if (path === "/tickets") return Promise.resolve([]);
       if (path.startsWith("/warehouse-outputs")) return Promise.resolve([]);
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
-    const previousDesktop = window.tpvDesktop;
-    window.tpvDesktop = undefined;
-    localStorage.clear();
-    const printSpy = vi.spyOn(window, "print").mockImplementation(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{
+          username: "warehouse",
+          displayName: "ALMACÉN",
+          permissions: ["GESTION_ALMACEN"],
+          accessToken: "token"
+        }}
+        terminalContext={terminalContext}
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        initialReport="salesReport.warehouseOutputs"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
 
-    try {
-      render(
-        <SalesReportScreen
-          app="venta"
-          locale="es"
-          session={{
-            username: "warehouse",
-            displayName: "ALMACÉN",
-            permissions: ["GESTION_ALMACEN"],
-            accessToken: "token"
-          }}
-          terminalContext={terminalContext}
-          request={request}
-          initialReport="salesReport.warehouseOutputs"
-          onBack={vi.fn()}
-          onLocaleChange={vi.fn()}
-        />
-      );
-
-      await screen.findByRole("heading", { name: "Salida almacén" });
-      fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
-      expect(screen.getByRole("menu")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("menuitem", { name: "Imprimir PDF" }));
-
-      expect(printSpy).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    } finally {
-      printSpy.mockRestore();
-      window.tpvDesktop = previousDesktop;
-      localStorage.clear();
-    }
+    await screen.findByRole("heading", { name: "Salida almacén" });
+    expect(screen.getByRole("button", { name: "Imprimir" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute("aria-keyshortcuts", "F6");
+    expect(screen.getByRole("button", { name: "PDF" })).toHaveAttribute("aria-keyshortcuts", "F7");
+    expect(screen.queryByText("F5: selecciona una fila · F6/F7: líneas visibles")).not.toBeInTheDocument();
   });
 
   it("does not select the first warehouse row automatically and opens its lines on double click", async () => {
@@ -1604,13 +1594,15 @@ describe("SalesReportScreen", () => {
           lines: [{ name: "Producto del albarán", quantity: 2, unitPrice: 25, total: 60.5 }],
           baseTotal: 50,
           taxTotal: 10.5,
-          total: 60.5
+          total: 60.5,
+          renderedPdf: { contentType: "application/pdf", base64: window.btoa("jasper-pdf") }
         });
       }
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
     const previewWindow = {
       opener: window,
+      location: { replace: vi.fn() },
       document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
       setTimeout: vi.fn((callback: () => void) => callback()),
       focus: vi.fn(),
@@ -1618,6 +1610,7 @@ describe("SalesReportScreen", () => {
       close: vi.fn()
     };
     vi.spyOn(window, "open").mockReturnValue(previewWindow as unknown as Window);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:jasper-copy");
 
     const { container } = render(
       <SalesReportScreen
@@ -1643,8 +1636,10 @@ describe("SalesReportScreen", () => {
     expect(request).toHaveBeenCalledWith("/documents/delivery-1/detail", { token: "token" });
     fireEvent.click(screen.getByRole("button", { name: "Imprimir copia" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/documents/delivery-1/print-copy", { token: "token" }));
-    expect(previewWindow.document.write).toHaveBeenCalledWith(expect.stringContaining("AV-001"));
-    expect(previewWindow.print).toHaveBeenCalledOnce();
+    expect(createObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
+    expect(previewWindow.location.replace).toHaveBeenCalledWith("blob:jasper-copy");
+    expect(previewWindow.document.write).not.toHaveBeenCalled();
+    expect(previewWindow.print).not.toHaveBeenCalled();
 
     const saveFile = vi.fn().mockResolvedValue({ ok: true });
     Object.defineProperty(window, "tpvDesktop", {
@@ -1663,7 +1658,126 @@ describe("SalesReportScreen", () => {
       defaultFileName: "AV-001.xlsx"
     })));
     fetchSpy.mockRestore();
+    createObjectUrl.mockRestore();
     Reflect.deleteProperty(window, "tpvDesktop");
+  });
+
+  it("prints a cancelled ticket using its Jasper cancellation receipt", async () => {
+    const today = new Date();
+    const todayIso = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
+    ].join("-");
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/warehouses") return Promise.resolve([]);
+      if (path.startsWith("/document-reports/tickets")) {
+        return Promise.resolve({ items: [{
+          id: "cancelled-ticket-1",
+          tipo: "TICKET",
+          estado: "ANULADO",
+          numero: "T-CANCELLED",
+          numTicket: "T-CANCELLED",
+          fecha: todayIso,
+          confirmadoEn: `${todayIso}T10:00:00Z`,
+          total: "6.05",
+          effectiveTotal: "0.00",
+          lifecycleStatus: "CANCELLED",
+          payments: [{ method: "EFECTIVO", amount: "6.05" }]
+        }], nextCursor: null, hasMore: false });
+      }
+      if (path === "/documents/cancelled-ticket-1/detail") {
+        return Promise.resolve({
+          id: "cancelled-ticket-1",
+          type: "TICKET",
+          status: "ANULADO",
+          number: "T-CANCELLED",
+          date: todayIso,
+          base: "5.00",
+          tax: "1.05",
+          discount: "0.00",
+          total: "6.05",
+          lines: [{
+            id: "line-1",
+            position: 1,
+            code: "P-001",
+            name: "Producto anulado",
+            quantity: "1.000",
+            unitPrice: "5.00",
+            discount: "0.00",
+            taxRegime: "IVA",
+            taxPercentage: "21.00",
+            total: "6.05"
+          }]
+        });
+      }
+      if (path === "/tickets/cancelled-ticket-1/cancellation-receipt") {
+        return Promise.resolve({
+          operationId: "operation-1",
+          originalTicketNumber: "T-CANCELLED",
+          originalIssuedAt: `${todayIso}T10:00:00Z`,
+          cancelledAt: `${todayIso}T10:05:00Z`,
+          total: "6.05",
+          reason: "Error de cobro",
+          operatorUsername: "ADMIN",
+          authorizerUsername: "ADMIN",
+          delegated: false,
+          payments: [{ method: "EFECTIVO", amount: "6.05" }],
+          renderedPdf: { contentType: "application/pdf", base64: window.btoa("cancellation-pdf") },
+          ticketRenderedImage: { contentType: "image/png", base64: window.btoa("cancellation-png") }
+        });
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+    const previewWindow = {
+      opener: window,
+      location: { replace: vi.fn() },
+      document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
+      setTimeout: vi.fn((callback: () => void) => callback()),
+      focus: vi.fn(),
+      print: vi.fn(),
+      close: vi.fn()
+    };
+    vi.spyOn(window, "open").mockReturnValue(previewWindow as unknown as Window);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:cancellation-receipt");
+
+    const { container } = render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        initialReport="salesReport.tickets"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-reports/tickets?limit=500",
+      { token: "token" }
+    ));
+    await waitFor(() => expect(screen.getAllByText("Líneas visibles: 1")).not.toHaveLength(0));
+    const cancelledTicketRow = container.querySelector<HTMLTableRowElement>(
+      'table[data-report-key="salesReport.tickets"] tbody tr'
+    );
+    expect(cancelledTicketRow).not.toBeNull();
+    fireEvent.click(cancelledTicketRow!);
+    const printSelectedButton = screen.getByRole("button", { name: "Imprimir" });
+    expect(printSelectedButton).toBeEnabled();
+    fireEvent.click(printSelectedButton);
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/tickets/cancelled-ticket-1/cancellation-receipt",
+      { token: "token" }
+    ));
+    expect(createObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
+    expect(previewWindow.location.replace).toHaveBeenCalledWith("blob:cancellation-receipt");
+    expect(request).not.toHaveBeenCalledWith("/tickets/cancelled-ticket-1/print", expect.anything());
+    createObjectUrl.mockRestore();
   });
 
   it("opens the original ticket from an invoice converted from that ticket", async () => {

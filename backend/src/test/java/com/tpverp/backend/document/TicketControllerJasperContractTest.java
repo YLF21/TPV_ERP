@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TicketController.class)
@@ -82,5 +83,29 @@ class TicketControllerJasperContractTest {
                 .andExpect(status().isOk());
 
         verify(jasperRenderer).render(ticket, TicketJasperRenderer.Template.COMPACTA);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void returnsTheRenderedCancellationReceiptForACancelledTicket() throws Exception {
+        UUID id = UUID.randomUUID();
+        var receipt = new TicketCancellationService.CancellationReceipt(
+                UUID.randomUUID(), "T-ANULADO", java.time.Instant.parse("2026-08-20T10:00:00Z"),
+                java.time.Instant.parse("2026-08-20T10:05:00Z"),
+                new java.math.BigDecimal("6.05"), "Error de cobro", "ADMIN", "ADMIN",
+                false, java.util.List.of(),
+                new TicketCancellationService.RenderedContent(
+                        "application/pdf", "JVBERi0="),
+                new TicketCancellationService.RenderedContent(
+                        "image/png", "iVBORw0="));
+        when(cancellations.cancellationReceipt(id)).thenReturn(receipt);
+
+        mvc.perform(get("/api/v1/tickets/{id}/cancellation-receipt", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.originalTicketNumber").value("T-ANULADO"))
+                .andExpect(jsonPath("$.renderedPdf.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.ticketRenderedImage.contentType").value("image/png"));
+
+        verify(cancellations).cancellationReceipt(id);
     }
 }
