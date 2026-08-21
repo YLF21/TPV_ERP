@@ -28,4 +28,38 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
          @Param("originalPaymentIds") Collection<UUID> originalPaymentIds);
  java.util.List<SalePaymentSession> findTop100ByTicketIdIsNotNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc();
  java.util.List<SalePaymentSession> findTop100ByStatusAndTicketIdIsNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc(SalePaymentSessionStatus status);
+
+ @Query("""
+         select session.ticketId as ticketId,
+                session.ticketNumber as ticketNumber,
+                session.memberBalanceAppliedAmount as amount
+           from SalePaymentSession session
+          where session.storeId = :storeId
+            and session.status = com.tpverp.backend.document.SalePaymentSessionStatus.FINALIZED
+            and session.memberBalanceAppliedAmount is not null
+            and session.ticketId in :ticketIds
+         """)
+ List<MemberBalanceReportTotal> findFinalizedMemberBalanceTotalsByTicketIds(
+         @Param("storeId") UUID storeId,
+         @Param("ticketIds") Collection<UUID> ticketIds);
+
+ @Query("""
+         select session.ticketId as ticketId,
+                session.ticketNumber as ticketNumber,
+                session.memberBalanceAppliedAmount as amount
+           from SalePaymentSession session
+          where session.storeId = :storeId
+            and session.status = com.tpverp.backend.document.SalePaymentSessionStatus.FINALIZED
+            and session.memberBalanceAppliedAmount is not null
+            and session.ticketNumber in :ticketNumbers
+         """)
+ List<MemberBalanceReportTotal> findFinalizedMemberBalanceTotalsByTicketNumbers(
+         @Param("storeId") UUID storeId,
+         @Param("ticketNumbers") Collection<String> ticketNumbers);
+
+ interface MemberBalanceReportTotal {
+  UUID getTicketId();
+  String getTicketNumber();
+  java.math.BigDecimal getAmount();
+ }
 }

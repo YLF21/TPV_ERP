@@ -51,8 +51,9 @@ class TableLayoutPreferenceServiceTest {
         var missing = fixture.service().get("gestion", "products.offers", authentication());
 
         assertThat(existing.columns()).isNotEmpty();
+        assertThat(existing.updatedAt()).isEqualTo(NOW);
         assertThat(missing).isEqualTo(new TableLayoutPreferenceService.PreferenceView(
-                "gestion", "products.offers", List.of()));
+                "gestion", "products.offers", List.of(), null));
     }
 
     @Test
@@ -79,6 +80,7 @@ class TableLayoutPreferenceServiceTest {
         assertThat(captor.getValue().getTableKey()).isEqualTo("stock.current");
         assertThat(result.columns())
                 .containsExactly(new TableLayoutColumn("name", 220, true));
+        assertThat(result.updatedAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -102,6 +104,7 @@ class TableLayoutPreferenceServiceTest {
         verify(fixture.preferences()).save(existing);
         assertThat(result.columns())
                 .containsExactly(new TableLayoutColumn("code", 90, false));
+        assertThat(result.updatedAt()).isEqualTo(NOW);
     }
 
     @Test

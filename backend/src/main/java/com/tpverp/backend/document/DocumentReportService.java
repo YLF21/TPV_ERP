@@ -48,6 +48,7 @@ public class DocumentReportService {
     private final WarehouseRepository warehouses;
     private final DocumentAttributionResolver attributions;
     private final RefundTenderRepository refundTenders;
+    private final DocumentMemberBalanceResolver memberBalances;
 
     public DocumentReportService(
             CommercialDocumentRepository documents,
@@ -56,7 +57,8 @@ public class DocumentReportService {
             SupplierRepository suppliers,
             WarehouseRepository warehouses,
             DocumentAttributionResolver attributions,
-            RefundTenderRepository refundTenders) {
+            RefundTenderRepository refundTenders,
+            DocumentMemberBalanceResolver memberBalances) {
         this.documents = documents;
         this.organization = organization;
         this.customers = customers;
@@ -64,6 +66,7 @@ public class DocumentReportService {
         this.warehouses = warehouses;
         this.attributions = attributions;
         this.refundTenders = refundTenders;
+        this.memberBalances = memberBalances;
     }
 
     @Transactional(readOnly = true)
@@ -172,6 +175,7 @@ public class DocumentReportService {
                         com.tpverp.backend.catalog.Warehouse::getName));
         var attributionIndex = attributions.resolve(pageValues);
         var refundTotalIndex = refundTotals(store.getId(), pageValues);
+        var memberBalanceIndex = memberBalances.resolve(pageValues);
 
         var items = pageValues.stream()
                 .map(document -> DocumentReportView.from(
@@ -180,7 +184,8 @@ public class DocumentReportService {
                         supplierIndex.get(document.getProveedorId()),
                         warehouseIndex.get(document.getAlmacenId()),
                         attributionIndex.get(document.getId()),
-                        refundTotalIndex.getOrDefault(document.getId(), BigDecimal.ZERO)))
+                        refundTotalIndex.getOrDefault(document.getId(), BigDecimal.ZERO),
+                        memberBalanceIndex.amountFor(document)))
                 .toList();
         return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }

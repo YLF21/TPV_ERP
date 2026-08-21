@@ -35,6 +35,7 @@ public class TicketReportService {
     private final DocumentRelationRepository relations;
     private final RefundTenderRepository refundTenders;
     private final SalesInvoiceRectificationRepository invoiceRectifications;
+    private final DocumentMemberBalanceResolver memberBalances;
 
     public TicketReportService(
             CommercialDocumentRepository documents,
@@ -43,7 +44,8 @@ public class TicketReportService {
             DocumentAttributionResolver attributions,
             DocumentRelationRepository relations,
             RefundTenderRepository refundTenders,
-            SalesInvoiceRectificationRepository invoiceRectifications) {
+            SalesInvoiceRectificationRepository invoiceRectifications,
+            DocumentMemberBalanceResolver memberBalances) {
         this.documents = documents;
         this.organization = organization;
         this.customers = customers;
@@ -51,6 +53,7 @@ public class TicketReportService {
         this.relations = relations;
         this.refundTenders = refundTenders;
         this.invoiceRectifications = invoiceRectifications;
+        this.memberBalances = memberBalances;
     }
 
     @Transactional(readOnly = true)
@@ -78,6 +81,7 @@ public class TicketReportService {
                 store.getId(), ticketIds, invoiceIndex.values());
         var metadataIndex = rectificationMetadataIndex(rectificationIndex.values());
         var refundMethodIndex = refundMethodIndex(store.getId(), ticketIds);
+        var memberBalanceResolution = memberBalances.resolve(pageValues);
 
         var items = pageValues.stream().map(ticket -> {
             var customer = customerIndex.get(ticket.getClienteId());
@@ -90,7 +94,9 @@ public class TicketReportService {
                     ticket.getId(), ticket.getTipo(), ticket.getEstado(), ticket.getNumero(),
                     ticket.getFecha(), ticket.getBaseTotal(), ticket.getImpuestoTotal(),
                     ticket.getTotal(), lifecycle.effectiveTotal(),
-                    ticket.getDescuentoGlobal(), ticket.getClienteId(),
+                    ticket.getDescuentoGlobal(), memberBalanceTotal(
+                            ticket, memberBalanceResolution.amountFor(ticket)),
+                    ticket.getClienteId(),
                     customer == null ? "" : customer.getClientId(),
                     customer == null ? "" : Objects.toString(customer.getFiscalName(), ""),
                     attribution.userId(), attribution.userName(),
@@ -104,6 +110,14 @@ public class TicketReportService {
         return new PagedResult<>(items,
                 hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null,
                 hasMore);
+    }
+
+    private static BigDecimal memberBalanceTotal(
+            CommercialDocument ticket, BigDecimal appliedMemberBalance) {
+        if (appliedMemberBalance != null) {
+            return Money.euros(appliedMemberBalance).abs();
+        }
+        return DocumentLineTotals.memberBalanceTotal(ticket.getLineas());
     }
 
     private Map<UUID, Customer> customerIndex(Collection<CommercialDocument> values) {

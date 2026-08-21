@@ -61,12 +61,21 @@ public record DocumentView(
             String customerName,
             String qrUrl,
             DocumentAttributionResolver.Attribution attribution) {
+        return from(document, customerName, qrUrl, attribution, null);
+    }
+
+    static DocumentView from(
+            CommercialDocument document,
+            String customerName,
+            String qrUrl,
+            DocumentAttributionResolver.Attribution attribution,
+            BigDecimal appliedMemberBalance) {
         return new DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
                 document.getNumero(), document.getFecha(), document.getClienteId(), customerName,
                 document.getDueDate(), document.getBaseTotal(),
                 document.getImpuestoTotal(), document.getTotal(),
-                DocumentLineTotals.memberBalanceTotal(document.getLineas()),
+                memberBalanceTotal(document, appliedMemberBalance),
                 document.getPaidTotal(),
                 document.getPendingTotal(),
                 document.getNumTicket(), qrUrl, document.isOrigenStock(),
@@ -77,6 +86,14 @@ public record DocumentView(
                         .map(PaymentView::from)
                         .toList(),
                 document.getComentarioInterno());
+    }
+
+    private static BigDecimal memberBalanceTotal(
+            CommercialDocument document, BigDecimal appliedMemberBalance) {
+        if (appliedMemberBalance != null) {
+            return Money.euros(appliedMemberBalance).abs();
+        }
+        return DocumentLineTotals.memberBalanceTotal(document.getLineas());
     }
 
     public record PaymentView(

@@ -3,6 +3,7 @@ import type { AppKind } from "../types";
 import {
   loadTablePreference,
   moveTableColumnByKeyboard,
+  readStoredTablePreference,
   readStoredTableLayout,
   reorderTableColumns,
   resizeTableColumn,
@@ -46,6 +47,8 @@ type LayoutState<Key extends string> = {
   revision: number;
 };
 
+const tablePreferenceSaveQueues = new Map<string, Promise<void>>();
+
 function definitionsSignature<Key extends string>(
   definitions: readonly TableColumnDefinition<Key>[]
 ): string {
@@ -86,13 +89,83 @@ export function useTableLayoutPreference<Key extends string = string>({
   stateRef.current = state;
   const [ready, setReady] = useState(!accessToken);
   const lastSavedRevisionRef = useRef(0);
+  const enqueueSave = useCallback((
+    revision: number,
+    columns: TableLayout<Key>
+  ) => {
+    if (!accessToken) {
+      return;
+    }
+    const token = accessToken;
+    const queuedSave = (tablePreferenceSaveQueues.get(identity) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => saveTablePreference(app, tableKey, columns, token))
+      .then((savedPreference) => {
+        if (stateRef.current.identity === identity) {
+          if (
+            stateRef.current.revision === revision
+            && savedPreference.updatedAt
+          ) {
+            writeStoredTableLayout(
+              app,
+              username,
+              tableKey,
+              columns,
+              storage,
+              savedPreference.updatedAt
+            );
+          }
+          lastSavedRevisionRef.current = Math.max(lastSavedRevisionRef.current, revision);
+        }
+      })
+      .catch(() => {
+        // The latest layout remains durable in local storage and a newer
+        // queued revision can still be persisted after this failure.
+      });
+    tablePreferenceSaveQueues.set(identity, queuedSave);
+    void queuedSave.then(() => {
+      if (tablePreferenceSaveQueues.get(identity) === queuedSave) {
+        tablePreferenceSaveQueues.delete(identity);
+      }
+    });
+  }, [accessToken, app, identity, storage, tableKey, username]);
+
+  const flushPendingSave = useCallback(() => {
+    const pending = stateRef.current;
+    if (
+      pending.identity === identity
+      && pending.revision > lastSavedRevisionRef.current
+    ) {
+      enqueueSave(pending.revision, pending.layout);
+    }
+  }, [enqueueSave, identity]);
 
   useEffect(() => {
     let active = true;
     const currentDefinitions = definitionsRef.current;
+    const storedPreference = readStoredTablePreference(
+      app,
+      username,
+      tableKey,
+      currentDefinitions,
+      storage
+    );
+    const localUpdatedAt = storedPreference.legacy
+      ? new Date().toISOString()
+      : storedPreference.updatedAt;
+    if (storedPreference.legacy && localUpdatedAt) {
+      writeStoredTableLayout(
+        app,
+        username,
+        tableKey,
+        storedPreference.layout,
+        storage,
+        localUpdatedAt
+      );
+    }
     const localState: LayoutState<Key> = {
       identity,
-      layout: readStoredTableLayout(app, username, tableKey, currentDefinitions, storage),
+      layout: storedPreference.layout,
       revision: 0
     };
 
@@ -104,19 +177,42 @@ export function useTableLayoutPreference<Key extends string = string>({
       setReady(true);
       return () => {
         active = false;
+        flushPendingSave();
       };
     }
 
     setReady(false);
-    void loadTablePreference<Key>(app, tableKey, accessToken)
+    const pendingSaves = tablePreferenceSaveQueues.get(identity) ?? Promise.resolve();
+    void pendingSaves
+      .then(() => {
+        if (!active) {
+          return undefined;
+        }
+        return loadTablePreference<Key>(app, tableKey, accessToken);
+      })
       .then((preference) => {
         if (
+          !preference
+          ||
           !active
           || preference.app !== app
           || preference.tableKey !== tableKey
           || stateRef.current.identity !== identity
           || stateRef.current.revision !== 0
         ) {
+          return;
+        }
+        const backendUpdatedAt = preference.updatedAt
+          && Number.isFinite(Date.parse(preference.updatedAt))
+          ? preference.updatedAt
+          : undefined;
+        const localIsNewer = storedPreference.exists && (
+          storedPreference.legacy
+          || !backendUpdatedAt
+          || Boolean(localUpdatedAt && Date.parse(localUpdatedAt) > Date.parse(backendUpdatedAt))
+        );
+        if (localIsNewer) {
+          enqueueSave(0, localState.layout);
           return;
         }
         const backendState: LayoutState<Key> = {
@@ -126,7 +222,14 @@ export function useTableLayoutPreference<Key extends string = string>({
         };
         stateRef.current = backendState;
         setState(backendState);
-        writeStoredTableLayout(app, username, tableKey, backendState.layout, storage);
+        writeStoredTableLayout(
+          app,
+          username,
+          tableKey,
+          backendState.layout,
+          storage,
+          backendUpdatedAt
+        );
       })
       .catch(() => {
         // The synchronously loaded local preference remains authoritative offline.
@@ -139,14 +242,9 @@ export function useTableLayoutPreference<Key extends string = string>({
 
     return () => {
       active = false;
+      flushPendingSave();
     };
-  }, [accessToken, app, identity, signature, storage, tableKey, username]);
-
-  useEffect(() => {
-    if (state.identity === identity && state.revision > 0) {
-      writeStoredTableLayout(app, username, tableKey, state.layout, storage);
-    }
-  }, [app, identity, state, storage, tableKey, username]);
+  }, [accessToken, app, flushPendingSave, identity, signature, storage, tableKey, username]);
 
   useEffect(() => {
     if (
@@ -162,19 +260,11 @@ export function useTableLayoutPreference<Key extends string = string>({
     const revision = state.revision;
     const columns = state.layout;
     const timeout = globalThis.setTimeout(() => {
-      void saveTablePreference(app, tableKey, columns, accessToken)
-        .then(() => {
-          if (stateRef.current.identity === identity) {
-            lastSavedRevisionRef.current = Math.max(lastSavedRevisionRef.current, revision);
-          }
-        })
-        .catch(() => {
-          // The latest layout is still durable in local storage and can be retried after another change.
-        });
+      enqueueSave(revision, columns);
     }, saveDelay(debounceMs));
 
     return () => globalThis.clearTimeout(timeout);
-  }, [accessToken, app, debounceMs, identity, ready, state, tableKey]);
+  }, [accessToken, debounceMs, enqueueSave, identity, ready, state]);
 
   const updateLayout = useCallback((
     update: (layout: TableLayout<Key>) => TableLayout<Key>
@@ -193,8 +283,9 @@ export function useTableLayoutPreference<Key extends string = string>({
       revision: current.revision + 1
     };
     stateRef.current = nextState;
+    writeStoredTableLayout(app, username, tableKey, nextLayout, storage);
     setState(nextState);
-  }, [identity]);
+  }, [app, identity, storage, tableKey, username]);
 
   const reorderColumns = useCallback((draggedKey: Key, targetKey: Key) => {
     updateLayout((layout) => reorderTableColumns(layout, draggedKey, targetKey));

@@ -32,6 +32,7 @@ export type TablePreference<Key extends string = string> = {
 
 export type TablePreferenceResponse<Key extends string = string> = TablePreference<Key> & {
   app: AppKind;
+  updatedAt?: string | null;
 };
 
 export type TablePreferencesResponse<Key extends string = string> = {
@@ -40,6 +41,13 @@ export type TablePreferencesResponse<Key extends string = string> = {
 };
 
 export type TableColumnMoveDirection = -1 | 1;
+
+export type StoredTablePreference<Key extends string = string> = {
+  layout: TableLayout<Key>;
+  updatedAt?: string;
+  exists: boolean;
+  legacy: boolean;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -238,6 +246,13 @@ function availableStorage(storage?: Storage): Storage | undefined {
   }
 }
 
+function validUpdatedAt(value: unknown): string | undefined {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+    return undefined;
+  }
+  return value;
+}
+
 export function tableLayoutStorageKey(app: AppKind, username: string, tableKey: string): string {
   const normalizedUsername = username.trim().toLowerCase();
   return `tpv-erp:${encodeURIComponent(app)}:user:${encodeURIComponent(normalizedUsername)}:table:${encodeURIComponent(tableKey.trim())}:layout`;
@@ -250,11 +265,52 @@ export function readStoredTableLayout<Key extends string>(
   definitions: readonly TableColumnDefinition<Key>[],
   storage?: Storage
 ): TableLayout<Key> {
+  return readStoredTablePreference(app, username, tableKey, definitions, storage).layout;
+}
+
+export function readStoredTablePreference<Key extends string>(
+  app: AppKind,
+  username: string,
+  tableKey: string,
+  definitions: readonly TableColumnDefinition<Key>[],
+  storage?: Storage
+): StoredTablePreference<Key> {
   try {
     const raw = availableStorage(storage)?.getItem(tableLayoutStorageKey(app, username, tableKey));
-    return raw ? sanitizeSavedTableLayout(JSON.parse(raw), definitions) : createDefaultTableLayout(definitions);
+    if (!raw) {
+      return {
+        layout: createDefaultTableLayout(definitions),
+        exists: false,
+        legacy: false
+      };
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return {
+        layout: sanitizeSavedTableLayout(parsed, definitions),
+        exists: true,
+        legacy: true
+      };
+    }
+    if (isRecord(parsed) && Array.isArray(parsed.columns)) {
+      return {
+        layout: sanitizeSavedTableLayout(parsed.columns, definitions),
+        updatedAt: validUpdatedAt(parsed.updatedAt),
+        exists: true,
+        legacy: false
+      };
+    }
+    return {
+      layout: createDefaultTableLayout(definitions),
+      exists: false,
+      legacy: false
+    };
   } catch {
-    return createDefaultTableLayout(definitions);
+    return {
+      layout: createDefaultTableLayout(definitions),
+      exists: false,
+      legacy: false
+    };
   }
 }
 
@@ -263,12 +319,13 @@ export function writeStoredTableLayout(
   username: string,
   tableKey: string,
   layout: TableLayout,
-  storage?: Storage
+  storage?: Storage,
+  updatedAt = new Date().toISOString()
 ): void {
   try {
     availableStorage(storage)?.setItem(
       tableLayoutStorageKey(app, username, tableKey),
-      JSON.stringify(layout)
+      JSON.stringify({ columns: layout, updatedAt })
     );
   } catch {
     // The in-memory layout remains usable when browser storage is unavailable.

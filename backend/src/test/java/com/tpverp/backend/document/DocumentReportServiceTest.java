@@ -35,6 +35,7 @@ class DocumentReportServiceTest {
         var warehouses = mock(WarehouseRepository.class);
         var attributions = mock(DocumentAttributionResolver.class);
         var refundTenders = mock(RefundTenderRepository.class);
+        var memberBalances = mock(DocumentMemberBalanceResolver.class);
         var refundTotal = mock(RefundTenderRepository.RefundDocumentTotal.class);
 
         when(store.getId()).thenReturn(storeId);
@@ -52,6 +53,8 @@ class DocumentReportServiceTest {
         when(suppliers.findAllById(any())).thenReturn(List.of());
         when(warehouses.findAllById(any())).thenReturn(List.of());
         when(attributions.resolve(anyCollection())).thenReturn(Map.of());
+        when(memberBalances.resolve(anyCollection()))
+                .thenReturn(DocumentMemberBalanceResolver.Resolution.empty());
         when(refundTotal.getRefundDocumentId()).thenReturn(documentId);
         when(refundTotal.getTotalAmount()).thenReturn(new BigDecimal("1000000.00"));
         when(refundTenders.sumByRefundDocumentIds(eq(storeId), anyCollection()))
@@ -59,7 +62,7 @@ class DocumentReportServiceTest {
 
         var service = new DocumentReportService(
                 documents, organization, customers, suppliers, warehouses,
-                attributions, refundTenders);
+                attributions, refundTenders, memberBalances);
 
         var result = service.listInvoices(500, null, true, false);
 
