@@ -1442,7 +1442,7 @@ export class MessagesZh {
     "salesReport.daily.pending": "未付",
     "salesReport.daily.noPayments": "所选日期没有收款",
     "salesReport.daily.noUserData": "所选日期没有用户收款",
-    "salesReport.payment.pending": "未付", "salesReport.payment.returnCredit": "退货余额",
+    "salesReport.payment.pending": "未付", "salesReport.payment.memberBalance": "会员余额", "salesReport.payment.returnCredit": "退货余额",
     "EFECTIVO": "现金",
     "TARJETA": "银行卡",
     "TRANSFERENCIA": "转账",

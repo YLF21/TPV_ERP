@@ -657,6 +657,68 @@ describe("SalesReportScreen", () => {
     expect(report?.rows[4]).toEqual(expect.objectContaining({ payment: "—" }));
   });
 
+  it("distinguishes member balance from return credit in ticket reports", () => {
+    const reports = buildDocumentReports(
+      [{
+        id: "ticket-member-balance",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "T-SALDO-1",
+        fecha: "2026-08-21",
+        total: "45.00",
+        saldoSocio: "5.00",
+        paymentMethods: ["SALDO_MIEMBRO"]
+      }, {
+        id: "ticket-member-balance-internal",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "T-SALDO-2",
+        fecha: "2026-08-21",
+        total: "30.00",
+        paymentMethods: ["MEMBER_BALANCE"]
+      }, {
+        id: "ticket-return-credit",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "T-ABONO-1",
+        fecha: "2026-08-21",
+        total: "-20.00",
+        refundMethods: ["CREDITO_DEVOLUCION"]
+      }, {
+        id: "ticket-return-credit-internal",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "T-ABONO-2",
+        fecha: "2026-08-21",
+        total: "-10.00",
+        refundMethods: ["MEMBER_CREDIT"]
+      }],
+      [],
+      [],
+      [],
+      [],
+      [],
+      session,
+      terminalContext
+    );
+
+    const rows = reports["salesReport.tickets"]?.rows ?? [];
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toEqual(expect.objectContaining({
+      memberBalance: "5.00",
+      payment: "salesReport.payment.memberBalance"
+    }));
+    expect(rows[1]).toEqual(expect.objectContaining({
+      payment: "salesReport.payment.memberBalance"
+    }));
+    expect(rows[2]).toEqual(expect.objectContaining({
+      payment: "salesReport.payment.returnCredit"
+    }));
+    expect(rows[3]).toEqual(expect.objectContaining({
+      payment: "salesReport.payment.returnCredit"
+    }));
+  });
+
   it("shows Descuento only for the F11 checkout method", () => {
     const reports = buildDocumentReports(
       [{

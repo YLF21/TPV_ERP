@@ -43,7 +43,7 @@ public class SalesReportExcelExportService {
             "date", "time", "ticket", "invoice", "invoiced", "deliveryNote", "documentType", "terminal", "user",
             "productCount", "customer", "customerName", "supplier", "supplierName", "comment",
             "warehouse", "input", "output", "total", "pending", "payment", "status", "reason",
-            "origin", "dueDate", "tickets", "base", "tax", "discount");
+            "origin", "dueDate", "tickets", "base", "tax", "discount", "memberBalance");
     private static final Set<String> REPORT_KEYS = Set.of(
             "salesReport.dailySales", "salesReport.tickets", "salesReport.deliveryNotes",
             "salesReport.invoices", "salesReport.warehouseOutputs", "salesReport.inputDeliveryNotes",
@@ -139,6 +139,7 @@ public class SalesReportExcelExportService {
             row.put("base", value.base());
             row.put("tax", value.impuesto());
             row.put("discount", BigDecimal.ZERO);
+            row.put("memberBalance", value.saldoSocio());
             row.put("total", value.total());
             return row;
         }).toList();
@@ -159,6 +160,7 @@ public class SalesReportExcelExportService {
             row.put("base", value.base());
             row.put("tax", value.impuesto());
             row.put("discount", value.descuentoGlobal());
+            row.put("memberBalance", value.saldoSocio());
             row.put("dueDate", displayDate(value.fechaVencimiento()));
             row.put("productCount", value.lineas());
             row.put("warehouse", text(value.almacenNombre(), id(value.almacenId())));
@@ -299,7 +301,7 @@ public class SalesReportExcelExportService {
                     var cell = excelRow.createCell(column);
                     if (value instanceof Number number) {
                         cell.setCellValue(number.doubleValue());
-                        if (Set.of("total", "pending", "base", "tax", "discount")
+                        if (Set.of("total", "pending", "base", "tax", "discount", "memberBalance")
                                 .contains(request.columns().get(column).key())) {
                             cell.setCellStyle(currencyStyle);
                         }
