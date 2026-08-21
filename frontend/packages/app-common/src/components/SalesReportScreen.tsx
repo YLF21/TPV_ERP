@@ -72,6 +72,7 @@ const SaleTicketCancellationDialog = lazy(() => import("./SaleTicketCancellation
   .then((module) => ({ default: module.SaleTicketCancellationDialog })));
 import searchIcon from "../assets/reports/search.png";
 import visualizeIcon from "../assets/reports/visualize.png";
+import "../styles/report-command-toolbar.css";
 import "../styles/report-print.css";
 
 type SalesReportScreenProps = {
