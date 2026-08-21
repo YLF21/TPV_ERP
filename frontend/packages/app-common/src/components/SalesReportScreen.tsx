@@ -13,6 +13,7 @@ import {
   type ConfirmedTicketPrintSnapshot,
   type PendingCommercialDocumentPrintSnapshot
 } from "../sale/ticketPrinting";
+import { getHardwareBridge } from "../hardware/hardware";
 import {
   buildWarehouseA4Document,
   hasDesktopHardwareBridge,
@@ -58,7 +59,6 @@ import ticketIcon from "../assets/reports/ticket.png";
 import warehouseInputIcon from "../assets/reports/warehouse-input.png";
 import warehouseOutputIcon from "../assets/reports/warehouse-output.png";
 import filterIcon from "../assets/reports/filter.png";
-import printIcon from "../assets/reports/print.png";
 
 const SaleTicketInvoiceDialog = lazy(() => import("./SaleTicketInvoiceDialog")
   .then((module) => ({ default: module.SaleTicketInvoiceDialog })));
@@ -433,6 +433,21 @@ type SalesDocumentDetail = {
 };
 
 type SalesDocumentPrintCopy = Omit<PendingCommercialDocumentPrintSnapshot, "kind">;
+
+type TicketCancellationReceipt = {
+  operationId: string;
+  originalTicketNumber: string;
+  originalIssuedAt?: string | null;
+  cancelledAt: string;
+  total: number | string;
+  reason: string;
+  operatorUsername: string;
+  authorizerUsername: string;
+  delegated: boolean;
+  payments: Array<{ method: string; amount: number | string; reference?: string | null }>;
+  renderedPdf?: { contentType: "application/pdf"; base64: string } | null;
+  ticketRenderedImage?: { contentType: "image/png"; base64: string } | null;
+};
 
 function canOpenDocumentPreview(row: Record<string, string> | undefined) {
   return Boolean(row?.__documentId || row?.__warehouseDocumentPayload);
@@ -1913,6 +1928,8 @@ export function SalesReportScreen({
   const [reportNotice, setReportNotice] = useState<ReportNotice | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [reportDocumentPrinting, setReportDocumentPrinting] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedReportView[]>(() =>
     readSavedReportViews(app, session.username)
   );
@@ -1923,6 +1940,12 @@ export function SalesReportScreen({
     readTicketCustomerDisplayMode(app, session.username)
   );
   const printMenuRef = useRef<HTMLDivElement | null>(null);
+  const moreActionsRef = useRef<HTMLDivElement | null>(null);
+  const reportShortcutActionsRef = useRef<Record<"F5" | "F6" | "F7", () => void>>({
+    F5: () => undefined,
+    F6: () => undefined,
+    F7: () => undefined
+  });
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
   const reportTableScrollRef = useRef<HTMLDivElement | null>(null);
@@ -2103,8 +2126,29 @@ export function SalesReportScreen({
   }, [request, session.accessToken]);
 
   useOutsidePointerDown(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
+  useOutsidePointerDown(moreActionsOpen, moreActionsRef, () => setMoreActionsOpen(false));
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
+
+  reportShortcutActionsRef.current = {
+    F5: () => { void printSelectedDocument(); },
+    F6: () => { void exportExcelReport(); },
+    F7: () => { void exportPdfReport(); }
+  };
+
+  useEffect(() => {
+    function handleReportOutputShortcut(event: KeyboardEvent) {
+      if (isSalesActivityReport) return;
+      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
+      if (event.key !== "F5" && event.key !== "F6" && event.key !== "F7") return;
+      event.preventDefault();
+      event.stopPropagation();
+      reportShortcutActionsRef.current[event.key]();
+    }
+
+    window.addEventListener("keydown", handleReportOutputShortcut, true);
+    return () => window.removeEventListener("keydown", handleReportOutputShortcut, true);
+  }, [isSalesActivityReport]);
 
   useEffect(() => {
     if (!isSalesActivityReport) {
@@ -2258,6 +2302,14 @@ export function SalesReportScreen({
     setDocumentPreviewPrintMessage("");
   }
 
+  async function loadDocumentDetail(row: Record<string, string>) {
+    if (row.__warehouseDocumentPayload) return warehouseDocumentDetail(row);
+    return request<SalesDocumentDetail>(
+        `/documents/${encodeURIComponent(row.__documentId)}/detail`,
+        { token: session.accessToken }
+      );
+  }
+
   async function openDocumentPreview(row: Record<string, string>) {
     if (!canOpenDocumentPreview(row)) return;
     setDocumentPreviewRow(row);
@@ -2266,15 +2318,7 @@ export function SalesReportScreen({
     setDocumentPreviewPrintMessage("");
     setDocumentPreviewLoading(true);
     try {
-      if (row.__warehouseDocumentPayload) {
-        setDocumentPreview(warehouseDocumentDetail(row));
-        return;
-      }
-      const detail = await request<SalesDocumentDetail>(
-        `/documents/${encodeURIComponent(row.__documentId)}/detail`,
-        { token: session.accessToken }
-      );
-      setDocumentPreview(detail);
+      setDocumentPreview(await loadDocumentDetail(row));
     } catch {
       setDocumentPreviewError(t("salesReport.documentLoadError"));
     } finally {
@@ -2291,18 +2335,34 @@ export function SalesReportScreen({
     });
   }
 
-  async function printDocumentCopy() {
-    if (!documentPreviewRow || !documentPreview || documentPreviewPrinting) return;
+  async function performDocumentPrint(
+    documentPreviewRow: Record<string, string>,
+    documentPreview: SalesDocumentDetail,
+    feedbackTarget: "preview" | "report",
+    preopenedBrowserPreview?: Window | null
+  ) {
+    const setPrintFeedback = (message: string) => {
+      if (feedbackTarget === "preview") {
+        setDocumentPreviewPrintMessage(message);
+        return;
+      }
+      if (!message) {
+        setReportNotice(null);
+        return;
+      }
+      setReportNotice({
+        kind: message === t("salesReport.documentPrintError") ? "error" : "success",
+        message
+      });
+    };
     const useDesktopPrinting = hasDesktopHardwareBridge();
     const browserPreview = useDesktopPrinting
       ? null
-      : window.open("", "_blank", "popup=yes,width=1040,height=820");
+      : preopenedBrowserPreview ?? window.open("", "_blank", "popup=yes,width=1040,height=820");
     if (!useDesktopPrinting && !browserPreview) {
-      setDocumentPreviewPrintMessage(t("salesReport.documentPrintError"));
+      setPrintFeedback(t("salesReport.documentPrintError"));
       return;
     }
-    setDocumentPreviewPrinting(true);
-    setDocumentPreviewPrintMessage("");
     try {
       if (documentPreviewRow.__warehouseDocumentPayload) {
         const printRequest = buildWarehouseA4Document({
@@ -2345,16 +2405,66 @@ export function SalesReportScreen({
         });
         if (browserPreview) {
           writeWarehouseDocumentPreview(browserPreview, printRequest, { autoPrint: true });
-          setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
+          setPrintFeedback(t("salesReport.documentPrintSuccess"));
           return;
         }
         const outcome = await printWarehouseA4Document(printRequest);
-        setDocumentPreviewPrintMessage(outcome.ok
+        setPrintFeedback(outcome.ok
           ? t("salesReport.documentPrintSuccess")
           : t("salesReport.documentPrintError"));
         return;
       }
       if (documentPreview.type === "TICKET") {
+        if (documentPreview.status === "ANULADO") {
+          const receipt = await request<TicketCancellationReceipt>(
+            `/tickets/${encodeURIComponent(documentPreviewRow.__documentId)}/cancellation-receipt`,
+            { token: session.accessToken }
+          );
+          if (browserPreview) {
+            if (!receipt.renderedPdf) throw new Error("ticket_cancellation_rendered_pdf_missing");
+            showPdfPreview(browserPreview, renderedPdfBlob(receipt.renderedPdf));
+            setPrintFeedback(t("salesReport.documentPrintSuccess"));
+            return;
+          }
+          const result = await getHardwareBridge().printTicket({
+            requireRenderedDocument: Boolean(receipt.renderedPdf && receipt.ticketRenderedImage),
+            layout: "CANCELLATION_RECEIPT",
+            title: t("sale.ticketCancel.receipt.title"),
+            notice: t("sale.ticketCancel.receipt.nonFiscal"),
+            documentNumber: `AN-${receipt.originalTicketNumber}`,
+            storeName: terminalContext.storeName,
+            terminalCode: terminalContext.terminalCode,
+            issuedAt: receipt.cancelledAt,
+            details: [
+              { label: t("sale.ticketCancel.receipt.originalTicket"), value: receipt.originalTicketNumber },
+              { label: t("sale.ticketCancel.receipt.reason"), value: receipt.reason },
+              { label: t("sale.ticketCancel.receipt.operator"), value: receipt.operatorUsername },
+              { label: t("sale.ticketCancel.receipt.authorizer"), value: receipt.authorizerUsername }
+            ],
+            lines: [],
+            payments: receipt.payments.map((payment) => ({
+              method: payment.method,
+              amount: Number(payment.amount),
+              reference: payment.reference ?? undefined
+            })),
+            total: Number(receipt.total),
+            labels: {
+              terminal: t("sale.ticketCancel.receipt.terminal"),
+              item: "",
+              quantity: "",
+              price: "",
+              total: t("sale.ticketCancel.receipt.total")
+            },
+            ...(receipt.renderedPdf ? { renderedPdf: receipt.renderedPdf } : {}),
+            ...(receipt.ticketRenderedImage ? {
+              documentRaster: `data:${receipt.ticketRenderedImage.contentType};base64,${receipt.ticketRenderedImage.base64}`
+            } : {})
+          });
+          setPrintFeedback(result.ok
+            ? t("salesReport.documentPrintSuccess")
+            : t("salesReport.documentPrintError"));
+          return;
+        }
         const snapshot = await request<ConfirmedTicketPrintSnapshot>(
           `/tickets/${encodeURIComponent(documentPreviewRow.__documentId)}/print`,
           { token: session.accessToken }
@@ -2372,7 +2482,7 @@ export function SalesReportScreen({
             pdf = await response.blob();
           }
           showPdfPreview(browserPreview, pdf);
-          setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
+          setPrintFeedback(t("salesReport.documentPrintSuccess"));
           return;
         }
         const outcome = await outputConfirmedTicket(
@@ -2381,7 +2491,7 @@ export function SalesReportScreen({
           "DEFAULT",
           locale
         );
-        setDocumentPreviewPrintMessage(outcome.status === "FAILED"
+        setPrintFeedback(outcome.status === "FAILED"
           ? t("salesReport.documentPrintError")
           : outcome.status === "PRINTED" ? t("salesReport.documentPrintSuccess") : "");
         return;
@@ -2392,23 +2502,58 @@ export function SalesReportScreen({
       );
       const commercialDocument = { ...snapshot, kind: "COMMERCIAL_DOCUMENT" } as const;
       if (browserPreview) {
-        writeWarehouseDocumentPreview(
-          browserPreview,
-          commercialDocumentAsA4Document(commercialDocument, terminalContext, locale),
-          { autoPrint: true }
-        );
-        setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
+        if (snapshot.renderedPdf) {
+          showPdfPreview(browserPreview, renderedPdfBlob(snapshot.renderedPdf));
+        } else {
+          writeWarehouseDocumentPreview(
+            browserPreview,
+            commercialDocumentAsA4Document(commercialDocument, terminalContext, locale),
+            { autoPrint: true }
+          );
+        }
+        setPrintFeedback(t("salesReport.documentPrintSuccess"));
         return;
       }
       const outcome = await printCommercialDocument(commercialDocument, terminalContext, undefined, locale);
-      setDocumentPreviewPrintMessage(outcome.status === "FAILED"
+      setPrintFeedback(outcome.status === "FAILED"
         ? t("salesReport.documentPrintError")
         : outcome.status === "PRINTED" ? t("salesReport.documentPrintSuccess") : "");
     } catch {
       browserPreview?.close();
-      setDocumentPreviewPrintMessage(t("salesReport.documentPrintError"));
+      setPrintFeedback(t("salesReport.documentPrintError"));
+    }
+  }
+
+  async function printDocumentCopy() {
+    if (!documentPreviewRow || !documentPreview || documentPreviewPrinting) return;
+    setDocumentPreviewPrinting(true);
+    setDocumentPreviewPrintMessage("");
+    try {
+      await performDocumentPrint(documentPreviewRow, documentPreview, "preview");
     } finally {
       setDocumentPreviewPrinting(false);
+    }
+  }
+
+  async function printSelectedDocument() {
+    if (!selectedReportRow || !canOpenDocumentPreview(selectedReportRow) || reportDocumentPrinting) return;
+    const preopenedBrowserPreview = hasDesktopHardwareBridge()
+      ? undefined
+      : window.open("", "_blank", "popup=yes,width=1040,height=820");
+    if (preopenedBrowserPreview === null) {
+      setReportNotice({ kind: "error", message: t("salesReport.documentPrintError") });
+      return;
+    }
+    setReportDocumentPrinting(true);
+    setReportNotice({ kind: "info", message: t("salesReport.documentPrinting") });
+    try {
+      const detail = await loadDocumentDetail(selectedReportRow);
+      await performDocumentPrint(selectedReportRow, detail, "report", preopenedBrowserPreview);
+    } catch {
+      preopenedBrowserPreview?.close();
+      setReportNotice({ kind: "error", message: t("salesReport.documentPrintError") });
+    } finally {
+      setReportDocumentPrinting(false);
     }
   }
 
@@ -3350,135 +3495,182 @@ export function SalesReportScreen({
   }
 
   function renderReportToolbar() {
+    const todayRange = quickDateRange("today");
+    const weekRange = quickDateRange("week");
+    const monthRange = quickDateRange("month");
+    const periodLabel = filters.dateFrom === todayRange.dateFrom && filters.dateTo === todayRange.dateTo
+      ? t("salesReport.quick.today")
+      : filters.dateFrom === weekRange.dateFrom && filters.dateTo === weekRange.dateTo
+        ? t("salesReport.quick.week")
+        : filters.dateFrom === monthRange.dateFrom && filters.dateTo === monthRange.dateTo
+          ? t("salesReport.quick.month")
+          : formatDateRange(filters, locale);
+    const selectedDocumentCanPrint = canOpenDocumentPreview(selectedReportRow) && !reportDocumentPrinting;
+    const weekIsSelected = filters.dateFrom === weekRange.dateFrom && filters.dateTo === weekRange.dateTo;
+    const monthIsSelected = filters.dateFrom === monthRange.dateFrom && filters.dateTo === monthRange.dateTo;
+
     return (
-      <header className="report-data-toolbar">
-        <div className="report-action-menu" ref={printMenuRef}>
-          <button
-            type="button"
-            aria-expanded={printMenuOpen}
-            aria-haspopup="menu"
-            onClick={printReport}
-          >
-            <img alt="" className="report-action-icon" src={printIcon} />
-            {t("salesReport.print")}
-          </button>
-          {printMenuOpen && (
-            <div className="print-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => void exportPdfReport()}>
-                {t("salesReport.exportPdf")}
-              </button>
-              <button type="button" role="menuitem" disabled={reportExportBusy} onClick={() => void exportExcelReport()}>
-                {t("salesReport.exportExcel")}
-              </button>
-              <button type="button" role="menuitem" onClick={() => void printCurrentReport()}>
-                {t("salesReport.printPdf")}
-              </button>
-            </div>
-          )}
+      <header className="report-data-toolbar report-command-toolbar">
+        <div className="report-command-period">
+          <span>{t("salesReport.currentPeriod")}</span>
+          <strong>{periodLabel}</strong>
+          <small>{formatFilterDate(filters.dateFrom, locale)} — {formatFilterDate(filters.dateTo, locale)}</small>
         </div>
         <div className="report-quick-filters" aria-label={t("salesReport.quickFilters")}>
-          <button type="button" onClick={() => applyQuickFilter("today")}>{t("salesReport.quick.today")}</button>
-          <button type="button" onClick={() => applyQuickFilter("week")}>{t("salesReport.quick.week")}</button>
-          <button type="button" onClick={() => applyQuickFilter("month")}>{t("salesReport.quick.month")}</button>
-              {hasStatusFilter && selectedReport !== "salesReport.tickets" && (
+          <button
+            type="button"
+            className={weekIsSelected ? "active" : ""}
+            aria-pressed={weekIsSelected}
+            onClick={() => applyQuickFilter("week")}
+          >
+            {t("salesReport.quick.week")}
+          </button>
+          <button
+            type="button"
+            className={monthIsSelected ? "active" : ""}
+            aria-pressed={monthIsSelected}
+            onClick={() => applyQuickFilter("month")}
+          >
+            {t("salesReport.quick.month")}
+          </button>
+        </div>
+        <div className="report-output-cluster">
+          <div className="report-output-actions">
             <button
               type="button"
-              className={filters.status === "salesReport.status.pending" ? "active" : ""}
-              onClick={() => applyQuickFilter("pending")}
+              aria-keyshortcuts="F5"
+              title={t("salesReport.printSelectedTitle")}
+              disabled={!selectedDocumentCanPrint}
+              onClick={() => void printSelectedDocument()}
             >
-              {t("salesReport.quick.pending")}
+              <span>{t("salesReport.print")}</span><kbd aria-hidden="true">F5</kbd>
+            </button>
+            <button
+              type="button"
+              aria-keyshortcuts="F6"
+              title={t("salesReport.exportVisibleExcelTitle")}
+              disabled={reportExportBusy}
+              onClick={() => void exportExcelReport()}
+            >
+              <span>{t("salesReport.excel")}</span><kbd aria-hidden="true">F6</kbd>
+            </button>
+            <button
+              type="button"
+              aria-keyshortcuts="F7"
+              title={t("salesReport.exportVisiblePdfTitle")}
+              disabled={reportExportBusy}
+              onClick={() => void exportPdfReport()}
+            >
+              <span>{t("salesReport.pdf")}</span><kbd aria-hidden="true">F7</kbd>
+            </button>
+          </div>
+        </div>
+        <div className="report-utility-actions">
+          <button type="button" onClick={openFilters}>
+            <img alt="" className="report-action-icon" src={filterIcon} />
+            {t("salesReport.filter")}
+          </button>
+          <button
+            type="button"
+            hidden={isDailySalesReport}
+            onClick={() => {
+              setMoreActionsOpen(false);
+              setVisualReport(selectedReport);
+              setVisualizationOpen(true);
+            }}
+          >
+            <img alt="" className="report-action-icon" src={visualizeIcon} />
+            {t("salesReport.visualization")}
+          </button>
+          {selectedReport === "salesReport.tickets" && session.permissions.some(
+            (permission) => ["ADMIN", "GESTION_VENTAS", "GESTION_CUENTAS", "TICKETS_CANCEL", "VENTA"].includes(permission)
+          ) && (
+            <button
+              type="button"
+              className="report-danger-action"
+              disabled={!canCancelSelectedTicketRow || !ticketCancellationAuthorization}
+              title={t("sale.ticketCancel.title")}
+              onClick={() => {
+                if (canCancelSelectedTicketRow && ticketCancellationAuthorization && selectedReportRow?.ticket) {
+                  setTicketCancellationNumber(selectedReportRow.ticket);
+                }
+              }}
+            >
+              {t("sale.ticketCancel.title")}
             </button>
           )}
+          <div className="report-more-actions" ref={moreActionsRef}>
+            <button
+              type="button"
+              aria-expanded={moreActionsOpen}
+              aria-haspopup="menu"
+              onClick={() => setMoreActionsOpen((open) => !open)}
+            >
+              {t("salesReport.moreActions")} <span aria-hidden="true">▾</span>
+            </button>
+            {moreActionsOpen && (
+              <div className="report-more-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => {
+                setMoreActionsOpen(false);
+                setViewsOpen((open) => !open);
+              }}>
+                {t("salesReport.views")}
+              </button>
+              {hasStatusFilter && selectedReport !== "salesReport.tickets" && (
+                <button type="button" role="menuitem" onClick={() => {
+                  setMoreActionsOpen(false);
+                  applyQuickFilter("pending");
+                }}>
+                  {t("salesReport.quick.pending")}
+                </button>
+              )}
+              {app === "gestion" && !isDailySalesReport && (
+                <button type="button" role="menuitem" disabled={!canOpenSelectedActivity} onClick={() => {
+                  setMoreActionsOpen(false);
+                  if (selectedReportRow?.__documentId && canOpenSelectedActivity) {
+                    setActivityDocumentId(selectedReportRow.__documentId);
+                  }
+                }}>
+                  {t("salesReport.activity.open")}
+                </button>
+              )}
+              {canOpenDocumentPreview(selectedReportRow) && (
+                <button type="button" role="menuitem" onClick={() => {
+                  setMoreActionsOpen(false);
+                  void openDocumentPreview(selectedReportRow);
+                }}>
+                  {t("salesReport.openDocument")}
+                </button>
+              )}
+              {app === "gestion" && selectedReport === "salesReport.invoices" && canAccessRectification && (
+                <button type="button" role="menuitem" disabled={!canOpenSelectedRectification} onClick={() => {
+                  setMoreActionsOpen(false);
+                  if (selectedReportRow?.__documentId && canOpenSelectedRectification) {
+                    setRectificationTarget({
+                      documentId: selectedReportRow.__documentId,
+                      continueDraft: selectedIsRectificationDraft
+                    });
+                  }
+                }}>
+                  {t(selectedIsRectificationDraft ? "rectification.continue" : "rectification.open")}
+                </button>
+              )}
+              {selectedReport === "salesReport.tickets" && session.permissions.some(
+                (permission) => permission === "ADMIN" || permission === "GESTION_VENTAS" || permission === "VENTA"
+              ) && (
+                <button type="button" role="menuitem" disabled={!canConvertSelectedTicket || !ticketInvoiceAuthorization} onClick={() => {
+                  setMoreActionsOpen(false);
+                  if (canConvertSelectedTicket && ticketInvoiceAuthorization && selectedReportRow?.ticket) {
+                    setTicketInvoiceNumber(selectedReportRow.ticket);
+                  }
+                }}>
+                  {t("sale.shortcut.convertInvoice")}
+                </button>
+              )}
+              </div>
+            )}
+          </div>
         </div>
-        <button type="button" onClick={openFilters}>
-          <img alt="" className="report-action-icon" src={filterIcon} />
-          {t("salesReport.filter")}
-        </button>
-        {!isDailySalesReport && (
-          <button type="button" aria-expanded={viewsOpen} onClick={() => setViewsOpen((open) => !open)}>
-            {t("salesReport.views")}
-          </button>
-        )}
-        {app === "gestion" && !isDailySalesReport && (
-          <button
-            type="button"
-            disabled={!canOpenSelectedActivity}
-            title={t("salesReport.activity.hint")}
-            onClick={() => {
-              if (selectedReportRow?.__documentId && canOpenSelectedActivity) {
-                setActivityDocumentId(selectedReportRow.__documentId);
-              }
-            }}
-          >
-            {t("salesReport.activity.open")}
-          </button>
-        )}
-        {!isDailySalesReport && canOpenDocumentPreview(selectedReportRow) && (
-          <button type="button" onClick={() => void openDocumentPreview(selectedReportRow)}>
-            {t("salesReport.openDocument")}
-          </button>
-        )}
-        {app === "gestion" && selectedReport === "salesReport.invoices" && canAccessRectification && (
-          <button
-            type="button"
-            disabled={!canOpenSelectedRectification}
-            title={t(selectedIsRectificationDraft ? "rectification.continue" : "rectification.open")}
-            onClick={() => {
-              if (selectedReportRow?.__documentId && canOpenSelectedRectification) {
-                setRectificationTarget({
-                  documentId: selectedReportRow.__documentId,
-                  continueDraft: selectedIsRectificationDraft
-                });
-              }
-            }}
-          >
-            {t(selectedIsRectificationDraft ? "rectification.continue" : "rectification.open")}
-          </button>
-        )}
-        {selectedReport === "salesReport.tickets" && session.permissions.some(
-          (permission) => permission === "ADMIN" || permission === "GESTION_VENTAS" || permission === "VENTA"
-        ) && (
-          <button
-            type="button"
-            disabled={!canConvertSelectedTicket || !ticketInvoiceAuthorization}
-            title={t("sale.shortcut.convertInvoice")}
-            onClick={() => {
-              if (canConvertSelectedTicket && ticketInvoiceAuthorization && selectedReportRow?.ticket) {
-                setTicketInvoiceNumber(selectedReportRow.ticket);
-              }
-            }}
-          >
-            {t("sale.shortcut.convertInvoice")}
-          </button>
-        )}
-        {selectedReport === "salesReport.tickets" && session.permissions.some(
-          (permission) => ["ADMIN", "GESTION_VENTAS", "GESTION_CUENTAS", "TICKETS_CANCEL", "VENTA"].includes(permission)
-        ) && (
-          <button
-            type="button"
-            disabled={!canCancelSelectedTicketRow || !ticketCancellationAuthorization}
-            title={t("sale.ticketCancel.title")}
-            onClick={() => {
-              if (canCancelSelectedTicketRow && ticketCancellationAuthorization && selectedReportRow?.ticket) {
-                setTicketCancellationNumber(selectedReportRow.ticket);
-              }
-            }}
-          >
-            {t("sale.ticketCancel.title")}
-          </button>
-        )}
-        <button
-          type="button"
-          hidden={isDailySalesReport}
-          onClick={() => {
-            setPrintMenuOpen(false);
-            setVisualReport(selectedReport);
-            setVisualizationOpen(true);
-          }}
-        >
-          <img alt="" className="report-action-icon" src={visualizeIcon} />
-          {t("salesReport.visualization")}
-        </button>
         <label className="report-search" hidden={isDailySalesReport}>
           <img alt="" src={searchIcon} />
           <input

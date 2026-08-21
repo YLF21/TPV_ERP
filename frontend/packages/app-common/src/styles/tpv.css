@@ -19189,6 +19189,468 @@ textarea:focus,
   }
 }
 
+/* Barra de comandos compartida: Ticket, Albarán, Factura y movimientos de almacén. */
+.report-screen .report-data-toolbar.report-command-toolbar {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  overflow: visible;
+  margin-inline: 16px !important;
+  border: 1px solid #b5c3d2;
+  border-radius: 3px;
+  background: #f7f9fc;
+  padding: 5px 12px;
+  box-shadow: none;
+}
+
+.report-screen .report-command-toolbar .report-utility-actions > button,
+.report-screen .report-command-toolbar .report-more-actions > button,
+.report-screen .report-command-toolbar .report-quick-filters > button {
+  min-width: auto;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid #aebed0;
+  border-radius: 3px;
+  background: #fff;
+  padding: 0 9px;
+  color: #092b53;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.report-screen .report-command-toolbar .report-utility-actions > button:hover,
+.report-screen .report-command-toolbar .report-utility-actions > button:focus-visible,
+.report-screen .report-command-toolbar .report-more-actions > button:hover,
+.report-screen .report-command-toolbar .report-more-actions > button:focus-visible,
+.report-screen .report-command-toolbar .report-quick-filters > button:hover,
+.report-screen .report-command-toolbar .report-quick-filters > button:focus-visible {
+  border-color: #1c67a6;
+  background: #eef5fb;
+  color: #092b53;
+}
+
+.report-screen .report-command-period {
+  min-width: 250px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 4px 8px 4px 0;
+  border-right: 1px solid #c7d2de;
+  border-radius: 0;
+  background: transparent;
+}
+
+.report-screen .report-command-period > span {
+  color: #5b7088;
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+/* Alinea el período, el resumen de almacén y la tabla sobre el mismo eje. */
+.report-screen .report-table-region > .report-table-scroll {
+  padding-inline: 12px;
+}
+
+.report-screen .report-command-period > strong {
+  color: #0a315e;
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.report-screen .report-command-period > small {
+  color: #687d93;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.report-screen .report-command-toolbar .report-quick-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.report-screen .report-command-toolbar .report-quick-filters > button {
+  border-color: #082c55;
+  background: #0b315d;
+  color: #fff;
+}
+
+.report-screen .report-command-toolbar .report-quick-filters > button:hover,
+.report-screen .report-command-toolbar .report-quick-filters > button:focus-visible {
+  border-color: #164e83;
+  background: #164e83;
+  color: #fff;
+}
+
+.report-screen .report-command-toolbar .report-quick-filters > button.active,
+.report-screen .report-command-toolbar .report-quick-filters > button[aria-pressed="true"] {
+  border-color: #1f6fae;
+  background: #164e83;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .32);
+}
+
+.report-screen .report-output-cluster {
+  width: 260px;
+  min-width: 260px;
+  display: grid;
+  align-self: stretch;
+  align-content: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.report-screen .report-output-actions {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.report-screen .report-output-actions > button {
+  min-width: 0;
+  flex: 1 1 0;
+  height: 34px;
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #082c55;
+  border-radius: 3px;
+  background: #0b315d;
+  padding: 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.report-screen .report-output-actions > button:first-child {
+  flex-grow: 1.25;
+}
+
+.report-screen .report-output-actions > button > span,
+.report-screen .report-output-actions > button > kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+}
+
+.report-screen .report-output-actions > button > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.report-screen .report-output-actions > button > kbd {
+  min-width: 24px;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, .42);
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 9px;
+}
+
+.report-screen .report-output-actions > button:hover,
+.report-screen .report-output-actions > button:focus-visible {
+  border-color: #164e83;
+  background: #164e83;
+}
+
+.report-screen .report-output-actions > button:disabled {
+  border-color: #aeb8c4;
+  background: #8f9dab;
+  color: #f4f6f8;
+  opacity: 1;
+}
+
+.report-screen .report-utility-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.report-screen .report-utility-actions > button,
+.report-screen .report-utility-actions .report-more-actions > button {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #aebed0;
+  border-radius: 3px;
+  background: #fff;
+  padding: 0 7px;
+  color: #092b53;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.report-screen .report-utility-actions > button:hover,
+.report-screen .report-utility-actions > button:focus-visible,
+.report-screen .report-utility-actions .report-more-actions > button:hover,
+.report-screen .report-utility-actions .report-more-actions > button:focus-visible {
+  border-color: #1c67a6;
+  background: #eef5fb;
+  color: #092b53;
+}
+
+.report-screen .report-utility-actions .report-action-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.report-screen .report-command-toolbar .report-danger-action {
+  border-color: #c83d45;
+  background: #fff;
+  color: #b5202a;
+}
+
+.report-screen .report-command-toolbar .report-danger-action:hover,
+.report-screen .report-command-toolbar .report-danger-action:focus-visible {
+  border-color: #a91b24;
+  background: #fff0f1;
+  color: #991821;
+}
+
+.report-screen .report-command-toolbar .report-danger-action:disabled {
+  border-color: #d5b9bc;
+  background: #faf7f7;
+  color: #9f8588;
+}
+
+.report-screen .report-more-actions {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.report-screen .report-more-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 210px;
+  display: grid;
+  border: 1px solid #9dafc1;
+  border-radius: 3px;
+  background: #fff;
+  padding: 4px;
+  box-shadow: 0 8px 18px rgba(8, 39, 73, .18);
+}
+
+.report-screen .report-more-menu > button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 2px;
+  background: #fff;
+  padding: 7px 10px;
+  color: #163654;
+  font-size: 13px;
+  font-weight: 750;
+  text-align: left;
+}
+
+.report-screen .report-more-menu > button:hover,
+.report-screen .report-more-menu > button:focus-visible {
+  background: #e8f1f9;
+  color: #082c55;
+}
+
+.report-screen .report-more-menu > button:disabled {
+  color: #8b98a8;
+  background: #f7f8fa;
+}
+
+.report-screen .report-command-toolbar .report-search {
+  min-width: 118px;
+  width: 360px;
+  max-width: 420px;
+  height: 34px;
+  flex: 0 1 360px;
+  margin-left: 0;
+  border: 1px solid #9eafc1;
+  border-radius: 3px;
+  background: #fff;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.report-screen .report-command-toolbar .report-search input {
+  min-width: 72px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #102f50;
+  font-size: 10px !important;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.report-screen .report-command-toolbar .report-search:focus-within {
+  border-color: #1f6fae;
+  box-shadow: 0 0 0 2px rgba(31, 111, 174, .16);
+}
+
+.report-screen .report-command-toolbar .report-search img {
+  width: 18px;
+  height: 18px;
+  opacity: .78;
+}
+
+@media (max-width: 1500px) {
+  .report-screen .report-data-toolbar.report-command-toolbar {
+    min-height: 58px;
+    display: flex !important;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+  }
+
+  .report-screen .report-command-period {
+    width: 244px;
+    min-width: 244px;
+    height: auto;
+    border: 0;
+    border-right: 1px solid #c7d2de;
+  }
+
+  .report-screen .report-command-period > span {
+    display: inline;
+    font-size: 8px;
+    letter-spacing: .04em;
+  }
+
+  .report-screen .report-command-period > strong {
+    font-size: 13px;
+  }
+
+  .report-screen .report-command-period > small {
+    font-size: 8px;
+  }
+
+  .report-screen .report-command-toolbar .report-utility-actions > button,
+  .report-screen .report-command-toolbar .report-more-actions > button,
+  .report-screen .report-command-toolbar .report-quick-filters > button {
+    padding-inline: 5px;
+    font-size: 9px;
+  }
+
+  .report-screen .report-command-toolbar .report-quick-filters {
+    gap: 3px;
+  }
+
+  .report-screen .report-command-toolbar .report-quick-filters > button {
+    padding-inline: 5px;
+    font-size: 9px;
+  }
+
+  .report-screen .report-output-cluster {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .report-screen .report-output-actions > button {
+    font-size: 10px;
+  }
+
+  .report-screen .report-output-actions {
+    gap: 3px;
+  }
+
+  .report-screen .report-output-actions > button > span {
+    padding-inline: 4px;
+  }
+
+  .report-screen .report-output-actions > button > kbd {
+    min-width: 22px;
+    padding-inline: 4px;
+  }
+
+  .report-screen .report-command-toolbar .report-search {
+    width: auto;
+    min-width: 112px;
+    max-width: 200px;
+    height: 34px;
+    flex: 1 1 112px;
+    margin-left: 0;
+    align-self: center;
+  }
+
+  .report-screen .report-command-toolbar .report-search img {
+    width: 18px;
+    height: 18px;
+  }
+
+  .report-screen .report-utility-actions {
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .report-screen .report-command-toolbar .report-search input {
+    padding-inline: 4px;
+    font-size: 10px !important;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 1100px) {
+  .report-screen .report-data-toolbar.report-command-toolbar {
+    min-height: 148px;
+    display: grid !important;
+    grid-template-columns: 184px minmax(140px, 1fr) minmax(180px, 1fr);
+    grid-template-areas:
+      "period quick search"
+      "period output output"
+      "utilities utilities utilities";
+  }
+
+  .report-screen .report-command-period {
+    grid-area: period;
+    width: 184px;
+    min-width: 184px;
+  }
+
+  .report-screen .report-command-toolbar .report-quick-filters {
+    grid-area: quick;
+  }
+
+  .report-screen .report-output-cluster {
+    grid-area: output;
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .report-screen .report-output-actions {
+    justify-content: flex-start;
+  }
+
+  .report-screen .report-utility-actions {
+    grid-area: utilities;
+  }
+
+  .report-screen .report-command-toolbar .report-search {
+    grid-area: search;
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 /* Current APP VENTA dialog shell: compact, square and keyboard-first. */
 .sale-action-dialog.sale-business-dialog {
   gap: 0;
