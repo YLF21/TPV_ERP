@@ -195,6 +195,7 @@ const attributeLabelKey: Record<string, string> = {
   base: "salesReport.column.base",
   tax: "salesReport.column.tax",
   discount: "salesReport.column.discount",
+  memberBalance: "salesReport.column.memberBalance",
   dueDate: "salesReport.column.dueDate",
   tickets: "salesReport.column.tickets"
 };
@@ -240,6 +241,7 @@ const attributeDefaultWidth: Record<string, number> = {
   base: 112,
   tax: 112,
   discount: 112,
+  memberBalance: 128,
   dueDate: 112,
   tickets: 88
 };
@@ -259,6 +261,7 @@ const attributeMinimumWidth: Record<string, number> = {
   base: 120,
   tax: 120,
   discount: 120,
+  memberBalance: 128,
   total: 120
 };
 
@@ -368,6 +371,7 @@ type DocumentView = {
   impuesto?: number | string;
   pendiente?: number | string;
   descuentoGlobal?: number | string;
+  saldoSocio?: number | string;
   total?: number | string;
   effectiveTotal?: number | string;
   numTicket?: string | null;
@@ -809,10 +813,10 @@ const reportSamples: Record<string, ReportSample> = {
     totals: {}
   },
   "salesReport.tickets": {
-    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
+    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "memberBalance", "total"],
     defaultVisibleAttributes: ["date", "time", "status", "terminal", "customer", "payment", "invoiced", "total"],
     rows: [],
-    totals: { date: "salesReport.total", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
+    totals: { date: "salesReport.total", base: "0.00", tax: "0.00", discount: "0.00", memberBalance: "0.00", total: "0.00" }
   },
   "salesReport.deliveryNotes": {
     availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "customer", "customerName", "comment", "status", "base", "tax", "discount", "total"],
@@ -821,10 +825,10 @@ const reportSamples: Record<string, ReportSample> = {
     totals: { deliveryNote: "salesReport.total", status: "0", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.invoices": {
-    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "customerName", "payment", "status", "pending", "comment", "base", "tax", "discount", "total"],
+    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "customerName", "payment", "status", "pending", "comment", "base", "tax", "discount", "memberBalance", "total"],
     defaultVisibleAttributes: ["invoice", "documentType", "customer", "status", "pending", "total"],
     rows: [],
-    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
+    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", base: "0.00", tax: "0.00", discount: "0.00", memberBalance: "0.00", total: "0.00" }
   },
   "salesReport.warehouseOutputs": {
     availableAttributes: ["date", "time", "output", "terminal", "user", "warehouse", "productCount", "comment", "reason", "total"],
@@ -1085,7 +1089,7 @@ function buildFilteredTotals(
       if (originalValue === "salesReport.total") {
         return [attribute, originalValue];
       }
-      if (["total", "pending", "invoicedTicketTotal", "base", "tax", "discount"].includes(attribute)) {
+      if (["total", "pending", "invoicedTicketTotal", "base", "tax", "discount", "memberBalance"].includes(attribute)) {
         return [attribute, formatAmount(rows.reduce((sum, row) => {
           const value = reportKey === "salesReport.tickets" && attribute === "total"
             ? row.__effectiveTotal ?? row.total ?? ""
@@ -1105,7 +1109,7 @@ function buildFilteredTotals(
 }
 
 const REPORT_MONETARY_ATTRIBUTES = new Set([
-  "total", "pending", "invoicedTicketTotal", "base", "tax", "discount"
+  "total", "pending", "invoicedTicketTotal", "base", "tax", "discount", "memberBalance"
 ]);
 
 export function sortReportRows(
@@ -1259,6 +1263,10 @@ function normalizedTicketPaymentLabel(value: string) {
     TRANSFERENCIA: "TRANSFERENCIA",
     VOUCHER: "VALE",
     VALE: "VALE",
+    MEMBER_BALANCE: "salesReport.payment.memberBalance",
+    SALDO_MIEMBRO: "salesReport.payment.memberBalance",
+    MEMBER_CREDIT: "salesReport.payment.returnCredit",
+    CREDITO_DEVOLUCION: "salesReport.payment.returnCredit",
     PENDING: "salesReport.payment.pending",
     PENDIENTE: "salesReport.payment.pending",
     DISCOUNT: "DESCUENTO",
@@ -1512,6 +1520,7 @@ export function buildDocumentReports(
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
+    memberBalance: formatAmount(Number(document.saldoSocio ?? 0)),
     total: formatAmount(Number(document.total ?? 0)),
     __effectiveTotal: formatAmount(Number(document.effectiveTotal ?? document.total ?? 0))
   }));
@@ -1534,6 +1543,7 @@ export function buildDocumentReports(
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
+    memberBalance: formatAmount(Number(document.saldoSocio ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputInvoiceRows = invoices.filter(isPurchaseDocument).map((document) => ({

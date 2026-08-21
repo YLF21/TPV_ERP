@@ -1447,7 +1447,7 @@ export class MessagesEs {
     "salesReport.daily.pending": "Pendientes",
     "salesReport.daily.noPayments": "No hay cobros para la fecha seleccionada",
     "salesReport.daily.noUserData": "No hay cobros por usuario para la fecha seleccionada",
-    "salesReport.payment.pending": "Pendiente", "salesReport.payment.returnCredit": "Saldo a favor",
+    "salesReport.payment.pending": "Pendiente", "salesReport.payment.memberBalance": "Saldo socio", "salesReport.payment.returnCredit": "Saldo a favor",
     "EFECTIVO": "Efectivo",
     "TARJETA": "Tarjeta",
     "TRANSFERENCIA": "Transferencia",

@@ -18,5 +18,6 @@ payment-terminal-bridge/**/target/
 .superpowers/brainstorm/
 .codex-runtime/
 artifacts/
+exportaciones/
 *.jasper
 plantillas documentos/logo_empresa_pruebas.png

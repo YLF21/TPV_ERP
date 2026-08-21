@@ -1444,7 +1444,7 @@ export class MessagesEn {
     "salesReport.daily.pending": "Pending",
     "salesReport.daily.noPayments": "No payments for the selected date",
     "salesReport.daily.noUserData": "No user payments for the selected date",
-    "salesReport.payment.pending": "Pending", "salesReport.payment.returnCredit": "Return credit",
+    "salesReport.payment.pending": "Pending", "salesReport.payment.memberBalance": "Member balance", "salesReport.payment.returnCredit": "Return credit",
     "EFECTIVO": "Cash",
     "TARJETA": "Card",
     "TRANSFERENCIA": "Transfer",
