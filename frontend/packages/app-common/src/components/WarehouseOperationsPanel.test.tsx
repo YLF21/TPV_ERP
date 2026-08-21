@@ -288,9 +288,9 @@ describe("WarehouseOperationsPanel", () => {
 
     const stored = JSON.parse(localStorage.getItem(
       tableLayoutStorageKey("venta", "ana", "warehouse.inputs.documents")
-    ) ?? "[]") as Array<{ key: string; width: number }>;
-    expect(stored.map((column) => column.key).slice(0, 2)).toEqual(["status", "warehouse"]);
-    expect(stored.find((column) => column.key === "warehouse")?.width).toBe(188);
+    ) ?? "{}") as { columns: Array<{ key: string; width: number }> };
+    expect(stored.columns.map((column) => column.key).slice(0, 2)).toEqual(["status", "warehouse"]);
+    expect(stored.columns.find((column) => column.key === "warehouse")?.width).toBe(188);
   });
 
   it("uses the independent output document preference key", () => {

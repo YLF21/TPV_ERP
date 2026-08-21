@@ -183,9 +183,9 @@ describe("StockSalesHistoryPanel", () => {
     fireEvent.keyDown(userHeader.querySelector(".table-layout-column-resizer") as HTMLButtonElement, { key: "ArrowRight" });
     const stored = JSON.parse(localStorage.getItem(
       tableLayoutStorageKey("venta", "ana", "stock.productSalesHistory")
-    ) ?? "[]") as Array<{ key: string; width: number }>;
-    expect(stored.map((column) => column.key).slice(0, 2)).toEqual(["warehouse", "user"]);
-    expect(stored.find((column) => column.key === "user")?.width).toBe(158);
+    ) ?? "{}") as { columns: Array<{ key: string; width: number }> };
+    expect(stored.columns.map((column) => column.key).slice(0, 2)).toEqual(["warehouse", "user"]);
+    expect(stored.columns.find((column) => column.key === "user")?.width).toBe(158);
   });
 
   it("shows effective totals below the table", async () => {

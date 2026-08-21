@@ -407,9 +407,9 @@ describe("WarehouseDocumentDialog", () => {
     fireEvent.keyDown(nameHeader.querySelector("button") as HTMLButtonElement, { key: "ArrowRight" });
     const stored = JSON.parse(localStorage.getItem(
       tableLayoutStorageKey("gestion", "maria", "warehouse.outputs.lines")
-    ) ?? "[]") as Array<{ key: string; width: number }>;
-    expect(stored.map((column) => column.key).slice(0, 2)).toEqual(["total", "name"]);
-    expect(stored.find((column) => column.key === "name")?.width).toBe(268);
+    ) ?? "{}") as { columns: Array<{ key: string; width: number }> };
+    expect(stored.columns.map((column) => column.key).slice(0, 2)).toEqual(["total", "name"]);
+    expect(stored.columns.find((column) => column.key === "name")?.width).toBe(268);
   });
 
   it("uses the independent input line preference key", () => {
