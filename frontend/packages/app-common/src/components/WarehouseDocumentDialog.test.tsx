@@ -122,7 +122,7 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     expect(html).toContain("Entrada almacén");
-    expect(html).toContain("Proveedor/origen");
+    expect(html).toContain("Proveedor");
     expect(html).not.toContain("Cliente</span>");
   });
 
@@ -281,6 +281,7 @@ describe("WarehouseDocumentDialog", () => {
       sourceDeliveryNoteIds: [],
       lines: [{
         productId: "product-1",
+        productName: "A001 - Cafe molido",
         quantity: 3,
         unitPrice: 0,
         discount: 0,

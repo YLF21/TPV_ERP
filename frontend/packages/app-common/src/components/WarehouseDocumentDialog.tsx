@@ -1690,7 +1690,7 @@ export function WarehouseDocumentDialog({
         <small>{t("warehouseDocument.partner.supplierCard")}</small>
         <strong>{selectedPartner ? partnerName(selectedPartner) : partnerText || t("warehouseDocument.noSupplier")}</strong>
       </span>
-      <kbd>FIN</kbd>
+      <kbd>{t("warehouseDocument.shortcut.end")}</kbd>
     </button>
               ) : (
                 <>

@@ -34,7 +34,9 @@ class WarehouseInputControllerWebMvcTest {
                 UUID.randomUUID());
         input.replace(
                 UUID.randomUUID(), "Proveedor", "Reposicion",
-                List.of(new WarehouseInputLineCommand(UUID.randomUUID(), 3)));
+                List.of(new WarehouseInputLineCommand(
+                        UUID.randomUUID(), java.math.BigDecimal.valueOf(3), null,
+                        java.math.BigDecimal.ZERO, false, "Producto")));
         when(service.listPage(500, null, null))
                 .thenReturn(new PagedResult<>(List.of(WarehouseInputView.from(input)), null, false));
 

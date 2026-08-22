@@ -1325,13 +1325,15 @@ public class DevSampleDataSeeder {
                 USER, USER, occurredAt);
         jdbc.update("""
                 insert into entrada_almacen_linea
-                    (id, entrada_id, producto_id, cantidad, precio_unitario_compra)
-                values (?, ?, ?, ?, ?)
+                    (id, entrada_id, producto_id, cantidad, precio_unitario_compra, nombre_producto)
+                values (?, ?, ?, ?, ?, (select nombre from producto where id = ?))
                 on conflict (id) do update
                 set producto_id = excluded.producto_id,
                     cantidad = excluded.cantidad,
-                    precio_unitario_compra = excluded.precio_unitario_compra
-                """, id(key + "-line"), inputId, productId, quantity, new BigDecimal(purchaseUnitPrice));
+                    precio_unitario_compra = excluded.precio_unitario_compra,
+                    nombre_producto = excluded.nombre_producto
+                """, id(key + "-line"), inputId, productId, quantity,
+                new BigDecimal(purchaseUnitPrice), productId);
         jdbc.update("""
                 insert into movimiento_stock
                     (id, producto_id, almacen_id, usuario_id, entrada_almacen_id, tipo, cantidad, creado_en)
@@ -1360,13 +1362,14 @@ public class DevSampleDataSeeder {
                 """, inputId, STORE, WAREHOUSE_RESERVE, SUPPLIER, TODAY.plusDays(1), USER);
         jdbc.update("""
                 insert into entrada_almacen_linea
-                    (id, entrada_id, producto_id, cantidad, precio_unitario_compra)
-                values (?, ?, ?, 25, 1.20)
+                    (id, entrada_id, producto_id, cantidad, precio_unitario_compra, nombre_producto)
+                values (?, ?, ?, 25, 1.20, (select nombre from producto where id = ?))
                 on conflict (id) do update
                 set producto_id = excluded.producto_id,
                     cantidad = excluded.cantidad,
-                    precio_unitario_compra = excluded.precio_unitario_compra
-                """, id("warehouse-input-draft-reserve-line"), inputId, PRODUCT_B);
+                    precio_unitario_compra = excluded.precio_unitario_compra,
+                    nombre_producto = excluded.nombre_producto
+                """, id("warehouse-input-draft-reserve-line"), inputId, PRODUCT_B, PRODUCT_B);
 
         UUID outputId = id("warehouse-output-draft-showroom");
         jdbc.update("""

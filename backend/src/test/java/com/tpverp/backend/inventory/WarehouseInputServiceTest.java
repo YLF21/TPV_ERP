@@ -103,7 +103,9 @@ class WarehouseInputServiceTest {
                 new WarehouseInputCommand(
                         warehouse.getId(), LocalDate.of(2026, 7, 8), supplier.getId(),
                         "Proveedor SL", "Compra inicial",
-                        List.of(new WarehouseInputLineCommand(product.getId(), 4)),
+                        List.of(new WarehouseInputLineCommand(
+                                product.getId(), BigDecimal.valueOf(4), null,
+                                BigDecimal.ZERO, false, product.getName())),
                         new WarehouseExcelImportMetadata(
                                 "productos.xlsx",
                                 List.of(new WarehouseExcelImportMetadata.Formula(
@@ -137,7 +139,7 @@ class WarehouseInputServiceTest {
                         WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
                         List.of(new WarehouseInputLineCommand(
                                 product.getId(), BigDecimal.ONE, new BigDecimal("99.00"),
-                                BigDecimal.ZERO, false)), null),
+                                BigDecimal.ZERO, false, product.getName())), null),
                 authentication());
 
         assertThat(input.getLines()).singleElement()
@@ -151,8 +153,12 @@ class WarehouseInputServiceTest {
         input.replace(
                 supplier.getId(), "Proveedor SL", "Compra",
                 List.of(
-                        new WarehouseInputLineCommand(product.getId(), 2),
-                        new WarehouseInputLineCommand(product.getId(), 3)));
+                        new WarehouseInputLineCommand(
+                                product.getId(), BigDecimal.valueOf(2), null,
+                                BigDecimal.ZERO, false, product.getName()),
+                        new WarehouseInputLineCommand(
+                                product.getId(), BigDecimal.valueOf(3), null,
+                                BigDecimal.ZERO, false, product.getName())));
 
         input.snapshotPurchasePrices(Map.of(product.getId(), new BigDecimal("4.20")));
 
@@ -167,7 +173,9 @@ class WarehouseInputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
         input.replace(
                 supplier.getId(), "Proveedor SL", "Compra",
-                List.of(new WarehouseInputLineCommand(product.getId(), 1)));
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, null,
+                        BigDecimal.ZERO, false, product.getName())));
         input.snapshotPurchasePrices(Map.of(product.getId(), new BigDecimal("4.20")));
         input.confirm("ENT-2026-000001", user.getId(), Instant.parse("2026-07-08T10:00:00Z"));
 
@@ -188,7 +196,7 @@ class WarehouseInputServiceTest {
                 supplier.getId(), "Proveedor SL", "Compra",
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), new BigDecimal("5.000"),
-                        new BigDecimal("4.20"), BigDecimal.ZERO, false)));
+                        new BigDecimal("4.20"), BigDecimal.ZERO, false, product.getName())));
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
@@ -223,7 +231,7 @@ class WarehouseInputServiceTest {
                 supplier.getId(), "Proveedor SL", "Compra",
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), new BigDecimal("5.000"),
-                        new BigDecimal("4.20"), BigDecimal.ZERO, false)));
+                        new BigDecimal("4.20"), BigDecimal.ZERO, false, product.getName())));
         var existing = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 1), user.getId());
         var stock = new StockLevel(product.getId(), warehouse.getId());
@@ -250,7 +258,9 @@ class WarehouseInputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
         input.replace(
                 supplier.getId(), "Proveedor SL", "Compra",
-                List.of(new WarehouseInputLineCommand(product.getId(), 1)));
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, null,
+                        BigDecimal.ZERO, false, product.getName())));
         when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(movements.existsByWarehouseInputId(input.getId())).thenReturn(true);
@@ -269,7 +279,9 @@ class WarehouseInputServiceTest {
                 "Origen libre", "F-2026-15", "Factura directa",
                 WarehouseInputDocumentType.FACTURA_ENTRADA,
                 WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
-                List.of(new WarehouseInputLineCommand(product.getId(), 1)), null);
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, null,
+                        BigDecimal.ZERO, false, product.getName())), null);
 
         assertThatThrownBy(() -> service.create(command, authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -287,7 +299,8 @@ class WarehouseInputServiceTest {
                 WarehouseInputPriceSource.PURCHASE, new BigDecimal("5.00"), List.of(),
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), new BigDecimal("2.500"),
-                        new BigDecimal("4.20"), new BigDecimal("10.00"), true)), null);
+                        new BigDecimal("4.20"), new BigDecimal("10.00"), true,
+                        product.getName())), null);
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
@@ -319,7 +332,8 @@ class WarehouseInputServiceTest {
                 WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), new BigDecimal("3.000"),
-                        new BigDecimal("4.20"), BigDecimal.ZERO, false)), null);
+                        new BigDecimal("4.20"), BigDecimal.ZERO, false,
+                        product.getName())), null);
         deliveryNote.confirm("AE-2026-000001", user.getId(), Instant.parse("2026-07-07T10:00:00Z"));
         var invoice = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId(),
@@ -329,7 +343,8 @@ class WarehouseInputServiceTest {
                 WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(deliveryNote.getId()),
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), new BigDecimal("3.000"),
-                        new BigDecimal("4.10"), BigDecimal.ZERO, true)), null);
+                        new BigDecimal("4.10"), BigDecimal.ZERO, true,
+                        product.getName())), null);
         when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(inputs.findByIdAndStoreId(deliveryNote.getId(), store.getId()))
                 .thenReturn(Optional.of(deliveryNote));
@@ -356,7 +371,8 @@ class WarehouseInputServiceTest {
                 supplier.getId(), "Proveedor SL", "A-7", "Entrega",
                 WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
                 List.of(new WarehouseInputLineCommand(
-                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"), BigDecimal.ZERO, false)), null);
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"),
+                        BigDecimal.ZERO, false, product.getName())), null);
         deliveryNote.confirm("AE-2026-000001", user.getId(), Instant.parse("2026-07-07T10:00:00Z"));
         var invoice = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId(),
@@ -365,7 +381,8 @@ class WarehouseInputServiceTest {
                 supplier.getId(), "Proveedor SL", "F-17", "Factura vinculada",
                 WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(deliveryNote.getId()),
                 List.of(new WarehouseInputLineCommand(
-                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"), BigDecimal.ZERO, false)), null);
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"),
+                        BigDecimal.ZERO, false, product.getName())), null);
         when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(inputs.findByIdAndStoreId(deliveryNote.getId(), store.getId()))
                 .thenReturn(Optional.of(deliveryNote));
@@ -386,7 +403,9 @@ class WarehouseInputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
         input.replace(
                 supplier.getId(), "Proveedor SL", "Reposicion parcial",
-                List.of(new WarehouseInputLineCommand(product.getId(), 5)));
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.valueOf(5), null,
+                        BigDecimal.ZERO, false, product.getName())));
         var stock = StockLevel.snapshot(
                 product.getId(), warehouse.getId(), new BigDecimal("-10.000"));
         var policy = new StockSettings(store.getId(), warehouse.getId());
