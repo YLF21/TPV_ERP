@@ -16,7 +16,6 @@ import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.StoreTax;
-import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -27,7 +26,6 @@ import com.tpverp.backend.party.MemberRepository;
 import com.tpverp.backend.party.Member;
 import com.tpverp.backend.party.MemberCategory;
 import com.tpverp.backend.party.Supplier;
-import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.promotion.Promotion;
 import com.tpverp.backend.promotion.PromotionEngine;
@@ -89,11 +87,7 @@ class DocumentPromotionIntegrationTest {
     @Mock
     private CustomerRepository customerRepository;
     @Mock
-    private SupplierRepository supplierRepository;
-    @Mock
     private ProductRepository productRepository;
-    @Mock
-    private ConfirmedPurchaseRecorder purchaseRecorder;
     @Mock
     private DocumentFiscalIntegration fiscalIntegration;
     @Mock
@@ -112,9 +106,7 @@ class DocumentPromotionIntegrationTest {
     private MemberRepository memberRepository;
     @Mock
     private SyncOutboxService syncOutbox;
-    @Mock
-    private ProductImportLineMetadataRepository importMetadata;
-    @Mock
+@Mock
     private PromotionRepository promotionRepository;
     @Mock
     private PromotionTargetRepository promotionTargetRepository;
@@ -156,7 +148,6 @@ class DocumentPromotionIntegrationTest {
         lenient().when(currentOrganization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(UUID.randomUUID());
-        lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
         lenient().when(memberLoyaltyService.applyLineBenefit(any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(promotionPricing.customerContext(
@@ -190,9 +181,7 @@ class DocumentPromotionIntegrationTest {
                 stockGateway,
                 currentOrganization,
                 customerRepository,
-                supplierRepository,
                 productRepository,
-                purchaseRecorder,
                 fiscalIntegration,
                 voucherService,
                 currentTerminal,
@@ -201,7 +190,6 @@ class DocumentPromotionIntegrationTest {
                 cashPaymentRecorder,
                 memberLoyaltyService,
                 syncOutbox,
-                importMetadata,
                 promotionRepository,
                 promotionTargetRepository,
                 new PromotionEngine(),
@@ -584,25 +572,6 @@ class DocumentPromotionIntegrationTest {
         when(promotionTargetRepository.findByPromocionIdIn(List.of(promotion.id())))
                 .thenReturn(List.of(new PromotionTarget(
                         promotion.id(), PromotionTargetType.PRODUCT, targetProductId)));
-
-        service.confirm(document.getId(), authentication());
-
-        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
-    }
-
-    @Test
-    void confirmedPurchaseDocumentDoesNotGenerateCoupons() {
-        var supplier = new Supplier(
-                store.getEmpresa(), "Proveedor", null, DocumentType.CIF, "B00000001",
-                null, null, null, null);
-        var document = draft(CommercialDocumentType.ALBARAN_COMPRA);
-        document.setParties(null, supplier.getId(), null);
-        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(documentRepository.save(document)).thenReturn(document);
-        when(supplierRepository.findByIdAndCompanyId(supplier.getId(), store.getEmpresa().getId()))
-                .thenReturn(Optional.of(supplier));
-        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
-                .thenReturn(Optional.empty());
 
         service.confirm(document.getId(), authentication());
 

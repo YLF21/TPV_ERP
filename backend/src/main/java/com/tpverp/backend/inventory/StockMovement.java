@@ -222,11 +222,28 @@ public class StockMovement {
             UUID inputId,
             BigDecimal quantity,
             Instant createdAt) {
+        return warehouseInput(productId, warehouseId, userId, inputId, quantity,
+                StockMovementType.ENTRADA_ALMACEN, createdAt);
+    }
+
+    public static StockMovement warehouseInput(
+            UUID productId,
+            UUID warehouseId,
+            UUID userId,
+            UUID inputId,
+            BigDecimal quantity,
+            StockMovementType type,
+            Instant createdAt) {
+        if (type != StockMovementType.ENTRADA_ALMACEN
+                && type != StockMovementType.ALBARAN_ENTRADA
+                && type != StockMovementType.FACTURA_ENTRADA) {
+            throw new IllegalArgumentException("Tipo de movimiento de entrada no permitido");
+        }
         var movement = new StockMovement(
                 productId,
                 warehouseId,
                 userId,
-                StockMovementType.ENTRADA_ALMACEN,
+                type,
                 positive(quantity),
                 null,
                 null,

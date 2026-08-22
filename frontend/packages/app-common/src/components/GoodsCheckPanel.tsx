@@ -6,11 +6,18 @@ import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 
 export type PurchaseDocument = {
   id: string;
-  tipo: "ALBARAN_COMPRA" | "FACTURA_COMPRA" | "RECTIFICATIVA_COMPRA";
-  estado: string;
+  documentType?: "ALBARAN_ENTRADA" | "FACTURA_ENTRADA";
+  status?: string;
+  number?: string | null;
+  externalNumber?: string | null;
+  date?: string;
+  supplierId?: string | null;
+  warehouseId?: string | null;
+  tipo?: "ALBARAN_ENTRADA" | "FACTURA_ENTRADA";
+  estado?: string;
   numero?: string | null;
   numeroExterno?: string | null;
-  fecha: string;
+  fecha?: string;
   proveedorNombre?: string | null;
   almacenNombre?: string | null;
   lineas?: number;
@@ -65,10 +72,12 @@ export function goodsCheckClosePath(checkId: string) {
 }
 
 export function goodsCheckDocumentIsAvailable(document: PurchaseDocument) {
-  return Boolean(document.id && document.numero)
-    && document.estado !== "BORRADOR"
-    && document.estado !== "ANULADO"
-    && ["ALBARAN_COMPRA", "FACTURA_COMPRA"].includes(document.tipo);
+  const type = document.documentType ?? document.tipo;
+  const status = document.status ?? (document.estado === "CONFIRMADO" ? "CONFIRMADA" : document.estado);
+  const number = document.number ?? document.numero;
+  return Boolean(document.id && number)
+    && status === "CONFIRMADA"
+    && ["ALBARAN_ENTRADA", "FACTURA_ENTRADA"].includes(type ?? "");
 }
 
 export function filterGoodsCheckDocuments(
@@ -78,15 +87,16 @@ export function filterGoodsCheckDocuments(
 ) {
   const query = search.trim().toLocaleLowerCase();
   return documents.filter((document) => {
-    if (typeFilter === "deliveryNotes" && document.tipo !== "ALBARAN_COMPRA") return false;
-    if (typeFilter === "invoices" && document.tipo !== "FACTURA_COMPRA") return false;
+    const type = document.documentType ?? document.tipo;
+    if (typeFilter === "deliveryNotes" && type !== "ALBARAN_ENTRADA") return false;
+    if (typeFilter === "invoices" && type !== "FACTURA_ENTRADA") return false;
     if (!query) return true;
     return [
-      document.numero,
-      document.numeroExterno,
-      document.proveedorNombre,
-      document.almacenNombre,
-      document.fecha
+      document.number ?? document.numero,
+      document.externalNumber ?? document.numeroExterno,
+      document.supplierId ?? document.proveedorNombre,
+      document.warehouseId ?? document.almacenNombre,
+      document.date ?? document.fecha
     ].some((value) => String(value ?? "").toLocaleLowerCase().includes(query));
   });
 }
@@ -98,7 +108,10 @@ async function loadDocumentPages(path: string, token: string) {
   do {
     const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
     if (cursor) params.set("cursor", cursor);
-    const page = await apiRequest<PagedResult<PurchaseDocument>>(`${path}?${params.toString()}`, { token });
+    const page = await apiRequest<PagedResult<PurchaseDocument>>(
+      `${path}${path.includes("?") ? "&" : "?"}${params.toString()}`,
+      { token }
+    );
     values.push(...page.items);
     const nextCursor: string | null = page.nextCursor?.trim() || null;
     if (!page.hasMore || !nextCursor || cursors.has(nextCursor)) break;
@@ -110,12 +123,12 @@ async function loadDocumentPages(path: string, token: string) {
 
 export async function loadGoodsCheckDocuments(token: string) {
   const [invoices, deliveryNotes] = await Promise.all([
-    loadDocumentPages("/document-reports/invoices", token),
-    loadDocumentPages("/document-reports/delivery-notes", token)
+    loadDocumentPages("/warehouse-inputs?type=FACTURA_ENTRADA", token),
+    loadDocumentPages("/warehouse-inputs?type=ALBARAN_ENTRADA", token)
   ]);
   return [...invoices, ...deliveryNotes]
     .filter(goodsCheckDocumentIsAvailable)
-    .sort((left, right) => right.fecha.localeCompare(left.fecha) || (right.numero ?? "").localeCompare(left.numero ?? ""));
+    .sort((left, right) => (right.date ?? right.fecha ?? "").localeCompare(left.date ?? left.fecha ?? "") || (right.number ?? right.numero ?? "").localeCompare(left.number ?? left.numero ?? ""));
 }
 
 export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
@@ -139,11 +152,11 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
     filterGoodsCheckDocuments(documents, search, typeFilter),
     documentSort,
     (document, column) => {
-      if (column === "type") return t(document.tipo === "ALBARAN_COMPRA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice");
-      if (column === "number") return document.numero;
-      if (column === "date") return new Date(document.fecha);
-      if (column === "supplier") return document.proveedorNombre;
-      return document.almacenNombre;
+      if (column === "type") return t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice");
+      if (column === "number") return document.number ?? document.numero;
+      if (column === "date") return new Date(document.date ?? document.fecha ?? "");
+      if (column === "supplier") return document.supplierId ?? document.proveedorNombre;
+      return document.warehouseId ?? document.almacenNombre;
     },
     locale
   ), [documentSort, documents, locale, search, t, typeFilter]);
@@ -344,11 +357,11 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
                     }
                   }}
                 >
-                  <td>{t(document.tipo === "ALBARAN_COMPRA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice")}</td>
-                  <td>{document.numero}</td>
-                  <td>{document.fecha}</td>
-                  <td>{document.proveedorNombre || "-"}</td>
-                  <td>{document.almacenNombre || "-"}</td>
+                  <td>{t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice")}</td>
+                  <td>{document.number ?? document.numero}</td>
+                  <td>{document.date ?? document.fecha}</td>
+                  <td>{document.supplierId ?? document.proveedorNombre ?? "-"}</td>
+                  <td>{document.warehouseId ?? document.almacenNombre ?? "-"}</td>
                 </tr>
               ))}
             </tbody>

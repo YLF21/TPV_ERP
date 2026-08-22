@@ -91,38 +91,6 @@ class DocumentExcelExportServiceTest {
                 .doesNotContain(document.getId().toString());
     }
 
-    @Test
-    void appliesTheCompactBoldLayoutToPurchaseInvoices() throws Exception {
-        var document = document(CommercialDocumentType.FACTURA_COMPRA);
-        var company = new Company("B12345678", "EMPRESA PRUEBAS SL", address());
-        var store = new Store(
-                company, "001", "TIENDA PRUEBAS 001", address(), "address-hash",
-                "Europe/Madrid", "EUR", "es-ES");
-        when(documents.findById(document.getId())).thenReturn(Optional.of(document));
-        when(organization.currentStore()).thenReturn(store);
-        when(organization.currentCompany()).thenReturn(company);
-        var service = new DocumentExcelExportService(documents, organization);
-
-        var bytes = service.export(document.getId());
-
-        try (var workbook = WorkbookFactory.create(new java.io.ByteArrayInputStream(bytes))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(0).getCell(4).getStringCellValue()).isEqualTo("FACTURA_COMPRA");
-            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Código");
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(3).getCellStyle().getFontIndexAsInt()).getBold())
-                    .isTrue();
-            assertThat(sheet.getRow(0).getCell(0).getCellStyle().getFillPattern())
-                    .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(sheet.getRow(0).getCell(1).getCellStyle().getFillPattern())
-                    .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(1).getCellStyle().getFontIndexAsInt()).getBold())
-                    .isTrue();
-            assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
-                    .isTrue();
-            assertThat(sheet.getPaneInformation()).isNotNull();
-        }
-    }
-
     private static java.util.Map<String, String> address() {
         return java.util.Map.of(
                 "linea1", "Calle Pruebas 1",

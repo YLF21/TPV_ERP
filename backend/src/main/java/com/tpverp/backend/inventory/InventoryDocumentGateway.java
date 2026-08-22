@@ -123,23 +123,14 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
                 CommercialDocumentType.ALBARAN_VENTA,
                 new MovementDefinition(StockMovementType.ALBARAN_VENTA, -1));
         definitions.put(
-                CommercialDocumentType.ALBARAN_COMPRA,
-                new MovementDefinition(StockMovementType.ALBARAN_COMPRA, 1));
-        definitions.put(
                 CommercialDocumentType.TICKET,
                 new MovementDefinition(StockMovementType.TICKET, -1));
         definitions.put(
                 CommercialDocumentType.FACTURA_VENTA,
                 new MovementDefinition(StockMovementType.FACTURA_VENTA, -1));
         definitions.put(
-                CommercialDocumentType.FACTURA_COMPRA,
-                new MovementDefinition(StockMovementType.FACTURA_COMPRA, 1));
-        definitions.put(
                 CommercialDocumentType.RECTIFICATIVA_VENTA,
                 new MovementDefinition(StockMovementType.FACTURA_VENTA, 1));
-        definitions.put(
-                CommercialDocumentType.RECTIFICATIVA_COMPRA,
-                new MovementDefinition(StockMovementType.FACTURA_COMPRA, -1));
         return Map.copyOf(definitions);
     }
 

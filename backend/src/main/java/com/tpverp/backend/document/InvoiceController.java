@@ -42,7 +42,7 @@ public class InvoiceController {
     public List<DocumentView> list(Authentication authentication) {
         return service.listInvoices(
                         PermissionChecks.hasSalesDocumentRead(authentication, "INVOICES_READ"),
-                        PermissionChecks.hasPurchaseDocumentRead(authentication)).stream()
+                        false).stream()
                 .map(this::view)
                 .toList();
     }

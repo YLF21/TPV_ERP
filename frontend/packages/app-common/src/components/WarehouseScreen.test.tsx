@@ -63,8 +63,8 @@ describe("WarehouseScreen", () => {
     );
 
     expect(html).toContain("Entrada almacén");
-    expect(html).toContain("Albaranes de compra");
-    expect(html).toContain("Facturas de compra");
+    expect(html).toContain("Albaranes de entrada");
+    expect(html).toContain("Facturas de entrada");
     expect(html).toContain("Salida almacén");
     expect(html).toContain("Comprobación de pedido");
     expect(html).not.toContain("Edición masiva");

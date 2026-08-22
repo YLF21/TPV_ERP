@@ -8,10 +8,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
-import com.tpverp.backend.document.CommercialDocument;
-import com.tpverp.backend.document.CommercialDocumentRepository;
-import com.tpverp.backend.document.CommercialDocumentType;
-import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.inventory.WarehouseInput;
+import com.tpverp.backend.inventory.WarehouseInputDocumentType;
+import com.tpverp.backend.inventory.WarehouseInputRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
@@ -22,7 +22,6 @@ import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,9 @@ class GoodsCheckServiceTest {
     @Mock
     private GoodsCheckRepository checks;
     @Mock
-    private CommercialDocumentRepository documents;
+    private WarehouseInputRepository inputs;
+    @Mock
+    private ProductRepository products;
     @Mock
     private ProductIdentifierRepository identifiers;
     @Mock
@@ -78,7 +79,8 @@ class GoodsCheckServiceTest {
         when(organization.currentCompany()).thenReturn(store.getEmpresa());
         service = new GoodsCheckService(
                 checks,
-                documents,
+                inputs,
+                products,
                 identifiers,
                 organization,
                 terminal,
@@ -89,9 +91,9 @@ class GoodsCheckServiceTest {
     @Test
     void startsFromConfirmedPurchaseDocumentAndGroupsProducts() {
         var productId = UUID.randomUUID();
-        var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA,
+        var document = confirmed(WarehouseInputDocumentType.ALBARAN_ENTRADA,
                 line(productId, 6), line(productId, 6));
-        when(documents.findById(document.getId())).thenReturn(Optional.of(document));
+        when(inputs.findByIdAndStoreId(document.getId(), store.getId())).thenReturn(Optional.of(document));
         when(checks.existsByDocumentoIdAndEstado(document.getId(), GoodsCheckStatus.ABIERTA))
                 .thenReturn(false);
         when(organization.currentUser(any())).thenReturn(user);
@@ -106,8 +108,8 @@ class GoodsCheckServiceTest {
 
     @Test
     void rejectsDraftOrSalesDocuments() {
-        var sales = confirmed(CommercialDocumentType.ALBARAN_VENTA, line(UUID.randomUUID(), 1));
-        when(documents.findById(sales.getId())).thenReturn(Optional.of(sales));
+        var sales = confirmed(WarehouseInputDocumentType.ENTRADA_ALMACEN, line(UUID.randomUUID(), 1));
+        when(inputs.findByIdAndStoreId(sales.getId(), store.getId())).thenReturn(Optional.of(sales));
 
         assertThatThrownBy(() -> service.start(sales.getId(), authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -118,8 +120,8 @@ class GoodsCheckServiceTest {
 
     @Test
     void rejectsSecondOpenCheckForSameDocument() {
-        var document = confirmed(CommercialDocumentType.FACTURA_COMPRA, line(UUID.randomUUID(), 1));
-        when(documents.findById(document.getId())).thenReturn(Optional.of(document));
+        var document = confirmed(WarehouseInputDocumentType.FACTURA_ENTRADA, line(UUID.randomUUID(), 1));
+        when(inputs.findByIdAndStoreId(document.getId(), store.getId())).thenReturn(Optional.of(document));
         when(checks.existsByDocumentoIdAndEstado(document.getId(), GoodsCheckStatus.ABIERTA))
                 .thenReturn(true);
 
@@ -131,10 +133,10 @@ class GoodsCheckServiceTest {
     @Test
     void importResumesTheOpenCheckForThePurchaseDocument() {
         var productId = UUID.randomUUID();
-        var document = confirmed(CommercialDocumentType.FACTURA_COMPRA, line(productId, 4));
+        var document = confirmed(WarehouseInputDocumentType.FACTURA_ENTRADA, line(productId, 4));
         var openCheck = new GoodsCheck(document.getId(), store.getId(), user.getId(), NOW);
         openCheck.addLine(productId, new BigDecimal("4"));
-        when(documents.findById(document.getId())).thenReturn(Optional.of(document));
+        when(inputs.findByIdAndStoreId(document.getId(), store.getId())).thenReturn(Optional.of(document));
         when(checks.findByDocumentoIdAndEstadoAndTiendaId(
                 document.getId(), GoodsCheckStatus.ABIERTA, store.getId()))
                 .thenReturn(Optional.of(openCheck));
@@ -152,16 +154,16 @@ class GoodsCheckServiceTest {
     @Test
     void scanAddsAndSubtractsWithoutGoingNegative() {
         var productId = UUID.randomUUID();
-        var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, line(productId, 12));
+        var document = confirmed(WarehouseInputDocumentType.ALBARAN_ENTRADA, line(productId, 12));
         var check = new GoodsCheck(document.getId(), store.getId(), user.getId(), NOW);
         check.addLine(productId, new BigDecimal("12"));
         when(checks.findByIdAndTiendaId(check.getId(), store.getId())).thenReturn(Optional.of(check));
-        when(documents.findById(document.getId())).thenReturn(Optional.of(document));
+        when(inputs.findByIdAndStoreId(document.getId(), store.getId())).thenReturn(Optional.of(document));
         when(organization.currentUser(any())).thenReturn(user);
         when(terminal.terminalId(any())).thenReturn(terminalId);
         when(checks.save(check)).thenReturn(check);
 
-        var first = service.scan(check.getId(), new GoodsCheckScanRequest(null, "P-1", new BigDecimal("22")), authentication());
+        var first = service.scan(check.getId(), new GoodsCheckScanRequest(productId, null, new BigDecimal("22")), authentication());
         var fixed = service.scan(check.getId(), new GoodsCheckScanRequest(productId, null, new BigDecimal("-10")), authentication());
 
         assertThat(first.registrados()).singleElement()
@@ -192,47 +194,22 @@ class GoodsCheckServiceTest {
         assertThat(different.getEstado()).isEqualTo(GoodsCheckStatus.CON_DIFERENCIAS);
     }
 
-    private CommercialDocument confirmed(CommercialDocumentType type, DocumentLine... lines) {
-        var document = new CommercialDocument(
-                store.getId(), UUID.randomUUID(), type, LocalDate.of(2026, 7, 2),
-                user.getId(), BigDecimal.ZERO);
+    private WarehouseInput confirmed(WarehouseInputDocumentType type, LineSpec... lines) {
+        var document = new WarehouseInput(
+                store.getId(), UUID.randomUUID(), java.time.LocalDate.of(2026, 7, 2), user.getId(), type);
         for (var line : lines) {
-            document.addLine(new DocumentLine(
-                    document,
-                    line.getProductoId(),
-                    document.getLineas().size() + 1,
-                    line.getCantidad(),
-                    line.getCodigo(),
-                    line.getNombre(),
-                    line.getTarifa(),
-                    line.getPrecioUnitario(),
-                    line.getDescuento(),
-                    line.isImpuestosIncluidos(),
-                    line.getRegimenImpuesto(),
-                    line.getPorcentajeImpuesto()));
+            document.addLine(line.productId(), line.quantity());
         }
-        document.confirm("AC-001-26-000001", user.getId(), NOW, true);
+        document.confirm(type == WarehouseInputDocumentType.FACTURA_ENTRADA
+                ? "FE-001" : "AE-001", user.getId(), NOW);
         return document;
     }
 
-    private DocumentLine line(UUID productId, int quantity) {
-        var document = new CommercialDocument(
-                store.getId(), UUID.randomUUID(), CommercialDocumentType.ALBARAN_COMPRA,
-                LocalDate.of(2026, 7, 2), user.getId(), BigDecimal.ZERO);
-        return new DocumentLine(
-                document,
-                productId,
-                1,
-                quantity,
-                "P-1",
-                "Producto",
-                "VENTA",
-                BigDecimal.TEN,
-                BigDecimal.ZERO,
-                true,
-                "IVA",
-                new BigDecimal("21"));
+    private LineSpec line(UUID productId, int quantity) {
+        return new LineSpec(productId, quantity);
     }
+
+    private record LineSpec(UUID productId, int quantity) { }
 
     private UsernamePasswordAuthenticationToken authentication() {
         return new UsernamePasswordAuthenticationToken("ADMIN", "n/a");

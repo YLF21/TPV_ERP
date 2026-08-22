@@ -1389,7 +1389,7 @@ function salesDocumentType(document: DocumentView) {
 }
 
 function isPurchaseDocument(document: DocumentView) {
-  return (document.tipo ?? "").includes("_COMPRA");
+  return ["ALBARAN_ENTRADA", "FACTURA_ENTRADA"].includes(document.tipo ?? "");
 }
 
 function isSalesDocument(document: DocumentView) {

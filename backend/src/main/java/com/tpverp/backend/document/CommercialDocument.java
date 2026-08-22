@@ -450,8 +450,7 @@ public class CommercialDocument {
             List<DocumentLineCommand> newLines) {
         if (!isEditableConfirmedDocument()
                 || (tipo != CommercialDocumentType.TICKET
-                && tipo != CommercialDocumentType.ALBARAN_VENTA
-                && tipo != CommercialDocumentType.ALBARAN_COMPRA)) {
+                && tipo != CommercialDocumentType.ALBARAN_VENTA)) {
             throw new IllegalStateException("message.document.confirmed_admin_edit_not_allowed");
         }
         descuentoGlobal = Money.validPercentage(globalDiscount);

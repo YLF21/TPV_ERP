@@ -2,12 +2,9 @@ package com.tpverp.backend.document;
 
 public enum CommercialDocumentType {
     ALBARAN_VENTA("AV", Periodicidad.ANUAL),
-    ALBARAN_COMPRA("AC", Periodicidad.ANUAL),
     TICKET("T", Periodicidad.DIARIA),
     FACTURA_VENTA("FV", Periodicidad.ANUAL),
-    FACTURA_COMPRA("FC", Periodicidad.ANUAL),
-    RECTIFICATIVA_VENTA("FRV", Periodicidad.ANUAL),
-    RECTIFICATIVA_COMPRA("FRC", Periodicidad.ANUAL);
+    RECTIFICATIVA_VENTA("FRV", Periodicidad.ANUAL);
 
     private final String prefix;
     private final Periodicidad periodicity;

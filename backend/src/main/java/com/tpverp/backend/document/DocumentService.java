@@ -23,15 +23,12 @@ import com.tpverp.backend.catalog.ProductQuantityPolicy;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.control.ControlAlertDetectionService;
-import com.tpverp.backend.excel.ProductImportLineMetadata;
-import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.TicketJasperRenderer;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
-import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.promotion.Promotion;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
 import com.tpverp.backend.promotion.CouponRejectReason;
@@ -76,22 +73,13 @@ public class DocumentService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DocumentService.class);
 
     private static final EnumSet<CommercialDocumentType> DELIVERY_NOTES = EnumSet.of(
-            CommercialDocumentType.ALBARAN_VENTA, CommercialDocumentType.ALBARAN_COMPRA);
+            CommercialDocumentType.ALBARAN_VENTA);
     private static final EnumSet<CommercialDocumentType> SALES_DELIVERY_NOTES = EnumSet.of(
             CommercialDocumentType.ALBARAN_VENTA);
     private static final EnumSet<CommercialDocumentType> INVOICES = EnumSet.of(
-            CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.FACTURA_COMPRA,
-            CommercialDocumentType.RECTIFICATIVA_VENTA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
+            CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA);
     private static final EnumSet<CommercialDocumentType> SALES_INVOICES = EnumSet.of(
             CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA);
-    private static final EnumSet<CommercialDocumentType> PURCHASE_DELIVERY_NOTES = EnumSet.of(
-            CommercialDocumentType.ALBARAN_COMPRA);
-    private static final EnumSet<CommercialDocumentType> PURCHASE_INVOICES = EnumSet.of(
-            CommercialDocumentType.FACTURA_COMPRA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
-    private static final EnumSet<CommercialDocumentType> PURCHASE_DOCUMENTS = EnumSet.of(
-            CommercialDocumentType.ALBARAN_COMPRA,
-            CommercialDocumentType.FACTURA_COMPRA,
-            CommercialDocumentType.RECTIFICATIVA_COMPRA);
     private static final EnumSet<CommercialDocumentType> PROMOTION_SALES_DOCUMENTS = EnumSet.of(
             CommercialDocumentType.TICKET,
             CommercialDocumentType.FACTURA_VENTA,
@@ -108,9 +96,7 @@ public class DocumentService {
     private final StockDocumentGateway stockGateway;
     private final CurrentOrganization organization;
     private final CustomerRepository customers;
-    private final SupplierRepository suppliers;
     private final ProductRepository products;
-    private final ConfirmedPurchaseRecorder purchaseRecorder;
     private final DocumentFiscalIntegration fiscalIntegration;
     private final VoucherService vouchers;
     private final CurrentTerminal currentTerminal;
@@ -119,7 +105,6 @@ public class DocumentService {
     private final CashPaymentRecorder cashPayments;
     private final MemberLoyaltyService memberLoyalty;
     private final SyncOutboxService syncOutbox;
-    private final ProductImportLineMetadataRepository importMetadata;
     private final PromotionRepository promotions;
     private final PromotionTargetRepository promotionTargets;
     private final PromotionEngine promotionEngine;
@@ -147,9 +132,7 @@ public class DocumentService {
             StockDocumentGateway stockGateway,
             CurrentOrganization organization,
             CustomerRepository customers,
-            SupplierRepository suppliers,
             ProductRepository products,
-            ConfirmedPurchaseRecorder purchaseRecorder,
             DocumentFiscalIntegration fiscalIntegration,
             VoucherService vouchers,
             CurrentTerminal currentTerminal,
@@ -158,7 +141,6 @@ public class DocumentService {
             CashPaymentRecorder cashPayments,
             MemberLoyaltyService memberLoyalty,
             SyncOutboxService syncOutbox,
-            ProductImportLineMetadataRepository importMetadata,
             PromotionRepository promotions,
             PromotionTargetRepository promotionTargets,
             PromotionEngine promotionEngine,
@@ -179,9 +161,7 @@ public class DocumentService {
         this.stockGateway = stockGateway;
         this.organization = organization;
         this.customers = customers;
-        this.suppliers = suppliers;
         this.products = products;
-        this.purchaseRecorder = purchaseRecorder;
         this.fiscalIntegration = fiscalIntegration;
         this.vouchers = vouchers;
         this.currentTerminal = currentTerminal;
@@ -190,7 +170,6 @@ public class DocumentService {
         this.cashPayments = cashPayments;
         this.memberLoyalty = memberLoyalty;
         this.syncOutbox = syncOutbox;
-        this.importMetadata = importMetadata;
         this.promotions = promotions;
         this.promotionTargets = promotionTargets;
         this.promotionEngine = promotionEngine;
@@ -374,11 +353,10 @@ public class DocumentService {
             boolean includePurchaseDocuments) {
         return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(),
-                documentTypes(includeSalesDocuments, includePurchaseDocuments,
-                        SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES));
+                includeSalesDocuments ? SALES_DELIVERY_NOTES : EnumSet.noneOf(CommercialDocumentType.class));
     }
 
-    // Confirms, numbers, and records stock/purchase in one transaction.
+    // Confirms, numbers, and records stock in one transaction.
     @Transactional
     public CommercialDocument confirm(UUID id, Authentication authentication) {
         var document = find(id);
@@ -395,9 +373,6 @@ public class DocumentService {
         applyDirectPromotions(document, promotionContext);
         validateInactiveSaleProducts(document);
         // Confirmation resets stockOrigin; this flag must be read first.
-        boolean recordsPurchase = document.getTipo() == CommercialDocumentType.ALBARAN_COMPRA
-                || (document.getTipo() == CommercialDocumentType.FACTURA_COMPRA
-                && document.isOrigenStock());
         var requiresStock = requiresStock(document) || document.isOrigenStock();
         Instant confirmedAt = Instant.now(clock);
         var terminalId = currentTerminalOrNull(authentication);
@@ -408,9 +383,6 @@ public class DocumentService {
         document.confirm(nextNumber(document), userId, confirmedAt, false);
         captureInvoicePrintSnapshot(document);
         document.setStockOrigin(requiresStock && stockGateway.confirm(document));
-        if (recordsPurchase) {
-            recordPurchase(document, confirmedAt);
-        }
         var saved = documents.save(document);
         operationalEvents.record(saved, DocumentOperationalEventType.CONFIRMADO,
                 userId, terminalId, confirmedAt);
@@ -425,31 +397,6 @@ public class DocumentService {
         enqueueConfirmedDocument(saved, terminalId);
         controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
         return saved;
-    }
-
-    private void recordPurchase(CommercialDocument document, Instant confirmedAt) {
-        var metadata = importMetadata.findByDocumentId(document.getId());
-        var references = new LinkedHashMap<UUID, String>();
-        for (var value : metadata) {
-            references.putIfAbsent(value.productId(), value.supplierReference());
-        }
-        var lastLineByProduct = new LinkedHashMap<UUID, ConfirmedPurchaseRecorder.PurchaseLine>();
-        for (DocumentLine line : document.getLineas()) {
-            if (line.getLineType() == DocumentLineType.PRODUCT) {
-                lastLineByProduct.put(line.getProductoId(), new ConfirmedPurchaseRecorder.PurchaseLine(
-                        line.getProductoId(),
-                        references.get(line.getProductoId()),
-                        line.getPrecioUnitario(),
-                        line.getDescuento()));
-            }
-        }
-        purchaseRecorder.record(
-                document.getProveedorId(),
-                confirmedAt,
-                List.copyOf(lastLineByProduct.values()));
-        if (!metadata.isEmpty()) {
-            importMetadata.deleteByDocumentId(document.getId());
-        }
     }
 
     // Creates and confirms the ticket in one transaction.
@@ -2652,8 +2599,7 @@ public class DocumentService {
             boolean includePurchaseDocuments) {
         return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(),
-                documentTypes(includeSalesDocuments, includePurchaseDocuments,
-                        SALES_INVOICES, PURCHASE_INVOICES));
+                includeSalesDocuments ? SALES_INVOICES : EnumSet.noneOf(CommercialDocumentType.class));
     }
 
     // Records payments only when they exactly cover the pending total.
@@ -2663,7 +2609,6 @@ public class DocumentService {
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalArgumentException("el documento no es una factura");
         }
-        requirePurchaseDocumentWritePermission(invoice.getTipo(), authentication);
         return payReceivable(invoice, payments, authentication);
     }
 
@@ -2673,7 +2618,6 @@ public class DocumentService {
         if (!DELIVERY_NOTES.contains(deliveryNote.getTipo())) {
             throw new IllegalArgumentException("message.document.only_delivery_note_can_be_paid");
         }
-        requirePurchaseDocumentWritePermission(deliveryNote.getTipo(), authentication);
         return payReceivable(deliveryNote, payments, authentication);
     }
     // Records actual delivery-note payments without applying stock again.
@@ -3521,21 +3465,6 @@ public class DocumentService {
                             "El cliente no tiene datos fiscales completos");
                 }
             }
-            case ALBARAN_COMPRA, FACTURA_COMPRA, RECTIFICATIVA_COMPRA -> {
-                if (document.getProveedorId() == null) {
-                    throw new IllegalStateException(
-                            "El documento de compra necesita proveedor");
-                }
-                var supplier = suppliers.findByIdAndCompanyId(
-                                document.getProveedorId(),
-                                organization.currentCompany().getId())
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Proveedor de compra no encontrado"));
-                if (!supplier.isActive()) {
-                    throw new IllegalStateException(
-                            "El proveedor de compra esta inactivo");
-                }
-            }
             default -> {
             }
         }
@@ -3549,23 +3478,10 @@ public class DocumentService {
         }
     }
 
-    private static void requirePurchaseDocumentWritePermission(
-            CommercialDocumentType type,
-            Authentication authentication) {
-        if (PURCHASE_DOCUMENTS.contains(type) && !PermissionChecks.hasPurchaseDocumentWrite(authentication)) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "Los documentos de compra requieren permiso de gestion de producto o almacen");
-        }
-    }
-
     private static void requireDocumentWritePermission(
             CommercialDocumentType type,
             Authentication authentication,
             String salesPermission) {
-        if (PURCHASE_DOCUMENTS.contains(type)) {
-            requirePurchaseDocumentWritePermission(type, authentication);
-            return;
-        }
         if (!PermissionChecks.hasRole(authentication, "ADMIN")
                 && !PermissionChecks.hasAnyAuthority(
                         authentication,
@@ -3585,15 +3501,11 @@ public class DocumentService {
 
     private static EnumSet<CommercialDocumentType> documentTypes(
             boolean includeSalesDocuments,
-            boolean includePurchaseDocuments,
             EnumSet<CommercialDocumentType> salesTypes,
-            EnumSet<CommercialDocumentType> purchaseTypes) {
+            EnumSet<CommercialDocumentType> ignoredPurchaseTypes) {
         var result = EnumSet.noneOf(CommercialDocumentType.class);
         if (includeSalesDocuments) {
             result.addAll(salesTypes);
-        }
-        if (includePurchaseDocuments) {
-            result.addAll(purchaseTypes);
         }
         return result;
     }

@@ -35,7 +35,8 @@ class WarehouseInputControllerWebMvcTest {
         input.replace(
                 UUID.randomUUID(), "Proveedor", "Reposicion",
                 List.of(new WarehouseInputLineCommand(UUID.randomUUID(), 3)));
-        when(service.listPage(500, null)).thenReturn(new PagedResult<>(List.of(WarehouseInputView.from(input)), null, false));
+        when(service.listPage(500, null, null))
+                .thenReturn(new PagedResult<>(List.of(WarehouseInputView.from(input)), null, false));
 
         mvc.perform(get("/api/v1/warehouse-inputs")
                         .param("limit", "500")

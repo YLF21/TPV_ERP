@@ -222,7 +222,9 @@ public class SalesReportExcelExportService {
         row.put("input", text(value.number(), id(value.id())));
         row.put("warehouse", warehouseNames.getOrDefault(value.warehouseId(), id(value.warehouseId())));
         row.put("supplier", id(value.supplierId()));
-        row.put("productCount", value.lines().stream().mapToInt(line -> line.quantity()).sum());
+        row.put("productCount", value.lines().stream()
+                .map(line -> line.quantity())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         row.put("comment", value.concept());
         row.put("origin", text(value.origin(), value.status().name()));
         row.put("total", value.lines().stream()

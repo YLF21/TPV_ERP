@@ -33,8 +33,9 @@ public class WarehouseInputController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
     public PagedResult<WarehouseInputView> list(
             @RequestParam(required = false) Integer limit,
-            @RequestParam(required = false) String cursor) {
-        return service.listPage(limit, cursor);
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) WarehouseInputDocumentType type) {
+        return service.listPage(limit, cursor, type);
     }
 
     @PostMapping

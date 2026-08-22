@@ -86,7 +86,7 @@ public class WarehouseDocumentExcelExportService {
                 var data = sheet.createRow(row++);
                 text(data, 0, product == null ? line.getProductId().toString() : product.getCode());
                 text(data, 1, product == null ? line.getProductId().toString() : product.getName());
-                data.createCell(2).setCellValue(line.getQuantity());
+                data.createCell(2).setCellValue(line.getQuantity().doubleValue());
                 money(data, 3, line.getPurchaseUnitPrice(), money);
                 money(data, 4, line.getPurchaseTotal(), money);
             }

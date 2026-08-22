@@ -116,7 +116,7 @@ describe("CustomerReceivablesScreen", () => {
       expect(path).toContain("collectedTo=2026-07-20");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Consultar FV-1" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Consultar FV-1" }));
     expect(await screen.findByRole("dialog", { name: "Detalle del cobro" })).toBeVisible();
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customer-receivables/doc-1/payments/pay-1/print", { token: "token" }));
     fireEvent.click(screen.getByRole("button", { name: "Reimprimir justificante" }));

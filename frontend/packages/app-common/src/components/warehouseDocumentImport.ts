@@ -2,13 +2,20 @@ import { normalizeExcelHeader, normalizeExcelText, readExcelTable } from "./exce
 
 export type WarehouseImportProduct = {
   id: string;
+  active?: boolean | null;
+  imageId?: string | null;
+  productType?: string | null;
   code?: string | null;
   barcode?: string | null;
+  barcode2?: string | null;
   reference?: string | null;
   name?: string | null;
+  packageQuantity?: string | number | null;
   discountType?: string | null;
   salePrice?: string | number | null;
+  memberPrice?: string | number | null;
   wholesalePrice?: string | number | null;
+  offerPrice?: string | number | null;
   purchasePrice?: string | number | null;
 };
 
@@ -18,8 +25,11 @@ export type WarehouseDocumentLineDraft = {
   rowNumber: number;
   productId: string;
   productLabel: string;
+  productName?: string;
   importedProduct: string;
   quantity: number;
+  unitPrice?: number;
+  priceOverridden?: boolean;
   discountPercent?: string;
   valid: boolean;
   errorKey: string;
@@ -49,6 +59,7 @@ export function buildWarehouseDocumentLines(
         rowNumber: indexNumber + 2,
         productId: product?.id ?? "",
         productLabel,
+        productName: product?.name ?? productLabel,
         importedProduct,
         quantity,
         discountPercent: "0",

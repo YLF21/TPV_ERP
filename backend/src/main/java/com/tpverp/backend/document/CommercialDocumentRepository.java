@@ -769,52 +769,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     }
 
     @EntityGraph(attributePaths = {"lineas"})
-    @Query("""
-            select document
-            from CommercialDocument document
-            where document.tiendaId = :storeId
-              and document.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_COMPRA
-              and document.estado <> com.tpverp.backend.document.DocumentStatus.ANULADO
-            order by document.fecha desc, document.numero desc
-            """)
-    List<CommercialDocument> findPurchaseInvoicesForBulkEdit(UUID storeId);
-
-    @EntityGraph(attributePaths = {"lineas"})
-    @Query("""
-            select document
-            from CommercialDocument document
-            where document.id = :invoiceId
-              and document.tiendaId = :storeId
-              and document.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_COMPRA
-              and document.estado <> com.tpverp.backend.document.DocumentStatus.ANULADO
-            """)
-    Optional<CommercialDocument> findPurchaseInvoiceForBulkEdit(UUID storeId, UUID invoiceId);
-
-    @EntityGraph(attributePaths = {"lineas"})
-    @Query("""
-            select document
-            from CommercialDocument document
-            where document.tiendaId = :storeId
-              and document.tipo = com.tpverp.backend.document.CommercialDocumentType.ALBARAN_COMPRA
-              and document.estado <> com.tpverp.backend.document.DocumentStatus.ANULADO
-            order by document.fecha desc, document.numero desc
-            """)
-    List<CommercialDocument> findPurchaseDeliveryNotesForBulkEdit(UUID storeId);
-
-    @EntityGraph(attributePaths = {"lineas"})
     List<CommercialDocument> findByTiendaIdAndTipoOrderByFechaDescNumeroDesc(
             UUID storeId,
             CommercialDocumentType type);
-
-    @EntityGraph(attributePaths = {"lineas"})
-    @Query("""
-            select document
-            from CommercialDocument document
-            where document.id = :deliveryNoteId
-              and document.tiendaId = :storeId
-              and document.tipo = com.tpverp.backend.document.CommercialDocumentType.ALBARAN_COMPRA
-              and document.estado <> com.tpverp.backend.document.DocumentStatus.ANULADO
-            """)
-    Optional<CommercialDocument> findPurchaseDeliveryNoteForBulkEdit(
-            UUID storeId, UUID deliveryNoteId);
 }

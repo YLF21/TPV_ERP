@@ -785,16 +785,10 @@ public class DevSampleDataSeeder {
                 "2.000", "10.00", "20.00", "4.20", "24.20", true, "EFECTIVO");
         doc(CommercialDocumentType.ALBARAN_VENTA, "AV-001-26-000001", "PENDIENTE", PRODUCT_A, CUSTOMER, null,
                 "1.000", "10.00", "10.00", "2.10", "12.10", true, null);
-        doc(CommercialDocumentType.ALBARAN_COMPRA, "AC-001-26-000001", "PENDIENTE", PRODUCT_B, null, SUPPLIER,
-                "10.000", "5.00", "50.00", "10.50", "60.50", true, null);
         doc(CommercialDocumentType.FACTURA_VENTA, "FV-001-26-000001", "PAGADO", PRODUCT_A, CUSTOMER, null,
                 "1.000", "10.00", "10.00", "2.10", "12.10", false, "TARJETA");
-        doc(CommercialDocumentType.FACTURA_COMPRA, "FC-001-26-000001", "PARCIAL", PRODUCT_B, null, SUPPLIER,
-                "4.000", "5.00", "20.00", "4.20", "24.20", true, "TRANSFERENCIA");
         doc(CommercialDocumentType.RECTIFICATIVA_VENTA, "FRV-001-26-000001", "PENDIENTE", PRODUCT_A, CUSTOMER, null,
                 "-1.000", "10.00", "-10.00", "-2.10", "-12.10", false, null);
-        doc(CommercialDocumentType.RECTIFICATIVA_COMPRA, "FRC-001-26-000001", "PENDIENTE", PRODUCT_B, null, SUPPLIER,
-                "-1.000", "5.00", "-5.00", "-1.05", "-6.05", false, null);
         draft();
         bulkDocuments();
     }
@@ -948,7 +942,7 @@ public class DevSampleDataSeeder {
     private int quantity(CommercialDocumentType type, int index) {
         int units = (index % 5) + 1;
         return switch (type) {
-            case RECTIFICATIVA_VENTA, RECTIFICATIVA_COMPRA -> -units;
+            case RECTIFICATIVA_VENTA -> -units;
             default -> units;
         };
     }
@@ -964,19 +958,17 @@ public class DevSampleDataSeeder {
     private String prefix(CommercialDocumentType type) {
         return switch (type) {
             case ALBARAN_VENTA -> "AV";
-            case ALBARAN_COMPRA -> "AC";
             case FACTURA_VENTA -> "FV";
-            case FACTURA_COMPRA -> "FC";
             case RECTIFICATIVA_VENTA -> "FRV";
-            case RECTIFICATIVA_COMPRA -> "FRC";
             case TICKET -> "T";
+            default -> throw new IllegalArgumentException("Tipo de documento no soportado por el seeder: " + type);
         };
     }
 
     private String status(CommercialDocumentType type, int index) {
         return switch (type) {
             case TICKET -> "CONFIRMADO";
-            case FACTURA_VENTA, FACTURA_COMPRA -> List.of("PENDIENTE", "PARCIAL", "PAGADO").get(index % 3);
+            case FACTURA_VENTA -> List.of("PENDIENTE", "PARCIAL", "PAGADO").get(index % 3);
             default -> index % 2 == 0 ? "PENDIENTE" : "CONFIRMADO";
         };
     }
@@ -990,7 +982,6 @@ public class DevSampleDataSeeder {
 
     private UUID supplier(CommercialDocumentType type) {
         return switch (type) {
-            case ALBARAN_COMPRA, FACTURA_COMPRA, RECTIFICATIVA_COMPRA -> SUPPLIER;
             default -> null;
         };
     }
@@ -1004,7 +995,7 @@ public class DevSampleDataSeeder {
         if (type == CommercialDocumentType.TICKET) {
             return List.of("EFECTIVO", "TARJETA", "VALE").get(index % 3);
         }
-        if ((type == CommercialDocumentType.FACTURA_VENTA || type == CommercialDocumentType.FACTURA_COMPRA)
+        if (type == CommercialDocumentType.FACTURA_VENTA
                 && index % 3 != 0) {
             return index % 2 == 0 ? "TARJETA" : "TRANSFERENCIA";
         }
@@ -1110,7 +1101,6 @@ public class DevSampleDataSeeder {
     private static String stockMovementType(CommercialDocumentType type) {
         return switch (type) {
             case RECTIFICATIVA_VENTA -> CommercialDocumentType.FACTURA_VENTA.name();
-            case RECTIFICATIVA_COMPRA -> CommercialDocumentType.FACTURA_COMPRA.name();
             default -> type.name();
         };
     }

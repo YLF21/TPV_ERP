@@ -349,7 +349,7 @@ describe("SalesReportScreen", () => {
           productId: "product-1",
           warehouseId: "warehouse-1",
           userId: "user-1",
-          type: "ALBARAN_COMPRA",
+          type: "ALBARAN_ENTRADA",
           quantity: "8.000",
           reason: "Entrada proveedor",
           createdAt: "2026-07-05T10:30:00Z"
@@ -509,7 +509,7 @@ describe("SalesReportScreen", () => {
           clienteNombre: "Cliente Uno"
         },
         {
-          tipo: "FACTURA_COMPRA",
+          tipo: "FACTURA_ENTRADA",
           estado: "PARCIAL",
           numero: "FC-1",
           numeroExterno: "Proveedor ref",
@@ -533,7 +533,7 @@ describe("SalesReportScreen", () => {
           clienteNombre: "Cliente Dos"
         },
         {
-          tipo: "ALBARAN_COMPRA",
+          tipo: "ALBARAN_ENTRADA",
           estado: "CONFIRMADO",
           numero: "AC-1",
           fecha: "2026-07-13",

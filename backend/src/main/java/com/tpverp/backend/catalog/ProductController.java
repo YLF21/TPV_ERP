@@ -60,6 +60,12 @@ public class ProductController {
         return service.products().stream().map(ProductView::managementView).toList();
     }
 
+    @GetMapping("/warehouse-options")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
+    public List<ProductView> warehouseOptions() {
+        return service.products().stream().map(ProductView::warehouseView).toList();
+    }
+
     @GetMapping("/sale")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','"
             + GESTION_VENTAS + "','" + VENTA + "')")

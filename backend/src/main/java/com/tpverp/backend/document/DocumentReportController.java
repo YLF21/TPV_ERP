@@ -29,7 +29,7 @@ public class DocumentReportController {
                 limit,
                 cursor,
                 PermissionChecks.hasSalesDocumentRead(authentication, "INVOICES_READ"),
-                PermissionChecks.hasPurchaseDocumentRead(authentication));
+                false);
     }
 
     @GetMapping("/delivery-notes")
@@ -42,6 +42,6 @@ public class DocumentReportController {
                 limit,
                 cursor,
                 PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ"),
-                PermissionChecks.hasPurchaseDocumentRead(authentication));
+                false);
     }
 }

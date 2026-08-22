@@ -1,20 +1,22 @@
 package com.tpverp.backend.catalog;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.document.CommercialDocument;
-import com.tpverp.backend.document.CommercialDocumentRepository;
-import com.tpverp.backend.document.DocumentLine;
-import com.tpverp.backend.document.DocumentLineType;
+import com.tpverp.backend.inventory.WarehouseInput;
+import com.tpverp.backend.inventory.WarehouseInputDocumentType;
+import com.tpverp.backend.inventory.WarehouseInputLine;
+import com.tpverp.backend.inventory.WarehouseInputRepository;
+import com.tpverp.backend.inventory.WarehouseInputStatus;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.SupplierRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,7 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ProductBulkImportServiceTest {
 
-    @Mock private CommercialDocumentRepository documents;
+    @Mock private WarehouseInputRepository documents;
     @Mock private ProductRepository products;
     @Mock private SupplierRepository suppliers;
     @Mock private CurrentOrganization organization;
@@ -45,73 +47,43 @@ class ProductBulkImportServiceTest {
     }
 
     @Test
-    void keepsTheLastPurchaseInvoiceLineForRepeatedProduct() {
+    void keepsTheLastIncomingLineForRepeatedProduct() {
         UUID invoiceId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         UUID otherProductId = UUID.randomUUID();
-        CommercialDocument invoice = mock(CommercialDocument.class);
-        DocumentLine first = productLine(productId, "10.00", "5.00");
-        DocumentLine other = productLine(otherProductId, "3.00", "0.00");
-        DocumentLine last = productLine(productId, "12.00", "10.00");
+        WarehouseInput invoice = input(invoiceId, WarehouseInputDocumentType.FACTURA_ENTRADA,
+                line(productId, "10.00", "5.00"),
+                line(otherProductId, "3.00", "0.00"),
+                line(productId, "12.00", "10.00"));
         Product product = mock(Product.class);
         Product otherProduct = mock(Product.class);
-        when(documents.findPurchaseInvoiceForBulkEdit(storeId, invoiceId))
-                .thenReturn(Optional.of(invoice));
-        when(invoice.getLineas()).thenReturn(List.of(first, other, last));
         when(product.getId()).thenReturn(productId);
         when(otherProduct.getId()).thenReturn(otherProductId);
+        when(documents.findByIdAndStoreId(invoiceId, storeId)).thenReturn(Optional.of(invoice));
         when(products.findAllByStoreIdAndIdIn(eq(storeId), anyCollection()))
                 .thenReturn(List.of(product, otherProduct));
 
-        var products = service.purchaseInvoiceProducts(invoiceId);
+        var imported = service.purchaseInvoiceProducts(invoiceId);
 
-        assertThat(products).hasSize(2);
-        assertThat(products.getFirst())
+        assertThat(imported).hasSize(2);
+        assertThat(imported.getFirst())
                 .extracting(
                         ProductBulkImportService.PurchaseDocumentProductView::productId,
                         ProductBulkImportService.PurchaseDocumentProductView::grossPurchasePrice,
                         ProductBulkImportService.PurchaseDocumentProductView::purchaseDiscount)
-                .containsExactly(
-                        productId,
-                        new BigDecimal("12.00"),
-                        new BigDecimal("10.00"));
+                .containsExactly(productId, new BigDecimal("12.00"), new BigDecimal("10.00"));
     }
 
     @Test
-    void ignoresProductsThatDoNotBelongToTheCurrentStore() {
-        UUID invoiceId = UUID.randomUUID();
-        UUID localProductId = UUID.randomUUID();
-        CommercialDocument invoice = mock(CommercialDocument.class);
-        DocumentLine localLine = productLine(localProductId, "8.00", "2.00");
-        DocumentLine foreignLine = productLine(UUID.randomUUID(), "99.00", "0.00");
-        Product localProduct = mock(Product.class);
-        when(documents.findPurchaseInvoiceForBulkEdit(storeId, invoiceId))
-                .thenReturn(Optional.of(invoice));
-        when(invoice.getLineas()).thenReturn(List.of(localLine, foreignLine));
-        when(localProduct.getId()).thenReturn(localProductId);
-        when(products.findAllByStoreIdAndIdIn(eq(storeId), anyCollection()))
-                .thenReturn(List.of(localProduct));
-
-        var imported = service.purchaseInvoiceProducts(invoiceId);
-
-        assertThat(imported)
-                .extracting(ProductBulkImportService.PurchaseDocumentProductView::productId)
-                .containsExactly(localProductId);
-    }
-
-    @Test
-    void importsProductsFromPurchaseDeliveryNotes() {
+    void importsProductsFromIncomingDeliveryNotes() {
         UUID deliveryNoteId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
-        CommercialDocument deliveryNote = mock(CommercialDocument.class);
-        DocumentLine line = productLine(productId, "6.50", "4.00");
+        WarehouseInput deliveryNote = input(deliveryNoteId, WarehouseInputDocumentType.ALBARAN_ENTRADA,
+                line(productId, "6.50", "4.00"));
         Product product = mock(Product.class);
-        when(documents.findPurchaseDeliveryNoteForBulkEdit(storeId, deliveryNoteId))
-                .thenReturn(Optional.of(deliveryNote));
-        when(deliveryNote.getLineas()).thenReturn(List.of(line));
         when(product.getId()).thenReturn(productId);
-        when(products.findAllByStoreIdAndIdIn(eq(storeId), anyCollection()))
-                .thenReturn(List.of(product));
+        when(documents.findByIdAndStoreId(deliveryNoteId, storeId)).thenReturn(Optional.of(deliveryNote));
+        when(products.findAllByStoreIdAndIdIn(eq(storeId), anyCollection())).thenReturn(List.of(product));
 
         var imported = service.purchaseDeliveryNoteProducts(deliveryNoteId);
 
@@ -124,35 +96,32 @@ class ProductBulkImportServiceTest {
     }
 
     @Test
-    void doesNotOfferInvoicesWithoutProductsFromTheCurrentStore() {
-        CommercialDocument invoice = mock(CommercialDocument.class);
-        DocumentLine foreignLine = productLine(UUID.randomUUID(), "15.00", "0.00");
-        when(documents.findPurchaseInvoicesForBulkEdit(storeId)).thenReturn(List.of(invoice));
-        when(invoice.getLineas()).thenReturn(List.of(foreignLine));
-        when(products.findAllByStoreIdAndIdIn(eq(storeId), anyCollection())).thenReturn(List.of());
+    void doesNotOfferDraftsOrProductsOutsideTheCurrentStore() {
+        WarehouseInput draft = input(UUID.randomUUID(), WarehouseInputDocumentType.FACTURA_ENTRADA,
+                line(UUID.randomUUID(), "15.00", "0.00"));
+        when(draft.getStatus()).thenReturn(WarehouseInputStatus.BORRADOR);
+        when(documents.findByStoreIdOrderByFechaDesc(storeId)).thenReturn(List.of(draft));
 
         assertThat(service.purchaseInvoices()).isEmpty();
     }
 
-    @Test
-    void rejectsInvoicesOutsideCurrentStoreOrNotAvailableForImport() {
-        UUID invoiceId = UUID.randomUUID();
-        when(documents.findPurchaseInvoiceForBulkEdit(storeId, invoiceId))
-                .thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.purchaseInvoiceProducts(invoiceId))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("no encontrada");
+    private WarehouseInput input(UUID id, WarehouseInputDocumentType type, WarehouseInputLine... lines) {
+        var input = mock(WarehouseInput.class);
+        lenient().when(input.getId()).thenReturn(id);
+        lenient().when(input.getDocumentType()).thenReturn(type);
+        lenient().when(input.getStatus()).thenReturn(WarehouseInputStatus.CONFIRMADA);
+        lenient().when(input.getNumber()).thenReturn(type == WarehouseInputDocumentType.FACTURA_ENTRADA ? "FE-1" : "AE-1");
+        lenient().when(input.getDate()).thenReturn(LocalDate.of(2026, 8, 22));
+        lenient().when(input.getLines()).thenReturn(List.of(lines));
+        lenient().when(input.getTotal()).thenReturn(BigDecimal.TEN);
+        return input;
     }
 
-    private DocumentLine productLine(UUID productId, String price, String discount) {
-        DocumentLine line = mock(DocumentLine.class);
-        when(line.getLineType()).thenReturn(DocumentLineType.PRODUCT);
-        when(line.getProductoId()).thenReturn(productId);
-        org.mockito.Mockito.lenient()
-                .when(line.getPrecioUnitario()).thenReturn(new BigDecimal(price));
-        org.mockito.Mockito.lenient()
-                .when(line.getDescuento()).thenReturn(new BigDecimal(discount));
+    private WarehouseInputLine line(UUID productId, String price, String discount) {
+        var line = mock(WarehouseInputLine.class);
+        lenient().when(line.getProductId()).thenReturn(productId);
+        lenient().when(line.getPurchaseUnitPrice()).thenReturn(new BigDecimal(price));
+        lenient().when(line.getDiscount()).thenReturn(new BigDecimal(discount));
         return line;
     }
 }

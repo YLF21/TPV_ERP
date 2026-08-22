@@ -1,7 +1,5 @@
 package com.tpverp.backend.catalog;
 
-import com.tpverp.backend.document.ConfirmedPurchaseRecorder;
-import com.tpverp.backend.document.ConfirmedPurchaseRecorder.PurchaseLine;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
@@ -10,14 +8,13 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class ProductSupplierService implements ConfirmedPurchaseRecorder {
+public class ProductSupplierService {
 
     private final ProductRepository products;
     private final SupplierRepository suppliers;
@@ -158,40 +155,6 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
     @Transactional
     public void unlink(UUID productId, UUID supplierId) {
         links.delete(link(productId, supplierId));
-    }
-
-    @Override
-    @Transactional
-    public void record(UUID supplierId, Instant entryAt, Collection<PurchaseLine> purchaseLines) {
-        // La ultima linea repetida del documento prevalece para cada producto.
-        Supplier supplier = activeSupplier(supplierId);
-        Instant confirmedAt = Objects.requireNonNull(entryAt, "entryAt");
-        Map<UUID, PurchaseLine> lastLineByProduct = new java.util.LinkedHashMap<>();
-        Objects.requireNonNull(purchaseLines, "purchaseLines").forEach(line ->
-                lastLineByProduct.put(Objects.requireNonNull(line.productId(), "productId"), line));
-        var uniqueIds = new LinkedHashSet<>(lastLineByProduct.keySet());
-        List<Product> uniqueProducts = products.findAllByStoreIdAndIdIn(
-                organization.currentStore().getId(), uniqueIds);
-        if (uniqueProducts.size() != uniqueIds.size()) {
-            throw new IllegalArgumentException("Producto no encontrado");
-        }
-        for (Product product : uniqueProducts) {
-            PurchaseLine line = lastLineByProduct.get(product.getId());
-            links.lockProduct(product.getId());
-            Instant latestEntryAt = links.findLatestEntryAtForProduct(product.getId());
-            boolean makeLastSupplier = latestEntryAt == null || !confirmedAt.isBefore(latestEntryAt);
-            if (makeLastSupplier) {
-                links.clearLastSupplier(product.getId(), supplier.getId());
-            }
-            links.upsertPurchase(
-                    UUID.randomUUID(), product.getId(), supplier.getId(),
-                    normalizeReference(line.supplierReference()),
-                    false,
-                    makeLastSupplier,
-                    line.grossPurchasePrice(),
-                    line.purchaseDiscount(),
-                    confirmedAt);
-        }
     }
 
     private Product product(UUID productId) {

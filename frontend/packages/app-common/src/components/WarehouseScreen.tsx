@@ -11,7 +11,6 @@ import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { GoodsCheckPanel } from "./GoodsCheckPanel";
-import { PurchaseDocumentsPanel } from "./PurchaseDocumentsPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { ModuleNavBackButton } from "./ModuleNavBackButton";
@@ -97,7 +96,7 @@ export function WarehouseScreen({
     if (!session.accessToken || !canManage) return;
     const token = session.accessToken;
     void Promise.all([
-      apiRequest<ProductOptionView[]>("/products", { token }),
+      apiRequest<ProductOptionView[]>("/products/warehouse-options", { token }),
       apiRequest<WarehouseView[]>("/warehouses", { token }),
       apiRequest<WarehouseCustomerOption[]>("/customers/sale-options", { token }),
       apiRequest<WarehouseSupplierOption[]>("/suppliers", { token })
@@ -195,19 +194,34 @@ export function WarehouseScreen({
           ) : section === "goodsCheck" ? (
             <GoodsCheckPanel locale={locale} token={session.accessToken} t={t} />
           ) : section === "purchaseDeliveryNotes" || section === "purchaseInvoices" ? (
-            <PurchaseDocumentsPanel
-              mode={section === "purchaseInvoices" ? "invoice" : "deliveryNote"}
+            <WarehouseOperationsPanel
+              mode="input"
+              documentType={section === "purchaseInvoices" ? "FACTURA_ENTRADA" : "ALBARAN_ENTRADA"}
+              app={app}
+              username={session.username}
+              accessToken={session.accessToken}
+              session={session}
               token={session.accessToken}
-              locale={locale}
+              products={products}
+              warehouses={warehouses}
+              customers={customers}
+              suppliers={suppliers}
               t={t}
+              locale={locale}
+              terminalContext={terminalContext}
+              defaultWarehouseId={defaultWarehouseId}
+              permissions={{ read: true, create: true, edit: true, delete: true, canConfirm: true }}
+              onError={(error) => setStatus(error instanceof Error ? error.message : t("warehouseScreen.operationError"))}
             />
           ) : (
             <WarehouseOperationsPanel
               mode={section}
+              documentType={section === "input" ? "ENTRADA_ALMACEN" : undefined}
               app={app}
               username={session.username}
-              accessToken={session.accessToken}
-              token={session.accessToken}
+             accessToken={session.accessToken}
+              session={session}
+             token={session.accessToken}
               products={products}
               warehouses={warehouses}
               customers={customers}

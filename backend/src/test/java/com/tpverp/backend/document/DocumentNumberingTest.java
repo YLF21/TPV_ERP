@@ -11,11 +11,8 @@ class DocumentNumberingTest {
     @ParameterizedTest
     @CsvSource({
         "ALBARAN_VENTA,  AV-001-26-000001",
-        "ALBARAN_COMPRA, AC-001-26-000001",
         "FACTURA_VENTA,  FV-001-26-000001",
-        "FACTURA_COMPRA, FC-001-26-000001",
-        "RECTIFICATIVA_VENTA,  FRV-001-26-000001",
-        "RECTIFICATIVA_COMPRA, FRC-001-26-000001"
+        "RECTIFICATIVA_VENTA,  FRV-001-26-000001"
     })
     void formatsAnnualNumbers(CommercialDocumentType type, String expected) {
         assertThat(DocumentNumbering.format(type, LocalDate.of(2026, 6, 8), 1, "001"))

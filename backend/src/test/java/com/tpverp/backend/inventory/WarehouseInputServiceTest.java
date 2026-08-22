@@ -113,10 +113,35 @@ class WarehouseInputServiceTest {
         assertThat(input.getStatus()).isEqualTo(WarehouseInputStatus.BORRADOR);
         assertThat(input.getSupplierId()).isEqualTo(supplier.getId());
         assertThat(input.getLines()).singleElement()
-                .extracting(WarehouseInputLine::getQuantity).isEqualTo(4);
+                .extracting(WarehouseInputLine::getQuantity).isEqualTo(new BigDecimal("4.000"));
+        assertThat(input.getLines()).singleElement()
+                .extracting(WarehouseInputLine::getPurchaseUnitPrice)
+                .isEqualTo(new BigDecimal("4.20"));
         assertThat(input.getExcelImport().formulas()).singleElement()
                 .extracting(WarehouseExcelImportMetadata.Formula::formula)
                 .isEqualTo("E2*2.5");
+    }
+
+    @Test
+    void resolvesNonOverriddenLinePriceFromSelectedSourceOnTheServer() {
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(supplier));
+
+        var input = service.create(
+                new WarehouseInputCommand(
+                        warehouse.getId(), LocalDate.of(2026, 7, 8), supplier.getId(),
+                        "Proveedor SL", "Compra", "Factura",
+                        WarehouseInputDocumentType.FACTURA_ENTRADA,
+                        WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
+                        List.of(new WarehouseInputLineCommand(
+                                product.getId(), BigDecimal.ONE, new BigDecimal("99.00"),
+                                BigDecimal.ZERO, false)), null),
+                authentication());
+
+        assertThat(input.getLines()).singleElement()
+                .satisfies(line -> assertThat(line.getPurchaseUnitPrice()).isEqualByComparingTo("4.20"));
     }
 
     @Test
@@ -161,10 +186,11 @@ class WarehouseInputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
         input.replace(
                 supplier.getId(), "Proveedor SL", "Compra",
-                List.of(new WarehouseInputLineCommand(product.getId(), 5)));
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), new BigDecimal("5.000"),
+                        new BigDecimal("4.20"), BigDecimal.ZERO, false)));
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
-        when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
@@ -195,12 +221,13 @@ class WarehouseInputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
         input.replace(
                 supplier.getId(), "Proveedor SL", "Compra",
-                List.of(new WarehouseInputLineCommand(product.getId(), 5)));
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), new BigDecimal("5.000"),
+                        new BigDecimal("4.20"), BigDecimal.ZERO, false)));
         var existing = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 1), user.getId());
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
-        when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
@@ -231,6 +258,126 @@ class WarehouseInputServiceTest {
         assertThatThrownBy(() -> service.confirm(input.getId(), authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("entrada ya tiene movimientos");
+    }
+
+    @Test
+    void requiresSupplierForIncomingInvoice() {
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+
+        var command = new WarehouseInputCommand(
+                warehouse.getId(), LocalDate.of(2026, 7, 8), null,
+                "Origen libre", "F-2026-15", "Factura directa",
+                WarehouseInputDocumentType.FACTURA_ENTRADA,
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
+                List.of(new WarehouseInputLineCommand(product.getId(), 1)), null);
+
+        assertThatThrownBy(() -> service.create(command, authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("necesita proveedor");
+        verify(inputs, never()).save(any());
+    }
+
+    @Test
+    void confirmsDirectIncomingInvoiceAndAddsStockOnce() {
+        var invoice = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId(),
+                WarehouseInputDocumentType.FACTURA_ENTRADA);
+        invoice.replace(
+                supplier.getId(), "Proveedor SL", "F-15", "Factura directa",
+                WarehouseInputPriceSource.PURCHASE, new BigDecimal("5.00"), List.of(),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), new BigDecimal("2.500"),
+                        new BigDecimal("4.20"), new BigDecimal("10.00"), true)), null);
+        var stock = new StockLevel(product.getId(), warehouse.getId());
+        when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "FE", "2026"))
+                .thenReturn(Optional.empty());
+        when(inputs.findByStoreIdAndNumero(store.getId(), "FE-2026-000001"))
+                .thenReturn(Optional.empty());
+        when(stockLevels.findByProductIdAndWarehouseId(product.getId(), warehouse.getId()))
+                .thenReturn(Optional.of(stock));
+
+        var confirmed = service.confirm(invoice.getId(), authentication());
+
+        assertThat(confirmed.getNumber()).isEqualTo("FE-2026-000001");
+        assertThat(confirmed.getSubtotal()).isEqualByComparingTo("9.45");
+        assertThat(confirmed.getTotal()).isEqualByComparingTo("8.98");
+        assertThat(stock.getQuantity()).isEqualByComparingTo("2.500");
+        var movement = ArgumentCaptor.forClass(StockMovement.class);
+        verify(movements).save(movement.capture());
+        assertThat(movement.getValue().getType()).isEqualTo(StockMovementType.FACTURA_ENTRADA);
+    }
+
+    @Test
+    void confirmsLinkedInvoiceWithoutDuplicatingDeliveryNoteStock() {
+        var deliveryNote = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 7), user.getId(),
+                WarehouseInputDocumentType.ALBARAN_ENTRADA);
+        deliveryNote.replace(
+                supplier.getId(), "Proveedor SL", "A-7", "Entrega",
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), new BigDecimal("3.000"),
+                        new BigDecimal("4.20"), BigDecimal.ZERO, false)), null);
+        deliveryNote.confirm("AE-2026-000001", user.getId(), Instant.parse("2026-07-07T10:00:00Z"));
+        var invoice = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId(),
+                WarehouseInputDocumentType.FACTURA_ENTRADA);
+        invoice.replace(
+                supplier.getId(), "Proveedor SL", "F-16", "Factura vinculada",
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(deliveryNote.getId()),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), new BigDecimal("3.000"),
+                        new BigDecimal("4.10"), BigDecimal.ZERO, true)), null);
+        when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(inputs.findByIdAndStoreId(deliveryNote.getId(), store.getId()))
+                .thenReturn(Optional.of(deliveryNote));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "FE", "2026"))
+                .thenReturn(Optional.empty());
+        when(inputs.findByStoreIdAndNumero(store.getId(), "FE-2026-000001"))
+                .thenReturn(Optional.empty());
+
+        var confirmed = service.confirm(invoice.getId(), authentication());
+
+        assertThat(confirmed.getNumber()).isEqualTo("FE-2026-000001");
+        verify(stockLevels, never()).save(any());
+        verify(movements, never()).save(any());
+        verify(syncOutbox, never()).enqueue(any());
+    }
+
+    @Test
+    void rejectsDeliveryNoteAlreadyLinkedToAnotherInvoice() {
+        var deliveryNote = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 7), user.getId(),
+                WarehouseInputDocumentType.ALBARAN_ENTRADA);
+        deliveryNote.replace(
+                supplier.getId(), "Proveedor SL", "A-7", "Entrega",
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"), BigDecimal.ZERO, false)), null);
+        deliveryNote.confirm("AE-2026-000001", user.getId(), Instant.parse("2026-07-07T10:00:00Z"));
+        var invoice = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId(),
+                WarehouseInputDocumentType.FACTURA_ENTRADA);
+        invoice.replace(
+                supplier.getId(), "Proveedor SL", "F-17", "Factura vinculada",
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(deliveryNote.getId()),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"), BigDecimal.ZERO, false)), null);
+        when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(inputs.findByIdAndStoreId(deliveryNote.getId(), store.getId()))
+                .thenReturn(Optional.of(deliveryNote));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(inputs.existsOtherInvoiceForDeliveryNote(invoice.getId(), deliveryNote.getId()))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.confirm(invoice.getId(), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ya esta vinculado");
+        verify(counters, never()).save(any());
+        verify(movements, never()).save(any());
     }
 
     @Test

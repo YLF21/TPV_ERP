@@ -15,17 +15,12 @@ class FiscalDocumentPolicyTest {
     private final FiscalDocumentPolicy policy = new FiscalDocumentPolicy();
 
     @Test
-    void rechazaBorradoresYCompras() {
+    void rechazaBorradores() {
         assertThatThrownBy(() -> policy.validate(
                 document(CommercialDocumentType.TICKET, DocumentStatus.BORRADOR, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F2))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("estado");
-        assertThatThrownBy(() -> policy.validate(
-                document(CommercialDocumentType.FACTURA_COMPRA, DocumentStatus.PENDIENTE, BigDecimal.TEN),
-                FiscalRecordOperation.ALTA, FiscalDocumentType.F1))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("venta");
     }
 
     @Test
