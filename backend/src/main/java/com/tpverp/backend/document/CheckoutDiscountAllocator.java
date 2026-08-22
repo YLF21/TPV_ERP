@@ -141,6 +141,7 @@ final class CheckoutDiscountAllocator {
         }
         return (line.getLineType() == DocumentLineType.PROMOTION
                 || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON
+                || line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT
                 || line.getLineType() == DocumentLineType.MEMBER_BALANCE)
                 && line.getTotal().signum() < 0;
     }

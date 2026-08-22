@@ -54,12 +54,30 @@ public class PosCashController {
                     operationAuthorizations,
             @Valid PreviousTicketImportRequest previousTicketImport,
             @Size(max = 64) String quoteFingerprint,
-            @DecimalMin("0.00") BigDecimal memberBalanceAmount) {
+            @DecimalMin("0.00") BigDecimal memberBalanceAmount,
+            @DecimalMin("0.00") BigDecimal documentDiscountPercent) {
 
         public SaleRequest {
             lines = List.copyOf(lines == null ? List.of() : lines);
             operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
                     operationAuthorizations);
+        }
+
+        /** Compatibility bridge for callers compiled before document percentages existed. */
+        public SaleRequest(
+                UUID customerId,
+                List<LineRequest> lines,
+                String discountAuthorizationToken,
+                String promotionalCouponCode,
+                BigDecimal checkoutDiscountAmount,
+                String internalComment,
+                Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations,
+                PreviousTicketImportRequest previousTicketImport,
+                String quoteFingerprint,
+                BigDecimal memberBalanceAmount) {
+            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
+                    checkoutDiscountAmount, internalComment, operationAuthorizations,
+                    previousTicketImport, quoteFingerprint, memberBalanceAmount, null);
         }
 
         public SaleRequest(UUID customerId, List<LineRequest> lines) {

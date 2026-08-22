@@ -1,6 +1,7 @@
 package com.tpverp.backend.dev;
 
 import java.time.Clock;
+import com.tpverp.backend.installation.CommercialBootstrapService;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,8 +20,9 @@ public class DevSampleDataConfiguration {
             JdbcTemplate jdbc,
             PasswordEncoder passwordEncoder,
             Clock clock,
+            CommercialBootstrapService commercialBootstrap,
             @Value("${tpv.dev.sample-data.base-date:}") String baseDate) {
-        return new DevSampleDataSeeder(jdbc, passwordEncoder, clock, baseDate);
+        return new DevSampleDataSeeder(jdbc, passwordEncoder, clock, baseDate, commercialBootstrap);
     }
 
     @Bean

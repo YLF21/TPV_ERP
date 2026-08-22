@@ -62,6 +62,8 @@ import {
   saleReturnSourceConflict,
   mergeSaleReturnLines,
   saleQuickOperand,
+  saleOpenUnitPrice,
+  saleDocumentDiscountOperand,
   saleTotal,
   selectSaleProduct,
   updateSaleLineDiscount,
@@ -4583,6 +4585,12 @@ describe("SaleScreen", () => {
     expect(updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), 4.992)[0].quantity).toBe(4.992);
     expect(() => updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), 1.2345)).toThrow("invalid_quantity");
     expect(saleQuickOperand("5")).toBe(5);
+    expect(saleOpenUnitPrice("1.20")).toBe(1.2);
+    expect(saleOpenUnitPrice("1,")).toBe(1);
+    expect(saleOpenUnitPrice(".99")).toBeNull();
+    expect(saleOpenUnitPrice("105.901")).toBeNull();
+    expect(saleDocumentDiscountOperand("12,50")).toBe(12.5);
+    expect(saleDocumentDiscountOperand("100.01")).toBeNull();
     expect(saleQuickOperand("-1")).toBeNull();
     expect(salePauseQuantity("-1")).toBe(-1);
   });
@@ -4735,7 +4743,7 @@ describe("SaleScreen", () => {
     expect(filterSaleCustomers(customers, "c-002").map((customer) => customer.id)).toEqual(["customer-2"]);
   });
 
-  it("applies the member tier discount to every product line", () => {
+  it("keeps the member tier as document metadata without overwriting line discounts", () => {
     const lines = addSaleLine(addSaleLine([], memberDiscountProduct), products[0]);
     const bronze: SaleCustomer = {
       id: "bronze",
@@ -4748,7 +4756,7 @@ describe("SaleScreen", () => {
     const discounted = applyMemberDiscounts(lines, bronze);
 
     expect(discounted[0].memberDiscountPercent).toBe(5);
-    expect(effectiveSaleLineDiscount(discounted[0])).toBe(5);
+    expect(effectiveSaleLineDiscount(discounted[0])).toBe(0);
     expect(discounted[1].memberDiscountPercent).toBe(5);
   });
 
@@ -4766,26 +4774,26 @@ describe("SaleScreen", () => {
     expect(withoutMember[0].memberDiscountPercent).toBe(0);
   });
 
-  it("uses a greater member tier discount than the manual discount", () => {
+  it("keeps a manual line discount independent from the member tier", () => {
     const added = addSaleLine([], memberDiscountProduct);
     const manuallyDiscounted = updateSaleLineDiscount(added, saleCartLineIdentity(added[0]), 3);
     const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
 
-    expect(effectiveSaleLineDiscount(applyMemberDiscounts(manuallyDiscounted, bronze)[0])).toBe(5);
+    expect(effectiveSaleLineDiscount(applyMemberDiscounts(manuallyDiscounted, bronze)[0])).toBe(3);
   });
 
-  it("applies member discount to a product added after selecting the customer", () => {
+  it("does not apply member discount locally to a product added after selecting the customer", () => {
     const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
     const added = applyMemberDiscounts(addSaleLine([], memberDiscountProduct), bronze);
 
-    expect(saleTotal(added)).toBe(9.5);
+    expect(saleTotal(added)).toBe(10);
   });
 
-  it("applies member discount when the customer is selected after adding a product", () => {
+  it("does not apply member discount locally when the customer is selected after adding a product", () => {
     const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
     const addedBeforeSelection = addSaleLine([], products[0]);
 
-    expect(saleTotal(applyMemberDiscounts(addedBeforeSelection, bronze))).toBe(9.5);
+    expect(saleTotal(applyMemberDiscounts(addedBeforeSelection, bronze))).toBe(10);
   });
 
   it("keeps member pricing backend-authoritative and serializes only the manual discount", () => {

@@ -12,6 +12,7 @@ import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.installation.CommercialBootstrapService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -32,6 +33,7 @@ public class LicenseService {
     private final Clock clock;
     private final AuditService auditService;
     private final JdbcTemplate jdbc;
+    private final CommercialBootstrapService commercialBootstrap;
 
     public LicenseService(
             InstallationRepository instalacionRepository,
@@ -43,6 +45,21 @@ public class LicenseService {
             Clock clock,
             AuditService auditService,
             JdbcTemplate jdbc) {
+        this(instalacionRepository, tiendaRepository, licenciaRepository, identityStore,
+                issuerKeyProvider, decoder, clock, auditService, jdbc, null);
+    }
+
+    public LicenseService(
+            InstallationRepository instalacionRepository,
+            StoreRepository tiendaRepository,
+            LicenseRepository licenciaRepository,
+            InstallationIdentityStore identityStore,
+            TrustedIssuerKeyProvider issuerKeyProvider,
+            LicenseEnvelopeDecoder decoder,
+            Clock clock,
+            AuditService auditService,
+            JdbcTemplate jdbc,
+            CommercialBootstrapService commercialBootstrap) {
         this.instalacionRepository = instalacionRepository;
         this.tiendaRepository = tiendaRepository;
         this.licenciaRepository = licenciaRepository;
@@ -52,6 +69,7 @@ public class LicenseService {
         this.clock = clock;
         this.auditService = auditService;
         this.jdbc = jdbc;
+        this.commercialBootstrap = commercialBootstrap;
     }
 
     @Transactional(readOnly = true)
@@ -103,6 +121,9 @@ public class LicenseService {
                 null,
                 true));
         updateDefaultTax(store.getId(), preview.impuestos());
+        if (commercialBootstrap != null) {
+            commercialBootstrap.ensureOpenPriceProduct(store.getId());
+        }
         auditService.record(
                 "LICENSE_ACTIVATED",
                 AuditResult.EXITO,

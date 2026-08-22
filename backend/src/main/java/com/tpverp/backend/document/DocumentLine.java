@@ -46,6 +46,10 @@ public class DocumentLine {
     private UUID promotionVersionId;
     @Column(name = "cupon_promocional_id")
     private UUID promotionalCouponId;
+    @Column(name = "documento_ajuste_id")
+    private UUID documentAdjustmentId;
+    @Column(name = "linea_origen_id")
+    private UUID sourceLineId;
     @Column(name = "original_document_line_id")
     private UUID originalDocumentLineId;
     @Column(name = "ticket_regalo_linea_id")
@@ -477,6 +481,19 @@ public class DocumentLine {
 
     public UUID getPromotionalCouponId() {
         return promotionalCouponId;
+    }
+
+    public UUID getDocumentAdjustmentId() {
+        return documentAdjustmentId;
+    }
+
+    public UUID getSourceLineId() {
+        return sourceLineId;
+    }
+
+    void linkDocumentAdjustment(UUID adjustmentId, UUID sourceLineId) {
+        this.documentAdjustmentId = adjustmentId;
+        this.sourceLineId = sourceLineId;
     }
 
     public int getPosicion() {

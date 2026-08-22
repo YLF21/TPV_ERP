@@ -325,6 +325,12 @@ type PosAuthoritativeQuote = {
   total: number | string;
   productTotal: number | string;
   memberBalanceTotal?: number | string;
+  documentAdjustments?: Array<{
+    type: "MANUAL_PERCENT" | "MEMBER_PERCENT" | string;
+    percent: number | string;
+    eligibleBase: number | string;
+    amount: number | string;
+  }>;
   promotionPreview: PromotionPreview;
   pricingVersion?: number;
   quoteFingerprint?: string;
@@ -350,6 +356,15 @@ type AuthoritativeSaleLine = {
   manualDiscount: number | string;
   promotionDiscount: number | string;
   couponDiscount: number | string;
+  documentDiscountAmount?: number | string;
+  appliedPromotions?: Array<{
+    id?: string | null;
+    couponId?: string | null;
+    promotionVersionId?: string | null;
+    kind?: string | null;
+    name: string;
+    discountAmount: number | string;
+  }>;
   taxIncluded: boolean;
   taxRegime: string;
   taxPercent: number | string;
@@ -566,6 +581,25 @@ export function saleQuickOperand(value: string) {
   if (!/^\d+$/.test(value)) return null;
   const operand = Number(value);
   return Number.isSafeInteger(operand) ? operand : null;
+}
+
+/** Parses a direct unit price entered in the sales search box. Identifiers are
+ * resolved before this helper is called, so values such as `1.20` remain valid
+ * product codes when they exist in the catalogue. */
+export function saleOpenUnitPrice(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+[.]\d{0,2}$/.test(normalized)) return null;
+  const price = Number(normalized);
+  return Number.isFinite(price) ? price : null;
+}
+
+export function saleDocumentDiscountOperand(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d{1,3}(?:[.]\d{0,2})?$/.test(normalized)) return null;
+  const discount = Number(normalized);
+  return Number.isFinite(discount) && discount >= 0 && discount <= 100
+    ? discount
+    : null;
 }
 
 export function salePauseQuantity(value: string) {
@@ -990,9 +1024,7 @@ export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lin
 export function effectiveSaleLineDiscount(line: SaleLine) {
   return line.previousTicketImportOrigin
     ? line.previousTicketImportOrigin.historicalDiscountPercent
-    : line.returnOrigin
-    ? line.discountPercent
-    : Math.max(line.discountPercent, line.memberDiscountPercent ?? 0);
+    : line.discountPercent;
 }
 
 export function previousTicketImportSerialNumbersReady(lines: SaleLine[]) {
@@ -1375,10 +1407,16 @@ export function pendingSaleDraftForCustomer(
   checkoutId: string,
   internalComment = "",
   printMode: SalePrintMode = "DEFAULT",
+  documentDiscountPercent = 0,
 ): PendingSaleDraft {
   return {
     checkoutId, warehouseId, type: "ALBARAN_VENTA", date: addLocalDays(now, 0),
-    customerId: customer.id, dueDate: addLocalDays(now, Math.max(0, customer.paymentTermDays ?? 30)), globalDiscount: "0.00",
+    customerId: customer.id,
+    dueDate: addLocalDays(now, Math.max(0, customer.paymentTermDays ?? 30)),
+    globalDiscount: "0.00",
+    ...(documentDiscountPercent > 0
+      ? { documentDiscountPercent: documentDiscountPercent.toFixed(2) }
+      : {}),
     ...(internalComment.trim() ? { internalComment: internalComment.trim() } : {}),
     printMode,
     lines: lines.map((line) => ({
@@ -1632,6 +1670,7 @@ export function SaleScreen({
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
+  const [documentDiscountPercent, setDocumentDiscountPercent] = useState(0);
   const [memberBalanceCents, setMemberBalanceCents] = useState(0);
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
   const [parkedSaleSaving, setParkedSaleSaving] = useState(false);
@@ -2189,6 +2228,15 @@ export function SaleScreen({
                 </strong>
               </>
             ) : null}
+            {(authoritativeLine?.appliedPromotions ?? []).map((promotion) => (
+              <small
+                key={`${promotion.promotionVersionId ?? promotion.id ?? promotion.couponId ?? promotion.kind ?? "promotion"}-${promotion.name}`}
+                title={promotion.name}
+                className="sale-cart-promotion-label"
+              >
+                {promotion.name}
+              </small>
+            ))}
           </td>
         );
       }
@@ -3219,6 +3267,7 @@ export function SaleScreen({
         newCheckoutId(),
         saleComment,
         salePrintMode,
+        documentDiscountPercent,
       ));
     } catch (failure) {
       setPendingError(failure instanceof Error ? failure.message : "No se pudo preparar la venta pendiente");
@@ -3276,9 +3325,34 @@ export function SaleScreen({
   }
 
   function submitSearch() {
-    const selected = selectSaleProduct(selectableProducts, query);
+    const parsedOpenPrice = saleOpenUnitPrice(query);
+    // Keep inactive products out of the ordinary search, but still give an
+    // exact numeric identifier precedence over the open-price grammar.
+    const selected = selectSaleProduct(selectableProducts, query)
+      ?? (parsedOpenPrice != null ? selectSaleProduct(products, query) : undefined);
     if (selected) {
       requestAddProduct(selected);
+      return;
+    }
+    const openPrice = parsedOpenPrice;
+    if (openPrice != null) {
+      if (openPrice === 0) {
+        setShortcutStatus(t("sale.openPrice.invalid"));
+        return;
+      }
+      const openPriceProduct = products.find((product) =>
+        normalizedSearchValue(product.code) === "0");
+      if (!openPriceProduct) {
+        setShortcutStatus(t("sale.openPrice.productZeroMissing"));
+        return;
+      }
+      if (openPriceProduct.active === false) {
+        setShortcutStatus(t("sale.openPrice.productZeroInactive"));
+        return;
+      }
+      addProduct(openPriceProduct, openPrice, nextScanQuantity);
+      setNextScanQuantity(1);
+      setNextScanMode("UNIT");
       return;
     }
     if (!query.trim()) return;
@@ -3478,24 +3552,17 @@ export function SaleScreen({
 
   function applyQuickGlobalDiscount() {
     if (lines.length === 0 || paymentLocked || !canApplyManualDiscount) return;
-    const discount = quickOperand();
+    const discount = saleDocumentDiscountOperand(query);
     if (discount == null || discount < 0 || discount > 100) {
-      setShortcutStatus("Introduce un descuento entre 0 y 100");
+      setShortcutStatus(t("sale.documentDiscount.invalid"));
       return;
     }
-    try {
-      setLines((current) => current.reduce(
-        (updated, line) => line.returnOrigin || line.previousTicketImportOrigin
-          ? updated
-          : updateSaleLineDiscount(updated, saleCartLineIdentity(line), discount),
-        current,
-      ));
-      clearQuickEntry("Descuento aplicado a toda la compra");
-    } catch (error) {
-      setShortcutStatus(error instanceof Error && error.message === "discount_blocked"
-        ? t("sale.discountBlocked")
-        : "No se pudo aplicar el descuento global");
-    }
+    setDocumentDiscountPercent(discount);
+    clearQuickEntry(discount === 0
+      ? t("sale.documentDiscount.cleared")
+      : saleMainMessage(t, "sale.documentDiscount.applied", {
+        percent: discount.toFixed(2),
+      }));
   }
 
   function applyDesiredLinePrice() {
@@ -3557,6 +3624,9 @@ export function SaleScreen({
       ...(checkoutDiscountCents > 0 && lines.some((line) => !line.previousTicketImportOrigin)
         ? { checkoutDiscountAmount: checkoutDiscountCents / 100 }
         : {}),
+      ...(documentDiscountPercent > 0 && lines.some((line) => !line.previousTicketImportOrigin)
+        ? { documentDiscountPercent }
+        : {}),
       ...(memberBalanceCents > 0 && selectedCustomer?.activeMember
         ? { memberBalanceAmount: memberBalanceCents / 100 }
         : {}),
@@ -3571,6 +3641,7 @@ export function SaleScreen({
     setSelectedCustomer(null);
     setQuery("");
     setCheckoutDiscountCents(0);
+    setDocumentDiscountPercent(0);
     setMemberBalanceCents(0);
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
@@ -3620,6 +3691,7 @@ export function SaleScreen({
     setSelectedLineId(null);
     setQuery("");
     setCheckoutDiscountCents(0);
+    setDocumentDiscountPercent(0);
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
     setActionDialog(null);
@@ -3643,6 +3715,7 @@ export function SaleScreen({
         : { ...line, discountPercent: 0 }
     )));
     setCheckoutDiscountCents(0);
+    setDocumentDiscountPercent(0);
     setShortcutStatus(t("sale.clearDiscounts.done"));
     queueMicrotask(() => searchInputRef.current?.focus());
   }
@@ -3862,6 +3935,7 @@ export function SaleScreen({
     setPreviousTicketImportBatch(null);
     setSelectedLineId(recoveredLines[0] ? saleCartLineIdentity(recoveredLines[0]) : null);
     setCheckoutDiscountCents(0);
+    setDocumentDiscountPercent(Math.max(0, Number(opened.document.documentDiscountPercent ?? 0)));
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
     setSaleComment(opened.document.comentarioInterno?.trim() ?? "");
@@ -3893,6 +3967,7 @@ export function SaleScreen({
       setAuthoritativeQuoteLoading(false);
       setAuthoritativeQuoteError("");
       setCheckoutDiscountCents(0);
+      setDocumentDiscountPercent(0);
       setMemberBalanceCents(0);
       return;
     }
@@ -4166,6 +4241,7 @@ export function SaleScreen({
           && !selectedCustomer
           && !saleComment
           && checkoutDiscountCents === 0
+          && documentDiscountPercent === 0
           && salePrintMode === "DEFAULT"
         );
       case "clear-lines":
@@ -4173,6 +4249,7 @@ export function SaleScreen({
       case "clear-discounts":
         return paymentLocked || (
           checkoutDiscountCents === 0
+          && documentDiscountPercent === 0
           && lines.every((line) => line.discountPercent === 0)
         );
       case "temporary-name":
@@ -5008,6 +5085,7 @@ export function SaleScreen({
                 setSalePrintMode("DEFAULT");
                 setPrintModeInput("DEFAULT");
                 setCheckoutDiscountCents(0);
+                setDocumentDiscountPercent(0);
                 setMemberBalanceCents(0);
                 setReservedPaymentTotalCents(null);
                 setLastPrintMode(completedPrintMode);

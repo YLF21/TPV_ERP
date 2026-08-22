@@ -1,6 +1,7 @@
 package com.tpverp.backend.dev;
 
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.installation.CommercialBootstrapService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -55,6 +56,7 @@ public class DevSampleDataSeeder {
     private final PasswordEncoder passwordEncoder;
     private final LocalDate seedDate;
     private final Instant seedInstant;
+    private final CommercialBootstrapService commercialBootstrap;
     // Aliases kept local to the dataset recipes so their relative-date intent stays readable.
     private final LocalDate TODAY;
     private final Instant NOW;
@@ -64,8 +66,18 @@ public class DevSampleDataSeeder {
             PasswordEncoder passwordEncoder,
             Clock clock,
             String configuredBaseDate) {
+        this(jdbc, passwordEncoder, clock, configuredBaseDate, null);
+    }
+
+    public DevSampleDataSeeder(
+            JdbcTemplate jdbc,
+            PasswordEncoder passwordEncoder,
+            Clock clock,
+            String configuredBaseDate,
+            CommercialBootstrapService commercialBootstrap) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
+        this.commercialBootstrap = commercialBootstrap;
         this.seedDate = configuredBaseDate == null || configuredBaseDate.isBlank()
                 ? LocalDate.now(clock)
                 : LocalDate.parse(configuredBaseDate);
@@ -103,6 +115,9 @@ public class DevSampleDataSeeder {
         synchronizeDocumentCounters();
         seedWarehouseDocuments();
         rebuildStockSnapshots();
+        if (commercialBootstrap != null) {
+            commercialBootstrap.ensureOpenPriceProduct(STORE);
+        }
     }
 
     LocalDate seedDate() {

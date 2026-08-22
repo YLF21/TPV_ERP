@@ -397,6 +397,9 @@ class DocumentPromotionIntegrationTest {
         when(memberProduct.getDiscountType()).thenReturn(DiscountType.MEMBER_PRICE);
         when(memberProduct.getSalePrice()).thenReturn(new BigDecimal("100.00"));
         when(memberProduct.getMemberPrice()).thenReturn(new BigDecimal("80.00"));
+        when(productRepository.findAllByStoreIdAndIdIn(
+                store.getId(), List.of(normalProductId, memberProductId)))
+                .thenReturn(List.of(normalProduct, memberProduct));
         org.mockito.Mockito.doReturn(Map.of(
                 normalProductId, productSnapshot(normalProduct),
                 memberProductId, productSnapshot(memberProduct)))
@@ -412,11 +415,14 @@ class DocumentPromotionIntegrationTest {
 
         var quote = service.quoteTicket(command, authentication());
 
-        assertThat(quote.getLineas()).hasSize(2);
+        assertThat(quote.getLineas()).hasSize(3);
         assertThat(quote.getLineas().get(0).getPrecioUnitario()).isEqualByComparingTo("100.00");
-        assertThat(quote.getLineas().get(0).getDescuento()).isEqualByComparingTo("5.00");
+        assertThat(quote.getLineas().get(0).getDescuento()).isEqualByComparingTo("0.00");
         assertThat(quote.getLineas().get(1).getPrecioUnitario()).isEqualByComparingTo("80.00");
-        assertThat(quote.getLineas().get(1).getDescuento()).isEqualByComparingTo("5.00");
+        assertThat(quote.getLineas().get(1).getDescuento()).isEqualByComparingTo("0.00");
+        assertThat(quote.getLineas().get(2).getLineType())
+                .isEqualTo(DocumentLineType.DOCUMENT_DISCOUNT);
+        assertThat(quote.getLineas().get(2).getTotal()).isEqualByComparingTo("-4.00");
         verify(memberRepository).findByCustomerIdAndCompanyId(customerId, store.getEmpresa().getId());
     }
 

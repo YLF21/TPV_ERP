@@ -102,11 +102,36 @@ public class CustomerPendingSaleController {
             @Size(max = 32)
             @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
                     operationAuthorizations,
-            @jakarta.validation.constraints.Min(0) Long draftVersion) {
+            @jakarta.validation.constraints.Min(0) Long draftVersion,
+            @DecimalMin("0.00") BigDecimal documentDiscountPercent) {
 
         public CreateRequest {
             operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
                     operationAuthorizations);
+        }
+
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal,
+                CreditOverride creditOverride,
+                SalesDocumentCompletionMode completionMode,
+                String internalComment,
+                String authorizerUsername,
+                String authorizerPassword,
+                Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations,
+                Long draftVersion) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, creditOverride,
+                    completionMode, internalComment, authorizerUsername,
+                    authorizerPassword, operationAuthorizations, draftVersion, null);
         }
 
         @Override
@@ -241,7 +266,7 @@ public class CustomerPendingSaleController {
                     warehouseId, type, date, customerId, null, null,
                     globalDiscount, true,
                     lines.stream().map(DocumentRequest.LineRequest::toCommand).toList(),
-                    internalComment);
+                    internalComment, documentDiscountPercent);
         }
     }
 

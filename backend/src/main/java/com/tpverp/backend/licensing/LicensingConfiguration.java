@@ -48,7 +48,8 @@ class LicensingConfiguration {
             LicenseEnvelopeDecoder decoder,
             Clock clock,
             AuditService auditService,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            CommercialBootstrapService commercialBootstrap) {
         return new LicenseService(
                 instalacionRepository,
                 tiendaRepository,
@@ -58,7 +59,8 @@ class LicensingConfiguration {
                 decoder,
                 clock,
                 auditService,
-                jdbcTemplate);
+                jdbcTemplate,
+                commercialBootstrap);
     }
 
     @Bean

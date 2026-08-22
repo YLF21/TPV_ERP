@@ -23313,6 +23313,13 @@ textarea:focus,
   text-transform: uppercase;
 }
 
+.sale-cart-special .sale-cart-promotion-label {
+  color: #7b3f00;
+  font-size: 8px;
+  line-height: 11px;
+  text-transform: none;
+}
+
 .sale-cart-special strong {
   margin-top: 2px;
   color: #0b4f8a;

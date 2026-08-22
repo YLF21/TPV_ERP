@@ -46,6 +46,7 @@ public class AuthoritativePromotionPricing {
                 customerId,
                 member == null ? null : member.getId(),
                 category == null ? null : category.getId(),
+                category == null ? null : category.getName(),
                 categoryDiscount);
     }
 
@@ -56,10 +57,15 @@ public class AuthoritativePromotionPricing {
             DocumentLineCommand line) {
         var catalogSalePrice = requiredPrice(product.getSalePrice(), "precio de venta");
         var usesOpenPrice = catalogSalePrice.signum() == 0;
+        var usesReservedOpenPrice = "0".equals(product.getCode())
+                && line.precioUnitario() != null
+                && line.precioUnitario().signum() > 0;
         var usesHistoricalOpenPrice = line.historicalOpenPriceOverride();
         var price = line.temporaryPriceOverride()
                 ? requiredTemporaryPrice(line.precioUnitario())
                 : usesHistoricalOpenPrice
+                ? requiredOpenPrice(line.precioUnitario())
+                : usesReservedOpenPrice
                 ? requiredOpenPrice(line.precioUnitario())
                 : usesOpenPrice
                 ? requiredOpenPrice(line.precioUnitario())
@@ -67,14 +73,15 @@ public class AuthoritativePromotionPricing {
         var rate = line.temporaryPriceOverride()
                 ? "TEMPORAL"
                 : usesHistoricalOpenPrice ? line.tarifa()
+                : usesReservedOpenPrice ? "VENTA"
                 : usesOpenPrice ? "VENTA" : rate(product, documentDate, customer);
         var priced = line.withPrice(price, rate);
-        var categoryDiscount = customer.categoryDiscountPercent();
-        if (product.getDiscountType() == DiscountType.NONE && categoryDiscount.signum() == 0) {
+        if (product.getDiscountType() == DiscountType.NONE) {
             return priced.withDiscount(BigDecimal.ZERO, rate);
         }
-        var discount = line.descuento().max(categoryDiscount);
-        return priced.withDiscount(discount, categoryDiscount.signum() > 0 ? "MEMBER" : rate);
+        // Member category reductions are document-level adjustments applied after
+        // promotions. Keep the unit discount entered by the operator untouched.
+        return priced.withDiscount(line.descuento(), rate);
     }
 
     public BigDecimal basePrice(
@@ -187,10 +194,19 @@ public class AuthoritativePromotionPricing {
             UUID customerId,
             UUID memberId,
             UUID memberCategoryId,
+            String memberCategoryName,
             BigDecimal categoryDiscountPercent) {
 
         public CustomerContext(UUID customerId, UUID memberId, UUID memberCategoryId) {
-            this(customerId, memberId, memberCategoryId, BigDecimal.ZERO);
+            this(customerId, memberId, memberCategoryId, null, BigDecimal.ZERO);
+        }
+
+        public CustomerContext(
+                UUID customerId,
+                UUID memberId,
+                UUID memberCategoryId,
+                BigDecimal categoryDiscountPercent) {
+            this(customerId, memberId, memberCategoryId, null, categoryDiscountPercent);
         }
 
         public CustomerContext {
@@ -199,7 +215,7 @@ public class AuthoritativePromotionPricing {
         }
 
         public static CustomerContext anonymous() {
-            return new CustomerContext(null, null, null, BigDecimal.ZERO);
+            return new CustomerContext(null, null, null, null, BigDecimal.ZERO);
         }
 
         public boolean isMember() {
