@@ -255,6 +255,8 @@ public class DocumentService {
                 organization.currentCompany().getId(), customer.getId());
         var document = createDraft(command, authentication, context);
         applyDirectPromotions(document, promotionContext(document, context));
+        applyDocumentReductions(document, command.documentDiscountPercent(),
+                null, null, authentication, context);
         document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
         validatePendingSaleCustomer(document, customer);
         return document;
@@ -485,6 +487,18 @@ public class DocumentService {
             BigDecimal checkoutDiscountAmount,
             BigDecimal memberBalanceAmount,
             Authentication authentication) {
+        return quoteTicket(command, promotionalCouponCode, checkoutDiscountAmount,
+                memberBalanceAmount, null, authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument quoteTicket(
+            DocumentCommand command,
+            String promotionalCouponCode,
+            BigDecimal checkoutDiscountAmount,
+            BigDecimal memberBalanceAmount,
+            BigDecimal documentDiscountPercent,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -493,7 +507,8 @@ public class DocumentService {
         applyDirectPromotions(ticket, promotionContext(ticket, customer));
         applyPromotionalCouponPreview(
                 ticket, customer, promotionalCouponCode, authentication);
-        applyCheckoutReductions(ticket, memberBalanceAmount, checkoutDiscountAmount);
+        applyDocumentReductions(ticket, documentDiscountPercent,
+                memberBalanceAmount, checkoutDiscountAmount, authentication, customer);
         validateInactiveSaleProducts(ticket);
         return ticket;
     }
@@ -535,6 +550,19 @@ public class DocumentService {
             BigDecimal checkoutDiscountAmount,
             BigDecimal memberBalanceAmount,
             Authentication authentication) {
+        return createTicket(command, payments, promotionalCouponCode,
+                checkoutDiscountAmount, memberBalanceAmount, null, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument createTicket(
+            DocumentCommand command,
+            List<PaymentCommand> payments,
+            String promotionalCouponCode,
+            BigDecimal checkoutDiscountAmount,
+            BigDecimal memberBalanceAmount,
+            BigDecimal documentDiscountPercent,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -550,7 +578,8 @@ public class DocumentService {
             applyPromotionalCouponRedemption(
                     ticket, customer, promotionalCouponCode, authentication);
         }
-        applyCheckoutReductions(ticket, memberBalanceAmount, checkoutDiscountAmount);
+        applyDocumentReductions(ticket, documentDiscountPercent,
+                memberBalanceAmount, checkoutDiscountAmount, authentication, customer);
         validateInactiveSaleProducts(ticket);
         if (ticket.getTotal().signum() > 0) {
             requirePaymentsPresent(payments);
@@ -1011,20 +1040,72 @@ public class DocumentService {
         }
     }
 
-    private void applyCheckoutReductions(
+    private void applyDocumentReductions(
             CommercialDocument ticket,
+            BigDecimal documentDiscountPercent,
             BigDecimal memberBalanceAmount,
-            BigDecimal checkoutDiscountAmount) {
+            BigDecimal checkoutDiscountAmount,
+            Authentication authentication,
+            AuthoritativePromotionPricing.CustomerContext customerContext) {
         var memberBalance = memberBalanceAmount == null
                 ? BigDecimal.ZERO.setScale(Money.SCALE)
                 : Money.euros(memberBalanceAmount);
         var checkoutDiscount = checkoutDiscountAmount == null
                 ? BigDecimal.ZERO.setScale(Money.SCALE)
                 : Money.euros(checkoutDiscountAmount);
-        if (memberBalance.signum() == 0 && checkoutDiscount.signum() == 0) {
+        var documentPercent = documentDiscountPercent == null
+                ? BigDecimal.ZERO : Money.validPercentage(documentDiscountPercent);
+        boolean memberPercent = documentPercent.signum() == 0 && ticket.getClienteId() != null;
+        if (memberPercent) {
+            documentPercent = Money.validPercentage(customerContext.categoryDiscountPercent());
+        }
+        if (documentPercent.signum() == 0 && memberBalance.signum() == 0
+                && checkoutDiscount.signum() == 0) {
             return;
         }
         var eligibleProductIds = discountEligibleProductIds(ticket);
+        boolean fullDocumentDiscount = false;
+        if (documentPercent.signum() > 0
+                && (!memberPercent || !eligibleProductIds.isEmpty())) {
+            var adjustmentLineCount = ticket.getLineas().stream()
+                    .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                    .count();
+            DocumentPercentDiscountAllocator.apply(ticket, documentPercent, eligibleProductIds);
+            var documentDiscountLines = ticket.getLineas().stream()
+                    .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                    .skip(adjustmentLineCount)
+                    .toList();
+            var amount = Money.euros(documentDiscountLines.stream()
+                    .map(DocumentLine::getTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .negate());
+            if (amount.signum() > 0) {
+                fullDocumentDiscount = documentPercent.compareTo(BigDecimal.valueOf(100)) == 0;
+                var eligibleBase = Money.euros(amount.multiply(new BigDecimal("100"))
+                        .divide(documentPercent, 2, Money.ROUNDING));
+                var context = memberPercent
+                        ? customerContext
+                        : AuthoritativePromotionPricing.CustomerContext.anonymous();
+                var adjustment = new DocumentAdjustment(
+                        ticket,
+                        memberPercent ? "MEMBER_PERCENT" : "MANUAL_PERCENT",
+                        ticket.getAjustes().size() + 1,
+                        documentPercent,
+                        eligibleBase,
+                        amount,
+                        authentication == null ? null : organization.currentUser(authentication).getId(),
+                        Instant.now(clock),
+                        context.memberId(),
+                        context.memberCategoryId(),
+                        context.memberCategoryName());
+                ticket.addAdjustment(adjustment);
+                documentDiscountLines.forEach(line -> line.linkDocumentAdjustment(
+                        adjustment.getId(), line.getSourceLineId()));
+            }
+        }
+        if (fullDocumentDiscount) {
+            return;
+        }
         if (memberBalance.signum() > 0) {
             memberLoyalty.validateBalanceForCheckout(
                     ticket.getClienteId(), memberBalance);
@@ -1045,7 +1126,8 @@ public class DocumentService {
                 .distinct()
                 .toList();
         return products.findAllByStoreIdAndIdIn(ticket.getTiendaId(), ids).stream()
-                .filter(product -> product.getDiscountType() != DiscountType.NONE)
+                .filter(product -> product.getDiscountType() != DiscountType.NONE
+                        || "0".equals(product.getCode()))
                 .map(Product::getId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
@@ -1949,6 +2031,10 @@ public class DocumentService {
         }
         var productsById = productMap(document, productLines);
         return productLines.stream()
+                .filter(line -> {
+                    var product = productsById.get(line.getProductoId());
+                    return product != null && !"0".equals(product.getCode());
+                })
                 .map(line -> evaluationLine(document, line, productsById.get(line.getProductoId())))
                 .toList();
     }

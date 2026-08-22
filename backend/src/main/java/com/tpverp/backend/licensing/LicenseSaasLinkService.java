@@ -180,6 +180,7 @@ public class LicenseSaasLinkService {
             licenses.save(license);
             updateDefaultTax(
                     store.getId(), response.impuestos(), commercialProfile(response));
+            commercialBootstrap.ensureOpenPriceProduct(store.getId());
             return;
         }
         licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId())
@@ -209,6 +210,7 @@ public class LicenseSaasLinkService {
         licenses.save(license);
         updateDefaultTax(
                 store.getId(), response.impuestos(), commercialProfile(response));
+        commercialBootstrap.ensureOpenPriceProduct(store.getId());
     }
 
     private void markSaasStatus(

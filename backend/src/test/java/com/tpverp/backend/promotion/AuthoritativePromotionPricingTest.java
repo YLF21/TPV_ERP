@@ -158,7 +158,7 @@ class AuthoritativePromotionPricingTest {
     }
 
     @Test
-    void activeCategoryDiscountSurvivesFinalPricingForNormalProduct() {
+    void activeCategoryDiscountIsDeferredToDocumentAdjustmentForNormalProduct() {
         when(customers.findByIdAndCompanyId(CUSTOMER_ID, COMPANY_ID)).thenReturn(Optional.of(customer));
         when(members.findByCustomerIdAndCompanyId(CUSTOMER_ID, COMPANY_ID)).thenReturn(Optional.of(member));
         when(member.isActive()).thenReturn(true);
@@ -177,7 +177,7 @@ class AuthoritativePromotionPricingTest {
                 product, DATE, pricing.customerContext(COMPANY_ID, CUSTOMER_ID), line);
 
         assertThat(priced.precioUnitario()).isEqualByComparingTo("100.00");
-        assertThat(priced.descuento()).isEqualByComparingTo("5.00");
+        assertThat(priced.descuento()).isEqualByComparingTo("0.00");
     }
 
     @Test

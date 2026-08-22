@@ -280,6 +280,10 @@ public class CatalogService {
     @Transactional
     public Product updateProduct(UUID productId, ProductRequest request) {
         Product product = product(productId);
+        if (isOpenPriceProduct(product)
+                && (request.code() == null || !"0".equals(request.code().trim()))) {
+            throw new IllegalArgumentException("product_zero_code_reserved");
+        }
         validateProductRequest(productId, product.getStoreId(), request);
         PriceSnapshot before = PriceSnapshot.from(product);
         product.update(
@@ -320,10 +324,17 @@ public class CatalogService {
     @Transactional
     public void deleteProduct(UUID productId) {
         Product product = product(productId);
+        if (isOpenPriceProduct(product)) {
+            throw new IllegalStateException("product_zero_cannot_delete");
+        }
         if (stockRepository.existsByProductId(productId) || movementRepository.existsByProductId(productId)) {
             throw new IllegalStateException("No se puede eliminar un producto con historial");
         }
         productRepository.delete(product);
+    }
+
+    private static boolean isOpenPriceProduct(Product product) {
+        return "0".equals(product.getCode());
     }
 
     private void applyProductData(Product product, ProductRequest request) {

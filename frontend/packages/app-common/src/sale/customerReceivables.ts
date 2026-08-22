@@ -30,6 +30,7 @@ export type PendingSaleDraft = {
   customerId: string;
   dueDate: string;
   globalDiscount: string;
+  documentDiscountPercent?: string;
   lines: PendingSaleLine[];
   creditOverride?: { reason: string };
   completionMode?: "DRAFT" | "CONFIRM_PENDING" | "CONFIRM_AND_PAY";

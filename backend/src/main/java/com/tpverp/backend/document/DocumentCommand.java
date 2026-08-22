@@ -15,7 +15,23 @@ public record DocumentCommand(
         BigDecimal descuentoGlobal,
         boolean directo,
         List<DocumentLineCommand> lineas,
-        String comentarioInterno) {
+        String comentarioInterno,
+        BigDecimal documentDiscountPercent) {
+
+    public DocumentCommand(
+            UUID almacenId,
+            CommercialDocumentType tipo,
+            LocalDate fecha,
+            UUID clienteId,
+            UUID proveedorId,
+            String numeroExterno,
+            BigDecimal descuentoGlobal,
+            boolean directo,
+            List<DocumentLineCommand> lineas,
+            String comentarioInterno) {
+        this(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno,
+                descuentoGlobal, directo, lineas, comentarioInterno, null);
+    }
 
     public DocumentCommand(
             UUID almacenId,

@@ -245,9 +245,13 @@ public class PosCashService {
         var command = prepared.command();
         var checkoutDiscount = effectiveCheckoutDiscount(request, prepared.replay());
         var memberBalance = effectiveMemberBalance(request);
+        var documentDiscount = effectiveDocumentDiscount(request);
         CommercialDocument ticket = null;
         if (!command.lineas().isEmpty()) {
-            ticket = memberBalance.signum() > 0
+            ticket = documentDiscount.signum() > 0
+                    ? documents.quoteTicket(command, request.promotionalCouponCode(),
+                            checkoutDiscount, memberBalance, documentDiscount, authentication)
+                    : memberBalance.signum() > 0
                     ? documents.quoteTicket(command, request.promotionalCouponCode(),
                             checkoutDiscount, memberBalance, authentication)
                     : checkoutDiscount.signum() > 0
@@ -257,6 +261,7 @@ public class PosCashService {
                             ? documents.quoteTicket(command, request.promotionalCouponCode(), authentication)
                             : documents.quoteTicket(command, authentication);
         } else if (checkoutDiscount.signum() > 0 || memberBalance.signum() > 0
+                || documentDiscount.signum() > 0
                 || hasText(request.promotionalCouponCode())) {
             throw new IllegalArgumentException(
                     "Los descuentos y cupones nuevos necesitan articulos actuales");
@@ -469,11 +474,12 @@ public class PosCashService {
                 "POS_CASH",
                 request.checkoutId());
         var ticket = prepared.replay() == null
-                ? hasMemberBalance(request.sale())
+                ? hasMemberBalance(request.sale()) || hasDocumentDiscount(request.sale())
                         ? documents.createTicket(command, payment,
                                 request.sale().promotionalCouponCode(),
                                 request.sale().checkoutDiscountAmount(),
-                                request.sale().memberBalanceAmount(), authentication)
+                                request.sale().memberBalanceAmount(),
+                                request.sale().documentDiscountPercent(), authentication)
                         : hasCheckoutDiscount(request.sale())
                                 ? documents.createTicket(command, payment,
                                         request.sale().promotionalCouponCode(),
@@ -554,11 +560,14 @@ public class PosCashService {
             var tax = taxes.findById(product.getTaxId())
                     .filter(value -> value.getStoreId().equals(store.getId()) && value.isActive())
                     .orElseThrow(() -> new IllegalStateException("El impuesto del producto no esta activo"));
-            var unitPrice = authoritativeUnitPrice(product.getSalePrice(), line.openUnitPrice());
+            var unitPrice = "0".equals(product.getCode()) && line.openUnitPrice() != null
+                    ? authoritativeUnitPrice(BigDecimal.ZERO, line.openUnitPrice())
+                    : authoritativeUnitPrice(product.getSalePrice(), line.openUnitPrice());
             var temporaryName = normalizedTemporaryName(
                     product.getName(), line.temporaryName());
             var temporaryNameOverride = !temporaryName.equals(product.getName());
-            var temporaryPriceOverride = Money.euros(product.getSalePrice()).signum() != 0
+            var temporaryPriceOverride = !"0".equals(product.getCode())
+                    && Money.euros(product.getSalePrice()).signum() != 0
                     && line.openUnitPrice() != null;
             if (line.quantity().compareTo(BigDecimal.ONE.negate()) == 0) {
                 sensitiveOperations.add(SaleOperationCode.MANUAL_RETURN_WITHOUT_TICKET);
@@ -601,11 +610,15 @@ public class PosCashService {
         if (hasCheckoutDiscount(request)) {
             sensitiveOperations.add(SaleOperationCode.APPLY_CHECKOUT_DISCOUNT);
         }
+        if (hasDocumentDiscount(request)) {
+            sensitiveOperations.add(SaleOperationCode.APPLY_SALE_DISCOUNT);
+        }
         var command = new DocumentCommand(
                 warehouse.getId(), CommercialDocumentType.TICKET,
                 LocalDate.now(ZoneId.of(store.getTimezone())), request.customerId(), null, null,
                 BigDecimal.ZERO.setScale(2), true,
-                List.copyOf(commandLines), request.internalComment());
+                List.copyOf(commandLines), request.internalComment(),
+                request.documentDiscountPercent());
         return new PreparedSale(command, sensitiveOperations, temporaryPriceClaims, replay);
     }
 
@@ -885,7 +898,7 @@ public class PosCashService {
                 SaleOperationCode.class);
         discountPercentages.put(
                 SaleOperationCode.APPLY_SALE_DISCOUNT,
-                maximumLineDiscount(request));
+                maximumLineDiscount(request).max(effectiveDocumentDiscount(request)));
         if (effectiveCheckoutDiscount(request, prepared.replay()).signum() > 0) {
             discountPercentages.put(
                     SaleOperationCode.APPLY_CHECKOUT_DISCOUNT,
@@ -1162,7 +1175,7 @@ public class PosCashService {
             return;
         }
         discountAuthorizations.enforce(
-                maximumLineDiscount(request),
+                maximumLineDiscount(request).max(effectiveDocumentDiscount(request)),
                 request.discountAuthorizationToken(),
                 authentication);
         authorizeCheckoutDiscount(
@@ -1233,6 +1246,17 @@ public class PosCashService {
                 : Money.euros(request.memberBalanceAmount());
     }
 
+    private static BigDecimal effectiveDocumentDiscount(
+            PosCashController.SaleRequest request) {
+        return request.documentDiscountPercent() == null
+                ? BigDecimal.ZERO.setScale(2)
+                : Money.validPercentage(request.documentDiscountPercent());
+    }
+
+    private static boolean hasDocumentDiscount(PosCashController.SaleRequest request) {
+        return effectiveDocumentDiscount(request).signum() > 0;
+    }
+
     static BigDecimal authoritativeUnitPrice(
             BigDecimal catalogSalePrice,
             BigDecimal requestedOpenUnitPrice) {
@@ -1286,6 +1310,7 @@ public class PosCashService {
             BigDecimal taxTotal,
             BigDecimal discountTotal,
             BigDecimal memberBalanceTotal,
+            List<DocumentAdjustmentView> documentAdjustments,
             String currency,
             UUID storeId,
             UUID customerId,
@@ -1321,7 +1346,8 @@ public class PosCashService {
                     .filter(line -> line.getPromotionId() != null || line.getPromotionalCouponId() != null)
                     .map(line -> new AppliedPromotion(
                             line.getPromotionId(), line.getPromotionalCouponId(),
-                            line.getLineType().name(), line.getNombre(), line.getTotal().abs()))
+                            line.getPromotionVersionId(), line.getLineType().name(),
+                            line.getNombre(), line.getTotal().abs()))
                     .toList();
             var quoteLines = ticket.getLineas().stream().map(QuoteLine::from).toList();
             var listTotal = Money.euros(ticket.getLineas().stream()
@@ -1345,6 +1371,11 @@ public class PosCashService {
                     .map(DocumentLine::getTotal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     .negate());
+            var adjustments = ticket.getAjustes().stream()
+                    .map(adjustment -> new DocumentAdjustmentView(
+                            adjustment.getTipo(), adjustment.getPorcentaje(),
+                            adjustment.getBaseElegible(), adjustment.getImporteAplicado()))
+                    .toList();
             var fingerprint = PosCashService.quoteFingerprint(ticket, quoteLines);
             var breakdown = authoritativeLineBreakdown(
                     ticket, request, catalog, customer,
@@ -1353,14 +1384,14 @@ public class PosCashService {
             return new Quote(
                     ticket.getTotal(), productTotal, new PromotionPreviewView(promotions),
                     ticket.getBaseTotal(), ticket.getImpuestoTotal(), discountTotal,
-                    memberBalanceTotal,
+                    memberBalanceTotal, adjustments,
                     ticket.getMoneda(), ticket.getTiendaId(), ticket.getClienteId(),
                     fingerprint, quoteLines, taxes, 1, breakdown);
         }
 
         public Quote(BigDecimal total) {
             this(total, total, new PromotionPreviewView(List.of()), total, BigDecimal.ZERO,
-                    BigDecimal.ZERO, BigDecimal.ZERO, "EUR", null, null, "", List.of(),
+                    BigDecimal.ZERO, BigDecimal.ZERO, List.of(), "EUR", null, null, "", List.of(),
                     List.of(), 1, List.of());
         }
 
@@ -1370,7 +1401,30 @@ public class PosCashService {
                 PromotionPreviewView promotionPreview,
                 BigDecimal baseTotal,
                 BigDecimal taxTotal,
+                    BigDecimal discountTotal,
+                    List<DocumentAdjustmentView> documentAdjustments,
+                    String currency,
+                UUID storeId,
+                UUID customerId,
+                String quoteFingerprint,
+                List<QuoteLine> lines,
+                List<TaxBreakdown> taxes,
+                int pricingVersion,
+                List<AuthoritativeLineBreakdown> lineBreakdown) {
+            this(total, productTotal, promotionPreview, baseTotal, taxTotal,
+                    discountTotal, BigDecimal.ZERO.setScale(Money.SCALE), documentAdjustments,
+                    currency, storeId, customerId, quoteFingerprint, lines, taxes,
+                    pricingVersion, lineBreakdown);
+        }
+
+        public Quote(
+                BigDecimal total,
+                BigDecimal productTotal,
+                PromotionPreviewView promotionPreview,
+                BigDecimal baseTotal,
+                BigDecimal taxTotal,
                 BigDecimal discountTotal,
+                BigDecimal memberBalanceTotal,
                 String currency,
                 UUID storeId,
                 UUID customerId,
@@ -1380,10 +1434,16 @@ public class PosCashService {
                 int pricingVersion,
                 List<AuthoritativeLineBreakdown> lineBreakdown) {
             this(total, productTotal, promotionPreview, baseTotal, taxTotal,
-                    discountTotal, BigDecimal.ZERO.setScale(Money.SCALE), currency,
-                    storeId, customerId, quoteFingerprint, lines, taxes,
-                    pricingVersion, lineBreakdown);
+                    discountTotal, memberBalanceTotal, List.of(), currency, storeId,
+                    customerId, quoteFingerprint, lines, taxes, pricingVersion, lineBreakdown);
         }
+    }
+
+    public record DocumentAdjustmentView(
+            String type,
+            BigDecimal percent,
+            BigDecimal eligibleBase,
+            BigDecimal amount) {
     }
 
     public record PromotionPreviewView(List<AppliedPromotion> appliedPromotions) {
@@ -1395,9 +1455,19 @@ public class PosCashService {
     public record AppliedPromotion(
             UUID id,
             UUID couponId,
+            UUID promotionVersionId,
             String kind,
             String name,
             BigDecimal discountAmount) {
+
+        public AppliedPromotion(
+                UUID id,
+                UUID couponId,
+                String kind,
+                String name,
+                BigDecimal discountAmount) {
+            this(id, couponId, null, kind, name, discountAmount);
+        }
     }
 
     public record QuoteLine(
@@ -1473,6 +1543,8 @@ public class PosCashService {
             BigDecimal manualDiscount,
             BigDecimal promotionDiscount,
             BigDecimal couponDiscount,
+            BigDecimal documentDiscountAmount,
+            List<AppliedPromotion> appliedPromotions,
             boolean taxIncluded,
             String taxRegime,
             BigDecimal taxPercent,
@@ -1581,6 +1653,8 @@ public class PosCashService {
                 total.abs(),
                 zero,
                 zero,
+                zero,
+                List.of(),
                 true,
                 "MIXED",
                 zero,
@@ -1613,6 +1687,8 @@ public class PosCashService {
                 zero,
                 zero,
                 zero,
+                zero,
+                List.of(),
                 line.isImpuestosIncluidos(),
                 line.getRegimenImpuesto(),
                 line.getPorcentajeImpuesto(),
@@ -1630,6 +1706,8 @@ public class PosCashService {
         var affectedPositions = adjustment.getPromotionAffectedPositions();
         var candidates = builders.stream()
                 .filter(line -> line.historical == historical)
+                .filter(line -> adjustment.getSourceLineId() == null
+                        || adjustment.getSourceLineId().equals(line.line.getId()))
                 .filter(line -> affectedPositions.isEmpty()
                         || affectedPositions.contains(line.line.getPosicion()))
                 .toList();
@@ -1659,7 +1737,7 @@ public class PosCashService {
             var base = last ? remainingBase : proportional(adjustment.getBase(), weight, weightTotal);
             var tax = last ? remainingTax : proportional(adjustment.getImpuesto(), weight, weightTotal);
             var total = last ? remainingTotal : proportional(adjustment.getTotal(), weight, weightTotal);
-            target.applyAdjustment(adjustment.getLineType(), base, tax, total);
+            target.applyAdjustment(adjustment, base, tax, total);
             remainingBase = Money.euros(remainingBase.subtract(base));
             remainingTax = Money.euros(remainingTax.subtract(tax));
             remainingTotal = Money.euros(remainingTotal.subtract(total));
@@ -1689,6 +1767,8 @@ public class PosCashService {
         private final boolean historical;
         private BigDecimal promotionDiscount = Money.euros(BigDecimal.ZERO);
         private BigDecimal couponDiscount = Money.euros(BigDecimal.ZERO);
+        private BigDecimal documentDiscountAmount = Money.euros(BigDecimal.ZERO);
+        private final List<AppliedPromotion> appliedPromotions = new ArrayList<>();
         private BigDecimal finalBase;
         private BigDecimal finalTax;
         private BigDecimal finalTotal;
@@ -1750,15 +1830,29 @@ public class PosCashService {
         }
 
         private void applyAdjustment(
-                DocumentLineType type,
+                DocumentLine adjustment,
                 BigDecimal base,
                 BigDecimal tax,
                 BigDecimal total) {
             finalBase = Money.euros(finalBase.add(base));
             finalTax = Money.euros(finalTax.add(tax));
             finalTotal = Money.euros(finalTotal.add(total));
-            if (type == DocumentLineType.PROMOTIONAL_COUPON) {
+            if (adjustment.getLineType() == DocumentLineType.PROMOTIONAL_COUPON) {
                 couponDiscount = Money.euros(couponDiscount.add(total.abs()));
+            } else if (adjustment.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT) {
+                documentDiscountAmount = Money.euros(documentDiscountAmount.add(total.abs()));
+            } else if (adjustment.getLineType() == DocumentLineType.PROMOTION) {
+                promotionDiscount = Money.euros(promotionDiscount.add(total.abs()));
+                var candidate = new AppliedPromotion(
+                        adjustment.getPromotionId(), adjustment.getPromotionalCouponId(),
+                        adjustment.getPromotionVersionId(), adjustment.getLineType().name(),
+                        adjustment.getNombre(), total.abs());
+                if (appliedPromotions.stream().noneMatch(existing ->
+                        Objects.equals(existing.id(), candidate.id())
+                                && Objects.equals(existing.promotionVersionId(), candidate.promotionVersionId())
+                                && Objects.equals(existing.name(), candidate.name()))) {
+                    appliedPromotions.add(candidate);
+                }
             } else {
                 promotionDiscount = Money.euros(promotionDiscount.add(total.abs()));
             }
@@ -1777,6 +1871,7 @@ public class PosCashService {
                     line.getPrecioUnitario(), line.getTarifa(), memberPriceSaving,
                     memberDiscountPercent, memberDiscount, manualDiscountPercent,
                     manualDiscount, promotionDiscount, couponDiscount,
+                    documentDiscountAmount, List.copyOf(appliedPromotions),
                     line.isImpuestosIncluidos(), line.getRegimenImpuesto(),
                     line.getPorcentajeImpuesto(), finalBase, finalTax, baseSubtotal,
                     rounding, finalTotal);
@@ -1850,7 +1945,8 @@ public class PosCashService {
     static String requestHash(PosCashController.CashRequest request) {
         var internalComment = normalize(request.sale().internalComment());
         if (request.sale().previousTicketImport() == null
-                && !hasCheckoutReduction(request.sale()) && internalComment.isEmpty()
+                && !hasCheckoutReduction(request.sale()) && !hasDocumentDiscount(request.sale())
+                && internalComment.isEmpty()
                 && normalize(request.sale().quoteFingerprint()).isEmpty()) {
             return legacyRequestHash(request);
         }
@@ -1891,6 +1987,9 @@ public class PosCashService {
                 .append('|')
                 .append(request.sale().memberBalanceAmount() == null
                         ? "0.00" : Money.euros(request.sale().memberBalanceAmount()))
+                .append('|')
+                .append(request.sale().documentDiscountPercent() == null
+                        ? "0.00" : Money.validPercentage(request.sale().documentDiscountPercent()))
                 .append('|')
                 .append(normalize(request.sale().quoteFingerprint())).append('|')
                 .append(Money.euros(request.received())).append('|')

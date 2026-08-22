@@ -40,6 +40,7 @@ final class CustomerPendingSaleRequestHasher {
                 .add(request.checkoutId()).add(request.type()).add(request.customerId())
                 .add(request.dueDate()).add(request.warehouseId()).add(request.date())
                 .add(decimal(request.globalDiscount()))
+                .add(decimal(request.documentDiscountPercent()))
                 .add(Money.euros(authoritativeTotal).toPlainString());
         if (request.completionMode() != null) {
             canonical.add(request.completionMode());

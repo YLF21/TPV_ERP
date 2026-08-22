@@ -104,6 +104,10 @@ public class CommercialDocument {
             fetch = FetchType.LAZY)
     @OrderBy("posicion")
     private List<DocumentPayment> pagos = new ArrayList<>();
+    @OneToMany(mappedBy = "documento", cascade = CascadeType.ALL, orphanRemoval = true,
+            fetch = FetchType.LAZY)
+    @OrderBy("orden")
+    private List<DocumentAdjustment> ajustes = new ArrayList<>();
     @Version
     private long version;
 
@@ -129,6 +133,15 @@ public class CommercialDocument {
 
     public UUID getId() {
         return id;
+    }
+
+    public List<DocumentAdjustment> getAjustes() {
+        return List.copyOf(ajustes);
+    }
+
+    public void addAdjustment(DocumentAdjustment adjustment) {
+        if (adjustment == null) throw new IllegalArgumentException("adjustment requerido");
+        ajustes.add(adjustment);
     }
 
     public long getVersion() {

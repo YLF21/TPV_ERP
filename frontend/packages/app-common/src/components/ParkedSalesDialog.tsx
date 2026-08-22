@@ -23,6 +23,7 @@ export type OpenedParkedSale = {
   document: {
     clienteId?: string | null;
     comentarioInterno?: string | null;
+    documentDiscountPercent?: number | string | null;
     lineas: Array<{
       productoId: string;
       cantidad: number | string;
