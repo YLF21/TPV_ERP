@@ -8,9 +8,23 @@ public record WarehouseInputLineView(
         UUID productId,
         String productCode,
         String productName,
-        int quantity,
+        BigDecimal quantity,
         BigDecimal purchaseUnitPrice,
+        BigDecimal discount,
+        boolean priceOverridden,
+        BigDecimal subtotal,
         BigDecimal purchaseTotal) {
+
+    public WarehouseInputLineView(
+            UUID productId,
+            String productCode,
+            String productName,
+            int quantity,
+            BigDecimal purchaseUnitPrice,
+            BigDecimal purchaseTotal) {
+        this(productId, productCode, productName, BigDecimal.valueOf(quantity), purchaseUnitPrice,
+                BigDecimal.ZERO, false, purchaseTotal, purchaseTotal);
+    }
 
     public static WarehouseInputLineView from(WarehouseInputLine line) {
         return from(line, null);
@@ -20,9 +34,12 @@ public record WarehouseInputLineView(
         return new WarehouseInputLineView(
                 line.getProductId(),
                 product == null ? null : product.getCode(),
-                product == null ? null : product.getName(),
+                line.getProductName(),
                 line.getQuantity(),
                 line.getPurchaseUnitPrice(),
+                line.getDiscount(),
+                line.isPriceOverridden(),
+                line.getSubtotal(),
                 line.getPurchaseTotal());
     }
 }

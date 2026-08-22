@@ -19,8 +19,6 @@ import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
-import com.tpverp.backend.excel.ProductImportLineMetadata;
-import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -30,8 +28,6 @@ import com.tpverp.backend.party.FiscalAddress;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.DocumentType;
-import com.tpverp.backend.party.Supplier;
-import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.PromotionRepository;
@@ -102,11 +98,7 @@ class DocumentServiceTest {
     @Mock
     private CustomerRepository customerRepository;
     @Mock
-    private SupplierRepository supplierRepository;
-    @Mock
     private ProductRepository productRepository;
-    @Mock
-    private ConfirmedPurchaseRecorder purchaseRecorder;
     @Mock
     private DocumentFiscalIntegration fiscalIntegration;
     @Mock
@@ -123,9 +115,7 @@ class DocumentServiceTest {
     private MemberLoyaltyService memberLoyaltyService;
     @Mock
     private SyncOutboxService syncOutbox;
-    @Mock
-    private ProductImportLineMetadataRepository importMetadata;
-    @Mock
+@Mock
     private PromotionRepository promotionRepository;
     @Mock
     private PromotionTargetRepository promotionTargetRepository;
@@ -181,7 +171,6 @@ class DocumentServiceTest {
                         any(),
                         any()))
                 .thenReturn(new Authorization(user, user, false));
-        lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
         lenient().when(promotionRepository.findByEmpresaIdAndEstado(any(), any(PromotionStatus.class)))
                 .thenReturn(List.of());
         lenient().when(promotionTargetRepository.findByPromocionIdIn(any())).thenReturn(List.of());
@@ -219,9 +208,7 @@ class DocumentServiceTest {
                 stockGateway,
                 currentOrganization,
                 customerRepository,
-                supplierRepository,
                 productRepository,
-                purchaseRecorder,
                 fiscalIntegration,
                 voucherService,
                 currentTerminal,
@@ -230,7 +217,6 @@ class DocumentServiceTest {
                 cashPaymentRecorder,
                 memberLoyaltyService,
                 syncOutbox,
-                importMetadata,
                 promotionRepository,
                 promotionTargetRepository,
                 new PromotionEngine(),
@@ -317,38 +303,6 @@ class DocumentServiceTest {
                 terminalId,
                 created.getCreadoEn());
     }
-
-    @Test
-    void productAndWarehouseManagersCanCreatePurchaseDocuments() {
-        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
-
-        var invoice = service.createInvoice(
-                command(CommercialDocumentType.FACTURA_COMPRA),
-                authentication("GESTION_PRODUCTO"));
-        var deliveryNote = service.createDeliveryNote(
-                command(CommercialDocumentType.ALBARAN_COMPRA),
-                authentication("GESTION_ALMACEN"));
-
-        assertThat(invoice.getTipo()).isEqualTo(CommercialDocumentType.FACTURA_COMPRA);
-        assertThat(deliveryNote.getTipo()).isEqualTo(CommercialDocumentType.ALBARAN_COMPRA);
-    }
-
-    @Test
-    void purchasePermissionsCannotCreateSalesDocumentsAndAccountsCannotWritePurchases() {
-        assertThatThrownBy(() -> service.createInvoice(
-                command(CommercialDocumentType.FACTURA_VENTA),
-                authentication("GESTION_PRODUCTO")))
-                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
-        assertThatThrownBy(() -> service.createDeliveryNote(
-                command(CommercialDocumentType.ALBARAN_VENTA),
-                authentication("GESTION_ALMACEN")))
-                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
-        assertThatThrownBy(() -> service.createInvoice(
-                command(CommercialDocumentType.FACTURA_COMPRA),
-                authentication("GESTION_CUENTAS")))
-                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
-    }
-
     @Test
     void salesInvoiceCannotBeConfirmedWithoutCustomer() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
@@ -2270,23 +2224,6 @@ class DocumentServiceTest {
     }
 
     @Test
-    void adminEditOfConfirmedDeliveryNoteDoesNotTouchStockOrIdentity() {
-        var note = draft(CommercialDocumentType.ALBARAN_COMPRA);
-        note.confirm("AC-001-26-000001", UUID.randomUUID(), NOW, true);
-        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
-        when(documentRepository.save(note)).thenReturn(note);
-
-        var edited = service.adminEditConfirmed(
-                note.getId(), BigDecimal.TEN, null, UUID.randomUUID(), lines(), authentication());
-
-        assertThat(edited.getNumero()).isEqualTo("AC-001-26-000001");
-        assertThat(edited.getFecha()).isEqualTo(LocalDate.of(2026, 6, 8));
-        assertThat(edited.isOrigenStock()).isTrue();
-        verify(stockGateway, never()).confirm(any());
-        verify(stockGateway, never()).cancel(any());
-    }
-
-    @Test
     void adminCannotEditConfirmedDocumentWithFiscalRecord() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
@@ -2326,31 +2263,6 @@ class DocumentServiceTest {
                 authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("origen");
-
-        verify(relationRepository, never()).save(any());
-    }
-
-    @Test
-    void facturaDeRejectsPurchaseAndRectificationDestinations() {
-        var purchaseInvoice = draft(CommercialDocumentType.FACTURA_COMPRA);
-        var purchaseNote = draft(CommercialDocumentType.ALBARAN_COMPRA);
-        stubLocked(purchaseInvoice, purchaseNote);
-
-        assertThatThrownBy(() -> service.relate(
-                purchaseInvoice.getId(), purchaseNote.getId(), DocumentRelationType.FACTURA_DE,
-                authentication()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("FACTURA_VENTA");
-
-        var rectification = draft(CommercialDocumentType.RECTIFICATIVA_VENTA);
-        var salesNote = draft(CommercialDocumentType.ALBARAN_VENTA);
-        stubLocked(rectification, salesNote);
-
-        assertThatThrownBy(() -> service.relate(
-                rectification.getId(), salesNote.getId(), DocumentRelationType.FACTURA_DE,
-                authentication()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("FACTURA_VENTA");
 
         verify(relationRepository, never()).save(any());
     }
@@ -2525,110 +2437,6 @@ class DocumentServiceTest {
         order.verify(documentRepository).findLockedDocument(secondId, store.getId());
         verify(relationRepository).save(any(DocumentRelation.class));
     }
-
-    @Test
-    void confirmedPurchaseDeliveryNoteRecordsSupplierProducts() {
-        var supplier = supplier(true);
-        var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
-        preparePurchaseConfirmation(note, supplier, true);
-
-        service.confirm(note.getId(), authentication());
-
-        verify(purchaseRecorder).record(
-                supplier.getId(), NOW, purchaseLines(note, Map.of()));
-    }
-
-    @Test
-    void confirmedPurchaseDeliveryNoteIgnoresPromotionLinesWhenRecordingSupplierProducts() {
-        var supplier = supplier(true);
-        var productId = UUID.randomUUID();
-        var note = purchaseDraft(
-                CommercialDocumentType.ALBARAN_COMPRA,
-                supplier,
-                true,
-                List.of(
-                        line(productId, "P-1", "Producto", new BigDecimal("10.00")),
-                        promotionCommand(UUID.randomUUID(), null, new BigDecimal("-1.00"))));
-        preparePurchaseConfirmation(note, supplier, true);
-
-        service.confirm(note.getId(), authentication());
-
-        @SuppressWarnings({"unchecked", "rawtypes"})
-        org.mockito.ArgumentCaptor<Collection<ConfirmedPurchaseRecorder.PurchaseLine>> products =
-                (org.mockito.ArgumentCaptor) org.mockito.ArgumentCaptor.forClass(Collection.class);
-        verify(purchaseRecorder).record(
-                org.mockito.ArgumentMatchers.eq(supplier.getId()),
-                org.mockito.ArgumentMatchers.eq(NOW),
-                products.capture());
-        assertThat(products.getValue())
-                .extracting(ConfirmedPurchaseRecorder.PurchaseLine::productId)
-                .containsExactly(productId);
-    }
-
-    @Test
-    void confirmedImportedPurchaseRecordsSupplierReferencesAndClearsMetadata() {
-        var supplier = supplier(true);
-        var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
-        preparePurchaseConfirmation(note, supplier, true);
-        var productId = note.getLineas().getFirst().getProductoId();
-        when(importMetadata.findByDocumentId(note.getId())).thenReturn(List.of(
-                new ProductImportLineMetadata(note.getId(), productId, "REF-1")));
-
-        service.confirm(note.getId(), authentication());
-
-        verify(purchaseRecorder).record(
-                supplier.getId(), NOW, purchaseLines(note, Map.of(productId, "REF-1")));
-        verify(importMetadata).deleteByDocumentId(note.getId());
-    }
-
-    @Test
-    void confirmedDirectPurchaseInvoiceRecordsSupplierProducts() {
-        var supplier = supplier(true);
-        var invoice = purchaseDraft(CommercialDocumentType.FACTURA_COMPRA, supplier, true);
-        preparePurchaseConfirmation(invoice, supplier, true);
-
-        service.confirm(invoice.getId(), authentication());
-
-        verify(purchaseRecorder).record(
-                supplier.getId(), NOW, purchaseLines(invoice, Map.of()));
-    }
-
-    @Test
-    void confirmedNonDirectPurchaseInvoiceDoesNotRecordSupplierProductsAgain() {
-        var supplier = supplier(true);
-        var invoice = purchaseDraft(CommercialDocumentType.FACTURA_COMPRA, supplier, false);
-        preparePurchaseConfirmation(invoice, supplier, false);
-
-        service.confirm(invoice.getId(), authentication());
-
-        verify(purchaseRecorder, never()).record(any(), any(), any());
-    }
-
-    @Test
-    void confirmedPurchaseCreditNoteDoesNotRecordSupplierProducts() {
-        var supplier = supplier(true);
-        var invoice = purchaseDraft(CommercialDocumentType.RECTIFICATIVA_COMPRA, supplier, true);
-        preparePurchaseConfirmation(invoice, supplier, true);
-
-        service.confirm(invoice.getId(), authentication());
-
-        verify(purchaseRecorder, never()).record(any(), any(), any());
-    }
-
-    @Test
-    void confirmedSalesDocumentDoesNotRecordSupplierProducts() {
-        var note = draft(CommercialDocumentType.ALBARAN_VENTA);
-        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
-        when(documentRepository.save(note)).thenReturn(note);
-        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
-                note.getTiendaId(), "AV", "2026")).thenReturn(Optional.empty());
-        when(stockGateway.confirm(note)).thenReturn(true);
-
-        service.confirm(note.getId(), authentication());
-
-        verify(purchaseRecorder, never()).record(any(), any(), any());
-    }
-
     @Test
     void rejectsInactiveProductWhenConfirmingASaleAndPolicyIsDisabled() {
         var note = draft(CommercialDocumentType.ALBARAN_VENTA);
@@ -2662,40 +2470,6 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(quoted.getLineas()).hasSize(1);
-    }
-
-    @Test
-    void purchaseDeliveryNoteRequiresSupplierBeforeNumberingOrStock() {
-        var note = draft(CommercialDocumentType.ALBARAN_COMPRA);
-        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
-
-        assertThatThrownBy(() -> service.confirm(note.getId(), authentication()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("proveedor");
-
-        verify(counterRepository, never())
-                .findByTiendaIdAndTipoAndPeriodo(any(), any(), any());
-        verify(stockGateway, never()).confirm(any());
-        verify(purchaseRecorder, never()).record(any(), any(), any());
-    }
-
-    @Test
-    void purchaseDeliveryNoteRequiresActiveSupplierBeforeNumberingOrStock() {
-        var supplier = supplier(false);
-        var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
-        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
-        when(supplierRepository.findByIdAndCompanyId(
-                supplier.getId(), store.getEmpresa().getId()))
-                .thenReturn(Optional.of(supplier));
-
-        assertThatThrownBy(() -> service.confirm(note.getId(), authentication()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("inactivo");
-
-        verify(counterRepository, never())
-                .findByTiendaIdAndTipoAndPeriodo(any(), any(), any());
-        verify(stockGateway, never()).confirm(any());
-        verify(purchaseRecorder, never()).record(any(), any(), any());
     }
 
     private CommercialDocument draft(CommercialDocumentType type) {
@@ -2734,73 +2508,12 @@ class DocumentServiceTest {
                 .thenReturn(Optional.of(second));
     }
 
-    private CommercialDocument purchaseDraft(
-            CommercialDocumentType type, Supplier supplier, boolean stockOrigin) {
-        return purchaseDraft(type, supplier, stockOrigin, lines());
-    }
-
-    private CommercialDocument purchaseDraft(
-            CommercialDocumentType type,
-            Supplier supplier,
-            boolean stockOrigin,
-            List<DocumentLineCommand> lines) {
-        var command = command(type, lines);
-        var document = new CommercialDocument(
-                store.getId(), command.almacenId(), type, command.fecha(),
-                user.getId(), command.descuentoGlobal());
-        command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
-        document.setParties(null, supplier.getId(), null);
-        document.setStockOrigin(stockOrigin);
-        return document;
-    }
-
-    private void preparePurchaseConfirmation(
-            CommercialDocument document, Supplier supplier, boolean appliesStock) {
-        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(documentRepository.save(document)).thenReturn(document);
-        when(supplierRepository.findByIdAndCompanyId(
-                supplier.getId(), store.getEmpresa().getId()))
-                .thenReturn(Optional.of(supplier));
-        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
-                document.getTiendaId(),
-                document.getTipo().prefix(),
-                "2026")).thenReturn(Optional.empty());
-        if (appliesStock) {
-            when(stockGateway.confirm(document)).thenReturn(true);
-        }
-    }
-
-    private Supplier supplier(boolean active) {
-        var supplier = new Supplier(
-                store.getEmpresa(), "Proveedor", null, DocumentType.CIF, "B00000001",
-                null, null, null, null);
-        if (!active) {
-            supplier.deactivate();
-        }
-        return supplier;
-    }
-
     private Customer completeCustomer() {
         return new Customer(
                 store.getEmpresa(), "Cliente", DocumentType.NIF, "12345678Z",
                 new FiscalAddress("Calle 1", "35001", "Las Palmas",
                         "Las Palmas", "ES"),
                 null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
-    }
-
-    private List<ConfirmedPurchaseRecorder.PurchaseLine> purchaseLines(
-            CommercialDocument document,
-            Map<UUID, String> references) {
-        var lastLineByProduct = new java.util.LinkedHashMap<UUID, ConfirmedPurchaseRecorder.PurchaseLine>();
-        document.getLineas().stream()
-                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
-                .forEach(line -> lastLineByProduct.put(line.getProductoId(),
-                        new ConfirmedPurchaseRecorder.PurchaseLine(
-                                line.getProductoId(),
-                                references.get(line.getProductoId()),
-                                line.getPrecioUnitario(),
-                                line.getDescuento())));
-        return List.copyOf(lastLineByProduct.values());
     }
 
     private DocumentCommand command(CommercialDocumentType type) {

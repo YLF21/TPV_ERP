@@ -34,7 +34,6 @@ import {
   buildStockBulkSupplierAssignments,
   buildStockBulkUpdates,
   hydrateStockBulkSupplierData,
-  importStockBulkFile,
   mergeStockBulkPurchaseDocumentProducts,
   mergeStockBulkSupplierProducts,
   requestStockBulkXlsx,
@@ -85,7 +84,11 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSorting";
 import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
-import { excelImportAccept } from "./excelImport";
+import {
+  SharedExcelImportDialog,
+  type SharedExcelImportAcceptedRow,
+  type SharedExcelImportMetadata
+} from "./SharedExcelImportDialog";
 import { enterNavigationIntent, nextEnterTargetIndex } from "./keyboardNavigation";
 import stockFilterIcon from "../assets/stock/filter.png";
 import stockSearchIcon from "../assets/stock/search.png";
@@ -2065,6 +2068,7 @@ export function StockScreen({
   const [bulkEditTab, setBulkEditTab] = useState<StockBulkEditTab>("main");
   const [bulkFileOpen, setBulkFileOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkExcelImportOpen, setBulkExcelImportOpen] = useState(false);
   const [bulkSearchText, setBulkSearchText] = useState("");
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkPriceUseOpenRowId, setBulkPriceUseOpenRowId] = useState<string | null>(null);
@@ -2141,7 +2145,6 @@ export function StockScreen({
   const bulkRowsRef = useRef(bulkRows);
   const bulkImageSnapshotRef = useRef(bulkImageSnapshot);
   const bulkImagePanelRef = useRef<StockBulkImagePanelHandle | null>(null);
-  const bulkFileInputRef = useRef<HTMLInputElement | null>(null);
   const bulkFileMenuRef = useRef<HTMLDivElement | null>(null);
   const bulkEditSelectedRef = useRef<HTMLDivElement | null>(null);
   const bulkQuickEditRef = useRef<HTMLDivElement | null>(null);
@@ -2626,6 +2629,8 @@ export function StockScreen({
         } else if (bulkDialog) {
           setBulkDialog(null);
           setBulkAfterSave(null);
+        } else if (bulkExcelImportOpen) {
+          setBulkExcelImportOpen(false);
         } else if (bulkImportOpen) {
           setBulkImportOpen(false);
         } else {
@@ -2656,7 +2661,7 @@ export function StockScreen({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeBulkDraft, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkWorkspaceView, selectedView, session.accessToken]);
+  }, [activeBulkDraft, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkWorkspaceView, selectedView, session.accessToken]);
 
   useEffect(() => {
     if (!bulkFileOpen && !bulkEditSelectedOpen && !bulkQuickEditOpen) {
@@ -3795,40 +3800,35 @@ export function StockScreen({
     }
   }
 
-  async function importBulkExcel(file: File) {
-    if (!session.accessToken) return;
-    try {
-      const [families, taxes] = await Promise.all([
-        apiRequest<FamilyView[]>("/families", { token: session.accessToken }),
-        apiRequest<TaxView[]>("/taxes/selectable", { token: session.accessToken })
-      ]);
-      const subfamilies = await loadStockSubfamilies(
-        families,
-        (familyId) => apiRequest<SubfamilyView[]>(
-          `/families/${encodeURIComponent(familyId)}/subfamilies`,
-          { token: session.accessToken }
-        )
-      );
-      const imported = await importStockBulkFile(file, bulkProducts, {
-        locale,
-        families: families.map((family) => ({ id: family.id, name: family.name || family.id })),
-        subfamilies: subfamilies.map((subfamily) => ({
-          id: subfamily.id,
-          familyId: subfamily.familyId || "",
-          name: subfamily.name || subfamily.id
-        })),
-        taxes: taxes.map((tax) => ({ id: tax.id, name: taxDisplayName(tax) }))
+  function importSharedBulkRows(rows: SharedExcelImportAcceptedRow[], _metadata: SharedExcelImportMetadata) {
+    const productsById = new Map(bulkProducts.map((product) => [product.productId, product]));
+    const imported = rows.flatMap((row, index) => {
+      const product = row.product ? productsById.get(row.product.id) : undefined;
+      if (!product) return [];
+      const draft: Partial<StockInventoryRow> = {};
+      Object.entries(row.updateFields).forEach(([field, enabled]) => {
+        if (!enabled) return;
+        const value = row.draft[field as keyof typeof row.draft];
+        if (value !== undefined && value !== "") {
+          (draft as Record<string, unknown>)[field] = value;
+        }
       });
-      if (imported.length === 0) {
-        setBulkStatus(t("stock.bulkEdit.importNoMatches"));
-        return;
-      }
-      commitBulkRows(() => withLiveBulkSupplierData(withEmptyBulkTail(imported)));
-      setBulkValidationErrors([]);
-      setBulkStatus(t("stock.bulkEdit.imported").replace("{count}", String(imported.length)));
-    } catch (error) {
-      setBulkStatus(error instanceof Error ? error.message : t("stock.bulkEdit.importError"));
+      return [{
+        id: `bulk-excel-${product.productId}-${row.rowNumber}-${index}`,
+        selected: false,
+        query: product.code || product.barcode || product.name,
+        product,
+        draft
+      }];
+    });
+    if (imported.length === 0) {
+      setBulkStatus(t("stock.bulkEdit.importNoMatches"));
+      return;
     }
+    commitBulkRows(() => withLiveBulkSupplierData(withEmptyBulkTail(imported)));
+    setBulkValidationErrors([]);
+    setBulkExcelImportOpen(false);
+    setBulkStatus(t("stock.bulkEdit.imported").replace("{count}", String(imported.length)));
   }
 
   async function loadBulkSupplierCatalog() {
@@ -4177,7 +4177,7 @@ export function StockScreen({
       return;
     }
     if (item === "stock.bulkEdit.importExcel") {
-      bulkFileInputRef.current?.click();
+      setBulkExcelImportOpen(true);
       return;
     }
     if (item === "stock.bulkEdit.importSupplier") {
@@ -6368,19 +6368,6 @@ export function StockScreen({
     ];
     return (
       <div className="bulk-edit-screen">
-        <input
-          ref={bulkFileInputRef}
-          className="bulk-file-input"
-          type="file"
-          accept={excelImportAccept}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) {
-              void importBulkExcel(file);
-            }
-            event.currentTarget.value = "";
-          }}
-        />
         <div className="bulk-edit-toolbar">
           <div className="bulk-edit-actions">{renderBulkLeftActions()}</div>
           <div className="bulk-edit-search-actions">
@@ -6431,6 +6418,20 @@ export function StockScreen({
         {renderBulkSupplierDialog()}
         {renderBulkPurchaseDocumentDialog()}
         {renderBulkWorkspaceDialog()}
+        <SharedExcelImportDialog
+          open={bulkExcelImportOpen}
+          locale={locale}
+          title={t("stock.bulkEdit.importExcel")}
+          products={bulkProducts.map((product) => ({
+            id: product.productId,
+            code: product.code,
+            barcode: product.barcode
+          }))}
+          currentPurchasePrice={(product) => bulkProducts.find((candidate) => candidate.productId === product.id)?.purchasePrice}
+          onClose={() => setBulkExcelImportOpen(false)}
+          onImportAccepted={importSharedBulkRows}
+          terminalContext={terminalContext}
+        />
         <StockBulkFilterDialog
           open={bulkFilterOpen}
           locale={locale}

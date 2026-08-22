@@ -53,10 +53,14 @@ public class DocumentCounter {
     }
 
     public static DocumentCounter entradaAlmacen(UUID tiendaId, LocalDate fecha) {
+        return entradaAlmacen(tiendaId, fecha, "ENT");
+    }
+
+    public static DocumentCounter entradaAlmacen(UUID tiendaId, LocalDate fecha, String prefix) {
         var counter = new DocumentCounter();
         counter.id = UUID.randomUUID();
         counter.tiendaId = Objects.requireNonNull(tiendaId, "tiendaId");
-        counter.tipo = "ENT";
+        counter.tipo = Objects.requireNonNull(prefix, "prefix");
         counter.periodo = Integer.toString(Objects.requireNonNull(fecha, "fecha").getYear());
         return counter;
     }
@@ -88,10 +92,14 @@ public class DocumentCounter {
     }
 
     public String siguienteEntradaAlmacen(LocalDate fecha) {
+        return siguienteEntradaAlmacen(fecha, "ENT");
+    }
+
+    public String siguienteEntradaAlmacen(LocalDate fecha, String prefix) {
         var year = Integer.toString(Objects.requireNonNull(fecha, "fecha").getYear());
-        if (!tipo.equals("ENT") || !periodo.equals(year)) {
+        if (!tipo.equals(prefix) || !periodo.equals(year)) {
             throw new IllegalArgumentException("periodo no coincide con el contador de entrada");
         }
-        return "ENT-%d-%06d".formatted(fecha.getYear(), ++ultimoNumero);
+        return "%s-%d-%06d".formatted(prefix, fecha.getYear(), ++ultimoNumero);
     }
 }

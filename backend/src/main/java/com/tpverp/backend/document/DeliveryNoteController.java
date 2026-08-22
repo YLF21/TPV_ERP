@@ -39,7 +39,7 @@ public class DeliveryNoteController {
     public List<DocumentView> list(Authentication authentication) {
         return service.listDeliveryNotes(
                         PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ"),
-                        PermissionChecks.hasPurchaseDocumentRead(authentication)).stream()
+                        false).stream()
                 .map(views::documentView)
                 .toList();
     }

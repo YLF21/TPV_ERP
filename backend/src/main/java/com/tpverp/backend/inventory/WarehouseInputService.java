@@ -78,10 +78,19 @@ public class WarehouseInputService {
 
     @Transactional(readOnly = true)
     public PagedResult<WarehouseInputView> listPage(Integer requestedLimit, String cursor) {
+        return listPage(requestedLimit, cursor, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<WarehouseInputView> listPage(
+            Integer requestedLimit,
+            String cursor,
+            WarehouseInputDocumentType type) {
         var limit = normalizedLimit(requestedLimit);
         var parsedCursor = parseCursor(cursor);
-        var values = inputs.findPageByStoreId(
+        var values = inputs.findPageByStoreIdAndType(
                 organization.currentStore().getId(),
+                type,
                 parsedCursor.date(),
                 parsedCursor.id(),
                 PageRequest.of(0, limit + 1));
@@ -105,12 +114,16 @@ public class WarehouseInputService {
         var user = organization.currentUser(authentication);
         validate(command, store.getId());
         var input = new WarehouseInput(
-                store.getId(), command.warehouseId(), command.date(), user.getId());
+                store.getId(), command.warehouseId(), command.date(), user.getId(), command.documentType());
         input.replace(
                 command.supplierId(),
                 command.origin(),
+                command.externalNumber(),
                 command.concept(),
-                command.lines(),
+                command.priceSource(),
+                command.globalDiscount(),
+                command.sourceDeliveryNoteIds(),
+                valuedLines(command, store.getId()),
                 command.excelImport());
         return inputs.save(input);
     }
@@ -120,6 +133,7 @@ public class WarehouseInputService {
         var input = find(id);
         validate(command, input.getStoreId());
         if (!input.getWarehouseId().equals(command.warehouseId())
+                || input.getDocumentType() != command.documentType()
                 || !input.getDate().equals(command.date())) {
             throw new IllegalArgumentException(
                     "message.warehouse_input.warehouse_and_date_immutable");
@@ -127,8 +141,12 @@ public class WarehouseInputService {
         input.replace(
                 command.supplierId(),
                 command.origin(),
+                command.externalNumber(),
                 command.concept(),
-                command.lines(),
+                command.priceSource(),
+                command.globalDiscount(),
+                command.sourceDeliveryNoteIds(),
+                valuedLines(command, input.getStoreId()),
                 command.excelImport());
         return inputs.save(input);
     }
@@ -147,15 +165,17 @@ public class WarehouseInputService {
         var input = find(id);
         warehouse(input.getWarehouseId(), input.getStoreId());
         var user = organization.currentUser(authentication);
-        if (movements.existsByWarehouseInputId(input.getId())) {
+        validateSourceDeliveryNotes(input);
+        var createsStock = input.createsStockMovement();
+        if (createsStock && movements.existsByWarehouseInputId(input.getId())) {
             throw new IllegalStateException("La entrada ya tiene movimientos de stock");
         }
-        var confirmationStocks = stocksForConfirmation(input);
-        input.snapshotPurchasePrices(purchasePricesForConfirmation(input));
+        var confirmationStocks = createsStock ? stocksForConfirmation(input) : Map.<UUID, StockLevel>of();
+        var counterPrefix = input.getDocumentType().prefix();
         var counter = counters.findByTiendaIdAndTipoAndPeriodo(
-                        input.getStoreId(), "ENT", Integer.toString(input.getDate().getYear()))
+                        input.getStoreId(), counterPrefix, Integer.toString(input.getDate().getYear()))
                 .orElseGet(() -> DocumentCounter.entradaAlmacen(
-                        input.getStoreId(), input.getDate()));
+                        input.getStoreId(), input.getDate(), counterPrefix));
         try {
             input.confirm(nextAvailableNumber(input, counter), user.getId(), Instant.now(clock));
             inputs.saveAndFlush(input);
@@ -172,8 +192,10 @@ public class WarehouseInputService {
                     exception);
         }
         try {
-            for (var line : input.getLines()) {
-                applyLine(input, line, user.getId(), confirmationStocks.get(line.getProductId()));
+            if (createsStock) {
+                for (var line : input.getLines()) {
+                    applyLine(input, line, user.getId(), confirmationStocks.get(line.getProductId()));
+                }
             }
             return inputs.saveAndFlush(input);
         } catch (DataIntegrityViolationException exception) {
@@ -186,7 +208,7 @@ public class WarehouseInputService {
     private String nextAvailableNumber(WarehouseInput input, DocumentCounter counter) {
         String number;
         do {
-            number = counter.siguienteEntradaAlmacen(input.getDate());
+            number = counter.siguienteEntradaAlmacen(input.getDate(), input.getDocumentType().prefix());
         } while (inputs.findByStoreIdAndNumero(input.getStoreId(), number).isPresent());
         return number;
     }
@@ -201,6 +223,7 @@ public class WarehouseInputService {
                 userId,
                 input.getId(),
                 line.getQuantity(),
+                input.getDocumentType().movementType(),
                 Instant.now(clock)));
         syncPublisher.enqueue(organization.currentCompany().getId(), input.getStoreId(), movement);
     }
@@ -208,7 +231,7 @@ public class WarehouseInputService {
     private Map<UUID, StockLevel> stocksForConfirmation(WarehouseInput input) {
         var deltas = new LinkedHashMap<UUID, BigDecimal>();
         input.getLines().forEach(line -> deltas.merge(
-                line.getProductId(), BigDecimal.valueOf(line.getQuantity()), BigDecimal::add));
+                line.getProductId(), line.getQuantity(), BigDecimal::add));
         boolean allowNegativeStock = settings.findById(input.getStoreId())
                 .map(StockSettings::isAllowNegativeStock)
                 .orElse(true);
@@ -242,11 +265,79 @@ public class WarehouseInputService {
             throw new IllegalArgumentException("message.warehouse_input.lines_required");
         }
         warehouse(command.warehouseId(), storeId);
-        if (command.supplierId() != null) {
-            suppliers.findByIdAndCompanyId(command.supplierId(), organization.currentCompany().getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Proveedor no encontrado"));
+        if (command.documentType() == WarehouseInputDocumentType.FACTURA_ENTRADA
+                && command.supplierId() == null) {
+            throw new IllegalArgumentException("La factura de entrada necesita proveedor");
         }
-        command.lines().forEach(line -> product(line.productId(), storeId));
+        if (command.documentType() != WarehouseInputDocumentType.FACTURA_ENTRADA
+                && !command.sourceDeliveryNoteIds().isEmpty()) {
+            throw new IllegalArgumentException("Solo una factura de entrada puede vincular albaranes");
+        }
+        if (command.supplierId() != null) {
+            var supplier = suppliers.findByIdAndCompanyId(
+                            command.supplierId(), organization.currentCompany().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Proveedor no encontrado"));
+            if (!supplier.isActive()) {
+                throw new IllegalArgumentException("El proveedor esta inactivo");
+            }
+        }
+        command.lines().forEach(line -> {
+            if (line.priceOverridden() && line.unitPrice() == null) {
+                throw new IllegalArgumentException("Una linea con precio personalizado necesita importe");
+            }
+            product(line.productId(), storeId);
+        });
+    }
+
+    private List<WarehouseInputLineCommand> valuedLines(WarehouseInputCommand command, UUID storeId) {
+        return command.lines().stream().map(line -> {
+            var product = product(line.productId(), storeId);
+            return line.valued(command.priceSource().price(product), product.getName());
+        }).toList();
+    }
+
+    private void validateSourceDeliveryNotes(WarehouseInput invoice) {
+        var sourceIds = invoice.getSourceDeliveryNoteIds();
+        if (sourceIds.isEmpty()) {
+            return;
+        }
+        if (invoice.getDocumentType() != WarehouseInputDocumentType.FACTURA_ENTRADA) {
+            throw new IllegalStateException("Solo una factura de entrada puede vincular albaranes");
+        }
+        var expected = new LinkedHashMap<UUID, BigDecimal>();
+        for (var sourceId : sourceIds) {
+            var source = inputs.findByIdAndStoreId(sourceId, invoice.getStoreId())
+                    .orElseThrow(() -> new IllegalStateException("Albaran de entrada no encontrado"));
+            if (source.getDocumentType() != WarehouseInputDocumentType.ALBARAN_ENTRADA
+                    || source.getStatus() != WarehouseInputStatus.CONFIRMADA) {
+                throw new IllegalStateException("La factura solo puede vincular albaranes confirmados");
+            }
+            if (!source.getWarehouseId().equals(invoice.getWarehouseId())) {
+                throw new IllegalStateException("Los albaranes vinculados deben pertenecer al mismo almacen");
+            }
+            if (source.getSupplierId() != null && !source.getSupplierId().equals(invoice.getSupplierId())) {
+                throw new IllegalStateException("El proveedor de la factura no coincide con el albaran");
+            }
+            if (inputs.existsOtherInvoiceForDeliveryNote(invoice.getId(), sourceId)) {
+                throw new IllegalStateException("El albaran ya esta vinculado a otra factura");
+            }
+            source.getLines().forEach(line -> expected.merge(
+                    line.getProductId(), line.getQuantity(), BigDecimal::add));
+        }
+        var actual = new LinkedHashMap<UUID, BigDecimal>();
+        invoice.getLines().forEach(line -> actual.merge(
+                line.getProductId(), line.getQuantity(), BigDecimal::add));
+        if (!sameQuantities(expected, actual)) {
+            throw new IllegalStateException("Las lineas de la factura vinculada no coinciden con sus albaranes");
+        }
+    }
+
+    private static boolean sameQuantities(
+            Map<UUID, BigDecimal> expected,
+            Map<UUID, BigDecimal> actual) {
+        return expected.size() == actual.size()
+                && expected.entrySet().stream().allMatch(entry -> actual.containsKey(entry.getKey())
+                && actual.get(entry.getKey()).compareTo(entry.getValue()) == 0);
     }
 
     private Product product(UUID id, UUID storeId) {

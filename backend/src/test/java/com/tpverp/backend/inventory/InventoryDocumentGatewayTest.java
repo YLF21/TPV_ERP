@@ -83,35 +83,6 @@ class InventoryDocumentGatewayTest {
     }
 
     @Test
-    void purchaseDeliveryNoteAddsStock() {
-        var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, 2);
-        var line = document.getLineas().getFirst();
-        var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
-        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
-                line.getProductoId(), document.getAlmacenId())).thenReturn(Optional.of(stock));
-        when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
-
-        gateway.confirm(document);
-
-        assertThat(stock.getQuantity()).isEqualByComparingTo("2.000");
-    }
-
-    @Test
-    void serviceLineDoesNotMoveStock() {
-        var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, 2);
-        var line = document.getLineas().getFirst();
-        var product = org.mockito.Mockito.mock(Product.class);
-        when(product.getProductType()).thenReturn(ProductType.SERVICE);
-        when(productRepository.findById(line.getProductoId())).thenReturn(Optional.of(product));
-        when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
-
-        assertThat(gateway.confirm(document)).isTrue();
-
-        verify(stockRepository, never()).save(any());
-        verify(movementRepository, never()).save(any());
-    }
-
-    @Test
     void promotionLineDoesNotMoveStock() {
         var document = confirmed(CommercialDocumentType.TICKET, 1);
         document.addLine(DocumentLine.promotion(

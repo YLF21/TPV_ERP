@@ -41,15 +41,6 @@ class CommercialDocumentTest {
     }
 
     @Test
-    void documentsOutsideCustomerSalesDoNotBecomeReceivables() {
-        var document = documentWithTotal(CommercialDocumentType.FACTURA_COMPRA, new BigDecimal("100.00"));
-
-        document.confirm("FC-1", USER_ID, NOW, false);
-
-        assertThat(document.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
-    }
-
-    @Test
     void invoiceConvertedFromPaidTicketInheritsSettlementWithoutDuplicatingPayment() {
         var method = new PaymentMethod(UUID.randomUUID(), "EFECTIVO", true);
         var ticket = documentWithTotal(CommercialDocumentType.TICKET,

@@ -1,11 +1,13 @@
 package com.tpverp.backend.goodscheck;
 
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
-import com.tpverp.backend.document.CommercialDocument;
-import com.tpverp.backend.document.CommercialDocumentRepository;
-import com.tpverp.backend.document.CommercialDocumentType;
-import com.tpverp.backend.document.DocumentLine;
-import com.tpverp.backend.document.DocumentStatus;
+import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.inventory.WarehouseInput;
+import com.tpverp.backend.inventory.WarehouseInputDocumentType;
+import com.tpverp.backend.inventory.WarehouseInputLine;
+import com.tpverp.backend.inventory.WarehouseInputRepository;
+import com.tpverp.backend.inventory.WarehouseInputStatus;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
@@ -18,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -27,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GoodsCheckService {
 
     private final GoodsCheckRepository checks;
-    private final CommercialDocumentRepository documents;
+    private final WarehouseInputRepository inputs;
+    private final ProductRepository products;
     private final ProductIdentifierRepository identifiers;
     private final CurrentOrganization organization;
     private final CurrentTerminal currentTerminal;
@@ -36,14 +40,16 @@ public class GoodsCheckService {
 
     public GoodsCheckService(
             GoodsCheckRepository checks,
-            CommercialDocumentRepository documents,
+            WarehouseInputRepository inputs,
+            ProductRepository products,
             ProductIdentifierRepository identifiers,
             CurrentOrganization organization,
             CurrentTerminal currentTerminal,
             SyncOutboxService syncOutbox,
             Clock clock) {
         this.checks = checks;
-        this.documents = documents;
+        this.inputs = inputs;
+        this.products = products;
         this.identifiers = identifiers;
         this.organization = organization;
         this.currentTerminal = currentTerminal;
@@ -59,7 +65,7 @@ public class GoodsCheckService {
         }
         var check = new GoodsCheck(
                 document.getId(),
-                document.getTiendaId(),
+                document.getStoreId(),
                 organization.currentUser(authentication).getId(),
                 Instant.now(clock));
         expected(document).forEach(check::addLine);
@@ -76,7 +82,7 @@ public class GoodsCheckService {
                 .map(check -> view(check, document))
                 .orElseGet(() -> start(documentId, authentication));
     }
-    // Starts one open goods check from a confirmed purchase document.
+    // Starts one open goods check from a confirmed incoming document.
 
     @Transactional(readOnly = true)
     public GoodsCheckView get(UUID id) {
@@ -110,10 +116,9 @@ public class GoodsCheckService {
         return view(saved, purchaseDocument(saved.getDocumentoId()));
     }
 
-    private CommercialDocument purchaseDocument(UUID id) {
+    private WarehouseInput purchaseDocument(UUID id) {
         var storeId = organization.currentStore().getId();
-        return documents.findById(id)
-                .filter(document -> document.getTiendaId().equals(storeId))
+        return inputs.findByIdAndStoreId(id, storeId)
                 .filter(GoodsCheckService::isAllowedPurchaseDocument)
                 .filter(GoodsCheckService::isConfirmed)
                 .orElseThrow(() -> new IllegalArgumentException("message.goods_check.document_not_found"));
@@ -124,48 +129,50 @@ public class GoodsCheckService {
                 .orElseThrow(() -> new IllegalArgumentException("message.goods_check.not_found"));
     }
 
-    private static boolean isAllowedPurchaseDocument(CommercialDocument document) {
-        return document.getTipo() == CommercialDocumentType.ALBARAN_COMPRA
-                || document.getTipo() == CommercialDocumentType.FACTURA_COMPRA;
+    private static boolean isAllowedPurchaseDocument(WarehouseInput document) {
+        return document.getDocumentType() == WarehouseInputDocumentType.ALBARAN_ENTRADA
+                || document.getDocumentType() == WarehouseInputDocumentType.FACTURA_ENTRADA;
     }
 
-    private static boolean isConfirmed(CommercialDocument document) {
-        return document.getNumero() != null
-                && document.getEstado() != DocumentStatus.BORRADOR
-                && document.getEstado() != DocumentStatus.ANULADO;
+    private static boolean isConfirmed(WarehouseInput document) {
+        return document.getNumber() != null
+                && document.getStatus() == WarehouseInputStatus.CONFIRMADA;
     }
 
-    private static Map<UUID, BigDecimal> expected(CommercialDocument document) {
+    private static Map<UUID, BigDecimal> expected(WarehouseInput document) {
         var result = new LinkedHashMap<UUID, BigDecimal>();
-        for (var line : document.getLineas()) {
-            result.merge(line.getProductoId(), line.getCantidad(), BigDecimal::add);
+        for (var line : document.getLines()) {
+            result.merge(line.getProductId(), line.getQuantity(), BigDecimal::add);
         }
         return result;
     }
 
-    private UUID resolveProduct(CommercialDocument document, GoodsCheckScanRequest request) {
+    private UUID resolveProduct(WarehouseInput document, GoodsCheckScanRequest request) {
         Objects.requireNonNull(request, "request");
         if (request.productId() != null) {
             requireProductInDocument(document, request.productId());
             return request.productId();
         }
         var code = normalized(request.code());
-        var fromLine = document.getLineas().stream()
-                .filter(line -> normalized(line.getCodigo()).equals(code))
-                .map(DocumentLine::getProductoId)
+        var fromLine = document.getLines().stream()
+                .map(WarehouseInputLine::getProductId)
+                .map(products::findById)
+                .flatMap(Optional::stream)
+                .filter(product -> normalized(product.getCode()).equals(code))
+                .map(Product::getId)
                 .findFirst();
         if (fromLine.isPresent()) {
             return fromLine.get();
         }
-        var productId = identifiers.findByStoreIdAndValor(document.getTiendaId(), code)
+        var productId = identifiers.findByStoreIdAndValor(document.getStoreId(), code)
                 .map(value -> value.getProductId())
                 .orElseThrow(() -> new IllegalArgumentException("message.goods_check.product_not_in_document"));
         requireProductInDocument(document, productId);
         return productId;
     }
 
-    private static void requireProductInDocument(CommercialDocument document, UUID productId) {
-        if (document.getLineas().stream().noneMatch(line -> line.getProductoId().equals(productId))) {
+    private static void requireProductInDocument(WarehouseInput document, UUID productId) {
+        if (document.getLines().stream().noneMatch(line -> line.getProductId().equals(productId))) {
             throw new IllegalArgumentException("message.goods_check.product_not_in_document");
         }
     }
@@ -177,10 +184,12 @@ public class GoodsCheckService {
         return value.trim().toUpperCase(Locale.ROOT);
     }
 
-    private GoodsCheckView view(GoodsCheck check, CommercialDocument document) {
+    private GoodsCheckView view(GoodsCheck check, WarehouseInput document) {
         var labels = labels(document);
         var all = check.getLineas().stream()
-                .map(line -> item(line, labels.get(line.getProductoId())))
+                .map(line -> item(line, labels.getOrDefault(
+                        line.getProductoId(),
+                        new ProductLabel(line.getProductoId().toString(), ""))))
                 .toList();
         return new GoodsCheckView(
                 check.getId(),
@@ -191,10 +200,11 @@ public class GoodsCheckService {
                 all.stream().filter(item -> item.registeredQuantity().signum() > 0).toList());
     }
 
-    private static Map<UUID, ProductLabel> labels(CommercialDocument document) {
+    private Map<UUID, ProductLabel> labels(WarehouseInput document) {
         var labels = new LinkedHashMap<UUID, ProductLabel>();
-        for (var line : document.getLineas()) {
-            labels.putIfAbsent(line.getProductoId(), new ProductLabel(line.getCodigo(), line.getNombre()));
+        var ids = document.getLines().stream().map(WarehouseInputLine::getProductId).toList();
+        for (var product : products.findAllByStoreIdAndIdIn(document.getStoreId(), ids)) {
+            labels.putIfAbsent(product.getId(), new ProductLabel(product.getCode(), product.getName()));
         }
         return labels;
     }

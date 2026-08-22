@@ -225,10 +225,6 @@ class FiscalRecordServiceTest {
                 command.documentId(), command.storeId(), CommercialDocumentType.TICKET,
                 DocumentStatus.BORRADOR, BigDecimal.TEN), command);
         assertRejected(document(
-                command.documentId(), command.storeId(), CommercialDocumentType.FACTURA_COMPRA,
-                DocumentStatus.PENDIENTE, BigDecimal.TEN),
-                command(FiscalRecordOperation.ALTA, FiscalDocumentType.F1));
-        assertRejected(document(
                 command.documentId(), command.storeId(), CommercialDocumentType.TICKET,
                 DocumentStatus.CONFIRMADO, BigDecimal.TEN),
                 command(FiscalRecordOperation.ALTA, FiscalDocumentType.F1));

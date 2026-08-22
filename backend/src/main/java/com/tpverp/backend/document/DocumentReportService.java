@@ -27,19 +27,10 @@ public class DocumentReportService {
 
     private static final int DEFAULT_LIMIT = 500;
     private static final int MAX_LIMIT = 500;
-    private static final EnumSet<CommercialDocumentType> DELIVERY_NOTES = EnumSet.of(
-            CommercialDocumentType.ALBARAN_VENTA, CommercialDocumentType.ALBARAN_COMPRA);
     private static final EnumSet<CommercialDocumentType> SALES_DELIVERY_NOTES = EnumSet.of(
             CommercialDocumentType.ALBARAN_VENTA);
-    private static final EnumSet<CommercialDocumentType> INVOICES = EnumSet.of(
-            CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.FACTURA_COMPRA,
-            CommercialDocumentType.RECTIFICATIVA_VENTA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
     private static final EnumSet<CommercialDocumentType> SALES_INVOICES = EnumSet.of(
             CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA);
-    private static final EnumSet<CommercialDocumentType> PURCHASE_DELIVERY_NOTES = EnumSet.of(
-            CommercialDocumentType.ALBARAN_COMPRA);
-    private static final EnumSet<CommercialDocumentType> PURCHASE_INVOICES = EnumSet.of(
-            CommercialDocumentType.FACTURA_COMPRA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
 
     private final CommercialDocumentRepository documents;
     private final CurrentOrganization organization;
@@ -81,8 +72,7 @@ public class DocumentReportService {
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
         return list(documentTypes(
-                includeSalesDocuments, includePurchaseDocuments,
-                SALES_INVOICES, PURCHASE_INVOICES), limit, cursor);
+                includeSalesDocuments, SALES_INVOICES), limit, cursor);
     }
 
     @Transactional(readOnly = true)
@@ -97,8 +87,7 @@ public class DocumentReportService {
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
         return list(documentTypes(
-                includeSalesDocuments, includePurchaseDocuments,
-                SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES), limit, cursor);
+                includeSalesDocuments, SALES_DELIVERY_NOTES), limit, cursor);
     }
 
     @Transactional(readOnly = true)
@@ -106,8 +95,7 @@ public class DocumentReportService {
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
         return all(documentTypes(
-                includeSalesDocuments, includePurchaseDocuments,
-                SALES_INVOICES, PURCHASE_INVOICES));
+                includeSalesDocuments, SALES_INVOICES));
     }
 
     @Transactional(readOnly = true)
@@ -115,8 +103,7 @@ public class DocumentReportService {
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
         return all(documentTypes(
-                includeSalesDocuments, includePurchaseDocuments,
-                SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES));
+                includeSalesDocuments, SALES_DELIVERY_NOTES));
     }
 
     private List<DocumentReportView> all(Collection<CommercialDocumentType> types) {
@@ -207,15 +194,10 @@ public class DocumentReportService {
 
     private static EnumSet<CommercialDocumentType> documentTypes(
             boolean includeSalesDocuments,
-            boolean includePurchaseDocuments,
-            EnumSet<CommercialDocumentType> salesTypes,
-            EnumSet<CommercialDocumentType> purchaseTypes) {
+            EnumSet<CommercialDocumentType> salesTypes) {
         var result = EnumSet.noneOf(CommercialDocumentType.class);
         if (includeSalesDocuments) {
             result.addAll(salesTypes);
-        }
-        if (includePurchaseDocuments) {
-            result.addAll(purchaseTypes);
         }
         return result;
     }

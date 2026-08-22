@@ -19,11 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DocumentOperationalTimelineService {
 
-    private static final EnumSet<CommercialDocumentType> PURCHASE_DOCUMENTS = EnumSet.of(
-            CommercialDocumentType.ALBARAN_COMPRA,
-            CommercialDocumentType.FACTURA_COMPRA,
-            CommercialDocumentType.RECTIFICATIVA_COMPRA);
-
     private final CommercialDocumentRepository documents;
     private final DocumentOperationalEventRepository events;
     private final DocumentAttributionResolver attributions;
@@ -91,12 +86,7 @@ public class DocumentOperationalTimelineService {
         if (PermissionChecks.hasRole(authentication, "ADMIN")) {
             return;
         }
-        if (PURCHASE_DOCUMENTS.contains(document.getTipo())
-                && PermissionChecks.hasPurchaseDocumentRead(authentication)) {
-            return;
-        }
-        if (!PURCHASE_DOCUMENTS.contains(document.getTipo())
-                && PermissionChecks.hasAuthority(authentication, "GESTION_VENTAS")) {
+        if (PermissionChecks.hasAuthority(authentication, "GESTION_VENTAS")) {
             return;
         }
         throw new AccessDeniedException("No tiene permiso para consultar la actividad del documento");

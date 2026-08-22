@@ -35,7 +35,9 @@ class WarehouseExcelImportMetadataTest {
                 null,
                 null,
                 null,
-                List.of(new WarehouseInputLineCommand(UUID.randomUUID(), 1)),
+                List.of(new WarehouseInputLineCommand(
+                        UUID.randomUUID(), java.math.BigDecimal.ONE, null,
+                        java.math.BigDecimal.ZERO, false, "Producto")),
                 new WarehouseExcelImportMetadata(
                         "productos.xlsx",
                         List.of(new WarehouseExcelImportMetadata.Formula(

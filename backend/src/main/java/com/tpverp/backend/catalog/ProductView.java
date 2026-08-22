@@ -50,6 +50,10 @@ public record ProductView(
         return from(product, true);
     }
 
+    public static ProductView warehouseView(Product product) {
+        return from(product, true);
+    }
+
     private static ProductView from(Product product, boolean includePurchaseFields) {
         return new ProductView(
                 product.getId(),

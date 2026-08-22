@@ -33,6 +33,7 @@ class CatalogControllerContractTest {
         assertAllows(FamilyController.class, "listSubfamilies", GetMapping.class, VENTA, java.util.UUID.class);
         assertAllows(TaxController.class, "selectable", GetMapping.class, VENTA);
         assertAllows(TaxController.class, "selectable", GetMapping.class, GESTION_ALMACEN);
+        assertAllows(ProductController.class, "warehouseOptions", GetMapping.class, GESTION_ALMACEN);
         assertAllows(ProductController.class, "create", PostMapping.class, GESTION_PRODUCTO, CatalogService.ProductRequest.class);
         assertAllows(ProductController.class, "uploadImage", PutMapping.class, GESTION_PRODUCTO,
                 java.util.UUID.class, org.springframework.web.multipart.MultipartFile.class,

@@ -211,9 +211,7 @@ public class VoucherPrintService {
             case FACTURA_VENTA -> "Factura de venta";
             case RECTIFICATIVA_VENTA -> "Factura rectificativa de venta";
             case ALBARAN_VENTA -> "Albar\u00e1n de venta";
-            case FACTURA_COMPRA -> "Factura de compra";
-            case RECTIFICATIVA_COMPRA -> "Factura rectificativa de compra";
-            case ALBARAN_COMPRA -> "Albar\u00e1n de compra";
+            default -> null;
         };
     }
 

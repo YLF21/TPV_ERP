@@ -197,13 +197,6 @@ class DocumentFiscalIntegrationTest {
     }
 
     @Test
-    void ignoresNonSalesFiscalDocuments() {
-        integration.registerAlta(confirmed(CommercialDocumentType.FACTURA_COMPRA, BigDecimal.TEN), false);
-
-        verify(fiscalRecords, never()).register(any());
-    }
-
-    @Test
     void registersTicketCancellationWithOriginalFiscalType() {
         integration.registerTicketCancellation(confirmed(CommercialDocumentType.TICKET, BigDecimal.ONE.negate()));
 

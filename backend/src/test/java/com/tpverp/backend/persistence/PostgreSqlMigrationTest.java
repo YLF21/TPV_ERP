@@ -159,7 +159,7 @@ class PostgreSqlMigrationTest {
                             'verifactu_secret_deletion_job')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(59);
+                assertThat(result.getInt(1)).isEqualTo(58);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);

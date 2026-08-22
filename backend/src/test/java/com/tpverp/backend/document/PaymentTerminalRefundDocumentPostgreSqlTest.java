@@ -82,7 +82,6 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @Autowired private PlatformTransactionManager transactionManager;
     @MockitoBean private CurrentOrganization organization;
     @MockitoBean private CurrentTerminal currentTerminal;
-    @MockitoBean private ConfirmedPurchaseRecorder purchaseRecorder;
     @MockitoBean private VoucherService vouchers;
     @MockitoBean private CashPaymentRecorder cashPayments;
     @MockitoBean private MemberLoyaltyService memberLoyalty;

@@ -67,20 +67,6 @@ class GenericSalesApiServiceTest {
     }
 
     @Test
-    void purchaseInvoiceKeepsItsExistingPermissionModel() {
-        var request = request(CommercialDocumentType.FACTURA_COMPRA);
-        var expected = document(CommercialDocumentType.FACTURA_COMPRA);
-        when(documents.createInvoice(any(), same(authentication))).thenReturn(expected);
-        var service = service();
-
-        assertThat(service.createInvoice(request, authentication)).isSameAs(expected);
-
-        verify(authorizations, never()).authorize(
-                any(), any(), any(), any(), any());
-        verify(documents).createInvoice(any(DocumentCommand.class), same(authentication));
-    }
-
-    @Test
     void createAndConfirmAuthorizesReceivableAndCreditOverrideBeforeConfirmation() {
         var base = request(CommercialDocumentType.FACTURA_VENTA);
         var pendingCredentials =
@@ -352,8 +338,8 @@ class GenericSalesApiServiceTest {
                 UUID.randomUUID(),
                 type,
                 LocalDate.of(2026, 7, 31),
-                type == CommercialDocumentType.FACTURA_COMPRA ? null : UUID.randomUUID(),
-                type == CommercialDocumentType.FACTURA_COMPRA ? UUID.randomUUID() : null,
+                UUID.randomUUID(),
+                null,
                 null,
                 BigDecimal.ZERO,
                 false,

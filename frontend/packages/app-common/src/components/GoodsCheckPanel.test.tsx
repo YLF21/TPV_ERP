@@ -45,18 +45,18 @@ describe("GoodsCheckPanel", () => {
   it("filters purchase documents independently by delivery note and invoice", () => {
     const documents = [{
       id: "delivery-1",
-      tipo: "ALBARAN_COMPRA" as const,
-      estado: "CONFIRMADO",
-      numero: "AC-1",
-      fecha: "2026-07-30",
-      proveedorNombre: "Proveedor Norte"
+      documentType: "ALBARAN_ENTRADA" as const,
+      status: "CONFIRMADA",
+      number: "AE-1",
+      date: "2026-07-30",
+      supplierId: "supplier-north"
     }, {
       id: "invoice-1",
-      tipo: "FACTURA_COMPRA" as const,
-      estado: "CONFIRMADO",
-      numero: "FC-1",
-      fecha: "2026-07-30",
-      proveedorNombre: "Proveedor Sur"
+      documentType: "FACTURA_ENTRADA" as const,
+      status: "CONFIRMADA",
+      number: "FE-1",
+      date: "2026-07-30",
+      supplierId: "supplier-south"
     }];
 
     expect(filterGoodsCheckDocuments(documents, "", "all")).toHaveLength(2);
@@ -64,61 +64,61 @@ describe("GoodsCheckPanel", () => {
       .toEqual(["delivery-1"]);
     expect(filterGoodsCheckDocuments(documents, "", "invoices").map((item) => item.id))
       .toEqual(["invoice-1"]);
-    expect(filterGoodsCheckDocuments(documents, "sur", "all").map((item) => item.id))
+    expect(filterGoodsCheckDocuments(documents, "south", "all").map((item) => item.id))
       .toEqual(["invoice-1"]);
   });
 
   it("only accepts confirmed numbered purchase invoices and delivery notes", () => {
     const available = {
       id: "document-1",
-      tipo: "FACTURA_COMPRA" as const,
-      estado: "CONFIRMADO",
-      numero: "FC-1",
-      fecha: "2026-07-16"
+      documentType: "FACTURA_ENTRADA" as const,
+      status: "CONFIRMADA",
+      number: "FE-1",
+      date: "2026-07-16"
     };
 
     expect(goodsCheckDocumentIsAvailable(available)).toBe(true);
-    expect(goodsCheckDocumentIsAvailable({ ...available, tipo: "ALBARAN_COMPRA" })).toBe(true);
-    expect(goodsCheckDocumentIsAvailable({ ...available, tipo: "RECTIFICATIVA_COMPRA" })).toBe(false);
-    expect(goodsCheckDocumentIsAvailable({ ...available, estado: "BORRADOR" })).toBe(false);
-    expect(goodsCheckDocumentIsAvailable({ ...available, numero: null })).toBe(false);
+    expect(goodsCheckDocumentIsAvailable({ ...available, documentType: "ALBARAN_ENTRADA" })).toBe(true);
+    expect(goodsCheckDocumentIsAvailable({ ...available, documentType: undefined })).toBe(false);
+    expect(goodsCheckDocumentIsAvailable({ ...available, status: "BORRADOR" })).toBe(false);
+    expect(goodsCheckDocumentIsAvailable({ ...available, number: null })).toBe(false);
   });
 
   it("loads every report page and orders available documents newest first", async () => {
     apiRequestMock.mockImplementation((path: string) => {
-      if (path === "/document-reports/invoices?limit=500") {
+      if (path === "/warehouse-inputs?type=FACTURA_ENTRADA&limit=500") {
         return Promise.resolve({
           items: [{
             id: "invoice-old",
-            tipo: "FACTURA_COMPRA",
-            estado: "CONFIRMADO",
-            numero: "FC-1",
-            fecha: "2026-07-10"
+            documentType: "FACTURA_ENTRADA",
+            status: "CONFIRMADA",
+            number: "FE-1",
+            date: "2026-07-10"
           }],
           hasMore: true,
           nextCursor: "page/2"
         });
       }
-      if (path === "/document-reports/invoices?limit=500&cursor=page%2F2") {
+      if (path === "/warehouse-inputs?type=FACTURA_ENTRADA&limit=500&cursor=page%2F2") {
         return Promise.resolve({
           items: [{
             id: "invoice-draft",
-            tipo: "FACTURA_COMPRA",
-            estado: "BORRADOR",
-            numero: null,
-            fecha: "2026-07-16"
+            documentType: "FACTURA_ENTRADA",
+            status: "BORRADOR",
+            number: null,
+            date: "2026-07-16"
           }],
           hasMore: false
         });
       }
-      if (path === "/document-reports/delivery-notes?limit=500") {
+      if (path === "/warehouse-inputs?type=ALBARAN_ENTRADA&limit=500") {
         return Promise.resolve({
           items: [{
             id: "delivery-new",
-            tipo: "ALBARAN_COMPRA",
-            estado: "CONFIRMADO",
-            numero: "AC-2",
-            fecha: "2026-07-15"
+            documentType: "ALBARAN_ENTRADA",
+            status: "CONFIRMADA",
+            number: "AE-2",
+            date: "2026-07-15"
           }],
           hasMore: false
         });
@@ -131,7 +131,7 @@ describe("GoodsCheckPanel", () => {
     expect(documents.map((document) => document.id)).toEqual(["delivery-new", "invoice-old"]);
     expect(apiRequestMock).toHaveBeenCalledTimes(3);
     expect(apiRequestMock).toHaveBeenCalledWith(
-      "/document-reports/invoices?limit=500&cursor=page%2F2",
+      "/warehouse-inputs?type=FACTURA_ENTRADA&limit=500&cursor=page%2F2",
       { token: "warehouse-token" }
     );
   });

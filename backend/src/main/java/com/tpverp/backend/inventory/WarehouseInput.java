@@ -1,7 +1,11 @@
 package com.tpverp.backend.inventory;
 
+import com.tpverp.backend.document.Money;
+
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -37,6 +41,20 @@ public class WarehouseInput {
     @Column(name = "proveedor_id")
     private UUID supplierId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_documento", nullable = false, length = 32)
+    private WarehouseInputDocumentType documentType = WarehouseInputDocumentType.ENTRADA_ALMACEN;
+
+    @Column(name = "numero_externo", length = 128)
+    private String externalNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "fuente_precio", nullable = false, length = 16)
+    private WarehouseInputPriceSource priceSource = WarehouseInputPriceSource.PURCHASE;
+
+    @Column(name = "descuento_global", nullable = false, precision = 5, scale = 2)
+    private BigDecimal globalDiscount = BigDecimal.ZERO;
+
     @Column(length = 32)
     private String numero;
 
@@ -69,6 +87,11 @@ public class WarehouseInput {
     @JoinColumn(name = "entrada_id", insertable = false, updatable = false)
     private List<WarehouseInputLine> lines = new ArrayList<>();
 
+    @ElementCollection
+    @CollectionTable(name = "entrada_almacen_albaran_origen", joinColumns = @JoinColumn(name = "factura_id"))
+    @Column(name = "albaran_id", nullable = false)
+    private List<UUID> sourceDeliveryNoteIds = new ArrayList<>();
+
     @Version
     private long version;
 
@@ -76,11 +99,21 @@ public class WarehouseInput {
     }
 
     public WarehouseInput(UUID storeId, UUID warehouseId, LocalDate date, UUID createdBy) {
+        this(storeId, warehouseId, date, createdBy, WarehouseInputDocumentType.ENTRADA_ALMACEN);
+    }
+
+    public WarehouseInput(
+            UUID storeId,
+            UUID warehouseId,
+            LocalDate date,
+            UUID createdBy,
+            WarehouseInputDocumentType documentType) {
         this.id = UUID.randomUUID();
         this.storeId = Objects.requireNonNull(storeId, "storeId");
         this.warehouseId = Objects.requireNonNull(warehouseId, "warehouseId");
         this.fecha = Objects.requireNonNull(date, "date");
         this.createdBy = Objects.requireNonNull(createdBy, "createdBy");
+        this.documentType = Objects.requireNonNull(documentType, "documentType");
     }
 
     public UUID getId() {
@@ -101,6 +134,26 @@ public class WarehouseInput {
 
     public UUID getSupplierId() {
         return supplierId;
+    }
+
+    public WarehouseInputDocumentType getDocumentType() {
+        return documentType;
+    }
+
+    public String getExternalNumber() {
+        return externalNumber;
+    }
+
+    public WarehouseInputPriceSource getPriceSource() {
+        return priceSource;
+    }
+
+    public BigDecimal getGlobalDiscount() {
+        return globalDiscount;
+    }
+
+    public List<UUID> getSourceDeliveryNoteIds() {
+        return List.copyOf(sourceDeliveryNoteIds);
     }
 
     public LocalDate getDate() {
@@ -128,10 +181,22 @@ public class WarehouseInput {
         lines.add(new WarehouseInputLine(id, productId, quantity));
     }
 
+    public void addLine(WarehouseInputLineCommand line) {
+        requireDraft();
+        lines.add(new WarehouseInputLine(
+                id, line.productId(), line.quantity(),
+                Objects.requireNonNull(line.unitPrice(), "unitPrice"),
+                line.discount(), line.priceOverridden(), line.productName()));
+    }
+
     public void replace(
             UUID supplierId,
             String origin,
+            String externalNumber,
             String concept,
+            WarehouseInputPriceSource priceSource,
+            BigDecimal globalDiscount,
+            List<UUID> sourceDeliveryNoteIds,
             List<WarehouseInputLineCommand> newLines,
             WarehouseExcelImportMetadata newExcelImport) {
         requireDraft();
@@ -140,12 +205,29 @@ public class WarehouseInput {
         }
         this.supplierId = supplierId;
         this.origen = optional(origin);
+        this.externalNumber = optional(externalNumber);
         this.concepto = optional(concept);
+        this.priceSource = Objects.requireNonNullElse(priceSource, WarehouseInputPriceSource.PURCHASE);
+        this.globalDiscount = percent(globalDiscount);
+        this.sourceDeliveryNoteIds.clear();
+        this.sourceDeliveryNoteIds.addAll(sourceDeliveryNoteIds == null ? List.of() : sourceDeliveryNoteIds.stream().distinct().toList());
         if (newExcelImport != null) {
             this.excelImport = WarehouseExcelImportMetadata.copy(newExcelImport);
         }
         lines.clear();
-        newLines.forEach(line -> addLine(line.productId(), line.quantity()));
+        newLines.forEach(this::addLine);
+    }
+
+    public void replace(
+            UUID supplierId,
+            String origin,
+            String concept,
+            List<WarehouseInputLineCommand> newLines,
+            WarehouseExcelImportMetadata newExcelImport) {
+        replace(supplierId, origin, null, concept, WarehouseInputPriceSource.PURCHASE,
+                BigDecimal.ZERO, List.of(), newLines.stream()
+                        .map(line -> line.unitPrice() == null ? line.valued(BigDecimal.ZERO) : line)
+                        .toList(), newExcelImport);
     }
 
     public void replace(
@@ -183,6 +265,21 @@ public class WarehouseInput {
                 "Falta el precio de compra del producto " + line.getProductId())));
     }
 
+    public BigDecimal getSubtotal() {
+        return Money.euros(lines.stream().map(WarehouseInputLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    public BigDecimal getTotal() {
+        return Money.euros(getSubtotal().multiply(
+                BigDecimal.ONE.subtract(globalDiscount.movePointLeft(2))));
+    }
+
+    public boolean createsStockMovement() {
+        return documentType != WarehouseInputDocumentType.FACTURA_ENTRADA
+                || sourceDeliveryNoteIds.isEmpty();
+    }
+
     private void requireDraft() {
         if (estado != WarehouseInputStatus.BORRADOR) {
             throw new IllegalStateException("Una entrada confirmada es inmutable");
@@ -191,5 +288,13 @@ public class WarehouseInput {
 
     private static String optional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static BigDecimal percent(BigDecimal value) {
+        var normalized = Objects.requireNonNullElse(value, BigDecimal.ZERO).setScale(2, Money.ROUNDING);
+        if (normalized.signum() < 0 || normalized.compareTo(new BigDecimal("100.00")) > 0) {
+            throw new IllegalArgumentException("El descuento debe estar entre 0 y 100");
+        }
+        return normalized;
     }
 }

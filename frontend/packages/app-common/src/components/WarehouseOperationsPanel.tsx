@@ -6,13 +6,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { apiRequest } from "../api/client";
-import type { AppKind, LocaleCode, TerminalContext } from "../types";
+import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import {
   WarehouseDocumentDialog,
   warehouseDocumentPath,
   type WarehouseCustomerOption,
   type WarehouseDocumentMode,
   type WarehouseDocumentView,
+  type WarehouseInputDocumentType,
   type WarehouseOption,
   type WarehouseSupplierOption
 } from "./WarehouseDocumentDialog";
@@ -63,10 +64,12 @@ export type WarehouseOperationsPage = {
 
 export type WarehouseOperationsPanelProps = {
   mode: WarehouseDocumentMode;
+  documentType?: WarehouseInputDocumentType;
   app?: AppKind;
   username?: string;
-  accessToken?: string;
-  token?: string;
+ accessToken?: string;
+ token?: string;
+  session?: UserSession;
   products: WarehouseImportProduct[];
   warehouses: WarehouseOption[];
   customers: WarehouseCustomerOption[];
@@ -121,10 +124,17 @@ export function warehouseOperationsPath(mode: WarehouseDocumentMode) {
 
 const WAREHOUSE_OPERATIONS_PAGE_LIMIT = 500;
 
-export function warehouseOperationsPagePath(mode: WarehouseDocumentMode, cursor?: string | null) {
+export function warehouseOperationsPagePath(
+  mode: WarehouseDocumentMode,
+  cursor?: string | null,
+  documentType?: WarehouseInputDocumentType
+) {
   const params = new URLSearchParams({ limit: String(WAREHOUSE_OPERATIONS_PAGE_LIMIT) });
   if (cursor) {
     params.set("cursor", cursor);
+  }
+  if (mode === "input" && documentType) {
+    params.set("type", documentType);
   }
   return `${warehouseOperationsPath(mode)}?${params.toString()}`;
 }
@@ -132,7 +142,8 @@ export function warehouseOperationsPagePath(mode: WarehouseDocumentMode, cursor?
 export async function warehouseOperationsLoad(
   mode: WarehouseDocumentMode,
   token: string,
-  request: WarehouseOperationsPanelRequest = apiRequest
+  request: WarehouseOperationsPanelRequest = apiRequest,
+  documentType?: WarehouseInputDocumentType
 ) {
   const documents: WarehouseOperationView[] = [];
   const seenCursors = new Set<string>();
@@ -140,7 +151,7 @@ export async function warehouseOperationsLoad(
 
   while (true) {
     const response: WarehouseOperationsPage | WarehouseOperationView[] = await request<WarehouseOperationsPage | WarehouseOperationView[]>(
-      warehouseOperationsPagePath(mode, cursor),
+      warehouseOperationsPagePath(mode, cursor, documentType),
       { token }
     );
     if (Array.isArray(response)) {
@@ -295,10 +306,12 @@ export function warehouseOperationsNextId(
 
 export function WarehouseOperationsPanel({
   mode,
+  documentType,
   app = "venta",
   username = "",
-  accessToken,
-  token,
+ accessToken,
+  session,
+ token,
   products,
   warehouses,
   customers,
@@ -334,12 +347,16 @@ export function WarehouseOperationsPanel({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const onErrorRef = useRef(onError);
 
-  const labels = warehouseOperationsLabels(t, mode);
+  const labels = warehouseOperationsLabels(t, mode, documentType);
   const tableLayout = useTableLayoutPreference({
     app,
     username,
     accessToken,
-    tableKey: mode === "input" ? "warehouse.inputs.documents" : "warehouse.outputs.documents",
+    tableKey: mode === "input"
+      ? (documentType == null || documentType === "ENTRADA_ALMACEN"
+        ? "warehouse.inputs.documents"
+        : `warehouse.inputs.${documentType}.documents`)
+      : "warehouse.outputs.documents",
     definitions: warehouseOperationsColumnDefinitions
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
@@ -415,7 +432,7 @@ export function WarehouseOperationsPanel({
     setDialogOpen(false);
     setDialogDocument(null);
     setNotice("");
-  }, [mode]);
+  }, [documentType, mode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -434,7 +451,7 @@ export function WarehouseOperationsPanel({
 
     setLoading(true);
     setError("");
-    void warehouseOperationsLoad(mode, token)
+    void warehouseOperationsLoad(mode, token, apiRequest, documentType)
       .then((result) => {
         if (!cancelled) {
           setDocuments(result);
@@ -457,7 +474,7 @@ export function WarehouseOperationsPanel({
     return () => {
       cancelled = true;
     };
-  }, [labels.loadError, labels.noAccess, mode, reloadKey, resolvedPermissions.read, token]);
+  }, [documentType, labels.loadError, labels.noAccess, mode, reloadKey, resolvedPermissions.read, token]);
 
   useEffect(() => {
     if (selectedId && !visibleDocuments.some((document) => document.id === selectedId)) {
@@ -773,11 +790,14 @@ export function WarehouseOperationsPanel({
 
       <WarehouseDocumentDialog
         mode={mode}
+        documentType={documentType}
+        title={labels.title}
         open={dialogOpen}
         app={app}
         username={username}
-        accessToken={accessToken}
-        locale={locale}
+       accessToken={accessToken}
+        session={session}
+       locale={locale}
         token={token}
         products={products}
         warehouses={warehouses}
@@ -797,9 +817,24 @@ export function WarehouseOperationsPanel({
 
 export default WarehouseOperationsPanel;
 
-function warehouseOperationsLabels(t: (key: string) => string, mode: WarehouseDocumentMode) {
+function warehouseOperationsLabels(
+  t: (key: string) => string,
+  mode: WarehouseDocumentMode,
+  documentType?: WarehouseInputDocumentType
+) {
+  const inputTitleKey = documentType === "FACTURA_ENTRADA"
+    ? "warehouseScreen.purchaseInvoices"
+    : documentType === "ALBARAN_ENTRADA"
+      ? "warehouseScreen.purchaseDeliveryNotes"
+      : "stock.nav.inputWarehouse";
   return {
-    title: warehouseOperationsText(t, mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse", mode === "input" ? "Entrada almacén" : "Salida almacén"),
+    title: warehouseOperationsText(
+      t,
+      mode === "input" ? inputTitleKey : "stock.nav.outputWarehouse",
+      mode === "input"
+        ? documentType === "FACTURA_ENTRADA" ? "Facturas de entrada" : documentType === "ALBARAN_ENTRADA" ? "Albaranes de entrada" : "Entrada almacén"
+        : "Salida almacén"
+    ),
     search: warehouseOperationsText(t, "salesReport.search", "Buscar"),
     searchPlaceholder: warehouseOperationsText(t, "warehouseOperations.searchPlaceholder", "Buscar por número, contraparte o almacén"),
     status: warehouseOperationsText(t, "salesReport.filter.status", "Estado"),

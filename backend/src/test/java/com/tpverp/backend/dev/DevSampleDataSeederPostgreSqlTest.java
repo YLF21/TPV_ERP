@@ -378,8 +378,9 @@ class DevSampleDataSeederPostgreSqlTest {
                 """, String.class);
 
         assertThat(countersBefore).contains(
-                "AV|2026|144",
-                "FV|2026|144");
+                "AV|2026|251",
+                "FRV|2026|251",
+                "FV|2026|251");
 
         seeder.seed();
 

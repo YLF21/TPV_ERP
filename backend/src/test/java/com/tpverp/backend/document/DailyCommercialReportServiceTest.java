@@ -56,16 +56,14 @@ class DailyCommercialReportServiceTest {
         var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
         var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "40.00");
         var creditNote = confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "-10.00");
-        var purchase = confirmed(CommercialDocumentType.FACTURA_COMPRA, REPORT_DATE, "90.00");
         var invoicePayment = payment(fixture, invoice, "30.00", start(REPORT_DATE).plusSeconds(1));
         var ticketPayment = payment(fixture, ticket, "40.00", start(REPORT_DATE).plusSeconds(2));
         var creditPayment = payment(fixture, creditNote, "10.00", start(REPORT_DATE).plusSeconds(3));
-        var purchasePayment = payment(fixture, purchase, "90.00", start(REPORT_DATE).plusSeconds(4));
         when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
-                .thenReturn(List.of(invoice, ticket, creditNote, purchase));
+                .thenReturn(List.of(invoice, ticket, creditNote));
         when(fixture.payments().findAllByStoreAndCreatedBetween(
                 fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
-                .thenReturn(List.of(invoicePayment, ticketPayment, creditPayment, purchasePayment));
+                .thenReturn(List.of(invoicePayment, ticketPayment, creditPayment));
 
         var report = fixture.service().report(REPORT_DATE);
 

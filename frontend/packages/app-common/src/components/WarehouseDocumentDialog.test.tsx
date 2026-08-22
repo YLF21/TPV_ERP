@@ -122,7 +122,7 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     expect(html).toContain("Entrada almacén");
-    expect(html).toContain("Proveedor/origen");
+    expect(html).toContain("Proveedor");
     expect(html).not.toContain("Cliente</span>");
   });
 
@@ -273,9 +273,38 @@ describe("WarehouseDocumentDialog", () => {
       date: "2026-07-08",
       supplierId: "supplier-1",
       origin: "Proveedor SL",
+      externalNumber: undefined,
       concept: "Compra",
-      lines: [{ productId: "product-1", quantity: 3 }]
+      documentType: "ENTRADA_ALMACEN",
+      priceSource: "PURCHASE",
+      globalDiscount: 0,
+      sourceDeliveryNoteIds: [],
+      lines: [{
+        productId: "product-1",
+        productName: "A001 - Cafe molido",
+        quantity: 3,
+        unitPrice: 0,
+        discount: 0,
+        priceOverridden: false
+      }]
     });
+  });
+
+  it("requires a supplier only for incoming invoices", () => {
+    expect(canConfirmWarehouseDocument({
+      warehouseId: "warehouse-1",
+      partnerId: "",
+      partnerText: "Origen libre",
+      documentType: "ALBARAN_ENTRADA",
+      lines
+    })).toBe(true);
+    expect(canConfirmWarehouseDocument({
+      warehouseId: "warehouse-1",
+      partnerId: "",
+      partnerText: "Origen libre",
+      documentType: "FACTURA_ENTRADA",
+      lines
+    })).toBe(false);
   });
 
   it("sends imported formulas as private document metadata", () => {
@@ -369,7 +398,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBeGreaterThan(1));
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBeGreaterThan(0));
 
     const headerKeys = () => Array.from(container.querySelectorAll<HTMLElement>("thead [data-column-key]"))
       .map((header) => header.dataset.columnKey);
@@ -377,7 +406,7 @@ describe("WarehouseDocumentDialog", () => {
 
     expect(headerKeys().slice(0, 2)).toEqual(["total", "code"]);
     expect(firstRowCells()[0].textContent).toContain("13,50");
-    expect(firstRowCells()[1].querySelector("input")?.value).toBe("A001");
+    expect(firstRowCells()[1].textContent).toContain("A001");
     expect(Array.from(container.querySelectorAll("colgroup col")).map((col) => (col as HTMLElement).style.width).slice(0, 2))
       .toEqual(["160px", "180px"]);
     expect(Array.from(container.querySelectorAll<HTMLElement>("thead [data-column-key]")).every((header) => header.draggable))
