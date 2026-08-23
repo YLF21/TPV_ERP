@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import java.time.LocalDate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,7 +39,8 @@ public class FiscalController {
     @PreAuthorize("hasRole('ADMIN')")
     public FiscalStatusView transition(@Valid @RequestBody ModeTransitionRequest request) {
         return modes.transition(request.targetMode(), request.expectedVersion(),
-                request.reason(), request.confirmation());
+                request.reason(), request.confirmation(), request.fechaFinVeriFactu(),
+                request.aeatAckReference());
     }
 
     @GetMapping("/events")
@@ -71,5 +73,7 @@ public class FiscalController {
             @NotNull FiscalMode targetMode,
             long expectedVersion,
             @NotBlank String reason,
-            boolean confirmation) {}
+            boolean confirmation,
+            LocalDate fechaFinVeriFactu,
+            String aeatAckReference) {}
 }

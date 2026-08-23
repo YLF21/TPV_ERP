@@ -13,5 +13,6 @@ public record FiscalStatusView(
         FiscalEndpointEnvironment endpointEnvironment,
         FiscalTransportMode transportMode,
         boolean productionEnabled,
-        LocalDate verifactuBlockedUntil) {
+        LocalDate verifactuBlockedUntil,
+        FiscalScheduledTransitionView scheduledTransition) {
 }

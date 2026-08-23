@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -10,11 +11,14 @@ import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Store;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mock.env.MockEnvironment;
 
 class FiscalModeTransitionServiceTest {
@@ -45,6 +49,52 @@ class FiscalModeTransitionServiceTest {
                 eq(FiscalMode.NO_VERIFACTU), eq(FiscalEventType.START_NO_VERIFACTU), eq("inicio"));
     }
 
+    @Test
+    void programaSalidaRealConFechaFinYAckSinCambiarModo() {
+        var fixture = realFixture();
+        var endDate = LocalDate.now().plusDays(30);
+        fixture.configuration.changeMode(FiscalMode.VERIFACTU, Instant.now(), null);
+        when(fixture.integrity.check()).thenReturn(new FiscalIntegrityCheckView(
+                Instant.now(), FiscalMode.VERIFACTU, true, List.of(), 0, 0));
+
+        fixture.service.transition(FiscalMode.NO_VERIFACTU, 1, "cambio legal", true,
+                endDate, "ACK-TEST-001");
+
+        assertThat(fixture.configuration.getCurrentMode()).isEqualTo(FiscalMode.VERIFACTU);
+        var captor = ArgumentCaptor.forClass(FiscalModeTransition.class);
+        verify(fixture.transitions).save(captor.capture());
+        var transition = captor.getValue();
+        assertThat(transition.getStatus()).isEqualTo(FiscalModeTransitionStatus.PROGRAMADA);
+        assertThat(transition.getVerifactuEndDate()).isEqualTo(endDate);
+        assertThat(transition.getAeatAckReference()).isEqualTo("ACK-TEST-001");
+        assertThat(transition.getEffectiveAt()).isAfter(transition.getRequestedAt());
+    }
+
+    @Test
+    void exigeFechaFinYAckParaSalidaReal() {
+        var fixture = realFixture();
+        fixture.configuration.changeMode(FiscalMode.VERIFACTU, Instant.now(), null);
+
+        assertThatThrownBy(() -> fixture.service.transition(
+                FiscalMode.NO_VERIFACTU, 1, "cambio legal", true, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("FechaFinVeriFactu");
+    }
+
+    @Test
+    void noPermiteAcortarLaPermanenciaAnualReal() {
+        var fixture = realFixture();
+        fixture.configuration.changeMode(FiscalMode.VERIFACTU, Instant.now(), null);
+        var blockedUntil = LocalDate.now().plusDays(90);
+        fixture.configuration.lockVerifactuUntil(blockedUntil);
+
+        assertThatThrownBy(() -> fixture.service.transition(
+                FiscalMode.NO_VERIFACTU, 1, "cambio legal", true,
+                blockedUntil.minusDays(1), "ACK-TEST-002"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("permanencia anual");
+    }
+
     private static Fixture fixture() {
         var company = new Company("B00000000", "Company", Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas", "codigoPostal", "35001",
@@ -72,7 +122,27 @@ class FiscalModeTransitionServiceTest {
         var service = new FiscalModeTransitionService(
                 organization, installations, configurations, transitions, runtime, events);
         service.setIntegrityService(integrity);
-        return new Fixture(company, installation, installationId, integrity, events, service);
+        return new Fixture(company, installation, installationId, integrity, events, service,
+                configuration, organization, installations, configurations, transitions, runtime);
+    }
+
+    private static Fixture realFixture() {
+        var fixture = fixture();
+        var store = mock(Store.class);
+        when(store.getTimezone()).thenReturn("Europe/Madrid");
+        when(fixture.organization.currentStore()).thenReturn(store);
+        var runtime = new FiscalRuntimeProperties(new MockEnvironment()
+                .withProperty("tpv.verifactu.runtime-class", "REAL")
+                .withProperty("tpv.verifactu.endpoint-environment", "TEST")
+                .withProperty("tpv.verifactu.transport-mode", "AEAT"));
+        var service = new FiscalModeTransitionService(
+                fixture.organization, fixture.installations, fixture.configurations,
+                fixture.transitions, runtime, fixture.events);
+        service.setIntegrityService(fixture.integrity);
+        return new Fixture(fixture.company, fixture.installation, fixture.installationId,
+                fixture.integrity, fixture.events, service, fixture.configuration,
+                fixture.organization, fixture.installations, fixture.configurations,
+                fixture.transitions, runtime);
     }
 
     private record Fixture(
@@ -81,6 +151,12 @@ class FiscalModeTransitionServiceTest {
             java.util.UUID installationId,
             FiscalIntegrityService integrity,
             FiscalEventService events,
-            FiscalModeTransitionService service) {
+            FiscalModeTransitionService service,
+            VerifactuConfiguration configuration,
+            CurrentOrganization organization,
+            InstallationRepository installations,
+            VerifactuConfigurationRepository configurations,
+            FiscalModeTransitionRepository transitions,
+            FiscalRuntimeProperties runtime) {
     }
 }

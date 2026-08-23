@@ -3,6 +3,8 @@ package com.tpverp.backend.verifactu;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,13 @@ public class FiscalModeTransitionService {
     public FiscalStatusView status() {
         var company = organization.currentCompany();
         var configuration = configurations.findByCompanyId(company.getId()).orElse(null);
+        var installation = installations.findAll().stream().findFirst().orElse(null);
+        var scheduled = configuration != null && installation != null
+                ? transitions.findTopByCompanyIdAndInstallationIdAndStatusOrderByRequestedAtDesc(
+                        company.getId(), installation.getId(), FiscalModeTransitionStatus.PROGRAMADA)
+                        .filter(candidate -> candidate.getEffectiveAt().isAfter(Instant.now()))
+                        .map(this::scheduledView).orElse(null)
+                : null;
         return new FiscalStatusView(company.getId(),
                 configuration == null ? (runtime.isSandbox() ? runtime.sandboxInitialMode()
                         : FiscalMode.PRE_SIF) : configuration.getCurrentMode(),
@@ -47,12 +56,20 @@ public class FiscalModeTransitionService {
                 configuration == null ? null : configuration.getModeSince(),
                 runtime.runtimeClass(), runtime.endpointEnvironment(), runtime.transportMode(),
                 runtime.productionEnabled(),
-                configuration == null ? null : configuration.getVerifactuBlockedUntil());
+                configuration == null ? null : configuration.getVerifactuBlockedUntil(),
+                scheduled);
     }
 
     @Transactional
     public FiscalStatusView transition(FiscalMode target, long expectedVersion,
             String reason, boolean confirmation) {
+        return transition(target, expectedVersion, reason, confirmation, null, null);
+    }
+
+    @Transactional
+    public FiscalStatusView transition(FiscalMode target, long expectedVersion,
+            String reason, boolean confirmation, LocalDate verifactuEndDate,
+            String aeatAckReference) {
         if (!confirmation) {
             throw new IllegalArgumentException("La confirmacion explicita es obligatoria");
         }
@@ -72,15 +89,16 @@ public class FiscalModeTransitionService {
         if (previous == target) {
             throw new IllegalArgumentException("El modo fiscal ya esta activo");
         }
-        if (previous == FiscalMode.VERIFACTU && target == FiscalMode.NO_VERIFACTU
-                && runtime.runtimeClass() == FiscalRuntimeClass.REAL) {
-            throw new IllegalStateException("El cambio VERI*FACTU a NO requiere periodo legal y ACK AEAT");
-        }
         var normalizedReason = reason == null ? "" : reason.trim();
         if (normalizedReason.isBlank()) {
             throw new IllegalArgumentException("El motivo de la transicion es obligatorio");
         }
         var now = Instant.now();
+        if (previous == FiscalMode.VERIFACTU && target == FiscalMode.NO_VERIFACTU
+                && runtime.runtimeClass() == FiscalRuntimeClass.REAL) {
+            return scheduleRealVerifactuExit(company.getId(), installation.getId(), configuration,
+                    expectedVersion, normalizedReason, now, verifactuEndDate, aeatAckReference);
+        }
         if (previous == FiscalMode.PRE_SIF && target == FiscalMode.NO_VERIFACTU) {
             if (integrity == null) {
                 throw new IllegalStateException("Preflight de integridad fiscal no disponible");
@@ -106,5 +124,55 @@ public class FiscalModeTransitionService {
                     FiscalEventType.START_NO_VERIFACTU, normalizedReason);
         }
         return status();
+    }
+
+    private FiscalStatusView scheduleRealVerifactuExit(java.util.UUID companyId,
+            java.util.UUID installationId, VerifactuConfiguration configuration,
+            long expectedVersion, String reason, Instant requestedAt,
+            LocalDate verifactuEndDate, String aeatAckReference) {
+        if (verifactuEndDate == null || aeatAckReference == null
+                || aeatAckReference.trim().isBlank()) {
+            throw new IllegalArgumentException(
+                    "VERI*FACTU a NO requiere FechaFinVeriFactu y ACK AEAT");
+        }
+        var zone = ZoneId.of(organization.currentStore().getTimezone());
+        if (!verifactuEndDate.isAfter(LocalDate.now(zone))) {
+            throw new IllegalArgumentException(
+                    "FechaFinVeriFactu debe pertenecer a un periodo futuro");
+        }
+        var blockedUntil = configuration.getVerifactuBlockedUntil();
+        if (blockedUntil != null && verifactuEndDate.isBefore(blockedUntil)) {
+            throw new IllegalStateException(
+                    "FechaFinVeriFactu no puede acortar la permanencia anual VERI*FACTU");
+        }
+        if (integrity == null) {
+            throw new IllegalStateException("Preflight de integridad fiscal no disponible");
+        }
+        var preflight = integrity.check();
+        if (!preflight.ok()) {
+            throw new IllegalStateException(
+                    "No se puede programar la salida VERI*FACTU con anomalías de integridad: "
+                            + String.join(",", preflight.anomalies()));
+        }
+        // FechaFinVeriFactu is the last day in VERI*FACTU; the switch is due at
+        // the beginning of the following local day.
+        var effectiveAt = verifactuEndDate.plusDays(1).atStartOfDay(zone).toInstant();
+        var existing = transitions.findTopByCompanyIdAndInstallationIdAndStatusOrderByRequestedAtDesc(
+                companyId, installationId, FiscalModeTransitionStatus.PROGRAMADA);
+        if (existing.isPresent() && existing.get().getEffectiveAt().isAfter(Instant.now())) {
+            throw new IllegalStateException("Ya existe una salida VERI*FACTU programada");
+        }
+        transitions.save(new FiscalModeTransition(companyId, installationId,
+                FiscalMode.VERIFACTU, FiscalMode.NO_VERIFACTU, requestedAt, effectiveAt,
+                runtime.isSandbox() ? "DEV_SANDBOX" : "ADMIN", reason, expectedVersion,
+                verifactuEndDate, aeatAckReference.trim()));
+        return status();
+    }
+
+    private FiscalScheduledTransitionView scheduledView(FiscalModeTransition transition) {
+        return new FiscalScheduledTransitionView(transition.getPreviousMode(),
+                transition.getNewMode(), transition.getStatus(), transition.getRequestedAt(),
+                transition.getEffectiveAt(), transition.getVerifactuEndDate(),
+                transition.getAeatAckReference());
     }
 }

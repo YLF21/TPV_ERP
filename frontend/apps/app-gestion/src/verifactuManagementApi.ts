@@ -201,6 +201,16 @@ export type VerifactuCorrectionResult = {
 };
 
 export type FiscalMode = "PRE_SIF" | "NO_VERIFACTU" | "VERIFACTU";
+export type FiscalModeTransitionStatus = "APLICADA" | "PROGRAMADA";
+export type FiscalScheduledTransition = {
+  previousMode: FiscalMode;
+  newMode: FiscalMode;
+  status: FiscalModeTransitionStatus;
+  requestedAt: string;
+  effectiveAt: string;
+  verifactuEndDate: string;
+  aeatAckReference: string;
+};
 export type FiscalStatus = {
   companyId: string;
   mode: FiscalMode;
@@ -211,6 +221,7 @@ export type FiscalStatus = {
   transportMode: "SIMULATED" | "AEAT";
   productionEnabled: boolean;
   verifactuBlockedUntil?: string | null;
+  scheduledTransition?: FiscalScheduledTransition | null;
 };
 export type FiscalSandboxStatus = {
   sandboxEnabled: boolean;
