@@ -92,6 +92,23 @@ class DefectiveFiscalRecordServiceTest {
         assertThat(service.list().getFirst().qrUrl()).isEqualTo("https://prewww2.aeat.es/frozen-qr");
     }
 
+    @Test
+    void noRecalculaQrDeRegistroLegacySinSnapshot() {
+        var rejected = state(FiscalSubmissionStatus.RECHAZADO, "NIF_INVALIDO", "NIF no valido");
+        when(states.findAllByStatusInOrderByUpdatedAtDesc(List.of(
+                FiscalSubmissionStatus.RECHAZADO,
+                FiscalSubmissionStatus.DEFECTUOSO,
+                FiscalSubmissionStatus.ACEPTADO_CON_ERRORES)))
+                .thenReturn(List.of(rejected));
+        var record = record(rejected.getRecordId(), store.getId());
+        when(records.findById(rejected.getRecordId())).thenReturn(Optional.of(record));
+        when(printSnapshots.findByRecordId(record.getId())).thenReturn(Optional.empty());
+        service = new DefectiveFiscalRecordService(states, records, organization,
+                new FiscalQrUrlService(), printSnapshots);
+
+        assertThat(service.list().getFirst().qrUrl()).isNull();
+    }
+
     private FiscalSubmissionState state(
             FiscalSubmissionStatus status, String code, String message) {
         var value = new FiscalSubmissionState(UUID.randomUUID(), status,

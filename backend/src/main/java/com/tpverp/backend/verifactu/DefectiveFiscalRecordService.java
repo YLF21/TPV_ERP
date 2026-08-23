@@ -59,9 +59,7 @@ public class DefectiveFiscalRecordService {
     private String frozenQrUrl(FiscalRecord record) {
         if (printSnapshots != null) {
             var frozen = printSnapshots.findByRecordId(record.getId());
-            if (frozen.isPresent()) {
-                return frozen.get().getQrUrl();
-            }
+            return frozen.map(FiscalPrintSnapshotRecord::getQrUrl).orElse(null);
         }
         return DefectiveFiscalRecordView.qrUrl(record, qrUrls);
     }
