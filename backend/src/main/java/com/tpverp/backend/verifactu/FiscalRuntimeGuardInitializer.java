@@ -48,10 +48,22 @@ public class FiscalRuntimeGuardInitializer implements ApplicationRunner {
     }
 
     private boolean isEmptyFiscalState() {
-        var records = count("registro_fiscal");
-        var transitions = count("transicion_modo_fiscal");
-        var artifacts = count("artefacto_registro_fiscal");
-        return records == 0 && transitions == 0 && artifacts == 0;
+        // A runtime marker is only promotable on a genuinely fresh fiscal
+        // database. Event chains, exports, snapshots or version identities
+        // are evidence too, even when no billing record was persisted.
+        return java.util.stream.Stream.of(
+                "cadena_fiscal",
+                "registro_fiscal",
+                "cadena_eventos_fiscal",
+                "registro_evento_fiscal",
+                "transicion_modo_fiscal",
+                "version_sistema_fiscal",
+                "artefacto_registro_fiscal",
+                "snapshot_impresion_fiscal",
+                "alarma_fiscal",
+                "exportacion_fiscal",
+                "requerimiento_fiscal")
+                .allMatch(table -> count(table) == 0);
     }
 
     private long count(String table) {
