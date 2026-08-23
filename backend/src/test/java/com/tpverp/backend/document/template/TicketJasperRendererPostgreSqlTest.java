@@ -31,6 +31,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -90,14 +92,15 @@ class TicketJasperRendererPostgreSqlTest {
         execute("drop schema if exists " + SCHEMA + " cascade");
     }
 
-    @Test
-    void rendersIntegratedTicketFromFrozenFiscalSnapshot() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(TicketPrintStyle.class)
+    void rendersIntegratedTicketFromFrozenFiscalSnapshot(TicketPrintStyle style) throws Exception {
         var fixture = insertFixture();
         var storage = new DocumentTemplateArtifactStorage(temporaryDirectory);
         var bundle = new BuiltInTicketJasperBundle(new TicketJrxmlBundleCompiler(), storage);
         var printConfiguration = mock(StoreDocumentPrintConfigurationService.class);
         when(printConfiguration.ticketTemplateOrigin()).thenReturn(TicketTemplateOrigin.INTEGRATED);
-        when(printConfiguration.ticketStyle()).thenReturn(TicketPrintStyle.PRINCIPAL);
+        when(printConfiguration.ticketStyle()).thenReturn(style);
         var renderer = new TicketJasperRenderer(
                 dataSource, mock(DocumentTemplateResolver.class), storage,
                 printConfiguration, bundle);
