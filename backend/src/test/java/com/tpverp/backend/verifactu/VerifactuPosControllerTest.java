@@ -45,9 +45,13 @@ class VerifactuPosControllerTest {
                 .thenReturn(List.of());
 
         mvc.perform(get("/api/v1/verifactu/pos/status")
-                        .with(user("seller").authorities(() -> "VENTA")))
+                .with(user("seller").authorities(() -> "VENTA")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.presentationStatus").value("OPERATIVO"));
+                .andExpect(jsonPath("$.presentationStatus").value("OPERATIVO"))
+                .andExpect(jsonPath("$.fiscalMode").value("VERIFACTU"))
+                .andExpect(jsonPath("$.runtimeClass").value("REAL"))
+                .andExpect(jsonPath("$.endpointEnvironment").value("TEST"))
+                .andExpect(jsonPath("$.transportMode").value("AEAT"));
         mvc.perform(get("/api/v1/verifactu/pos/queue")
                         .with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk());
