@@ -192,7 +192,13 @@ export function WarehouseScreen({
           {!canManage ? (
             <div className="stock-empty-state">{t("warehouseScreen.noAccess")}</div>
           ) : section === "goodsCheck" ? (
-            <GoodsCheckPanel locale={locale} token={session.accessToken} t={t} />
+            <GoodsCheckPanel
+              locale={locale}
+              token={session.accessToken}
+              t={t}
+              warehouses={warehouses}
+              suppliers={suppliers}
+            />
           ) : section === "purchaseDeliveryNotes" || section === "purchaseInvoices" ? (
             <WarehouseOperationsPanel
               mode="input"

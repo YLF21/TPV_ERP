@@ -443,6 +443,7 @@ const stockProductTypeOptions = ["UNIT", "WEIGHT", "SERVICE"];
 const stockDiscountTypeOptions = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
 const bulkPriceUseModes: BulkPriceUseMode[] = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
 const STOCK_PAGE_LIMIT = 500;
+const STOCK_EXPORT_SHORTCUT = "F6" as const;
 export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelectedAction[]> = {
   main: [
     "purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice", "offerDiscountPercent",
@@ -1588,6 +1589,17 @@ export function stockFilterButtonLabelKey(view: StockViewKey) {
   return view === "stock.topSales" ? "stock.filter.title" : "stock.filter.inventoryTitle";
 }
 
+export function closeStockFilterOnEscape(
+  event: Pick<KeyboardEvent<HTMLElement>, "key" | "defaultPrevented" | "preventDefault" | "stopPropagation">,
+  close: () => void
+) {
+  if (event.defaultPrevented || event.key !== "Escape") return false;
+  event.preventDefault();
+  event.stopPropagation();
+  close();
+  return true;
+}
+
 export function stockViewAfterProductCreated(_currentView: StockViewKey): StockViewKey {
   return "stock.current";
 }
@@ -2019,6 +2031,7 @@ export function StockScreen({
   const [stockExportNotice, setStockExportNotice] = useState("");
   const [stockExportNoticeView, setStockExportNoticeView] = useState<StockViewKey | null>(null);
   const [stockExportNoticeKind, setStockExportNoticeKind] = useState<"info" | "success" | "error">("info");
+  const stockExportShortcutRef = useRef<() => void>(() => undefined);
   const [stockRefreshCounter, setStockRefreshCounter] = useState(0);
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [topSalesRows, setTopSalesRows] = useState<StockTopSalesRow[]>([]);
@@ -2169,6 +2182,35 @@ export function StockScreen({
       .map((assignment) => [assignment.productId, assignment.file])),
     [bulkImageSnapshot]
   );
+
+  useEffect(() => {
+    if (!topSalesFilterOpen && !inventoryFilterOpen && !familyPickerOpen && !inventoryFamilyPickerOpen) return;
+    const handleFilterEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== "Escape") return;
+      if (inventoryFamilyPickerOpen) {
+        closeStockFilterOnEscape(event, () => setInventoryFamilyPickerOpen(false));
+      } else if (familyPickerOpen) {
+        closeStockFilterOnEscape(event, () => setFamilyPickerOpen(false));
+      } else if (topSalesDatePickerOpen) {
+        closeStockFilterOnEscape(event, () => setTopSalesDatePickerOpen(false));
+      } else if (inventoryDropdownOpen) {
+        closeStockFilterOnEscape(event, () => setInventoryDropdownOpen(""));
+      } else if (inventoryFilterOpen) {
+        closeStockFilterOnEscape(event, () => setInventoryFilterOpen(false));
+      } else if (topSalesFilterOpen) {
+        closeStockFilterOnEscape(event, () => setTopSalesFilterOpen(false));
+      }
+    };
+    window.addEventListener("keydown", handleFilterEscape);
+    return () => window.removeEventListener("keydown", handleFilterEscape);
+  }, [
+    familyPickerOpen,
+    inventoryDropdownOpen,
+    inventoryFamilyPickerOpen,
+    inventoryFilterOpen,
+    topSalesDatePickerOpen,
+    topSalesFilterOpen
+  ]);
 
   useEffect(() => {
     bulkRowsRef.current = bulkRows;
@@ -2735,6 +2777,25 @@ export function StockScreen({
     window.addEventListener("keydown", handleDetailKey);
     return () => window.removeEventListener("keydown", handleDetailKey);
   }, [canManageProducts, detailRow]);
+
+  stockExportShortcutRef.current = () => { void exportStockExcel(); };
+
+  useEffect(() => {
+    function handleStockExportShortcut(event: globalThis.KeyboardEvent) {
+      if (event.key !== STOCK_EXPORT_SHORTCUT || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView) || detailRow) return;
+      if (document.querySelector("[role='dialog'][aria-modal='true']")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stockExportShortcutRef.current();
+    }
+    window.addEventListener("keydown", handleStockExportShortcut, true);
+    return () => window.removeEventListener("keydown", handleStockExportShortcut, true);
+  }, [detailRow, selectedView, session.accessToken, stockExportBusy]);
 
   function updateDraftTopSalesFilter(key: keyof StockTopSalesFilters, value: string) {
     setDraftTopSalesFilters((current) => ({ ...current, [key]: value }));
@@ -6629,11 +6690,14 @@ export function StockScreen({
       <button
         type="button"
         className="stock-export-button"
+        aria-keyshortcuts={STOCK_EXPORT_SHORTCUT}
+        title={`${t("stock.exportExcel")} (${STOCK_EXPORT_SHORTCUT})`}
         disabled={stockExportBusy || !session.accessToken}
         onClick={() => void exportStockExcel()}
       >
         <FileXls size={16} weight="bold" aria-hidden="true" />
-        {stockExportBusy ? t("stock.exportExcel.exporting") : t("stock.exportExcel")}
+        <span>{stockExportBusy ? t("stock.exportExcel.exporting") : t("stock.exportExcel")}</span>
+        <kbd aria-hidden="true">{STOCK_EXPORT_SHORTCUT}</kbd>
       </button>
     );
   }
@@ -6972,7 +7036,10 @@ export function StockScreen({
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-filter-title">
           <section
             className="filter-dialog stock-filter-dialog"
-            onKeyDown={(event) => acceptStockDialogEnter(event, () => applyTopSalesFilters())}
+            onKeyDown={(event) => {
+              if (closeStockFilterOnEscape(event, () => setTopSalesFilterOpen(false))) return;
+              acceptStockDialogEnter(event, () => applyTopSalesFilters());
+            }}
           >
             <header className="filter-header">
               <h2 id="stock-filter-title">{t("stock.filter.title")}</h2>
@@ -7141,7 +7208,10 @@ export function StockScreen({
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-inventory-filter-title">
           <section
             className="filter-dialog stock-filter-dialog"
-            onKeyDown={(event) => acceptStockDialogEnter(event, applyInventoryFilters)}
+            onKeyDown={(event) => {
+              if (closeStockFilterOnEscape(event, () => setInventoryFilterOpen(false))) return;
+              acceptStockDialogEnter(event, applyInventoryFilters);
+            }}
           >
             <header className="filter-header">
               <h2 id="stock-inventory-filter-title">{t("stock.filter.inventoryTitle")}</h2>

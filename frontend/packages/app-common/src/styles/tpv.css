@@ -16754,17 +16754,34 @@ textarea:focus,
   justify-self: end !important;
   min-height: 34px !important;
   padding: 0 12px !important;
-  border: 1px solid var(--tpv-v3-blue) !important;
+  border: 1px solid var(--tpv-v3-navy) !important;
   border-radius: 0 !important;
-  background: var(--tpv-v3-blue) !important;
+  background: var(--tpv-v3-navy) !important;
   color: #ffffff !important;
   font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
   white-space: nowrap !important;
+}
+
+.stock-screen .stock-export-button kbd {
+  align-self: stretch;
+  min-width: 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: -12px;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.32);
+  background: transparent;
+  color: inherit;
+  font: inherit;
 }
 
 .stock-screen .stock-export-button:hover:not(:disabled),
 .stock-screen .stock-export-button:focus-visible:not(:disabled) {
   background: #174c82 !important;
+  border-color: #174c82 !important;
 }
 
 .stock-search-stack {
@@ -18250,6 +18267,32 @@ textarea:focus,
 .goods-check-lines {
   min-height: 0;
   overflow: auto;
+}
+
+.goods-check-document-list .report-table {
+  width: 100%;
+  min-width: 640px;
+  table-layout: fixed;
+}
+
+.goods-check-document-list .goods-check-col-type { width: 19%; }
+.goods-check-document-list .goods-check-col-number { width: 21%; }
+.goods-check-document-list .goods-check-col-date { width: 18%; }
+.goods-check-document-list .goods-check-col-supplier { width: 27%; }
+.goods-check-document-list .goods-check-col-warehouse { width: 15%; }
+
+.goods-check-document-list .report-table th,
+.goods-check-document-list .report-table td {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goods-check-document-list .report-table .table-sort-button {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .goods-check-document-list .report-table th:first-child,

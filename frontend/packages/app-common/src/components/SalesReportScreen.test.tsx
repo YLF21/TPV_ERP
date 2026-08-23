@@ -1931,6 +1931,27 @@ describe("SalesReportScreen", () => {
     createObjectUrl.mockRestore();
   });
 
+  it("closes the report filter dialog with Escape", () => {
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        request={vi.fn()}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        initialReport="salesReport.tickets"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    expect(screen.getByRole("dialog", { name: "Filtrar" })).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Filtrar" })).not.toBeInTheDocument();
+  });
+
   it("builds V67-compatible report table definitions with sensible defaults", () => {
     expect(reportTableKey("salesReport.tickets")).toBe("reports.salesReport.tickets");
     expect(buildReportColumnDefinitions({

@@ -6,6 +6,8 @@ import {
   goodsCheckClosePath,
   goodsCheckDocumentIsAvailable,
   goodsCheckDocumentPath,
+  goodsCheckSupplierLabel,
+  goodsCheckWarehouseLabel,
   goodsCheckScanPath,
   loadGoodsCheckDocuments
 } from "./GoodsCheckPanel";
@@ -66,6 +68,25 @@ describe("GoodsCheckPanel", () => {
       .toEqual(["invoice-1"]);
     expect(filterGoodsCheckDocuments(documents, "south", "all").map((item) => item.id))
       .toEqual(["invoice-1"]);
+  });
+
+  it("shows readable supplier and warehouse names instead of their UUIDs", () => {
+    const document = {
+      id: "document-1",
+      supplierId: "supplier-uuid",
+      warehouseId: "warehouse-uuid"
+    };
+
+    expect(goodsCheckSupplierLabel(document, [{
+      id: "supplier-uuid",
+      tradeName: "Distribuciones Centro"
+    }])).toBe("Distribuciones Centro");
+    expect(goodsCheckWarehouseLabel(document, [{
+      id: "warehouse-uuid",
+      name: "Almacén general"
+    }])).toBe("Almacén general");
+    expect(goodsCheckSupplierLabel(document)).toBe("-");
+    expect(goodsCheckWarehouseLabel(document)).toBe("-");
   });
 
   it("only accepts confirmed numbered purchase invoices and delivery notes", () => {

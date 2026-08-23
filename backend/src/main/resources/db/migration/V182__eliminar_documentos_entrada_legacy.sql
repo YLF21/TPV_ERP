@@ -19,6 +19,12 @@ where documento_id in (select documento_id from legacy_documento_entrada_ids);
 -- endpoint. Its document rows are removed in the same transaction.
 drop table if exists producto_importacion_excel_linea;
 
+-- The operational-event table is append-only during normal application use.
+-- This migration is the exceptional lifecycle operation that removes the
+-- retired legacy documents and their dependent history in one transaction.
+alter table documento_evento_operativo
+    disable trigger documento_evento_operativo_append_only;
+
 -- Remove direct and indirect references whose FK column identifies a
 -- commercial document. Several historical extensions use different table
 -- names but the same documento_id/document_id convention. A failed delete is
@@ -51,6 +57,9 @@ begin
         end loop;
     end loop;
 end $$;
+
+alter table documento_evento_operativo
+    enable trigger documento_evento_operativo_append_only;
 
 delete from documento
 where id in (select documento_id from legacy_documento_entrada_ids);

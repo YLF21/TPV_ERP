@@ -55,6 +55,22 @@ type GoodsCheckPanelProps = {
   locale: LocaleCode;
   token?: string;
   t: (key: string) => string;
+  warehouses?: GoodsCheckWarehouseOption[];
+  suppliers?: GoodsCheckSupplierOption[];
+};
+
+type GoodsCheckWarehouseOption = {
+  id: string;
+  name?: string | null;
+  nombre?: string | null;
+};
+
+type GoodsCheckSupplierOption = {
+  id: string;
+  supplierId?: string | null;
+  legalName?: string | null;
+  razonSocial?: string | null;
+  tradeName?: string | null;
 };
 
 const PAGE_LIMIT = 500;
@@ -94,11 +110,40 @@ export function filterGoodsCheckDocuments(
     return [
       document.number ?? document.numero,
       document.externalNumber ?? document.numeroExterno,
-      document.supplierId ?? document.proveedorNombre,
-      document.warehouseId ?? document.almacenNombre,
+      document.proveedorNombre,
+      document.supplierId,
+      document.almacenNombre,
+      document.warehouseId,
       document.date ?? document.fecha
     ].some((value) => String(value ?? "").toLocaleLowerCase().includes(query));
   });
+}
+
+export function goodsCheckSupplierLabel(
+  document: PurchaseDocument,
+  suppliers: GoodsCheckSupplierOption[] = []
+) {
+  const supplierId = document.supplierId?.trim();
+  const supplier = suppliers.find((option) => (
+    option.id === supplierId || option.supplierId === supplierId
+  ));
+  return supplier?.tradeName?.trim()
+    || supplier?.legalName?.trim()
+    || supplier?.razonSocial?.trim()
+    || document.proveedorNombre?.trim()
+    || "-";
+}
+
+export function goodsCheckWarehouseLabel(
+  document: PurchaseDocument,
+  warehouses: GoodsCheckWarehouseOption[] = []
+) {
+  const warehouseId = document.warehouseId?.trim();
+  const warehouse = warehouses.find((option) => option.id === warehouseId);
+  return warehouse?.name?.trim()
+    || warehouse?.nombre?.trim()
+    || document.almacenNombre?.trim()
+    || "-";
 }
 
 async function loadDocumentPages(path: string, token: string) {
@@ -131,7 +176,7 @@ export async function loadGoodsCheckDocuments(token: string) {
     .sort((left, right) => (right.date ?? right.fecha ?? "").localeCompare(left.date ?? left.fecha ?? "") || (right.number ?? right.numero ?? "").localeCompare(left.number ?? left.numero ?? ""));
 }
 
-export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
+export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers = [] }: GoodsCheckPanelProps) {
   const [documents, setDocuments] = useState<PurchaseDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [search, setSearch] = useState("");
@@ -148,18 +193,23 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { maximumFractionDigits: 3 }
   ), [locale]);
+  const displayDocuments = useMemo(() => documents.map((document) => ({
+    ...document,
+    proveedorNombre: goodsCheckSupplierLabel(document, suppliers),
+    almacenNombre: goodsCheckWarehouseLabel(document, warehouses)
+  })), [documents, suppliers, warehouses]);
   const visibleDocuments = useMemo(() => sortTableRows(
-    filterGoodsCheckDocuments(documents, search, typeFilter),
+    filterGoodsCheckDocuments(displayDocuments, search, typeFilter),
     documentSort,
     (document, column) => {
       if (column === "type") return t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice");
       if (column === "number") return document.number ?? document.numero;
       if (column === "date") return new Date(document.date ?? document.fecha ?? "");
-      if (column === "supplier") return document.supplierId ?? document.proveedorNombre;
-      return document.warehouseId ?? document.almacenNombre;
+      if (column === "supplier") return document.proveedorNombre ?? document.supplierId;
+      return document.almacenNombre ?? document.warehouseId;
     },
     locale
-  ), [documentSort, documents, locale, search, t, typeFilter]);
+  ), [displayDocuments, documentSort, locale, search, t, typeFilter]);
   const selectedDocument = visibleDocuments.find(
     (document) => document.id === selectedDocumentId
   ) ?? null;
@@ -319,6 +369,13 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
             </div>
           ) : visibleDocuments.length > 0 ? (
             <table className="report-table">
+            <colgroup>
+              <col className="goods-check-col-type" />
+              <col className="goods-check-col-number" />
+              <col className="goods-check-col-date" />
+              <col className="goods-check-col-supplier" />
+              <col className="goods-check-col-warehouse" />
+            </colgroup>
             <thead>
               <tr>
                 {([
@@ -360,8 +417,8 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
                   <td>{t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice")}</td>
                   <td>{document.number ?? document.numero}</td>
                   <td>{document.date ?? document.fecha}</td>
-                  <td>{document.supplierId ?? document.proveedorNombre ?? "-"}</td>
-                  <td>{document.warehouseId ?? document.almacenNombre ?? "-"}</td>
+                  <td title={document.supplierId ?? undefined}>{document.proveedorNombre ?? document.supplierId ?? "-"}</td>
+                  <td title={document.warehouseId ?? undefined}>{document.almacenNombre ?? document.warehouseId ?? "-"}</td>
                 </tr>
               ))}
             </tbody>

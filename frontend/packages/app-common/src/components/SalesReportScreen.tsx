@@ -2285,6 +2285,23 @@ export function SalesReportScreen({
   }, []);
 
   useEffect(() => {
+    if (!filterOpen) return;
+    function closeFilterOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.defaultPrevented || event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (openFilterControl) {
+        setDateRangeStart(null);
+        setOpenFilterControl(null);
+      } else {
+        setFilterOpen(false);
+      }
+    }
+    window.addEventListener("keydown", closeFilterOnEscape);
+    return () => window.removeEventListener("keydown", closeFilterOnEscape);
+  }, [filterOpen, openFilterControl]);
+
+  useEffect(() => {
     if (!documentPreviewRow) return;
     function closePreviewOnEscape(event: globalThis.KeyboardEvent) {
       if (event.key === "Escape") closeDocumentPreview();

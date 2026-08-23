@@ -23,6 +23,7 @@ import {
   stockLoadStatus,
   stockPagePath,
   stockFilterButtonLabelKey,
+  closeStockFilterOnEscape,
   loadStockSubfamilies,
   loadStockInventoryRows,
   stockTopSalesPath,
@@ -1253,6 +1254,9 @@ describe("StockScreen", () => {
     expect(html).toContain("Top ventas");
     expect(html).toContain("Añadir producto");
     expect(html).toContain("Filtrar");
+    expect(html).toContain("Exportar Excel");
+    expect(html).toContain('aria-keyshortcuts="F6"');
+    expect(html).toContain('<kbd aria-hidden="true">F6</kbd>');
     expect(html).toContain("Stock local");
     expect(html).toContain("Stock total");
     expect(html).toContain("Stock");
@@ -1331,5 +1335,21 @@ describe("StockScreen", () => {
     expect(stockFilterButtonLabelKey("stock.current")).toBe("stock.filter.inventoryTitle");
     expect(stockFilterButtonLabelKey("stock.offers")).toBe("stock.filter.inventoryTitle");
     expect(stockFilterButtonLabelKey("stock.bulkEdit")).toBe("stock.filter.inventoryTitle");
+  });
+
+  it("closes stock filters with Escape and ignores other keys", () => {
+    const close = vi.fn();
+    const escapeEvent = {
+      key: "Escape",
+      defaultPrevented: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    };
+
+    expect(closeStockFilterOnEscape(escapeEvent, close)).toBe(true);
+    expect(escapeEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(escapeEvent.stopPropagation).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(closeStockFilterOnEscape({ ...escapeEvent, key: "Enter" }, close)).toBe(false);
   });
 });
