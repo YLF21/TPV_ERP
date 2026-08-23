@@ -2,6 +2,8 @@ package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
+import com.tpverp.backend.document.PaymentSessionClosedException;
+import com.tpverp.backend.document.SalePaymentSessionStatus;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
 import com.tpverp.backend.document.TicketGeneratedVoucherAlreadyUsedException;
@@ -354,6 +356,38 @@ class ApiExceptionHandlerTest {
         assertEquals("STATE_CONFLICT", problem.getProperties().get("code"));
         assertEquals("La operación no es compatible con el estado actual", problem.getDetail());
         assertEquals(36, String.valueOf(problem.getProperties().get("traceId")).length());
+    }
+
+    @Test
+    void reportsCancelledPaymentSessionsAsRetryableWithAStableCode() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.paymentSessionClosed(
+                new PaymentSessionClosedException(SalePaymentSessionStatus.CANCELLED),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(PaymentSessionClosedException.CODE, problem.getProperties().get("code"));
+        assertEquals("CANCELLED", problem.getProperties().get("paymentSessionStatus"));
+        assertEquals(true, problem.getProperties().get("retryable"));
+        assertEquals(
+                "La sesión de cobro anterior fue cancelada. Es necesario iniciar un cobro nuevo.",
+                problem.getDetail());
+    }
+
+    @Test
+    void reportsFinalizedPaymentSessionsAsClosedButNotRetryable() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en");
+
+        var problem = handler.paymentSessionClosed(
+                new PaymentSessionClosedException(SalePaymentSessionStatus.FINALIZED),
+                request);
+
+        assertEquals(false, problem.getProperties().get("retryable"));
+        assertEquals("FINALIZED", problem.getProperties().get("paymentSessionStatus"));
+        assertEquals("The payment session has already been finalized.", problem.getDetail());
     }
 
     @Test

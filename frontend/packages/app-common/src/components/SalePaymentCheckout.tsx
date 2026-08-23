@@ -57,7 +57,7 @@ export type PaymentFinalizationSummary = (
  | { kind: "CASH"; totalCents: number; receivedCents: number }
  | { kind: "CARD" | "VOUCHER" | "MIXED" | "REFUND" | "ZERO"; totalCents: number; receivedCents?: never }
 ) & { issuedVoucher?: IssuedVoucherPrintSnapshot };
-type Props = { locale: LocaleCode; currentUsername?: string; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; memberBalanceCents?: number; memberBalanceAvailableCents?: number; pricingReady?: boolean; preferredSessionId?: string; memberBalanceReservationId?: string; customerSelected?: boolean; voucherOnlyRefund?: boolean; testCashEnabled?: boolean; saleMutationAuthorizations?: readonly SaleMutationAuthorizationRequirement[] | null; manualCardPaymentAuthorization?: SaleOperationAuthorization | null; transferPaymentAuthorization?: SaleOperationAuthorization | null; refundPolicyOverrideAuthorization?: SaleOperationAuthorization | null; refundTenderOverrideAuthorization?: SaleOperationAuthorization | null; paymentTerminalVoidAuthorization?: SaleOperationAuthorization | null; paymentTerminalRefundAuthorization?: SaleOperationAuthorization | null; paymentCompensationAuthorization?: SaleOperationAuthorization | null; createPendingAuthorization?: SaleOperationAuthorization | null; creditOverrideAuthorization?: SaleOperationAuthorization | null; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onMemberBalance?: (amountCents:number)=>void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
+type Props = { locale: LocaleCode; currentUsername?: string; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; memberBalanceCents?: number; memberBalanceAvailableCents?: number; pricingReady?: boolean; preferredSessionId?: string; memberBalanceReservationId?: string; customerSelected?: boolean; voucherOnlyRefund?: boolean; testCashEnabled?: boolean; saleMutationAuthorizations?: readonly SaleMutationAuthorizationRequirement[] | null; manualCardPaymentAuthorization?: SaleOperationAuthorization | null; transferPaymentAuthorization?: SaleOperationAuthorization | null; refundPolicyOverrideAuthorization?: SaleOperationAuthorization | null; refundTenderOverrideAuthorization?: SaleOperationAuthorization | null; paymentTerminalVoidAuthorization?: SaleOperationAuthorization | null; paymentTerminalRefundAuthorization?: SaleOperationAuthorization | null; paymentCompensationAuthorization?: SaleOperationAuthorization | null; createPendingAuthorization?: SaleOperationAuthorization | null; creditOverrideAuthorization?: SaleOperationAuthorization | null; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onMemberBalance?: (amountCents:number)=>void; onSessionClosed?:()=>Promise<{saleId:string;reservationId:string}|null>; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
 type AuthorizationAction = { kind: "VOID" | "REFUND"; authorization: SaleOperationAuthorization; amount: string; options: PaymentRefundLineOption[]; lines: PaymentRefundLineSelection[] };
 type PaymentAllocationInput = {kind:string;amountCents:number;provider?:string;voucherCode?:string;reference?:string;deliveredCents?:number;changeCents?:number;comment?:string};
 type AllocationAuthorizationAction = {
@@ -211,11 +211,17 @@ export function isCreditLimitExceededError(error:unknown){
  if(!(error instanceof ApiError)||error.status!==409)return false;
  return error.problem?.code==="CUSTOMER_CREDIT_LIMIT_EXCEEDED";
 }
+export function isClosedPaymentSessionError(error:unknown){
+ return error instanceof ApiError
+  &&error.status===409
+  &&error.problem?.code==="PAYMENT_SESSION_CLOSED"
+  &&(error.problem.paymentSessionStatus==="CANCELLED"||error.problem.retryable===true);
+}
 export function shouldOfferTestCashSession(enabled:boolean,status:string|undefined,missing:boolean,terminalId?:string){return enabled&&status==="COVERED"&&missing&&Boolean(terminalId);}
 export async function authorizationPasswordIsEphemeral<T>(password:string,clear:(value:string)=>void,operation:(password:string)=>Promise<T>){clear("");try{return await operation(password);}finally{clear("");}}
 export async function compensationNoteIsEphemeral<T>(note:string,clear:(value:string)=>void,operation:(note:string)=>Promise<T>){const normalized=note.trim();clear("");try{return await operation(normalized);}finally{clear("");}}
 
-export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,currentUsername="",totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,memberBalanceCents=0,memberBalanceAvailableCents=0,pricingReady=true,preferredSessionId,memberBalanceReservationId,customerSelected=false,voucherOnlyRefund=false,testCashEnabled=false,saleMutationAuthorizations=[],manualCardPaymentAuthorization,transferPaymentAuthorization,refundPolicyOverrideAuthorization,refundTenderOverrideAuthorization,paymentTerminalVoidAuthorization,paymentTerminalRefundAuthorization,paymentCompensationAuthorization,createPendingAuthorization,creditOverrideAuthorization,onCash,onPending,onDiscount,onMemberBalance,onHydrationChange,onLockedChange,onFinalized},ref){
+export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,currentUsername="",totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,memberBalanceCents=0,memberBalanceAvailableCents=0,pricingReady=true,preferredSessionId,memberBalanceReservationId,customerSelected=false,voucherOnlyRefund=false,testCashEnabled=false,saleMutationAuthorizations=[],manualCardPaymentAuthorization,transferPaymentAuthorization,refundPolicyOverrideAuthorization,refundTenderOverrideAuthorization,paymentTerminalVoidAuthorization,paymentTerminalRefundAuthorization,paymentCompensationAuthorization,createPendingAuthorization,creditOverrideAuthorization,onCash,onPending,onDiscount,onMemberBalance,onSessionClosed,onHydrationChange,onLockedChange,onFinalized},ref){
  const t=createTranslator(locale);
  const legacyPasswordAuthorization:SaleOperationAuthorization={mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true};
  const legacyDirectAuthorization:SaleOperationAuthorization={mode:"DIRECT",requireUsername:false,requirePassword:false};
@@ -279,6 +285,8 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const exitFeedbackRef=useRef<"payment.pending.logoutError"|"payment.pending.shutdownBlocked"|null>(null);
  const cleanupFlightRef=useRef<{sessionId:string;promise:Promise<boolean>}|null>(null);
  const simulatorDiscardAttemptedRef=useRef(new Set<string>());
+ const closedSessionIdsRef=useRef(new Set<string>());
+ const reservationRenewalRef=useRef<Promise<{saleId:string;reservationId:string}|null>|null>(null);
  const storageKey=`tpverp.payment-session.${terminal.terminalId??terminal.terminalCode}`;const attemptKey=`${storageKey}.allocation-attempt`;
  useEffect(()=>{void apiRequest<{rules:{cardManualEnabled:boolean;integratedCardEnabled:boolean};providerDescriptors:Array<{provider:string;capabilities:string[]}>;configuration:{provider:string;enabled:boolean}}>("/terminal-configuration/payment",{token}).then(c=>{setManual(c.rules.cardManualEnabled);setProviders(c.rules.integratedCardEnabled&&c.configuration.enabled?[c.configuration.provider]:[]);setCapabilities(c.providerDescriptors.find(p=>p.provider===c.configuration.provider)?.capabilities??[]);}).catch(()=>{});},[token]);
  useEffect(()=>{void loadPaymentMethods(token).then(methods=>setPaymentMethods(resolveCheckoutPaymentMethodConfiguration(methods))).catch(()=>setPaymentMethods(defaultCheckoutPaymentMethodConfiguration));},[token]);
@@ -323,29 +331,60 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  useEffect(()=>{if(unifiedCheckout&&server&&server.status!=="FINALIZED"&&server.status!=="CANCELLED")setCheckoutOpen(true);},[server?.id,server?.status,unifiedCheckout]);
  function clearRecoveryStorage(expectedSessionId?:string){const storedSessionId=globalThis.sessionStorage?.getItem(storageKey);const ownsStoredSession=!expectedSessionId||storedSessionId===expectedSessionId;if(ownsStoredSession)globalThis.sessionStorage?.removeItem(storageKey);const storedAttempt=globalThis.localStorage?.getItem(attemptKey);let attemptSessionId:string|undefined;try{attemptSessionId=storedAttempt?(JSON.parse(storedAttempt) as {sessionId?:string}).sessionId:undefined;}catch{/* Legacy malformed attempts belong to the matching stored session only. */}if(!expectedSessionId||attemptSessionId===expectedSessionId||(ownsStoredSession&&!attemptSessionId))globalThis.localStorage?.removeItem(attemptKey);}
  function clearRecoveredSession(expectedSessionId?:string){clearRecoveryStorage(expectedSessionId);if(expectedSessionId)simulatorDiscardAttemptedRef.current.delete(expectedSessionId);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setCompensationDialog(false);setCompensationNote("");setCompensationUsername("");setCompensationPassword("");setPendingFinalizeAuthorization(null);setPendingMemberWallet(null);setPendingUsername("");setPendingPassword("");setCreditOverrideReason("");setCreditOverrideUsername("");setCreditOverridePassword("");setAllocationAuthorizationAction(null);setReservationAuthorizations(null);setAuthorization(null);setAuthorizationUsername("");setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
+ function renewClosedSessionReservation(){
+  if(!onSessionClosed)return Promise.resolve(null);
+  if(reservationRenewalRef.current)return reservationRenewalRef.current;
+  const flight=onSessionClosed();
+  reservationRenewalRef.current=flight;
+  const clearFlight=()=>{if(reservationRenewalRef.current===flight)reservationRenewalRef.current=null;};
+  void flight.then(clearFlight,clearFlight);
+  return flight;
+ }
+ async function reserveServerSession(id:string,reservationId?:string,operationAuthorizations:SaleMutationOperationAuthorizations={}){
+  const reservedSale=saleWithOperationAuthorizations(sale,operationAuthorizations);
+  return apiRequest<ServerSession>("/pos/payment-sessions",{
+   token,
+   body:{sessionId:id,sale:reservedSale,...(reservationId?{memberBalanceReservationId:reservationId}:{})},
+  });
+ }
  async function ensure(operationAuthorizations:SaleMutationOperationAuthorizations={}){
   if(serverRef.current)return serverRef.current;
   if(ensureFlightRef.current)return ensureFlightRef.current;
   const flight=(async()=>{
-   const reservedSale=saleWithOperationAuthorizations(sale,operationAuthorizations);
    const storedId=globalThis.sessionStorage?.getItem(storageKey);
-   const id=storedId??preferredSessionId??uuid();
+   const availablePreferredId=preferredSessionId&&!closedSessionIdsRef.current.has(preferredSessionId)
+    ? preferredSessionId
+    : undefined;
+   const id=storedId&&!closedSessionIdsRef.current.has(storedId)
+    ? storedId
+    : availablePreferredId??uuid();
    const reservationId=id===preferredSessionId?memberBalanceReservationId:undefined;
    globalThis.sessionStorage?.setItem(storageKey,id);
    let created:ServerSession;
    try{
-    created=await apiRequest<ServerSession>("/pos/payment-sessions",{
-     token,
-     body:{sessionId:id,sale:reservedSale,...(reservationId?{memberBalanceReservationId:reservationId}:{})},
-    });
+    created=await reserveServerSession(id,reservationId,operationAuthorizations);
    }catch(failure){
-    if(!(failure instanceof ApiError)||failure.status!==409)throw failure;
-    const active=await apiRequest<ServerSession|null>("/pos/payment-sessions/active",{token});
-    if(!active)throw failure;
-    created=await apiRequest<ServerSession>("/pos/payment-sessions",{
-     token,
-     body:{sessionId:active.id,sale:reservedSale,...(active.id===preferredSessionId&&memberBalanceReservationId?{memberBalanceReservationId}:{})},
-    });
+    if(isClosedPaymentSessionError(failure)){
+     closedSessionIdsRef.current.add(id);
+     clearRecoveryStorage(id);
+     const renewed=await renewClosedSessionReservation();
+     const replacementId=renewed?.saleId??uuid();
+     globalThis.sessionStorage?.setItem(storageKey,replacementId);
+     created=await reserveServerSession(
+      replacementId,
+      renewed?.reservationId,
+      operationAuthorizations,
+     );
+    }else{
+     if(!(failure instanceof ApiError)||failure.status!==409)throw failure;
+     const active=await apiRequest<ServerSession|null>("/pos/payment-sessions/active",{token});
+     if(!active)throw failure;
+     created=await reserveServerSession(
+      active.id,
+      active.id===preferredSessionId?memberBalanceReservationId:undefined,
+      operationAuthorizations,
+     );
+    }
    }
    if(created.memberBalanceFailureCode&&memberBalanceCents>0){
     const applied=Math.max(0,Math.round(Number(created.memberBalanceAppliedAmount??0)*100));
@@ -818,7 +857,13 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
    const sessionId=server.id;
    const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${sessionId}/cancel`,{token,method:"POST"});
    setServer(next);
-   if(next.status==="CANCELLED"){clearRecoveredSession(sessionId);return "CANCELLED";}
+   if(next.status==="CANCELLED"){
+    closedSessionIdsRef.current.add(sessionId);
+    const renewal=renewClosedSessionReservation();
+    clearRecoveredSession(sessionId);
+    await renewal;
+    return "CANCELLED";
+   }
    if(next.status==="COMPENSATION_REQUIRED"){
     if(simulatorDiscardAttemptedRef.current.has(sessionId)){
      setError(t("payment.split.error.cancelUnresolved"));
@@ -828,7 +873,13 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
     try{
      const discarded=await apiRequest<ServerSession>(`/pos/payment-sessions/${sessionId}/simulator-discard`,{token,body:{reason:"payment_method_change"}});
      setServer(discarded);
-     if(discarded.status==="CANCELLED"){clearRecoveredSession(sessionId);return "CANCELLED";}
+     if(discarded.status==="CANCELLED"){
+      closedSessionIdsRef.current.add(sessionId);
+      const renewal=renewClosedSessionReservation();
+      clearRecoveredSession(sessionId);
+      await renewal;
+      return "CANCELLED";
+     }
     }catch{
      simulatorDiscardAttemptedRef.current.delete(sessionId);
      setError(t("payment.split.error.cancelUnresolved"));

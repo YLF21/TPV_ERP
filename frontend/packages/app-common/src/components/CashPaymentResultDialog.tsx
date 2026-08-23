@@ -15,6 +15,7 @@ type CashPaymentResultDialogProps = {
   authorization?: string;
   reference?: string;
   printStatus?: TicketPrintUiStatus;
+  printTechnicalMessage?: string;
   issuedVoucher?: IssuedVoucherPrintSnapshot;
   voucherPrintStatus?: TicketPrintUiStatus;
   onRetryPrint?: () => void;
@@ -98,6 +99,7 @@ export function CashPaymentResultContent({
   authorization,
   reference,
   printStatus = "SKIPPED",
+  printTechnicalMessage,
   issuedVoucher,
   voucherPrintStatus = "SKIPPED",
   onRetryPrint,
@@ -128,6 +130,11 @@ export function CashPaymentResultContent({
         {printStatus === "FAILED" && (
           <div className="cash-payment-print-status cash-payment-print-error" role="alert">
             <span>{t("payment.result.printFailed")}</span>
+            {printTechnicalMessage && (
+              <small className="cash-payment-print-technical">
+                {t("payment.result.printTechnicalDetail").replace("{detail}", printTechnicalMessage)}
+              </small>
+            )}
             <button type="button" className="cash-payment-print-retry" onClick={onRetryPrint}>{t("payment.result.retryPrint")}</button>
           </div>
         )}

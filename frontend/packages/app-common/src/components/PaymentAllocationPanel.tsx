@@ -108,7 +108,7 @@ const labels = {
   es: {
     title: "COBRO", amount: "IMPORTE / RECIBIDO", document: "Nº DOCUMENTO", comment: "COMENTARIO",
     cash: "Efectivo", card: "Tarjeta", voucher: "Vale", pending: "Pendiente",
-    transfer: "Transferencia", memberBalance: "Saldo socio", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
+    transfer: "Transferencia", memberBalance: "Saldo socio", memberBalanceAvailable: "Disponible", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
     tableAmount: "IMPORTE", change: "Cambio", total: "TOTAL A COBRAR", paid: "COBRADO",
     remaining: "FALTA", accept: "ACEPTAR", cancel: "CANCELAR", exact: "Exacto",
     clear: "Eliminar pagos", customerRequired: "Selecciona un cliente para dejar el ticket pendiente",
@@ -124,7 +124,7 @@ const labels = {
   en: {
     title: "CHECKOUT", amount: "AMOUNT / RECEIVED", document: "DOCUMENT No.", comment: "COMMENT",
     cash: "Cash", card: "Card", voucher: "Voucher", pending: "Pending",
-    transfer: "Transfer", memberBalance: "Member balance", returnCredit: "Return credit", discount: "Discount", method: "PAYMENT METHOD",
+    transfer: "Transfer", memberBalance: "Member balance", memberBalanceAvailable: "Available", returnCredit: "Return credit", discount: "Discount", method: "PAYMENT METHOD",
     tableAmount: "AMOUNT", change: "Change", total: "TOTAL DUE", paid: "PAID",
     remaining: "REMAINING", accept: "ACCEPT", cancel: "CANCEL", exact: "Exact",
     clear: "Clear payments", customerRequired: "Select a customer before leaving the ticket pending",
@@ -140,7 +140,7 @@ const labels = {
   zh: {
     title: "收款", amount: "金额 / 实收", document: "单据号", comment: "备注",
     cash: "现金", card: "银行卡", voucher: "代金券", pending: "挂账",
-    transfer: "转账", memberBalance: "会员余额", returnCredit: "退货余额", discount: "折扣", method: "付款方式",
+    transfer: "转账", memberBalance: "会员余额", memberBalanceAvailable: "可用", returnCredit: "退货余额", discount: "折扣", method: "付款方式",
     tableAmount: "金额", change: "找零", total: "应收合计", paid: "已收",
     remaining: "未收", accept: "确认", cancel: "取消", exact: "正好",
     clear: "清除付款", customerRequired: "挂账前请选择客户",
@@ -679,9 +679,9 @@ export function PaymentAllocationPanel({
     { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
     { value: "PENDING", shortcut: "F8", visible: !refund && pendingVisible, disabled: !pendingEnabled },
     { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
+    { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: effectiveRows.length > 0 },
     { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet || onMemberBalance), disabled: !customerSelected || (Boolean(onMemberWallet) && !memberWallet) || memberBalanceLimit <= 0 || effectiveRows.length > 0 },
     { value: "MEMBER_CREDIT", shortcut: "F10", visible: refund, disabled: !customerSelected || !memberWallet },
-    { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: effectiveRows.length > 0 },
   ];
   const methods = allMethods.filter((item) => item.visible !== false);
   const buttonLabel = (value: CheckoutMethod) => ({
@@ -751,10 +751,16 @@ export function PaymentAllocationPanel({
 
           {!zero && <div className="sale-checkout-methods" aria-label={copy.method}>
             {methods.map((item) => <button key={item.value} type="button"
-              className={selectedMethod === item.value ? "selected" : ""}
+              className={[
+                selectedMethod === item.value ? "selected" : "",
+                item.value === "MEMBER_BALANCE" ? "sale-checkout-member-balance" : "",
+              ].filter(Boolean).join(" ")}
               disabled={item.disabled || entryLocked}
               onClick={() => selectMethod(item.value)}>
               <span>{buttonLabel(item.value)}
+                {item.value === "MEMBER_BALANCE" && <small>
+                  {copy.memberBalanceAvailable}: {money(memberBalanceAvailableCents)} €
+                </small>}
                 {refund && refundAvailabilityForMethod(item.value) !== undefined && <small>
                   {t("payment.refund.originalAvailable")}: {money(refundAvailabilityForMethod(item.value) ?? 0)} €
                 </small>}

@@ -566,6 +566,38 @@ describe("PaymentAllocationPanel", () => {
     expect(html).toContain('<kbd aria-hidden="true">F10</kbd>');
   });
 
+  it("places discount in the first row and member balance alone afterwards with its available amount", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceAvailableCents={2590}
+      onDiscount={vi.fn()} onMemberBalance={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    const methodButtons = Array.from(container.querySelectorAll<HTMLButtonElement>(
+      ".sale-checkout-methods button",
+    ));
+    expect(methodButtons.map((button) => button.textContent)).toEqual([
+      "Efectivo*",
+      "Tarjeta+",
+      "ValeF9",
+      "PendienteF8",
+      "TransferenciaF7",
+      "DescuentoF11",
+      "Saldo socioDisponible: 25,90 €F10",
+    ]);
+    expect(methodButtons.at(-1)).toHaveClass("sale-checkout-member-balance");
+  });
+
+  it("does not show member balance when there is no active member action", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceAvailableCents={2590}
+      onDiscount={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    expect(within(container).queryByRole("button", { name: /Saldo socio/ })).not.toBeInTheDocument();
+  });
+
   it("renders the numeric keypad only in touch mode and hides shortcut labels", () => {
     const html = renderToStaticMarkup(<PaymentAllocationPanel
       locale="es" session={{ ...session, allocations: [] }} providers={[]}

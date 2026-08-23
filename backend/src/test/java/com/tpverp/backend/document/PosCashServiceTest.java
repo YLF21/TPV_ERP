@@ -429,7 +429,7 @@ class PosCashServiceTest {
     }
 
     @Test
-    void authoritativeQuoteReconcilesMemberManualPromotionCouponTaxAndRoundingPerProduct() {
+    void authoritativeQuoteKeepsManualLineDiscountPromotionAndCouponSeparated() {
         var storeId = UUID.randomUUID();
         var customerId = UUID.randomUUID();
         var productId = UUID.randomUUID();
@@ -462,7 +462,7 @@ class PosCashServiceTest {
 
         var quote = PosCashService.Quote.from(ticket, request, Map.of(productId, product), customer);
 
-        assertThat(quote.pricingVersion()).isEqualTo(1);
+        assertThat(quote.pricingVersion()).isEqualTo(2);
         assertThat(quote.total()).isEqualByComparingTo("15.00");
         assertThat(quote.discountTotal()).isEqualByComparingTo("5.00");
         assertThat(quote.lineBreakdown()).singleElement().satisfies(line -> {
@@ -472,16 +472,69 @@ class PosCashServiceTest {
             assertThat(line.baseUnitPrice()).isEqualByComparingTo("10.00");
             assertThat(line.priceSource()).isEqualTo("MEMBER");
             assertThat(line.memberPriceSaving()).isEqualByComparingTo("4.00");
-            assertThat(line.memberDiscountPercent()).isEqualByComparingTo("10.00");
-            assertThat(line.memberDiscount()).isEqualByComparingTo("2.00");
-            assertThat(line.manualDiscount()).isZero();
+            assertThat(line.memberDiscountPercent()).isZero();
+            assertThat(line.memberDiscount()).isZero();
+            assertThat(line.manualDiscountPercent()).isEqualByComparingTo("10.00");
+            assertThat(line.manualDiscount()).isEqualByComparingTo("2.00");
             assertThat(line.promotionDiscount()).isEqualByComparingTo("2.00");
             assertThat(line.couponDiscount()).isEqualByComparingTo("1.00");
             assertThat(line.taxBase()).isEqualByComparingTo("12.40");
             assertThat(line.tax()).isEqualByComparingTo("2.60");
             assertThat(line.baseSubtotal()).isEqualByComparingTo("20.00");
+            assertThat(line.commercialSubtotal()).isEqualByComparingTo("16.00");
             assertThat(line.roundingAdjustment()).isZero();
             assertThat(line.finalSubtotal()).isEqualByComparingTo("15.00");
+        });
+    }
+
+    @Test
+    void authoritativeQuoteKeepsDocumentAndMemberBalanceDiscountsOutOfCommercialLineTotal() {
+        var storeId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var product = mock(Product.class);
+        when(product.getId()).thenReturn(productId);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        var ticket = new CommercialDocument(
+                storeId, UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 23), UUID.randomUUID(), BigDecimal.ZERO);
+        ticket.addLine(new DocumentLine(
+                ticket, productId, 1, BigDecimal.ONE, "SKU-1", "Articulo",
+                "VENTA", new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00")));
+        var promotion = DocumentLine.special(
+                ticket, 2, "PROMOCION", new BigDecimal("-1.00"), true,
+                "IVA", new BigDecimal("21.00"), UUID.randomUUID(),
+                UUID.randomUUID(), null);
+        promotion.assignPromotionAffectedPositions(List.of(1));
+        ticket.addLine(promotion);
+        ticket.addLine(DocumentLine.special(
+                ticket, 3, "CUPON", new BigDecimal("-1.00"), true,
+                "IVA", new BigDecimal("21.00"), null, null, UUID.randomUUID(),
+                DocumentLineType.PROMOTIONAL_COUPON));
+        ticket.addLine(DocumentLine.special(
+                ticket, 4, "DESCUENTO DOCUMENTO", new BigDecimal("-2.00"), true,
+                "IVA", new BigDecimal("21.00"), null, null, null,
+                DocumentLineType.DOCUMENT_DISCOUNT));
+        ticket.addLine(DocumentLine.special(
+                ticket, 5, "SALDO SOCIO", new BigDecimal("-1.00"), true,
+                "IVA", new BigDecimal("21.00"), null, null, null,
+                DocumentLineType.MEMBER_BALANCE));
+        var request = new PosCashController.SaleRequest(
+                null,
+                List.of(new PosCashController.LineRequest(
+                        productId, BigDecimal.ONE, BigDecimal.ZERO)));
+
+        var quote = PosCashService.Quote.from(
+                ticket, request, Map.of(productId, product),
+                AuthoritativePromotionPricing.CustomerContext.anonymous());
+
+        assertThat(quote.total()).isEqualByComparingTo("5.00");
+        assertThat(quote.lineBreakdown()).singleElement().satisfies(line -> {
+            assertThat(line.promotionDiscount()).isEqualByComparingTo("1.00");
+            assertThat(line.couponDiscount()).isEqualByComparingTo("1.00");
+            assertThat(line.documentDiscountAmount()).isEqualByComparingTo("2.00");
+            assertThat(line.commercialSubtotal()).isEqualByComparingTo("9.00");
+            assertThat(line.finalSubtotal()).isEqualByComparingTo("5.00");
         });
     }
 

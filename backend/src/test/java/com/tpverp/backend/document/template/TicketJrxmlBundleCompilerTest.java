@@ -48,7 +48,7 @@ class TicketJrxmlBundleCompilerTest {
     }
 
     @Test
-    void builtInContentSubreportsHideTechnicalF11LinesAndPrintOneCommercialDiscount() throws Exception {
+    void builtInContentSubreportsHideTechnicalAdjustmentsAndPrintTheirPersistedSummary() throws Exception {
         var sources = repositorySources();
 
         assertThat(java.util.List.of(
@@ -59,9 +59,34 @@ class TicketJrxmlBundleCompilerTest {
                     var source = new String(
                             sources.get(filename), java.nio.charset.StandardCharsets.UTF_8);
                     assertThat(source)
-                            .contains("tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON', 'MEMBER_BALANCE')")
+                            .contains("tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON', 'MEMBER_BALANCE', 'DOCUMENT_DISCOUNT')")
+                            .contains("FROM documento_ajuste da")
+                            .contains("da.tipo = 'MEMBER_PERCENT'")
+                            .contains("da.tipo = 'MANUAL_PERCENT'")
+                            .contains("Descuento Socio (")
+                            .contains("Descuento documento (")
                             .contains("<![CDATA[\"Descuento:\"]]>")
+                            .doesNotContain("c.descuento AS porcentaje_descuento_socio")
                             .doesNotContain("Descuento Adicional");
+                });
+    }
+
+    @Test
+    void builtInCustomerSubreportsUseThePersistedMemberAdjustmentSnapshot() throws Exception {
+        var sources = repositorySources();
+
+        assertThat(java.util.List.of(
+                        "ticket_cliente.jrxml",
+                        "ticket_cliente_compacta.jrxml",
+                        "ticket_cliente_minimalista.jrxml"))
+                .allSatisfy(filename -> {
+                    var source = new String(
+                            sources.get(filename), java.nio.charset.StandardCharsets.UTF_8);
+                    assertThat(source)
+                            .contains("FROM documento_ajuste da")
+                            .contains("da.tipo = 'MEMBER_PERCENT'")
+                            .doesNotContain("c.descuento AS porcentaje_descuento")
+                            .doesNotContain("ROUND(d.total * c.descuento / 100, 2)");
                 });
     }
 

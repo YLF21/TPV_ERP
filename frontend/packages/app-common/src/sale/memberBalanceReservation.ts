@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiRequest } from "../api/client";
 
@@ -9,7 +9,7 @@ type ReservationResponse = {
   reservationId?: string;
 };
 
-type ActiveReservation = {
+export type ActiveMemberBalanceReservation = {
   reservationId: string;
   saleId: string;
 };
@@ -20,6 +20,10 @@ export type MemberBalanceReservationState = {
   status: MemberBalanceReservationStatus;
 };
 
+export type MemberBalanceReservation = MemberBalanceReservationState & {
+  renew: () => Promise<ActiveMemberBalanceReservation | null>;
+};
+
 type UseMemberBalanceReservationOptions = {
   token: string;
   customerId: string | null;
@@ -28,7 +32,10 @@ type UseMemberBalanceReservationOptions = {
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-async function releaseReservation(token: string, reservation: ActiveReservation): Promise<void> {
+async function releaseReservation(
+  token: string,
+  reservation: ActiveMemberBalanceReservation,
+): Promise<void> {
   try {
     await apiRequest(`/member-balance-reservations/${reservation.reservationId}/release`, {
       method: "POST",
@@ -44,16 +51,22 @@ export function useMemberBalanceReservation({
   token,
   customerId,
   heartbeatPaused = false,
-}: UseMemberBalanceReservationOptions): MemberBalanceReservationState {
-  const activeReservation = useRef<ActiveReservation | null>(null);
+}: UseMemberBalanceReservationOptions): MemberBalanceReservation {
+  const activeReservation = useRef<ActiveMemberBalanceReservation | null>(null);
+  const reservationGeneration = useRef(0);
   const [state, setState] = useState<MemberBalanceReservationState>({
     saleId: null,
     reservationId: null,
     status: "IDLE",
   });
 
-  useEffect(() => {
-    let cancelled = false;
+  const renew = useCallback(async (): Promise<ActiveMemberBalanceReservation | null> => {
+    const generation = ++reservationGeneration.current;
+    const previous = activeReservation.current;
+    activeReservation.current = null;
+    if (previous) {
+      await releaseReservation(token, previous);
+    }
     const saleId = customerId ? crypto.randomUUID() : null;
 
     setState({
@@ -63,47 +76,48 @@ export function useMemberBalanceReservation({
     });
 
     if (!customerId || !saleId) {
-      return () => {
-        cancelled = true;
-      };
+      return null;
     }
 
-    void apiRequest<ReservationResponse>("/member-balance-reservations", {
-      method: "POST",
-      token,
-      body: { customerId, saleId },
-    })
-      .then(async (response) => {
-        const reservationId = response.reservationId ?? response.id;
-        if (!reservationId) {
-          throw new Error("member balance reservation response has no identifier");
-        }
-
-        const reservation = { reservationId, saleId };
-        if (cancelled) {
-          await releaseReservation(token, reservation);
-          return;
-        }
-
-        activeReservation.current = reservation;
-        setState({ saleId, reservationId, status: "ACTIVE" });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          activeReservation.current = null;
-          setState({ saleId, reservationId: null, status: "UNAVAILABLE" });
-        }
+    try {
+      const response = await apiRequest<ReservationResponse>("/member-balance-reservations", {
+        method: "POST",
+        token,
+        body: { customerId, saleId },
       });
+      const reservationId = response.reservationId ?? response.id;
+      if (!reservationId) {
+        throw new Error("member balance reservation response has no identifier");
+      }
+      const reservation = { reservationId, saleId };
+      if (generation !== reservationGeneration.current) {
+        await releaseReservation(token, reservation);
+        return null;
+      }
+      activeReservation.current = reservation;
+      setState({ saleId, reservationId, status: "ACTIVE" });
+      return reservation;
+    } catch {
+      if (generation === reservationGeneration.current) {
+        activeReservation.current = null;
+        setState({ saleId, reservationId: null, status: "UNAVAILABLE" });
+      }
+      return null;
+    }
+  }, [customerId, token]);
+
+  useEffect(() => {
+    void renew();
 
     return () => {
-      cancelled = true;
+      reservationGeneration.current += 1;
       const reservation = activeReservation.current;
-      if (reservation?.saleId === saleId) {
+      if (reservation) {
         activeReservation.current = null;
         void releaseReservation(token, reservation);
       }
     };
-  }, [customerId, token]);
+  }, [renew, token]);
 
   useEffect(() => {
     if (!state.reservationId || !state.saleId || heartbeatPaused) {
@@ -134,5 +148,5 @@ export function useMemberBalanceReservation({
     return () => window.clearInterval(interval);
   }, [heartbeatPaused, state.reservationId, state.saleId, token]);
 
-  return state;
+  return { ...state, renew };
 }

@@ -47,7 +47,7 @@ const authoritativeQuote = {
   total: "10.00",
   productTotal: "10.00",
   promotionPreview: { appliedPromotions: [] },
-  pricingVersion: 1,
+  pricingVersion: 2,
   quoteFingerprint: "payment-cleanup-quote",
   lineBreakdown: [{
     lineId: "product:coffee:1", position: 1, productId: "coffee", code: "CAF-001",
@@ -56,7 +56,7 @@ const authoritativeQuote = {
     memberPriceSaving: "0.00", memberDiscountPercent: "0.00", memberDiscount: "0.00",
     manualDiscountPercent: "0.00", manualDiscount: "0.00", promotionDiscount: "0.00",
     couponDiscount: "0.00", taxIncluded: true, taxRegime: "IVA", taxPercent: "21.00",
-    taxBase: "8.26", tax: "1.74", baseSubtotal: "10.00", roundingAdjustment: "0.00",
+    taxBase: "8.26", tax: "1.74", baseSubtotal: "10.00", commercialSubtotal: "10.00", roundingAdjustment: "0.00",
     finalSubtotal: "10.00",
   }],
 };

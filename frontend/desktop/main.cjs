@@ -21,6 +21,10 @@ const {
   resolveTicketPrintRoute,
   withTicketPrinterRoute
 } = require("./ticket-print-route.cjs");
+const {
+  ticketPrinterHealthFromPrinters,
+  unavailableTicketPrinterHealth
+} = require("./ticket-printer-health.cjs");
 
 const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
 const appUrl = process.env.TPV_DESKTOP_APP_URL;
@@ -1188,6 +1192,28 @@ ipcMain.handle("tpv:hardware:list-printers", async () => {
     };
   } catch (error) {
     return structuredError("HARDWARE_UNAVAILABLE", error instanceof Error ? error.message : "No se pueden listar impresoras");
+  }
+});
+
+ipcMain.handle("tpv:hardware:get-ticket-printer-health", async () => {
+  const config = normalizeHardwareConfig(readHardwareConfig());
+  if (!mainWindow) {
+    return {
+      ...unavailableTicketPrinterHealth(config, new Error("Ventana principal no disponible")),
+      checkedAt: new Date().toISOString()
+    };
+  }
+  try {
+    const printers = await mainWindow.webContents.getPrintersAsync();
+    return {
+      ...ticketPrinterHealthFromPrinters(config, printers),
+      checkedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      ...unavailableTicketPrinterHealth(config, error),
+      checkedAt: new Date().toISOString()
+    };
   }
 });
 

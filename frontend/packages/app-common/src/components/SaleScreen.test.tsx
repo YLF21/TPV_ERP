@@ -63,6 +63,7 @@ import {
   mergeSaleReturnLines,
   saleQuickOperand,
   saleOpenUnitPrice,
+  saleDocumentDiscountTotal,
   saleDocumentDiscountOperand,
   saleTotal,
   selectSaleProduct,
@@ -77,7 +78,7 @@ import {
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { TerminalContext, UserSession } from "../types";
 import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
-import { defaultHardwareConfig } from "../hardware/hardware";
+import { defaultHardwareConfig, type HardwareBridge } from "../hardware/hardware";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
 import { ApiError } from "../api/client";
@@ -199,6 +200,7 @@ vi.mock("./VerifactuPosIndicator", () => ({
 
 afterEach(() => {
   cleanup();
+  delete (HTMLElement.prototype as { scrollIntoView?: typeof HTMLElement.prototype.scrollIntoView }).scrollIntoView;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   prepareApplicationClose.mockReset();
@@ -498,7 +500,7 @@ function authoritativeQuote(product: SaleProduct, total = "10.00", couponDiscoun
     total,
     productTotal: "10.00",
     promotionPreview: { appliedPromotions: [] },
-    pricingVersion: 1,
+    pricingVersion: 2,
     quoteFingerprint: `quote-${total}-${couponDiscount}`,
     lineBreakdown: [{
       lineId: `product:${product.id}:1`,
@@ -524,6 +526,7 @@ function authoritativeQuote(product: SaleProduct, total = "10.00", couponDiscoun
       taxBase: total === "8.00" ? "6.61" : "8.26",
       tax: total === "8.00" ? "1.39" : "1.74",
       baseSubtotal: "10.00",
+      commercialSubtotal: total,
       roundingAdjustment: "0.00",
       finalSubtotal: total,
     }],
@@ -630,11 +633,11 @@ describe("SaleScreen", () => {
     })).toBe(false);
   });
 
-  it("accepts only reconciled version-one authoritative quotes", () => {
+  it("accepts only reconciled version-two authoritative quotes", () => {
     const valid = authoritativeQuote(products[0]);
 
     expect(isCompleteAuthoritativeQuote(valid)).toBe(true);
-    expect(isCompleteAuthoritativeQuote({ ...valid, pricingVersion: 0 })).toBe(false);
+    expect(isCompleteAuthoritativeQuote({ ...valid, pricingVersion: 1 })).toBe(false);
     expect(isCompleteAuthoritativeQuote({ ...valid, lineBreakdown: [] })).toBe(false);
     expect(isCompleteAuthoritativeQuote({
       ...valid,
@@ -661,6 +664,7 @@ describe("SaleScreen", () => {
           lineType: "PRODUCT",
           quantity: "-1.000",
           baseSubtotal: "-10.00",
+          commercialSubtotal: "-10.00",
           finalSubtotal: "-10.00",
         },
         {
@@ -675,11 +679,24 @@ describe("SaleScreen", () => {
           normalUnitPrice: "0.00",
           baseUnitPrice: "10.00",
           baseSubtotal: "10.00",
+          commercialSubtotal: "10.00",
           finalSubtotal: "10.00",
         },
       ],
     })).toBe(true);
   });
+
+  it.each(["MANUAL_PERCENT", "MEMBER_PERCENT"] as const)(
+    "reads the authoritative %s document discount amount",
+    (type) => {
+      expect(saleDocumentDiscountTotal([{
+        type,
+        percent: "12.50",
+        eligibleBase: "10.00",
+        amount: "1.25",
+      }])).toBe(1.25);
+    },
+  );
 
   it("shows the historical unit price for an F10 return instead of the current catalog price", () => {
     const line = {
@@ -712,6 +729,7 @@ describe("SaleScreen", () => {
       normalUnitPrice: "15.18",
       baseUnitPrice: "10.00",
       baseSubtotal: "30.00",
+      commercialSubtotal: "30.00",
       finalSubtotal: "30.00",
     };
 
@@ -861,6 +879,9 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toBeEnabled());
     submitQuickEntry(search, "CAF-001");
 
+    expect(document.querySelector(".sale-total > strong")?.textContent).toBe("—");
+    expect(document.querySelector(".sale-cart-total")?.textContent).toBe("—");
+
     const cashAction = screen.getByRole("button", { name: /Efectivo/ });
     await waitFor(() => expect(cashAction).toBeDisabled());
     fireEvent.click(cashAction);
@@ -874,15 +895,33 @@ describe("SaleScreen", () => {
     resolveQuote(new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200, headers: { "Content-Type": "application/json" } }));
     await waitFor(() => expect(cashAction).toBeEnabled());
     expect(screen.getByText("Nombre autoritativo backend")).toBeInTheDocument();
+    expect(document.querySelector(".sale-total > strong")?.textContent).toBe("10,00");
+    expect(document.querySelector(".sale-cart-total")?.textContent).toContain("10,00");
   });
 
-  it("updates the visible total immediately without showing the previous quote or a calculation state", async () => {
+  it("keeps confirmed totals and promotions while an updated quote is pending", async () => {
     let quoteCalls = 0;
-    const pendingUpdatedQuote = new Promise<Response>(() => undefined);
+    let resolveUpdatedQuote!: (response: Response) => void;
+    const pendingUpdatedQuote = new Promise<Response>((resolve) => { resolveUpdatedQuote = resolve; });
+    const firstQuote = {
+      ...authoritativeQuote(products[0], "8.00"),
+      lineBreakdown: [{
+        ...authoritativeQuote(products[0], "8.00").lineBreakdown[0],
+        appliedPromotions: [{
+          id: "promotion-a",
+          promotionVersionId: "promotion-a-v1",
+          name: "PROMOCION A",
+          discountAmount: "2.00",
+        }],
+      }],
+      promotionPreview: {
+        appliedPromotions: [{ id: "promotion-a", name: "PROMOCION A", discountAmount: "2.00" }],
+      },
+    };
     const fetchMock = vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
-        return new Response(JSON.stringify([products[0]]), {
+        return new Response(JSON.stringify(products.slice(0, 2)), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -896,7 +935,7 @@ describe("SaleScreen", () => {
       if (path.endsWith("/pos/sales/quote")) {
         quoteCalls += 1;
         return quoteCalls === 1
-          ? new Response(JSON.stringify(authoritativeQuote(products[0], "8.00")), {
+          ? new Response(JSON.stringify(firstQuote), {
               status: 200,
               headers: { "Content-Type": "application/json" },
             })
@@ -911,12 +950,240 @@ describe("SaleScreen", () => {
     submitQuickEntry(search, "CAF-001");
     const total = document.querySelector(".sale-total strong");
     await waitFor(() => expect(total?.textContent).toBe("8,00"));
+    expect(screen.getAllByText("PROMOCION A")).toHaveLength(2);
 
     fireEvent.change(search, { target: { value: "2" } });
     fireEvent.keyDown(search, { key: "Pause" });
 
-    expect(total?.textContent).toBe("20,00");
-    expect(screen.queryByText("Calculando…")).not.toBeInTheDocument();
+    expect(total?.textContent).toBe("8,00");
+    expect(document.querySelector(".sale-cart-total")?.textContent).toContain("8,00");
+    expect(screen.getAllByText("PROMOCION A")).toHaveLength(2);
+    expect(screen.queryByText("Actualizando total definitivo…")).not.toBeInTheDocument();
+
+    submitQuickEntry(search, "PAN-001");
+    expect(total?.textContent).toBe("8,00");
+    expect(screen.getAllByText("PROMOCION A")).toHaveLength(2);
+    expect(Array.from(document.querySelectorAll(".sale-cart-total"), (cell) => cell.textContent?.trim()))
+      .toEqual(["8,00 €", "—"]);
+
+    const updatedQuote = {
+      ...authoritativeQuote(products[0], "22.50"),
+      productTotal: "22.50",
+      promotionPreview: { appliedPromotions: [] },
+      lineBreakdown: [
+        {
+          ...authoritativeQuote(products[0], "20.00").lineBreakdown[0],
+          quantity: "2.000",
+          baseSubtotal: "20.00",
+          commercialSubtotal: "20.00",
+          finalSubtotal: "20.00",
+        },
+        {
+          ...authoritativeQuote(products[1], "2.50").lineBreakdown[0],
+          lineId: `product:${products[1].id}:2`,
+          position: 2,
+          normalUnitPrice: "2.50",
+          baseUnitPrice: "2.50",
+          baseSubtotal: "2.50",
+          commercialSubtotal: "2.50",
+          finalSubtotal: "2.50",
+        },
+      ],
+    };
+    resolveUpdatedQuote(new Response(JSON.stringify(updatedQuote), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    await waitFor(() => expect(screen.queryByText("PROMOCION A")).not.toBeInTheDocument());
+  });
+
+  it.each(["MANUAL_PERCENT", "MEMBER_PERCENT"] as const)(
+    "shows the authoritative %s discount below the document total",
+    async (type) => {
+      const quote = {
+        ...authoritativeQuote(products[0], "8.50"),
+        lineBreakdown: [{
+          ...authoritativeQuote(products[0], "8.50").lineBreakdown[0],
+          commercialSubtotal: "10.00",
+        }],
+        documentAdjustments: [{
+          type,
+          percent: "15.00",
+          eligibleBase: "10.00",
+          amount: "1.50",
+        }],
+      };
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        const path = new URL(url, "http://localhost").pathname;
+        if (path.endsWith("/products/sale")) {
+          return new Response(JSON.stringify([products[0]]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (path.endsWith("/stock/settings")) {
+          return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (path.endsWith("/pos/sales/quote")) {
+          return new Response(JSON.stringify(quote), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        throw new Error(`unexpected request ${path}`);
+      }));
+
+      renderSaleScreen();
+      const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+      await waitFor(() => expect(search).toBeEnabled());
+      submitQuickEntry(search, "CAF-001");
+
+      const label = type === "MEMBER_PERCENT"
+        ? "Descuento por socio"
+        : "Descuento total documento";
+      const discount = await screen.findByText(label);
+      const summary = discount.closest(".sale-document-discount-total");
+      expect(summary).not.toBeNull();
+      expect(within(summary as HTMLElement).getByText("15,00 %")).toBeInTheDocument();
+      expect(within(summary as HTMLElement).getByText("−1,50 €")).toBeInTheDocument();
+      expect(document.querySelector(".sale-cart-total")?.textContent).toContain("10,00 €");
+      expect(document.querySelector(".sale-cart-discount")?.textContent).not.toContain("Socio");
+    },
+  );
+
+  it("previews an exact product name and price after 500 ms without pressing Enter", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+
+    const preview = document.querySelector(".sale-search-preview");
+    expect(preview).not.toHaveTextContent("Cafe molido");
+    await waitFor(() => expect(preview).toHaveTextContent("Cafe molido"), { timeout: 1_200 });
+    expect(preview).toHaveTextContent("Precio: 10,00 €");
+    expect(document.querySelectorAll(".sale-cart-row")).toHaveLength(0);
+
+    fireEvent.change(search, { target: { value: "NO-EXISTE" } });
+    await waitFor(() => expect(preview).not.toHaveTextContent("Cafe molido"));
+  });
+
+  it("uses only the minimum nearest scroll whenever a new line is added", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products.slice(0, 2)), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        const body = JSON.parse(String(options?.body)) as { lines: Array<{ productId: string }> };
+        const lineBreakdown = body.lines.map((line, index) => ({
+          ...authoritativeQuote(products.find((product) => product.id === line.productId)!, "10.00").lineBreakdown[0],
+          lineId: `product:${line.productId}:${index + 1}`,
+          position: index + 1,
+        }));
+        return new Response(JSON.stringify({
+          ...authoritativeQuote(products[0], (body.lines.length * 10).toFixed(2)),
+          total: (body.lines.length * 10).toFixed(2),
+          productTotal: (body.lines.length * 10).toFixed(2),
+          lineBreakdown,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
+    const callsAfterFirstProduct = scrollIntoView.mock.calls.length;
+    submitQuickEntry(search, "PAN-001");
+    await waitFor(() => expect(scrollIntoView.mock.calls.length).toBeGreaterThan(callsAfterFirstProduct));
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
+  });
+
+  it("makes one minimal correction after the promotions panel appears", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    let resolveQuote!: (response: Response) => void;
+    const pendingQuote = new Promise<Response>((resolve) => { resolveQuote = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) return pendingQuote;
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+
+    const quote = {
+      ...authoritativeQuote(products[0], "6.50"),
+      promotionPreview: {
+        appliedPromotions: [{ id: "promotion-a", name: "PROMOCION A", discountAmount: "3.50" }],
+      },
+    };
+    resolveQuote(new Response(JSON.stringify(quote), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    expect(await screen.findByText("PROMOCION A")).toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
   });
 
   it("does not expose or send promotional coupons from the sales screen", async () => {
@@ -1038,6 +1305,24 @@ describe("SaleScreen", () => {
     renderSaleScreen();
     await waitFor(() => expect(checkoutProps.current).not.toBeNull());
     expect(checkoutProps.current?.testCashEnabled).toBe(import.meta.env.DEV);
+  });
+
+  it("shows a non-blocking warning when the configured ticket queue is unavailable", async () => {
+    const getTicketPrinterHealth = vi.fn(async () => ({
+      status: "NOT_FOUND" as const,
+      printerName: "RP-12N (copy 1)",
+      checkedAt: "2026-08-22T20:00:00Z",
+    }));
+    window.tpvDesktop = {
+      hardware: { getTicketPrinterHealth } as unknown as HardwareBridge,
+    } as NonNullable<typeof window.tpvDesktop>;
+
+    renderSaleScreen();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Impresión automática no disponible");
+    expect(screen.getByRole("alert")).toHaveTextContent("RP-12N (copy 1)");
+    expect(screen.getByRole("alert")).toHaveTextContent("El cobro no se bloqueará");
+    expect(getTicketPrinterHealth).toHaveBeenCalledOnce();
   });
 
   it("never enables test cash when SaleScreen is wired for APP GESTION", async () => {
@@ -1806,9 +2091,10 @@ describe("SaleScreen", () => {
       }
       if (path.endsWith("/pos/sales/quote")) {
         const quote = authoritativeQuote(packagedProduct, "120.00");
-        quote.lineBreakdown[0].quantity = "12";
-        quote.lineBreakdown[0].baseSubtotal = "120.00";
-        quote.lineBreakdown[0].finalSubtotal = "120.00";
+      quote.lineBreakdown[0].quantity = "12";
+      quote.lineBreakdown[0].baseSubtotal = "120.00";
+      quote.lineBreakdown[0].commercialSubtotal = "120.00";
+      quote.lineBreakdown[0].finalSubtotal = "120.00";
         return new Response(JSON.stringify(quote), {
           status: 200,
           headers: { "Content-Type": "application/json" }
@@ -4459,13 +4745,14 @@ describe("SaleScreen", () => {
           normalUnitPrice: "0.00",
           baseUnitPrice: line.openUnitPrice.toFixed(2),
           baseSubtotal: (line.quantity * line.openUnitPrice).toFixed(2),
+          commercialSubtotal: (line.quantity * line.openUnitPrice).toFixed(2),
           finalSubtotal: (line.quantity * line.openUnitPrice).toFixed(2),
         }));
         return new Response(JSON.stringify({
           total: total.toFixed(2),
           productTotal: total.toFixed(2),
           promotionPreview: { appliedPromotions: [] },
-          pricingVersion: 1,
+          pricingVersion: 2,
           quoteFingerprint: `quote-${body.lines.length}-${total}`,
           lineBreakdown: breakdown,
         }), {

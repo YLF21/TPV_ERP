@@ -586,6 +586,7 @@ public class DocumentService {
         ticket.setParties(snapshot.customerId(), null, null);
         ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
+        snapshot.restoreAdjustments(ticket);
         validateInactiveSaleProducts(ticket, snapshot.historicalReplay());
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
                 || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
@@ -670,10 +671,15 @@ public class DocumentService {
                 snapshot.globalDiscount());
         sale.setParties(snapshot.customerId(), null, null);
         sale.setInternalComment(snapshot.internalComment());
-        snapshot.lines().stream()
-                .filter(line -> line.originalDocumentLineId() == null)
-                .filter(line -> line.lineType() != DocumentLineType.RETURN_ADJUSTMENT)
-                .forEach(line -> sale.addLine(line.toEntity(sale)));
+        var snapshotToSalePositions = new HashMap<Integer, Integer>();
+        for (int index = 0; index < snapshot.lines().size(); index++) {
+            var line = snapshot.lines().get(index);
+            if (line.originalDocumentLineId() == null
+                    && line.lineType() != DocumentLineType.RETURN_ADJUSTMENT) {
+                sale.addLine(line.toEntity(sale));
+                snapshotToSalePositions.put(index + 1, sale.getLineas().size());
+            }
+        }
         if (sale.getLineas().isEmpty() || sale.getTotal().signum() <= 0) {
             throw new IllegalArgumentException("exchange_requires_positive_sale_lines");
         }
@@ -681,12 +687,16 @@ public class DocumentService {
         if (sale.getTotal().compareTo(expectedSaleTotal) != 0) {
             throw new IllegalStateException("exchange_checkout_valuation_changed");
         }
+        var saleAdjustments = snapshot.adjustments().stream()
+                .map(adjustment -> adjustment.remapPositions(snapshotToSalePositions))
+                .filter(Objects::nonNull)
+                .toList();
         return new ApprovedCardTicketSnapshot(
                 snapshot.storeId(), snapshot.warehouseId(), snapshot.date(),
                 snapshot.customerId(), snapshot.paymentMethodId(), snapshot.globalDiscount(),
                 sale.getBaseTotal(), sale.getImpuestoTotal(), sale.getTotal(),
                 sale.getLineas().stream().map(DocumentLineCommand::from).toList(),
-                snapshot.internalComment());
+                snapshot.internalComment(), null, saleAdjustments);
     }
 
     @Transactional
@@ -708,6 +718,7 @@ public class DocumentService {
         ticket.setParties(customer.getId(), null, null);
         ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
+        snapshot.restoreAdjustments(ticket);
         validateInactiveSaleProducts(ticket, snapshot.historicalReplay());
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
                 || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0

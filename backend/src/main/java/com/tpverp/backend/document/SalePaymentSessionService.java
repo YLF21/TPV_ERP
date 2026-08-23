@@ -92,6 +92,9 @@ public class SalePaymentSessionService {
              throw new IllegalStateException(
                      "payment_session_idempotency_conflict");
          }
+         if (current.getStatus() == SalePaymentSessionStatus.CANCELLED) {
+             throw new PaymentSessionClosedException(current.getStatus());
+         }
          return current;
      }
       var effectiveSale = sale;
@@ -165,14 +168,17 @@ public class SalePaymentSessionService {
          BigDecimal requestedMemberBalance,
          String memberBalanceFailureCode,
          Authentication auth) {
-     var existing = sessions.findState(id);
-     if (existing.isPresent()) {
-         var current = scoped(existing.orElseThrow(), auth);
-         if (!current.getRequestHash().equals(requestHash)) {
-             throw new IllegalStateException("payment_session_idempotency_conflict");
-         }
-         return current;
-     }
+      var existing = sessions.findState(id);
+      if (existing.isPresent()) {
+          var current = scoped(existing.orElseThrow(), auth);
+          if (!current.getRequestHash().equals(requestHash)) {
+              throw new IllegalStateException("payment_session_idempotency_conflict");
+          }
+          if (current.getStatus() == SalePaymentSessionStatus.CANCELLED) {
+              throw new PaymentSessionClosedException(current.getStatus());
+          }
+          return current;
+      }
      var company = organization.currentCompany();
      var user = requireUser(auth);
      var active = sessions.findActive(quoted.getTiendaId(), terminal, user.getId());
@@ -325,9 +331,13 @@ public class SalePaymentSessionService {
          throw new IllegalArgumentException("payment_reference_required");
      }
      var requiredMethod = configuredMethod;
-     var pending = transactions.execute(tx -> {
-         var session = scoped(sessions.findLocked(sessionId).orElseThrow(), auth);
-         var refund = session.getDirection() == SalePaymentSessionDirection.REFUND;
+      var pending = transactions.execute(tx -> {
+          var session = scoped(sessions.findLocked(sessionId).orElseThrow(), auth);
+          if (session.getStatus() == SalePaymentSessionStatus.CANCELLED
+                  || session.getStatus() == SalePaymentSessionStatus.FINALIZED) {
+              throw new PaymentSessionClosedException(session.getStatus());
+          }
+          var refund = session.getDirection() == SalePaymentSessionDirection.REFUND;
          if (refund && (kind == SalePaymentAllocationKind.PENDING
                  || kind == SalePaymentAllocationKind.TRANSFER)) {
              throw new IllegalArgumentException("refund_payment_method_not_allowed");
