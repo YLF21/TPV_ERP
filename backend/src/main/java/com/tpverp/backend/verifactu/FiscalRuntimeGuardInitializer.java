@@ -54,6 +54,8 @@ public class FiscalRuntimeGuardInitializer implements ApplicationRunner {
         return java.util.stream.Stream.of(
                 "cadena_fiscal",
                 "registro_fiscal",
+                "estado_envio_fiscal",
+                "intento_envio_fiscal",
                 "cadena_eventos_fiscal",
                 "registro_evento_fiscal",
                 "transicion_modo_fiscal",
@@ -62,7 +64,8 @@ public class FiscalRuntimeGuardInitializer implements ApplicationRunner {
                 "snapshot_impresion_fiscal",
                 "alarma_fiscal",
                 "exportacion_fiscal",
-                "requerimiento_fiscal")
+                "requerimiento_fiscal",
+                "reloj_operativo_fiscal")
                 .allMatch(table -> count(table) == 0);
     }
 
