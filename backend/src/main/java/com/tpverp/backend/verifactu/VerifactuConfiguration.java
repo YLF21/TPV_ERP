@@ -100,6 +100,10 @@ public class VerifactuConfiguration {
         return voluntarilyActive;
     }
 
+    public UUID getCompanyId() {
+        return companyId;
+    }
+
     public FiscalMode getCurrentMode() {
         return currentMode;
     }

@@ -64,6 +64,7 @@ class FiscalRecordServiceTest {
     @Mock InstallationRepository installations;
     @Mock CommercialDocumentRepository documents;
     @Mock CustomerRepository customers;
+    @Mock FiscalAlarmRepository alarms;
 
     private FiscalRecordCommand command;
     private CommercialDocument document;
@@ -85,6 +86,27 @@ class FiscalRecordServiceTest {
         assertThatThrownBy(() -> service().register(command))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("activo");
+
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+    }
+
+    @Test
+    void bloqueaEmisionNoVerifactuConAlarmaDeIntegridadActiva() {
+        stubActive(document);
+        var configuration = new VerifactuConfiguration(command.companyId());
+        configuration.activateVoluntarily(Instant.parse("2026-06-01T00:00:00Z"));
+        configuration.changeMode(FiscalMode.NO_VERIFACTU, NOW, null);
+        when(configurations.findByCompanyId(command.companyId()))
+                .thenReturn(Optional.of(configuration));
+        stubEmptyChain();
+        when(alarms.existsByCompanyIdAndInstallationIdAndActiveTrue(
+                command.companyId(), command.installationId())).thenReturn(true);
+        var service = service();
+        service.setFiscalAlarmRepository(alarms);
+
+        assertThatThrownBy(() -> service.register(command))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("alarma de integridad activa");
 
         verify(chains, never()).insertIfMissing(any(), any(), any(), any());
     }

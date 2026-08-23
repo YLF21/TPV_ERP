@@ -50,6 +50,7 @@ public class FiscalRecordService {
     private final FiscalJsonHasher jsonHasher = new FiscalJsonHasher();
     private FiscalRuntimeProperties runtimeProperties;
     private FiscalArtifactService artifacts;
+    private FiscalAlarmRepository alarms;
 
     public FiscalRecordService(
             FiscalChainRepository chains,
@@ -94,6 +95,12 @@ public class FiscalRecordService {
     @Autowired(required = false)
     void setFiscalArtifactService(FiscalArtifactService artifacts) {
         this.artifacts = artifacts;
+    }
+
+    /** Optional for direct unit-test construction; production blocks NO VERI*FACTU emissions. */
+    @Autowired(required = false)
+    void setFiscalAlarmRepository(FiscalAlarmRepository alarms) {
+        this.alarms = alarms;
     }
 
     // Records and chains a fiscal operation using only persisted and validated data.
@@ -143,6 +150,8 @@ public class FiscalRecordService {
             throw new IllegalArgumentException("Solo puede subsanarse un registro de alta");
         }
         validateCorrectionEconomics(original, correctedSnapshot);
+        ensureNoActiveIntegrityAlarm(original.getCompanyId(), original.getInstallationId(),
+                original.getFiscalMode());
         var generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
         var chain = chains.findForUpdate(original.getCompanyId(), original.getInstallationId())
                 .orElseThrow(() -> new IllegalStateException("Cadena fiscal no encontrada"));
@@ -192,6 +201,7 @@ public class FiscalRecordService {
         var generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
         var context = fiscalContext(command, generatedAt);
         policy.validate(context.document(), command.operation(), command.documentType());
+        ensureNoActiveIntegrityAlarm(command.companyId(), command.installationId(), context.mode());
 
         // The UPSERT and lock serialize uniqueness and chain advancement.
         chains.insertIfMissing(
@@ -247,6 +257,14 @@ public class FiscalRecordService {
             artifacts.create(saved);
         }
         return saved;
+    }
+
+    private void ensureNoActiveIntegrityAlarm(UUID companyId, UUID installationId, FiscalMode mode) {
+        if (mode == FiscalMode.NO_VERIFACTU && alarms != null
+                && alarms.existsByCompanyIdAndInstallationIdAndActiveTrue(companyId, installationId)) {
+            throw new IllegalStateException(
+                    "No se pueden emitir registros NO VERI*FACTU mientras exista una alarma de integridad activa");
+        }
     }
 
     private FiscalRecord relatedRecord(

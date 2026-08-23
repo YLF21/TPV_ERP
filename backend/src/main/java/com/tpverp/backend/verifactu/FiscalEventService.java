@@ -5,6 +5,7 @@ import com.tpverp.backend.organization.CompanyRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +52,26 @@ public class FiscalEventService {
     @Transactional
     public FiscalEvent create(UUID companyId, UUID installationId, FiscalMode mode,
             FiscalEventType type, String detail) {
+        return createAt(companyId, installationId, mode, type, detail, Instant.now());
+    }
+
+    /** Emits one summary only after six elapsed operating hours since the last event. */
+    @Transactional
+    public FiscalEvent createSummaryIfDue(UUID companyId, UUID installationId, FiscalMode mode,
+            Instant now) {
+        if (mode != FiscalMode.NO_VERIFACTU) {
+            return null;
+        }
+        var latest = events.findTopByCompanyIdAndInstallationIdOrderBySequenceDesc(
+                companyId, installationId).orElse(null);
+        if (latest == null || now.isBefore(latest.getGeneratedAt().plus(Duration.ofHours(6)))) {
+            return null;
+        }
+        return createAt(companyId, installationId, mode, FiscalEventType.SUMMARY, null, now);
+    }
+
+    private FiscalEvent createAt(UUID companyId, UUID installationId, FiscalMode mode,
+            FiscalEventType type, String detail, Instant now) {
         if (mode != FiscalMode.NO_VERIFACTU) {
             return null; // VERI*FACTU does not generate the mandatory event log.
         }
@@ -58,7 +79,6 @@ public class FiscalEventService {
                 .orElseThrow(() -> new IllegalStateException("Empresa fiscal no encontrada"));
         var installation = installations.findById(installationId)
                 .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));
-        var now = Instant.now();
         var offset = now.atZone(ZoneId.systemDefault()).toOffsetDateTime();
         var system = new VerifactuSystemInfo(producerName, producerTaxId, systemName, systemId,
                 systemVersion, installation.getReferencia(), false, true, false);

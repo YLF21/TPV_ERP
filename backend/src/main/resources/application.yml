@@ -86,6 +86,8 @@ tpv:
     producer-tax-id: ${TPV_VERIFACTU_PRODUCER_TAX_ID:B00000000}
     worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:false}
     worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}
+    event-summary-interval-ms: ${TPV_VERIFACTU_EVENT_SUMMARY_INTERVAL_MS:21600000}
+    event-summary-initial-delay-ms: ${TPV_VERIFACTU_EVENT_SUMMARY_INITIAL_DELAY_MS:21600000}
     certificate-warning-cron: ${TPV_VERIFACTU_CERTIFICATE_WARNING_CRON:0 0 9 * * *}
     certificate-purge-cron: ${TPV_VERIFACTU_CERTIFICATE_PURGE_CRON:0 0 3 1 * *}
     secret-deletion-delay-ms: ${TPV_VERIFACTU_SECRET_DELETION_DELAY_MS:60000}
