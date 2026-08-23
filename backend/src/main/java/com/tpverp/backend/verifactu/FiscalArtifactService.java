@@ -77,6 +77,15 @@ public class FiscalArtifactService {
         var systemVersion = systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
                         record.getCompanyId(), record.getInstallationId(),
                         record.getApplicationVersion(), installation.getReferencia())
+                .map(existing -> {
+                    if (!existing.matches(producerTaxId, producerName, systemName, systemId,
+                            record.getApplicationVersion(), installation.getReferencia(),
+                            runtime.isSandbox())) {
+                        throw new IllegalStateException(
+                                "La identidad fiscal no coincide con la version SIF congelada");
+                    }
+                    return existing;
+                })
                 .orElseGet(() -> systemVersions.save(new FiscalSystemVersion(
                         record.getCompanyId(), record.getInstallationId(), producerTaxId,
                         producerName, systemName, systemId, record.getApplicationVersion(),

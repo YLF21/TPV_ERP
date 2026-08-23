@@ -64,6 +64,18 @@ public class FiscalSystemVersion {
     public boolean isSandbox() { return sandbox; }
     public Instant getCreatedAt() { return createdAt; }
 
+    public boolean matches(String producerTaxId, String producerName,
+            String systemName, String systemId, String systemVersion,
+            String installationNumber, boolean sandbox) {
+        return this.producerTaxId.equals(producerTaxId)
+                && this.producerName.equals(producerName)
+                && this.systemName.equals(systemName)
+                && this.systemId.equals(systemId)
+                && this.systemVersion.equals(systemVersion)
+                && this.installationNumber.equals(installationNumber)
+                && this.sandbox == sandbox;
+    }
+
     private static String required(String value, String field) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(field + " es obligatorio");

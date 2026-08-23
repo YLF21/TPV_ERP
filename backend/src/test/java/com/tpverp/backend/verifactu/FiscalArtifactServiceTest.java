@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
@@ -47,19 +48,19 @@ class FiscalArtifactServiceTest {
         record = record();
         company = new Company("B12345674", "Empresa fiscal", address());
         installation = new Installation("INST-DEV-001", "public", Instant.parse("2026-01-01T00:00:00Z"));
-        when(artifacts.existsById(record.getId())).thenReturn(false);
-        when(printSnapshots.existsById(record.getId())).thenReturn(false);
-        when(companies.findById(record.getCompanyId())).thenReturn(Optional.of(company));
-        when(installations.findById(record.getInstallationId())).thenReturn(Optional.of(installation));
-        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
+        lenient().when(artifacts.existsById(record.getId())).thenReturn(false);
+        lenient().when(printSnapshots.existsById(record.getId())).thenReturn(false);
+        lenient().when(companies.findById(record.getCompanyId())).thenReturn(Optional.of(company));
+        lenient().when(installations.findById(record.getInstallationId())).thenReturn(Optional.of(installation));
+        lenient().when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
                 record.getCompanyId(), record.getInstallationId(), record.getApplicationVersion(),
                 installation.getReferencia())).thenReturn(Optional.empty());
-        when(systemVersions.save(any(FiscalSystemVersion.class)))
+        lenient().when(systemVersions.save(any(FiscalSystemVersion.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(xml.recordXml(any(), any())).thenReturn("<registro/>");
-        when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
-        when(runtime.isSandbox()).thenReturn(true);
-        when(snapshots.create(record, FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST,
+        lenient().when(xml.recordXml(any(), any())).thenReturn("<registro/>");
+        lenient().when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
+        lenient().when(runtime.isSandbox()).thenReturn(true);
+        lenient().when(snapshots.create(record, FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST,
                 record.getApplicationVersion())).thenReturn(snapshot());
         service = new FiscalArtifactService(artifacts, systemVersions, printSnapshots,
                 companies, installations, xml, qrUrls, snapshots, runtime, signer,
@@ -79,6 +80,20 @@ class FiscalArtifactServiceTest {
         var artifact = ArgumentCaptor.forClass(FiscalRecordArtifact.class);
         verify(artifacts).save(artifact.capture());
         assertThat(artifact.getValue().getSystemVersionId()).isEqualTo(version.getValue().getId());
+    }
+
+    @Test
+    void rechazaReutilizarVersionConIdentidadDistinta() {
+        var existing = new FiscalSystemVersion(record.getCompanyId(), record.getInstallationId(),
+                "B12345674", "Otro fabricante", "SIF ERP", "SIF-01", "4.2.7",
+                "INST-DEV-001", null, true, Instant.parse("2026-08-22T10:00:00Z"));
+        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
+                record.getCompanyId(), record.getInstallationId(), record.getApplicationVersion(),
+                installation.getReferencia())).thenReturn(Optional.of(existing));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(record))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("identidad fiscal");
     }
 
     private static FiscalPrintSnapshot snapshot() {
