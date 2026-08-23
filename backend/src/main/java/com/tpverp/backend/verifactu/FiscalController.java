@@ -15,12 +15,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/fiscal")
 public class FiscalController {
     private final FiscalModeTransitionService modes;
-    private final FiscalModeTransitionRepository transitions;
+    private final FiscalEventService events;
+    private final FiscalIntegrityService integrity;
+    private final FiscalExportService exports;
+    private final FiscalRequiredSubmissionService requiredSubmissions;
 
     public FiscalController(FiscalModeTransitionService modes,
-            FiscalModeTransitionRepository transitions) {
+            FiscalEventService events, FiscalIntegrityService integrity,
+            FiscalExportService exports, FiscalRequiredSubmissionService requiredSubmissions) {
         this.modes = modes;
-        this.transitions = transitions;
+        this.events = events;
+        this.integrity = integrity;
+        this.exports = exports;
+        this.requiredSubmissions = requiredSubmissions;
     }
 
     @GetMapping("/status")
@@ -36,9 +43,28 @@ public class FiscalController {
 
     @GetMapping("/events")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('VERIFACTU_READ')")
-    public List<FiscalModeTransition> events() {
+    public List<FiscalEvent> events() {
         var company = modes.status().companyId();
-        return transitions.findTop50ByCompanyIdOrderByEffectiveAtDesc(company);
+        return events.findTop50(company);
+    }
+
+    @PostMapping("/integrity-checks")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('VERIFACTU_READ')")
+    public FiscalIntegrityCheckView integrityCheck() {
+        return integrity.check();
+    }
+
+    @PostMapping("/exports")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('VERIFACTU_READ')")
+    public FiscalExportView export(@Valid @RequestBody FiscalExportRequest request) {
+        return exports.export(request.kind());
+    }
+
+    @PostMapping("/required-submissions")
+    @PreAuthorize("hasRole('ADMIN')")
+    public FiscalRequiredSubmissionView requiredSubmission(
+            @Valid @RequestBody FiscalRequiredSubmissionRequest request) {
+        return requiredSubmissions.register(request.reference());
     }
 
     public record ModeTransitionRequest(

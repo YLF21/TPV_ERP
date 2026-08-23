@@ -13,17 +13,20 @@ public class FiscalModeTransitionService {
     private final VerifactuConfigurationRepository configurations;
     private final FiscalModeTransitionRepository transitions;
     private final FiscalRuntimeProperties runtime;
+    private final FiscalEventService events;
 
     public FiscalModeTransitionService(CurrentOrganization organization,
             InstallationRepository installations,
             VerifactuConfigurationRepository configurations,
             FiscalModeTransitionRepository transitions,
-            FiscalRuntimeProperties runtime) {
+            FiscalRuntimeProperties runtime,
+            FiscalEventService events) {
         this.organization = organization;
         this.installations = installations;
         this.configurations = configurations;
         this.transitions = transitions;
         this.runtime = runtime;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -70,10 +73,19 @@ public class FiscalModeTransitionService {
             throw new IllegalArgumentException("El motivo de la transicion es obligatorio");
         }
         var now = Instant.now();
+        if (previous == FiscalMode.NO_VERIFACTU && target == FiscalMode.VERIFACTU) {
+            // The end event is generated while the SIF is still operating as NO VERI*FACTU.
+            events.create(company.getId(), installation.getId(), FiscalMode.NO_VERIFACTU,
+                    FiscalEventType.END_NO_VERIFACTU, normalizedReason);
+        }
         configuration.changeMode(target, now, null);
         transitions.save(new FiscalModeTransition(company.getId(), installation.getId(), previous,
                 target, now, runtime.isSandbox() ? "DEV_SANDBOX" : "ADMIN", normalizedReason,
                 expectedVersion));
+        if (previous == FiscalMode.PRE_SIF && target == FiscalMode.NO_VERIFACTU) {
+            events.create(company.getId(), installation.getId(), FiscalMode.NO_VERIFACTU,
+                    FiscalEventType.START_NO_VERIFACTU, normalizedReason);
+        }
         return status();
     }
 }

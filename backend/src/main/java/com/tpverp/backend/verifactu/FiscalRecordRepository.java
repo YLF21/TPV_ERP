@@ -9,6 +9,9 @@ public interface FiscalRecordRepository extends JpaRepository<FiscalRecord, UUID
 
     List<FiscalRecord> findAllByChainIdOrderBySequence(UUID chainId);
 
+    List<FiscalRecord> findAllByCompanyIdAndInstallationIdOrderBySequence(
+            UUID companyId, UUID installationId);
+
     Optional<FiscalRecord> findByDocumentIdAndOperation(
             UUID documentId, FiscalRecordOperation operation);
 

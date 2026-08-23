@@ -7,6 +7,9 @@ import static org.mockito.Mockito.when;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.xml.sax.InputSource;
+import java.io.StringReader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,5 +63,32 @@ class FiscalXadesSignerTest {
         assertThat(signed).contains(FiscalXadesSigner.POLICY_URL);
         assertThat(signed).contains("rsa-sha256");
         assertThat(Files.readAllBytes(pkcs12)).isNotEmpty();
+    }
+
+    @Test
+    void colocaLaFirmaDeEventoDentroDeEvento() throws Exception {
+        var environment = new MockEnvironment()
+                .withProperty("tpv.verifactu.runtime-class", "SANDBOX")
+                .withProperty("tpv.verifactu.dev-sandbox.enabled", "true")
+                .withProperty("tpv.verifactu.endpoint-environment", "TEST")
+                .withProperty("tpv.verifactu.transport-mode", "SIMULATED")
+                .withProperty("tpv.verifactu.dev-signing-pkcs12", pkcs12.toString())
+                .withProperty("tpv.verifactu.dev-signing-password", "secreto");
+        var signer = new FiscalXadesSigner(mock(ManagedCertificateKeyStoreFactory.class),
+                new FiscalRuntimeProperties(environment));
+        var xml = new FiscalEventXmlService().unsignedXml(
+                new VerifactuSystemInfo("TPV ERP DEV", "B00000000", "TPV ERP", "01",
+                        "4.1.0", "DEV-1", false, true, false),
+                "Empresa DEV", "B00000000", FiscalEventType.START_NO_VERIFACTU,
+                "inicio", java.time.OffsetDateTime.parse("2026-08-23T19:00:00+01:00"),
+                null, "A".repeat(64));
+        var signed = signer.signEvent(record.getCompanyId(), record.getInstallationId(), xml);
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        var document = factory.newDocumentBuilder().parse(
+                new InputSource(new StringReader(signed)));
+        var signature = document.getElementsByTagNameNS(
+                javax.xml.crypto.dsig.XMLSignature.XMLNS, "Signature").item(0);
+        assertThat(signature.getParentNode().getLocalName()).isEqualTo("Evento");
     }
 }

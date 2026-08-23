@@ -17,6 +17,7 @@ import eu.europa.esig.dss.xades.XAdESSignatureParameters;
 import eu.europa.esig.dss.xades.signature.XAdESService;
 import java.io.ByteArrayOutputStream;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -28,6 +29,11 @@ import javax.xml.crypto.dsig.XMLSignature;
 import javax.xml.crypto.dsig.XMLSignatureFactory;
 import javax.xml.crypto.dsig.dom.DOMValidateContext;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import org.w3c.dom.Document;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Element;
 import org.xml.sax.InputSource;
@@ -54,10 +60,21 @@ public class FiscalXadesSigner {
         if (record == null || record.getFiscalMode() != FiscalMode.NO_VERIFACTU) {
             throw new IllegalArgumentException("Solo se pueden firmar registros NO_VERIFACTU");
         }
+        return sign(record.getCompanyId(), record.getInstallationId(), unsignedXml);
+    }
+
+    /** Signs a standalone RegistroEvento with the same fiscal identity as records. */
+    public String signEvent(java.util.UUID companyId, java.util.UUID installationId,
+            String unsignedXml) {
+        return sign(companyId, installationId, unsignedXml);
+    }
+
+    private String sign(java.util.UUID companyId, java.util.UUID installationId,
+            String unsignedXml) {
         if (unsignedXml == null || unsignedXml.isBlank()) {
             throw new IllegalArgumentException("El XML a firmar es obligatorio");
         }
-        try (TokenHandle handle = token(record)) {
+        try (TokenHandle handle = token(companyId, installationId)) {
             var key = rsaKey(handle.token().getKeys());
             var certificate = key.getCertificate().getCertificate();
             certificate.checkValidity();
@@ -88,7 +105,7 @@ public class FiscalXadesSigner {
             SignatureValue signature = handle.token().sign(
                     toBeSigned, SignatureAlgorithm.RSA_SHA256, key);
             var signed = service.signDocument(input, parameters, signature);
-            var bytes = write(signed);
+            var bytes = relocateEventSignature(write(signed));
             verify(bytes, certificate.getPublicKey());
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (Exception exception) {
@@ -96,7 +113,7 @@ public class FiscalXadesSigner {
         }
     }
 
-    private TokenHandle token(FiscalRecord record) throws Exception {
+    private TokenHandle token(java.util.UUID companyId, java.util.UUID installationId) throws Exception {
         if (runtime.isSandbox()) {
             if (runtime.devSigningPkcs12().isBlank() || runtime.devSigningPassword().isBlank()) {
                 throw new IllegalStateException(
@@ -107,8 +124,7 @@ public class FiscalXadesSigner {
                     new Pkcs12SignatureToken(Path.of(runtime.devSigningPkcs12()).toFile(),
                             new KeyStore.PasswordProtection(password)), password);
         }
-        var managed = managedCertificates.activeForCompany(
-                record.getCompanyId(), record.getInstallationId());
+        var managed = managedCertificates.activeForCompany(companyId, installationId);
         var password = managed.password();
         try {
             var output = new ByteArrayOutputStream();
@@ -135,6 +151,34 @@ public class FiscalXadesSigner {
         var output = new ByteArrayOutputStream();
         document.writeTo(output);
         return output.toByteArray();
+    }
+
+    // EventosSIF.xsd places the enveloped Signature inside Evento, while DSS
+    // appends it to the document element by default. Move only that case before
+    // validation; the signed octets remain the same because the enveloped
+    // transform excludes the Signature element itself.
+    private static byte[] relocateEventSignature(byte[] xml) throws Exception {
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        var document = factory.newDocumentBuilder().parse(
+                new InputSource(new StringReader(new String(xml, StandardCharsets.UTF_8))));
+        if (!"RegistroEvento".equals(document.getDocumentElement().getLocalName())) {
+            return xml;
+        }
+        var signatures = document.getElementsByTagNameNS(XMLSignature.XMLNS, "Signature");
+        var events = document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS, "Evento");
+        if (signatures.getLength() != 1 || events.getLength() != 1
+                || signatures.item(0).getParentNode() == events.item(0)) {
+            return xml;
+        }
+        var signature = signatures.item(0);
+        events.item(0).appendChild(signature);
+        var transformer = TransformerFactory.newInstance().newTransformer();
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
+        transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+        var output = new StringWriter();
+        transformer.transform(new DOMSource(document), new StreamResult(output));
+        return output.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private static void verify(byte[] xml, PublicKey publicKey) throws Exception {
