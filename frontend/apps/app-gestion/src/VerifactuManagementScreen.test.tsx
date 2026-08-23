@@ -20,6 +20,7 @@ vi.mock("./verifactuManagementApi", async (importOriginal) => {
     loadVerifactuAdminDiagnostics: vi.fn(),
     loadVerifactuResolution: vi.fn(),
     loadFiscalSandboxStatus: vi.fn(),
+    loadFiscalStatus: vi.fn(),
     setFiscalSandboxScenario: vi.fn(),
     dispatchFiscalSandboxNext: vi.fn(),
     retryVerifactuSubmission: vi.fn(),
@@ -115,6 +116,18 @@ const sandboxStatus: api.FiscalSandboxStatus = {
   nextOutcome: "ACCEPTED"
 };
 
+const fiscalStatus: api.FiscalStatus = {
+  companyId: "company-1",
+  mode: "VERIFACTU",
+  modeVersion: 1,
+  modeSince: "2026-07-01T10:00:00Z",
+  runtimeClass: "SANDBOX",
+  endpointEnvironment: "TEST",
+  transportMode: "SIMULATED",
+  productionEnabled: false,
+  verifactuBlockedUntil: null
+};
+
 const resolution: api.VerifactuResolution = {
   recordId: "record-1",
   operation: "ALTA",
@@ -151,6 +164,7 @@ beforeEach(() => {
   vi.mocked(api.loadVerifactuAdminDiagnostics).mockResolvedValue(diagnostics);
   vi.mocked(api.loadVerifactuResolution).mockResolvedValue(resolution);
   vi.mocked(api.loadFiscalSandboxStatus).mockResolvedValue(sandboxStatus);
+  vi.mocked(api.loadFiscalStatus).mockResolvedValue(fiscalStatus);
   vi.mocked(api.setFiscalSandboxScenario).mockResolvedValue(sandboxStatus);
   vi.mocked(api.dispatchFiscalSandboxNext).mockResolvedValue({ processed: false });
 });

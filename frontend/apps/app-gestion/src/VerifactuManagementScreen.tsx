@@ -14,6 +14,7 @@ import {
 import {
   loadVerifactuAdminSubmissions,
   loadVerifactuAdminSummary,
+  loadFiscalStatus,
   loadFiscalSandboxStatus,
   setFiscalSandboxScenario,
   dispatchFiscalSandboxNext,
@@ -87,6 +88,7 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
   const [reviewRevision, setReviewRevision] = useState(0);
   const [certificateRevision, setCertificateRevision] = useState(0);
   const [sandboxStatus, setSandboxStatus] = useState<Awaited<ReturnType<typeof loadFiscalSandboxStatus>> | null>(null);
+  const [fiscalStatus, setFiscalStatus] = useState<Awaited<ReturnType<typeof loadFiscalStatus>> | null>(null);
   const [sandboxOutcome, setSandboxOutcome] = useState("ACCEPTED");
   const [sandboxError, setSandboxError] = useState(false);
   const [attemptTarget, setAttemptTarget] = useState<VerifactuAttemptTarget | null>(null);
@@ -118,12 +120,16 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
 
   useEffect(() => {
     if (!canManageCertificates) return;
-    void loadFiscalSandboxStatus(token)
-      .then((next) => {
-        setSandboxStatus(next);
-        setSandboxOutcome(next.nextOutcome);
+    void Promise.all([loadFiscalSandboxStatus(token), loadFiscalStatus(token)])
+      .then(([sandbox, fiscal]) => {
+        setSandboxStatus(sandbox);
+        setSandboxOutcome(sandbox.nextOutcome);
+        setFiscalStatus(fiscal);
       })
-      .catch(() => { setSandboxStatus(null); });
+      .catch(() => {
+        setSandboxStatus(null);
+        setFiscalStatus(null);
+      });
   }, [canManageCertificates, summaryRevision, token]);
 
   async function configureSandboxOutcome() {
@@ -140,9 +146,10 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
     setSandboxError(false);
     try {
       await dispatchFiscalSandboxNext(token);
-      const next = await loadFiscalSandboxStatus(token);
+      const [next, fiscal] = await Promise.all([loadFiscalSandboxStatus(token), loadFiscalStatus(token)]);
       setSandboxStatus(next);
       setSandboxOutcome(next.nextOutcome);
+      setFiscalStatus(fiscal);
       setSummaryRevision((current) => current + 1);
     } catch {
       setSandboxError(true);
@@ -263,7 +270,11 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
       {sandboxStatus?.runtimeClass === "SANDBOX" && (
         <section className="gestion-verifactu-sandbox" aria-label={t("verifactu.management.sandboxTitle")}>
           <strong>{t("verifactu.management.sandboxBanner")}</strong>
+          {fiscalStatus && <span>{t("verifactu.management.sandboxFiscalMode")}: {fiscalStatus.mode}</span>}
           <span>{t("verifactu.management.sandboxMode")}: {sandboxStatus.transportMode} / {sandboxStatus.endpointEnvironment}</span>
+          {fiscalStatus?.scheduledTransition && <span>
+            {t("verifactu.management.sandboxScheduledTransition")}: {fiscalStatus.scheduledTransition.newMode} ({fiscalStatus.scheduledTransition.effectiveAt})
+          </span>}
           <label>
             {t("verifactu.management.sandboxScenario")}
             <select value={sandboxOutcome} onChange={(event) => setSandboxOutcome(event.target.value)}>
