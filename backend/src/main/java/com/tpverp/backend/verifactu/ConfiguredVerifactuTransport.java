@@ -8,18 +8,29 @@ public class ConfiguredVerifactuTransport implements VerifactuTransport {
     private final VerifactuSubmissionPropertiesFactory propertiesFactory;
     private final ManagedCertificateKeyStoreFactory keyStores;
     private final VerifactuMutualTlsHttpClientFactory clients;
+    private final VerifactuEndpointResolver endpoints;
 
     public ConfiguredVerifactuTransport(
             VerifactuSubmissionPropertiesFactory propertiesFactory,
             ManagedCertificateKeyStoreFactory keyStores,
             VerifactuMutualTlsHttpClientFactory clients) {
+        this(propertiesFactory, keyStores, clients, new VerifactuEndpointResolver());
+    }
+
+    public ConfiguredVerifactuTransport(
+            VerifactuSubmissionPropertiesFactory propertiesFactory,
+            ManagedCertificateKeyStoreFactory keyStores,
+            VerifactuMutualTlsHttpClientFactory clients,
+            VerifactuEndpointResolver endpoints) {
         this.propertiesFactory = propertiesFactory;
         this.keyStores = keyStores;
         this.clients = clients;
+        this.endpoints = endpoints;
     }
 
     @Override
     public VerifactuTransportResponse send(String endpoint, String soapEnvelope) {
+        endpoints.requireOfficial(endpoint);
         propertiesFactory.current();
         try (var managed = keyStores.activeForCurrentCompany()) {
             var password = managed.password();
@@ -35,6 +46,7 @@ public class ConfiguredVerifactuTransport implements VerifactuTransport {
     @Override
     public VerifactuTransportResponse send(
             UUID companyId, UUID installationId, String endpoint, String soapEnvelope) {
+        endpoints.requireOfficial(endpoint);
         propertiesFactory.current();
         try (var managed = keyStores.activeForCompany(companyId, installationId)) {
             var password = managed.password();

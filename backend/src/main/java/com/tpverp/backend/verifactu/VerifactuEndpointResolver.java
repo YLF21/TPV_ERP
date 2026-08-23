@@ -26,6 +26,14 @@ public class VerifactuEndpointResolver {
     }
     // Centraliza los endpoints publicados en el WSDL oficial de AEAT.
 
+    /** Rejects configurable or local URLs before any certificate-backed request. */
+    public void requireOfficial(String endpoint) {
+        if (endpoint == null || !ENDPOINTS.containsValue(endpoint.trim())) {
+            throw new IllegalArgumentException(
+                    "El endpoint VERI*FACTU no pertenece al catalogo oficial de AEAT");
+        }
+    }
+
     private static VerifactuEndpointMode required(VerifactuEndpointMode mode) {
         if (mode == null) {
             throw new IllegalArgumentException("modo de endpoint VERI*FACTU obligatorio");
