@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class FiscalArtifactService {
 
     private final FiscalRecordArtifactRepository artifacts;
+    private final FiscalSystemVersionRepository systemVersions;
     private final FiscalPrintSnapshotRecordRepository printSnapshots;
     private final CompanyRepository companies;
     private final InstallationRepository installations;
@@ -30,6 +31,7 @@ public class FiscalArtifactService {
 
     public FiscalArtifactService(
             FiscalRecordArtifactRepository artifacts,
+            FiscalSystemVersionRepository systemVersions,
             FiscalPrintSnapshotRecordRepository printSnapshots,
             CompanyRepository companies,
             InstallationRepository installations,
@@ -43,6 +45,7 @@ public class FiscalArtifactService {
             @Value("${tpv.verifactu.system-name:TPV ERP}") String systemName,
             @Value("${tpv.verifactu.system-id:TPVERP}") String systemId) {
         this.artifacts = artifacts;
+        this.systemVersions = systemVersions;
         this.printSnapshots = printSnapshots;
         this.companies = companies;
         this.installations = installations;
@@ -71,6 +74,13 @@ public class FiscalArtifactService {
                 producerName, producerTaxId, systemName, systemId,
                 record.getApplicationVersion(), installation.getReferencia(),
                 true, false, false);
+        var systemVersion = systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
+                        record.getCompanyId(), record.getInstallationId(),
+                        record.getApplicationVersion(), installation.getReferencia())
+                .orElseGet(() -> systemVersions.save(new FiscalSystemVersion(
+                        record.getCompanyId(), record.getInstallationId(), producerTaxId,
+                        producerName, systemName, systemId, record.getApplicationVersion(),
+                        installation.getReferencia(), null, runtime.isSandbox(), Instant.now())));
         var unsignedXml = xml.recordXml(new VerifactuXmlBatchRequest(
                 company.getRazonSocial(), record.getIssuerTaxId(), List.of(record), system), record);
         var environment = runtime.endpointEnvironment();
@@ -83,6 +93,7 @@ public class FiscalArtifactService {
         var persistedXml = signedXml == null ? unsignedXml : signedXml;
         artifacts.save(new FiscalRecordArtifact(
                 record.getId(), record.getFiscalMode(), environment, runtime.isSandbox(),
+                systemVersion.getId(),
                 unsignedXml, signedXml, sha256(persistedXml), print, Instant.now()));
     }
 

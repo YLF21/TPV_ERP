@@ -31,6 +31,9 @@ public class FiscalRecordArtifact {
     @Column(name = "sandbox", nullable = false)
     private boolean sandbox;
 
+    @Column(name = "version_sistema_id")
+    private UUID systemVersionId;
+
     @Column(name = "xml_sin_firmar", nullable = false, columnDefinition = "text")
     private String unsignedXml;
 
@@ -66,6 +69,7 @@ public class FiscalRecordArtifact {
             FiscalMode fiscalMode,
             FiscalEndpointEnvironment environment,
             boolean sandbox,
+            UUID systemVersionId,
             String unsignedXml,
             String signedXml,
             String xmlHash,
@@ -75,6 +79,7 @@ public class FiscalRecordArtifact {
         this.fiscalMode = fiscalMode;
         this.environment = environment;
         this.sandbox = sandbox;
+        this.systemVersionId = systemVersionId;
         this.unsignedXml = unsignedXml;
         this.signedXml = signedXml;
         this.xmlHash = xmlHash;
@@ -86,10 +91,25 @@ public class FiscalRecordArtifact {
         this.createdAt = createdAt;
     }
 
+    public FiscalRecordArtifact(
+            UUID recordId,
+            FiscalMode fiscalMode,
+            FiscalEndpointEnvironment environment,
+            boolean sandbox,
+            String unsignedXml,
+            String signedXml,
+            String xmlHash,
+            FiscalPrintSnapshot printSnapshot,
+            Instant createdAt) {
+        this(recordId, fiscalMode, environment, sandbox, null, unsignedXml, signedXml,
+                xmlHash, printSnapshot, createdAt);
+    }
+
     public UUID getRecordId() { return recordId; }
     public FiscalMode getFiscalMode() { return fiscalMode; }
     public FiscalEndpointEnvironment getEnvironment() { return environment; }
     public boolean isSandbox() { return sandbox; }
+    public UUID getSystemVersionId() { return systemVersionId; }
     public String getUnsignedXml() { return unsignedXml; }
     public String getSignedXml() { return signedXml; }
     public String getQrUrl() { return qrUrl; }
