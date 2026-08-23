@@ -2,6 +2,7 @@ package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
@@ -32,6 +33,8 @@ class DefectiveFiscalRecordServiceTest {
     private Company company;
     private Store store;
     private DefectiveFiscalRecordService service;
+    @Mock
+    private FiscalPrintSnapshotRecordRepository printSnapshots;
 
     @BeforeEach
     void setUp() {
@@ -68,6 +71,25 @@ class DefectiveFiscalRecordServiceTest {
         assertThat(result.getFirst().number()).isEqualTo("FV-001-26-000001");
         assertThat(result.getFirst().qrUrl()).contains(
                 "ValidarQR?nif=B12345674&numserie=FV-001-26-000001");
+    }
+
+    @Test
+    void usesFrozenQrSnapshotForDefectiveRecord() {
+        var rejected = state(FiscalSubmissionStatus.RECHAZADO, "NIF_INVALIDO", "NIF no valido");
+        when(states.findAllByStatusInOrderByUpdatedAtDesc(List.of(
+                FiscalSubmissionStatus.RECHAZADO,
+                FiscalSubmissionStatus.DEFECTUOSO,
+                FiscalSubmissionStatus.ACEPTADO_CON_ERRORES)))
+                .thenReturn(List.of(rejected));
+        var record = record(rejected.getRecordId(), store.getId());
+        when(records.findById(rejected.getRecordId())).thenReturn(Optional.of(record));
+        var snapshot = mock(FiscalPrintSnapshotRecord.class);
+        when(snapshot.getQrUrl()).thenReturn("https://prewww2.aeat.es/frozen-qr");
+        when(printSnapshots.findByRecordId(record.getId())).thenReturn(Optional.of(snapshot));
+        service = new DefectiveFiscalRecordService(states, records, organization,
+                new FiscalQrUrlService(), printSnapshots);
+
+        assertThat(service.list().getFirst().qrUrl()).isEqualTo("https://prewww2.aeat.es/frozen-qr");
     }
 
     private FiscalSubmissionState state(

@@ -2,12 +2,16 @@ package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalQrUrlService;
 import com.tpverp.backend.verifactu.FiscalRecord;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
 import com.tpverp.backend.verifactu.FiscalRecordRepository;
+import com.tpverp.backend.verifactu.FiscalPrintSnapshotRecord;
+import com.tpverp.backend.verifactu.FiscalPrintSnapshotRecordRepository;
+import com.tpverp.backend.verifactu.FiscalRuntimeProperties;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -42,6 +46,43 @@ class DocumentFiscalQrServiceTest {
         when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.empty());
         var service = new DocumentFiscalQrService(records, new FiscalQrUrlService());
+
+        assertThat(service.qrUrl(documentId)).isNull();
+    }
+
+    @Test
+    void reprintUsesFrozenSnapshotEvenIfRuntimeEndpointChanges() {
+        var documentId = UUID.randomUUID();
+        var record = record(documentId);
+        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(record));
+        var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
+        var snapshot = mock(FiscalPrintSnapshotRecord.class);
+        when(snapshot.getQrUrl()).thenReturn(
+                "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674"
+                        + "&numserie=FV-001-26-000001&fecha=02-06-2026&importe=157.26");
+        when(snapshots.findByRecordId(record.getId())).thenReturn(Optional.of(snapshot));
+        var runtime = mock(FiscalRuntimeProperties.class);
+
+        var service = new DocumentFiscalQrService(records, new FiscalQrUrlService(), null,
+                runtime, snapshots);
+
+        assertThat(service.qrUrl(documentId)).isEqualTo(snapshot.getQrUrl());
+    }
+
+    @Test
+    void productionWiringDoesNotRecalculateQrForLegacyRecordWithoutSnapshot() {
+        var documentId = UUID.randomUUID();
+        var record = record(documentId);
+        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(record));
+        var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
+        when(snapshots.findByRecordId(record.getId())).thenReturn(Optional.empty());
+        var artifacts = mock(com.tpverp.backend.verifactu.FiscalRecordArtifactRepository.class);
+        when(artifacts.findByRecordId(record.getId())).thenReturn(Optional.empty());
+
+        var service = new DocumentFiscalQrService(records, new FiscalQrUrlService(), artifacts,
+                mock(FiscalRuntimeProperties.class), snapshots);
 
         assertThat(service.qrUrl(documentId)).isNull();
     }

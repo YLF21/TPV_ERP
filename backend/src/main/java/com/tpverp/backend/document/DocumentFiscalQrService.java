@@ -43,17 +43,34 @@ public class DocumentFiscalQrService {
     @Transactional(readOnly = true)
     public String qrUrl(UUID documentId) {
         return records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA)
-                .map(record -> printSnapshots == null ? (artifacts == null
-                        ? qrUrls.url(record, record.getFiscalMode(), endpointEnvironment())
-                        : artifacts.findByRecordId(record.getId())
-                                .map(com.tpverp.backend.verifactu.FiscalRecordArtifact::getQrUrl)
-                                .orElseGet(() -> qrUrls.url(record, record.getFiscalMode(),
-                                        endpointEnvironment())))
-                        : printSnapshots.findByRecordId(record.getId())
-                                .map(com.tpverp.backend.verifactu.FiscalPrintSnapshotRecord::getQrUrl)
-                                .orElseGet(() -> qrUrls.url(record, record.getFiscalMode(),
-                                        endpointEnvironment())))
+                .map(record -> frozenOrCompatibleQrUrl(record))
                 .orElse(null);
+    }
+
+    private String frozenOrCompatibleQrUrl(
+            com.tpverp.backend.verifactu.FiscalRecord record) {
+        // The production wiring is snapshot-only: a legacy record without a
+        // frozen artifact must not be silently recalculated with current config.
+        if (printSnapshots != null) {
+            var snapshot = printSnapshots.findByRecordId(record.getId());
+            if (snapshot.isPresent()) {
+                return snapshot.get().getQrUrl();
+            }
+            if (artifacts != null) {
+                return artifacts.findByRecordId(record.getId())
+                        .map(com.tpverp.backend.verifactu.FiscalRecordArtifact::getQrUrl)
+                        .orElse(null);
+            }
+            return null;
+        }
+        // Two-argument construction is retained for compatibility adapters and
+        // explicitly has no persisted snapshot repository.
+        return artifacts == null
+                ? qrUrls.url(record, record.getFiscalMode(), endpointEnvironment())
+                : artifacts.findByRecordId(record.getId())
+                        .map(com.tpverp.backend.verifactu.FiscalRecordArtifact::getQrUrl)
+                        .orElseGet(() -> qrUrls.url(record, record.getFiscalMode(),
+                                endpointEnvironment()));
     }
 
     private com.tpverp.backend.verifactu.FiscalEndpointEnvironment endpointEnvironment() {

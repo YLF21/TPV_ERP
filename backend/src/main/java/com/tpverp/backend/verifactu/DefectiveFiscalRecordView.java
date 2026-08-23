@@ -22,20 +22,25 @@ public record DefectiveFiscalRecordView(
 
     public static DefectiveFiscalRecordView from(
             FiscalRecord record, FiscalSubmissionState state) {
-        return from(record, state, null);
+        return from(record, state, (FiscalQrUrlService) null);
     }
 
     public static DefectiveFiscalRecordView from(
             FiscalRecord record, FiscalSubmissionState state, FiscalQrUrlService qrUrls) {
+        return from(record, state, qrUrl(record, qrUrls));
+    }
+
+    public static DefectiveFiscalRecordView from(
+            FiscalRecord record, FiscalSubmissionState state, String frozenQrUrl) {
         return new DefectiveFiscalRecordView(
                 record.getId(), record.getDocumentId(), state.getStatus(),
                 record.getOperation(), record.getDocumentType(), record.getNumber(),
                 record.getIssueDate(), record.getGeneratedAt(), record.getTotalAmount(),
-                qrUrl(record, qrUrls), state.getLastErrorCode(), state.getLastError(),
+                frozenQrUrl, state.getLastErrorCode(), state.getLastError(),
                 state.getUpdatedAt());
     }
 
-    private static String qrUrl(FiscalRecord record, FiscalQrUrlService qrUrls) {
+    static String qrUrl(FiscalRecord record, FiscalQrUrlService qrUrls) {
         if (qrUrls == null || record.getTotalAmount() == null) {
             return null;
         }
