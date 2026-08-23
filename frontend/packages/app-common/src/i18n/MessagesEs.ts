@@ -882,6 +882,7 @@ export class MessagesEs {
     "verifactu.pos.readOnlyDescription": "Estado y envíos de esta terminal. La gestión se realiza en APP GESTIÓN.",
     "verifactu.pos.close": "Cerrar panel VeriFactu",
     "verifactu.pos.currentStatus": "Estado actual",
+    "verifactu.pos.fiscalMode": "Modo fiscal",
     "verifactu.pos.refresh": "Actualizar",
     "verifactu.pos.queueLoadError": "No se pudo actualizar la cola. Inténtalo de nuevo.",
     "verifactu.pos.loadingQueue": "Cargando cola de envíos...",

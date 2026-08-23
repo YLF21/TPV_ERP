@@ -22,6 +22,10 @@ export type VerifactuPosStatus = {
   pendingCount: number;
   sendingCount: number;
   reviewRequiredCount: number;
+  fiscalMode?: "PRE_SIF" | "NO_VERIFACTU" | "VERIFACTU";
+  runtimeClass?: "SANDBOX" | "REAL";
+  endpointEnvironment?: "TEST" | "PRODUCTION";
+  transportMode?: "SIMULATED" | "AEAT";
 };
 
 export type VerifactuPosQueueItem = {

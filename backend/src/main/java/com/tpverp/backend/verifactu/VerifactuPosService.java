@@ -46,6 +46,7 @@ public class VerifactuPosService {
     private final LicenseRepository licenses;
     private final VerifactuActivationService activation;
     private final Clock clock;
+    private FiscalRuntimeProperties runtime;
 
     public VerifactuPosService(
             CurrentOrganization organization,
@@ -73,12 +74,25 @@ public class VerifactuPosService {
         var sendingCount = count(scope, SENDING);
         var reviewRequiredCount = count(scope, REVIEW_REQUIRED);
         var active = isActive(scope.store());
+        var fiscalMode = configurations.findByCompanyId(scope.companyId())
+                .map(VerifactuConfiguration::getCurrentMode)
+                .filter(java.util.Objects::nonNull)
+                .orElse(active ? FiscalMode.VERIFACTU : FiscalMode.PRE_SIF);
         return new VerifactuPosStatusView(
                 active,
                 presentationStatus(active, pendingCount, sendingCount, reviewRequiredCount),
                 pendingCount,
                 sendingCount,
-                reviewRequiredCount);
+                reviewRequiredCount,
+                fiscalMode,
+                runtime == null ? FiscalRuntimeClass.REAL : runtime.runtimeClass(),
+                runtime == null ? FiscalEndpointEnvironment.TEST : runtime.endpointEnvironment(),
+                runtime == null ? FiscalTransportMode.AEAT : runtime.transportMode());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRuntime(FiscalRuntimeProperties runtime) {
+        this.runtime = runtime;
     }
 
     @Transactional(readOnly = true)
