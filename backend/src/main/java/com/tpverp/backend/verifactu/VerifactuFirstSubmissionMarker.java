@@ -2,8 +2,10 @@ package com.tpverp.backend.verifactu;
 
 import com.tpverp.backend.licensing.LicenseRepository;
 import java.time.ZoneId;
+import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -12,6 +14,7 @@ public class VerifactuFirstSubmissionMarker {
     private final VerifactuConfigurationRepository configurations;
     private final LicenseRepository licenses;
     private final VerifactuActivationService activation;
+    private FiscalRuntimeProperties runtime;
 
     public VerifactuFirstSubmissionMarker(
             VerifactuConfigurationRepository configurations,
@@ -20,6 +23,11 @@ public class VerifactuFirstSubmissionMarker {
         this.configurations = configurations;
         this.licenses = licenses;
         this.activation = activation;
+    }
+
+    @Autowired(required = false)
+    void setRuntimeProperties(FiscalRuntimeProperties runtime) {
+        this.runtime = runtime;
     }
 
     @Transactional
@@ -38,6 +46,11 @@ public class VerifactuFirstSubmissionMarker {
                 license.getVerifactuActivationDate(),
                 record.getGeneratedAt(),
                 ZoneId.of(record.getTimezone()));
+        if (runtime != null && runtime.runtimeClass() == FiscalRuntimeClass.REAL) {
+            var localSubmissionDate = record.getGeneratedAt()
+                    .atZone(ZoneId.of(record.getTimezone())).toLocalDate();
+            configuration.lockVerifactuUntil(localSubmissionDate.plusYears(1));
+        }
         configurations.save(configuration);
     }
     // Bloquea la reversibilidad tras la primera remision aceptada por AEAT.

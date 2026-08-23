@@ -116,6 +116,17 @@ public class VerifactuConfiguration {
         return verifactuBlockedUntil;
     }
 
+    /**
+     * Freezes the annual VERI*FACTU permanence window without shortening an
+     * already persisted legal lock.
+     */
+    public void lockVerifactuUntil(LocalDate until) {
+        if (until != null && (verifactuBlockedUntil == null
+                || until.isAfter(verifactuBlockedUntil))) {
+            verifactuBlockedUntil = until;
+        }
+    }
+
     public long getModeVersion() {
         return modeVersion;
     }

@@ -210,6 +210,7 @@ export type FiscalStatus = {
   endpointEnvironment: "TEST" | "PRODUCTION";
   transportMode: "SIMULATED" | "AEAT";
   productionEnabled: boolean;
+  verifactuBlockedUntil?: string | null;
 };
 export type FiscalSandboxStatus = {
   sandboxEnabled: boolean;

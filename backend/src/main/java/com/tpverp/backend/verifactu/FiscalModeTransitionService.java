@@ -4,6 +4,7 @@ import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -14,6 +15,7 @@ public class FiscalModeTransitionService {
     private final FiscalModeTransitionRepository transitions;
     private final FiscalRuntimeProperties runtime;
     private final FiscalEventService events;
+    private FiscalIntegrityService integrity;
 
     public FiscalModeTransitionService(CurrentOrganization organization,
             InstallationRepository installations,
@@ -29,6 +31,11 @@ public class FiscalModeTransitionService {
         this.events = events;
     }
 
+    @Autowired(required = false)
+    void setIntegrityService(FiscalIntegrityService integrity) {
+        this.integrity = integrity;
+    }
+
     @Transactional(readOnly = true)
     public FiscalStatusView status() {
         var company = organization.currentCompany();
@@ -39,7 +46,8 @@ public class FiscalModeTransitionService {
                 configuration == null ? 0 : configuration.getModeVersion(),
                 configuration == null ? null : configuration.getModeSince(),
                 runtime.runtimeClass(), runtime.endpointEnvironment(), runtime.transportMode(),
-                runtime.productionEnabled());
+                runtime.productionEnabled(),
+                configuration == null ? null : configuration.getVerifactuBlockedUntil());
     }
 
     @Transactional
@@ -73,6 +81,17 @@ public class FiscalModeTransitionService {
             throw new IllegalArgumentException("El motivo de la transicion es obligatorio");
         }
         var now = Instant.now();
+        if (previous == FiscalMode.PRE_SIF && target == FiscalMode.NO_VERIFACTU) {
+            if (integrity == null) {
+                throw new IllegalStateException("Preflight de integridad fiscal no disponible");
+            }
+            var preflight = integrity.check();
+            if (!preflight.ok()) {
+                throw new IllegalStateException(
+                        "No se puede iniciar NO VERI*FACTU con anomalías de integridad: "
+                                + String.join(",", preflight.anomalies()));
+            }
+        }
         if (previous == FiscalMode.NO_VERIFACTU && target == FiscalMode.VERIFACTU) {
             // The end event is generated while the SIF is still operating as NO VERI*FACTU.
             events.create(company.getId(), installation.getId(), FiscalMode.NO_VERIFACTU,
