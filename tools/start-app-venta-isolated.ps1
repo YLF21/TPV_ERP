@@ -332,9 +332,9 @@ try {
         -TimeoutSeconds 60 -ServiceName "APP VENTA"
 
     $migrationApplied = Invoke-Psql -Database $databaseName -User $DatabaseOwner -Password $DatabasePassword `
-        -Sql "select exists (select 1 from flyway_schema_history where version = '191' and success);"
+        -Sql "select exists (select 1 from flyway_schema_history where version = '192' and success);"
     if ($migrationApplied -ne "t") {
-        throw "La migracion V191 no consta como aplicada correctamente en la base temporal."
+        throw "La migracion V192 no consta como aplicada correctamente en la base temporal."
     }
 
     $loginBody = @{
@@ -356,7 +356,7 @@ try {
     Write-Host "Base temporal: $databaseName"
 
     if ($CheckOnly) {
-        Write-Host "Comprobacion automatica correcta: salud, migracion V191, terminal y login verificados." -ForegroundColor Green
+        Write-Host "Comprobacion automatica correcta: salud, migracion V192, terminal y login verificados." -ForegroundColor Green
     }
     else {
         Write-Host ""
