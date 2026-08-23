@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Creates the frozen XML/QR evidence in the same transaction as the record. */
 @Service
@@ -56,6 +57,7 @@ public class FiscalArtifactService {
         this.systemId = systemId;
     }
 
+    @Transactional
     public void create(FiscalRecord record) {
         if (record == null || artifacts.existsById(record.getId())
                 || printSnapshots.existsById(record.getId())) {
