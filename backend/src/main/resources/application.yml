@@ -82,6 +82,7 @@ tpv:
     secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'
     system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
     system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
+    system-version: ${TPV_VERIFACTU_SYSTEM_VERSION:4.1.0}
     producer-name: ${TPV_VERIFACTU_PRODUCER_NAME:TPV ERP DEV}
     producer-tax-id: ${TPV_VERIFACTU_PRODUCER_TAX_ID:B00000000}
     worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:false}

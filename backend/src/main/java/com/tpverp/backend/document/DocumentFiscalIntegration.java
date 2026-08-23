@@ -15,13 +15,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.context.ApplicationEventPublisher;
 import com.tpverp.backend.verifactu.FiscalRecordQueuedEvent;
 import com.tpverp.backend.verifactu.FiscalRuntimeProperties;
+import org.springframework.beans.factory.annotation.Value;
 
 @Component
 public class DocumentFiscalIntegration {
 
     private static final String FORMAT_VERSION = "VERIFACTU-1";
     private static final String ALGORITHM_VERSION = "AEAT-SHA256-1";
-    private static final String APPLICATION_VERSION = "TPV-ERP-0.0.1";
+    private String applicationVersion = "4.1.0";
 
     private final FiscalRecordService fiscalRecords;
     private final FiscalRecordRepository recordRepository;
@@ -52,6 +53,15 @@ public class DocumentFiscalIntegration {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setFiscalRuntimeProperties(FiscalRuntimeProperties runtimeProperties) {
         this.runtimeProperties = runtimeProperties;
+    }
+
+    /** The frozen fiscal record must carry the build version used to produce it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setApplicationVersion(
+            @Value("${tpv.verifactu.system-version:4.1.0}") String applicationVersion) {
+        if (applicationVersion != null && !applicationVersion.isBlank()) {
+            this.applicationVersion = applicationVersion.trim();
+        }
     }
 
     // Registers the sales document fiscal creation when the configured SIF mode requires it.
@@ -170,7 +180,7 @@ public class DocumentFiscalIntegration {
         return new FiscalRecordCommand(
                 organization.currentCompany().getId(), currentInstallationId(),
                 organization.currentStore().getId(), document.getId(), operation, type,
-                FORMAT_VERSION, ALGORITHM_VERSION, APPLICATION_VERSION);
+                FORMAT_VERSION, ALGORITHM_VERSION, applicationVersion);
     }
 
     private java.util.UUID currentInstallationId() {

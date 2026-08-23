@@ -1,6 +1,9 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.organization.CompanyRepository;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -16,6 +19,8 @@ public class VerifactuSubmissionService {
     private final VerifactuOfficialXsdValidator validator;
     private final VerifactuFirstSubmissionMarker firstSubmissions;
     private final FiscalCorrectionCompletionService corrections;
+    private CompanyRepository companies;
+    private InstallationRepository installations;
 
     public VerifactuSubmissionService(
             VerifactuXmlService xml,
@@ -38,6 +43,14 @@ public class VerifactuSubmissionService {
         this.validator = validator;
         this.firstSubmissions = firstSubmissions;
         this.corrections = corrections;
+    }
+
+    /** Fiscal XML must resolve identity from the persisted company and installation. */
+    @Autowired(required = false)
+    void setFiscalIdentityRepositories(CompanyRepository companies,
+            InstallationRepository installations) {
+        this.companies = companies;
+        this.installations = installations;
     }
 
     public VerifactuSubmissionResult submit(FiscalRecord record) {
@@ -77,12 +90,20 @@ public class VerifactuSubmissionService {
     // Envia un registro fiscal ya reclamado y aplica la politica de estado sin bloquear ventas.
 
     private String fiscalXml(FiscalRecord record, VerifactuSubmissionProperties configuration) {
+        var company = companies == null ? null : companies.findById(record.getCompanyId())
+                .orElseThrow(() -> new IllegalStateException("Empresa fiscal no encontrada"));
+        var installation = installations == null ? null : installations.findById(record.getInstallationId())
+                .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));
         var system = new VerifactuSystemInfo(
-                "TPV ERP", record.getIssuerTaxId(), configuration.systemName(),
-                configuration.systemId(), "0.0.1", record.getStoreId().toString(),
+                configuration.producerName(), configuration.producerTaxId(),
+                configuration.systemName(), configuration.systemId(),
+                configuration.systemVersion(),
+                installation == null ? record.getInstallationId().toString()
+                        : installation.getReferencia(),
                 true, false, false);
         return xml.batchXml(new VerifactuXmlBatchRequest(
-                "Company", record.getIssuerTaxId(), List.of(record), system));
+                company == null ? "Company" : company.getRazonSocial(),
+                record.getIssuerTaxId(), List.of(record), system));
     }
 
     private VerifactuSubmissionResult recordResult(
