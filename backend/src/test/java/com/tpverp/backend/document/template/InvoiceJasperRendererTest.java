@@ -197,7 +197,8 @@ class InvoiceJasperRendererTest {
         assertThat(pdf).startsWith(0x25, 0x50, 0x44, 0x46);
         try (var rendered = Loader.loadPDF(pdf)) {
             assertThat(new PDFTextStripper().getText(rendered))
-                    .contains("FACTURA", "FV-2026-1", "TPV ERP SL");
+                    .contains("FACTURA", "FV-2026-1", "TPV ERP SL",
+                            "QR Tributario", "ENTORNO DE PRUEBAS - SIN VALIDEZ");
             assertThat(decodeQr(new PDFRenderer(rendered).renderImageWithDPI(0, 150)))
                     .isEqualTo(qrUrl);
         }

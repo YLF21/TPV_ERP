@@ -289,6 +289,7 @@
 			<text><![CDATA[N.º DOCUMENTO]]></text>
 		</element>
 		<element kind="staticText" uuid="d50d206f-ba16-4a71-9cbc-72634ac08534" x="457" y="0" width="98" height="9" fontSize="6.0" bold="true">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty()]]></printWhenExpression>
 			<text><![CDATA[QR Tributario:]]></text>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
@@ -297,6 +298,10 @@
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && "VERIFACTU".equalsIgnoreCase($F{fiscalMode}) && !java.lang.Boolean.TRUE.equals($F{fiscalTestData})]]></printWhenExpression>
 			<expression><![CDATA["VERI*FACTU"]]></expression>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+		</element>
+		<element kind="staticText" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a102" x="457" y="119" width="98" height="24" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" vTextAlign="Top">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && java.lang.Boolean.TRUE.equals($F{fiscalTestData})]]></printWhenExpression>
+			<text><![CDATA[ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL]]></text>
 		</element>
 		<property name="com.jaspersoft.studio.unit.height" value="px"/>
 	</title>
