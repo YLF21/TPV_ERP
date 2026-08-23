@@ -19,6 +19,9 @@ vi.mock("./verifactuManagementApi", async (importOriginal) => {
     loadVerifactuAdminAttempts: vi.fn(),
     loadVerifactuAdminDiagnostics: vi.fn(),
     loadVerifactuResolution: vi.fn(),
+    loadFiscalSandboxStatus: vi.fn(),
+    setFiscalSandboxScenario: vi.fn(),
+    dispatchFiscalSandboxNext: vi.fn(),
     retryVerifactuSubmission: vi.fn(),
     createVerifactuCorrection: vi.fn()
   };
@@ -104,6 +107,14 @@ const diagnostics: api.VerifactuAdminDiagnostics = {
   observedAt: "2026-07-21T12:01:00Z"
 };
 
+const sandboxStatus: api.FiscalSandboxStatus = {
+  sandboxEnabled: true,
+  runtimeClass: "SANDBOX",
+  endpointEnvironment: "TEST",
+  transportMode: "SIMULATED",
+  nextOutcome: "ACCEPTED"
+};
+
 const resolution: api.VerifactuResolution = {
   recordId: "record-1",
   operation: "ALTA",
@@ -139,6 +150,9 @@ beforeEach(() => {
   vi.mocked(api.loadVerifactuAdminAttempts).mockResolvedValue(attemptPage);
   vi.mocked(api.loadVerifactuAdminDiagnostics).mockResolvedValue(diagnostics);
   vi.mocked(api.loadVerifactuResolution).mockResolvedValue(resolution);
+  vi.mocked(api.loadFiscalSandboxStatus).mockResolvedValue(sandboxStatus);
+  vi.mocked(api.setFiscalSandboxScenario).mockResolvedValue(sandboxStatus);
+  vi.mocked(api.dispatchFiscalSandboxNext).mockResolvedValue({ processed: false });
 });
 
 afterEach(() => {
@@ -168,6 +182,27 @@ describe("VerifactuManagementScreen", () => {
 
     expect(await screen.findByText("verifactu.certificate.emptyTitle")).toBeInTheDocument();
     expect(api.loadVerifactuCertificates).toHaveBeenCalledWith("admin-token");
+  });
+
+  it("exposes the DEV simulator only to ADMIN and refreshes its atomic outcome", async () => {
+    const rejected: api.FiscalSandboxStatus = { ...sandboxStatus, nextOutcome: "REJECTED" };
+    vi.mocked(api.setFiscalSandboxScenario).mockResolvedValueOnce(rejected);
+    vi.mocked(api.loadFiscalSandboxStatus)
+      .mockResolvedValueOnce(sandboxStatus)
+      .mockResolvedValueOnce(sandboxStatus);
+
+    render(<VerifactuManagementScreen locale="es" session={adminSession} t={t} />);
+
+    expect(await screen.findByRole("region", {
+      name: "verifactu.management.sandboxTitle"
+    })).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("ACCEPTED"), { target: { value: "REJECTED" } });
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.sandboxApply" }));
+    await waitFor(() => expect(api.setFiscalSandboxScenario).toHaveBeenCalledWith("REJECTED", "admin-token"));
+
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.sandboxDispatch" }));
+    await waitFor(() => expect(api.dispatchFiscalSandboxNext).toHaveBeenCalledWith("admin-token"));
+    expect(api.loadFiscalSandboxStatus).toHaveBeenCalledTimes(2);
   });
 
   it("opens the backend resolution for a reader without exposing mutation controls", async () => {

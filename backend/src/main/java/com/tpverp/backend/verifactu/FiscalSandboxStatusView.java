@@ -1,7 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 public record FiscalSandboxStatusView(
-        boolean enabled,
+        boolean sandboxEnabled,
         FiscalRuntimeClass runtimeClass,
         FiscalEndpointEnvironment endpointEnvironment,
         FiscalTransportMode transportMode,

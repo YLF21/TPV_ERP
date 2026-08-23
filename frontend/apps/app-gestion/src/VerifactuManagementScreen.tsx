@@ -119,7 +119,10 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
   useEffect(() => {
     if (!canManageCertificates) return;
     void loadFiscalSandboxStatus(token)
-      .then(setSandboxStatus)
+      .then((next) => {
+        setSandboxStatus(next);
+        setSandboxOutcome(next.nextOutcome);
+      })
       .catch(() => { setSandboxStatus(null); });
   }, [canManageCertificates, summaryRevision, token]);
 
@@ -137,6 +140,9 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
     setSandboxError(false);
     try {
       await dispatchFiscalSandboxNext(token);
+      const next = await loadFiscalSandboxStatus(token);
+      setSandboxStatus(next);
+      setSandboxOutcome(next.nextOutcome);
       setSummaryRevision((current) => current + 1);
     } catch {
       setSandboxError(true);
