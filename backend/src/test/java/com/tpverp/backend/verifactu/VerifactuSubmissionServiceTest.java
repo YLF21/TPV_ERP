@@ -54,7 +54,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void enviaElRegistroYMarcaAceptado() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, accepted()));
 
         var result = service.submit(record);
@@ -69,7 +70,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void marcaRechazadoSiAeatDevuelveErrorFuncional() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, rejected()));
 
         var result = service.submit(record);
@@ -83,7 +85,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void marcaPrimeraRemisionSiAeatAceptaConErrores() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, acceptedWithErrors()));
 
         var result = service.submit(record);
@@ -94,7 +97,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void mantieneEnColaSiHayErrorDeRed() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenThrow(new VerifactuTransportException("sin conexion"));
 
         var result = service.submit(record);
