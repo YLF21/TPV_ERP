@@ -5,7 +5,6 @@ import com.tpverp.backend.organization.CompanyRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.time.Duration;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
@@ -21,6 +20,7 @@ public class FiscalEventService {
     private final FiscalEventRepository events;
     private final FiscalEventXmlService xml;
     private final FiscalXadesSigner signer;
+    private final FiscalOperatingClockService operatingClock;
     private final String producerName;
     private final String producerTaxId;
     private final String systemName;
@@ -30,6 +30,7 @@ public class FiscalEventService {
     public FiscalEventService(CompanyRepository companies, InstallationRepository installations,
             FiscalEventChainRepository chains, FiscalEventRepository events,
             FiscalEventXmlService xml, FiscalXadesSigner signer,
+            FiscalOperatingClockService operatingClock,
             @Value("${tpv.verifactu.producer-name:TPV ERP DEV}") String producerName,
             @Value("${tpv.verifactu.producer-tax-id:B00000000}") String producerTaxId,
             @Value("${tpv.verifactu.system-name:TPV ERP}") String systemName,
@@ -41,6 +42,7 @@ public class FiscalEventService {
         this.events = events;
         this.xml = xml;
         this.signer = signer;
+        this.operatingClock = operatingClock;
         this.producerName = producerName;
         this.producerTaxId = producerTaxId;
         this.systemName = systemName;
@@ -55,7 +57,7 @@ public class FiscalEventService {
         return createAt(companyId, installationId, mode, type, detail, Instant.now());
     }
 
-    /** Emits one summary only after six elapsed operating hours since the last event. */
+    /** Emits one summary after six persisted operating hours, excluding downtime. */
     @Transactional
     public FiscalEvent createSummaryIfDue(UUID companyId, UUID installationId, FiscalMode mode,
             Instant now) {
@@ -64,16 +66,21 @@ public class FiscalEventService {
         }
         var latest = events.findTopByCompanyIdAndInstallationIdOrderBySequenceDesc(
                 companyId, installationId).orElse(null);
-        if (latest == null || now.isBefore(latest.getGeneratedAt().plus(Duration.ofHours(6)))) {
+        if (latest == null || !operatingClock.observeAndCheckDue(companyId, installationId, now)) {
             return null;
         }
-        return createAt(companyId, installationId, mode, FiscalEventType.SUMMARY, null, now);
+        var summary = createAt(companyId, installationId, mode, FiscalEventType.SUMMARY, null, now);
+        operatingClock.reset(companyId, installationId, now);
+        return summary;
     }
 
     private FiscalEvent createAt(UUID companyId, UUID installationId, FiscalMode mode,
             FiscalEventType type, String detail, Instant now) {
         if (mode != FiscalMode.NO_VERIFACTU) {
             return null; // VERI*FACTU does not generate the mandatory event log.
+        }
+        if (type == FiscalEventType.START_NO_VERIFACTU) {
+            operatingClock.reset(companyId, installationId, now);
         }
         var company = companies.findById(companyId)
                 .orElseThrow(() -> new IllegalStateException("Empresa fiscal no encontrada"));

@@ -17,5 +17,5 @@ tpv:
     dev-signing-password: ${TPV_VERIFACTU_DEV_SIGNING_PASSWORD:}
     worker-enabled: false
     worker-delay-ms: 3600000
-    event-summary-interval-ms: 21600000
-    event-summary-initial-delay-ms: 21600000
+    event-summary-interval-ms: 60000
+    event-summary-initial-delay-ms: 60000

@@ -29,8 +29,8 @@ public class FiscalEventSummaryScheduler {
     }
 
     @Scheduled(
-            fixedDelayString = "${tpv.verifactu.event-summary-interval-ms:21600000}",
-            initialDelayString = "${tpv.verifactu.event-summary-initial-delay-ms:21600000}")
+            fixedDelayString = "${tpv.verifactu.event-summary-interval-ms:60000}",
+            initialDelayString = "${tpv.verifactu.event-summary-initial-delay-ms:60000}")
     public void emitDueSummaries() {
         // REAL stays disabled until the DEV/AEAT gates have been passed.
         if (!runtime.isSandbox() && !runtime.productionEnabled()) {
