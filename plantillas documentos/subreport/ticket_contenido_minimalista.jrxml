@@ -29,59 +29,15 @@
     vale.codigo_vale,
     COALESCE(vale.importe_descuento_vale, 0::numeric) AS importe_descuento_vale,
     COALESCE(saldo_socio.importe_saldo_socio, 0::numeric) AS importe_saldo_socio,
-    GREATEST(
-        SUM(dl.total) OVER () - d.total,
-        0::numeric
-    ) +
-    CASE
-        WHEN COALESCE(c.descuento, 0) > 0
-         AND d.descuento_global <> c.descuento
-         AND NOT EXISTS (
-             SELECT 1
-             FROM documento_linea dcl
-             WHERE dcl.documento_id = d.id
-               AND dcl.descuento = c.descuento
-               AND dcl.promocion_id IS NULL
-               AND dcl.cupon_promocional_id IS NULL
-         )
-        THEN ROUND(d.total * c.descuento / 100, 2)
-        ELSE 0::numeric
-    END AS importe_descuento_ticket,
-    c.descuento AS porcentaje_descuento_socio,
-    CASE
-        WHEN COALESCE(c.descuento, 0) > 0
-         AND d.descuento_global <> c.descuento
-         AND NOT EXISTS (
-             SELECT 1
-             FROM documento_linea dcl
-             WHERE dcl.documento_id = d.id
-               AND dcl.descuento = c.descuento
-               AND dcl.promocion_id IS NULL
-               AND dcl.cupon_promocional_id IS NULL
-         )
-        THEN ROUND(d.total * c.descuento / 100, 2)
-        ELSE 0::numeric
-    END AS importe_descuento_socio,
-    d.total -
-    CASE
-        WHEN COALESCE(c.descuento, 0) > 0
-         AND d.descuento_global <> c.descuento
-         AND NOT EXISTS (
-             SELECT 1
-             FROM documento_linea dcl
-             WHERE dcl.documento_id = d.id
-               AND dcl.descuento = c.descuento
-               AND dcl.promocion_id IS NULL
-               AND dcl.cupon_promocional_id IS NULL
-         )
-        THEN ROUND(d.total * c.descuento / 100, 2)
-        ELSE 0::numeric
-    END AS total_ticket
+    GREATEST(SUM(dl.total) OVER () - d.total, 0::numeric) AS importe_descuento_ticket,
+    COALESCE(ajuste.porcentaje_descuento_socio, 0::numeric) AS porcentaje_descuento_socio,
+    COALESCE(ajuste.importe_descuento_socio, 0::numeric) AS importe_descuento_socio,
+    COALESCE(ajuste.porcentaje_descuento_documento, 0::numeric) AS porcentaje_descuento_documento,
+    COALESCE(ajuste.importe_descuento_documento, 0::numeric) AS importe_descuento_documento,
+    d.total AS total_ticket
 FROM documento_linea dl
 INNER JOIN documento d
     ON d.id = dl.documento_id
-LEFT JOIN cliente c
-    ON c.id = d.cliente_id
 LEFT JOIN LATERAL (
     SELECT
         string_agg(
@@ -113,8 +69,21 @@ LEFT JOIN LATERAL (
     WHERE mbl.documento_id = d.id
       AND mbl.tipo_linea = 'MEMBER_BALANCE'
 ) saldo_socio ON TRUE
+LEFT JOIN LATERAL (
+    SELECT
+        MAX(da.porcentaje) FILTER (WHERE da.tipo = 'MEMBER_PERCENT')
+            AS porcentaje_descuento_socio,
+        SUM(da.importe_aplicado) FILTER (WHERE da.tipo = 'MEMBER_PERCENT')
+            AS importe_descuento_socio,
+        MAX(da.porcentaje) FILTER (WHERE da.tipo = 'MANUAL_PERCENT')
+            AS porcentaje_descuento_documento,
+        SUM(da.importe_aplicado) FILTER (WHERE da.tipo = 'MANUAL_PERCENT')
+            AS importe_descuento_documento
+    FROM documento_ajuste da
+    WHERE da.documento_id = d.id
+) ajuste ON TRUE
 WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
-  AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON', 'MEMBER_BALANCE')
+  AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON', 'MEMBER_BALANCE', 'DOCUMENT_DISCOUNT')
 ORDER BY dl.posicion]]></query>
 	<field name="posicion" class="java.lang.Integer">
 		<property name="com.jaspersoft.studio.field.name" value="posicion"/>
@@ -170,6 +139,8 @@ ORDER BY dl.posicion]]></query>
 	</field>
 	<field name="porcentaje_descuento_socio" class="java.math.BigDecimal"/>
 	<field name="importe_descuento_socio" class="java.math.BigDecimal"/>
+	<field name="porcentaje_descuento_documento" class="java.math.BigDecimal"/>
+	<field name="importe_descuento_documento" class="java.math.BigDecimal"/>
 	<field name="total_ticket" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="total_ticket"/>
 		<property name="com.jaspersoft.studio.field.label" value="total_ticket"/>
@@ -267,16 +238,16 @@ ORDER BY dl.posicion]]></query>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</band>
 	</detail>
-	<summary height="111">
-		<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a02" positionType="Float" x="5" y="86" width="197" height="1"><pen lineWidth="0.5"/></element>
-		<element kind="staticText" uuid="d4c5be3a-c031-4fa3-8c71-8d40ab61818e" positionType="Float" x="8" y="92" width="117" height="18" fontSize="10.0" bold="true">
+	<summary height="124">
+		<element kind="line" uuid="17f83d8f-d626-4595-a924-af97a6441a02" positionType="Float" x="5" y="99" width="197" height="1"><pen lineWidth="0.5"/></element>
+		<element kind="staticText" uuid="d4c5be3a-c031-4fa3-8c71-8d40ab61818e" positionType="Float" x="8" y="105" width="117" height="18" fontSize="10.0" bold="true">
 			<text><![CDATA[TOTAL A PAGAR]]></text>
 			<property name="com.jaspersoft.studio.unit.x" value="px"/>
 			<property name="com.jaspersoft.studio.unit.y" value="px"/>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</element>
-		<element kind="textField" uuid="bc55553c-cebb-46bf-a905-552a0cf0e316" positionType="Float" x="130" y="91" width="69" height="20" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Right">
+		<element kind="textField" uuid="bc55553c-cebb-46bf-a905-552a0cf0e316" positionType="Float" x="130" y="104" width="69" height="20" fontSize="12.0" textAdjust="StretchHeight" bold="true" hTextAlign="Right">
 			<expression><![CDATA[$F{total_ticket} == null
     ? ""
     : new java.text.DecimalFormat("#,##0.00")
@@ -331,7 +302,7 @@ ORDER BY dl.posicion]]></query>
 				<expression><![CDATA[$F{codigo_vale}]]></expression>
 			</element>
 		</element>
-		<element kind="frame" uuid="5bc92810-5884-457d-8e11-b9440375513b" positionType="Float" x="5" y="67" width="195" height="13" removeLineWhenBlank="true">
+		<element kind="frame" uuid="5bc92810-5884-457d-8e11-b9440375513b" positionType="Float" x="5" y="80" width="195" height="13" removeLineWhenBlank="true">
 		<element kind="textField" uuid="bf44a667-1274-4598-878e-13022b8dc04c" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
 			<printWhenExpression><![CDATA[$F{importe_descuento_ticket} != null
 && $F{importe_descuento_ticket}
@@ -341,6 +312,9 @@ ORDER BY dl.posicion]]></query>
     .subtract($F{importe_descuento_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_descuento_socio})
+    .subtract($F{importe_descuento_documento} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_descuento_documento})
     .subtract($F{importe_saldo_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_saldo_socio})
@@ -361,6 +335,9 @@ ORDER BY dl.posicion]]></query>
     .subtract($F{importe_descuento_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_descuento_socio})
+    .subtract($F{importe_descuento_documento} == null
+        ? java.math.BigDecimal.ZERO
+        : $F{importe_descuento_documento})
     .subtract($F{importe_saldo_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_saldo_socio})
@@ -377,6 +354,9 @@ ORDER BY dl.posicion]]></query>
                 .subtract($F{importe_descuento_socio} == null
                     ? java.math.BigDecimal.ZERO
                     : $F{importe_descuento_socio})
+                .subtract($F{importe_descuento_documento} == null
+                    ? java.math.BigDecimal.ZERO
+                    : $F{importe_descuento_documento})
     .subtract($F{importe_saldo_socio} == null
         ? java.math.BigDecimal.ZERO
         : $F{importe_saldo_socio})
@@ -401,7 +381,22 @@ ORDER BY dl.posicion]]></query>
     .format($F{importe_descuento_socio}.negate()) + " €"]]></expression>
 		</element>
 		</element>
-		<element kind="frame" uuid="70000000-0000-4000-8000-000000000003" positionType="Float" x="5" y="54" width="195" height="13" removeLineWhenBlank="true">
+		<element kind="frame" uuid="73000000-0000-4000-8000-000000000003" positionType="Float" x="5" y="54" width="195" height="13" removeLineWhenBlank="true">
+			<element kind="textField" uuid="74000000-0000-4000-8000-000000000003" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
+				<printWhenExpression><![CDATA[$F{importe_descuento_documento} != null
+&& $F{importe_descuento_documento}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<expression><![CDATA["Descuento documento ("
+    + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_documento})
+    + "%)"]]></expression>
+			</element>
+			<element kind="textField" uuid="75000000-0000-4000-8000-000000000003" x="125" y="0" width="70" height="13" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA[$F{importe_descuento_documento} != null
+&& $F{importe_descuento_documento}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
+				<expression><![CDATA[new java.text.DecimalFormat("#,##0.00")
+    .format($F{importe_descuento_documento}.negate()) + " €"]]></expression>
+			</element>
+		</element>
+		<element kind="frame" uuid="70000000-0000-4000-8000-000000000003" positionType="Float" x="5" y="67" width="195" height="13" removeLineWhenBlank="true">
 			<element kind="staticText" uuid="71000000-0000-4000-8000-000000000003" x="0" y="0" width="120" height="13" fontSize="8.0">
 				<printWhenExpression><![CDATA[$F{importe_saldo_socio} != null
 && $F{importe_saldo_socio}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>

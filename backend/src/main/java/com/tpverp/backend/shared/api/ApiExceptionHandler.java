@@ -3,6 +3,7 @@ package com.tpverp.backend.shared.api;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
+import com.tpverp.backend.document.PaymentSessionClosedException;
 import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
@@ -32,6 +33,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -42,6 +45,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private final LocalizedMessages messages;
 
     public ApiExceptionHandler(MessageSource messageSource) {
@@ -285,12 +289,46 @@ public class ApiExceptionHandler {
             IllegalStateException exception,
             HttpServletRequest request) {
         var language = language(request);
+        var traceId = CorrelationIdFilter.getOrCreate(request);
+        LOGGER.warn(
+                "State conflict traceId={} method={} path={} reason={}",
+                traceId,
+                request.getMethod(),
+                request.getRequestURI(),
+                safeStateConflictReason(exception.getMessage()));
         return problem(
                 HttpStatus.CONFLICT,
                 SystemErrorCode.STATE_CONFLICT.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language,
                 request);
+    }
+
+    @ExceptionHandler(PaymentSessionClosedException.class)
+    ProblemDetail paymentSessionClosed(
+            PaymentSessionClosedException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> exception.retryable()
+                    ? "The previous payment session was cancelled. A new checkout is required."
+                    : "The payment session has already been finalized.";
+            case ZH -> exception.retryable()
+                    ? "上一个付款会话已取消，需要创建新的结账会话。"
+                    : "付款会话已完成。";
+            default -> exception.retryable()
+                    ? "La sesión de cobro anterior fue cancelada. Es necesario iniciar un cobro nuevo."
+                    : "La sesión de cobro ya fue finalizada.";
+        };
+        var problem = problem(
+                HttpStatus.CONFLICT,
+                PaymentSessionClosedException.CODE,
+                detail,
+                language,
+                request);
+        problem.setProperty("paymentSessionStatus", exception.status().name());
+        problem.setProperty("retryable", exception.retryable());
+        return problem;
     }
 
     @ExceptionHandler(CustomerCreditLimitExceededException.class)
@@ -441,6 +479,16 @@ public class ApiExceptionHandler {
             case ZH -> "不允许使用 %s 方法。请使用 %s。".formatted(method, supportedMethods);
             default -> "Método %s no permitido. Usa %s.".formatted(method, supportedMethods);
         };
+    }
+
+    private static String safeStateConflictReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "unspecified";
+        }
+        var normalized = reason.replaceAll("[\\r\\n\\t]", " ").trim();
+        return normalized.matches("[A-Za-z0-9_.:-]{1,256}")
+                ? normalized
+                : "localized_or_dynamic_reason";
     }
 
     private static SupportedLanguage language(HttpServletRequest request) {

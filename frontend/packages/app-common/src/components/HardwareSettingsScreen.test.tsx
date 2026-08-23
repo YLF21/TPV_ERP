@@ -23,6 +23,11 @@ const terminalContext: TerminalContext = {
 function createHardwareBridge(overrides: Partial<HardwareBridge> = {}): HardwareBridge {
   return {
     listPrinters: vi.fn(async () => ({ ok: true as const, printers: [] })),
+    getTicketPrinterHealth: vi.fn(async () => ({
+      status: "READY" as const,
+      printerName: "RP-12N",
+      checkedAt: "2026-08-22T20:00:00Z",
+    })),
     listCustomerDisplays: vi.fn(async () => ({ ok: true as const, displays: [] })),
     getHardwareConfig: vi.fn(async () => defaultHardwareConfig),
     saveHardwareConfig: vi.fn(async () => ({ ok: true as const })),

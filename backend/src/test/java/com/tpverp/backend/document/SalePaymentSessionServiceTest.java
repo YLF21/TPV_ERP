@@ -48,6 +48,49 @@ class SalePaymentSessionServiceTest {
   verify(fixture.sales,times(1)).prepareSale(fixture.sale,fixture.auth);
  }
 
+ @Test void reserveRejectsACancelledIdempotencyKeyBeforeRepricing(){
+  var fixture=reservationFixture();var sessionId=UUID.randomUUID();
+  var first=fixture.service.reserve(sessionId,fixture.sale,fixture.auth);
+  first.cancel();
+  when(fixture.repo.findState(sessionId)).thenReturn(Optional.of(first));
+
+  assertThatThrownBy(()->fixture.service.reserve(sessionId,fixture.sale,fixture.auth))
+          .isInstanceOfSatisfying(PaymentSessionClosedException.class,error->{
+           assertThat(error.status()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+           assertThat(error.retryable()).isTrue();
+          });
+  verify(fixture.sales,times(1)).prepareSale(fixture.sale,fixture.auth);
+ }
+
+ @Test void reserveKeepsAFinalizedIdempotencyRetryRecoverable(){
+  var fixture=reservationFixture();var sessionId=UUID.randomUUID();
+  var first=fixture.service.reserve(sessionId,fixture.sale,fixture.auth);
+  var allocation=first.addAllocation(
+          UUID.randomUUID(),"final-payment",SalePaymentAllocationKind.MANUAL_CARD,
+          new BigDecimal("100.00"),null,"MANUAL");
+  allocation.approve(null,"REF-1",null);
+  first.finalizeWith(UUID.randomUUID(),"001-260823-00001");
+  when(fixture.repo.findState(sessionId)).thenReturn(Optional.of(first));
+
+  assertThat(fixture.service.reserve(sessionId,fixture.sale,fixture.auth)).isSameAs(first);
+  verify(fixture.sales,times(1)).prepareSale(fixture.sale,fixture.auth);
+ }
+
+ @Test void addingAPaymentToACancelledSessionUsesTheClosedSessionContract(){
+  var fixture=reservationFixture();var sessionId=UUID.randomUUID();
+  var session=fixture.service.reserve(sessionId,fixture.sale,fixture.auth);
+  session.cancel();
+  when(fixture.repo.findLocked(sessionId)).thenReturn(Optional.of(session));
+
+  assertThatThrownBy(()->fixture.service.add(
+          sessionId,UUID.randomUUID(),"payment-after-cancel",SalePaymentAllocationKind.CASH,
+          new BigDecimal("100.00"),null,null,fixture.auth))
+          .isInstanceOfSatisfying(PaymentSessionClosedException.class,error->{
+           assertThat(error.status()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+           assertThat(error.retryable()).isTrue();
+          });
+ }
+
  @Test void reserveRetriesAnExistingRefundWithTheOriginalSignedRequestHash(){
   var fixture=reservationFixture();var sessionId=UUID.randomUUID();
   var refundTotal=new BigDecimal("-100.00");
@@ -92,7 +135,7 @@ class SalePaymentSessionServiceTest {
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
   var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var warehouseId=UUID.randomUUID();var productId=UUID.randomUUID();var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
   var sale=new PosCashController.SaleRequest(null,List.of(new PosCashController.LineRequest(productId,BigDecimal.ONE,BigDecimal.ZERO)));var command=mock(DocumentCommand.class);when(command.lineas()).thenReturn(List.of());when(sales.prepareSale(sale,auth)).thenReturn(new PosCashService.PreparedSale(command,Set.of()));var quote=mock(CommercialDocument.class);when(quote.getTiendaId()).thenReturn(storeId);when(quote.getAlmacenId()).thenReturn(warehouseId);when(quote.getFecha()).thenReturn(java.time.LocalDate.of(2026,8,4));when(quote.getDescuentoGlobal()).thenReturn(BigDecimal.ZERO);when(quote.getBaseTotal()).thenReturn(new BigDecimal("100.00"));when(quote.getImpuestoTotal()).thenReturn(BigDecimal.ZERO);when(quote.getTotal()).thenReturn(new BigDecimal("100.00"));when(quote.getLineas()).thenReturn(List.of());when(sales.quotePreparedSale(any(),any(),eq(auth))).thenReturn(quote);
-  var method=new PaymentMethod(companyId,"EFECTIVO",true);when(methods.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(List.of(method));when(snapshots.serialize(any())).thenReturn("{}");var active=new java.util.concurrent.atomic.AtomicReference<SalePaymentSession>();when(repo.findState(any())).thenReturn(Optional.empty());when(repo.findActive(storeId,terminalId,userId)).thenAnswer(invocation->Optional.ofNullable(active.get()));when(repo.save(any(SalePaymentSession.class))).thenAnswer(invocation->{var session=invocation.getArgument(0,SalePaymentSession.class);active.set(session);return session;});var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
+  var method=new PaymentMethod(companyId,"EFECTIVO",true);when(methods.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(List.of(method));when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"EFECTIVO")).thenReturn(Optional.of(method));when(snapshots.serialize(any())).thenReturn("{}");var active=new java.util.concurrent.atomic.AtomicReference<SalePaymentSession>();when(repo.findState(any())).thenReturn(Optional.empty());when(repo.findActive(storeId,terminalId,userId)).thenAnswer(invocation->Optional.ofNullable(active.get()));when(repo.save(any(SalePaymentSession.class))).thenAnswer(invocation->{var session=invocation.getArgument(0,SalePaymentSession.class);active.set(session);return session;});var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
   return new ReservationFixture(
           repo,sales,auth,sale,command,service,storeId,terminalId,userId);
  }

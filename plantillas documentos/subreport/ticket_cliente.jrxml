@@ -17,45 +17,21 @@
     c.client_id AS codigo_cliente,
     c.telefono,
     c.tarifa,
-    c.descuento AS porcentaje_descuento,
-    c.descuento > 0 AS descuento_cliente_aplicado,
-    CASE
-        WHEN c.descuento > 0 AND d.descuento_global = c.descuento THEN
-            GREATEST(
-                COALESCE(SUM(dl.total) FILTER (WHERE dl.tipo_linea <> 'MANUAL_DISCOUNT'), 0) - d.total,
-                0
-            )
-        WHEN COUNT(*) FILTER (
-            WHERE dl.descuento = c.descuento
-              AND dl.promocion_id IS NULL
-              AND dl.cupon_promocional_id IS NULL
-        ) > 0 THEN
-            COALESCE(SUM(
-                CASE
-                    WHEN dl.descuento = c.descuento
-                     AND dl.promocion_id IS NULL
-                     AND dl.cupon_promocional_id IS NULL
-                    THEN GREATEST(
-                        CASE
-                            WHEN dl.impuestos_incluidos THEN dl.precio_unitario * dl.cantidad
-                            ELSE dl.precio_unitario * dl.cantidad
-                                 * (1 + COALESCE(dl.porcentaje_impuesto, 0) / 100)
-                        END - dl.total,
-                        0
-                    )
-                    ELSE 0
-                END
-            ), 0)
-        ELSE ROUND(d.total * c.descuento / 100, 2)
-    END AS importe_descuento_cliente
+    COALESCE(ajuste.porcentaje, 0::numeric) AS porcentaje_descuento,
+    COALESCE(ajuste.importe, 0::numeric) > 0 AS descuento_cliente_aplicado,
+    COALESCE(ajuste.importe, 0::numeric) AS importe_descuento_cliente
 FROM documento d
 INNER JOIN cliente c
     ON c.id = d.cliente_id
-LEFT JOIN documento_linea dl
-    ON dl.documento_id = d.id
-WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
-GROUP BY d.id, d.descuento_global, d.total,
-         c.id, c.nombre_fiscal, c.client_id, c.telefono, c.tarifa, c.descuento]]></query>
+LEFT JOIN LATERAL (
+    SELECT
+        MAX(da.porcentaje) AS porcentaje,
+        SUM(da.importe_aplicado) AS importe
+    FROM documento_ajuste da
+    WHERE da.documento_id = d.id
+      AND da.tipo = 'MEMBER_PERCENT'
+) ajuste ON TRUE
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 	<field name="nombre_cliente" class="java.lang.String"/>
 	<field name="codigo_cliente" class="java.lang.String"/>
 	<field name="telefono" class="java.lang.String"/>

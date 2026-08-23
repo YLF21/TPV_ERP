@@ -14,11 +14,11 @@ public class PosCardDocumentSnapshot {
 
     PosCardDocumentSnapshot(ObjectMapper mapper){this.mapper=mapper;}
     public String serialize(ApprovedCardTicketSnapshot ticket){
-        try{return mapper.writeValueAsString(new Snapshot(1,ticket));}
+        try{return mapper.writeValueAsString(new Snapshot(2,ticket));}
         catch(JsonProcessingException e){throw new ApprovedCardSnapshotException("No se pudo guardar la instantanea de venta",e);}
     }
     public ApprovedCardTicketSnapshot deserialize(String json){
-        try{var snapshot=mapper.readValue(json,Snapshot.class);if(snapshot.schemaVersion()!=1)throw new ApprovedCardSnapshotException("Version de instantanea no soportada");validate(snapshot.ticket());return snapshot.ticket();}
+        try{var snapshot=mapper.readValue(json,Snapshot.class);if(snapshot.schemaVersion()<1||snapshot.schemaVersion()>2)throw new ApprovedCardSnapshotException("Version de instantanea no soportada");validate(snapshot.ticket());return snapshot.ticket();}
         catch(ApprovedCardSnapshotException e){throw e;}
         catch(JsonProcessingException|IllegalArgumentException e){throw new ApprovedCardSnapshotException("Instantanea de venta corrupta",e);}
     }
@@ -30,6 +30,7 @@ public class PosCardDocumentSnapshot {
             var ticket=new CommercialDocument(value.storeId(),value.warehouseId(),CommercialDocumentType.TICKET,value.date(),
                     java.util.UUID.randomUUID(),value.globalDiscount());
             ticket.setParties(value.customerId(),null,null); value.lines().forEach(line->ticket.addLine(line.toEntity(ticket)));
+            value.restoreAdjustments(ticket);
             if(ticket.getBaseTotal().compareTo(Money.euros(value.baseTotal()))!=0
                     ||ticket.getImpuestoTotal().compareTo(Money.euros(value.taxTotal()))!=0
                     ||ticket.getTotal().compareTo(Money.euros(value.total()))!=0)

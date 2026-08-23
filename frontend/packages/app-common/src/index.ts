@@ -97,6 +97,8 @@ export type {
   HardwareConfig,
   HardwarePrinter,
   HardwareResult,
+  TicketPrinterHealth,
+  TicketPrinterHealthStatus,
   TicketPrintRequest
 } from "./hardware/hardware";
 export { outputIssuedVoucher } from "./sale/voucherPrinting";

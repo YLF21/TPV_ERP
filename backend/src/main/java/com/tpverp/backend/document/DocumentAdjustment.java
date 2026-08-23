@@ -79,4 +79,9 @@ public class DocumentAdjustment {
     public BigDecimal getPorcentaje() { return porcentaje; }
     public BigDecimal getBaseElegible() { return baseElegible; }
     public BigDecimal getImporteAplicado() { return importeAplicado; }
+    public UUID getUsuarioId() { return usuarioId; }
+    public Instant getCreadoEn() { return creadoEn; }
+    public UUID getSocioId() { return socioId; }
+    public UUID getCategoriaSocioId() { return categoriaSocioId; }
+    public String getCategoriaSocioNombre() { return categoriaSocioNombre; }
 }

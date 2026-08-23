@@ -1386,13 +1386,13 @@ public class PosCashService {
                     ticket.getBaseTotal(), ticket.getImpuestoTotal(), discountTotal,
                     memberBalanceTotal, adjustments,
                     ticket.getMoneda(), ticket.getTiendaId(), ticket.getClienteId(),
-                    fingerprint, quoteLines, taxes, 1, breakdown);
+                    fingerprint, quoteLines, taxes, 2, breakdown);
         }
 
         public Quote(BigDecimal total) {
             this(total, total, new PromotionPreviewView(List.of()), total, BigDecimal.ZERO,
                     BigDecimal.ZERO, BigDecimal.ZERO, List.of(), "EUR", null, null, "", List.of(),
-                    List.of(), 1, List.of());
+                    List.of(), 2, List.of());
         }
 
         public Quote(
@@ -1551,6 +1551,7 @@ public class PosCashService {
             BigDecimal taxBase,
             BigDecimal tax,
             BigDecimal baseSubtotal,
+            BigDecimal commercialSubtotal,
             BigDecimal roundingAdjustment,
             BigDecimal finalSubtotal) {
     }
@@ -1661,6 +1662,7 @@ public class PosCashService {
                 base,
                 tax,
                 zero,
+                total,
                 zero,
                 total));
     }
@@ -1694,6 +1696,7 @@ public class PosCashService {
                 line.getPorcentajeImpuesto(),
                 line.getBase(),
                 line.getImpuesto(),
+                line.getTotal(),
                 line.getTotal(),
                 zero,
                 line.getTotal());
@@ -1768,6 +1771,7 @@ public class PosCashService {
         private BigDecimal promotionDiscount = Money.euros(BigDecimal.ZERO);
         private BigDecimal couponDiscount = Money.euros(BigDecimal.ZERO);
         private BigDecimal documentDiscountAmount = Money.euros(BigDecimal.ZERO);
+        private BigDecimal memberBalanceDiscount = Money.euros(BigDecimal.ZERO);
         private final List<AppliedPromotion> appliedPromotions = new ArrayList<>();
         private BigDecimal finalBase;
         private BigDecimal finalTax;
@@ -1792,7 +1796,7 @@ public class PosCashService {
             var lineDiscount = Money.euros(baseSubtotal.subtract(line.getTotal()).max(BigDecimal.ZERO));
             var normalizedRequested = requestedDiscount == null ? BigDecimal.ZERO : requestedDiscount;
             var normalizedCategory = categoryDiscount == null ? BigDecimal.ZERO : categoryDiscount;
-            var categoryWins = normalizedCategory.signum() > 0
+            var categoryWins = historical && normalizedCategory.signum() > 0
                     && normalizedCategory.compareTo(normalizedRequested) >= 0
                     && line.getDescuento().compareTo(normalizedCategory) == 0;
             this.memberDiscountPercent = categoryWins ? line.getDescuento() : BigDecimal.ZERO;
@@ -1841,6 +1845,8 @@ public class PosCashService {
                 couponDiscount = Money.euros(couponDiscount.add(total.abs()));
             } else if (adjustment.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT) {
                 documentDiscountAmount = Money.euros(documentDiscountAmount.add(total.abs()));
+            } else if (adjustment.getLineType() == DocumentLineType.MEMBER_BALANCE) {
+                memberBalanceDiscount = Money.euros(memberBalanceDiscount.add(total.abs()));
             } else if (adjustment.getLineType() == DocumentLineType.PROMOTION) {
                 promotionDiscount = Money.euros(promotionDiscount.add(total.abs()));
                 var candidate = new AppliedPromotion(
@@ -1859,12 +1865,15 @@ public class PosCashService {
         }
 
         private AuthoritativeLineBreakdown view() {
-            var expected = Money.euros(baseSubtotal
+            var expectedCommercial = Money.euros(baseSubtotal
                     .subtract(memberDiscount)
                     .subtract(manualDiscount)
-                    .subtract(promotionDiscount)
-                    .subtract(couponDiscount));
-            var rounding = Money.euros(finalTotal.subtract(expected));
+                    .subtract(promotionDiscount));
+            var commercialSubtotal = Money.euros(finalTotal
+                    .add(couponDiscount)
+                    .add(documentDiscountAmount)
+                    .add(memberBalanceDiscount));
+            var rounding = Money.euros(commercialSubtotal.subtract(expectedCommercial));
             return new AuthoritativeLineBreakdown(
                     lineId, line.getPosicion(), line.getLineType(), line.getProductoId(), line.getCodigo(),
                     line.getNombre(), line.getCantidad(), normalUnitPrice, memberUnitPrice,
@@ -1874,7 +1883,7 @@ public class PosCashService {
                     documentDiscountAmount, List.copyOf(appliedPromotions),
                     line.isImpuestosIncluidos(), line.getRegimenImpuesto(),
                     line.getPorcentajeImpuesto(), finalBase, finalTax, baseSubtotal,
-                    rounding, finalTotal);
+                    commercialSubtotal, rounding, finalTotal);
         }
     }
 

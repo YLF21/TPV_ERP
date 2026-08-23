@@ -36,6 +36,7 @@ describe("CashPaymentResultDialog", () => {
         ticketNumber="T-0042"
         totalCents={1543}
         printStatus="FAILED"
+        printTechnicalMessage="The Print Spooler service is not running"
         onRetryPrint={vi.fn()}
         onFinish={vi.fn()}
       />,
@@ -43,6 +44,7 @@ describe("CashPaymentResultDialog", () => {
 
     expect(html).toContain("Pago completado");
     expect(html).toContain("El cobro se ha completado, pero no ha sido posible imprimir el ticket.");
+    expect(html).toContain("Detalle técnico: The Print Spooler service is not running");
     expect(html).toContain("Reintentar impresión");
     expect(html).not.toContain("Finalizar");
     expect(html).toContain('role="alert"');

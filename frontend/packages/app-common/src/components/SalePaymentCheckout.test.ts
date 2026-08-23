@@ -14,6 +14,7 @@ import {
  compensationNoteIsEphemeral,
  entryCleanupRegistrySizeForTest,
  isCreditLimitExceededError,
+ isClosedPaymentSessionError,
  isMissingCashSessionError,
  paymentLogoutDisposition,
  paymentSessionAfterFinalization,
@@ -405,6 +406,56 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByText("La operación entra en conflicto con los datos existentes")).not.toBeInTheDocument();
  });
 
+ it("renews the member reservation and checkout id after a cancelled-session conflict", async () => {
+  const collecting:ServerSession={id:"member-sale-new",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",memberBalanceReservationId:"member-reservation-new",allocations:[]};
+  const reserveBodies:Array<{sessionId:string;memberBalanceReservationId?:string}>=[];
+  const onSessionClosed=vi.fn().mockResolvedValue({saleId:"member-sale-new",reservationId:"member-reservation-new"});
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions"){
+    const body=options?.body as {sessionId:string;memberBalanceReservationId?:string};
+    reserveBodies.push(body);
+    if(body.sessionId==="member-sale-old")throw new ApiError(
+     "La sesión de cobro anterior fue cancelada",
+     409,
+     {code:"PAYMENT_SESSION_CLOSED",paymentSessionStatus:"CANCELLED",retryable:true},
+    );
+    return collecting;
+   }
+   if(path==="/pos/payment-sessions/member-sale-new/allocations"){
+    const id=(options?.body as {allocationId:string}).allocationId;
+    return {...collecting,status:"COVERED",allocations:[{id,idempotencyKey:id,kind:"CASH",amount:"10.00",delivered:"10.00",change:"0.00",status:"APPROVED"}]};
+   }
+   if(path==="/pos/payment-sessions/member-sale-new/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-NEW",printTicket:printTicket("R-NEW")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-1000,
+   sale:{customerId:"customer-1",lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,preferredSessionId:"member-sale-old",
+   memberBalanceReservationId:"member-reservation-old",onSessionClosed,onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  const amount=await screen.findByLabelText(/importe a devolver/i);
+  await waitFor(()=>expect(amount).toBeEnabled());
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(onSessionClosed).toHaveBeenCalledOnce();
+  expect(reserveBodies).toEqual([
+   expect.objectContaining({sessionId:"member-sale-old",memberBalanceReservationId:"member-reservation-old"}),
+   expect.objectContaining({sessionId:"member-sale-new",memberBalanceReservationId:"member-reservation-new"}),
+  ]);
+  expect(sessionStorage.getItem("tpverp.payment-session.01")).toBeNull();
+ });
+
  it("reuses the same reservation id after a transient reservation failure", async () => {
   const collecting:ServerSession={id:"refund-stable-reserve",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
   const reserveIds:string[]=[];
@@ -541,6 +592,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(isCreditLimitExceededError(new ApiError("localized",409,{code:"CUSTOMER_CREDIT_LIMIT_EXCEEDED"}))).toBe(true);
   expect(isCreditLimitExceededError(new ApiError("La operaci\u00f3n supera el l\u00edmite de cr\u00e9dito del cliente",409,{code:"STATE_CONFLICT"}))).toBe(false);
   expect(isCreditLimitExceededError(new ApiError("localized",400,{code:"CUSTOMER_CREDIT_LIMIT_EXCEEDED"}))).toBe(false);
+ });
+ it("renews only cancelled payment-session conflicts",()=>{
+  expect(isClosedPaymentSessionError(new ApiError("closed",409,{code:"PAYMENT_SESSION_CLOSED",paymentSessionStatus:"CANCELLED",retryable:true}))).toBe(true);
+  expect(isClosedPaymentSessionError(new ApiError("closed",409,{code:"PAYMENT_SESSION_CLOSED",paymentSessionStatus:"FINALIZED",retryable:false}))).toBe(false);
+  expect(isClosedPaymentSessionError(new ApiError("conflict",409,{code:"STATE_CONFLICT"}))).toBe(false);
  });
  it("offers test cash only for an enabled covered checkout with a terminal", () => {
   expect(shouldOfferTestCashSession(true, "COVERED", true, "terminal-1")).toBe(true);

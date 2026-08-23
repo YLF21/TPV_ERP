@@ -12,7 +12,22 @@ public record ApprovedCardTicketSnapshot(
         UUID storeId, UUID warehouseId, LocalDate date, UUID customerId, UUID paymentMethodId,
         BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
         BigDecimal total, List<DocumentLineCommand> lines, String internalComment,
-        HistoricalTicketReplayMetadata historicalReplay) {
+        HistoricalTicketReplayMetadata historicalReplay,
+        List<DocumentAdjustmentSnapshot> adjustments) {
+    public ApprovedCardTicketSnapshot {
+        lines = List.copyOf(lines == null ? List.of() : lines);
+        adjustments = List.copyOf(adjustments == null ? List.of() : adjustments);
+    }
+
+    public ApprovedCardTicketSnapshot(
+            UUID storeId, UUID warehouseId, LocalDate date, UUID customerId,
+            UUID paymentMethodId, BigDecimal globalDiscount, BigDecimal baseTotal,
+            BigDecimal taxTotal, BigDecimal total, List<DocumentLineCommand> lines,
+            String internalComment, HistoricalTicketReplayMetadata historicalReplay) {
+        this(storeId, warehouseId, date, customerId, paymentMethodId, globalDiscount,
+                baseTotal, taxTotal, total, lines, internalComment, historicalReplay,
+                List.of());
+    }
     public ApprovedCardTicketSnapshot(
             UUID storeId, UUID warehouseId, LocalDate date, UUID customerId,
             UUID paymentMethodId, BigDecimal globalDiscount, BigDecimal baseTotal,
@@ -20,7 +35,7 @@ public record ApprovedCardTicketSnapshot(
             String internalComment) {
         this(storeId, warehouseId, date, customerId, paymentMethodId,
                 globalDiscount, baseTotal, taxTotal, total, lines,
-                internalComment, null);
+                internalComment, null, List.of());
     }
 
     public ApprovedCardTicketSnapshot(
@@ -28,14 +43,18 @@ public record ApprovedCardTicketSnapshot(
             BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
             BigDecimal total, List<DocumentLineCommand> lines) {
         this(storeId, warehouseId, date, customerId, paymentMethodId, globalDiscount,
-                baseTotal, taxTotal, total, lines, null, null);
+                baseTotal, taxTotal, total, lines, null, null, List.of());
     }
 
     public static ApprovedCardTicketSnapshot from(CommercialDocument quoted,UUID paymentMethodId) {
         return new ApprovedCardTicketSnapshot(quoted.getTiendaId(),quoted.getAlmacenId(),quoted.getFecha(),
                 quoted.getClienteId(),paymentMethodId,quoted.getDescuentoGlobal(),quoted.getBaseTotal(),quoted.getImpuestoTotal(),
                 quoted.getTotal(),quoted.getLineas().stream().map(DocumentLineCommand::from).toList(),
-                quoted.getComentarioInterno(), null);
+                quoted.getComentarioInterno(), null,
+                quoted.getAjustes().stream()
+                        .map(adjustment -> DocumentAdjustmentSnapshot.from(
+                                adjustment, quoted.getLineas()))
+                        .toList());
     }
 
     public static ApprovedCardTicketSnapshot from(
@@ -48,7 +67,7 @@ public record ApprovedCardTicketSnapshot(
                 base.storeId(), base.warehouseId(), base.date(), base.customerId(),
                 base.paymentMethodId(), base.globalDiscount(), base.baseTotal(),
                 base.taxTotal(), base.total(), base.lines(), base.internalComment(),
-                historicalReplay);
+                historicalReplay, base.adjustments());
     }
 
     public static ApprovedCardTicketSnapshot from(
@@ -73,7 +92,23 @@ public record ApprovedCardTicketSnapshot(
                 base.lines().stream()
                         .map(line -> withReturnSource(line, returnSources))
                         .toList(),
-                base.internalComment(), base.historicalReplay());
+                base.internalComment(), base.historicalReplay(), base.adjustments());
+    }
+
+    public void restoreAdjustments(CommercialDocument document) {
+        adjustments.forEach(adjustment -> adjustment.restore(document));
+        var linkedLines = adjustments.stream()
+                .flatMap(adjustment -> adjustment.lines().stream())
+                .map(DocumentAdjustmentSnapshot.LineLink::adjustmentLinePosition)
+                .collect(java.util.stream.Collectors.toSet());
+        var documentDiscountPositions = document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                .map(DocumentLine::getPosicion)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!linkedLines.equals(documentDiscountPositions)) {
+            throw new ApprovedCardSnapshotException(
+                    "La instantanea ha perdido los ajustes documentales");
+        }
     }
 
     private static DocumentLineCommand withReturnSource(

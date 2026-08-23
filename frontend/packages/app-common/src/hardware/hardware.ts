@@ -79,6 +79,21 @@ export type HardwarePrinter = {
   isDefault: boolean;
 };
 
+export type TicketPrinterHealthStatus =
+  | "READY"
+  | "DISABLED"
+  | "UNMONITORED"
+  | "NOT_CONFIGURED"
+  | "NOT_FOUND"
+  | "UNAVAILABLE";
+
+export type TicketPrinterHealth = {
+  status: TicketPrinterHealthStatus;
+  printerName: string;
+  checkedAt: string;
+  technicalMessage?: string;
+};
+
 export type HardwareErrorCode =
   | "HARDWARE_UNAVAILABLE"
   | "PRINTER_NOT_CONFIGURED"
@@ -277,6 +292,7 @@ export type CustomerDisplayState = {
 
 export type HardwareBridge = {
   listPrinters: () => Promise<HardwareResult<{ printers: HardwarePrinter[] }>>;
+  getTicketPrinterHealth: () => Promise<TicketPrinterHealth>;
   listCustomerDisplays: () => Promise<HardwareResult<{ displays: CustomerDisplayScreen[] }>>;
   getHardwareConfig: () => Promise<HardwareConfig>;
   saveHardwareConfig: (config: HardwareConfig) => Promise<HardwareResult>;
@@ -487,6 +503,11 @@ export function createCustomerDisplayPaymentState(payment: { total: number; chan
 
 const browserFallbackBridge: HardwareBridge = {
   listPrinters: async () => createHardwareUnavailableResult(),
+  getTicketPrinterHealth: async () => ({
+    status: "UNMONITORED",
+    printerName: "",
+    checkedAt: new Date().toISOString(),
+  }),
   listCustomerDisplays: async () => createHardwareUnavailableResult(),
   getHardwareConfig: async () => defaultHardwareConfig,
   saveHardwareConfig: async () => createHardwareUnavailableResult(),

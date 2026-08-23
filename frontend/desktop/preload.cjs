@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("tpvDesktop", {
   },
   hardware: {
     listPrinters: () => ipcRenderer.invoke("tpv:hardware:list-printers"),
+    getTicketPrinterHealth: () => ipcRenderer.invoke("tpv:hardware:get-ticket-printer-health"),
     listCustomerDisplays: () => ipcRenderer.invoke("tpv:hardware:list-customer-displays"),
     getHardwareConfig: () => ipcRenderer.invoke("tpv:hardware:get-config"),
     saveHardwareConfig: (config) => ipcRenderer.invoke("tpv:hardware:save-config", config),
