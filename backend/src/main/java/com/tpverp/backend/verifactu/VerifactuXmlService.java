@@ -40,6 +40,24 @@ public class VerifactuXmlService {
             throw new IllegalStateException("No se pudo generar el XML VERI*FACTU", exception);
         }
     }
+
+    /**
+     * Serialises exactly one RegistroAlta or RegistroAnulacion as the signing
+     * input required by the AEAT signature specification. The batch wrapper is
+     * deliberately not part of this document.
+     */
+    public String recordXml(VerifactuXmlBatchRequest request, FiscalRecord record) {
+        try {
+            var document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
+            var node = record.getOperation() == FiscalRecordOperation.ALTA
+                    ? alta(document, request, record)
+                    : cancellation(document, request, record);
+            document.appendChild(node);
+            return xml(document);
+        } catch (Exception exception) {
+            throw new IllegalStateException("No se pudo generar el XML del registro fiscal", exception);
+        }
+    }
     // Generates the base official XML used by the future AEAT SOAP client.
 
     private static Element header(Document document, VerifactuXmlBatchRequest request) {

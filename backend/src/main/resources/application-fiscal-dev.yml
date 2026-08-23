@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: fiscal-dev
+
+tpv:
+  verifactu:
+    runtime-class: SANDBOX
+    endpoint-environment: TEST
+    endpoint-mode: TEST
+    transport-mode: SIMULATED
+    dev-sandbox:
+      enabled: true
+    aeat-test-network-enabled: false
+    dev-initial-mode: VERIFACTU
+    dev-signing-pkcs12: ${TPV_VERIFACTU_DEV_SIGNING_PKCS12:}
+    dev-signing-password: ${TPV_VERIFACTU_DEV_SIGNING_PASSWORD:}
+    worker-enabled: false
+    worker-delay-ms: 3600000

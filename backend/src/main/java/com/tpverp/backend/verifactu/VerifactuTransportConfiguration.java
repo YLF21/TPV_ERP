@@ -7,11 +7,16 @@ import com.tpverp.backend.shared.crypto.WindowsMachineDpapiSecretProtector;
 import com.sun.jna.Platform;
 import java.nio.file.Path;
 import java.util.Locale;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Configuration
 public class VerifactuTransportConfiguration {
 
     @Bean
+    @ConditionalOnProperty(
+            name = "tpv.verifactu.transport-mode",
+            havingValue = "AEAT",
+            matchIfMissing = true)
     public VerifactuTransport verifactuTransport(
             VerifactuSubmissionPropertiesFactory propertiesFactory,
             ManagedCertificateKeyStoreFactory keyStores,
@@ -19,6 +24,12 @@ public class VerifactuTransportConfiguration {
         return new ConfiguredVerifactuTransport(propertiesFactory, keyStores, clients);
     }
     // Registers the real transport using the configured certificate for mTLS.
+
+    @Bean
+    @ConditionalOnProperty(name = "tpv.verifactu.transport-mode", havingValue = "SIMULATED")
+    public SimulatedAeatTransport simulatedVerifactuTransport() {
+        return new SimulatedAeatTransport();
+    }
 
     @Bean
     VerifactuCertificateSecretStore verifactuCertificateSecretStore(

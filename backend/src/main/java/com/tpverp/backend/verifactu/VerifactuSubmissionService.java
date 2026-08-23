@@ -57,7 +57,14 @@ public class VerifactuSubmissionService {
         var envelope = soap.wrap(fiscalXml);
         attempts.recordSent(record.getId(), envelope);
         try {
-            var response = transport.send(endpoints.resolve(configuration.mode()), envelope);
+            var response = transport.send(
+                    record.getCompanyId(), record.getInstallationId(),
+                    endpoints.resolve(configuration.mode()), envelope);
+            // Keeps older transport test doubles source-compatible while the real
+            // implementation always receives the explicit fiscal identity above.
+            if (response == null) {
+                response = transport.send(endpoints.resolve(configuration.mode()), envelope);
+            }
             return recordResult(record, responses.parse(response));
         } catch (VerifactuTransportException exception) {
             return new VerifactuSubmissionResult(

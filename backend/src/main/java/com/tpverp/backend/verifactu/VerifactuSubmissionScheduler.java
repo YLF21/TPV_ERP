@@ -27,6 +27,6 @@ public class VerifactuSubmissionScheduler {
 
     private boolean enabled() {
         return environment.getProperty(
-                "tpv.verifactu.worker-enabled", Boolean.class, true);
+                "tpv.verifactu.worker-enabled", Boolean.class, false);
     }
 }

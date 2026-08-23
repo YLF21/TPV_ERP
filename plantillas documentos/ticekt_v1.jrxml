@@ -30,7 +30,11 @@
         COALESCE(d.confirmado_en, d.creado_en) AS fecha_ticket,
         d.total AS total_ticket,
         ldt.contenido AS logo_contenido,
-        CAST(d.id AS varchar) AS contenido_qr,
+        COALESCE((SELECT sif.qr_url
+            FROM snapshot_impresion_fiscal sif
+            INNER JOIN registro_fiscal rf ON rf.id = sif.registro_id
+            WHERE rf.documento_id = d.id AND rf.operacion = 'ALTA'
+            ORDER BY rf.secuencia DESC LIMIT 1), '') AS contenido_qr,
         COALESCE(cdi.observaciones_ticket, '') AS observacion_ticket,
         c.nombre_fiscal AS nombre_cliente,
         c.client_id AS codigo_cliente,
@@ -392,9 +396,14 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			<expression><![CDATA[$F{observacion_ticket}]]></expression>
 		</element>
 		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="65" y="326" width="76" height="45">
-			<component kind="barcode4j:QRCode">
+			<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
+			<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
 			</component>
+		</element>
+		<element kind="staticText" uuid="d1ca4a68-b34a-4a9c-8afc-1c9f52b5b4e0" x="3" y="313" width="201" height="12" fontSize="8.0" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
+			<text><![CDATA[QR tributario:]]></text>
 		</element>
 		<element kind="staticText" uuid="cc188b24-3997-433b-a9af-340657f81e98" x="3" y="369" width="201" height="12" fontSize="9.0" hTextAlign="Center">
 			<text><![CDATA[Gracias por su compra v1]]></text>

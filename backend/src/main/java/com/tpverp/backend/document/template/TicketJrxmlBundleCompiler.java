@@ -36,7 +36,8 @@ public class TicketJrxmlBundleCompiler {
             "cliente", "configuracion_documento_impreso_tienda", "cupon_promocional",
             "documento", "documento_ajuste", "documento_linea", "documento_pago", "empresa", "licencia",
             "logo_documento_tienda", "metodo_pago", "payment_terminal_operation",
-            "payment_terminal_receipt", "promocion", "terminal", "tienda", "usuario");
+            "payment_terminal_receipt", "promocion", "registro_fiscal",
+            "snapshot_impresion_fiscal", "terminal", "tienda", "usuario");
     private static final Pattern SQL_TABLE = Pattern.compile(
             "(?i)\\b(?:from|join)\\s+([a-z_][a-z0-9_]*)");
     private static final Pattern SQL_CTE = Pattern.compile(

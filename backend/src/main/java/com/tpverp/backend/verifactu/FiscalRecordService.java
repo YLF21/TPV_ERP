@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +48,8 @@ public class FiscalRecordService {
     private final Clock clock;
     private final OfficialHashService officialHashes = new OfficialHashService();
     private final FiscalJsonHasher jsonHasher = new FiscalJsonHasher();
+    private FiscalRuntimeProperties runtimeProperties;
+    private FiscalArtifactService artifacts;
 
     public FiscalRecordService(
             FiscalChainRepository chains,
@@ -79,6 +82,18 @@ public class FiscalRecordService {
         this.snapshots = snapshots;
         this.policy = policy;
         this.clock = clock;
+    }
+
+    /** Optional setter keeps direct unit-test construction backwards compatible. */
+    @Autowired(required = false)
+    void setRuntimeProperties(FiscalRuntimeProperties runtimeProperties) {
+        this.runtimeProperties = runtimeProperties;
+    }
+
+    /** Optional for direct unit-test construction; Spring wires the production service. */
+    @Autowired(required = false)
+    void setFiscalArtifactService(FiscalArtifactService artifacts) {
+        this.artifacts = artifacts;
     }
 
     // Records and chains a fiscal operation using only persisted and validated data.
@@ -152,12 +167,17 @@ public class FiscalRecordService {
                 original.getIssuerTaxId(), original.getTotalTax(), original.getTotalAmount(),
                 previousHash, hash, jsonHasher.hash(snapshot), snapshot,
                 original.getFormatVersion(), original.getAlgorithmVersion(),
-                original.getApplicationVersion()));
-        states.save(new FiscalSubmissionState(
-                correction.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+                original.getApplicationVersion(), original.getFiscalMode()));
+        if (original.getFiscalMode() == FiscalMode.VERIFACTU) {
+            states.save(new FiscalSubmissionState(
+                    correction.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+        }
         relations.save(new FiscalRecordRelation(
                 chain.getId(), correction.getId(), original.getId(), FiscalRelationType.SUBSANA));
         chain.advance(correction, generatedAt);
+        if (artifacts != null) {
+            artifacts.create(correction);
+        }
         return correction;
     }
 
@@ -206,11 +226,13 @@ public class FiscalRecordService {
                 totalTax, totalAmount, previousHash,
                 officialHash(command, context, totalTax, totalAmount, previousHash),
                 jsonHasher.hash(snapshot), snapshot, command.formatVersion(),
-                command.algorithmVersion(), command.applicationVersion());
+                command.algorithmVersion(), command.applicationVersion(), context.mode());
 
         var saved = records.save(record);
-        states.save(new FiscalSubmissionState(
-                saved.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+        if (context.mode() == FiscalMode.VERIFACTU) {
+            states.save(new FiscalSubmissionState(
+                    saved.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+        }
         if (original != null) {
             relations.save(new FiscalRecordRelation(
                     chain.getId(), saved.getId(), original.getId(),
@@ -221,6 +243,9 @@ public class FiscalRecordService {
                     chain.getId(), saved.getId(), related.getId(), relationType));
         }
         chain.advance(saved, generatedAt);
+        if (artifacts != null) {
+            artifacts.create(saved);
+        }
         return saved;
     }
 
@@ -353,17 +378,10 @@ public class FiscalRecordService {
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la configuracion VERI*FACTU"));
         var zone = ZoneId.of(store.getTimezone());
-        if (!activation.isActive(
-                configuration,
-                license.getTaxpayerType(),
-                license.getVerifactuActivationDate(),
-                generatedAt,
-                zone)) {
-            throw new VerifactuInactiveException();
-        }
+        var mode = resolveMode(configuration, license, generatedAt, zone);
         return new FiscalContext(
                 companyTaxId, zone.getId(),
-                generatedAt.atZone(zone).toOffsetDateTime(), document, customer);
+                generatedAt.atZone(zone).toOffsetDateTime(), document, customer, mode);
     }
 
     private Customer customer(CommercialDocument document, UUID companyId) {
@@ -444,6 +462,41 @@ public class FiscalRecordService {
             String timezone,
             OffsetDateTime generatedAt,
             CommercialDocument document,
-            Customer customer) {
+            Customer customer,
+            FiscalMode mode) {
+    }
+
+    private FiscalMode resolveMode(
+            VerifactuConfiguration configuration,
+            com.tpverp.backend.licensing.License license,
+            Instant generatedAt,
+            ZoneId zone) {
+        var configured = configuration.getCurrentMode();
+        if (configured == null) {
+            configured = FiscalMode.PRE_SIF;
+        }
+        boolean sandbox = runtimeProperties != null && runtimeProperties.isSandbox();
+        if (configured == FiscalMode.NO_VERIFACTU) {
+            return FiscalMode.NO_VERIFACTU;
+        }
+        boolean active = sandbox || activation.isActive(
+                configuration,
+                license.getTaxpayerType(),
+                license.getVerifactuActivationDate(),
+                generatedAt,
+                zone);
+        if (configured == FiscalMode.VERIFACTU) {
+            if (!active) {
+                throw new VerifactuInactiveException();
+            }
+            return FiscalMode.VERIFACTU;
+        }
+        if (sandbox && runtimeProperties.sandboxInitialMode() != FiscalMode.PRE_SIF) {
+            return runtimeProperties.sandboxInitialMode();
+        }
+        if (active) {
+            return FiscalMode.VERIFACTU;
+        }
+        throw new VerifactuInactiveException();
     }
 }

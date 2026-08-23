@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$CheckOnly,
+    [switch]$FiscalSandbox,
     [ValidateRange(1024, 65535)]
     [int]$BackendPort = 18080,
     [ValidateRange(1024, 65535)]
@@ -238,6 +239,29 @@ try {
     $script:TempRoot = Join-Path ([IO.Path]::GetTempPath()) "tpv-erp-app-venta-$uniqueSuffix"
     [void](New-Item -ItemType Directory -Path $script:TempRoot -Force)
 
+    $devSigningPath = Join-Path $script:TempRoot "verifactu-dev-signing.p12"
+    $devSigningPassword = "DEV-SANDBOX-$uniqueSuffix"
+    if ($FiscalSandbox) {
+        $keytoolPath = (Get-Command keytool.exe -ErrorAction SilentlyContinue).Source
+        if ([string]::IsNullOrWhiteSpace($keytoolPath)) {
+            $javaHome = [Environment]::GetEnvironmentVariable("JAVA_HOME", "Process")
+            if ([string]::IsNullOrWhiteSpace($javaHome)) {
+                throw "No se encontro keytool.exe ni JAVA_HOME para generar el certificado temporal del laboratorio."
+            }
+            $keytoolPath = Join-Path $javaHome "bin\keytool.exe"
+        }
+        if (-not (Test-Path -LiteralPath $keytoolPath)) {
+            throw "No se encontro keytool.exe en '$keytoolPath' para generar el certificado temporal del laboratorio."
+        }
+        & $keytoolPath -genkeypair -alias "fiscal-dev" -storetype PKCS12 `
+            -keystore $devSigningPath -storepass $devSigningPassword -keypass $devSigningPassword `
+            -keyalg RSA -keysize 2048 -dname "CN=TPV ERP DEV Fiscal,SERIALNUMBER=DEV-00000000" `
+            -validity 365 -noprompt | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $devSigningPath)) {
+            throw "No se pudo generar el certificado RSA temporal del laboratorio fiscal."
+        }
+    }
+
     Write-Host "Creando base temporal $databaseName..."
     [void](Invoke-Psql -Database "postgres" -User $PostgresAdminUser -Password $PostgresAdminPassword `
         -Sql "create database `"$databaseName`" owner `"$DatabaseOwner`";")
@@ -248,8 +272,9 @@ try {
     $frontendOutLog = Join-Path $script:TempRoot "frontend.out.log"
     $frontendErrorLog = Join-Path $script:TempRoot "frontend.error.log"
 
+    $activeProfiles = if ($FiscalSandbox) { "dev,fiscal-dev" } else { "dev" }
     $backendEnvironment = @{
-        SPRING_PROFILES_ACTIVE = "dev"
+        SPRING_PROFILES_ACTIVE = $activeProfiles
         TPV_SERVER_ADDRESS = "127.0.0.1"
         TPV_SERVER_PORT = "$BackendPort"
         TPV_DB_URL = "jdbc:postgresql://${PostgresHost}:$PostgresPort/$databaseName"
@@ -261,6 +286,13 @@ try {
         TPV_KEY_DIRECTORY = (Join-Path $script:TempRoot "keys")
         TPV_VERIFACTU_SECRET_DIRECTORY = (Join-Path $script:TempRoot "verifactu")
         TPV_VERIFACTU_SECRET_ACL_MODE = "PORTABLE"
+        TPV_VERIFACTU_RUNTIME_CLASS = $(if ($FiscalSandbox) { "SANDBOX" } else { "REAL" })
+        TPV_VERIFACTU_ENDPOINT_ENVIRONMENT = "TEST"
+        TPV_VERIFACTU_TRANSPORT_MODE = $(if ($FiscalSandbox) { "SIMULATED" } else { "AEAT" })
+        TPV_VERIFACTU_DEV_SANDBOX_ENABLED = $(if ($FiscalSandbox) { "true" } else { "false" })
+        TPV_VERIFACTU_DEV_SIGNING_PKCS12 = $(if ($FiscalSandbox) { $devSigningPath } else { "" })
+        TPV_VERIFACTU_DEV_SIGNING_PASSWORD = $(if ($FiscalSandbox) { $devSigningPassword } else { "" })
+        TPV_VERIFACTU_WORKER_ENABLED = "false"
         TPV_DOCUMENT_TEMPLATE_DIRECTORY = (Join-Path $script:TempRoot "document-templates")
         TPV_PRODUCT_IMAGE_DIRECTORY = (Join-Path $script:TempRoot "product-images")
     }
@@ -300,9 +332,9 @@ try {
         -TimeoutSeconds 60 -ServiceName "APP VENTA"
 
     $migrationApplied = Invoke-Psql -Database $databaseName -User $DatabaseOwner -Password $DatabasePassword `
-        -Sql "select exists (select 1 from flyway_schema_history where version = '147' and success);"
+        -Sql "select exists (select 1 from flyway_schema_history where version = '187' and success);"
     if ($migrationApplied -ne "t") {
-        throw "La migracion V147 no consta como aplicada correctamente en la base temporal."
+        throw "La migracion V187 no consta como aplicada correctamente en la base temporal."
     }
 
     $loginBody = @{
@@ -324,7 +356,7 @@ try {
     Write-Host "Base temporal: $databaseName"
 
     if ($CheckOnly) {
-        Write-Host "Comprobacion automatica correcta: salud, migracion V147, terminal y login verificados." -ForegroundColor Green
+        Write-Host "Comprobacion automatica correcta: salud, migracion V187, terminal y login verificados." -ForegroundColor Green
     }
     else {
         Write-Host ""
