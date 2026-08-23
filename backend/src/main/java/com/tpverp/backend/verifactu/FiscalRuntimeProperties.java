@@ -20,6 +20,9 @@ public class FiscalRuntimeProperties {
     private final FiscalMode sandboxInitialMode;
     private final String devSigningPkcs12;
     private final String devSigningPassword;
+    private final String producerName;
+    private final String producerTaxId;
+    private final String systemVersion;
 
     public FiscalRuntimeProperties(Environment environment) {
         runtimeClass = enumValue(environment, "tpv.verifactu.runtime-class",
@@ -38,6 +41,9 @@ public class FiscalRuntimeProperties {
                 FiscalMode.VERIFACTU);
         devSigningPkcs12 = environment.getProperty("tpv.verifactu.dev-signing-pkcs12", "");
         devSigningPassword = environment.getProperty("tpv.verifactu.dev-signing-password", "");
+        producerName = environment.getProperty("tpv.verifactu.producer-name", "");
+        producerTaxId = environment.getProperty("tpv.verifactu.producer-tax-id", "");
+        systemVersion = environment.getProperty("tpv.verifactu.system-version", "");
         validate();
     }
 
@@ -86,6 +92,26 @@ public class FiscalRuntimeProperties {
         return devSigningPassword;
     }
 
+    /**
+     * REAL production can only be enabled after replacing the clearly fictitious
+     * laboratory identity with the declared fiscal software identity.
+     */
+    public void requireProductionIdentity() {
+        if (runtimeClass != FiscalRuntimeClass.REAL) {
+            return;
+        }
+        rejectPlaceholder("tpv.verifactu.producer-name", producerName,
+                value -> value.toUpperCase(Locale.ROOT).contains("DEV")
+                        || value.toUpperCase(Locale.ROOT).contains("TEST")
+                        || value.toUpperCase(Locale.ROOT).contains("PLACEHOLDER"));
+        rejectPlaceholder("tpv.verifactu.producer-tax-id", producerTaxId,
+                value -> value.equalsIgnoreCase("B00000000")
+                        || value.equalsIgnoreCase("00000000T"));
+        rejectPlaceholder("tpv.verifactu.system-version", systemVersion,
+                value -> value.equalsIgnoreCase("0.0.1")
+                        || value.toUpperCase(Locale.ROOT).contains("SNAPSHOT"));
+    }
+
     private void validate() {
         if (runtimeClass == FiscalRuntimeClass.SANDBOX && !sandboxEnabled) {
             throw new IllegalStateException(
@@ -107,6 +133,19 @@ public class FiscalRuntimeProperties {
                 && !aeatTestNetworkEnabled) {
             throw new IllegalStateException(
                     "AEAT TEST en SANDBOX requiere opt-in de red explicito");
+        }
+        if (runtimeClass == FiscalRuntimeClass.REAL
+                && endpointEnvironment == FiscalEndpointEnvironment.PRODUCTION) {
+            requireProductionIdentity();
+        }
+    }
+
+    private static void rejectPlaceholder(String key, String value,
+            java.util.function.Predicate<String> predicate) {
+        var normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank() || predicate.test(normalized)) {
+            throw new IllegalStateException(
+                    key + " contiene una identidad provisional; se bloquea REAL/PRODUCTION");
         }
     }
 

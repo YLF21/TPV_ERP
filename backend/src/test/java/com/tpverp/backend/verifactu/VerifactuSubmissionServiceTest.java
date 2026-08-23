@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -39,6 +40,7 @@ class VerifactuSubmissionServiceTest {
     @Mock private FiscalCorrectionCompletionService corrections;
     @Mock private CompanyRepository companies;
     @Mock private InstallationRepository installations;
+    @Mock private FiscalRuntimeProperties runtime;
 
     private FiscalRecord record;
     private VerifactuSubmissionService service;
@@ -50,7 +52,7 @@ class VerifactuSubmissionServiceTest {
                 VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         lenient().when(endpoints.resolve(VerifactuEndpointMode.TEST))
                 .thenReturn("https://aeat.test/soap");
-        when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
+        lenient().when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
         lenient().when(soap.wrap("<sfLR:RegFactuSistemaFacturacion/>"))
                 .thenReturn("<soap/>");
         service = new VerifactuSubmissionService(
@@ -84,6 +86,17 @@ class VerifactuSubmissionServiceTest {
         assertThat(request.getValue().systemInfo().manufacturerTaxId()).isEqualTo("B12345674");
         assertThat(request.getValue().systemInfo().version()).isEqualTo("4.2.7");
         assertThat(request.getValue().systemInfo().installationNumber()).isEqualTo("INST-DEV-001");
+    }
+
+    @Test
+    void rechazaIdentidadProvisionalCuandoElRuntimeEsReal() {
+        when(runtime.isSandbox()).thenReturn(false);
+        service.setFiscalRuntimeProperties(runtime);
+
+        assertThatThrownBy(() -> service.submit(record))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("identidad fiscal persistida");
+        verify(xml, never()).batchXml(any());
     }
 
     @Test
