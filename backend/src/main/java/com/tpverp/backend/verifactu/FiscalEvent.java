@@ -21,6 +21,8 @@ public class FiscalEvent {
     private UUID companyId;
     @Column(name = "instalacion_id", nullable = false)
     private UUID installationId;
+    @Column(name = "version_sistema_id")
+    private UUID systemVersionId;
     @Column(name = "secuencia", nullable = false)
     private long sequence;
     @Enumerated(EnumType.STRING)
@@ -46,12 +48,14 @@ public class FiscalEvent {
 
     protected FiscalEvent() {}
 
-    public FiscalEvent(UUID companyId, UUID installationId, long sequence, FiscalEventType type,
+    public FiscalEvent(UUID companyId, UUID installationId, UUID systemVersionId, long sequence,
+            FiscalEventType type,
             FiscalMode fiscalMode, Instant generatedAt, String previousHash, String hash,
             String unsignedXml, String signedXml, String xmlHash, Instant createdAt) {
         id = UUID.randomUUID();
         this.companyId = Objects.requireNonNull(companyId, "companyId");
         this.installationId = Objects.requireNonNull(installationId, "installationId");
+        this.systemVersionId = systemVersionId;
         this.sequence = sequence;
         this.type = Objects.requireNonNull(type, "type");
         this.fiscalMode = Objects.requireNonNull(fiscalMode, "fiscalMode");
@@ -64,9 +68,18 @@ public class FiscalEvent {
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
     }
 
+    /** Compatibility constructor for legacy event fixtures without a frozen SIF identity. */
+    public FiscalEvent(UUID companyId, UUID installationId, long sequence, FiscalEventType type,
+            FiscalMode fiscalMode, Instant generatedAt, String previousHash, String hash,
+            String unsignedXml, String signedXml, String xmlHash, Instant createdAt) {
+        this(companyId, installationId, null, sequence, type, fiscalMode, generatedAt,
+                previousHash, hash, unsignedXml, signedXml, xmlHash, createdAt);
+    }
+
     public UUID getId() { return id; }
     public UUID getCompanyId() { return companyId; }
     public UUID getInstallationId() { return installationId; }
+    public UUID getSystemVersionId() { return systemVersionId; }
     public long getSequence() { return sequence; }
     public FiscalEventType getType() { return type; }
     public FiscalMode getFiscalMode() { return fiscalMode; }

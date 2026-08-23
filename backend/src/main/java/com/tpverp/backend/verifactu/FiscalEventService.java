@@ -16,11 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class FiscalEventService {
     private final CompanyRepository companies;
     private final InstallationRepository installations;
+    private final FiscalSystemVersionRepository systemVersions;
     private final FiscalEventChainRepository chains;
     private final FiscalEventRepository events;
     private final FiscalEventXmlService xml;
     private final FiscalXadesSigner signer;
     private final FiscalOperatingClockService operatingClock;
+    private final FiscalRuntimeProperties runtime;
     private final String producerName;
     private final String producerTaxId;
     private final String systemName;
@@ -28,9 +30,11 @@ public class FiscalEventService {
     private final String systemVersion;
 
     public FiscalEventService(CompanyRepository companies, InstallationRepository installations,
+            FiscalSystemVersionRepository systemVersions,
             FiscalEventChainRepository chains, FiscalEventRepository events,
             FiscalEventXmlService xml, FiscalXadesSigner signer,
             FiscalOperatingClockService operatingClock,
+            FiscalRuntimeProperties runtime,
             @Value("${tpv.verifactu.producer-name:TPV ERP DEV}") String producerName,
             @Value("${tpv.verifactu.producer-tax-id:B00000000}") String producerTaxId,
             @Value("${tpv.verifactu.system-name:TPV ERP}") String systemName,
@@ -38,11 +42,13 @@ public class FiscalEventService {
             @Value("${tpv.verifactu.system-version:4.1.0}") String systemVersion) {
         this.companies = companies;
         this.installations = installations;
+        this.systemVersions = systemVersions;
         this.chains = chains;
         this.events = events;
         this.xml = xml;
         this.signer = signer;
         this.operatingClock = operatingClock;
+        this.runtime = runtime;
         this.producerName = producerName;
         this.producerTaxId = producerTaxId;
         this.systemName = systemName;
@@ -89,6 +95,21 @@ public class FiscalEventService {
         var offset = now.atZone(ZoneId.systemDefault()).toOffsetDateTime();
         var system = new VerifactuSystemInfo(producerName, producerTaxId, systemName, systemId,
                 systemVersion, installation.getReferencia(), false, true, false);
+        var frozenSystemVersion = systemVersions
+                .findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
+                        companyId, installationId, systemVersion, installation.getReferencia())
+                .map(existing -> {
+                    if (!existing.matches(producerTaxId, producerName, systemName, systemId,
+                            systemVersion, installation.getReferencia(), runtime.isSandbox())) {
+                        throw new IllegalStateException(
+                                "La identidad fiscal no coincide con la version SIF congelada");
+                    }
+                    return existing;
+                })
+                .orElseGet(() -> systemVersions.save(new FiscalSystemVersion(
+                        companyId, installationId, producerTaxId, producerName, systemName,
+                        systemId, systemVersion, installation.getReferencia(), null,
+                        runtime.isSandbox(), now)));
         chains.insertIfMissing(UUID.randomUUID(), companyId, installationId, now);
         var chain = chains.findForUpdate(companyId, installationId)
                 .orElseThrow(() -> new IllegalStateException("Cadena de eventos no encontrada"));
@@ -104,7 +125,8 @@ public class FiscalEventService {
         var unsignedXml = xml.unsignedXml(system, company.getRazonSocial(), company.getTaxId(),
                 type, normalizedDetail, offset, previousHash, hash);
         var signedXml = signer.signEvent(companyId, installationId, unsignedXml);
-        var event = new FiscalEvent(companyId, installationId, sequence, type, mode, now,
+        var event = new FiscalEvent(companyId, installationId, frozenSystemVersion.getId(),
+                sequence, type, mode, now,
                 previousHash, hash, unsignedXml, signedXml, sha256(signedXml), now);
         events.save(event);
         chain.advance(sequence, hash, now);
