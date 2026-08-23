@@ -17,6 +17,7 @@ public class FiscalEventService {
     private final CompanyRepository companies;
     private final InstallationRepository installations;
     private final FiscalSystemVersionRepository systemVersions;
+    private final FiscalRecordRepository records;
     private final FiscalEventChainRepository chains;
     private final FiscalEventRepository events;
     private final FiscalEventXmlService xml;
@@ -31,6 +32,7 @@ public class FiscalEventService {
 
     public FiscalEventService(CompanyRepository companies, InstallationRepository installations,
             FiscalSystemVersionRepository systemVersions,
+            FiscalRecordRepository records,
             FiscalEventChainRepository chains, FiscalEventRepository events,
             FiscalEventXmlService xml, FiscalXadesSigner signer,
             FiscalOperatingClockService operatingClock,
@@ -43,6 +45,7 @@ public class FiscalEventService {
         this.companies = companies;
         this.installations = installations;
         this.systemVersions = systemVersions;
+        this.records = records;
         this.chains = chains;
         this.events = events;
         this.xml = xml;
@@ -123,7 +126,10 @@ public class FiscalEventService {
             throw new IllegalArgumentException("OtrosDatosEvento no puede superar 100 caracteres");
         }
         var unsignedXml = xml.unsignedXml(system, company.getRazonSocial(), company.getTaxId(),
-                type, normalizedDetail, offset, previousHash, hash);
+                type, normalizedDetail, offset, previousHash, hash,
+                type == FiscalEventType.SUMMARY
+                        ? summary(companyId, installationId, now)
+                        : FiscalEventSummary.empty());
         var signedXml = signer.signEvent(companyId, installationId, unsignedXml);
         var event = new FiscalEvent(companyId, installationId, frozenSystemVersion.getId(),
                 sequence, type, mode, now,
@@ -137,6 +143,45 @@ public class FiscalEventService {
     @Transactional(readOnly = true)
     public List<FiscalEvent> findTop50(UUID companyId) {
         return events.findTop50ByCompanyIdOrderByGeneratedAtDesc(companyId);
+    }
+
+    private FiscalEventSummary summary(UUID companyId, UUID installationId, Instant now) {
+        var fiscalEvents = events
+                .findAllByCompanyIdAndInstallationIdOrderBySequenceAsc(companyId, installationId);
+        var previousSummaryAt = fiscalEvents
+                .stream()
+                .filter(event -> event.getType() == FiscalEventType.SUMMARY)
+                .map(FiscalEvent::getGeneratedAt)
+                .max(Instant::compareTo)
+                .orElse(Instant.MIN);
+        var eventCount = fiscalEvents
+                .stream()
+                .filter(event -> event.getType() != FiscalEventType.SUMMARY)
+                .filter(event -> event.getGeneratedAt().isAfter(previousSummaryAt)
+                        && !event.getGeneratedAt().isAfter(now))
+                .count();
+        var periodRecords = records
+                .findAllByCompanyIdAndInstallationIdOrderBySequence(companyId, installationId)
+                .stream()
+                .filter(record -> record.getFiscalMode() == FiscalMode.NO_VERIFACTU)
+                .filter(record -> record.getGeneratedAt().isAfter(previousSummaryAt)
+                        && !record.getGeneratedAt().isAfter(now))
+                .toList();
+        var altaRecords = periodRecords.stream()
+                .filter(record -> record.getOperation() == FiscalRecordOperation.ALTA)
+                .toList();
+        var tax = altaRecords.stream()
+                .map(FiscalRecord::getTotalTax)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        var amount = altaRecords.stream()
+                .map(FiscalRecord::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        var cancellations = periodRecords.stream()
+                .filter(record -> record.getOperation() == FiscalRecordOperation.ANULACION)
+                .count();
+        return new FiscalEventSummary(eventCount, altaRecords.size(), tax, amount, cancellations);
     }
 
     private static String sha256(String value) {

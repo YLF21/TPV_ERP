@@ -23,10 +23,19 @@ public class FiscalEventXmlService {
     public String unsignedXml(VerifactuSystemInfo system, String obligatedName,
             String obligatedTaxId, FiscalEventType type, String detail,
             OffsetDateTime generatedAt, String previousHash, String hash) {
+        return unsignedXml(system, obligatedName, obligatedTaxId, type, detail, generatedAt,
+                previousHash, hash, FiscalEventSummary.empty());
+    }
+
+    public String unsignedXml(VerifactuSystemInfo system, String obligatedName,
+            String obligatedTaxId, FiscalEventType type, String detail,
+            OffsetDateTime generatedAt, String previousHash, String hash,
+            FiscalEventSummary summary) {
         Objects.requireNonNull(system, "system");
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(generatedAt, "generatedAt");
         Objects.requireNonNull(hash, "hash");
+        Objects.requireNonNull(summary, "summary");
         try {
             var factory = DocumentBuilderFactory.newInstance();
             var document = factory.newDocumentBuilder().newDocument();
@@ -49,7 +58,8 @@ public class FiscalEventXmlService {
             eventText(document, obligated, "NIF", obligatedTaxId);
             eventText(document, event, "FechaHoraHusoGenEvento", generatedAt.toString());
             eventText(document, event, "TipoEvento", type.code());
-            eventData(document, event, type, detail, generatedAt, obligatedTaxId, previousHash, hash);
+            eventData(document, event, type, detail, generatedAt, obligatedTaxId, previousHash,
+                    hash, summary);
             if (detail != null && !detail.isBlank()) {
                 eventText(document, event, "OtrosDatosEvento", detail.trim());
             }
@@ -82,7 +92,7 @@ public class FiscalEventXmlService {
 
     private static void eventData(Document document, Element event, FiscalEventType type,
             String detail, OffsetDateTime generatedAt, String obligatedTaxId,
-            String previousHash, String hash) {
+            String previousHash, String hash, FiscalEventSummary summary) {
         switch (type) {
             case BILLING_ANOMALY_SCAN_STARTED -> launchData(document, event,
                     "LanzamientoProcesoDeteccionAnomaliasRegFacturacion", "RegFacturacion", "Facturacion");
@@ -96,7 +106,7 @@ public class FiscalEventXmlService {
                     obligatedTaxId, previousHash == null ? hash : previousHash);
             case EVENT_EXPORT -> eventExportData(document, event, generatedAt,
                     previousHash == null ? hash : previousHash);
-            case SUMMARY -> summaryData(document, event);
+            case SUMMARY -> summaryData(document, event, summary);
             default -> { }
         }
     }
@@ -123,16 +133,22 @@ public class FiscalEventXmlService {
                 detail == null || detail.isBlank() ? "Anomalia detectada" : detail);
     }
 
-    private static void summaryData(Document document, Element event) {
+    private static void summaryData(Document document, Element event, FiscalEventSummary totals) {
         var data = child(document, event, "DatosPropiosEvento");
         var summary = child(document, data, "ResumenEventos");
         var type = child(document, summary, "TipoEvento");
         eventText(document, type, "TipoEvento", "01");
-        eventText(document, type, "NumeroDeEventos", "0");
-        eventText(document, summary, "NumeroDeRegistrosFacturacionAltaGenerados", "0");
-        eventText(document, summary, "SumaCuotaTotalAlta", "0");
-        eventText(document, summary, "SumaImporteTotalAlta", "0");
-        eventText(document, summary, "NumeroDeRegistrosFacturacionAnulacionGenerados", "0");
+        eventText(document, type, "NumeroDeEventos", Long.toString(totals.eventCount()));
+        eventText(document, summary, "NumeroDeRegistrosFacturacionAltaGenerados",
+                Long.toString(totals.altaCount()));
+        eventText(document, summary, "SumaCuotaTotalAlta", money(totals.altaTaxTotal()));
+        eventText(document, summary, "SumaImporteTotalAlta", money(totals.altaAmountTotal()));
+        eventText(document, summary, "NumeroDeRegistrosFacturacionAnulacionGenerados",
+                Long.toString(totals.cancellationCount()));
+    }
+
+    private static String money(java.math.BigDecimal value) {
+        return value.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
 
     private static void billingExportData(Document document, Element event,

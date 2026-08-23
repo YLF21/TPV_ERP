@@ -3,6 +3,7 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
 import org.xml.sax.InputSource;
@@ -52,5 +53,31 @@ class FiscalEventXmlServiceTest {
         assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
                 "NumeroDeRegistrosFacturacionProcesadosSobreIntegridadHuellas")
                 .item(0).getTextContent()).isEqualTo("0");
+    }
+
+    @Test
+    void serializaTotalesRealesEnResumenDeSeisHoras() throws Exception {
+        var system = new VerifactuSystemInfo(
+                "TPV ERP DEV", "B00000000", "TPV ERP", "01", "4.1.0", "DEV-1",
+                false, true, false);
+        var xml = service.unsignedXml(system, "Empresa DEV", "B00000000",
+                FiscalEventType.SUMMARY, null,
+                OffsetDateTime.parse("2026-08-23T19:00:00+01:00"), "A".repeat(64),
+                "B".repeat(64), new FiscalEventSummary(4, 2,
+                        new BigDecimal("3.10"), new BigDecimal("25.40"), 1));
+
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        var document = factory.newDocumentBuilder()
+                .parse(new InputSource(new StringReader(xml)));
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "NumeroDeEventos").item(0).getTextContent()).isEqualTo("4");
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "SumaCuotaTotalAlta").item(0).getTextContent()).isEqualTo("3.10");
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "SumaImporteTotalAlta").item(0).getTextContent()).isEqualTo("25.40");
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "NumeroDeRegistrosFacturacionAnulacionGenerados").item(0).getTextContent())
+                .isEqualTo("1");
     }
 }

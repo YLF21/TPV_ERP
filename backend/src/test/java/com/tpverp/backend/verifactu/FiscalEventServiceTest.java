@@ -26,6 +26,7 @@ class FiscalEventServiceTest {
         var companies = mock(CompanyRepository.class);
         var installations = mock(InstallationRepository.class);
         var systemVersions = mock(FiscalSystemVersionRepository.class);
+        var records = mock(FiscalRecordRepository.class);
         var chains = mock(FiscalEventChainRepository.class);
         var events = mock(FiscalEventRepository.class);
         var signer = mock(FiscalXadesSigner.class);
@@ -47,7 +48,7 @@ class FiscalEventServiceTest {
         when(signer.signEvent(any(), any(), any())).thenReturn("<signed/>");
         when(events.save(any(FiscalEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var service = new FiscalEventService(companies, installations, systemVersions, chains,
+        var service = new FiscalEventService(companies, installations, systemVersions, records, chains,
                 events, new FiscalEventXmlService(), signer, operatingClock, runtime,
                 "TPV ERP DEV", "B00000000", "TPV ERP", "TPVERP", "4.1.0");
 
