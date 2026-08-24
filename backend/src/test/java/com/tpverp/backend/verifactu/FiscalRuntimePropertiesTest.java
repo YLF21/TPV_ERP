@@ -50,4 +50,18 @@ class FiscalRuntimePropertiesTest {
         assertThatCode(() -> new FiscalRuntimeProperties(environment))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void bloqueaAeatTestSinOptInDeRed() {
+        var environment = new MockEnvironment()
+                .withProperty("tpv.verifactu.runtime-class", "REAL")
+                .withProperty("tpv.verifactu.endpoint-environment", "TEST")
+                .withProperty("tpv.verifactu.transport-mode", "AEAT");
+
+        var runtime = new FiscalRuntimeProperties(environment);
+
+        assertThatThrownBy(runtime::requireAeatTestNetwork)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("opt-in");
+    }
 }

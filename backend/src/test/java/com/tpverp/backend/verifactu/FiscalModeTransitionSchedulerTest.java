@@ -23,10 +23,11 @@ class FiscalModeTransitionSchedulerTest {
         var transitions = mock(FiscalModeTransitionRepository.class);
         var configurations = mock(VerifactuConfigurationRepository.class);
         var events = mock(FiscalEventService.class);
-        var runtime = new FiscalRuntimeProperties(new MockEnvironment()
-                .withProperty("tpv.verifactu.runtime-class", "REAL")
-                .withProperty("tpv.verifactu.endpoint-environment", "TEST")
-                .withProperty("tpv.verifactu.transport-mode", "AEAT"));
+                var runtime = new FiscalRuntimeProperties(new MockEnvironment()
+                  .withProperty("tpv.verifactu.runtime-class", "REAL")
+                  .withProperty("tpv.verifactu.endpoint-environment", "TEST")
+                  .withProperty("tpv.verifactu.transport-mode", "AEAT")
+                  .withProperty("tpv.verifactu.aeat-test-network-enabled", "true"));
         var configuration = new VerifactuConfiguration(companyId);
         configuration.changeMode(FiscalMode.VERIFACTU, Instant.parse("2027-01-01T00:00:00Z"), null);
         var scheduled = new FiscalModeTransition(companyId, installationId,

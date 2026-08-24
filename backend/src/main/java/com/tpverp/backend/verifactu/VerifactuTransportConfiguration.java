@@ -20,8 +20,10 @@ public class VerifactuTransportConfiguration {
     public VerifactuTransport verifactuTransport(
             VerifactuSubmissionPropertiesFactory propertiesFactory,
             ManagedCertificateKeyStoreFactory keyStores,
-            VerifactuMutualTlsHttpClientFactory clients) {
-        return new ConfiguredVerifactuTransport(propertiesFactory, keyStores, clients);
+            VerifactuMutualTlsHttpClientFactory clients,
+            FiscalRuntimeProperties runtime) {
+        return new ConfiguredVerifactuTransport(propertiesFactory, keyStores, clients,
+                new VerifactuEndpointResolver(), runtime);
     }
     // Registers the real transport using the configured certificate for mTLS.
 

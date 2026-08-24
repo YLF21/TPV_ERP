@@ -131,10 +131,11 @@ class FiscalModeTransitionServiceTest {
         var store = mock(Store.class);
         when(store.getTimezone()).thenReturn("Europe/Madrid");
         when(fixture.organization.currentStore()).thenReturn(store);
-        var runtime = new FiscalRuntimeProperties(new MockEnvironment()
-                .withProperty("tpv.verifactu.runtime-class", "REAL")
-                .withProperty("tpv.verifactu.endpoint-environment", "TEST")
-                .withProperty("tpv.verifactu.transport-mode", "AEAT"));
+                var runtime = new FiscalRuntimeProperties(new MockEnvironment()
+                  .withProperty("tpv.verifactu.runtime-class", "REAL")
+                  .withProperty("tpv.verifactu.endpoint-environment", "TEST")
+                  .withProperty("tpv.verifactu.transport-mode", "AEAT")
+                  .withProperty("tpv.verifactu.aeat-test-network-enabled", "true"));
         var service = new FiscalModeTransitionService(
                 fixture.organization, fixture.installations, fixture.configurations,
                 fixture.transitions, runtime, fixture.events);

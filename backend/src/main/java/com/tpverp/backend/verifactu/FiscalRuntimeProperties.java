@@ -132,7 +132,7 @@ public class FiscalRuntimeProperties {
         if (isAeatTest() && runtimeClass == FiscalRuntimeClass.SANDBOX
                 && !aeatTestNetworkEnabled) {
             throw new IllegalStateException(
-                    "AEAT TEST en SANDBOX requiere opt-in de red explicito");
+                    "AEAT TEST requiere opt-in de red explicito");
         }
         if (runtimeClass == FiscalRuntimeClass.REAL
                 && endpointEnvironment == FiscalEndpointEnvironment.PRODUCTION) {
@@ -146,6 +146,14 @@ public class FiscalRuntimeProperties {
         if (normalized.isBlank() || predicate.test(normalized)) {
             throw new IllegalStateException(
                     key + " contiene una identidad provisional; se bloquea REAL/PRODUCTION");
+        }
+    }
+
+    /** Blocks any certificate-backed AEAT TEST request until explicitly enabled. */
+    public void requireAeatTestNetwork() {
+        if (isAeatTest() && !aeatTestNetworkEnabled) {
+            throw new IllegalStateException(
+                    "AEAT TEST requiere opt-in de red explicito");
         }
     }
 
