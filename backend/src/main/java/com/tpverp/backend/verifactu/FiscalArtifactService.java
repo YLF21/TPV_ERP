@@ -62,7 +62,8 @@ public class FiscalArtifactService {
 
     @Transactional
     public void create(FiscalRecord record) {
-        if (record == null || artifacts.existsById(record.getId())
+        if (record == null || record.getFiscalMode() == FiscalMode.PRE_SIF
+                || artifacts.existsById(record.getId())
                 || printSnapshots.existsById(record.getId())) {
             return;
         }

@@ -96,6 +96,23 @@ class FiscalArtifactServiceTest {
                 .hasMessageContaining("identidad fiscal");
     }
 
+    @Test
+    void noCreaArtefactoFiscalParaCompatibilidadPreSif() {
+        var legacy = new FiscalRecord(record.chainId(), record.getCompanyId(),
+                record.getInstallationId(), record.getStoreId(), record.getDocumentId(),
+                record.getSequence(), record.getOperation(), record.getDocumentType(),
+                record.getNumber(), record.getIssueDate(), record.getGeneratedAt(),
+                record.getTimezone(), record.getIssuerTaxId(), record.getTotalTax(),
+                record.getTotalAmount(), record.getPreviousHash(), record.getHash(),
+                record.getSnapshotHash(), record.getSnapshot(), record.getFormatVersion(),
+                record.getAlgorithmVersion(), record.getApplicationVersion(), FiscalMode.PRE_SIF);
+
+        service.create(legacy);
+
+        org.mockito.Mockito.verifyNoInteractions(artifacts, printSnapshots, companies,
+                installations, systemVersions, xml, snapshots, signer);
+    }
+
     private static FiscalPrintSnapshot snapshot() {
         return new FiscalPrintSnapshot("AEAT_QR_0.5.0", "4.2.7", FiscalMode.VERIFACTU,
                 FiscalEndpointEnvironment.TEST,
