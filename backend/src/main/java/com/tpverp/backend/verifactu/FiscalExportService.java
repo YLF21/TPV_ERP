@@ -57,7 +57,7 @@ public class FiscalExportService {
                     .toList();
             if (mode == FiscalMode.NO_VERIFACTU) {
                 var event = eventService.create(company.getId(), installation.getId(), mode,
-                        FiscalEventType.BILLING_EXPORT, null);
+                        FiscalEventType.BILLING_EXPORT, null, billingSummary(fiscalRecords));
                 eventId = event.getId();
             }
         } else {
@@ -66,7 +66,9 @@ public class FiscalExportService {
             xml = fiscalEvents.stream().map(FiscalEvent::getSignedXml).toList();
             if (mode == FiscalMode.NO_VERIFACTU) {
                 var event = eventService.create(company.getId(), installation.getId(), mode,
-                        FiscalEventType.EVENT_EXPORT, null);
+                        FiscalEventType.EVENT_EXPORT, null,
+                        new FiscalEventSummary(fiscalEvents.size(), 0,
+                                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, 0));
                 eventId = event.getId();
             }
         }
@@ -83,5 +85,23 @@ public class FiscalExportService {
         } catch (Exception exception) {
             throw new IllegalStateException("SHA-256 no disponible", exception);
         }
+    }
+
+    private static FiscalEventSummary billingSummary(List<FiscalRecord> records) {
+        var altas = records.stream()
+                .filter(record -> record.getOperation() == FiscalRecordOperation.ALTA)
+                .toList();
+        var tax = altas.stream()
+                .map(FiscalRecord::getTotalTax)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        var amount = altas.stream()
+                .map(FiscalRecord::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        var cancellations = records.stream()
+                .filter(record -> record.getOperation() == FiscalRecordOperation.ANULACION)
+                .count();
+        return new FiscalEventSummary(0, altas.size(), tax, amount, cancellations);
     }
 }

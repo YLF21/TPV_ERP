@@ -80,4 +80,31 @@ class FiscalEventXmlServiceTest {
                 "NumeroDeRegistrosFacturacionAnulacionGenerados").item(0).getTextContent())
                 .isEqualTo("1");
     }
+
+    @Test
+    void serializaContadoresRealesEnExportacionDeFacturacion() throws Exception {
+        var system = new VerifactuSystemInfo(
+                "TPV ERP DEV", "B00000000", "TPV ERP", "01", "4.1.0", "DEV-1",
+                false, true, false);
+        var xml = service.unsignedXml(system, "Empresa DEV", "B00000000",
+                FiscalEventType.BILLING_EXPORT, null,
+                OffsetDateTime.parse("2026-08-23T19:00:00+01:00"), null,
+                "B".repeat(64), new FiscalEventSummary(0, 3,
+                        new BigDecimal("21.30"), new BigDecimal("123.45"), 2));
+
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        var document = factory.newDocumentBuilder()
+                .parse(new InputSource(new StringReader(xml)));
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "NumeroDeRegistrosFacturacionAltaExportados").item(0).getTextContent())
+                .isEqualTo("3");
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "SumaCuotaTotalAlta").item(0).getTextContent()).isEqualTo("21.30");
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "SumaImporteTotalAlta").item(0).getTextContent()).isEqualTo("123.45");
+        assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
+                "NumeroDeRegistrosFacturacionAnulacionExportados").item(0).getTextContent())
+                .isEqualTo("2");
+    }
 }

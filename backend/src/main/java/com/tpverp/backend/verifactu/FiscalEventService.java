@@ -63,7 +63,14 @@ public class FiscalEventService {
     @Transactional
     public FiscalEvent create(UUID companyId, UUID installationId, FiscalMode mode,
             FiscalEventType type, String detail) {
-        return createAt(companyId, installationId, mode, type, detail, Instant.now());
+        return createAt(companyId, installationId, mode, type, detail, Instant.now(), null);
+    }
+
+    /** Creates an event with export counters frozen into its signed XML. */
+    @Transactional
+    public FiscalEvent create(UUID companyId, UUID installationId, FiscalMode mode,
+            FiscalEventType type, String detail, FiscalEventSummary data) {
+        return createAt(companyId, installationId, mode, type, detail, Instant.now(), data);
     }
 
     /** Emits one summary after six persisted operating hours, excluding downtime. */
@@ -78,13 +85,14 @@ public class FiscalEventService {
         if (latest == null || !operatingClock.observeAndCheckDue(companyId, installationId, now)) {
             return null;
         }
-        var summary = createAt(companyId, installationId, mode, FiscalEventType.SUMMARY, null, now);
+        var summary = createAt(companyId, installationId, mode, FiscalEventType.SUMMARY, null,
+                now, null);
         operatingClock.reset(companyId, installationId, now);
         return summary;
     }
 
     private FiscalEvent createAt(UUID companyId, UUID installationId, FiscalMode mode,
-            FiscalEventType type, String detail, Instant now) {
+            FiscalEventType type, String detail, Instant now, FiscalEventSummary data) {
         if (mode != FiscalMode.NO_VERIFACTU) {
             return null; // VERI*FACTU does not generate the mandatory event log.
         }
@@ -125,11 +133,11 @@ public class FiscalEventService {
         if (normalizedDetail != null && normalizedDetail.length() > 100) {
             throw new IllegalArgumentException("OtrosDatosEvento no puede superar 100 caracteres");
         }
+        var xmlData = type == FiscalEventType.SUMMARY
+                ? summary(companyId, installationId, now)
+                : data == null ? FiscalEventSummary.empty() : data;
         var unsignedXml = xml.unsignedXml(system, company.getRazonSocial(), company.getTaxId(),
-                type, normalizedDetail, offset, previousHash, hash,
-                type == FiscalEventType.SUMMARY
-                        ? summary(companyId, installationId, now)
-                        : FiscalEventSummary.empty());
+                type, normalizedDetail, offset, previousHash, hash, xmlData);
         var signedXml = signer.signEvent(companyId, installationId, unsignedXml);
         var event = new FiscalEvent(companyId, installationId, frozenSystemVersion.getId(),
                 sequence, type, mode, now,

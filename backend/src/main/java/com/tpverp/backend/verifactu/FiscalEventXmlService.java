@@ -103,9 +103,9 @@ public class FiscalEventXmlService {
             case EVENT_ANOMALY_DETECTED -> anomalyData(document, event,
                     "DeteccionAnomaliasRegEvento", detail);
             case BILLING_EXPORT -> billingExportData(document, event, generatedAt,
-                    obligatedTaxId, previousHash == null ? hash : previousHash);
+                    obligatedTaxId, previousHash == null ? hash : previousHash, summary);
             case EVENT_EXPORT -> eventExportData(document, event, generatedAt,
-                    previousHash == null ? hash : previousHash);
+                    previousHash == null ? hash : previousHash, summary);
             case SUMMARY -> summaryData(document, event, summary);
             default -> { }
         }
@@ -152,7 +152,7 @@ public class FiscalEventXmlService {
     }
 
     private static void billingExportData(Document document, Element event,
-            OffsetDateTime generatedAt, String taxId, String hash) {
+            OffsetDateTime generatedAt, String taxId, String hash, FiscalEventSummary totals) {
         var data = child(document, event, "DatosPropiosEvento");
         var export = child(document, data, "ExportacionRegFacturacionPeriodo");
         eventText(document, export, "FechaHoraHusoInicioPeriodoExport", generatedAt.toString());
@@ -161,10 +161,12 @@ public class FiscalEventXmlService {
                 generatedAt);
         billingExportRecord(document, export, "RegistroFacturacionFinalPeriodo", taxId, hash,
                 generatedAt);
-        eventText(document, export, "NumeroDeRegistrosFacturacionAltaExportados", "0");
-        eventText(document, export, "SumaCuotaTotalAlta", "0");
-        eventText(document, export, "SumaImporteTotalAlta", "0");
-        eventText(document, export, "NumeroDeRegistrosFacturacionAnulacionExportados", "0");
+        eventText(document, export, "NumeroDeRegistrosFacturacionAltaExportados",
+                Long.toString(totals.altaCount()));
+        eventText(document, export, "SumaCuotaTotalAlta", money(totals.altaTaxTotal()));
+        eventText(document, export, "SumaImporteTotalAlta", money(totals.altaAmountTotal()));
+        eventText(document, export, "NumeroDeRegistrosFacturacionAnulacionExportados",
+                Long.toString(totals.cancellationCount()));
         eventText(document, export, "RegistrosFacturacionExportadosDejanDeConservarse", "N");
     }
 
@@ -178,14 +180,15 @@ public class FiscalEventXmlService {
     }
 
     private static void eventExportData(Document document, Element event,
-            OffsetDateTime generatedAt, String hash) {
+            OffsetDateTime generatedAt, String hash, FiscalEventSummary totals) {
         var data = child(document, event, "DatosPropiosEvento");
         var export = child(document, data, "ExportacionRegEventoPeriodo");
         eventText(document, export, "FechaHoraHusoInicioPeriodoExport", generatedAt.toString());
         eventText(document, export, "FechaHoraHusoFinPeriodoExport", generatedAt.toString());
         eventRecord(document, export, "RegistroEventoInicialPeriodo", hash, generatedAt);
         eventRecord(document, export, "RegistroEventoFinalPeriodo", hash, generatedAt);
-        eventText(document, export, "NumeroDeRegEventoExportados", "0");
+        eventText(document, export, "NumeroDeRegEventoExportados",
+                Long.toString(totals.eventCount()));
         eventText(document, export, "RegEventoExportadosDejanDeConservarse", "N");
     }
 
