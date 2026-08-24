@@ -33,6 +33,27 @@ $script:DatabaseCreated = $false
 $script:TempRoot = $null
 $script:PsqlPath = $null
 $script:OriginalEnvironment = @{}
+$script:LatestMigrationVersion = $null
+
+function Get-LatestMigrationVersion {
+    $migrationDirectory = Join-Path $script:RepositoryRoot "backend\src\main\resources\db\migration"
+    if (-not (Test-Path -LiteralPath $migrationDirectory -PathType Container)) {
+        throw "No se encontro el directorio de migraciones Flyway en $migrationDirectory."
+    }
+
+    $versions = @(
+        Get-ChildItem -LiteralPath $migrationDirectory -Filter "V*.sql" -File | ForEach-Object {
+            if ($_.Name -match '^V(\d+)__') {
+                [int]$Matches[1]
+            }
+        }
+    )
+    if ($versions.Count -eq 0) {
+        throw "No se encontraron migraciones versionadas en $migrationDirectory."
+    }
+
+    return (($versions | Measure-Object -Maximum).Maximum.ToString())
+}
 
 function Assert-RequiredValue {
     param(
@@ -226,6 +247,7 @@ try {
     if (-not (Test-Path -LiteralPath $mavenWrapper)) {
         throw "No se encontro el wrapper Maven en $mavenWrapper."
     }
+    $script:LatestMigrationVersion = Get-LatestMigrationVersion
 
     $roleExists = Invoke-Psql -Database "postgres" -User $PostgresAdminUser `
         -Password $PostgresAdminPassword `
@@ -332,9 +354,9 @@ try {
         -TimeoutSeconds 60 -ServiceName "APP VENTA"
 
     $migrationApplied = Invoke-Psql -Database $databaseName -User $DatabaseOwner -Password $DatabasePassword `
-        -Sql "select exists (select 1 from flyway_schema_history where version = '193' and success);"
+        -Sql "select exists (select 1 from flyway_schema_history where version = '$($script:LatestMigrationVersion)' and success);"
     if ($migrationApplied -ne "t") {
-        throw "La migracion V193 no consta como aplicada correctamente en la base temporal."
+        throw "La migracion V$($script:LatestMigrationVersion) no consta como aplicada correctamente en la base temporal."
     }
 
     $loginBody = @{
@@ -356,7 +378,7 @@ try {
     Write-Host "Base temporal: $databaseName"
 
     if ($CheckOnly) {
-        Write-Host "Comprobacion automatica correcta: salud, migracion V193, terminal y login verificados." -ForegroundColor Green
+        Write-Host "Comprobacion automatica correcta: salud, migracion V$($script:LatestMigrationVersion), terminal y login verificados." -ForegroundColor Green
     }
     else {
         Write-Host ""
