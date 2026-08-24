@@ -32,6 +32,10 @@ public class FiscalRequiredSubmissionService {
         if (normalized.isBlank()) {
             throw new IllegalArgumentException("La referencia del requerimiento es obligatoria");
         }
+        if (normalized.length() > 18) {
+            throw new IllegalArgumentException(
+                    "La referencia del requerimiento no puede superar 18 caracteres");
+        }
         var company = organization.currentCompany();
         var installation = installations.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));

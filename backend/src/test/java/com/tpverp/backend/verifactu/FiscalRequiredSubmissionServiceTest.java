@@ -53,6 +53,16 @@ class FiscalRequiredSubmissionServiceTest {
     }
 
     @Test
+    void rechazaReferenciaQueNoCabeEnElContratoAeat() {
+        when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(
+                new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));
+
+        assertThatThrownBy(() -> service.register("R".repeat(19)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("18 caracteres");
+    }
+
+    @Test
     void exportaPeriodoYEnlazaElRequerimientoDeFormaAtomica() {
         when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(
                 new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));

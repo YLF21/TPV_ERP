@@ -16,7 +16,7 @@ public class FiscalRequiredSubmission {
     private UUID companyId;
     @Column(name = "instalacion_id", nullable = false)
     private UUID installationId;
-    @Column(name = "referencia", nullable = false, length = 100)
+    @Column(name = "referencia", nullable = false, length = 18)
     private String reference;
     @Column(name = "solicitado_en", nullable = false)
     private Instant requestedAt;
