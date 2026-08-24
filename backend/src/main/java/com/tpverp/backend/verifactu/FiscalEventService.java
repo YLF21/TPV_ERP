@@ -63,14 +63,25 @@ public class FiscalEventService {
     @Transactional
     public FiscalEvent create(UUID companyId, UUID installationId, FiscalMode mode,
             FiscalEventType type, String detail) {
-        return createAt(companyId, installationId, mode, type, detail, Instant.now(), null);
+        return createAt(companyId, installationId, mode, type, detail, Instant.now(), null,
+                FiscalExportContext.empty());
     }
 
     /** Creates an event with export counters frozen into its signed XML. */
     @Transactional
     public FiscalEvent create(UUID companyId, UUID installationId, FiscalMode mode,
             FiscalEventType type, String detail, FiscalEventSummary data) {
-        return createAt(companyId, installationId, mode, type, detail, Instant.now(), data);
+        return createAt(companyId, installationId, mode, type, detail, Instant.now(), data,
+                FiscalExportContext.empty());
+    }
+
+    /** Creates an event with counters and real period boundaries frozen into its XML. */
+    @Transactional
+    public FiscalEvent create(UUID companyId, UUID installationId, FiscalMode mode,
+            FiscalEventType type, String detail, FiscalEventSummary data,
+            FiscalExportContext exportContext) {
+        return createAt(companyId, installationId, mode, type, detail, Instant.now(), data,
+                exportContext);
     }
 
     /** Emits one summary after six persisted operating hours, excluding downtime. */
@@ -86,13 +97,14 @@ public class FiscalEventService {
             return null;
         }
         var summary = createAt(companyId, installationId, mode, FiscalEventType.SUMMARY, null,
-                now, null);
+                now, null, FiscalExportContext.empty());
         operatingClock.reset(companyId, installationId, now);
         return summary;
     }
 
     private FiscalEvent createAt(UUID companyId, UUID installationId, FiscalMode mode,
-            FiscalEventType type, String detail, Instant now, FiscalEventSummary data) {
+            FiscalEventType type, String detail, Instant now, FiscalEventSummary data,
+            FiscalExportContext exportContext) {
         if (mode != FiscalMode.NO_VERIFACTU) {
             return null; // VERI*FACTU does not generate the mandatory event log.
         }
@@ -137,7 +149,7 @@ public class FiscalEventService {
                 ? summary(companyId, installationId, now)
                 : data == null ? FiscalEventSummary.empty() : data;
         var unsignedXml = xml.unsignedXml(system, company.getRazonSocial(), company.getTaxId(),
-                type, normalizedDetail, offset, previousHash, hash, xmlData);
+                type, normalizedDetail, offset, previousHash, hash, xmlData, exportContext);
         var signedXml = signer.signEvent(companyId, installationId, unsignedXml);
         var event = new FiscalEvent(companyId, installationId, frozenSystemVersion.getId(),
                 sequence, type, mode, now,

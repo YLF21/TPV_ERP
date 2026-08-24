@@ -57,7 +57,8 @@ public class FiscalExportService {
                     .toList();
             if (mode == FiscalMode.NO_VERIFACTU) {
                 var event = eventService.create(company.getId(), installation.getId(), mode,
-                        FiscalEventType.BILLING_EXPORT, null, billingSummary(fiscalRecords));
+                        FiscalEventType.BILLING_EXPORT, null, billingSummary(fiscalRecords),
+                        billingContext(fiscalRecords));
                 eventId = event.getId();
             }
         } else {
@@ -68,7 +69,8 @@ public class FiscalExportService {
                 var event = eventService.create(company.getId(), installation.getId(), mode,
                         FiscalEventType.EVENT_EXPORT, null,
                         new FiscalEventSummary(fiscalEvents.size(), 0,
-                                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, 0));
+                                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, 0),
+                        eventContext(fiscalEvents));
                 eventId = event.getId();
             }
         }
@@ -103,5 +105,42 @@ public class FiscalExportService {
                 .filter(record -> record.getOperation() == FiscalRecordOperation.ANULACION)
                 .count();
         return new FiscalEventSummary(0, altas.size(), tax, amount, cancellations);
+    }
+
+    private static FiscalExportContext billingContext(List<FiscalRecord> records) {
+        if (records.isEmpty()) {
+            return FiscalExportContext.empty();
+        }
+        var first = records.get(0);
+        var last = records.get(records.size() - 1);
+        return new FiscalExportContext(
+                first.getGeneratedAt().atZone(java.time.ZoneId.of(first.getTimezone()))
+                        .toOffsetDateTime(),
+                last.getGeneratedAt().atZone(java.time.ZoneId.of(last.getTimezone()))
+                        .toOffsetDateTime(),
+                billingBoundary(first), billingBoundary(last), null, null);
+    }
+
+    private static FiscalExportContext.BillingBoundary billingBoundary(FiscalRecord record) {
+        return new FiscalExportContext.BillingBoundary(record.getIssuerTaxId(), record.getNumber(),
+                record.getIssueDate(), record.getHash());
+    }
+
+    private static FiscalExportContext eventContext(List<FiscalEvent> events) {
+        if (events.isEmpty()) {
+            return FiscalExportContext.empty();
+        }
+        var first = events.get(0);
+        var last = events.get(events.size() - 1);
+        return new FiscalExportContext(
+                first.getGeneratedAt().atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime(),
+                last.getGeneratedAt().atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime(),
+                null, null, eventBoundary(first), eventBoundary(last));
+    }
+
+    private static FiscalExportContext.EventBoundary eventBoundary(FiscalEvent event) {
+        return new FiscalExportContext.EventBoundary(event.getType().code(),
+                event.getGeneratedAt().atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime(),
+                event.getHash());
     }
 }

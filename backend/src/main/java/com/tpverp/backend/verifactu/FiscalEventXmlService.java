@@ -31,11 +31,20 @@ public class FiscalEventXmlService {
             String obligatedTaxId, FiscalEventType type, String detail,
             OffsetDateTime generatedAt, String previousHash, String hash,
             FiscalEventSummary summary) {
+        return unsignedXml(system, obligatedName, obligatedTaxId, type, detail, generatedAt,
+                previousHash, hash, summary, FiscalExportContext.empty());
+    }
+
+    public String unsignedXml(VerifactuSystemInfo system, String obligatedName,
+            String obligatedTaxId, FiscalEventType type, String detail,
+            OffsetDateTime generatedAt, String previousHash, String hash,
+            FiscalEventSummary summary, FiscalExportContext exportContext) {
         Objects.requireNonNull(system, "system");
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(generatedAt, "generatedAt");
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(summary, "summary");
+        Objects.requireNonNull(exportContext, "exportContext");
         try {
             var factory = DocumentBuilderFactory.newInstance();
             var document = factory.newDocumentBuilder().newDocument();
@@ -59,7 +68,7 @@ public class FiscalEventXmlService {
             eventText(document, event, "FechaHoraHusoGenEvento", generatedAt.toString());
             eventText(document, event, "TipoEvento", type.code());
             eventData(document, event, type, detail, generatedAt, obligatedTaxId, previousHash,
-                    hash, summary);
+                    hash, summary, exportContext);
             if (detail != null && !detail.isBlank()) {
                 eventText(document, event, "OtrosDatosEvento", detail.trim());
             }
@@ -92,7 +101,8 @@ public class FiscalEventXmlService {
 
     private static void eventData(Document document, Element event, FiscalEventType type,
             String detail, OffsetDateTime generatedAt, String obligatedTaxId,
-            String previousHash, String hash, FiscalEventSummary summary) {
+            String previousHash, String hash, FiscalEventSummary summary,
+            FiscalExportContext exportContext) {
         switch (type) {
             case BILLING_ANOMALY_SCAN_STARTED -> launchData(document, event,
                     "LanzamientoProcesoDeteccionAnomaliasRegFacturacion", "RegFacturacion", "Facturacion");
@@ -103,9 +113,10 @@ public class FiscalEventXmlService {
             case EVENT_ANOMALY_DETECTED -> anomalyData(document, event,
                     "DeteccionAnomaliasRegEvento", detail);
             case BILLING_EXPORT -> billingExportData(document, event, generatedAt,
-                    obligatedTaxId, previousHash == null ? hash : previousHash, summary);
+                    obligatedTaxId, previousHash == null ? hash : previousHash, summary,
+                    exportContext);
             case EVENT_EXPORT -> eventExportData(document, event, generatedAt,
-                    previousHash == null ? hash : previousHash, summary);
+                    previousHash == null ? hash : previousHash, summary, exportContext);
             case SUMMARY -> summaryData(document, event, summary);
             default -> { }
         }
@@ -152,15 +163,25 @@ public class FiscalEventXmlService {
     }
 
     private static void billingExportData(Document document, Element event,
-            OffsetDateTime generatedAt, String taxId, String hash, FiscalEventSummary totals) {
+            OffsetDateTime generatedAt, String taxId, String hash, FiscalEventSummary totals,
+            FiscalExportContext context) {
         var data = child(document, event, "DatosPropiosEvento");
         var export = child(document, data, "ExportacionRegFacturacionPeriodo");
-        eventText(document, export, "FechaHoraHusoInicioPeriodoExport", generatedAt.toString());
-        eventText(document, export, "FechaHoraHusoFinPeriodoExport", generatedAt.toString());
-        billingExportRecord(document, export, "RegistroFacturacionInicialPeriodo", taxId, hash,
-                generatedAt);
-        billingExportRecord(document, export, "RegistroFacturacionFinalPeriodo", taxId, hash,
-                generatedAt);
+        var start = context.periodStart() == null ? generatedAt : context.periodStart();
+        var end = context.periodEnd() == null ? generatedAt : context.periodEnd();
+        eventText(document, export, "FechaHoraHusoInicioPeriodoExport", start.toString());
+        eventText(document, export, "FechaHoraHusoFinPeriodoExport", end.toString());
+        if (context.firstBilling() == null) {
+            billingExportRecord(document, export, "RegistroFacturacionInicialPeriodo", taxId, hash,
+                    generatedAt);
+            billingExportRecord(document, export, "RegistroFacturacionFinalPeriodo", taxId, hash,
+                    generatedAt);
+        } else {
+            billingExportRecord(document, export, "RegistroFacturacionInicialPeriodo",
+                    context.firstBilling());
+            billingExportRecord(document, export, "RegistroFacturacionFinalPeriodo",
+                    context.lastBilling());
+        }
         eventText(document, export, "NumeroDeRegistrosFacturacionAltaExportados",
                 Long.toString(totals.altaCount()));
         eventText(document, export, "SumaCuotaTotalAlta", money(totals.altaTaxTotal()));
@@ -179,14 +200,31 @@ public class FiscalEventXmlService {
         eventText(document, record, "Huella", hash);
     }
 
+    private static void billingExportRecord(Document document, Element parent, String name,
+            FiscalExportContext.BillingBoundary boundary) {
+        var record = child(document, parent, name);
+        eventText(document, record, "IDEmisorFactura", boundary.issuerTaxId());
+        eventText(document, record, "NumSerieFactura", boundary.number());
+        eventText(document, record, "FechaExpedicionFactura", DATE.format(boundary.issueDate()));
+        eventText(document, record, "Huella", boundary.hash());
+    }
+
     private static void eventExportData(Document document, Element event,
-            OffsetDateTime generatedAt, String hash, FiscalEventSummary totals) {
+            OffsetDateTime generatedAt, String hash, FiscalEventSummary totals,
+            FiscalExportContext context) {
         var data = child(document, event, "DatosPropiosEvento");
         var export = child(document, data, "ExportacionRegEventoPeriodo");
-        eventText(document, export, "FechaHoraHusoInicioPeriodoExport", generatedAt.toString());
-        eventText(document, export, "FechaHoraHusoFinPeriodoExport", generatedAt.toString());
-        eventRecord(document, export, "RegistroEventoInicialPeriodo", hash, generatedAt);
-        eventRecord(document, export, "RegistroEventoFinalPeriodo", hash, generatedAt);
+        var start = context.periodStart() == null ? generatedAt : context.periodStart();
+        var end = context.periodEnd() == null ? generatedAt : context.periodEnd();
+        eventText(document, export, "FechaHoraHusoInicioPeriodoExport", start.toString());
+        eventText(document, export, "FechaHoraHusoFinPeriodoExport", end.toString());
+        if (context.firstEvent() == null) {
+            eventRecord(document, export, "RegistroEventoInicialPeriodo", hash, generatedAt);
+            eventRecord(document, export, "RegistroEventoFinalPeriodo", hash, generatedAt);
+        } else {
+            eventRecord(document, export, "RegistroEventoInicialPeriodo", context.firstEvent());
+            eventRecord(document, export, "RegistroEventoFinalPeriodo", context.lastEvent());
+        }
         eventText(document, export, "NumeroDeRegEventoExportados",
                 Long.toString(totals.eventCount()));
         eventText(document, export, "RegEventoExportadosDejanDeConservarse", "N");
@@ -198,6 +236,14 @@ public class FiscalEventXmlService {
         eventText(document, record, "TipoEvento", "90");
         eventText(document, record, "FechaHoraHusoEvento", generatedAt.toString());
         eventText(document, record, "HuellaEvento", hash);
+    }
+
+    private static void eventRecord(Document document, Element parent, String name,
+            FiscalExportContext.EventBoundary boundary) {
+        var record = child(document, parent, name);
+        eventText(document, record, "TipoEvento", boundary.type());
+        eventText(document, record, "FechaHoraHusoEvento", boundary.generatedAt().toString());
+        eventText(document, record, "HuellaEvento", boundary.hash());
     }
 
     private static String yesNo(boolean value) { return value ? "S" : "N"; }
