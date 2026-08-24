@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.document.DocumentLineTotals;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.document.Money;
+import com.tpverp.backend.document.SalesInvoiceRectificationRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
@@ -51,6 +53,8 @@ public class InvoiceJasperRenderer {
     private final SafeJrxmlCompiler compiler;
     private final ObjectMapper mapper;
     private final BuiltInDocumentJrxmlCatalog builtInTemplates;
+    private CommercialDocumentRepository documents;
+    private SalesInvoiceRectificationRepository rectifications;
     private final Map<CompiledCacheKey, byte[]> compiledCache = Collections.synchronizedMap(
             new LinkedHashMap<>(16, 0.75f, true) {
                 @Override
@@ -71,6 +75,14 @@ public class InvoiceJasperRenderer {
         this.compiler = compiler;
         this.mapper = mapper;
         this.builtInTemplates = builtInTemplates;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setRectificationContext(
+            CommercialDocumentRepository documents,
+            SalesInvoiceRectificationRepository rectifications) {
+        this.documents = documents;
+        this.rectifications = rectifications;
     }
 
     public Optional<byte[]> render(
@@ -132,7 +144,8 @@ public class InvoiceJasperRenderer {
         if (reference == null) {
             reference = builtInTemplates.reference(templateType, format);
         }
-        if (templateType == DocumentTemplateType.FACTURA_VENTA && customer == null) {
+        if ((templateType == DocumentTemplateType.FACTURA_VENTA
+                || templateType == DocumentTemplateType.RECTIFICATIVA_VENTA) && customer == null) {
             throw new IllegalArgumentException("invoice_print_customer_required");
         }
         return renderPayload(
@@ -337,8 +350,11 @@ public class InvoiceJasperRenderer {
         var root = mapper.createObjectNode();
         var documentNode = root.putObject("document");
         documentNode.put("type", document.getTipo().name());
-        documentNode.put("title", document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
-                ? "ALBARAN" : "FACTURA");
+        documentNode.put("title", switch (document.getTipo()) {
+            case ALBARAN_VENTA -> "ALBARAN";
+            case RECTIFICATIVA_VENTA -> "FACTURA_RECTIFICATIVA";
+            default -> "FACTURA";
+        });
         documentNode.put("displayNumber", document.getNumero());
         documentNode.put("issueDate", document.getFecha().toString());
         documentNode.put("operationDate", document.getFecha().toString());
@@ -377,7 +393,22 @@ public class InvoiceJasperRenderer {
             putNullable(customerNode, "details", customerDetails(customer));
         }
 
-        boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA;
+        if (document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA) {
+            var rectification = root.putObject("rectification");
+            var metadata = rectifications == null ? null
+                    : rectifications.findByDocumentId(document.getId()).orElse(null);
+            var original = metadata == null || documents == null ? null
+                    : documents.findByIdAndTiendaId(metadata.getOriginalDocumentId(), document.getTiendaId())
+                            .orElse(null);
+            putNullable(rectification, "originalInvoice", original == null ? null : original.getNumero());
+            putNullable(rectification, "cause", metadata == null ? null : metadata.getReason().name());
+            putNullable(rectification, "detail", metadata == null ? null : metadata.getDetail());
+            putNullable(rectification, "fiscalType", metadata == null ? null : metadata.getFiscalType().name());
+            putNullable(rectification, "method", metadata == null ? null : metadata.getMethod().name());
+        }
+
+        boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA;
         String fiscalQrUrl = invoice ? qrUrl : null;
         boolean noVerifactuQr = fiscalQrUrl != null
                 && fiscalQrUrl.contains("ValidarQRNoVerifactu");
@@ -469,6 +500,7 @@ public class InvoiceJasperRenderer {
         return switch (documentType) {
             case FACTURA_VENTA -> DocumentTemplateType.FACTURA_VENTA;
             case ALBARAN_VENTA -> DocumentTemplateType.ALBARAN_VENTA;
+            case RECTIFICATIVA_VENTA -> DocumentTemplateType.RECTIFICATIVA_VENTA;
             default -> null;
         };
     }

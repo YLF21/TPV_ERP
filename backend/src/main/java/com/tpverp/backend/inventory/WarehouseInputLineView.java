@@ -13,7 +13,8 @@ public record WarehouseInputLineView(
         BigDecimal discount,
         boolean priceOverridden,
         BigDecimal subtotal,
-        BigDecimal purchaseTotal) {
+        BigDecimal purchaseTotal,
+        int position) {
 
     public WarehouseInputLineView(
             UUID productId,
@@ -23,7 +24,7 @@ public record WarehouseInputLineView(
             BigDecimal purchaseUnitPrice,
             BigDecimal purchaseTotal) {
         this(productId, productCode, productName, BigDecimal.valueOf(quantity), purchaseUnitPrice,
-                BigDecimal.ZERO, false, purchaseTotal, purchaseTotal);
+                BigDecimal.ZERO, false, purchaseTotal, purchaseTotal, 0);
     }
 
     public static WarehouseInputLineView from(WarehouseInputLine line) {
@@ -40,6 +41,7 @@ public record WarehouseInputLineView(
                 line.getDiscount(),
                 line.isPriceOverridden(),
                 line.getSubtotal(),
-                line.getPurchaseTotal());
+                line.getPurchaseTotal(),
+                line.getPosition());
     }
 }

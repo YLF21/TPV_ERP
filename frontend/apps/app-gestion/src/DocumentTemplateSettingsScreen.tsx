@@ -5,12 +5,14 @@ import {
   createDocumentTemplateDraft,
   downloadDocumentTemplateSource,
   loadDocumentTemplateCatalog,
+  loadDocumentTemplateDefinitions,
   loadDocumentTemplatePresentation,
   saveDocumentTemplatePresentation,
   reactivateDocumentTemplate,
   useBuiltInDocumentTemplate,
   uploadDocumentTemplateArtifact,
   type DocumentTemplateCatalog,
+  type DocumentTemplateDefinition,
   type DocumentTemplateFormat,
   type DocumentTemplateOrigin,
   type DocumentTemplateType,
@@ -38,7 +40,11 @@ type Props = {
   request?: typeof apiRequest;
 };
 
-const documentTypes: DocumentTemplateType[] = ["FACTURA_VENTA", "ALBARAN_VENTA", "TICKET", "VALE"];
+const fallbackDocumentTypes: DocumentTemplateType[] = [
+  "FACTURA_VENTA", "ALBARAN_VENTA", "TICKET", "VALE", "TICKET_REGALO",
+  "RETIRADA_CAJA", "RECTIFICATIVA_VENTA", "SALIDA_ALMACEN", "ENTRADA_ALMACEN",
+  "ALBARAN_ENTRADA", "FACTURA_ENTRADA", "HISTORIAL_VENTAS_PRODUCTO",
+];
 
 const ticketStylePreviews: Record<TicketPrintStyle, string> = {
   PRINCIPAL: ticketStylePrincipal,
@@ -91,6 +97,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [selectedType, setSelectedType] = useState<DocumentTemplateType>("FACTURA_VENTA");
   const [selectedFormat, setSelectedFormat] = useState<DocumentTemplateFormat>("A4");
   const [catalog, setCatalog] = useState<DocumentTemplateCatalog | null>(null);
+  const [definitions, setDefinitions] = useState<DocumentTemplateDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [code, setCode] = useState("FACTURA_A4");
@@ -104,9 +111,18 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const [savedTicketStyle, setSavedTicketStyle] = useState<TicketPrintStyle>("PRINCIPAL");
   const canManage = session.permissions.includes("ADMIN")
     || session.permissions.includes("DOCUMENT_TEMPLATES_MANAGE");
-  const effectiveFormat: DocumentTemplateFormat = selectedType === "TICKET" || selectedType === "VALE"
-    ? "TICKET_80"
-    : selectedType === "ALBARAN_VENTA" ? "A4" : selectedFormat;
+  const selectedDefinition = definitions.find((definition) => definition.type === selectedType);
+  const effectiveFormat: DocumentTemplateFormat = selectedDefinition?.formats.includes(selectedFormat)
+    ? selectedFormat
+    : selectedDefinition?.formats[0] ?? (
+      selectedType === "FACTURA_VENTA"
+      || selectedType === "ALBARAN_VENTA"
+      || selectedType === "RECTIFICATIVA_VENTA"
+        ? selectedFormat
+        : selectedType === "TICKET" || selectedType === "VALE"
+          || selectedType === "TICKET_REGALO" || selectedType === "RETIRADA_CAJA"
+          ? "TICKET_80"
+          : "A4");
   const documentTemplatePreview = documentTemplatePreviews[`${selectedType}:${effectiveFormat}`];
   const selectedTicketPresentationIsActive = selectedType === "TICKET"
     && (ticketTemplateOrigin === "INTEGRATED"
@@ -115,10 +131,10 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
 
   function suggestedCode(type: DocumentTemplateType, format: DocumentTemplateFormat) {
     if (type === "FACTURA_VENTA" && format === "TICKET_80") return "FACTURA_TICKET_80";
-    if (type === "ALBARAN_VENTA") return "ALBARAN_A4";
+    if (type === "ALBARAN_VENTA") return format === "TICKET_80" ? "ALBARAN_TICKET_80" : "ALBARAN_A4";
     if (type === "TICKET") return "TICKET_80";
     if (type === "VALE") return "VALE_TICKET_80";
-    return "FACTURA_A4";
+    return `${type}_${format}`;
   }
 
   async function refresh(type = selectedType, format = effectiveFormat) {
@@ -134,13 +150,19 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   }
 
   useEffect(() => {
+    void loadDocumentTemplateDefinitions(session.accessToken, request)
+      .then((value) => setDefinitions(Array.isArray(value) ? value : []))
+      .catch(() => setDefinitions([]));
+  }, [request, session.accessToken]);
+
+  useEffect(() => {
     setCode(suggestedCode(selectedType, effectiveFormat));
     setName("");
     setMessage(null);
     void refresh(selectedType, effectiveFormat);
     // refresh is intentionally tied to the selected catalog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedType, selectedFormat, request, session.accessToken]);
+  }, [selectedType, selectedFormat, request, session.accessToken, definitions.length]);
 
   useEffect(() => {
     if (selectedType !== "TICKET") return;
@@ -335,7 +357,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
       </header>
 
       <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.documentType")}>
-        {documentTypes.map((type) => (
+        {(definitions.length ? definitions.map((definition) => definition.type) : fallbackDocumentTypes).map((type) => (
           <button
             type="button"
             role="tab"
@@ -344,12 +366,15 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
             key={type}
             onClick={() => setSelectedType(type)}
           >
-            {t(`gestion.documentTemplates.type.${type}`)}
+            {t(`gestion.documentTemplates.type.${type}`) || definitions.find((definition) => definition.type === type)?.labels.es || type}
           </button>
         ))}
       </div>
 
-      {selectedType === "FACTURA_VENTA" && (
+      {((selectedDefinition?.formats.length ?? 0) > 1
+        || selectedType === "FACTURA_VENTA"
+        || selectedType === "ALBARAN_VENTA"
+        || selectedType === "RECTIFICATIVA_VENTA") && (
         <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.format")}>
           {(["A4", "TICKET_80"] as DocumentTemplateFormat[]).map((format) => (
             <button

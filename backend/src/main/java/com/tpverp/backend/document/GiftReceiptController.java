@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 
 @RestController
 @RequestMapping("/api/v1/gift-receipts")
@@ -53,6 +54,12 @@ public class GiftReceiptController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public GiftReceiptService.View find(@PathVariable String code) {
         return service.findByCode(code);
+    }
+
+    @GetMapping("/{code}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
+    public RenderedDocumentView printDocument(@PathVariable String code) {
+        return service.printDocument(code);
     }
 
     public record Request(

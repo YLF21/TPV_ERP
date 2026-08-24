@@ -108,6 +108,15 @@ public class WarehouseInputService {
         return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }
 
+    @Transactional(readOnly = true)
+    public WarehouseInputView view(UUID id) {
+        var input = find(id);
+        var productIds = input.getLines().stream().map(WarehouseInputLine::getProductId).distinct().toList();
+        var productsById = products.findAllByStoreIdAndIdIn(input.getStoreId(), productIds)
+                .stream().collect(Collectors.toMap(Product::getId, Function.identity()));
+        return WarehouseInputView.from(input, productsById);
+    }
+
     @Transactional
     public WarehouseInput create(WarehouseInputCommand command, Authentication authentication) {
         var store = organization.currentStore();

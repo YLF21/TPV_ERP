@@ -41,6 +41,12 @@ type IssuedGiftReceipt = {
   }>;
 };
 
+type RenderedGiftReceipt = {
+  renderedPdf?: { contentType: "application/pdf"; base64: string };
+  ticketRenderedImage?: { contentType: "image/png"; base64: string };
+  fileName?: string;
+};
+
 type Selection = { quantity: string; serialNumbers: string[] };
 
 type Props = {
@@ -78,6 +84,7 @@ const copy = {
     issueError: "No se pudo generar el ticket regalo.",
     printError: "El ticket regalo se generó, pero no pudo imprimirse.",
     printed: "Ticket regalo impreso",
+    retry: "Reintentar impresión",
   },
   en: {
     title: "Print gift receipt",
@@ -106,6 +113,7 @@ const copy = {
     issueError: "The gift receipt could not be created.",
     printError: "The gift receipt was created but could not be printed.",
     printed: "Gift receipt printed",
+    retry: "Retry printing",
   },
   zh: {
     title: "打印礼品小票",
@@ -134,6 +142,7 @@ const copy = {
     issueError: "无法生成礼品小票。",
     printError: "礼品小票已生成，但打印失败。",
     printed: "礼品小票已打印",
+    retry: "重试打印",
   },
 } as const;
 
@@ -300,6 +309,46 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
     });
   }
 
+  async function printIssuedDocument(code: string, issued?: IssuedGiftReceipt) {
+    const rendered = await apiRequest<RenderedGiftReceipt>(
+      `/gift-receipts/${encodeURIComponent(code)}/print-document`,
+      { token },
+    );
+    if (!rendered.renderedPdf || !rendered.ticketRenderedImage) {
+      throw new Error("gift_receipt_rendered_document_missing");
+    }
+    const hardware = getHardwareBridge();
+    const config = await hardware.getHardwareConfig();
+    const result = await hardware.printTicket({
+      requireRenderedDocument: true,
+      layout: "GIFT_RECEIPT",
+      documentNumber: code,
+      storeName: terminalContext.storeName,
+      terminalCode: terminalContext.terminalCode,
+      issuedAt: issued?.issuedAt ?? new Date().toISOString(),
+      lines: (issued?.lines ?? []).map((line) => ({
+        code: line.code,
+        name: line.name,
+        quantity: Number(line.quantity),
+        price: 0,
+        total: 0,
+        serialNumbers: line.serialNumbers,
+      })),
+      payments: [],
+      total: 0,
+      renderedPdf: rendered.renderedPdf,
+      documentRaster: `data:${rendered.ticketRenderedImage.contentType};base64,${rendered.ticketRenderedImage.base64}`,
+      labels: {
+        terminal: locale === "en" ? "Terminal" : locale === "zh" ? "终端" : "Terminal",
+        item: t.product,
+        quantity: t.quantity,
+        price: "",
+        total: "",
+      },
+    }, config);
+    if (!result.ok) throw new Error(result.message || "gift_receipt_print_failed");
+  }
+
   async function issueAndPrint() {
     if (!preview || busy) return;
     if (!selectionIsValid) {
@@ -319,36 +368,23 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
         },
       });
       setIssuedCode(issued.code);
-      const hardware = getHardwareBridge();
-      const config = await hardware.getHardwareConfig();
-      const printed = await hardware.printTicket({
-        layout: "GIFT_RECEIPT",
-        documentNumber: issued.code,
-        storeName: terminalContext.storeName,
-        terminalCode: terminalContext.terminalCode,
-        issuedAt: issued.issuedAt,
-        lines: issued.lines.map((line) => ({
-          code: line.code,
-          name: line.name,
-          quantity: Number(line.quantity),
-          price: 0,
-          total: 0,
-          serialNumbers: line.serialNumbers,
-        })),
-        payments: [],
-        total: 0,
-        labels: {
-          terminal: locale === "en" ? "Terminal" : locale === "zh" ? "终端" : "Terminal",
-          item: t.product,
-          quantity: t.quantity,
-          price: "",
-          total: "",
-        },
-      }, config);
-      setMessage(printed.ok ? `${t.printed}: ${issued.code}` : t.printError);
-      if (!printed.ok) setError(t.printError);
+      await printIssuedDocument(issued.code, issued);
+      setMessage(`${t.printed}: ${issued.code}`);
     } catch (nextError) {
       setError(apiMessage(nextError, t.issueError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryPrint() {
+    if (!issuedCode || busy) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await printIssuedDocument(issuedCode);
+      setMessage(`${t.printed}: ${issuedCode}`);
+    } catch (nextError) {
+      setError(apiMessage(nextError, t.printError));
     } finally {
       setBusy(false);
     }
@@ -407,6 +443,7 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
         </div>}
         <footer>
           {issuedCode && <div className="gift-receipt-issued"><span>{t.receiptCode}</span><strong>{issuedCode}</strong></div>}
+          {issuedCode && error && <button type="button" className="gift-receipt-action gift-receipt-action-secondary" disabled={busy} onClick={() => void retryPrint()}>{t.retry}</button>}
           <button type="button" className="gift-receipt-action gift-receipt-action-secondary" disabled={busy} onClick={onClose}>{t.close}</button>
           <button type="button" className="gift-receipt-action gift-receipt-action-primary gift-receipt-action-issue" disabled={busy || !selectionIsValid} onClick={() => void issueAndPrint()}>{t.issue}</button>
         </footer>

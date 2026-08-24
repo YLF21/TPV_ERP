@@ -96,6 +96,15 @@ public class WarehouseOutputService {
         return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }
 
+    @Transactional(readOnly = true)
+    public WarehouseOutputView view(UUID id) {
+        var output = find(id);
+        var productIds = output.getLines().stream().map(WarehouseOutputLine::getProductId).distinct().toList();
+        var productsById = products.findAllByStoreIdAndIdIn(output.getStoreId(), productIds)
+                .stream().collect(Collectors.toMap(Product::getId, Function.identity()));
+        return WarehouseOutputView.from(output, productsById);
+    }
+
     // Creates an editable output and validates that every product belongs to the store.
     @Transactional
     public WarehouseOutput create(

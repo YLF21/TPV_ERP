@@ -20,6 +20,7 @@ public class SalesInvoiceRectificationController {
     private final SalesInvoiceRectificationConfirmationService confirmations;
     private final DocumentViewAssembler views;
     private final DocumentFiscalQrService fiscalQr;
+    private CustomerReceivablePrintService printing;
 
     public SalesInvoiceRectificationController(
             SalesInvoiceRectificationService rectifications,
@@ -30,6 +31,19 @@ public class SalesInvoiceRectificationController {
         this.confirmations = confirmations;
         this.views = views;
         this.fiscalQr = fiscalQr;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setPrinting(CustomerReceivablePrintService printing) {
+        this.printing = printing;
+    }
+
+    @GetMapping("/rectifications/{id}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAnyAuthority('GESTION_VENTAS','INVOICES_READ'))")
+    public CustomerReceivablePrintService.CommercialDocumentPrint printDocument(
+            @PathVariable UUID id) {
+        if (printing == null) throw new IllegalStateException("document_printing_unavailable");
+        return printing.document(id);
     }
 
     @GetMapping("/{id}/rectification-source")

@@ -31,6 +31,7 @@ public class DocumentTemplateController {
     private final DocumentTemplateCatalogService service;
     private final DocumentTemplateArtifactService artifacts;
     private final DocumentTemplatePresentationService presentations;
+    private DocumentTemplateDefinitionRegistry definitions;
 
     public DocumentTemplateController(
             DocumentTemplateCatalogService service,
@@ -39,6 +40,18 @@ public class DocumentTemplateController {
         this.service = service;
         this.artifacts = artifacts;
         this.presentations = presentations;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setDefinitions(DocumentTemplateDefinitionRegistry definitions) {
+        this.definitions = definitions;
+    }
+
+    @GetMapping("/definitions")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('APP_GESTION_ACCESS')")
+    public java.util.List<DocumentTemplateDefinitionRegistry.Definition> definitions() {
+        if (definitions == null) throw new IllegalStateException("document_template_definitions_unavailable");
+        return definitions.all();
     }
 
     @GetMapping

@@ -205,6 +205,7 @@ public class StoreDocumentPrintConfigurationService {
             case FACTURA_VENTA -> value.getInvoiceObservations();
             case ALBARAN_VENTA -> value.getDeliveryNoteObservations();
             case VALE -> value.getVoucherObservations();
+            default -> null;
         };
         LogoReference logo = value.getLogoId() == null ? null
                 : logos.findByIdAndStoreId(value.getLogoId(), storeId)

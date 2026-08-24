@@ -78,5 +78,13 @@ ORDER BY dp.posicion, dp.creado_en]]></query>
 			<element kind="staticText" uuid="b626604c-7c5c-46c7-a203-6a9c2360afe8" x="5" y="0" width="120" height="12" fontSize="8.0"><text><![CDATA[Cambio entregado]]></text></element>
 			<element kind="textField" uuid="50465408-5831-4df0-9efe-c3f57ce78974" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{cambio}) + " €"]]></expression></element>
 		</band>
+		<band height="13">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{es_tarjeta}) && $F{autorizacion_tarjeta} != null && !$F{autorizacion_tarjeta}.trim().isEmpty()]]></printWhenExpression>
+			<element kind="textField" uuid="14b35f20-50f1-42dd-ac22-3e647e082d80" x="5" y="0" width="197" height="12" fontSize="7.0"><expression><![CDATA["Autorización: " + $F{autorizacion_tarjeta}]]></expression></element>
+		</band>
+		<band height="30" splitType="Stretch">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{pago_integrado}) && $F{recibo_terminal} != null && !$F{recibo_terminal}.trim().isEmpty()]]></printWhenExpression>
+			<element kind="textField" uuid="14b35f20-50f1-42dd-ac22-3e647e082d81" x="5" y="0" width="197" height="28" fontSize="6.5" textAdjust="StretchHeight"><expression><![CDATA[$F{recibo_terminal}]]></expression></element>
+		</band>
 	</detail>
 </jasperReport>

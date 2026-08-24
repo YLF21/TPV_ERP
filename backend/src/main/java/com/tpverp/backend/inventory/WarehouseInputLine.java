@@ -23,6 +23,9 @@ public class WarehouseInputLine {
     @Column(name = "producto_id", nullable = false)
     private UUID productId;
 
+    @Column(name = "posicion", nullable = false)
+    private int position;
+
     @Column(name = "nombre_producto", nullable = false, length = 255)
     private String productName;
 
@@ -88,6 +91,15 @@ public class WarehouseInputLine {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public int getPosition() {
+        return position;
+    }
+
+    void assignPosition(int position) {
+        if (position <= 0) throw new IllegalArgumentException("position debe ser positiva");
+        this.position = position;
     }
 
     public String getProductName() {

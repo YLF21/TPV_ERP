@@ -48,7 +48,6 @@ export function PaymentOperationPanel({
     {capabilities.includes("QUERY") && <button type="button" onClick={onQuery}>{t("payment.operation.query")}</button>}
     {canVoid && can("VOID", "PAYMENT_TERMINAL_VOID", voidAvailable) && onVoid && <button type="button" onClick={onVoid}>{t("payment.operation.void")}</button>}
     {canRefund && can("REFUND", "PAYMENT_TERMINAL_REFUND", refundAvailable) && onRefund && <button type="button" onClick={onRefund}>{t("payment.operation.refund")}</button>}
-    {capabilities.includes("RECEIPT") && <button type="button" onClick={onPrintReceipt}>{t("payment.operation.reprintReceipt")}</button>}
     <ol aria-label={t("payment.operation.history")}>{events.map((event, index) => <li key={`${event.createdAt ?? "event"}-${index}`}>
       {localizePaymentStatus(t, event.status)} · {localizePaymentEventCode(t, event.code)}
       {event.diagnostic && <> · {localizePaymentDiagnostic(t, event.diagnostic, event.status)}</>}

@@ -45,6 +45,13 @@ export type CashWithdrawalReceipt = {
   comment?: string | null;
 };
 
+type RenderedDocumentResponse = {
+  renderedPdf: { contentType: "application/pdf"; base64: string };
+  ticketRenderedImage: { contentType: "image/png"; base64: string } | null;
+  fileName?: string;
+  template?: { code?: string; sha256?: string };
+};
+
 type RequestFunction = typeof apiRequest;
 
 export function registerCashWithdrawal(
@@ -94,10 +101,6 @@ export function registerCashEntry(
   });
 }
 
-function safeReceiptText(value: string | null | undefined) {
-  return String(value ?? "").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "").trim();
-}
-
 export async function printCashWithdrawalReceipt(
   movementId: string,
   token: string,
@@ -108,35 +111,25 @@ export async function printCashWithdrawalReceipt(
 ): Promise<TicketPrintOutcome> {
   try {
     const t = createTranslator(locale);
-    const receipt = await request<CashWithdrawalReceipt>(
-      `/cash/receipts/withdrawals/${encodeURIComponent(movementId)}`,
+    const rendered = await request<RenderedDocumentResponse>(
+      `/cash/receipts/withdrawals/${encodeURIComponent(movementId)}/print-document`,
       { token },
     );
+    if (!rendered.renderedPdf || !rendered.ticketRenderedImage) {
+      throw new Error("cash_withdrawal_rendered_document_missing");
+    }
     const config = await hardware.getHardwareConfig();
-    const amount = Number(receipt.amount);
-    const detail = [
-      `${t("sale.cashWithdrawal.receiptReason")}: ${safeReceiptText(receipt.comment) || "-"}`,
-      `${t("sale.cashWithdrawal.receiptOperator")}: ${safeReceiptText(receipt.userName) || "-"}`,
-      `${t("sale.cashWithdrawal.receiptAuthorizer")}: ${safeReceiptText(receipt.authorizerName) || "-"}`,
-    ].join(" · ");
-    const denominationLines = (receipt.denominations ?? [])
-      .filter((row) => Number(row.quantity) > 0 && Number(row.denomination) > 0)
-      .map((row) => ({
-        name: `${t("sale.cashWithdrawal.receiptDenomination")} ${Number(row.denomination).toFixed(2)}`,
-        quantity: Number(row.quantity),
-        price: Number(row.denomination),
-        total: Number(row.denomination) * Number(row.quantity),
-      }));
     const result = await hardware.printTicket({
-      documentNumber: `${t("sale.cashWithdrawal.receiptTitle")} ${movementId.slice(0, 12)}`,
+      requireRenderedDocument: true,
+      documentNumber: rendered.fileName ?? `${t("sale.cashWithdrawal.receiptTitle")} ${movementId.slice(0, 12)}`,
       storeName: terminal.storeName,
       terminalCode: terminal.terminalCode,
-      issuedAt: receipt.createdAt,
-      lines: denominationLines.length
-        ? [{ name: detail, quantity: 1, price: 0, total: 0 }, ...denominationLines]
-        : [{ name: detail, quantity: 1, price: amount, total: amount }],
+      issuedAt: new Date().toISOString(),
+      lines: [],
       payments: [],
-      total: amount,
+      total: 0,
+      renderedPdf: rendered.renderedPdf,
+      documentRaster: `data:${rendered.ticketRenderedImage.contentType};base64,${rendered.ticketRenderedImage.base64}`,
       labels: {
         terminal: t("print.a4.terminal"),
         item: t("print.ticket.item"),

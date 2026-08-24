@@ -28,6 +28,16 @@ class BuiltInDocumentJrxmlCatalogTest {
                 Arguments.of(DocumentTemplateType.FACTURA_VENTA,
                         DocumentTemplateFormat.TICKET_80),
                 Arguments.of(DocumentTemplateType.ALBARAN_VENTA, DocumentTemplateFormat.A4),
-                Arguments.of(DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80));
+                Arguments.of(DocumentTemplateType.ALBARAN_VENTA, DocumentTemplateFormat.TICKET_80),
+                Arguments.of(DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80),
+                Arguments.of(DocumentTemplateType.TICKET_REGALO, DocumentTemplateFormat.TICKET_80),
+                Arguments.of(DocumentTemplateType.RETIRADA_CAJA, DocumentTemplateFormat.TICKET_80),
+                Arguments.of(DocumentTemplateType.RECTIFICATIVA_VENTA, DocumentTemplateFormat.A4),
+                Arguments.of(DocumentTemplateType.RECTIFICATIVA_VENTA, DocumentTemplateFormat.TICKET_80),
+                Arguments.of(DocumentTemplateType.SALIDA_ALMACEN, DocumentTemplateFormat.A4),
+                Arguments.of(DocumentTemplateType.ENTRADA_ALMACEN, DocumentTemplateFormat.A4),
+                Arguments.of(DocumentTemplateType.ALBARAN_ENTRADA, DocumentTemplateFormat.A4),
+                Arguments.of(DocumentTemplateType.FACTURA_ENTRADA, DocumentTemplateFormat.A4),
+                Arguments.of(DocumentTemplateType.HISTORIAL_VENTAS_PRODUCTO, DocumentTemplateFormat.A4));
     }
 }
