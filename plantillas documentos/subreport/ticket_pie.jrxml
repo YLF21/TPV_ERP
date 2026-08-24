@@ -52,7 +52,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 	<background splitType="Stretch"/>
 	<detail>
 		<band height="198" splitType="Stretch">
-			<element kind="textField" uuid="37a6f279-7859-4617-ad52-2dddbe40d066" positionType="Float" x="5" y="50" width="199" height="38" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+			<element kind="textField" uuid="37a6f279-7859-4617-ad52-2dddbe40d066" positionType="Float" x="5" y="35" width="199" height="38" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
 				<expression><![CDATA[$F{observacion_ticket}]]></expression>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
@@ -79,13 +79,6 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 			</element>
 			<element kind="line" uuid="8932caa4-1d81-4c35-8a29-a15dac750f43" x="5" y="33" width="197" height="1">
 				<pen lineWidth="0.5" lineStyle="Dashed"/>
-			</element>
-			<element kind="staticText" uuid="1c471111-2883-4068-a12e-465170b5744c" positionType="Float" x="5" y="34" width="197" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
-				<text><![CDATA[CONDICIONES DE DEVOLUCIÓN]]></text>
-				<property name="com.jaspersoft.studio.unit.y" value="px"/>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
-				<property name="com.jaspersoft.studio.unit.x" value="px"/>
-				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			</element>
 			<element kind="staticText" uuid="4ed14df0-1037-436f-af5b-89194c98efb8" positionType="Float" x="5" y="182" width="197" height="13" fontSize="9.0" hTextAlign="Center">
 				<text><![CDATA[Gracias por su compra]]></text>

@@ -48,12 +48,17 @@ npm.cmd run dev:venta
 APP GESTION se inicia con `npm.cmd run dev:gestion`. Los comandos deben
 ejecutarse desde `frontend`, donde se encuentra `package.json`.
 
+APP PDA se inicia con `npm.cmd run dev:pda` y escucha en todas las interfaces
+del servidor para el piloto en red local. El alta, aprobación y operación se
+describen en [`../docs/pda-warehouse-operations.md`](../docs/pda-warehouse-operations.md).
+
 ## Verificacion
 
 ```powershell
 npm.cmd test
 npm.cmd run build --workspace @tpverp/app-venta
 npm.cmd run build --workspace @tpverp/app-gestion
+npm.cmd run build --workspace @tpverp/app-pda
 ```
 
 ## Pagos con tarjeta en local

@@ -61,6 +61,28 @@ describe("LoginScreen", () => {
     expect(html).not.toContain('class="report-user-button"');
   });
 
+  it("renders an embedded login without desktop chrome", () => {
+    const html = renderToStaticMarkup(
+      <LoginScreen
+        app="gestion"
+        locale="es"
+        terminalContext={terminalContext}
+        onLocaleChange={vi.fn()}
+        onLogin={vi.fn()}
+        presentation="embedded"
+        heading="Acceso PDA"
+      />
+    );
+
+    expect(html).toContain('class="login-screen login-screen-embedded"');
+    expect(html).toContain("Acceso PDA");
+    expect(html).toContain("Tienda Principal");
+    expect(html).not.toContain('class="entry-topbar"');
+    expect(html).not.toContain('class="top-date-time"');
+    expect(html).not.toContain('class="report-footer-context"');
+    expect(html).not.toContain('class="language-button"');
+  });
+
   it("shows the invalid-credentials warning, clears the password and returns focus to it", async () => {
     mocks.authenticateRemote.mockRejectedValueOnce(new ApiError("invalid_credentials", 401));
     render(

@@ -3,6 +3,7 @@
   --voucher-settings-muted: #617082;
   --voucher-settings-line: #c7d0da;
   --voucher-settings-accent: #b67b08;
+  align-content: start;
   display: grid;
   gap: 18px;
 }

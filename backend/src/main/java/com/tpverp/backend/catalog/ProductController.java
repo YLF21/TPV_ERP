@@ -75,7 +75,7 @@ public class ProductController {
 
     @GetMapping("/sale/price-consultation")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','"
-            + GESTION_VENTAS + "','" + VENTA + "')")
+            + GESTION_VENTAS + "','" + GESTION_ALMACEN + "','" + VENTA + "')")
     public SalePriceConsultationView salePriceConsultation(@RequestParam String identifier) {
         return saleCatalog.priceByIdentifier(identifier);
     }

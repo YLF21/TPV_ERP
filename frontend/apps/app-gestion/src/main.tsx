@@ -31,6 +31,7 @@ import { MemberLoyaltySettingsScreen } from "./MemberLoyaltySettingsScreen";
 import { MemberCategoriesScreen } from "./MemberCategoriesScreen";
 import { InternalEanSettingsScreen } from "./InternalEanSettingsScreen";
 import { SecurityAdministrationScreen } from "./SecurityAdministrationScreen";
+import { TerminalManagementScreen } from "./TerminalManagementScreen";
 
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({
@@ -104,7 +105,7 @@ const VoucherSettingsScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "paymentMethods" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -183,6 +184,7 @@ function App() {
         onOpenVouchers={() => setModule("vouchers")}
         onOpenPromotions={() => setModule("promotions")}
         onOpenUsers={() => setModule("users")}
+        onOpenTerminals={() => setModule("terminals")}
         onOpenRoles={() => setModule("roles")}
         onOpenPaymentMethods={() => setModule("paymentMethods")}
         onOpenSalesOperationSecurity={() => setModule("salesOperationSecurity")}
@@ -219,6 +221,7 @@ function GestionScreen({
   onOpenVouchers,
   onOpenPromotions,
   onOpenUsers,
+  onOpenTerminals,
   onOpenRoles,
   onOpenPaymentMethods,
   onOpenSalesOperationSecurity,
@@ -247,6 +250,7 @@ function GestionScreen({
   onOpenVouchers: () => void;
   onOpenPromotions: () => void;
   onOpenUsers: () => void;
+  onOpenTerminals: () => void;
   onOpenRoles: () => void;
   onOpenPaymentMethods: () => void;
   onOpenSalesOperationSecurity: () => void;
@@ -373,6 +377,9 @@ function GestionScreen({
   const securityChildren: GestionNavigationItem[] = [
     ...(modules.includes("gestion.users")
       ? [{ key: "users", label: t("gestion.users.navigation"), onOpen: onOpenUsers }]
+      : []),
+    ...((session.permissions.includes("ADMIN") || session.permissions.includes("TERMINALS_MANAGE"))
+      ? [{ key: "terminals", label: t("gestion.terminals.navigation"), onOpen: onOpenTerminals }]
       : []),
     ...(modules.includes("gestion.roles")
       ? [{ key: "roles", label: t("gestion.roles.navigation"), onOpen: onOpenRoles }]
@@ -564,6 +571,8 @@ function GestionScreen({
     );
   } else if (effectiveModule === "users" && modules.includes("gestion.users")) {
     content = <SecurityAdministrationScreen mode="users" session={session} t={t} />;
+  } else if (effectiveModule === "terminals" && (session.permissions.includes("ADMIN") || session.permissions.includes("TERMINALS_MANAGE"))) {
+    content = <TerminalManagementScreen session={session} t={t} />;
   } else if (effectiveModule === "roles" && modules.includes("gestion.roles")) {
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
   } else if (effectiveModule === "paymentMethods" && canConfigurePaymentMethods) {

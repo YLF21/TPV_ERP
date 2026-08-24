@@ -1,6 +1,7 @@
 package com.tpverp.backend.catalog;
 
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -115,6 +116,29 @@ class ProductControllerContractTest {
                 .andExpect(jsonPath("$.offerPrice").doesNotExist());
 
         verify(saleCatalog).priceByIdentifier("8410000000001");
+    }
+
+    @Test
+    void warehousePermissionCanConsultSalePriceWithoutPurchaseData() throws Exception {
+        UUID productId = UUID.randomUUID();
+        when(saleCatalog.priceByIdentifier("PDA-001")).thenReturn(new SalePriceConsultationView(
+                productId,
+                "PDA-001",
+                "Producto PDA",
+                false,
+                new BigDecimal("4.50"),
+                PriceUseMode.NORMAL,
+                null,
+                null,
+                null,
+                null));
+
+        mvc.perform(get("/api/v1/products/sale/price-consultation")
+                        .param("identifier", "PDA-001")
+                        .with(user("warehouse").authorities(() -> GESTION_ALMACEN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.salePrice").value(4.50))
+                .andExpect(jsonPath("$.purchasePrice").doesNotExist());
     }
 
     @Test

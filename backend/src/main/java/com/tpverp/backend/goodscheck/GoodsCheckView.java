@@ -16,6 +16,7 @@ public record GoodsCheckView(
             UUID productId,
             String code,
             String name,
+            BigDecimal salePrice,
             BigDecimal expectedQuantity,
             BigDecimal registeredQuantity,
             BigDecimal missingQuantity,

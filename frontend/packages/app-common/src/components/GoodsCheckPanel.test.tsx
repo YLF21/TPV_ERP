@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   GoodsCheckPanel,
   filterGoodsCheckDocuments,
+  filterGoodsCheckItems,
   goodsCheckClosePath,
   goodsCheckDocumentIsAvailable,
   goodsCheckDocumentPath,
@@ -27,6 +28,37 @@ describe("GoodsCheckPanel", () => {
     expect(goodsCheckClosePath("check/1")).toBe("/goods-checks/check%2F1/close");
   });
 
+  it("filters registered lines and any kind of difference for the PDA summary", () => {
+    const check = {
+      id: "check-1",
+      documentId: "document-1",
+      status: "ABIERTA" as const,
+      todos: [{
+        productId: "missing",
+        code: "A",
+        name: "Missing",
+        expectedQuantity: 3,
+        registeredQuantity: 1,
+        missingQuantity: 2,
+        extraQuantity: 0
+      }, {
+        productId: "extra",
+        code: "B",
+        name: "Extra",
+        expectedQuantity: 1,
+        registeredQuantity: 2,
+        missingQuantity: 0,
+        extraQuantity: 1
+      }],
+      faltantes: [],
+      registrados: []
+    };
+
+    expect(filterGoodsCheckItems(check, "all")).toHaveLength(2);
+    expect(filterGoodsCheckItems(check, "missing").map((item) => item.productId)).toEqual(["missing", "extra"]);
+    expect(filterGoodsCheckItems(check, "registered")).toHaveLength(2);
+  });
+
   it("keeps search, document summary and import action in a separated header", () => {
     const html = renderToStaticMarkup(
       <GoodsCheckPanel locale="es" t={(key) => key} />
@@ -44,6 +76,15 @@ describe("GoodsCheckPanel", () => {
     expect(html).not.toContain("sr-only");
   });
 
+  it("starts the PDA separated workflow on the document list", () => {
+    const html = renderToStaticMarkup(
+      <GoodsCheckPanel locale="es" t={(key) => key} separateWorkflow />
+    );
+
+    expect(html).toContain("goods-check-panel-separate");
+    expect(html).toContain("goods-check-documents");
+    expect(html).not.toContain("goods-check-workspace");
+  });
   it("filters purchase documents independently by delivery note and invoice", () => {
     const documents = [{
       id: "delivery-1",

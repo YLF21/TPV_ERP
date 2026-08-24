@@ -10,6 +10,8 @@
   "scripts": {
     "dev:venta": "npm run dev --workspace @tpverp/app-venta",
     "dev:gestion": "npm run dev --workspace @tpverp/app-gestion",
+    "dev:pda": "npm run dev --workspace @tpverp/app-pda",
+    "preview:pda": "npm run preview --workspace @tpverp/app-pda",
     "app:venta": "node scripts/start-electron-app.mjs venta",
     "app:gestion": "node scripts/start-electron-app.mjs gestion",
     "build": "npm run build --workspaces --if-present",

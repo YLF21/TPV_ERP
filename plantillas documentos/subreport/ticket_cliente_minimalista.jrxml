@@ -58,9 +58,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 + ($F{telefono} == null || $F{telefono}.trim().isEmpty()
     ? ""
     : " - Tel.: " + $F{telefono}.trim())
-+ ($F{tarifa} == null || $F{tarifa}.trim().isEmpty()
-    ? ""
-    : " - " + $F{tarifa}.trim())]]></expression>
+]]></expression>
 			</element>
 			<element kind="textField" uuid="e7644a6d-e0eb-4f93-92ef-32bf5d620b50" x="7" y="34" width="193" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Left">
 				<printWhenExpression><![CDATA[$F{porcentaje_descuento} != null
