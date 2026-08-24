@@ -88,6 +88,29 @@ function Assert-PortAvailable {
     }
 }
 
+function Resolve-CommandPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+        [switch]$Optional
+    )
+
+    $command = Get-Command $Name -ErrorAction $(if ($Optional) { "SilentlyContinue" } else { "Stop" })
+    if ($null -eq $command) {
+        if ($Optional) {
+            return $null
+        }
+        throw "No se encontro el ejecutable '$Name' en PATH."
+    }
+    foreach ($propertyName in @("Path", "Source")) {
+        $property = $command.PSObject.Properties[$propertyName]
+        if ($null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+            return [string]$property.Value
+        }
+    }
+    throw "El comando '$Name' no expone una ruta ejecutable valida."
+}
+
 function Set-ScopedEnvironment {
     param(
         [Parameter(Mandatory)]
@@ -255,8 +278,8 @@ try {
     Assert-PortAvailable -Port $BackendPort -ServiceName "el backend"
     Assert-PortAvailable -Port $FrontendPort -ServiceName "APP VENTA"
 
-    $script:PsqlPath = (Get-Command psql.exe -ErrorAction Stop).Source
-    $npmPath = (Get-Command npm.cmd -ErrorAction Stop).Source
+    $script:PsqlPath = Resolve-CommandPath -Name "psql.exe"
+    $npmPath = Resolve-CommandPath -Name "npm.cmd"
     $mavenWrapper = Join-Path $script:RepositoryRoot "backend\mvnw.cmd"
     if (-not (Test-Path -LiteralPath $mavenWrapper)) {
         throw "No se encontro el wrapper Maven en $mavenWrapper."
@@ -278,7 +301,7 @@ try {
     $devSigningPath = Join-Path $script:TempRoot "verifactu-dev-signing.p12"
     $devSigningPassword = "DEV-SANDBOX-$uniqueSuffix"
     if ($FiscalSandbox) {
-        $keytoolPath = (Get-Command keytool.exe -ErrorAction SilentlyContinue).Source
+        $keytoolPath = Resolve-CommandPath -Name "keytool.exe" -Optional
         if ([string]::IsNullOrWhiteSpace($keytoolPath)) {
             $javaHome = [Environment]::GetEnvironmentVariable("JAVA_HOME", "Process")
             if ([string]::IsNullOrWhiteSpace($javaHome)) {
