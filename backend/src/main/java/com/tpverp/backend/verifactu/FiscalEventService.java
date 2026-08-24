@@ -162,7 +162,10 @@ public class FiscalEventService {
 
     @Transactional(readOnly = true)
     public List<FiscalEvent> findTop50(UUID companyId) {
-        return events.findTop50ByCompanyIdOrderByGeneratedAtDesc(companyId);
+        var installation = installations.findAll().stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));
+        return events.findTop50ByCompanyIdAndInstallationIdOrderByGeneratedAtDesc(
+                companyId, installation.getId());
     }
 
     private FiscalEventSummary summary(UUID companyId, UUID installationId, Instant now) {
