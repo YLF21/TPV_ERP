@@ -64,6 +64,8 @@ public class FiscalExportService {
         if (kind == FiscalExportKind.BILLING) {
             var fiscalRecords = records.findAllByCompanyIdAndInstallationIdOrderBySequence(
                     company.getId(), installation.getId()).stream()
+                    .filter(record -> mode != FiscalMode.NO_VERIFACTU
+                            || record.getFiscalMode() == FiscalMode.NO_VERIFACTU)
                     .filter(record -> inPeriod(record.getGeneratedAt(), periodStart, periodEnd))
                     .toList();
             xml = fiscalRecords.stream().map(record -> artifacts.findByRecordId(record.getId())
