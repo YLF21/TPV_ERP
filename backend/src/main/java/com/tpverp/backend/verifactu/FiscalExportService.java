@@ -45,6 +45,9 @@ public class FiscalExportService {
     @Transactional
     public FiscalExportView export(FiscalExportKind kind, OffsetDateTime periodStart,
             OffsetDateTime periodEnd) {
+        if (kind == null) {
+            throw new IllegalArgumentException("El tipo de exportacion es obligatorio");
+        }
         if ((periodStart == null) != (periodEnd == null)
                 || (periodStart != null && periodEnd.isBefore(periodStart))) {
             throw new IllegalArgumentException(
