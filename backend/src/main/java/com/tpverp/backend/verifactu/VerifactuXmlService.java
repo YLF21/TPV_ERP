@@ -373,7 +373,8 @@ public class VerifactuXmlService {
     }
 
     private static String amount(Object value) {
-        return ((BigDecimal) value).setScale(2, RoundingMode.HALF_UP).toPlainString();
+        return decimal(Map.of("importe", value), "importe")
+                .setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     @SuppressWarnings("unchecked")
@@ -393,11 +394,15 @@ public class VerifactuXmlService {
         var grouped = new LinkedHashMap<FiscalKey, FiscalBreakdown>();
         for (var line : lines) {
             var regime = String.valueOf(line.getOrDefault("regimenImpuesto", "IVA"));
-            var rate = line.get("porcentajeImpuesto") instanceof BigDecimal value ? value : null;
-            var base = line.get("base") instanceof BigDecimal value
-                    ? value : singleLineTotal(lines, record, "baseTotal");
-            var tax = line.get("impuesto") instanceof BigDecimal value
-                    ? value : singleLineTotal(lines, record, "impuestoTotal");
+            var rate = optionalDecimal(line.get("porcentajeImpuesto"));
+            var base = optionalDecimal(line.get("base"));
+            if (base == null) {
+                base = singleLineTotal(lines, record, "baseTotal");
+            }
+            var tax = optionalDecimal(line.get("impuesto"));
+            if (tax == null) {
+                tax = singleLineTotal(lines, record, "impuestoTotal");
+            }
             var key = new FiscalKey(regime.toUpperCase(Locale.ROOT), rate);
             grouped.merge(key, new FiscalBreakdown(key.regime(), rate, base, tax),
                     FiscalBreakdown::add);
@@ -415,10 +420,11 @@ public class VerifactuXmlService {
     }
 
     private static BigDecimal decimal(Map<String, Object> values, String key) {
-        if (values.get(key) instanceof BigDecimal value) {
-            return value;
+        var value = optionalDecimal(values.get(key));
+        if (value == null) {
+            throw new IllegalArgumentException(key + " es obligatorio");
         }
-        throw new IllegalArgumentException(key + " es obligatorio");
+        return value;
     }
 
     private static String taxCode(String regime) {
@@ -457,6 +463,27 @@ public class VerifactuXmlService {
 
     private static String yesNo(boolean value) {
         return value ? "S" : "N";
+    }
+
+    /** Normalizes equivalent numeric representations materialized from JSONB. */
+    private static BigDecimal optionalDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString());
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return new BigDecimal(text.trim());
+            } catch (NumberFormatException ignored) {
+                // Fall through to the same clear fiscal-field error below.
+            }
+        }
+        throw new IllegalArgumentException("importe fiscal no numerico");
     }
 
     private static String xml(Document document) throws Exception {

@@ -368,6 +368,17 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
+    void keepsSeededDailyTicketSequencesWithinFiscalRange() {
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from documento
+                where tipo = 'TICKET'
+                  and numero is not null
+                  and substring(numero from '([0-9]+)$')::integer > 99999
+                """, Integer.class)).isZero();
+    }
+
+    @Test
     void synchronizesDocumentCountersWithSeededDocumentNumbersIdempotently() {
         var countersBefore = jdbc.queryForList("""
                 select tipo || '|' || periodo || '|' || ultimo_numero

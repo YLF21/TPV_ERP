@@ -137,6 +137,26 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void aceptaImportesMaterializadosComoOtrosNumbersDesdeJsonb() {
+        var line = Map.<String, Object>of(
+                "regimenImpuesto", "IVA",
+                "porcentajeImpuesto", 21.0d,
+                "base", 0.83d,
+                "impuesto", 0.17d);
+        var snapshot = new LinkedHashMap<>(snapshot(List.of(line)));
+        snapshot.put("baseTotal", 0.83d);
+        snapshot.put("impuestoTotal", 0.17d);
+        snapshot.put("total", 1.0d);
+        var record = fiscalRecord(FiscalDocumentType.F2, "001-260824-90001", snapshot);
+
+        var document = parse(service().batchXml(request(record, "Company SL")));
+
+        assertThat(text(document, "CuotaTotal", 0)).isEqualTo("0.17");
+        assertThat(text(document, "ImporteTotal", 0)).isEqualTo("12.10");
+        assertThat(text(document, "BaseImponibleOimporteNoSujeto", 0)).isEqualTo("0.83");
+    }
+
+    @Test
     void incluyeFacturasSustituidasEnAltaF3() {
         var snapshot = new LinkedHashMap<>(snapshot(Map.of()));
         snapshot.put("facturasSustituidas", List.of(Map.of(
