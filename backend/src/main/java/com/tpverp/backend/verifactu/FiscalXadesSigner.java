@@ -22,6 +22,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.PublicKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.io.ByteArrayInputStream;
 import java.util.Base64;
 import java.util.List;
 import javax.xml.XMLConstants;
@@ -67,6 +70,39 @@ public class FiscalXadesSigner {
     public String signEvent(java.util.UUID companyId, java.util.UUID installationId,
             String unsignedXml) {
         return sign(companyId, installationId, unsignedXml);
+    }
+
+    /** Verifies the embedded XAdES certificate and XMLDSig without using secrets. */
+    public boolean verifySignedXml(String signedXml) {
+        if (signedXml == null || signedXml.isBlank()) {
+            return false;
+        }
+        try {
+            var factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+            var document = factory.newDocumentBuilder().parse(new InputSource(
+                    new StringReader(signedXml)));
+            var certificates = document.getElementsByTagNameNS(XMLSignature.XMLNS,
+                    "X509Certificate");
+            if (certificates.getLength() != 1) {
+                return false;
+            }
+            var encoded = certificates.item(0).getTextContent().replaceAll("\\s+", "");
+            var certificate = (X509Certificate) CertificateFactory.getInstance("X.509")
+                    .generateCertificate(
+                            new ByteArrayInputStream(Base64.getDecoder().decode(encoded)));
+            certificate.checkValidity();
+            verify(signedXml.getBytes(StandardCharsets.UTF_8), certificate.getPublicKey());
+            return true;
+        } catch (Exception exception) {
+            return false;
+        }
     }
 
     private String sign(java.util.UUID companyId, java.util.UUID installationId,

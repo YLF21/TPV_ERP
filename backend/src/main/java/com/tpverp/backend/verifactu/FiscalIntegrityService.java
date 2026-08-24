@@ -23,6 +23,7 @@ public class FiscalIntegrityService {
     private final FiscalEventService eventService;
     private final FiscalJsonHasher jsonHasher = new FiscalJsonHasher();
     private FiscalRecordArtifactRepository artifacts;
+    private FiscalXadesSigner signer;
 
     public FiscalIntegrityService(CurrentOrganization organization,
             InstallationRepository installations, VerifactuConfigurationRepository configurations,
@@ -40,6 +41,11 @@ public class FiscalIntegrityService {
     @Autowired(required = false)
     void setArtifacts(FiscalRecordArtifactRepository artifacts) {
         this.artifacts = artifacts;
+    }
+
+    @Autowired(required = false)
+    void setSigner(FiscalXadesSigner signer) {
+        this.signer = signer;
     }
 
     @Transactional
@@ -65,12 +71,20 @@ public class FiscalIntegrityService {
                     if (!Objects.equals(artifact.getXmlHash(), sha256(xml))) {
                         anomalies.add("INTEGRIDAD_ARTEFACTO_XML_" + record.getSequence());
                     }
+                    if (signer != null && record.getFiscalMode() == FiscalMode.NO_VERIFACTU
+                            && artifact.getSignedXml() != null
+                            && !signer.verifySignedXml(artifact.getSignedXml())) {
+                        anomalies.add("FIRMA_REGISTRO_" + record.getSequence());
+                    }
                 });
             }
         }
         for (var event : eventRecords) {
             if (!Objects.equals(event.getXmlHash(), sha256(event.getSignedXml()))) {
                 anomalies.add("INTEGRIDAD_XML_EVENTO_" + event.getSequence());
+            }
+            if (signer != null && !signer.verifySignedXml(event.getSignedXml())) {
+                anomalies.add("FIRMA_EVENTO_" + event.getSequence());
             }
         }
         for (var index = 1; index < billing.size(); index++) {
@@ -109,11 +123,13 @@ public class FiscalIntegrityService {
     private static boolean isBillingAnomaly(String value) {
         return value.startsWith("CADENA_FACTURACION")
                 || value.startsWith("INTEGRIDAD_SNAPSHOT")
-                || value.startsWith("INTEGRIDAD_ARTEFACTO_XML");
+                || value.startsWith("INTEGRIDAD_ARTEFACTO_XML")
+                || value.startsWith("FIRMA_REGISTRO");
     }
 
     private static boolean isEventAnomaly(String value) {
-        return value.startsWith("CADENA_EVENTOS") || value.startsWith("INTEGRIDAD_XML_EVENTO");
+        return value.startsWith("CADENA_EVENTOS") || value.startsWith("INTEGRIDAD_XML_EVENTO")
+                || value.startsWith("FIRMA_EVENTO");
     }
 
     private static String sha256(String value) {

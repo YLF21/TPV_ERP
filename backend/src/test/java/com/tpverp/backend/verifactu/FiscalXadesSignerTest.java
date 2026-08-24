@@ -62,6 +62,9 @@ class FiscalXadesSignerTest {
         assertThat(signed).contains(FiscalXadesSigner.POLICY_ID);
         assertThat(signed).contains(FiscalXadesSigner.POLICY_URL);
         assertThat(signed).contains("rsa-sha256");
+        assertThat(signer.verifySignedXml(signed)).isTrue();
+        assertThat(signer.verifySignedXml(signed.replace("RegistroAlta", "RegistroAltaAlterado")))
+                .isFalse();
         assertThat(Files.readAllBytes(pkcs12)).isNotEmpty();
     }
 
