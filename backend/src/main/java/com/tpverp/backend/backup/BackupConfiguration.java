@@ -9,6 +9,8 @@ import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.shared.crypto.SecretProtectorFactory;
+import com.tpverp.backend.verifactu.FiscalEventService;
+import com.tpverp.backend.verifactu.VerifactuConfigurationRepository;
 import java.nio.file.Path;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
@@ -69,6 +71,8 @@ class BackupConfiguration {
             BackupArchiveService archives,
             PostgreSqlBackupCommands commands,
             AuditService auditService,
+            VerifactuConfigurationRepository verifactuConfigurations,
+            FiscalEventService fiscalEvents,
             Clock clock,
             @Value("${tpv.backup.default-directory}") Path defaultDirectory,
             @Value("${tpv.product-images.directory:${tpv.backup.default-directory}/product-images}") Path productImagesDirectory,
@@ -85,6 +89,8 @@ class BackupConfiguration {
                 archives,
                 commands,
                 auditService,
+                verifactuConfigurations,
+                fiscalEvents,
                 clock,
                 defaultDirectory,
                 productImagesDirectory,

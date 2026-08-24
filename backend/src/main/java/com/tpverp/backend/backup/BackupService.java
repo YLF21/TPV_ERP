@@ -12,6 +12,10 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserAccountRepository;
+import com.tpverp.backend.verifactu.FiscalEventService;
+import com.tpverp.backend.verifactu.FiscalEventType;
+import com.tpverp.backend.verifactu.FiscalMode;
+import com.tpverp.backend.verifactu.VerifactuConfigurationRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -41,6 +45,8 @@ public class BackupService {
     private final BackupArchiveService archives;
     private final PostgreSqlBackupCommands commands;
     private final AuditService auditService;
+    private final VerifactuConfigurationRepository verifactuConfigurations;
+    private final FiscalEventService fiscalEvents;
     private final Clock clock;
     private final Path defaultDirectory;
     private final Path productImagesDirectory;
@@ -58,6 +64,8 @@ public class BackupService {
             BackupArchiveService archives,
             PostgreSqlBackupCommands commands,
             AuditService auditService,
+            VerifactuConfigurationRepository verifactuConfigurations,
+            FiscalEventService fiscalEvents,
             Clock clock,
             Path defaultDirectory,
             Path productImagesDirectory,
@@ -73,6 +81,8 @@ public class BackupService {
         this.archives = archives;
         this.commands = commands;
         this.auditService = auditService;
+        this.verifactuConfigurations = verifactuConfigurations;
+        this.fiscalEvents = fiscalEvents;
         this.clock = clock;
         this.defaultDirectory = defaultDirectory;
         this.productImagesDirectory = productImagesDirectory;
@@ -206,6 +216,7 @@ public class BackupService {
             archives.restore(
                     archive, dump, productImagesDirectory, documentTemplatesDirectory);
             commands.restore(dump);
+            recordFiscalRestorationEvent();
             auditService.record(
                     "BACKUP_RESTORED",
                     AuditResult.EXITO,
@@ -233,6 +244,20 @@ public class BackupService {
                 }
             }
         }
+    }
+
+    /**
+     * A managed restore is an official NO VERI*FACTU event. It is deliberately
+     * executed only after PostgreSQL has restored the fiscal chain, so event 07
+     * becomes the first new immutable record in the restored installation.
+     */
+    private void recordFiscalRestorationEvent() {
+        var installation = currentInstallation();
+        verifactuConfigurations.findAllByCurrentMode(FiscalMode.NO_VERIFACTU)
+                .forEach(configuration -> fiscalEvents.create(
+                        configuration.getCompanyId(), installation.getId(),
+                        FiscalMode.NO_VERIFACTU, FiscalEventType.BACKUP_RESTORED,
+                        "BACKUP_RESTORED"));
     }
 
     @Transactional(readOnly = true)
