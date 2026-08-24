@@ -112,6 +112,7 @@ public class FiscalRecordArtifact {
     public UUID getSystemVersionId() { return systemVersionId; }
     public String getUnsignedXml() { return unsignedXml; }
     public String getSignedXml() { return signedXml; }
+    public String getXmlHash() { return xmlHash; }
     public String getQrUrl() { return qrUrl; }
     public String getQrHash() { return qrHash; }
     public String getQrPrefix() { return qrPrefix; }
