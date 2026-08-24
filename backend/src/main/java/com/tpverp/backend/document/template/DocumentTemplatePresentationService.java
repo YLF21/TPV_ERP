@@ -75,10 +75,7 @@ public class DocumentTemplatePresentationService {
     }
 
     private static void requireImplemented(DocumentTemplateType type) {
-        if (type != DocumentTemplateType.FACTURA_VENTA
-                && type != DocumentTemplateType.ALBARAN_VENTA
-                && type != DocumentTemplateType.TICKET
-                && type != DocumentTemplateType.VALE) {
+        if (type == null) {
             throw new IllegalArgumentException(
                     "document_template_presentation_not_supported");
         }

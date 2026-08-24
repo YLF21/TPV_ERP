@@ -25,6 +25,7 @@ public record ResolvedDocumentTemplate(
             case ALBARAN_VENTA -> "ALBARAN_A4";
             case TICKET -> "TICKET_80";
             case VALE -> "VALE_TICKET_80";
+            default -> "INTEGRATED_" + type.name() + "_" + format.name();
         };
         return new ResolvedDocumentTemplate(
                 null,

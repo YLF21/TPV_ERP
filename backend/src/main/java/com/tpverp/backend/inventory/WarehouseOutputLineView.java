@@ -10,7 +10,8 @@ public record WarehouseOutputLineView(
         String productName,
         int quantity,
         BigDecimal saleUnitPrice,
-        BigDecimal saleTotal) {
+        BigDecimal saleTotal,
+        int position) {
 
     public static WarehouseOutputLineView from(WarehouseOutputLine line) {
         return from(line, null);
@@ -23,6 +24,7 @@ public record WarehouseOutputLineView(
                 product == null ? null : product.getName(),
                 line.getQuantity(),
                 line.getSaleUnitPrice(),
-                line.getSaleTotal());
+                line.getSaleTotal(),
+                line.getPosition());
     }
 }

@@ -29,21 +29,11 @@ describe("cash withdrawal receipt printing", () => {
     });
   });
 
-  it("loads the persisted receipt and prints its audit data and denomination breakdown", async () => {
+  it("prints the persisted Jasper ticket raster without rebuilding HTML/text", async () => {
     const request = vi.fn().mockResolvedValue({
-      movementId: "movement-123456789",
-      sessionId: "session-1",
-      terminalId: "terminal-1",
-      terminalName: "TPV 1",
-      createdAt: "2026-07-30T12:00:00Z",
-      userName: "SELLER",
-      authorizerName: "MANAGER",
-      amount: 21,
-      comment: "Ingreso\u0007 en banco",
-      denominations: [
-        { denomination: 20, quantity: 1 },
-        { denomination: 1, quantity: 1 },
-      ],
+      renderedPdf: { contentType: "application/pdf", base64: "JVBERi0=" },
+      ticketRenderedImage: { contentType: "image/png", base64: "iVBORw0=" },
+      fileName: "RETIRADA_CAJA-001.pdf",
     });
     const printTicket = vi.fn().mockResolvedValue({ ok: true });
     const hardware = {
@@ -62,19 +52,13 @@ describe("cash withdrawal receipt printing", () => {
 
     expect(outcome).toEqual({ status: "PRINTED" });
     expect(request).toHaveBeenCalledWith(
-      "/cash/receipts/withdrawals/movement-123456789",
+      "/cash/receipts/withdrawals/movement-123456789/print-document",
       { token: "token" },
     );
     const printed = printTicket.mock.calls[0][0];
-    expect(printed.documentNumber).toBe("RETIRADA movement-123");
-    expect(printed.total).toBe(21);
-    expect(printed.lines[0].name).toContain("Motivo: Ingreso en banco");
-    expect(printed.lines[0].name).toContain("Operador: SELLER");
-    expect(printed.lines[0].name).toContain("Autoriza: MANAGER");
-    expect(printed.lines.slice(1)).toEqual([
-      { name: "Efectivo 20.00", quantity: 1, price: 20, total: 20 },
-      { name: "Efectivo 1.00", quantity: 1, price: 1, total: 1 },
-    ]);
+    expect(printed.requireRenderedDocument).toBe(true);
+    expect(printed.renderedPdf).toEqual({ contentType: "application/pdf", base64: "JVBERi0=" });
+    expect(printed.documentRaster).toBe("data:image/png;base64,iVBORw0=");
   });
 
   it("returns a failed outcome instead of throwing so retry cannot duplicate the movement", async () => {

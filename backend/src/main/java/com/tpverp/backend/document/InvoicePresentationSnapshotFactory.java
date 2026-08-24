@@ -89,7 +89,8 @@ public class InvoicePresentationSnapshotFactory {
                         .toList()
                 : java.util.List.<InvoicePresentationSnapshot.BankAccount>of();
         var template = templateReference(templateType, DocumentTemplateFormat.defaultFor(templateType));
-        var ticketTemplate = templateType == DocumentTemplateType.FACTURA_VENTA
+        var ticketTemplate = (templateType == DocumentTemplateType.FACTURA_VENTA
+                || templateType == DocumentTemplateType.RECTIFICATIVA_VENTA)
                 ? templateReference(templateType, DocumentTemplateFormat.TICKET_80)
                 : null;
         var logo = storePresentation == null || storePresentation.logo() == null ? null
@@ -165,7 +166,8 @@ public class InvoicePresentationSnapshotFactory {
 
     private static boolean usesJsonDocumentPresentation(DocumentTemplateType templateType) {
         return templateType == DocumentTemplateType.FACTURA_VENTA
-                || templateType == DocumentTemplateType.ALBARAN_VENTA;
+                || templateType == DocumentTemplateType.ALBARAN_VENTA
+                || templateType == DocumentTemplateType.RECTIFICATIVA_VENTA;
     }
 
 }

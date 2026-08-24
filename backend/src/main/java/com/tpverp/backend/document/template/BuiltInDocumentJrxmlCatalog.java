@@ -100,9 +100,27 @@ public class BuiltInDocumentJrxmlCatalog {
                 DocumentTemplateFormat.A4, "FACTURA_VENTA_A4.jrxml",
                 DocumentTemplateFormat.TICKET_80, "FACTURA_VENTA_TICKET_80.jrxml"));
         result.put(DocumentTemplateType.ALBARAN_VENTA, Map.of(
-                DocumentTemplateFormat.A4, "ALBARAN_VENTA_A4.jrxml"));
+                DocumentTemplateFormat.A4, "ALBARAN_VENTA_A4.jrxml",
+                DocumentTemplateFormat.TICKET_80, "ALBARAN_VENTA_TICKET_80.jrxml"));
         result.put(DocumentTemplateType.VALE, Map.of(
                 DocumentTemplateFormat.TICKET_80, "VALE_TICKET_80.jrxml"));
+        result.put(DocumentTemplateType.TICKET_REGALO, Map.of(
+                DocumentTemplateFormat.TICKET_80, "TICKET_REGALO_TICKET_80.jrxml"));
+        result.put(DocumentTemplateType.RETIRADA_CAJA, Map.of(
+                DocumentTemplateFormat.TICKET_80, "RETIRADA_CAJA_TICKET_80.jrxml"));
+        result.put(DocumentTemplateType.RECTIFICATIVA_VENTA, Map.of(
+                DocumentTemplateFormat.A4, "RECTIFICATIVA_VENTA_A4.jrxml",
+                DocumentTemplateFormat.TICKET_80, "RECTIFICATIVA_VENTA_TICKET_80.jrxml"));
+        result.put(DocumentTemplateType.SALIDA_ALMACEN, Map.of(
+                DocumentTemplateFormat.A4, "SALIDA_ALMACEN_A4.jrxml"));
+        result.put(DocumentTemplateType.ENTRADA_ALMACEN, Map.of(
+                DocumentTemplateFormat.A4, "ENTRADA_ALMACEN_A4.jrxml"));
+        result.put(DocumentTemplateType.ALBARAN_ENTRADA, Map.of(
+                DocumentTemplateFormat.A4, "ALBARAN_ENTRADA_A4.jrxml"));
+        result.put(DocumentTemplateType.FACTURA_ENTRADA, Map.of(
+                DocumentTemplateFormat.A4, "FACTURA_ENTRADA_A4.jrxml"));
+        result.put(DocumentTemplateType.HISTORIAL_VENTAS_PRODUCTO, Map.of(
+                DocumentTemplateFormat.A4, "HISTORIAL_VENTAS_PRODUCTO_A4.jrxml"));
         return Map.copyOf(result);
     }
 

@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 
 import com.tpverp.backend.shared.api.PagedResult;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class WarehouseInputController {
 
     private final WarehouseInputService service;
+    private OperationalWarehousePrintService printing;
 
     public WarehouseInputController(WarehouseInputService service) {
         this.service = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setPrinting(OperationalWarehousePrintService printing) {
+        this.printing = printing;
     }
 
     @GetMapping
@@ -68,5 +75,12 @@ public class WarehouseInputController {
             @PathVariable UUID id,
             Authentication authentication) {
         return service.confirm(id, authentication);
+    }
+
+    @GetMapping("/{id}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
+    public RenderedDocumentView printDocument(@PathVariable UUID id) {
+        if (printing == null) throw new IllegalStateException("warehouse_printing_unavailable");
+        return printing.input(id);
     }
 }

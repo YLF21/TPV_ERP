@@ -323,33 +323,38 @@ export function StockSalesHistoryPanel({
     setExportBusy(true);
     setExportError("");
     try {
-      if (!window.tpvDesktop?.reports?.exportTablePdf) {
-        printSalesHistoryInBrowser();
-        return;
+      if (!requestToken) return;
+      const response = await fetch(
+        `${apiBaseUrl}/stock/products/${encodeURIComponent(productId)}/sales-history/render`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${requestToken}` },
+          body: JSON.stringify({
+            from: appliedFrom,
+            to: appliedTo,
+            status: statusFilter || null,
+            columns: visibleColumns.map((column) => column.key),
+            sortBy: tableSort.sort?.column || "occurredAt",
+            sortDirection: tableSort.sort?.direction || "asc"
+          })
+        }
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const rendered = await response.json() as { renderedPdf?: { contentType: string; base64: string }; fileName?: string };
+      if (!rendered.renderedPdf?.base64) throw new Error("sales_history_rendered_pdf_missing");
+      const binary = window.atob(rendered.renderedPdf.base64);
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const fileName = rendered.fileName || exportFileName("pdf");
+      if (window.tpvDesktop?.reports) {
+        const result = await window.tpvDesktop.reports.saveFile({
+          defaultFileName: fileName,
+          filters: [{ name: "PDF", extensions: ["pdf"] }],
+          bytes,
+        });
+        if (!result.ok) throw new Error(result.message);
+      } else {
+        downloadBytes(bytes, fileName, "application/pdf");
       }
-      const imageDataUrl = productImageSource
-        ? await imageSourceAsDataUrl(productImageSource)
-        : undefined;
-      const result = await window.tpvDesktop.reports.exportTablePdf({
-        title: t("stock.history.title"),
-        subject: productName,
-        code: productCode,
-        imageDataUrl,
-        imageFallback: productName.trim().slice(0, 1).toLocaleUpperCase() || "P",
-        filters: [
-          { label: t("salesReport.filter.dateFrom"), value: appliedFrom },
-          { label: t("salesReport.filter.dateTo"), value: appliedTo },
-          { label: t("salesReport.filter.status"), value: statusFilter || t("salesReport.filter.all") },
-        ],
-        columns: exportColumns(),
-        rows: visibleRows.map((row) => visibleColumns.map((column) =>
-          formattedHistoryCell(row, column.key, dateFormatter, numberFormatter, productType, locale))),
-        totals: [
-          { label: t("stock.history.totalQuantity"), value: formatProductQuantity(totals.quantity, productType, locale) },
-          { label: t("stock.history.totalAmount"), value: `${numberFormatter.format(totals.amount)} €` },
-        ],
-      }, exportFileName("pdf"));
-      if (!result.ok) throw new Error(result.message);
     } catch (caught) {
       setExportError(caught instanceof Error ? caught.message : t("stock.history.exportError"));
     } finally {
@@ -560,32 +565,6 @@ function downloadBytes(bytes: Uint8Array, fileName: string, type: string) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-async function imageSourceAsDataUrl(source: string) {
-  if (source.startsWith("data:")) return source;
-  const blob = await fetch(source).then((response) => {
-    if (!response.ok) throw new Error("product_image_unavailable");
-    return response.blob();
-  });
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("product_image_unavailable"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function printSalesHistoryInBrowser() {
-  const root = document.documentElement;
-  root.dataset.salesHistoryPrint = "true";
-  const cleanup = () => {
-    delete root.dataset.salesHistoryPrint;
-    window.removeEventListener("afterprint", cleanup);
-  };
-  window.addEventListener("afterprint", cleanup);
-  window.print();
-  window.setTimeout(cleanup, 1_000);
 }
 
 function formatOccurredAt(value: string, formatter: Intl.DateTimeFormat) {

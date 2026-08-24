@@ -10,6 +10,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.VE
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
 import com.tpverp.backend.security.application.PermissionChecks;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 import com.tpverp.backend.shared.api.PagedResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -43,6 +44,7 @@ public class StockController {
     private final StockTopSalesService topSalesService;
     private final StockSalesHistoryService salesHistoryService;
     private final StockSettingsService settingsService;
+    private OperationalWarehousePrintService operationalPrinting;
 
     public StockController(
             InventoryService service,
@@ -55,6 +57,11 @@ public class StockController {
         this.topSalesService = topSalesService;
         this.salesHistoryService = salesHistoryService;
         this.settingsService = settingsService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setOperationalPrinting(OperationalWarehousePrintService operationalPrinting) {
+        this.operationalPrinting = operationalPrinting;
     }
 
     @GetMapping
@@ -134,6 +141,15 @@ public class StockController {
             @RequestParam(required = false) LocalDate from,
             @RequestParam(required = false) LocalDate to) {
         return salesHistoryService.history(productId, from, to);
+    }
+
+    @PostMapping("/products/{productId}/sales-history/render")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    public RenderedDocumentView renderSalesHistory(
+            @PathVariable UUID productId,
+            @RequestBody(required = false) OperationalWarehousePrintService.HistoryPrintCommand command) {
+        if (operationalPrinting == null) throw new IllegalStateException("stock_printing_unavailable");
+        return operationalPrinting.salesHistory(productId, command);
     }
 
     @GetMapping("/settings")

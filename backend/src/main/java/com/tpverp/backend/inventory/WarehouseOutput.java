@@ -118,7 +118,9 @@ public class WarehouseOutput {
 
     public void addLine(UUID productId, int quantity) {
         requireDraft();
-        lines.add(new WarehouseOutputLine(id, productId, quantity));
+        var line = new WarehouseOutputLine(id, productId, quantity);
+        line.assignPosition(lines.size() + 1);
+        lines.add(line);
     }
 
     // Replaces data and lines while the output remains in draft.

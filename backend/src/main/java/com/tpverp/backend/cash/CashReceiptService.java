@@ -1,5 +1,10 @@
 package com.tpverp.backend.cash;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.OperationalDocumentJasperRenderer;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.TerminalRepository;
@@ -26,6 +31,7 @@ public class CashReceiptService {
     private final UserAccountRepository users;
     private final CurrentOrganization organization;
     private final CashPermissionService permissions;
+    private OperationalDocumentJasperRenderer printing;
 
     public CashReceiptService(
             CashSessionRepository sessions,
@@ -40,6 +46,47 @@ public class CashReceiptService {
         this.users = users;
         this.organization = organization;
         this.permissions = permissions;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrinting(OperationalDocumentJasperRenderer printing) {
+        this.printing = printing;
+    }
+
+    @Transactional(readOnly = true)
+    public RenderedDocumentView withdrawalPrintDocument(
+            UUID movementId, Authentication authentication) {
+        if (printing == null) {
+            throw new IllegalStateException("cash_receipt_printing_unavailable");
+        }
+        var receipt = withdrawalReceipt(movementId, authentication);
+        var data = printing.mapper().createObjectNode();
+        var document = data.putObject("document");
+        document.put("displayNumber", receipt.movementId().toString());
+        document.put("issueDate", receipt.createdAt().toString());
+        var issuer = data.putObject("issuer");
+        issuer.put("headerPrimaryName", organization.currentStore().getNombreEfectivo());
+        issuer.put("legalName", organization.currentCompany().getRazonSocial());
+        issuer.put("details", organization.currentCompany().getRazonSocial());
+        var lines = data.putArray("lines");
+        line(lines, "Operador", receipt.userName());
+        line(lines, "Terminal", receipt.terminalName());
+        line(lines, "Importe", receipt.amount());
+        line(lines, "Autorizador", receipt.authorizerName());
+        line(lines, "Comentario", receipt.comment());
+        receipt.denominations().forEach(value -> line(lines,
+                value.denomination() + " €", value.quantity()));
+        return printing.render(DocumentTemplateType.RETIRADA_CAJA,
+                DocumentTemplateFormat.TICKET_80, data,
+                "retirada-caja-" + receipt.movementId() + ".pdf");
+    }
+
+    private static void line(com.fasterxml.jackson.databind.node.ArrayNode lines,
+            String label, Object value) {
+        var node = lines.addObject();
+        node.put("label", label);
+        if (value == null) node.putNull("value");
+        else node.put("value", value.toString());
     }
 
     // Returns printable withdrawal data without print side effects.

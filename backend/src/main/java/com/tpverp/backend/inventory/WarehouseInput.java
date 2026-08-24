@@ -178,15 +178,19 @@ public class WarehouseInput {
 
     public void addLine(UUID productId, int quantity) {
         requireDraft();
-        lines.add(new WarehouseInputLine(id, productId, quantity));
+        var line = new WarehouseInputLine(id, productId, quantity);
+        line.assignPosition(lines.size() + 1);
+        lines.add(line);
     }
 
     public void addLine(WarehouseInputLineCommand line) {
         requireDraft();
-        lines.add(new WarehouseInputLine(
+        var entity = new WarehouseInputLine(
                 id, line.productId(), line.quantity(),
                 Objects.requireNonNull(line.unitPrice(), "unitPrice"),
-                line.discount(), line.priceOverridden(), line.productName()));
+                line.discount(), line.priceOverridden(), line.productName());
+        entity.assignPosition(lines.size() + 1);
+        lines.add(entity);
     }
 
     public void replace(

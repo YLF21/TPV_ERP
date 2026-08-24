@@ -5,6 +5,10 @@ import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.ProductQuantityPolicy;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.OperationalDocumentJasperRenderer;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -40,6 +44,7 @@ public class GiftReceiptService {
     private final CurrentTerminal currentTerminal;
     private final AuditService audit;
     private final Clock clock;
+    private OperationalDocumentJasperRenderer printing;
 
     public GiftReceiptService(
             GiftReceiptRepository receipts,
@@ -58,6 +63,42 @@ public class GiftReceiptService {
         this.currentTerminal = currentTerminal;
         this.audit = audit;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrinting(OperationalDocumentJasperRenderer printing) {
+        this.printing = printing;
+    }
+
+    @Transactional(readOnly = true)
+    public RenderedDocumentView printDocument(String code) {
+        if (printing == null) {
+            throw new IllegalStateException("gift_receipt_printing_unavailable");
+        }
+        var receipt = requiredReceipt(code);
+        var source = documents.cardRefundLineOptions(receipt.getSourceDocumentId());
+        var data = printing.mapper().createObjectNode();
+        var document = data.putObject("document");
+        document.put("displayNumber", receipt.getCode());
+        document.put("issueDate", receipt.getCreatedAt().toString());
+        var issuer = data.putObject("issuer");
+        issuer.put("headerPrimaryName", organization.currentStore().getNombreEfectivo());
+        issuer.put("legalName", organization.currentCompany().getRazonSocial());
+        issuer.put("details", organization.currentCompany().getRazonSocial());
+        var lines = data.putArray("lines");
+        var selected = receipt.getLines().stream().collect(Collectors.toMap(
+                GiftReceiptLine::getSourceDocumentLineId, Function.identity()));
+        source.stream().filter(option -> selected.containsKey(option.lineId())).forEach(option -> {
+            var line = lines.addObject();
+            var issued = selected.get(option.lineId());
+            line.put("code", option.code());
+            line.put("articleName", option.name());
+            line.put("quantity", issued.getQuantity());
+            line.put("serials", String.join("\n", issued.getSerialNumbers()));
+        });
+        return printing.render(DocumentTemplateType.TICKET_REGALO,
+                DocumentTemplateFormat.TICKET_80, data,
+                receipt.getCode().toLowerCase(Locale.ROOT) + ".pdf");
     }
 
     @Transactional(readOnly = true)

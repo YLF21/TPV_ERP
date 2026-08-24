@@ -24,6 +24,7 @@ public class DeliveryNoteController {
     private final DocumentService service;
     private final GenericSalesApiService genericSales;
     private final DocumentViewAssembler views;
+    private CustomerReceivablePrintService printing;
 
     public DeliveryNoteController(
             DocumentService service,
@@ -32,6 +33,19 @@ public class DeliveryNoteController {
         this.service = service;
         this.genericSales = genericSales;
         this.views = views;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setPrinting(CustomerReceivablePrintService printing) {
+        this.printing = printing;
+    }
+
+    @GetMapping("/{id}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_READ','VENTA')")
+    public CustomerReceivablePrintService.CommercialDocumentPrint printDocument(
+            @PathVariable UUID id) {
+        if (printing == null) throw new IllegalStateException("document_printing_unavailable");
+        return printing.document(id);
     }
 
     @GetMapping

@@ -1,9 +1,22 @@
 import { ApiError, apiBaseUrl, apiRequest } from "@tpverp/app-common";
 
-export type DocumentTemplateType = "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET" | "VALE";
+export type DocumentTemplateType =
+  | "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET" | "VALE"
+  | "TICKET_REGALO" | "RETIRADA_CAJA" | "RECTIFICATIVA_VENTA"
+  | "SALIDA_ALMACEN" | "ENTRADA_ALMACEN" | "ALBARAN_ENTRADA"
+  | "FACTURA_ENTRADA" | "HISTORIAL_VENTAS_PRODUCTO";
 export type DocumentTemplateFormat = "A4" | "TICKET_80";
 export type DocumentTemplateStatus = "DRAFT" | "VALIDATED" | "ACTIVE" | "RETIRED";
 export type DocumentTemplateOrigin = "INTEGRATED" | "IMPORTED";
+
+export type DocumentTemplateDefinition = {
+  type: DocumentTemplateType;
+  labels: Record<string, string>;
+  formats: DocumentTemplateFormat[];
+  schemaVersion: number;
+  requiredFields: string[];
+  configurable: boolean;
+};
 
 export type ResolvedDocumentTemplate = {
   id: string | null;
@@ -47,6 +60,13 @@ export type DocumentTemplatePresentation = {
   format: DocumentTemplateFormat;
   origin: DocumentTemplateOrigin;
 };
+
+export function loadDocumentTemplateDefinitions(
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplateDefinition[]>("/document-templates/definitions", { token });
+}
 
 export function loadDocumentTemplateCatalog(
   type: DocumentTemplateType,

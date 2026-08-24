@@ -24,7 +24,7 @@ class WarehouseOutputControllerContractTest {
                 .containsExactly("/api/v1/warehouse-outputs");
         assertThat(Arrays.stream(WarehouseOutputController.class.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(PreAuthorize.class)))
-                .hasSize(5);
+                .hasSize(6);
     }
 
     @Test

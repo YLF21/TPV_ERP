@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 
 @RestController
 @RequestMapping("/api/v1/cash")
@@ -139,6 +140,15 @@ public class CashController {
             @PathVariable UUID movementId,
             Authentication authentication) {
         return receipts.withdrawalReceipt(movementId, authentication);
+    }
+
+    @GetMapping("/receipts/withdrawals/{movementId}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
+            + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public RenderedDocumentView withdrawalPrintDocument(
+            @PathVariable UUID movementId,
+            Authentication authentication) {
+        return receipts.withdrawalPrintDocument(movementId, authentication);
     }
 
     @GetMapping("/receipts/sessions/{sessionId}")

@@ -131,7 +131,9 @@ public class CustomerReceivablePrintService {
                         Base64.getEncoder().encodeToString(bytes)))
                 .orElse(null);
         var ticketRendered = jasperRenderer == null
-                || document.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                || (document.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                    && document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
+                    && document.getTipo() != CommercialDocumentType.RECTIFICATIVA_VENTA)
                 ? java.util.Optional.<InvoiceJasperRenderer.RenderedDocument>empty()
                 : jasperRenderer.renderDocument(document, organization.currentStore(), company,
                         customer, presentation, qrUrl, logoDataUri,
@@ -240,9 +242,11 @@ public class CustomerReceivablePrintService {
     }
 
     private static DocumentTemplateType templateType(CommercialDocument document) {
-        return document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
-                ? DocumentTemplateType.ALBARAN_VENTA
-                : DocumentTemplateType.FACTURA_VENTA;
+        return switch (document.getTipo()) {
+            case ALBARAN_VENTA -> DocumentTemplateType.ALBARAN_VENTA;
+            case RECTIFICATIVA_VENTA -> DocumentTemplateType.RECTIFICATIVA_VENTA;
+            default -> DocumentTemplateType.FACTURA_VENTA;
+        };
     }
 
     private String qrImage(String qrUrl) {

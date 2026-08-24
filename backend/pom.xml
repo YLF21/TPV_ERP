@@ -226,7 +226,17 @@
 					<include>FACTURA_VENTA_A4.jrxml</include>
 					<include>FACTURA_VENTA_TICKET_80.jrxml</include>
 					<include>ALBARAN_VENTA_A4.jrxml</include>
+					<include>ALBARAN_VENTA_TICKET_80.jrxml</include>
 					<include>VALE_TICKET_80.jrxml</include>
+					<include>TICKET_REGALO_TICKET_80.jrxml</include>
+					<include>RETIRADA_CAJA_TICKET_80.jrxml</include>
+					<include>RECTIFICATIVA_VENTA_A4.jrxml</include>
+					<include>RECTIFICATIVA_VENTA_TICKET_80.jrxml</include>
+					<include>SALIDA_ALMACEN_A4.jrxml</include>
+					<include>ENTRADA_ALMACEN_A4.jrxml</include>
+					<include>ALBARAN_ENTRADA_A4.jrxml</include>
+					<include>FACTURA_ENTRADA_A4.jrxml</include>
+					<include>HISTORIAL_VENTAS_PRODUCTO_A4.jrxml</include>
 				</includes>
 			</resource>
 			<!-- Immutable operational sales reports; these are not user-editable templates. -->

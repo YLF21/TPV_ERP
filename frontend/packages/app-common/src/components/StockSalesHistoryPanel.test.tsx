@@ -254,13 +254,18 @@ describe("StockSalesHistoryPanel", () => {
     }));
   });
 
-  it("exports PDF with the product image and no image-free alternative", async () => {
+  it("exports the Jasper PDF using the selected columns and sort", async () => {
     apiRequestMock.mockResolvedValueOnce([row]);
-    const exportTablePdf = vi.fn().mockResolvedValue({ ok: true, canceled: false });
+    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ renderedPdf: { contentType: "application/pdf", base64: "JVBERi0=" }, fileName: "historial.pdf" })
+    });
+    vi.stubGlobal("fetch", fetchMock);
     window.tpvDesktop = { closeApplication: vi.fn(), reports: {
-      saveFile: vi.fn(),
+      saveFile,
       exportPdf: vi.fn(),
-      exportTablePdf,
+      exportTablePdf: vi.fn(),
       print: vi.fn(),
     } };
 
@@ -279,10 +284,11 @@ describe("StockSalesHistoryPanel", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Exportar" }) as HTMLButtonElement).disabled)
       .toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
-    expect(screen.queryByRole("menuitem", { name: /sin imagen/i })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Exportar a PDF" }));
-    await waitFor(() => expect(exportTablePdf).toHaveBeenCalledTimes(1));
-    expect(exportTablePdf.mock.calls[0][0].imageDataUrl).toBe("data:image/png;base64,AAAA");
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/stock/products/product-1/sales-history/render");
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(payload.columns).toHaveLength(11);
+    expect(payload.sortBy).toBe("occurredAt");
   });
 });
