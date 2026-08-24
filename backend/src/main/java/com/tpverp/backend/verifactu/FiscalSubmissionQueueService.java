@@ -65,6 +65,7 @@ public class FiscalSubmissionQueueService {
     public Optional<ClaimedFiscalSubmission> claim(UUID recordId) {
         var record = records.findById(recordId)
                 .orElseThrow(() -> new IllegalArgumentException("registro fiscal no encontrado"));
+        requireVerifactu(record);
         var state = states.findForUpdate(recordId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "estado de envio fiscal no encontrado"));
@@ -82,6 +83,7 @@ public class FiscalSubmissionQueueService {
         var storeId = organization.currentStore().getId();
         var record = records.findByIdAndCompanyIdAndStoreId(recordId, companyId, storeId)
                 .orElseThrow(() -> new NoSuchElementException("Registro fiscal no encontrado"));
+        requireVerifactu(record);
         var state = states.findForUpdate(recordId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Estado de envio fiscal no encontrado"));
@@ -114,6 +116,7 @@ public class FiscalSubmissionQueueService {
                 .flatMap(state -> records.findById(state.getRecordId()).stream()
                         .filter(record -> record.getCompanyId().equals(companyId))
                         .filter(record -> record.getStoreId().equals(storeId))
+                        .filter(this::isVerifactuRecord)
                         .map(record -> new QueueCandidate(record, state)))
                 .toList();
     }
@@ -121,6 +124,7 @@ public class FiscalSubmissionQueueService {
     private List<QueueCandidate> automaticallyRetryableAcrossStores() {
         return states.findAllByStatusInOrderByUpdatedAtAsc(AUTOMATICALLY_RETRYABLE).stream()
                 .flatMap(state -> records.findById(state.getRecordId()).stream()
+                        .filter(this::isVerifactuRecord)
                         .map(record -> new QueueCandidate(record, state)))
                 .toList();
     }
@@ -132,6 +136,17 @@ public class FiscalSubmissionQueueService {
         }
         return AUTOMATICALLY_RETRYABLE.contains(state.getStatus())
                 && !state.getUpdatedAt().isAfter(Instant.now(clock).minus(RETRY_DELAY));
+    }
+
+    private boolean isVerifactuRecord(FiscalRecord record) {
+        return record != null && record.getFiscalMode() == FiscalMode.VERIFACTU;
+    }
+
+    private void requireVerifactu(FiscalRecord record) {
+        if (!isVerifactuRecord(record)) {
+            throw new IllegalArgumentException(
+                    "Solo se pueden enviar registros fiscales VERI*FACTU");
+        }
     }
 
     private record QueueCandidate(FiscalRecord record, FiscalSubmissionState state) {

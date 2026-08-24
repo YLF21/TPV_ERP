@@ -48,7 +48,7 @@ class VerifactuSubmissionServiceTest {
     @BeforeEach
     void setUp() {
         record = record();
-        when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
+        lenient().when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
                 VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         lenient().when(endpoints.resolve(VerifactuEndpointMode.TEST))
                 .thenReturn("https://aeat.test/soap");
@@ -70,7 +70,7 @@ class VerifactuSubmissionServiceTest {
         when(company.getRazonSocial()).thenReturn("Empresa de prueba");
         when(installation.getReferencia()).thenReturn("INST-DEV-001");
         service.setFiscalIdentityRepositories(companies, installations);
-        when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
+        lenient().when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
                 VerifactuEndpointMode.TEST, "SIF ERP", "SIF-01",
                 "Fabricante ERP", "B12345674", "4.2.7"));
         when(transport.send(record.getCompanyId(), record.getInstallationId(),
@@ -86,6 +86,17 @@ class VerifactuSubmissionServiceTest {
         assertThat(request.getValue().systemInfo().manufacturerTaxId()).isEqualTo("B12345674");
         assertThat(request.getValue().systemInfo().version()).isEqualTo("4.2.7");
         assertThat(request.getValue().systemInfo().installationNumber()).isEqualTo("INST-DEV-001");
+    }
+
+    @Test
+    void rechazaEnviarRegistroNoVerifactuAunqueSeLlameDirectamente() {
+        set(record, "fiscalMode", FiscalMode.NO_VERIFACTU);
+
+        assertThatThrownBy(() -> service.submit(record))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("VERI*FACTU");
+        verify(properties, never()).current();
+        verify(transport, never()).send(any(), any(), any(), any());
     }
 
     @Test
@@ -224,5 +235,15 @@ class VerifactuSubmissionServiceTest {
         snapshot.put("impuestoTotal", new BigDecimal("2.10"));
         snapshot.put("total", new BigDecimal("12.10"));
         return snapshot;
+    }
+
+    private static void set(Object target, String fieldName, Object value) {
+        try {
+            var field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
     }
 }

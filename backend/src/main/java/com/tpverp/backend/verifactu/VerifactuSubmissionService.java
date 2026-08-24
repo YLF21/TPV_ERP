@@ -60,6 +60,10 @@ public class VerifactuSubmissionService {
     }
 
     public VerifactuSubmissionResult submit(FiscalRecord record) {
+        if (record == null || record.getFiscalMode() != FiscalMode.VERIFACTU) {
+            throw new IllegalArgumentException(
+                    "Solo se pueden enviar registros fiscales VERI*FACTU");
+        }
         var configuration = properties.current();
         var fiscalXml = fiscalXml(record, configuration);
         try {
