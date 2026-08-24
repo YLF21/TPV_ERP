@@ -20,6 +20,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.security.KeyStore;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
@@ -74,34 +75,72 @@ public class FiscalXadesSigner {
 
     /** Verifies the embedded XAdES certificate and XMLDSig without using secrets. */
     public boolean verifySignedXml(String signedXml) {
-        if (signedXml == null || signedXml.isBlank()) {
-            return false;
-        }
+        return verifySignedXml(signedXml, null);
+    }
+
+    /**
+     * Verifies the embedded certificate, its optional frozen fingerprint and XMLDSig.
+     * A null expected fingerprint keeps compatibility with legacy artifacts that
+     * predate certificate fingerprint persistence.
+     */
+    public boolean verifySignedXml(String signedXml, String expectedFingerprint) {
         try {
-            var factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-            var document = factory.newDocumentBuilder().parse(new InputSource(
-                    new StringReader(signedXml)));
-            var certificates = document.getElementsByTagNameNS(XMLSignature.XMLNS,
-                    "X509Certificate");
-            if (certificates.getLength() != 1) {
+            if (signedXml == null || signedXml.isBlank()) {
                 return false;
             }
-            var encoded = certificates.item(0).getTextContent().replaceAll("\\s+", "");
-            var certificate = (X509Certificate) CertificateFactory.getInstance("X.509")
-                    .generateCertificate(
-                            new ByteArrayInputStream(Base64.getDecoder().decode(encoded)));
+            var certificate = embeddedCertificate(signedXml);
+            if (expectedFingerprint != null && !expectedFingerprint.isBlank()
+                    && !certificateFingerprint(certificate)
+                            .equalsIgnoreCase(expectedFingerprint.trim())) {
+                return false;
+            }
             certificate.checkValidity();
             verify(signedXml.getBytes(StandardCharsets.UTF_8), certificate.getPublicKey());
             return true;
         } catch (Exception exception) {
             return false;
+        }
+    }
+
+    /** Returns the SHA-256 fingerprint of the certificate embedded in XAdES. */
+    public String embeddedCertificateFingerprint(String signedXml) {
+        try {
+            return certificateFingerprint(embeddedCertificate(signedXml));
+        } catch (Exception exception) {
+            throw new IllegalStateException("La firma XAdES no contiene un certificado valido", exception);
+        }
+    }
+
+    private static X509Certificate embeddedCertificate(String signedXml) throws Exception {
+        if (signedXml == null || signedXml.isBlank()) {
+            throw new IllegalArgumentException("El XML firmado es obligatorio");
+        }
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        var document = factory.newDocumentBuilder().parse(new InputSource(
+                new StringReader(signedXml)));
+        var certificates = document.getElementsByTagNameNS(XMLSignature.XMLNS,
+                "X509Certificate");
+        if (certificates.getLength() != 1) {
+            throw new IllegalArgumentException("El XML firmado debe contener un unico certificado X.509");
+        }
+        var encoded = certificates.item(0).getTextContent().replaceAll("\\s+", "");
+        return (X509Certificate) CertificateFactory.getInstance("X.509")
+                .generateCertificate(new ByteArrayInputStream(Base64.getDecoder().decode(encoded)));
+    }
+
+    private static String certificateFingerprint(X509Certificate certificate) {
+        try {
+            return java.util.HexFormat.of().withUpperCase().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()));
+        } catch (Exception exception) {
+            throw new IllegalStateException("No se pudo calcular la huella del certificado", exception);
         }
     }
 

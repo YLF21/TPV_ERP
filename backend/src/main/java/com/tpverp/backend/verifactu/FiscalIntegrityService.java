@@ -73,7 +73,8 @@ public class FiscalIntegrityService {
                     }
                     if (signer != null && record.getFiscalMode() == FiscalMode.NO_VERIFACTU
                             && artifact.getSignedXml() != null
-                            && !signer.verifySignedXml(artifact.getSignedXml())) {
+                            && !signer.verifySignedXml(artifact.getSignedXml(),
+                                    artifact.getCertificateFingerprint())) {
                         anomalies.add("FIRMA_REGISTRO_" + record.getSequence());
                     }
                 });

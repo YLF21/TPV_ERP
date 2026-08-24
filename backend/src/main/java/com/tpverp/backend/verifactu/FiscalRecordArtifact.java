@@ -43,6 +43,9 @@ public class FiscalRecordArtifact {
     @Column(name = "xml_hash", nullable = false, length = 64)
     private String xmlHash;
 
+    @Column(name = "certificado_huella", length = 128)
+    private String certificateFingerprint;
+
     @Column(name = "qr_url", nullable = false, columnDefinition = "text")
     private String qrUrl;
 
@@ -72,6 +75,7 @@ public class FiscalRecordArtifact {
             UUID systemVersionId,
             String unsignedXml,
             String signedXml,
+            String certificateFingerprint,
             String xmlHash,
             FiscalPrintSnapshot printSnapshot,
             Instant createdAt) {
@@ -82,6 +86,7 @@ public class FiscalRecordArtifact {
         this.systemVersionId = systemVersionId;
         this.unsignedXml = unsignedXml;
         this.signedXml = signedXml;
+        this.certificateFingerprint = certificateFingerprint;
         this.xmlHash = xmlHash;
         this.qrUrl = printSnapshot.qrUrl();
         this.qrHash = printSnapshot.qrPayloadSha256();
@@ -102,7 +107,22 @@ public class FiscalRecordArtifact {
             FiscalPrintSnapshot printSnapshot,
             Instant createdAt) {
         this(recordId, fiscalMode, environment, sandbox, null, unsignedXml, signedXml,
-                xmlHash, printSnapshot, createdAt);
+                null, xmlHash, printSnapshot, createdAt);
+    }
+
+    public FiscalRecordArtifact(
+            UUID recordId,
+            FiscalMode fiscalMode,
+            FiscalEndpointEnvironment environment,
+            boolean sandbox,
+            UUID systemVersionId,
+            String unsignedXml,
+            String signedXml,
+            String xmlHash,
+            FiscalPrintSnapshot printSnapshot,
+            Instant createdAt) {
+        this(recordId, fiscalMode, environment, sandbox, systemVersionId, unsignedXml, signedXml,
+                null, xmlHash, printSnapshot, createdAt);
     }
 
     public UUID getRecordId() { return recordId; }
@@ -112,6 +132,7 @@ public class FiscalRecordArtifact {
     public UUID getSystemVersionId() { return systemVersionId; }
     public String getUnsignedXml() { return unsignedXml; }
     public String getSignedXml() { return signedXml; }
+    public String getCertificateFingerprint() { return certificateFingerprint; }
     public String getXmlHash() { return xmlHash; }
     public String getQrUrl() { return qrUrl; }
     public String getQrHash() { return qrHash; }

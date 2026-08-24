@@ -99,11 +99,16 @@ public class FiscalArtifactService {
         var signedXml = record.getFiscalMode() == FiscalMode.NO_VERIFACTU
                 ? signer.sign(record, unsignedXml)
                 : null;
+        var certificateFingerprint = signedXml == null
+                ? null : signer.embeddedCertificateFingerprint(signedXml);
+        if (signedXml != null && (certificateFingerprint == null || certificateFingerprint.isBlank())) {
+            throw new IllegalStateException("La firma XAdES no contiene una huella de certificado valida");
+        }
         var persistedXml = signedXml == null ? unsignedXml : signedXml;
         artifacts.save(new FiscalRecordArtifact(
                 record.getId(), record.getFiscalMode(), environment, runtime.isSandbox(),
                 systemVersion.getId(),
-                unsignedXml, signedXml, sha256(persistedXml), print, Instant.now()));
+                unsignedXml, signedXml, certificateFingerprint, sha256(persistedXml), print, Instant.now()));
     }
 
     private static String sha256(String value) {
