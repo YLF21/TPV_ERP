@@ -5,9 +5,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.time.LocalDate;
+import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -67,6 +69,15 @@ public class FiscalController {
     public FiscalRequiredSubmissionView requiredSubmission(
             @Valid @RequestBody FiscalRequiredSubmissionRequest request) {
         return requiredSubmissions.register(request.reference());
+    }
+
+    @PostMapping("/required-submissions/{id}/exports")
+    @PreAuthorize("hasRole('ADMIN')")
+    public FiscalRequiredSubmissionExportView requiredSubmissionExport(
+            @PathVariable UUID id,
+            @Valid @RequestBody FiscalRequiredSubmissionExportRequest request) {
+        return requiredSubmissions.export(id, request.kind(), request.periodStart(),
+                request.periodEnd());
     }
 
     public record ModeTransitionRequest(
