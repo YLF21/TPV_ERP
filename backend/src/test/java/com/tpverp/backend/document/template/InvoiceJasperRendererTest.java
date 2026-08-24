@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.DecodeHintType;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
@@ -123,6 +128,7 @@ class InvoiceJasperRendererTest {
         var raster = ImageIO.read(new ByteArrayInputStream(rendered.ticketRasterPng()));
         assertThat(raster.getWidth()).isEqualTo(576);
         assertThat(raster.getHeight()).isBetween(100, 5_073);
+        assertThat(decodeQr(raster)).isEqualTo("https://www2.agenciatributaria.gob.es/qr");
     }
 
     @Test
@@ -182,14 +188,19 @@ class InvoiceJasperRendererTest {
                 builtIns.reference(DocumentTemplateType.FACTURA_VENTA,
                         DocumentTemplateFormat.A4));
 
+        var qrUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR"
+                + "?nif=B12345678&numserie=FV-2026-1&fecha=10-08-2026&importe=10.00";
         var pdf = renderer.render(
                 fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
-                snapshot, null).orElseThrow();
+                snapshot, qrUrl).orElseThrow();
 
         assertThat(pdf).startsWith(0x25, 0x50, 0x44, 0x46);
         try (var rendered = Loader.loadPDF(pdf)) {
             assertThat(new PDFTextStripper().getText(rendered))
-                    .contains("FACTURA", "FV-2026-1", "TPV ERP SL");
+                    .contains("FACTURA", "FV-2026-1", "TPV ERP SL",
+                            "QR tributario", "ENTORNO DE PRUEBAS - SIN VALIDEZ");
+            assertThat(decodeQr(new PDFRenderer(rendered).renderImageWithDPI(0, 150)))
+                    .isEqualTo(qrUrl);
         }
     }
 
@@ -353,6 +364,12 @@ class InvoiceJasperRendererTest {
                 .isEqualByComparingTo("11.57");
         assertThat(json.at("/totals/taxTotal").decimalValue())
                 .isEqualByComparingTo("2.43");
+    }
+
+    private static String decodeQr(BufferedImage image) throws Exception {
+        return new MultiFormatReader().decode(
+                new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image))),
+                Map.of(DecodeHintType.TRY_HARDER, Boolean.TRUE)).getText();
     }
 
     @Test

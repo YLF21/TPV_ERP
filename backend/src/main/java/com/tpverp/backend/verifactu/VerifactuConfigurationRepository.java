@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -13,6 +14,8 @@ public interface VerifactuConfigurationRepository
         extends JpaRepository<VerifactuConfiguration, UUID> {
 
     Optional<VerifactuConfiguration> findByCompanyId(UUID companyId);
+
+    List<VerifactuConfiguration> findAllByCurrentMode(FiscalMode mode);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -32,4 +35,16 @@ public interface VerifactuConfigurationRepository
     void insertIfMissing(
             @Param("id") UUID id,
             @Param("companyId") UUID companyId);
+
+    @Modifying
+    @Query(value = """
+            insert into configuracion_verifactu (
+                id, empresa_id, activacion_voluntaria, modo_actual, version)
+            values (:id, :companyId, false, :mode, 0)
+            on conflict (empresa_id) do nothing
+            """, nativeQuery = true)
+    void insertIfMissingWithMode(
+            @Param("id") UUID id,
+            @Param("companyId") UUID companyId,
+            @Param("mode") String mode);
 }

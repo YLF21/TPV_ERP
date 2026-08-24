@@ -16,7 +16,8 @@ class VerifactuTransportConfigurationTest {
         var managed = mock(ManagedCertificateKeyStoreFactory.class);
 
         var transport = new VerifactuTransportConfiguration()
-                .verifactuTransport(factory, managed, new VerifactuMutualTlsHttpClientFactory());
+                .verifactuTransport(factory, managed, new VerifactuMutualTlsHttpClientFactory(),
+                        mock(FiscalRuntimeProperties.class));
 
         assertThat(transport).isInstanceOf(ConfiguredVerifactuTransport.class);
     }
@@ -27,7 +28,8 @@ class VerifactuTransportConfigurationTest {
         var managed = mock(ManagedCertificateKeyStoreFactory.class);
 
         var transport = new VerifactuTransportConfiguration()
-                .verifactuTransport(factory, managed, new VerifactuMutualTlsHttpClientFactory());
+                .verifactuTransport(factory, managed, new VerifactuMutualTlsHttpClientFactory(),
+                        mock(FiscalRuntimeProperties.class));
 
         assertThat(transport).isInstanceOf(ConfiguredVerifactuTransport.class);
         verify(factory, never()).current();

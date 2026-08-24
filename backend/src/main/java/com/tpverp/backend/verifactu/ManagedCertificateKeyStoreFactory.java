@@ -12,6 +12,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -37,6 +38,14 @@ public class ManagedCertificateKeyStoreFactory {
     // Reconstruye un KeyStore temporal sin exponer la clave privada persistida.
     public ManagedKeyStore activeForCurrentCompany() {
         var companyId = organization.currentCompany().getId();
+        return activeForCompany(companyId, null);
+    }
+
+    /** Resolves a certificate from persisted fiscal ownership, never from the session store. */
+    public ManagedKeyStore activeForCompany(UUID companyId, UUID installationId) {
+        if (companyId == null) {
+            throw new IllegalArgumentException("companyId es obligatorio");
+        }
         var managed = certificates.findByCompanyIdAndStatus(
                         companyId, ManagedCertificateStatus.ACTIVO)
                 .orElseThrow(() -> new IllegalStateException(

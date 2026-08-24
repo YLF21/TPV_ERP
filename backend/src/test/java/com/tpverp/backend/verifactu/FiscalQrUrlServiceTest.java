@@ -34,6 +34,21 @@ class FiscalQrUrlServiceTest {
                 .endsWith("&importe=157.20");
     }
 
+    @Test
+    void usesOfficialTestBasesForBothFiscalModes() {
+        var record = record("B12345674", "FV-001-26-000001",
+                LocalDate.of(2026, 6, 2), new BigDecimal("157.26"));
+
+        assertThat(service.testUrl(record))
+                .startsWith("https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?")
+                .contains("nif=B12345674", "numserie=FV-001-26-000001",
+                        "fecha=02-06-2026", "importe=157.26");
+        assertThat(service.testNoVerifactuUrl(record))
+                .startsWith("https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu?")
+                .contains("nif=B12345674", "numserie=FV-001-26-000001",
+                        "fecha=02-06-2026", "importe=157.26");
+    }
+
     private FiscalRecord record(
             String issuerTaxId,
             String number,

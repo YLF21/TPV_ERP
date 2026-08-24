@@ -138,6 +138,21 @@ class FiscalSubmissionQueueServiceTest {
     }
 
     @Test
+    void neverClaimsNoVerifactuRecordEvenIfAnInvalidStateExists() {
+        var pending = state(FiscalSubmissionStatus.PENDIENTE);
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
+                FiscalSubmissionStatus.PENDIENTE,
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO)))
+                .thenReturn(List.of(pending));
+        when(records.findById(pending.getRecordId()))
+                .thenReturn(Optional.of(noVerifactuRecord(pending.getRecordId(), store.getId(), 1)));
+
+        assertThat(queue.claimNext()).isEmpty();
+        verify(states, org.mockito.Mockito.never()).findForUpdate(pending.getRecordId());
+    }
+
+    @Test
     void waitsOneHourBeforeRetryingCommunicationFailure() {
         var sent = new FiscalSubmissionState(
                 UUID.randomUUID(), FiscalSubmissionStatus.ENVIADO, NOW.minusSeconds(3599));
@@ -285,6 +300,12 @@ class FiscalSubmissionQueueServiceTest {
                 "B".repeat(64), "C".repeat(64), Map.of("numero", "FV-001-26-000001"),
                 "VERIFACTU-1", "AEAT-SHA256-1", "TPV-ERP-0.0.1");
         set(record, "id", recordId);
+        return record;
+    }
+
+    private FiscalRecord noVerifactuRecord(UUID recordId, UUID storeId, long sequence) {
+        var record = record(recordId, storeId, sequence);
+        set(record, "fiscalMode", FiscalMode.NO_VERIFACTU);
         return record;
     }
 

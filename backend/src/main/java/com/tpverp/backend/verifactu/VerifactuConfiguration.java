@@ -2,10 +2,13 @@ package com.tpverp.backend.verifactu;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -28,6 +31,19 @@ public class VerifactuConfiguration {
     @Column(name = "primera_remision_en")
     private Instant firstSubmissionAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "modo_actual", nullable = false, length = 16)
+    private FiscalMode currentMode = FiscalMode.PRE_SIF;
+
+    @Column(name = "modo_desde")
+    private Instant modeSince;
+
+    @Column(name = "verifactu_bloqueado_hasta")
+    private LocalDate verifactuBlockedUntil;
+
+    @Column(name = "modo_version", nullable = false)
+    private long modeVersion;
+
     @Version
     private long version;
 
@@ -35,8 +51,13 @@ public class VerifactuConfiguration {
     }
 
     public VerifactuConfiguration(UUID companyId) {
+        this(companyId, FiscalMode.PRE_SIF);
+    }
+
+    public VerifactuConfiguration(UUID companyId, FiscalMode initialMode) {
         id = UUID.randomUUID();
         this.companyId = Objects.requireNonNull(companyId, "companyId");
+        this.currentMode = Objects.requireNonNull(initialMode, "initialMode");
     }
 
     // Activa voluntariamente VERI*FACTU y conserva el instante efectivo.
@@ -82,6 +103,48 @@ public class VerifactuConfiguration {
 
     public boolean isVoluntarilyActive() {
         return voluntarilyActive;
+    }
+
+    public UUID getCompanyId() {
+        return companyId;
+    }
+
+    public FiscalMode getCurrentMode() {
+        return currentMode;
+    }
+
+    public Instant getModeSince() {
+        return modeSince;
+    }
+
+    public LocalDate getVerifactuBlockedUntil() {
+        return verifactuBlockedUntil;
+    }
+
+    /**
+     * Freezes the annual VERI*FACTU permanence window without shortening an
+     * already persisted legal lock.
+     */
+    public void lockVerifactuUntil(LocalDate until) {
+        if (until != null && (verifactuBlockedUntil == null
+                || until.isAfter(verifactuBlockedUntil))) {
+            verifactuBlockedUntil = until;
+        }
+    }
+
+    public long getModeVersion() {
+        return modeVersion;
+    }
+
+    public void changeMode(FiscalMode target, Instant effectiveAt, LocalDate blockedUntil) {
+        var next = Objects.requireNonNull(target, "target");
+        if (next == currentMode) {
+            return;
+        }
+        currentMode = next;
+        modeSince = Objects.requireNonNull(effectiveAt, "effectiveAt");
+        verifactuBlockedUntil = blockedUntil;
+        modeVersion++;
     }
 
     public Instant getActivatedAt() {

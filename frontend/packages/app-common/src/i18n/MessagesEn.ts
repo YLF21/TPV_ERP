@@ -871,6 +871,7 @@ export class MessagesEn {
     "verifactu.pos.readOnlyDescription": "Status and submissions for this terminal. Management is available in APP MANAGEMENT.",
     "verifactu.pos.close": "Close VeriFactu panel",
     "verifactu.pos.currentStatus": "Current status",
+    "verifactu.pos.fiscalMode": "Fiscal mode",
     "verifactu.pos.refresh": "Refresh",
     "verifactu.pos.queueLoadError": "The queue could not be refreshed. Try again.",
     "verifactu.pos.loadingQueue": "Loading submission queue...",

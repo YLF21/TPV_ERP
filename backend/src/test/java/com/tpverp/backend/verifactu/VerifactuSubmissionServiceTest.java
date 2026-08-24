@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -8,6 +9,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CompanyRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,6 +38,9 @@ class VerifactuSubmissionServiceTest {
     @Mock private VerifactuOfficialXsdValidator validator;
     @Mock private VerifactuFirstSubmissionMarker firstSubmissions;
     @Mock private FiscalCorrectionCompletionService corrections;
+    @Mock private CompanyRepository companies;
+    @Mock private InstallationRepository installations;
+    @Mock private FiscalRuntimeProperties runtime;
 
     private FiscalRecord record;
     private VerifactuSubmissionService service;
@@ -40,11 +48,11 @@ class VerifactuSubmissionServiceTest {
     @BeforeEach
     void setUp() {
         record = record();
-        when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
+        lenient().when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
                 VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         lenient().when(endpoints.resolve(VerifactuEndpointMode.TEST))
                 .thenReturn("https://aeat.test/soap");
-        when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
+        lenient().when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
         lenient().when(soap.wrap("<sfLR:RegFactuSistemaFacturacion/>"))
                 .thenReturn("<soap/>");
         service = new VerifactuSubmissionService(
@@ -53,8 +61,59 @@ class VerifactuSubmissionServiceTest {
     }
 
     @Test
+    void congelaProductorVersionEmpresaEInstalacionPersistidosEnElXml() {
+        var company = org.mockito.Mockito.mock(Company.class);
+        var installation = org.mockito.Mockito.mock(Installation.class);
+        when(companies.findById(record.getCompanyId())).thenReturn(java.util.Optional.of(company));
+        when(installations.findById(record.getInstallationId()))
+                .thenReturn(java.util.Optional.of(installation));
+        when(company.getRazonSocial()).thenReturn("Empresa de prueba");
+        when(installation.getReferencia()).thenReturn("INST-DEV-001");
+        service.setFiscalIdentityRepositories(companies, installations);
+        lenient().when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
+                VerifactuEndpointMode.TEST, "SIF ERP", "SIF-01",
+                "Fabricante ERP", "B12345674", "4.2.7"));
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
+                .thenReturn(new VerifactuTransportResponse(200, accepted()));
+
+        service.submit(record);
+
+        var request = ArgumentCaptor.forClass(VerifactuXmlBatchRequest.class);
+        verify(xml).batchXml(request.capture());
+        assertThat(request.getValue().issuerName()).isEqualTo("Empresa de prueba");
+        assertThat(request.getValue().systemInfo().manufacturerName()).isEqualTo("Fabricante ERP");
+        assertThat(request.getValue().systemInfo().manufacturerTaxId()).isEqualTo("B12345674");
+        assertThat(request.getValue().systemInfo().version()).isEqualTo("4.2.7");
+        assertThat(request.getValue().systemInfo().installationNumber()).isEqualTo("INST-DEV-001");
+    }
+
+    @Test
+    void rechazaEnviarRegistroNoVerifactuAunqueSeLlameDirectamente() {
+        set(record, "fiscalMode", FiscalMode.NO_VERIFACTU);
+
+        assertThatThrownBy(() -> service.submit(record))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("VERI*FACTU");
+        verify(properties, never()).current();
+        verify(transport, never()).send(any(), any(), any(), any());
+    }
+
+    @Test
+    void rechazaIdentidadProvisionalCuandoElRuntimeEsReal() {
+        when(runtime.isSandbox()).thenReturn(false);
+        service.setFiscalRuntimeProperties(runtime);
+
+        assertThatThrownBy(() -> service.submit(record))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("identidad fiscal persistida");
+        verify(xml, never()).batchXml(any());
+    }
+
+    @Test
     void enviaElRegistroYMarcaAceptado() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, accepted()));
 
         var result = service.submit(record);
@@ -69,7 +128,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void marcaRechazadoSiAeatDevuelveErrorFuncional() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, rejected()));
 
         var result = service.submit(record);
@@ -83,7 +143,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void marcaPrimeraRemisionSiAeatAceptaConErrores() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, acceptedWithErrors()));
 
         var result = service.submit(record);
@@ -94,7 +155,8 @@ class VerifactuSubmissionServiceTest {
 
     @Test
     void mantieneEnColaSiHayErrorDeRed() {
-        when(transport.send("https://aeat.test/soap", "<soap/>"))
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
                 .thenThrow(new VerifactuTransportException("sin conexion"));
 
         var result = service.submit(record);
@@ -173,5 +235,15 @@ class VerifactuSubmissionServiceTest {
         snapshot.put("impuestoTotal", new BigDecimal("2.10"));
         snapshot.put("total", new BigDecimal("12.10"));
         return snapshot;
+    }
+
+    private static void set(Object target, String fieldName, Object value) {
+        try {
+            var field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
     }
 }

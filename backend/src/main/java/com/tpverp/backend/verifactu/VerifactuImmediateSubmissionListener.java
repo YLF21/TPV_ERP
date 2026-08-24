@@ -22,7 +22,7 @@ public class VerifactuImmediateSubmissionListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void submit(FiscalRecordQueuedEvent event) {
         if (environment.getProperty(
-                "tpv.verifactu.worker-enabled", Boolean.class, true)) {
+                "tpv.verifactu.worker-enabled", Boolean.class, false)) {
             worker.process(event.recordId());
         }
     }

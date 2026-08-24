@@ -64,6 +64,8 @@ class FiscalRecordServiceTest {
     @Mock InstallationRepository installations;
     @Mock CommercialDocumentRepository documents;
     @Mock CustomerRepository customers;
+    @Mock FiscalAlarmRepository alarms;
+    @Mock FiscalRuntimeProperties runtime;
 
     private FiscalRecordCommand command;
     private CommercialDocument document;
@@ -90,6 +92,27 @@ class FiscalRecordServiceTest {
     }
 
     @Test
+    void bloqueaEmisionNoVerifactuConAlarmaDeIntegridadActiva() {
+        stubActive(document);
+        var configuration = new VerifactuConfiguration(command.companyId());
+        configuration.activateVoluntarily(Instant.parse("2026-06-01T00:00:00Z"));
+        configuration.changeMode(FiscalMode.NO_VERIFACTU, NOW, null);
+        when(configurations.findByCompanyId(command.companyId()))
+                .thenReturn(Optional.of(configuration));
+        stubEmptyChain();
+        when(alarms.existsByCompanyIdAndInstallationIdAndActiveTrue(
+                command.companyId(), command.installationId())).thenReturn(true);
+        var service = service();
+        service.setFiscalAlarmRepository(alarms);
+
+        assertThatThrownBy(() -> service.register(command))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("alarma de integridad activa");
+
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+    }
+
+    @Test
     void inicializaConfiguracionDesactivadaYLaLeeAntesDeValidar() {
         stubIdentity(document);
         var configuration = new VerifactuConfiguration(command.companyId());
@@ -100,9 +123,41 @@ class FiscalRecordServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("activo");
 
-        verify(configurations).insertIfMissing(any(UUID.class), eq(command.companyId()));
+        verify(configurations).insertIfMissingWithMode(
+                any(UUID.class), eq(command.companyId()), eq("PRE_SIF"));
         verify(configurations).findByCompanyId(command.companyId());
         assertThat(configuration.isVoluntarilyActive()).isFalse();
+    }
+
+    @Test
+    void sandboxPersisteElModoInicialAntesDeEmitir() {
+        stubContext(new VerifactuConfiguration(command.companyId()), document);
+        stubEmptyChain();
+        when(runtime.isSandbox()).thenReturn(true);
+        when(runtime.sandboxInitialMode()).thenReturn(FiscalMode.VERIFACTU);
+        var service = service();
+        service.setRuntimeProperties(runtime);
+
+        var saved = service.register(command);
+
+        assertThat(saved.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        verify(configurations).insertIfMissingWithMode(
+                any(UUID.class), eq(command.companyId()), eq("VERIFACTU"));
+    }
+
+    @Test
+    void sandboxPreSifConservaCompatibilidadYNoCreaRegistroFiscal() {
+        stubContext(new VerifactuConfiguration(command.companyId()), document);
+        when(runtime.isSandbox()).thenReturn(true);
+        when(runtime.sandboxInitialMode()).thenReturn(FiscalMode.PRE_SIF);
+
+        var fiscal = service();
+        fiscal.setRuntimeProperties(runtime);
+
+        assertThatThrownBy(() -> fiscal.register(command))
+                .isInstanceOf(VerifactuInactiveException.class);
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+        verify(records, never()).save(any(FiscalRecord.class));
     }
 
     @Test

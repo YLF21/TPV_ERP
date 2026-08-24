@@ -1,6 +1,9 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.organization.CompanyRepository;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -16,6 +19,9 @@ public class VerifactuSubmissionService {
     private final VerifactuOfficialXsdValidator validator;
     private final VerifactuFirstSubmissionMarker firstSubmissions;
     private final FiscalCorrectionCompletionService corrections;
+    private CompanyRepository companies;
+    private InstallationRepository installations;
+    private FiscalRuntimeProperties runtime;
 
     public VerifactuSubmissionService(
             VerifactuXmlService xml,
@@ -40,7 +46,24 @@ public class VerifactuSubmissionService {
         this.corrections = corrections;
     }
 
+    /** Fiscal XML must resolve identity from the persisted company and installation. */
+    @Autowired(required = false)
+    void setFiscalIdentityRepositories(CompanyRepository companies,
+            InstallationRepository installations) {
+        this.companies = companies;
+        this.installations = installations;
+    }
+
+    @Autowired(required = false)
+    void setFiscalRuntimeProperties(FiscalRuntimeProperties runtime) {
+        this.runtime = runtime;
+    }
+
     public VerifactuSubmissionResult submit(FiscalRecord record) {
+        if (record == null || record.getFiscalMode() != FiscalMode.VERIFACTU) {
+            throw new IllegalArgumentException(
+                    "Solo se pueden enviar registros fiscales VERI*FACTU");
+        }
         var configuration = properties.current();
         var fiscalXml = fiscalXml(record, configuration);
         try {
@@ -57,7 +80,14 @@ public class VerifactuSubmissionService {
         var envelope = soap.wrap(fiscalXml);
         attempts.recordSent(record.getId(), envelope);
         try {
-            var response = transport.send(endpoints.resolve(configuration.mode()), envelope);
+            var response = transport.send(
+                    record.getCompanyId(), record.getInstallationId(),
+                    endpoints.resolve(configuration.mode()), envelope);
+            // Keeps older transport test doubles source-compatible while the real
+            // implementation always receives the explicit fiscal identity above.
+            if (response == null) {
+                response = transport.send(endpoints.resolve(configuration.mode()), envelope);
+            }
             return recordResult(record, responses.parse(response));
         } catch (VerifactuTransportException exception) {
             return new VerifactuSubmissionResult(
@@ -70,12 +100,33 @@ public class VerifactuSubmissionService {
     // Envia un registro fiscal ya reclamado y aplica la politica de estado sin bloquear ventas.
 
     private String fiscalXml(FiscalRecord record, VerifactuSubmissionProperties configuration) {
-        var system = new VerifactuSystemInfo(
-                "TPV ERP", record.getIssuerTaxId(), configuration.systemName(),
-                configuration.systemId(), "0.0.1", record.getStoreId().toString(),
-                true, false, false);
+        if (companies == null || installations == null) {
+            if (runtime != null && !runtime.isSandbox()) {
+                throw new IllegalStateException(
+                        "La identidad fiscal persistida es obligatoria fuera de SANDBOX");
+            }
+            return xml.batchXml(new VerifactuXmlBatchRequest(
+                    "Company", record.getIssuerTaxId(), List.of(record),
+                    system(configuration, record.getInstallationId().toString())));
+        }
+        var company = companies.findById(record.getCompanyId())
+                .orElseThrow(() -> new IllegalStateException("Empresa fiscal no encontrada"));
+        var installation = installations.findById(record.getInstallationId())
+                .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));
         return xml.batchXml(new VerifactuXmlBatchRequest(
-                "Company", record.getIssuerTaxId(), List.of(record), system));
+                company.getRazonSocial(), record.getIssuerTaxId(), List.of(record),
+                system(configuration, installation.getReferencia())));
+    }
+
+    private VerifactuSystemInfo system(
+            VerifactuSubmissionProperties configuration, String installationNumber) {
+        var system = new VerifactuSystemInfo(
+                configuration.producerName(), configuration.producerTaxId(),
+                configuration.systemName(), configuration.systemId(),
+                configuration.systemVersion(),
+                installationNumber,
+                true, false, false);
+        return system;
     }
 
     private VerifactuSubmissionResult recordResult(

@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param(
     [switch]$CheckOnly,
+    [switch]$FiscalSandbox,
+    [switch]$FiscalProof,
+    [string]$EvidenceDirectory,
     [ValidateRange(1024, 65535)]
     [int]$BackendPort = 18080,
     [ValidateRange(1024, 65535)]
@@ -32,6 +35,28 @@ $script:DatabaseCreated = $false
 $script:TempRoot = $null
 $script:PsqlPath = $null
 $script:OriginalEnvironment = @{}
+$script:LatestMigrationVersion = $null
+$script:EvidenceDirectory = $null
+
+function Get-LatestMigrationVersion {
+    $migrationDirectory = Join-Path $script:RepositoryRoot "backend\src\main\resources\db\migration"
+    if (-not (Test-Path -LiteralPath $migrationDirectory -PathType Container)) {
+        throw "No se encontro el directorio de migraciones Flyway en $migrationDirectory."
+    }
+
+    $versions = @(
+        Get-ChildItem -LiteralPath $migrationDirectory -Filter "V*.sql" -File | ForEach-Object {
+            if ($_.Name -match '^V(\d+)__') {
+                [int]$Matches[1]
+            }
+        }
+    )
+    if ($versions.Count -eq 0) {
+        throw "No se encontraron migraciones versionadas en $migrationDirectory."
+    }
+
+    return (($versions | Measure-Object -Maximum).Maximum.ToString())
+}
 
 function Assert-RequiredValue {
     param(
@@ -61,6 +86,29 @@ function Assert-PortAvailable {
     if ($inUse) {
         throw "El puerto $Port ya esta ocupado. No se puede iniciar $ServiceName de forma aislada."
     }
+}
+
+function Resolve-CommandPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+        [switch]$Optional
+    )
+
+    $command = Get-Command $Name -ErrorAction $(if ($Optional) { "SilentlyContinue" } else { "Stop" })
+    if ($null -eq $command) {
+        if ($Optional) {
+            return $null
+        }
+        throw "No se encontro el ejecutable '$Name' en PATH."
+    }
+    foreach ($propertyName in @("Path", "Source")) {
+        $property = $command.PSObject.Properties[$propertyName]
+        if ($null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+            return [string]$property.Value
+        }
+    }
+    throw "El comando '$Name' no expone una ruta ejecutable valida."
 }
 
 function Set-ScopedEnvironment {
@@ -202,6 +250,17 @@ function Remove-IsolatedDatabase {
 }
 
 try {
+    if ($FiscalProof -and -not $FiscalSandbox) {
+        throw "FiscalProof solo puede ejecutarse con FiscalSandbox; nunca contra AEAT TEST ni produccion."
+    }
+    if ($FiscalProof) {
+        $script:EvidenceDirectory = if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
+            Join-Path $script:RepositoryRoot "target\verifactu-dev-proof"
+        } else {
+            [IO.Path]::GetFullPath($EvidenceDirectory)
+        }
+        [void](New-Item -ItemType Directory -Path $script:EvidenceDirectory -Force)
+    }
     Assert-RequiredValue -Name "la contrasena administrativa de PostgreSQL" `
         -Value $PostgresAdminPassword -EnvironmentHint 'la variable $env:TPV_POSTGRES_ADMIN_PASSWORD'
     Assert-RequiredValue -Name "la contrasena del usuario de la base temporal" `
@@ -219,12 +278,13 @@ try {
     Assert-PortAvailable -Port $BackendPort -ServiceName "el backend"
     Assert-PortAvailable -Port $FrontendPort -ServiceName "APP VENTA"
 
-    $script:PsqlPath = (Get-Command psql.exe -ErrorAction Stop).Source
-    $npmPath = (Get-Command npm.cmd -ErrorAction Stop).Source
+    $script:PsqlPath = Resolve-CommandPath -Name "psql.exe"
+    $npmPath = Resolve-CommandPath -Name "npm.cmd"
     $mavenWrapper = Join-Path $script:RepositoryRoot "backend\mvnw.cmd"
     if (-not (Test-Path -LiteralPath $mavenWrapper)) {
         throw "No se encontro el wrapper Maven en $mavenWrapper."
     }
+    $script:LatestMigrationVersion = Get-LatestMigrationVersion
 
     $roleExists = Invoke-Psql -Database "postgres" -User $PostgresAdminUser `
         -Password $PostgresAdminPassword `
@@ -238,6 +298,29 @@ try {
     $script:TempRoot = Join-Path ([IO.Path]::GetTempPath()) "tpv-erp-app-venta-$uniqueSuffix"
     [void](New-Item -ItemType Directory -Path $script:TempRoot -Force)
 
+    $devSigningPath = Join-Path $script:TempRoot "verifactu-dev-signing.p12"
+    $devSigningPassword = "DEV-SANDBOX-$uniqueSuffix"
+    if ($FiscalSandbox) {
+        $keytoolPath = Resolve-CommandPath -Name "keytool.exe" -Optional
+        if ([string]::IsNullOrWhiteSpace($keytoolPath)) {
+            $javaHome = [Environment]::GetEnvironmentVariable("JAVA_HOME", "Process")
+            if ([string]::IsNullOrWhiteSpace($javaHome)) {
+                throw "No se encontro keytool.exe ni JAVA_HOME para generar el certificado temporal del laboratorio."
+            }
+            $keytoolPath = Join-Path $javaHome "bin\keytool.exe"
+        }
+        if (-not (Test-Path -LiteralPath $keytoolPath)) {
+            throw "No se encontro keytool.exe en '$keytoolPath' para generar el certificado temporal del laboratorio."
+        }
+        & $keytoolPath -genkeypair -alias "fiscal-dev" -storetype PKCS12 `
+            -keystore $devSigningPath -storepass $devSigningPassword -keypass $devSigningPassword `
+            -keyalg RSA -keysize 2048 -dname "CN=TPV ERP DEV Fiscal,SERIALNUMBER=DEV-00000000" `
+            -validity 365 -noprompt | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $devSigningPath)) {
+            throw "No se pudo generar el certificado RSA temporal del laboratorio fiscal."
+        }
+    }
+
     Write-Host "Creando base temporal $databaseName..."
     [void](Invoke-Psql -Database "postgres" -User $PostgresAdminUser -Password $PostgresAdminPassword `
         -Sql "create database `"$databaseName`" owner `"$DatabaseOwner`";")
@@ -248,8 +331,9 @@ try {
     $frontendOutLog = Join-Path $script:TempRoot "frontend.out.log"
     $frontendErrorLog = Join-Path $script:TempRoot "frontend.error.log"
 
+    $activeProfiles = if ($FiscalSandbox) { "dev,fiscal-dev" } else { "dev" }
     $backendEnvironment = @{
-        SPRING_PROFILES_ACTIVE = "dev"
+        SPRING_PROFILES_ACTIVE = $activeProfiles
         TPV_SERVER_ADDRESS = "127.0.0.1"
         TPV_SERVER_PORT = "$BackendPort"
         TPV_DB_URL = "jdbc:postgresql://${PostgresHost}:$PostgresPort/$databaseName"
@@ -261,6 +345,13 @@ try {
         TPV_KEY_DIRECTORY = (Join-Path $script:TempRoot "keys")
         TPV_VERIFACTU_SECRET_DIRECTORY = (Join-Path $script:TempRoot "verifactu")
         TPV_VERIFACTU_SECRET_ACL_MODE = "PORTABLE"
+        TPV_VERIFACTU_RUNTIME_CLASS = $(if ($FiscalSandbox) { "SANDBOX" } else { "REAL" })
+        TPV_VERIFACTU_ENDPOINT_ENVIRONMENT = "TEST"
+        TPV_VERIFACTU_TRANSPORT_MODE = $(if ($FiscalSandbox) { "SIMULATED" } else { "AEAT" })
+        TPV_VERIFACTU_DEV_SANDBOX_ENABLED = $(if ($FiscalSandbox) { "true" } else { "false" })
+        TPV_VERIFACTU_DEV_SIGNING_PKCS12 = $(if ($FiscalSandbox) { $devSigningPath } else { "" })
+        TPV_VERIFACTU_DEV_SIGNING_PASSWORD = $(if ($FiscalSandbox) { $devSigningPassword } else { "" })
+        TPV_VERIFACTU_WORKER_ENABLED = "false"
         TPV_DOCUMENT_TEMPLATE_DIRECTORY = (Join-Path $script:TempRoot "document-templates")
         TPV_PRODUCT_IMAGE_DIRECTORY = (Join-Path $script:TempRoot "product-images")
     }
@@ -300,9 +391,9 @@ try {
         -TimeoutSeconds 60 -ServiceName "APP VENTA"
 
     $migrationApplied = Invoke-Psql -Database $databaseName -User $DatabaseOwner -Password $DatabasePassword `
-        -Sql "select exists (select 1 from flyway_schema_history where version = '147' and success);"
+        -Sql "select exists (select 1 from flyway_schema_history where version = '$($script:LatestMigrationVersion)' and success);"
     if ($migrationApplied -ne "t") {
-        throw "La migracion V147 no consta como aplicada correctamente en la base temporal."
+        throw "La migracion V$($script:LatestMigrationVersion) no consta como aplicada correctamente en la base temporal."
     }
 
     $loginBody = @{
@@ -317,6 +408,63 @@ try {
         throw "El backend respondio al login, pero no devolvio un token de acceso."
     }
 
+    if ($FiscalProof) {
+        $proofHeaders = @{ Authorization = "Bearer $($login.accessToken)" }
+        $fiscalStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$BackendPort/api/v1/fiscal/status" `
+            -Headers $proofHeaders -Method Get -TimeoutSec 15
+        $sandboxStatus = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/status" `
+            -Headers $proofHeaders -Method Get -TimeoutSec 15
+        if ($sandboxStatus.runtimeClass -ne "SANDBOX" -or
+            $sandboxStatus.endpointEnvironment -ne "TEST" -or
+            $sandboxStatus.transportMode -ne "SIMULATED") {
+            throw "La prueba fiscal no esta aislada: runtime, entorno o transporte inesperados."
+        }
+        $scenarioBody = @{ outcome = "REJECTED" } | ConvertTo-Json
+        $scenarioRejected = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/scenario" `
+            -Headers $proofHeaders -Method Put -ContentType "application/json" `
+            -Body $scenarioBody -TimeoutSec 15
+        if ($scenarioRejected.nextOutcome -ne "REJECTED") {
+            throw "El simulador no conservo atomically el escenario REJECTED."
+        }
+        $scenarioBody = @{ outcome = "ACCEPTED" } | ConvertTo-Json
+        $scenarioAccepted = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/scenario" `
+            -Headers $proofHeaders -Method Put -ContentType "application/json" `
+            -Body $scenarioBody -TimeoutSec 15
+        $dispatch = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/dispatch-next" `
+            -Headers $proofHeaders -Method Post -ContentType "application/json" `
+            -Body "{}" -TimeoutSec 15
+        $proof = [ordered]@{
+            generatedAt = [DateTime]::UtcNow.ToString("o")
+            profile = "dev,fiscal-dev"
+            runtimeClass = $sandboxStatus.runtimeClass
+            endpointEnvironment = $sandboxStatus.endpointEnvironment
+            transportMode = $sandboxStatus.transportMode
+            fiscalStatus = $fiscalStatus
+            scenarioRejected = $scenarioRejected
+            scenarioAccepted = $scenarioAccepted
+            dispatchNext = $dispatch
+            note = "Prueba API del laboratorio aislado; no contiene token ni realiza conexiones AEAT."
+        }
+        $proof | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath `
+            (Join-Path $script:EvidenceDirectory "sandbox-api-proof.json") -Encoding UTF8
+        @(
+            "# Evidencia laboratorio fiscal DEV"
+            ""
+            "- Perfil: dev,fiscal-dev"
+            "- Runtime: SANDBOX"
+            "- Entorno: TEST"
+            "- Transporte: SIMULATED"
+            "- PostgreSQL: base efimera, eliminada al finalizar el script"
+            "- El archivo JSON solo recoge respuestas del laboratorio y no credenciales."
+            "- Esta evidencia no prueba AEAT TEST ni produccion."
+        ) | Set-Content -LiteralPath (Join-Path $script:EvidenceDirectory "README.md") -Encoding UTF8
+        Write-Host "Evidencia del laboratorio fiscal escrita en $script:EvidenceDirectory" -ForegroundColor Green
+    }
+
     Write-Host ""
     Write-Host "APP VENTA lista: http://127.0.0.1:$FrontendPort" -ForegroundColor Green
     Write-Host "Usuario demo: ADMIN"
@@ -324,7 +472,7 @@ try {
     Write-Host "Base temporal: $databaseName"
 
     if ($CheckOnly) {
-        Write-Host "Comprobacion automatica correcta: salud, migracion V147, terminal y login verificados." -ForegroundColor Green
+        Write-Host "Comprobacion automatica correcta: salud, migracion V$($script:LatestMigrationVersion), terminal y login verificados." -ForegroundColor Green
     }
     else {
         Write-Host ""

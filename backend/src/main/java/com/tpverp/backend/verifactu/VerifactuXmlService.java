@@ -3,12 +3,15 @@ package com.tpverp.backend.verifactu;
 import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.io.ByteArrayInputStream;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.TransformerFactory;
@@ -26,6 +29,8 @@ public class VerifactuXmlService {
     private static final String SF_NS = "https://www2.agenciatributaria.gob.es/static_files/common/"
             + "internet/dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd";
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    private static final DateTimeFormatter XML_DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     public String batchXml(VerifactuXmlBatchRequest request) {
         try {
@@ -40,6 +45,71 @@ public class VerifactuXmlService {
             throw new IllegalStateException("No se pudo generar el XML VERI*FACTU", exception);
         }
     }
+
+    /**
+     * Builds an AEAT requirement batch around already signed RegistroAlta/
+     * RegistroAnulacion documents. The signed nodes are imported without
+     * reparsing or regenerating their content, so the XAdES bytes remain the
+     * exact frozen evidence produced at registration time.
+     */
+    public String signedRequirementBatchXml(
+            String issuerName,
+            String issuerTaxId,
+            List<String> signedRecords,
+            FiscalRequirementContext requirement) {
+        var name = required(issuerName, "nombre del emisor");
+        var taxId = required(issuerTaxId, "NIF del emisor");
+        if (signedRecords == null || signedRecords.isEmpty()) {
+            throw new IllegalArgumentException("Debe existir al menos un registro fiscal");
+        }
+        Objects.requireNonNull(requirement, "requirement");
+        try {
+            var document = newDocumentBuilder().newDocument();
+            var root = document.createElementNS(LR_NS, "sfLR:RegFactuSistemaFacturacion");
+            root.setAttribute("xmlns:sf", SF_NS);
+            document.appendChild(root);
+            root.appendChild(requirementHeader(document, name, taxId, requirement));
+            for (String signedXml : signedRecords) {
+                var signedDocument = newDocumentBuilder().parse(
+                        new ByteArrayInputStream(required(signedXml, "XML firmado")
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                var signedRoot = signedDocument.getDocumentElement();
+                if (signedRoot == null || !SF_NS.equals(signedRoot.getNamespaceURI())
+                        || !("RegistroAlta".equals(signedRoot.getLocalName())
+                                || "RegistroAnulacion".equals(signedRoot.getLocalName()))) {
+                    throw new IllegalArgumentException(
+                            "El XML firmado no contiene RegistroAlta ni RegistroAnulacion");
+                }
+                var container = element(document, LR_NS, "sfLR:RegistroFactura");
+                container.appendChild(document.importNode(signedRoot, true));
+                root.appendChild(container);
+            }
+            return xml(document);
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "No se pudo generar el XML de requerimiento fiscal", exception);
+        }
+    }
+
+    /**
+     * Serialises exactly one RegistroAlta or RegistroAnulacion as the signing
+     * input required by the AEAT signature specification. The batch wrapper is
+     * deliberately not part of this document.
+     */
+    public String recordXml(VerifactuXmlBatchRequest request, FiscalRecord record) {
+        try {
+            var document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
+            var node = record.getOperation() == FiscalRecordOperation.ALTA
+                    ? alta(document, request, record)
+                    : cancellation(document, request, record);
+            document.appendChild(node);
+            return xml(document);
+        } catch (Exception exception) {
+            throw new IllegalStateException("No se pudo generar el XML del registro fiscal", exception);
+        }
+    }
     // Generates the base official XML used by the future AEAT SOAP client.
 
     private static Element header(Document document, VerifactuXmlBatchRequest request) {
@@ -47,7 +117,28 @@ public class VerifactuXmlService {
         var obligated = child(document, header, "ObligadoEmision");
         text(document, obligated, "NombreRazon", request.issuerName());
         text(document, obligated, "NIF", request.issuerTaxId());
+        if (request.requirement() != null) {
+            appendRequirement(document, header, request.requirement());
+        }
         return header;
+    }
+
+    private static Element requirementHeader(
+            Document document, String issuerName, String issuerTaxId,
+            FiscalRequirementContext requirement) {
+        var header = element(document, LR_NS, "sfLR:Cabecera");
+        var obligated = child(document, header, "ObligadoEmision");
+        text(document, obligated, "NombreRazon", issuerName);
+        text(document, obligated, "NIF", issuerTaxId);
+        appendRequirement(document, header, requirement);
+        return header;
+    }
+
+    private static void appendRequirement(
+            Document document, Element header, FiscalRequirementContext requirement) {
+        var remission = child(document, header, "RemisionRequerimiento");
+        text(document, remission, "RefRequerimiento", requirement.reference());
+        text(document, remission, "FinRequerimiento", requirement.finishedValue());
     }
 
     private static Element invoiceRecord(
@@ -272,14 +363,18 @@ public class VerifactuXmlService {
     }
 
     private static String generatedAt(FiscalRecord record) {
-        return record.getGeneratedAt()
+        return formatXmlDateTime(record.getGeneratedAt()
                 .atZone(ZoneId.of(record.getTimezone()))
-                .toOffsetDateTime()
-                .toString();
+                .toOffsetDateTime());
+    }
+
+    static String formatXmlDateTime(OffsetDateTime value) {
+        return XML_DATE_TIME.format(Objects.requireNonNull(value, "value"));
     }
 
     private static String amount(Object value) {
-        return ((BigDecimal) value).setScale(2, RoundingMode.HALF_UP).toPlainString();
+        return decimal(Map.of("importe", value), "importe")
+                .setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     @SuppressWarnings("unchecked")
@@ -299,11 +394,15 @@ public class VerifactuXmlService {
         var grouped = new LinkedHashMap<FiscalKey, FiscalBreakdown>();
         for (var line : lines) {
             var regime = String.valueOf(line.getOrDefault("regimenImpuesto", "IVA"));
-            var rate = line.get("porcentajeImpuesto") instanceof BigDecimal value ? value : null;
-            var base = line.get("base") instanceof BigDecimal value
-                    ? value : singleLineTotal(lines, record, "baseTotal");
-            var tax = line.get("impuesto") instanceof BigDecimal value
-                    ? value : singleLineTotal(lines, record, "impuestoTotal");
+            var rate = optionalDecimal(line.get("porcentajeImpuesto"));
+            var base = optionalDecimal(line.get("base"));
+            if (base == null) {
+                base = singleLineTotal(lines, record, "baseTotal");
+            }
+            var tax = optionalDecimal(line.get("impuesto"));
+            if (tax == null) {
+                tax = singleLineTotal(lines, record, "impuestoTotal");
+            }
             var key = new FiscalKey(regime.toUpperCase(Locale.ROOT), rate);
             grouped.merge(key, new FiscalBreakdown(key.regime(), rate, base, tax),
                     FiscalBreakdown::add);
@@ -321,10 +420,11 @@ public class VerifactuXmlService {
     }
 
     private static BigDecimal decimal(Map<String, Object> values, String key) {
-        if (values.get(key) instanceof BigDecimal value) {
-            return value;
+        var value = optionalDecimal(values.get(key));
+        if (value == null) {
+            throw new IllegalArgumentException(key + " es obligatorio");
         }
-        throw new IllegalArgumentException(key + " es obligatorio");
+        return value;
     }
 
     private static String taxCode(String regime) {
@@ -365,6 +465,27 @@ public class VerifactuXmlService {
         return value ? "S" : "N";
     }
 
+    /** Normalizes equivalent numeric representations materialized from JSONB. */
+    private static BigDecimal optionalDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString());
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return new BigDecimal(text.trim());
+            } catch (NumberFormatException ignored) {
+                // Fall through to the same clear fiscal-field error below.
+            }
+        }
+        throw new IllegalArgumentException("importe fiscal no numerico");
+    }
+
     private static String xml(Document document) throws Exception {
         var transformer = TransformerFactory.newInstance().newTransformer();
         transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
@@ -372,5 +493,26 @@ public class VerifactuXmlService {
         var writer = new StringWriter();
         transformer.transform(new DOMSource(document), new StreamResult(writer));
         return writer.toString();
+    }
+
+    private static javax.xml.parsers.DocumentBuilder newDocumentBuilder() throws Exception {
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        return factory.newDocumentBuilder();
+    }
+
+    private static String required(String value, String field) {
+        var normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException(field + " es obligatorio");
+        }
+        return normalized;
     }
 }

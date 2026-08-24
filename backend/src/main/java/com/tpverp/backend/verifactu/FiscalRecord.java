@@ -70,6 +70,9 @@ public class FiscalRecord {
     private String algorithmVersion;
     @Column(name = "version_aplicacion", nullable = false, length = 32)
     private String applicationVersion;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "modo_fiscal", nullable = false, length = 16)
+    private FiscalMode fiscalMode;
 
     protected FiscalRecord() {
     }
@@ -97,6 +100,36 @@ public class FiscalRecord {
             String formatVersion,
             String algorithmVersion,
             String applicationVersion) {
+        this(chainId, companyId, installationId, storeId, documentId, sequence, operation,
+                documentType, number, issueDate, generatedAt, timezone, issuerTaxId, totalTax,
+                totalAmount, previousHash, hash, snapshotHash, snapshot, formatVersion,
+                algorithmVersion, applicationVersion, FiscalMode.VERIFACTU);
+    }
+
+    public FiscalRecord(
+            UUID chainId,
+            UUID companyId,
+            UUID installationId,
+            UUID storeId,
+            UUID documentId,
+            long sequence,
+            FiscalRecordOperation operation,
+            FiscalDocumentType documentType,
+            String number,
+            LocalDate issueDate,
+            Instant generatedAt,
+            String timezone,
+            String issuerTaxId,
+            BigDecimal totalTax,
+            BigDecimal totalAmount,
+            String previousHash,
+            String hash,
+            String snapshotHash,
+            Map<String, Object> snapshot,
+            String formatVersion,
+            String algorithmVersion,
+            String applicationVersion,
+            FiscalMode fiscalMode) {
         if (sequence < 1) {
             throw new IllegalArgumentException("sequence debe ser positiva");
         }
@@ -123,6 +156,7 @@ public class FiscalRecord {
         this.formatVersion = required(formatVersion, "formatVersion");
         this.algorithmVersion = required(algorithmVersion, "algorithmVersion");
         this.applicationVersion = required(applicationVersion, "applicationVersion");
+        this.fiscalMode = Objects.requireNonNull(fiscalMode, "fiscalMode");
     }
 
     public UUID getId() {
@@ -212,6 +246,10 @@ public class FiscalRecord {
 
     public String getApplicationVersion() {
         return applicationVersion;
+    }
+
+    public FiscalMode getFiscalMode() {
+        return fiscalMode;
     }
 
     UUID chainId() {

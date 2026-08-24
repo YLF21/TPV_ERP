@@ -19,7 +19,11 @@
 		<defaultValueExpression><![CDATA["58109209-2548-4c19-9c4e-6f47c541035b"]]></defaultValueExpression>
 	</parameter>
 	<query language="sql"><![CDATA[SELECT
-    CAST(d.id AS varchar) AS contenido_qr,
+    COALESCE((SELECT sif.qr_url
+        FROM snapshot_impresion_fiscal sif
+        INNER JOIN registro_fiscal rf ON rf.id = sif.registro_id
+        WHERE rf.documento_id = d.id AND rf.operacion = 'ALTA'
+        ORDER BY rf.secuencia DESC LIMIT 1), '') AS contenido_qr,
     COALESCE(
         cdi.observaciones_ticket,
         ''
@@ -83,10 +87,15 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</element>
+			<element kind="staticText" uuid="e52b7e56-6cbf-40ea-8ff4-a6f1c9f9a5ac" positionType="Float" x="5" y="78" width="197" height="12" fontSize="8.0" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
+				<text><![CDATA[QR tributario:]]></text>
 			</element>
 			<element kind="component" uuid="12ced4b2-46ab-45b2-a35b-d0c1258445bc" positionType="Float" x="8" y="91" width="86" height="86">
-				<component kind="barcode4j:QRCode">
+				<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
+				<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
 					<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
 				</component>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>

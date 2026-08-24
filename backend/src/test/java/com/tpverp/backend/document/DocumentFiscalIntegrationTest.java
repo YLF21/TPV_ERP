@@ -137,7 +137,19 @@ class DocumentFiscalIntegrationTest {
                 .containsExactly(
                         FiscalDocumentType.F2,
                         FiscalDocumentType.F1,
-                        FiscalDocumentType.F3);
+                FiscalDocumentType.F3);
+    }
+
+    @Test
+    void freezesConfiguredBuildVersionInFiscalCommand() {
+        integration.setApplicationVersion("4.2.7");
+
+        integration.registerAlta(
+                confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN), false);
+
+        var command = ArgumentCaptor.forClass(FiscalRecordCommand.class);
+        verify(fiscalRecords).register(command.capture());
+        assertThat(command.getValue().applicationVersion()).isEqualTo("4.2.7");
     }
 
     @Test

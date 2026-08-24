@@ -25,7 +25,11 @@ const status: VerifactuPosStatus = {
   presentationStatus: "PENDIENTES",
   pendingCount: 2,
   sendingCount: 0,
-  reviewRequiredCount: 0
+  reviewRequiredCount: 0,
+  fiscalMode: "NO_VERIFACTU",
+  runtimeClass: "SANDBOX",
+  endpointEnvironment: "TEST",
+  transportMode: "SIMULATED"
 };
 
 const queue: VerifactuPosQueueItem[] = [{
@@ -46,6 +50,7 @@ const labels: Record<string, string> = {
   "verifactu.pos.readOnlyDescription": "Consulta de solo lectura",
   "verifactu.pos.close": "Cerrar",
   "verifactu.pos.currentStatus": "Estado actual",
+  "verifactu.pos.fiscalMode": "Modo fiscal",
   "verifactu.pos.refresh": "Actualizar",
   "verifactu.pos.queueLoadError": "No se pudo cargar la cola",
   "verifactu.pos.loadingQueue": "Cargando cola",
@@ -91,6 +96,16 @@ describe("VerifactuPosIndicator", () => {
     expect(screen.queryByRole("button", { name: /reintentar/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /subsanar/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /configurar/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the effective fiscal mode and isolated runtime without admin controls", async () => {
+    render(<VerifactuPosIndicator token="token" locale="es" t={t} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /VERI\*FACTUPendientes/ }));
+
+    expect(await screen.findByText("Modo fiscal: NO_VERIFACTU · SANDBOX · SIMULATED"))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Aplicar escenario/ })).not.toBeInTheDocument();
   });
 
   it("updates manually and reacts to a completed-sale refresh signal", async () => {

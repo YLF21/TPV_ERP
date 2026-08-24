@@ -70,13 +70,27 @@ tpv:
     directory: ${TPV_DOCUMENT_TEMPLATE_DIRECTORY:${user.home}/.tpv-erp/document-templates}
   verifactu:
     endpoint-mode: ${TPV_VERIFACTU_ENDPOINT_MODE:TEST}
+    endpoint-environment: ${TPV_VERIFACTU_ENDPOINT_ENVIRONMENT:TEST}
+    runtime-class: ${TPV_VERIFACTU_RUNTIME_CLASS:REAL}
+    transport-mode: ${TPV_VERIFACTU_TRANSPORT_MODE:AEAT}
+    dev-sandbox:
+      enabled: ${TPV_VERIFACTU_DEV_SANDBOX_ENABLED:false}
+    aeat-test-network-enabled: ${TPV_VERIFACTU_AEAT_TEST_NETWORK_ENABLED:false}
+    production-enabled: ${TPV_VERIFACTU_PRODUCTION_ENABLED:false}
     secret-directory: ${TPV_VERIFACTU_SECRET_DIRECTORY:${user.home}/.tpv-erp/verifactu-secrets}
     secret-acl-mode: ${TPV_VERIFACTU_SECRET_ACL_MODE:PORTABLE}
     secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'
     system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
     system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
-    worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:true}
+    system-version: ${TPV_VERIFACTU_SYSTEM_VERSION:4.1.0}
+    producer-name: ${TPV_VERIFACTU_PRODUCER_NAME:TPV ERP DEV}
+    producer-tax-id: ${TPV_VERIFACTU_PRODUCER_TAX_ID:B00000000}
+    worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:false}
     worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}
+    # Observes the persisted operating clock every minute; six operating hours
+    # are accumulated before a type 10 summary is emitted.
+    event-summary-interval-ms: ${TPV_VERIFACTU_EVENT_SUMMARY_INTERVAL_MS:60000}
+    event-summary-initial-delay-ms: ${TPV_VERIFACTU_EVENT_SUMMARY_INITIAL_DELAY_MS:60000}
     certificate-warning-cron: ${TPV_VERIFACTU_CERTIFICATE_WARNING_CRON:0 0 9 * * *}
     certificate-purge-cron: ${TPV_VERIFACTU_CERTIFICATE_PURGE_CRON:0 0 3 1 * *}
     secret-deletion-delay-ms: ${TPV_VERIFACTU_SECRET_DELETION_DELAY_MS:60000}

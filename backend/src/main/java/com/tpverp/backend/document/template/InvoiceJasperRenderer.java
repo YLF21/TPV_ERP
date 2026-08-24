@@ -379,15 +379,18 @@ public class InvoiceJasperRenderer {
 
         boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA;
         String fiscalQrUrl = invoice ? qrUrl : null;
+        boolean noVerifactuQr = fiscalQrUrl != null
+                && fiscalQrUrl.contains("ValidarQRNoVerifactu");
+        boolean testFiscalQr = fiscalQrUrl != null && fiscalQrUrl.contains("prewww2.aeat.es");
         var fiscal = root.putObject("fiscal");
         fiscal.put("qrRequired", fiscalQrUrl != null && !fiscalQrUrl.isBlank());
         fiscal.put("mode", !invoice ? "NOT_APPLICABLE"
                 : fiscalQrUrl == null || fiscalQrUrl.isBlank()
-                        ? "NO_VERIFACTU" : "VERIFACTU");
+                        ? "NOT_APPLICABLE" : noVerifactuQr ? "NO_VERIFACTU" : "VERIFACTU");
         putNullable(fiscal, "verificationUrl", fiscalQrUrl);
-        putNullable(fiscal, "legend", invoice
+        putNullable(fiscal, "legend", invoice && !noVerifactuQr && fiscalQrUrl != null
                 ? "Factura verificable en la sede electrónica de la AEAT" : null);
-        fiscal.put("testData", false);
+        fiscal.put("testData", testFiscalQr);
 
         var lines = root.putArray("lines");
         document.getLineas().stream()

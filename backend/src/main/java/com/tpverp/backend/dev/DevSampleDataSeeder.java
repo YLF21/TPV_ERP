@@ -819,7 +819,7 @@ public class DevSampleDataSeeder {
             BigDecimal tax = base.multiply(new BigDecimal("0.21")).setScale(2, java.math.RoundingMode.HALF_UP);
             BigDecimal total = base.add(tax);
             doc(CommercialDocumentType.TICKET,
-                    "001-%02d%02d%02d-%06d".formatted(date.getYear() % 100, date.getMonthValue(), date.getDayOfMonth(), 800_001 + index),
+                    "001-%02d%02d%02d-%06d".formatted(date.getYear() % 100, date.getMonthValue(), date.getDayOfMonth(), 1_001 + index),
                     "CONFIRMADO", product, customer, null, String.valueOf(quantity), unitPrice.toPlainString(),
                     base.toPlainString(), tax.toPlainString(), total.toPlainString(), true,
                     List.of("EFECTIVO", "TARJETA", "VALE").get(index % 3), date, "recent-sale-" + index);

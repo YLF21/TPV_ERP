@@ -200,6 +200,55 @@ export type VerifactuCorrectionResult = {
   status: VerifactuSubmissionStatus | string;
 };
 
+export type FiscalMode = "PRE_SIF" | "NO_VERIFACTU" | "VERIFACTU";
+export type FiscalModeTransitionStatus = "APLICADA" | "PROGRAMADA";
+export type FiscalScheduledTransition = {
+  previousMode: FiscalMode;
+  newMode: FiscalMode;
+  status: FiscalModeTransitionStatus;
+  requestedAt: string;
+  effectiveAt: string;
+  verifactuEndDate: string;
+  aeatAckReference: string;
+};
+export type FiscalStatus = {
+  companyId: string;
+  mode: FiscalMode;
+  modeVersion: number;
+  modeSince?: string | null;
+  runtimeClass: "SANDBOX" | "REAL";
+  endpointEnvironment: "TEST" | "PRODUCTION";
+  transportMode: "SIMULATED" | "AEAT";
+  productionEnabled: boolean;
+  verifactuBlockedUntil?: string | null;
+  scheduledTransition?: FiscalScheduledTransition | null;
+};
+export type FiscalSandboxStatus = {
+  sandboxEnabled: boolean;
+  runtimeClass: "SANDBOX" | "REAL";
+  endpointEnvironment: "TEST" | "PRODUCTION";
+  transportMode: "SIMULATED" | "AEAT";
+  nextOutcome: "ACCEPTED" | "ACCEPTED_WITH_ERRORS" | "REJECTED" | "DUPLICATE" | "TIMEOUT" | "HTTP_ERROR" | "INVALID_RESPONSE";
+};
+
+export function loadFiscalStatus(token?: string) {
+  return apiRequest<FiscalStatus>("/fiscal/status", { token });
+}
+
+export function loadFiscalSandboxStatus(token?: string) {
+  return apiRequest<FiscalSandboxStatus>("/dev/fiscal-sandbox/status", { token });
+}
+
+export function setFiscalSandboxScenario(outcome: FiscalSandboxStatus["nextOutcome"], token?: string) {
+  return apiRequest<FiscalSandboxStatus>("/dev/fiscal-sandbox/scenario", {
+    method: "PUT", token, body: { outcome }
+  });
+}
+
+export function dispatchFiscalSandboxNext(token?: string) {
+  return apiRequest<unknown>("/dev/fiscal-sandbox/dispatch-next", { method: "POST", token });
+}
+
 export function loadVerifactuAdminSummary(token?: string) {
   return apiRequest<VerifactuAdminSummary>("/verifactu/admin/summary", { token });
 }

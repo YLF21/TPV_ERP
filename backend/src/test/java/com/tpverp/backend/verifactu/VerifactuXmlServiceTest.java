@@ -58,6 +58,23 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void generaLoteFirmadoConRemisionDeRequerimientoYFin() {
+        var unsigned = service().recordXml(
+                request(record(FiscalRecordOperation.ALTA), "Company SL"),
+                record(FiscalRecordOperation.ALTA));
+        var xml = service().signedRequirementBatchXml(
+                "Company SL", "B12345674", List.of(unsigned),
+                new FiscalRequirementContext("REQ-2026-001", true));
+
+        assertThat(xml).containsSubsequence(
+                "<sf:RemisionRequerimiento>",
+                "<sf:RefRequerimiento>REQ-2026-001</sf:RefRequerimiento>",
+                "<sf:FinRequerimiento>S</sf:FinRequerimiento>");
+        assertThat(xml).contains("<sf:RegistroAlta>");
+        new VerifactuOfficialXsdValidator().validate(xml);
+    }
+
+    @Test
     void usaElRegimenYPorcentajeFiscalDelSnapshotSiExistenLineas() {
         var xml = service().batchXml(request(record(
                 FiscalRecordOperation.ALTA,
@@ -117,6 +134,26 @@ class VerifactuXmlServiceTest {
         assertThat(text(document, "TipoImpositivo", 1)).isEqualTo("10.00");
         assertThat(text(document, "BaseImponibleOimporteNoSujeto", 1)).isEqualTo("20.00");
         assertThat(text(document, "CuotaRepercutida", 1)).isEqualTo("2.00");
+    }
+
+    @Test
+    void aceptaImportesMaterializadosComoOtrosNumbersDesdeJsonb() {
+        var line = Map.<String, Object>of(
+                "regimenImpuesto", "IVA",
+                "porcentajeImpuesto", 21.0d,
+                "base", 0.83d,
+                "impuesto", 0.17d);
+        var snapshot = new LinkedHashMap<>(snapshot(List.of(line)));
+        snapshot.put("baseTotal", 0.83d);
+        snapshot.put("impuestoTotal", 0.17d);
+        snapshot.put("total", 1.0d);
+        var record = fiscalRecord(FiscalDocumentType.F2, "001-260824-90001", snapshot);
+
+        var document = parse(service().batchXml(request(record, "Company SL")));
+
+        assertThat(text(document, "CuotaTotal", 0)).isEqualTo("0.17");
+        assertThat(text(document, "ImporteTotal", 0)).isEqualTo("12.10");
+        assertThat(text(document, "BaseImponibleOimporteNoSujeto", 0)).isEqualTo("0.83");
     }
 
     @Test

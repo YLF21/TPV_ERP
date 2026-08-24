@@ -58,7 +58,16 @@ function renderA4DocumentHtml(document) {
   const standaloneLogo = !document.issuer && document.logo
     ? `<img class="standalone-logo" src="${escapeHtml(document.logo)}" alt="">`
     : "";
-  const qr = !deliveryNote && document.qrImage ? `<figure class="fiscal-qr"><img src="${escapeHtml(document.qrImage)}" alt="QR AEAT"><figcaption>Factura verificable en la sede electrónica de la AEAT</figcaption></figure>` : "";
+  const qrUrl = String(document.qrUrl || "");
+  const hasQr = !deliveryNote && document.qrImage && qrUrl;
+  const noVerifactuQr = qrUrl.includes("ValidarQRNoVerifactu");
+  const testQr = qrUrl.includes("prewww2.aeat.es");
+  const qrCaption = [
+    "QR tributario:",
+    noVerifactuQr ? "" : "Factura verificable en la sede electrónica de la AEAT",
+    testQr ? "ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL" : ""
+  ].filter(Boolean).join("<br>");
+  const qr = hasQr ? `<figure class="fiscal-qr"><img src="${escapeHtml(document.qrImage)}" alt="QR tributario"><figcaption>${qrCaption}</figcaption></figure>` : "";
   const paymentSummary = deliveryNote ? "" : `<div><section class="payment-block"><h2>${escapeHtml(labels.paymentMethod)}</h2><div class="payments">${payments || "—"}</div></section>${accounts ? `<section class="bank-block"><h2>${escapeHtml(labels.bankDetails)}</h2>${accounts}</section>` : ""}</div>`;
   const documentHeading = (document.title || (deliveryNote ? "ALBARÁN" : "FACTURA")).split(" ")[0];
 

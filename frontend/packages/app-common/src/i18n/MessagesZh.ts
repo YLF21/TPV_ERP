@@ -242,6 +242,7 @@ export class MessagesZh {
     "verifactu.pos.readOnlyDescription": "显示本终端的状态和发送记录。管理操作请在 APP GESTIÓN 中进行。",
     "verifactu.pos.close": "关闭 VeriFactu 面板",
     "verifactu.pos.currentStatus": "当前状态",
+    "verifactu.pos.fiscalMode": "税务模式",
     "verifactu.pos.refresh": "刷新",
     "verifactu.pos.queueLoadError": "无法刷新队列，请重试。",
     "verifactu.pos.loadingQueue": "正在加载发送队列...",

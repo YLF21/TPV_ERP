@@ -44,7 +44,7 @@ class DocumentTemplateArtifactServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(compiler.compile(any(byte[].class))).thenReturn(
                 new SafeJrxmlCompiler.CompiledTemplate(
-                        new byte[] {1, 2}, new byte[] {3, 4}, "a".repeat(64)));
+                        fiscalJrxml(), new byte[] {3, 4}, "a".repeat(64)));
         var storage = new DocumentTemplateArtifactStorage(tempDir);
         var catalog = mock(DocumentTemplateCatalogService.class);
         var service = new DocumentTemplateArtifactService(
@@ -54,11 +54,11 @@ class DocumentTemplateArtifactServiceTest {
 
         var result = service.uploadAndValidate(
                 draft.getId(), java.util.List.of(new MockMultipartFile(
-                        "files", "factura.jrxml", "application/xml", new byte[] {1, 2})));
+                        "files", "factura.jrxml", "application/xml", fiscalJrxml())));
 
         assertThat(result.status()).isEqualTo(DocumentTemplateStatus.VALIDATED);
         assertThat(result.sha256()).isEqualTo("a".repeat(64));
-        assertThat(storage.readSource(draft.getArtifactReference())).containsExactly(1, 2);
+        assertThat(storage.readSource(draft.getArtifactReference())).containsExactly(fiscalJrxml());
         assertThat(storage.readCompiled(draft.getArtifactReference())).containsExactly(3, 4);
         verify(audit).record(
                 org.mockito.ArgumentMatchers.eq("DOCUMENT_TEMPLATE_VALIDATED"),
@@ -101,7 +101,7 @@ class DocumentTemplateArtifactServiceTest {
                 store, DocumentTemplateType.FACTURA_VENTA,
                 "FACTURA_LP", 1, "Factura LP", null,
                 Instant.parse("2026-08-10T09:00:00Z"));
-        byte[] source = new byte[] {1, 2};
+        byte[] source = fiscalJrxml();
         String hash = SafeJrxmlCompiler.sha256(source);
         template.validateArtifact(1, template.getId().toString(), hash,
                 Instant.parse("2026-08-10T09:30:00Z"));
@@ -138,7 +138,7 @@ class DocumentTemplateArtifactServiceTest {
                 store, DocumentTemplateType.TICKET, DocumentTemplateFormat.TICKET_80,
                 "TICKET_80", 4, "Mi ticket", null,
                 Instant.parse("2026-08-15T13:00:00Z"));
-        byte[] source = new byte[] {1, 2, 3};
+        byte[] source = fiscalJrxml();
         var reports = Map.of(
                 TicketJrxmlBundleCompiler.MASTER_FILENAME,
                 new TicketJrxmlBundleCompiler.CompiledReport(source, new byte[] {4, 5}));
@@ -168,5 +168,19 @@ class DocumentTemplateArtifactServiceTest {
 
         assertThat(result.status()).isEqualTo(DocumentTemplateStatus.VALIDATED);
         assertThat(result.sha256()).isEqualTo("b".repeat(64));
+    }
+
+    private static byte[] fiscalJrxml() {
+        return """
+                <jasperReport name="fiscal" language="java">
+                  <query language="sql"><![CDATA[
+                    SELECT sif.qr_url FROM snapshot_impresion_fiscal sif
+                    WHERE sif.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
+                  ]]></query>
+                  <textField><textFieldExpression><![CDATA[$F{qr_url}]]></textFieldExpression></textField>
+                  <staticText><text><![CDATA[QR tributario:]]></text></staticText>
+                  <component kind="barcode4j:QRCode" errorCorrectionLevel="M"/>
+                </jasperReport>
+                """.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 }

@@ -16,7 +16,10 @@ public class VerifactuSubmissionPropertiesFactory {
         return new VerifactuSubmissionProperties(
                 mode(),
                 required("tpv.verifactu.system-name"),
-                required("tpv.verifactu.system-id"));
+                required("tpv.verifactu.system-id"),
+                defaulted("tpv.verifactu.producer-name", "TPV ERP DEV"),
+                defaulted("tpv.verifactu.producer-tax-id", "B00000000"),
+                defaulted("tpv.verifactu.system-version", "4.1.0"));
     }
     // Lee la configuracion efectiva desde Spring, incluyendo variables de entorno resueltas.
 
@@ -30,5 +33,10 @@ public class VerifactuSubmissionPropertiesFactory {
             throw new IllegalArgumentException(key + " obligatorio");
         }
         return value.trim();
+    }
+
+    private String defaulted(String key, String fallback) {
+        var value = environment.getProperty(key, fallback);
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 }

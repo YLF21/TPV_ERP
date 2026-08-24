@@ -35,6 +35,20 @@ public final class OfficialHashService {
                 + "&FechaHoraHusoGenRegistro=" + GENERATED_AT.format(input.generatedAt()));
     }
 
+    // Hash fields and order mandated for RegistroEvento (AEAT L12/L2E).
+    public String hash(FiscalEventHashInput input) {
+        return sha256(
+                "NIF=" + text(input.systemTaxId())
+                + "&ID=" + text(input.systemIdentifier())
+                + "&IdSistemaInformatico=" + text(input.systemId())
+                + "&Version=" + text(input.systemVersion())
+                + "&NumeroInstalacion=" + text(input.installationNumber())
+                + "&NIF=" + text(input.obligatedTaxId())
+                + "&TipoEvento=" + text(input.eventType())
+                + "&HuellaEvento=" + text(input.previousHash())
+                + "&FechaHoraHusoGenEvento=" + input.generatedAt());
+    }
+
     private static String number(BigDecimal value) {
         return value == null ? "" : value.stripTrailingZeros().toPlainString();
     }

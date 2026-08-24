@@ -3,7 +3,6 @@ package com.tpverp.backend.document;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
@@ -15,13 +14,15 @@ import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
 import org.springframework.context.ApplicationEventPublisher;
 import com.tpverp.backend.verifactu.FiscalRecordQueuedEvent;
+import com.tpverp.backend.verifactu.FiscalRuntimeProperties;
+import org.springframework.beans.factory.annotation.Value;
 
 @Component
 public class DocumentFiscalIntegration {
 
     private static final String FORMAT_VERSION = "VERIFACTU-1";
     private static final String ALGORITHM_VERSION = "AEAT-SHA256-1";
-    private static final String APPLICATION_VERSION = "TPV-ERP-0.0.1";
+    private String applicationVersion = "4.1.0";
 
     private final FiscalRecordService fiscalRecords;
     private final FiscalRecordRepository recordRepository;
@@ -30,6 +31,7 @@ public class DocumentFiscalIntegration {
     private final ApplicationEventPublisher events;
     private final SalesInvoiceRectificationService rectifications;
     private final InstallationStatusService installationStatus;
+    private FiscalRuntimeProperties runtimeProperties;
 
     public DocumentFiscalIntegration(
             FiscalRecordService fiscalRecords,
@@ -48,7 +50,21 @@ public class DocumentFiscalIntegration {
         this.installationStatus = installationStatus;
     }
 
-    // Registers the sales document fiscal creation when VERI*FACTU is active.
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFiscalRuntimeProperties(FiscalRuntimeProperties runtimeProperties) {
+        this.runtimeProperties = runtimeProperties;
+    }
+
+    /** The frozen fiscal record must carry the build version used to produce it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setApplicationVersion(
+            @Value("${tpv.verifactu.system-version:4.1.0}") String applicationVersion) {
+        if (applicationVersion != null && !applicationVersion.isBlank()) {
+            this.applicationVersion = applicationVersion.trim();
+        }
+    }
+
+    // Registers the sales document fiscal creation when the configured SIF mode requires it.
     public void registerAlta(CommercialDocument document, boolean invoiceFromTicket) {
         if (skipFiscalRegistration()) {
             return;
@@ -83,7 +99,7 @@ public class DocumentFiscalIntegration {
             var record = fiscalRecords.registerSubstitution(
                     command(invoice, FiscalRecordOperation.ALTA, FiscalDocumentType.F3),
                     ticket.getId());
-            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
+            publishQueuedIfNeeded(record);
         } catch (VerifactuInactiveException ignored) {
             // Commercial conversion remains available before VERI*FACTU activation.
         }
@@ -128,7 +144,7 @@ public class DocumentFiscalIntegration {
             CommercialDocument document, FiscalRecordOperation operation, FiscalDocumentType type) {
         try {
             var record = fiscalRecords.register(command(document, operation, type));
-            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
+            publishQueuedIfNeeded(record);
         } catch (VerifactuInactiveException ignored) {
             // VERI*FACTU desactivado permite operar hasta activacion legal o voluntaria.
         }
@@ -153,7 +169,7 @@ public class DocumentFiscalIntegration {
                     command(document, FiscalRecordOperation.ALTA, type),
                     originalDocumentId,
                     method);
-            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
+            publishQueuedIfNeeded(record);
         } catch (VerifactuInactiveException ignored) {
             // La relacion comercial permanece obligatoria aun sin activacion fiscal.
         }
@@ -164,7 +180,7 @@ public class DocumentFiscalIntegration {
         return new FiscalRecordCommand(
                 organization.currentCompany().getId(), currentInstallationId(),
                 organization.currentStore().getId(), document.getId(), operation, type,
-                FORMAT_VERSION, ALGORITHM_VERSION, APPLICATION_VERSION);
+                FORMAT_VERSION, ALGORITHM_VERSION, applicationVersion);
     }
 
     private java.util.UUID currentInstallationId() {
@@ -175,6 +191,18 @@ public class DocumentFiscalIntegration {
     }
 
     private boolean skipFiscalRegistration() {
-        return installationStatus.status().mode() == OperationalMode.DEVELOPMENT;
+        // The historical unlicensed DEV profile remains PRE_SIF-compatible;
+        // the explicit fiscal-dev profile exercises the complete fiscal path.
+        if (runtimeProperties != null && runtimeProperties.isSandbox()) {
+            return false;
+        }
+        return installationStatus.status().mode()
+                == com.tpverp.backend.shared.access.OperationalMode.DEVELOPMENT;
+    }
+
+    private void publishQueuedIfNeeded(com.tpverp.backend.verifactu.FiscalRecord record) {
+        if (record.getFiscalMode() != com.tpverp.backend.verifactu.FiscalMode.NO_VERIFACTU) {
+            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
+        }
     }
 }

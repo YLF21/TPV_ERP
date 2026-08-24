@@ -265,6 +265,11 @@ export function VerifactuPosIndicator({
             <div>
               <span>{t("verifactu.pos.currentStatus")}</span>
               <strong>{statusError ? t("verifactu.pos.loadError") : t(statusKeys[presentationStatus])}</strong>
+              <small>
+                {t("verifactu.pos.fiscalMode")}: {status?.fiscalMode ?? (status?.active ? "VERIFACTU" : "PRE_SIF")}
+                {status?.runtimeClass ? ` · ${status.runtimeClass}` : ""}
+                {status?.transportMode ? ` · ${status.transportMode}` : ""}
+              </small>
             </div>
             <button
               type="button"
