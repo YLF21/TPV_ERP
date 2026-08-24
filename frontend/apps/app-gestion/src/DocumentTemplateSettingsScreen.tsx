@@ -114,8 +114,15 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   const selectedDefinition = definitions.find((definition) => definition.type === selectedType);
   const effectiveFormat: DocumentTemplateFormat = selectedDefinition?.formats.includes(selectedFormat)
     ? selectedFormat
-    : selectedDefinition?.formats[0] ?? (selectedType === "TICKET" || selectedType === "VALE"
-      || selectedType === "TICKET_REGALO" || selectedType === "RETIRADA_CAJA" ? "TICKET_80" : "A4");
+    : selectedDefinition?.formats[0] ?? (
+      selectedType === "FACTURA_VENTA"
+      || selectedType === "ALBARAN_VENTA"
+      || selectedType === "RECTIFICATIVA_VENTA"
+        ? selectedFormat
+        : selectedType === "TICKET" || selectedType === "VALE"
+          || selectedType === "TICKET_REGALO" || selectedType === "RETIRADA_CAJA"
+          ? "TICKET_80"
+          : "A4");
   const documentTemplatePreview = documentTemplatePreviews[`${selectedType}:${effectiveFormat}`];
   const selectedTicketPresentationIsActive = selectedType === "TICKET"
     && (ticketTemplateOrigin === "INTEGRATED"
@@ -144,7 +151,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
 
   useEffect(() => {
     void loadDocumentTemplateDefinitions(session.accessToken, request)
-      .then(setDefinitions)
+      .then((value) => setDefinitions(Array.isArray(value) ? value : []))
       .catch(() => setDefinitions([]));
   }, [request, session.accessToken]);
 
@@ -364,7 +371,10 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         ))}
       </div>
 
-      {(selectedDefinition?.formats.length ?? 0) > 1 && (
+      {((selectedDefinition?.formats.length ?? 0) > 1
+        || selectedType === "FACTURA_VENTA"
+        || selectedType === "ALBARAN_VENTA"
+        || selectedType === "RECTIFICATIVA_VENTA") && (
         <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.format")}>
           {(["A4", "TICKET_80"] as DocumentTemplateFormat[]).map((format) => (
             <button
