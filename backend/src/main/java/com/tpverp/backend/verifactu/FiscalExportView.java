@@ -13,5 +13,18 @@ public record FiscalExportView(
         OffsetDateTime periodEnd,
         long recordCount,
         UUID eventId,
-        List<String> xml) {
+        List<String> xml,
+        String batchXml) {
+
+    public FiscalExportView(
+            UUID exportId,
+            FiscalExportKind kind,
+            Instant exportedAt,
+            OffsetDateTime periodStart,
+            OffsetDateTime periodEnd,
+            long recordCount,
+            UUID eventId,
+            List<String> xml) {
+        this(exportId, kind, exportedAt, periodStart, periodEnd, recordCount, eventId, xml, null);
+    }
 }

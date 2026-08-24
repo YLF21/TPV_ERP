@@ -65,7 +65,7 @@ public class FiscalRequiredSubmissionService {
         if (!"PENDIENTE".equals(submission.getStatus())) {
             throw new IllegalStateException("El requerimiento fiscal ya esta cerrado");
         }
-        var exported = exports.export(kind, periodStart, periodEnd);
+        var exported = exports.export(kind, periodStart, periodEnd, submission.getReference());
         submission.markExported(exported.exportId(), Instant.now());
         var saved = submissions.save(submission);
         return new FiscalRequiredSubmissionExportView(view(saved), exported);

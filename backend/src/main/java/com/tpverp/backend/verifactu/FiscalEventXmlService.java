@@ -65,7 +65,8 @@ public class FiscalEventXmlService {
             var obligated = child(document, event, "ObligadoEmision");
             eventText(document, obligated, "NombreRazon", obligatedName);
             eventText(document, obligated, "NIF", obligatedTaxId);
-            eventText(document, event, "FechaHoraHusoGenEvento", generatedAt.toString());
+            eventText(document, event, "FechaHoraHusoGenEvento",
+                    VerifactuXmlService.formatXmlDateTime(generatedAt));
             eventText(document, event, "TipoEvento", type.code());
             eventData(document, event, type, detail, generatedAt, obligatedTaxId, previousHash,
                     hash, summary, exportContext);
@@ -169,8 +170,10 @@ public class FiscalEventXmlService {
         var export = child(document, data, "ExportacionRegFacturacionPeriodo");
         var start = context.periodStart() == null ? generatedAt : context.periodStart();
         var end = context.periodEnd() == null ? generatedAt : context.periodEnd();
-        eventText(document, export, "FechaHoraHusoInicioPeriodoExport", start.toString());
-        eventText(document, export, "FechaHoraHusoFinPeriodoExport", end.toString());
+        eventText(document, export, "FechaHoraHusoInicioPeriodoExport",
+                VerifactuXmlService.formatXmlDateTime(start));
+        eventText(document, export, "FechaHoraHusoFinPeriodoExport",
+                VerifactuXmlService.formatXmlDateTime(end));
         if (context.firstBilling() == null) {
             billingExportRecord(document, export, "RegistroFacturacionInicialPeriodo", taxId, hash,
                     generatedAt);
@@ -216,8 +219,10 @@ public class FiscalEventXmlService {
         var export = child(document, data, "ExportacionRegEventoPeriodo");
         var start = context.periodStart() == null ? generatedAt : context.periodStart();
         var end = context.periodEnd() == null ? generatedAt : context.periodEnd();
-        eventText(document, export, "FechaHoraHusoInicioPeriodoExport", start.toString());
-        eventText(document, export, "FechaHoraHusoFinPeriodoExport", end.toString());
+        eventText(document, export, "FechaHoraHusoInicioPeriodoExport",
+                VerifactuXmlService.formatXmlDateTime(start));
+        eventText(document, export, "FechaHoraHusoFinPeriodoExport",
+                VerifactuXmlService.formatXmlDateTime(end));
         if (context.firstEvent() == null) {
             eventRecord(document, export, "RegistroEventoInicialPeriodo", hash, generatedAt);
             eventRecord(document, export, "RegistroEventoFinalPeriodo", hash, generatedAt);
@@ -234,7 +239,8 @@ public class FiscalEventXmlService {
             String hash, OffsetDateTime generatedAt) {
         var record = child(document, parent, name);
         eventText(document, record, "TipoEvento", "90");
-        eventText(document, record, "FechaHoraHusoEvento", generatedAt.toString());
+        eventText(document, record, "FechaHoraHusoEvento",
+                VerifactuXmlService.formatXmlDateTime(generatedAt));
         eventText(document, record, "HuellaEvento", hash);
     }
 
@@ -242,7 +248,8 @@ public class FiscalEventXmlService {
             FiscalExportContext.EventBoundary boundary) {
         var record = child(document, parent, name);
         eventText(document, record, "TipoEvento", boundary.type());
-        eventText(document, record, "FechaHoraHusoEvento", boundary.generatedAt().toString());
+        eventText(document, record, "FechaHoraHusoEvento",
+                VerifactuXmlService.formatXmlDateTime(boundary.generatedAt()));
         eventText(document, record, "HuellaEvento", boundary.hash());
     }
 

@@ -21,12 +21,14 @@ public class FiscalExportService {
     private final FiscalEventRepository events;
     private final FiscalExportRepository exports;
     private final FiscalEventService eventService;
+    private final VerifactuXmlService fiscalXml;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public FiscalExportService(CurrentOrganization organization, InstallationRepository installations,
             VerifactuConfigurationRepository configurations, FiscalRecordRepository records,
             FiscalRecordArtifactRepository artifacts, FiscalEventRepository events,
             FiscalEventService eventService,
-            FiscalExportRepository exports) {
+            FiscalExportRepository exports, VerifactuXmlService fiscalXml) {
         this.organization = organization;
         this.installations = installations;
         this.configurations = configurations;
@@ -35,6 +37,16 @@ public class FiscalExportService {
         this.events = events;
         this.exports = exports;
         this.eventService = eventService;
+        this.fiscalXml = fiscalXml;
+    }
+
+    /** Compatibility constructor for focused unit tests and adapters. */
+    public FiscalExportService(CurrentOrganization organization, InstallationRepository installations,
+            VerifactuConfigurationRepository configurations, FiscalRecordRepository records,
+            FiscalRecordArtifactRepository artifacts, FiscalEventRepository events,
+            FiscalEventService eventService, FiscalExportRepository exports) {
+        this(organization, installations, configurations, records, artifacts, events,
+                eventService, exports, new VerifactuXmlService());
     }
 
     @Transactional
@@ -45,6 +57,12 @@ public class FiscalExportService {
     @Transactional
     public FiscalExportView export(FiscalExportKind kind, OffsetDateTime periodStart,
             OffsetDateTime periodEnd) {
+        return export(kind, periodStart, periodEnd, null);
+    }
+
+    @Transactional
+    public FiscalExportView export(FiscalExportKind kind, OffsetDateTime periodStart,
+            OffsetDateTime periodEnd, String requirementReference) {
         if (kind == null) {
             throw new IllegalArgumentException("El tipo de exportacion es obligatorio");
         }
@@ -61,8 +79,9 @@ public class FiscalExportService {
         var now = Instant.now();
         UUID eventId = null;
         List<String> xml;
+        List<FiscalRecord> fiscalRecords = List.of();
         if (kind == FiscalExportKind.BILLING) {
-            var fiscalRecords = records.findAllByCompanyIdAndInstallationIdOrderBySequence(
+            fiscalRecords = records.findAllByCompanyIdAndInstallationIdOrderBySequence(
                     company.getId(), installation.getId()).stream()
                     .filter(record -> mode != FiscalMode.NO_VERIFACTU
                             || record.getFiscalMode() == FiscalMode.NO_VERIFACTU)
@@ -95,10 +114,31 @@ public class FiscalExportService {
                 eventId = event.getId();
             }
         }
+        String batchXml = null;
+        if (requirementReference != null && kind == FiscalExportKind.BILLING
+                && mode == FiscalMode.NO_VERIFACTU && !fiscalRecords.isEmpty()) {
+            var issuerTaxIds = fiscalRecords.stream().map(FiscalRecord::getIssuerTaxId)
+                    .distinct().toList();
+            if (issuerTaxIds.size() != 1) {
+                throw new IllegalStateException(
+                        "Un requerimiento AEAT no puede mezclar NIF emisores");
+            }
+            var signedXml = fiscalRecords.stream().map(record -> artifacts.findByRecordId(record.getId())
+                    .map(FiscalRecordArtifact::getSignedXml)
+                    .filter(value -> value != null && !value.isBlank())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Registro NO VERI*FACTU sin XML firmado congelado: " + record.getId())))
+                    .toList();
+            batchXml = fiscalXml.signedRequirementBatchXml(
+                    company.getRazonSocial(), issuerTaxIds.getFirst(), signedXml,
+                    new FiscalRequirementContext(requirementReference, true));
+        }
+        var hashValues = batchXml == null ? xml : List.of(batchXml);
         var persisted = exports.save(new FiscalExport(company.getId(), installation.getId(), kind,
-                eventId, xml.size(), sha256(xml), now, periodStart, periodEnd));
+                eventId, xml.size(), sha256(hashValues), now, periodStart, periodEnd));
         return new FiscalExportView(persisted.getId(), kind, now,
-                persisted.getPeriodStart(), persisted.getPeriodEnd(), xml.size(), eventId, xml);
+                persisted.getPeriodStart(), persisted.getPeriodEnd(), xml.size(), eventId, xml,
+                batchXml);
     }
 
     private static boolean inPeriod(Instant value, OffsetDateTime start, OffsetDateTime end) {

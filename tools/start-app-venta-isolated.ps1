@@ -2,6 +2,8 @@
 param(
     [switch]$CheckOnly,
     [switch]$FiscalSandbox,
+    [switch]$FiscalProof,
+    [string]$EvidenceDirectory,
     [ValidateRange(1024, 65535)]
     [int]$BackendPort = 18080,
     [ValidateRange(1024, 65535)]
@@ -34,6 +36,7 @@ $script:TempRoot = $null
 $script:PsqlPath = $null
 $script:OriginalEnvironment = @{}
 $script:LatestMigrationVersion = $null
+$script:EvidenceDirectory = $null
 
 function Get-LatestMigrationVersion {
     $migrationDirectory = Join-Path $script:RepositoryRoot "backend\src\main\resources\db\migration"
@@ -224,6 +227,17 @@ function Remove-IsolatedDatabase {
 }
 
 try {
+    if ($FiscalProof -and -not $FiscalSandbox) {
+        throw "FiscalProof solo puede ejecutarse con FiscalSandbox; nunca contra AEAT TEST ni produccion."
+    }
+    if ($FiscalProof) {
+        $script:EvidenceDirectory = if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
+            Join-Path $script:RepositoryRoot "target\verifactu-dev-proof"
+        } else {
+            [IO.Path]::GetFullPath($EvidenceDirectory)
+        }
+        [void](New-Item -ItemType Directory -Path $script:EvidenceDirectory -Force)
+    }
     Assert-RequiredValue -Name "la contrasena administrativa de PostgreSQL" `
         -Value $PostgresAdminPassword -EnvironmentHint 'la variable $env:TPV_POSTGRES_ADMIN_PASSWORD'
     Assert-RequiredValue -Name "la contrasena del usuario de la base temporal" `
@@ -369,6 +383,63 @@ try {
         -Method Post -ContentType "application/json" -Body $loginBody -TimeoutSec 15
     if ([string]::IsNullOrWhiteSpace([string]$login.accessToken)) {
         throw "El backend respondio al login, pero no devolvio un token de acceso."
+    }
+
+    if ($FiscalProof) {
+        $proofHeaders = @{ Authorization = "Bearer $($login.accessToken)" }
+        $fiscalStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$BackendPort/api/v1/fiscal/status" `
+            -Headers $proofHeaders -Method Get -TimeoutSec 15
+        $sandboxStatus = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/status" `
+            -Headers $proofHeaders -Method Get -TimeoutSec 15
+        if ($sandboxStatus.runtimeClass -ne "SANDBOX" -or
+            $sandboxStatus.endpointEnvironment -ne "TEST" -or
+            $sandboxStatus.transportMode -ne "SIMULATED") {
+            throw "La prueba fiscal no esta aislada: runtime, entorno o transporte inesperados."
+        }
+        $scenarioBody = @{ outcome = "REJECTED" } | ConvertTo-Json
+        $scenarioRejected = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/scenario" `
+            -Headers $proofHeaders -Method Put -ContentType "application/json" `
+            -Body $scenarioBody -TimeoutSec 15
+        if ($scenarioRejected.nextOutcome -ne "REJECTED") {
+            throw "El simulador no conservo atomically el escenario REJECTED."
+        }
+        $scenarioBody = @{ outcome = "ACCEPTED" } | ConvertTo-Json
+        $scenarioAccepted = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/scenario" `
+            -Headers $proofHeaders -Method Put -ContentType "application/json" `
+            -Body $scenarioBody -TimeoutSec 15
+        $dispatch = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/dev/fiscal-sandbox/dispatch-next" `
+            -Headers $proofHeaders -Method Post -ContentType "application/json" `
+            -Body "{}" -TimeoutSec 15
+        $proof = [ordered]@{
+            generatedAt = [DateTime]::UtcNow.ToString("o")
+            profile = "dev,fiscal-dev"
+            runtimeClass = $sandboxStatus.runtimeClass
+            endpointEnvironment = $sandboxStatus.endpointEnvironment
+            transportMode = $sandboxStatus.transportMode
+            fiscalStatus = $fiscalStatus
+            scenarioRejected = $scenarioRejected
+            scenarioAccepted = $scenarioAccepted
+            dispatchNext = $dispatch
+            note = "Prueba API del laboratorio aislado; no contiene token ni realiza conexiones AEAT."
+        }
+        $proof | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath `
+            (Join-Path $script:EvidenceDirectory "sandbox-api-proof.json") -Encoding UTF8
+        @(
+            "# Evidencia laboratorio fiscal DEV"
+            ""
+            "- Perfil: dev,fiscal-dev"
+            "- Runtime: SANDBOX"
+            "- Entorno: TEST"
+            "- Transporte: SIMULATED"
+            "- PostgreSQL: base efimera, eliminada al finalizar el script"
+            "- El archivo JSON solo recoge respuestas del laboratorio y no credenciales."
+            "- Esta evidencia no prueba AEAT TEST ni produccion."
+        ) | Set-Content -LiteralPath (Join-Path $script:EvidenceDirectory "README.md") -Encoding UTF8
+        Write-Host "Evidencia del laboratorio fiscal escrita en $script:EvidenceDirectory" -ForegroundColor Green
     }
 
     Write-Host ""

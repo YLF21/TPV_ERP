@@ -58,6 +58,23 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void generaLoteFirmadoConRemisionDeRequerimientoYFin() {
+        var unsigned = service().recordXml(
+                request(record(FiscalRecordOperation.ALTA), "Company SL"),
+                record(FiscalRecordOperation.ALTA));
+        var xml = service().signedRequirementBatchXml(
+                "Company SL", "B12345674", List.of(unsigned),
+                new FiscalRequirementContext("REQ-2026-001", true));
+
+        assertThat(xml).containsSubsequence(
+                "<sf:RemisionRequerimiento>",
+                "<sf:RefRequerimiento>REQ-2026-001</sf:RefRequerimiento>",
+                "<sf:FinRequerimiento>S</sf:FinRequerimiento>");
+        assertThat(xml).contains("<sf:RegistroAlta>");
+        new VerifactuOfficialXsdValidator().validate(xml);
+    }
+
+    @Test
     void usaElRegimenYPorcentajeFiscalDelSnapshotSiExistenLineas() {
         var xml = service().batchXml(request(record(
                 FiscalRecordOperation.ALTA,

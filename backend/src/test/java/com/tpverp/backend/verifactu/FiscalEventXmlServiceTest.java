@@ -136,6 +136,6 @@ class FiscalEventXmlServiceTest {
         assertThat(series.item(1).getTextContent()).isEqualTo("T-0002");
         assertThat(document.getElementsByTagNameNS(FiscalEventXmlService.EVENT_NS,
                 "FechaHoraHusoInicioPeriodoExport").item(0).getTextContent())
-                .isEqualTo("2026-08-23T10:00+01:00");
+                .isEqualTo("2026-08-23T10:00:00+01:00");
     }
 }

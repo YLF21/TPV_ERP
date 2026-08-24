@@ -79,7 +79,8 @@ class FiscalRequiredSubmissionServiceTest {
                 1, UUID.randomUUID(), List.of("<RegistroAlta/>") );
         var start = OffsetDateTime.of(2026, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC);
         var end = OffsetDateTime.of(2026, 8, 24, 23, 59, 59, 0, ZoneOffset.UTC);
-        when(exports.export(FiscalExportKind.BILLING, start, end)).thenReturn(export);
+        when(exports.export(FiscalExportKind.BILLING, start, end, "REQ-001"))
+                .thenReturn(export);
 
         var result = service.export(requirement.getId(), FiscalExportKind.BILLING, start, end);
 

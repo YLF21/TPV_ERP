@@ -6,7 +6,16 @@ public record VerifactuXmlBatchRequest(
         String issuerName,
         String issuerTaxId,
         List<FiscalRecord> records,
-        VerifactuSystemInfo systemInfo) {
+        VerifactuSystemInfo systemInfo,
+        FiscalRequirementContext requirement) {
+
+    public VerifactuXmlBatchRequest(
+            String issuerName,
+            String issuerTaxId,
+            List<FiscalRecord> records,
+            VerifactuSystemInfo systemInfo) {
+        this(issuerName, issuerTaxId, records, systemInfo, null);
+    }
 
     // Agrupa la cabecera y los registros fiscales que se enviaran en una misma peticion.
     public VerifactuXmlBatchRequest {

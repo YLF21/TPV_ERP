@@ -62,7 +62,11 @@ public class DocumentTemplateArtifactService {
                 var compiled = ticketCompiler.compileUpload(readBundle(files));
                 artifact = storage.writeBundle(template.getId(),
                         TicketJrxmlBundleCompiler.MASTER_FILENAME, compiled.reports());
+                deleteArtifactOnRollback(artifact.reference());
                 sha256 = compiled.sha256();
+                var sources = new LinkedHashMap<String, byte[]>();
+                compiled.reports().forEach((name, report) -> sources.put(name, report.source()));
+                FiscalJrxmlConformityValidator.require(sources, template.getType());
             } else {
                 if (files.size() != 1) {
                     throw new IllegalArgumentException(
@@ -71,13 +75,15 @@ public class DocumentTemplateArtifactService {
                 var compiled = compiler.compile(read(files.getFirst()));
                 artifact = storage.write(
                         template.getId(), compiled.source(), compiled.compiled());
+                deleteArtifactOnRollback(artifact.reference());
                 sha256 = compiled.sha256();
+                FiscalJrxmlConformityValidator.require(
+                        Map.of("template.jrxml", compiled.source()), template.getType());
             }
         } catch (IOException exception) {
             throw new IllegalStateException(
                     "document_template_artifact_storage_failed", exception);
         }
-        deleteArtifactOnRollback(artifact.reference());
         template.validateArtifact(
                 SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
                 artifact.reference(),
@@ -162,6 +168,7 @@ public class DocumentTemplateArtifactService {
                             "document_template_artifact_integrity_failed");
                 }
                 ticketCompiler.compile(sources);
+                FiscalJrxmlConformityValidator.require(sources, template.getType());
                 return;
             }
             byte[] source = storage.readSource(template.getArtifactReference());
@@ -171,6 +178,8 @@ public class DocumentTemplateArtifactService {
                 throw new IllegalStateException("document_template_artifact_integrity_failed");
             }
             compiler.compile(source);
+            FiscalJrxmlConformityValidator.require(
+                    Map.of("template.jrxml", source), template.getType());
         } catch (IOException exception) {
             throw new IllegalStateException(
                     "document_template_artifact_read_failed", exception);
