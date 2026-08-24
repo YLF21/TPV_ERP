@@ -210,6 +210,9 @@ describe("VerifactuManagementScreen", () => {
     expect(await screen.findByRole("region", {
       name: "verifactu.management.sandboxTitle"
     })).toBeInTheDocument();
+    expect(screen.getByText(/verifactu\.management\.sandboxQueue: 3/)).toBeInTheDocument();
+    expect(screen.getByText(/verifactu\.management\.sandboxCertificate: verifactu\.management\.certificateValid/)).toBeInTheDocument();
+    expect(screen.getByText(/verifactu\.management\.sandboxManualDispatch: verifactu\.management\.sandboxManualDispatchReady/)).toBeInTheDocument();
     fireEvent.change(screen.getByDisplayValue("ACCEPTED"), { target: { value: "REJECTED" } });
     fireEvent.click(screen.getByRole("button", { name: "verifactu.management.sandboxApply" }));
     await waitFor(() => expect(api.setFiscalSandboxScenario).toHaveBeenCalledWith("REJECTED", "admin-token"));

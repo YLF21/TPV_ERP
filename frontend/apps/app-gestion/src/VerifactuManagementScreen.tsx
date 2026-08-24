@@ -272,6 +272,16 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
           <strong>{t("verifactu.management.sandboxBanner")}</strong>
           {fiscalStatus && <span>{t("verifactu.management.sandboxFiscalMode")}: {fiscalStatus.mode}</span>}
           <span>{t("verifactu.management.sandboxMode")}: {sandboxStatus.transportMode} / {sandboxStatus.endpointEnvironment}</span>
+          {summary && <span>
+            {t("verifactu.management.sandboxQueue")}: {count(summary, "PENDIENTE")
+              + count(summary, "ENVIANDO") + count(summary, "ENVIADO")}
+          </span>}
+          {summary && <span>
+            {t("verifactu.management.sandboxCertificate")}: {certificateLabel(summary, t)}
+          </span>}
+          <span>
+            {t("verifactu.management.sandboxManualDispatch")}: {t("verifactu.management.sandboxManualDispatchReady")}
+          </span>
           {fiscalStatus?.scheduledTransition && <span>
             {t("verifactu.management.sandboxScheduledTransition")}: {fiscalStatus.scheduledTransition.newMode} ({fiscalStatus.scheduledTransition.effectiveAt})
           </span>}
