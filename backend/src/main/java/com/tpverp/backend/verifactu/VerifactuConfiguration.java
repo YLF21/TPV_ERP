@@ -51,8 +51,13 @@ public class VerifactuConfiguration {
     }
 
     public VerifactuConfiguration(UUID companyId) {
+        this(companyId, FiscalMode.PRE_SIF);
+    }
+
+    public VerifactuConfiguration(UUID companyId, FiscalMode initialMode) {
         id = UUID.randomUUID();
         this.companyId = Objects.requireNonNull(companyId, "companyId");
+        this.currentMode = Objects.requireNonNull(initialMode, "initialMode");
     }
 
     // Activa voluntariamente VERI*FACTU y conserva el instante efectivo.

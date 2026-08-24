@@ -79,7 +79,8 @@ public class FiscalModeTransitionService {
         var company = organization.currentCompany();
         var installation = installations.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("Instalacion no encontrada"));
-        configurations.insertIfMissing(java.util.UUID.randomUUID(), company.getId());
+        configurations.insertIfMissingWithMode(
+                java.util.UUID.randomUUID(), company.getId(), initialMode().name());
         var configuration = configurations.findForUpdateByCompanyId(company.getId())
                 .orElseThrow(() -> new IllegalStateException("Configuracion fiscal no encontrada"));
         if (configuration.getModeVersion() != expectedVersion) {
@@ -124,6 +125,10 @@ public class FiscalModeTransitionService {
                     FiscalEventType.START_NO_VERIFACTU, normalizedReason);
         }
         return status();
+    }
+
+    private FiscalMode initialMode() {
+        return runtime.isSandbox() ? runtime.sandboxInitialMode() : FiscalMode.PRE_SIF;
     }
 
     private FiscalStatusView scheduleRealVerifactuExit(java.util.UUID companyId,

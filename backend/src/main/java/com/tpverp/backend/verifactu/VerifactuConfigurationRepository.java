@@ -35,4 +35,16 @@ public interface VerifactuConfigurationRepository
     void insertIfMissing(
             @Param("id") UUID id,
             @Param("companyId") UUID companyId);
+
+    @Modifying
+    @Query(value = """
+            insert into configuracion_verifactu (
+                id, empresa_id, activacion_voluntaria, modo_actual, version)
+            values (:id, :companyId, false, :mode, 0)
+            on conflict (empresa_id) do nothing
+            """, nativeQuery = true)
+    void insertIfMissingWithMode(
+            @Param("id") UUID id,
+            @Param("companyId") UUID companyId,
+            @Param("mode") String mode);
 }

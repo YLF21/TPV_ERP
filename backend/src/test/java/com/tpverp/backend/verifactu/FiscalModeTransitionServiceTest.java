@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
@@ -47,6 +48,17 @@ class FiscalModeTransitionServiceTest {
         verify(fixture.events).create(
                 eq(fixture.company.getId()), eq(fixture.installationId),
                 eq(FiscalMode.NO_VERIFACTU), eq(FiscalEventType.START_NO_VERIFACTU), eq("inicio"));
+    }
+
+    @Test
+    void conservaModoInicialSandboxAlCrearConfiguracionPersistente() {
+        var fixture = fixtureWithoutConfiguration(FiscalMode.VERIFACTU);
+
+        fixture.service.transition(FiscalMode.NO_VERIFACTU, 0, "salida laboratorio", true);
+
+        verify(fixture.configurations).insertIfMissingWithMode(
+                any(), eq(fixture.company.getId()), eq("VERIFACTU"));
+        assertThat(fixture.configuration.getCurrentMode()).isEqualTo(FiscalMode.NO_VERIFACTU);
     }
 
     @Test
@@ -144,6 +156,19 @@ class FiscalModeTransitionServiceTest {
                 fixture.integrity, fixture.events, service, fixture.configuration,
                 fixture.organization, fixture.installations, fixture.configurations,
                 fixture.transitions, runtime);
+    }
+
+    private static Fixture fixtureWithoutConfiguration(FiscalMode initialMode) {
+        var fixture = fixture();
+        var configuration = new VerifactuConfiguration(fixture.company.getId(), initialMode);
+        when(fixture.configurations.findByCompanyId(fixture.company.getId()))
+                .thenReturn(Optional.empty());
+        when(fixture.configurations.findForUpdateByCompanyId(fixture.company.getId()))
+                .thenReturn(Optional.of(configuration));
+        return new Fixture(fixture.company, fixture.installation, fixture.installationId,
+                fixture.integrity, fixture.events, fixture.service, configuration,
+                fixture.organization, fixture.installations, fixture.configurations,
+                fixture.transitions, fixture.runtime);
     }
 
     private record Fixture(
