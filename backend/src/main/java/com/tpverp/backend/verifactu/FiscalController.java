@@ -59,7 +59,7 @@ public class FiscalController {
     @PostMapping("/exports")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('VERIFACTU_READ')")
     public FiscalExportView export(@Valid @RequestBody FiscalExportRequest request) {
-        return exports.export(request.kind());
+        return exports.export(request.kind(), request.periodStart(), request.periodEnd());
     }
 
     @PostMapping("/required-submissions")

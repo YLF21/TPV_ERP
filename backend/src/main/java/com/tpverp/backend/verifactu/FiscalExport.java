@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -29,11 +30,22 @@ public class FiscalExport {
     private String contentHash;
     @Column(name = "exportada_en", nullable = false)
     private Instant exportedAt;
+    @Column(name = "periodo_inicio")
+    private OffsetDateTime periodStart;
+    @Column(name = "periodo_fin")
+    private OffsetDateTime periodEnd;
 
     protected FiscalExport() {}
 
     public FiscalExport(UUID companyId, UUID installationId, FiscalExportKind kind,
             UUID eventId, long recordCount, String contentHash, Instant exportedAt) {
+        this(companyId, installationId, kind, eventId, recordCount, contentHash, exportedAt,
+                null, null);
+    }
+
+    public FiscalExport(UUID companyId, UUID installationId, FiscalExportKind kind,
+            UUID eventId, long recordCount, String contentHash, Instant exportedAt,
+            OffsetDateTime periodStart, OffsetDateTime periodEnd) {
         this.id = UUID.randomUUID();
         this.companyId = companyId;
         this.installationId = installationId;
@@ -42,6 +54,8 @@ public class FiscalExport {
         this.recordCount = recordCount;
         this.contentHash = contentHash;
         this.exportedAt = exportedAt;
+        this.periodStart = periodStart;
+        this.periodEnd = periodEnd;
     }
 
     public UUID getId() { return id; }
@@ -49,4 +63,6 @@ public class FiscalExport {
     public long getRecordCount() { return recordCount; }
     public String getContentHash() { return contentHash; }
     public Instant getExportedAt() { return exportedAt; }
+    public OffsetDateTime getPeriodStart() { return periodStart; }
+    public OffsetDateTime getPeriodEnd() { return periodEnd; }
 }
