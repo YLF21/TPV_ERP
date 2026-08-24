@@ -64,4 +64,30 @@ class FiscalRuntimePropertiesTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("opt-in");
     }
+
+    @Test
+    void bloqueaSandboxConEndpointDeProduccion() {
+        var environment = new MockEnvironment()
+                .withProperty("tpv.verifactu.runtime-class", "SANDBOX")
+                .withProperty("tpv.verifactu.dev-sandbox.enabled", "true")
+                .withProperty("tpv.verifactu.endpoint-environment", "PRODUCTION")
+                .withProperty("tpv.verifactu.production-enabled", "true")
+                .withProperty("tpv.verifactu.transport-mode", "SIMULATED");
+
+        assertThatThrownBy(() -> new FiscalRuntimeProperties(environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SANDBOX nunca puede usar endpoints de produccion");
+    }
+
+    @Test
+    void bloqueaRealConTransporteSimulado() {
+        var environment = new MockEnvironment()
+                .withProperty("tpv.verifactu.runtime-class", "REAL")
+                .withProperty("tpv.verifactu.endpoint-environment", "TEST")
+                .withProperty("tpv.verifactu.transport-mode", "SIMULATED");
+
+        assertThatThrownBy(() -> new FiscalRuntimeProperties(environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("REAL nunca puede usar transporte simulado");
+    }
 }
