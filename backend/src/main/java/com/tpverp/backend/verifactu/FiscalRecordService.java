@@ -391,7 +391,10 @@ public class FiscalRecordService {
                     "El NIF de la licencia no coincide con la empresa");
         }
         var customer = customer(document, command.companyId());
-        configurations.insertIfMissing(UUID.randomUUID(), command.companyId());
+        var initialMode = runtimeProperties != null && runtimeProperties.isSandbox()
+                ? runtimeProperties.sandboxInitialMode() : FiscalMode.PRE_SIF;
+        configurations.insertIfMissingWithMode(
+                UUID.randomUUID(), command.companyId(), initialMode.name());
         var configuration = configurations.findByCompanyId(command.companyId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la configuracion VERI*FACTU"));

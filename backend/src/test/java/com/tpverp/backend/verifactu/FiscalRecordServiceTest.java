@@ -123,9 +123,26 @@ class FiscalRecordServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("activo");
 
-        verify(configurations).insertIfMissing(any(UUID.class), eq(command.companyId()));
+        verify(configurations).insertIfMissingWithMode(
+                any(UUID.class), eq(command.companyId()), eq("PRE_SIF"));
         verify(configurations).findByCompanyId(command.companyId());
         assertThat(configuration.isVoluntarilyActive()).isFalse();
+    }
+
+    @Test
+    void sandboxPersisteElModoInicialAntesDeEmitir() {
+        stubContext(new VerifactuConfiguration(command.companyId()), document);
+        stubEmptyChain();
+        when(runtime.isSandbox()).thenReturn(true);
+        when(runtime.sandboxInitialMode()).thenReturn(FiscalMode.VERIFACTU);
+        var service = service();
+        service.setRuntimeProperties(runtime);
+
+        var saved = service.register(command);
+
+        assertThat(saved.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        verify(configurations).insertIfMissingWithMode(
+                any(UUID.class), eq(command.companyId()), eq("VERIFACTU"));
     }
 
     @Test
