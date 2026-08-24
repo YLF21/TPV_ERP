@@ -65,6 +65,7 @@ class FiscalRecordServiceTest {
     @Mock CommercialDocumentRepository documents;
     @Mock CustomerRepository customers;
     @Mock FiscalAlarmRepository alarms;
+    @Mock FiscalRuntimeProperties runtime;
 
     private FiscalRecordCommand command;
     private CommercialDocument document;
@@ -125,6 +126,21 @@ class FiscalRecordServiceTest {
         verify(configurations).insertIfMissing(any(UUID.class), eq(command.companyId()));
         verify(configurations).findByCompanyId(command.companyId());
         assertThat(configuration.isVoluntarilyActive()).isFalse();
+    }
+
+    @Test
+    void sandboxPreSifConservaCompatibilidadYNoCreaRegistroFiscal() {
+        stubContext(new VerifactuConfiguration(command.companyId()), document);
+        when(runtime.isSandbox()).thenReturn(true);
+        when(runtime.sandboxInitialMode()).thenReturn(FiscalMode.PRE_SIF);
+
+        var fiscal = service();
+        fiscal.setRuntimeProperties(runtime);
+
+        assertThatThrownBy(() -> fiscal.register(command))
+                .isInstanceOf(VerifactuInactiveException.class);
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+        verify(records, never()).save(any(FiscalRecord.class));
     }
 
     @Test

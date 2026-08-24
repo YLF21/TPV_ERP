@@ -509,8 +509,12 @@ public class FiscalRecordService {
             }
             return FiscalMode.VERIFACTU;
         }
-        if (sandbox && runtimeProperties.sandboxInitialMode() != FiscalMode.PRE_SIF) {
-            return runtimeProperties.sandboxInitialMode();
+        if (sandbox) {
+            var initialMode = runtimeProperties.sandboxInitialMode();
+            if (initialMode == FiscalMode.PRE_SIF) {
+                throw new VerifactuInactiveException();
+            }
+            return initialMode;
         }
         if (active) {
             return FiscalMode.VERIFACTU;
