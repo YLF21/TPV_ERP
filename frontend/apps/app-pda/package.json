@@ -1,0 +1,15 @@
+{
+  "name": "@tpverp/app-pda",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5176 --strictPort",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"
+  },
+  "dependencies": {
+    "@tpverp/app-common": "0.0.1"
+  },
+  "devDependencies": {}
+}

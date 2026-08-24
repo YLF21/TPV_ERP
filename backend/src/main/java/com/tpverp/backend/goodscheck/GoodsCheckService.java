@@ -189,7 +189,7 @@ public class GoodsCheckService {
         var all = check.getLineas().stream()
                 .map(line -> item(line, labels.getOrDefault(
                         line.getProductoId(),
-                        new ProductLabel(line.getProductoId().toString(), ""))))
+                        new ProductLabel(line.getProductoId().toString(), "", BigDecimal.ZERO))))
                 .toList();
         return new GoodsCheckView(
                 check.getId(),
@@ -204,7 +204,7 @@ public class GoodsCheckService {
         var labels = new LinkedHashMap<UUID, ProductLabel>();
         var ids = document.getLines().stream().map(WarehouseInputLine::getProductId).toList();
         for (var product : products.findAllByStoreIdAndIdIn(document.getStoreId(), ids)) {
-            labels.putIfAbsent(product.getId(), new ProductLabel(product.getCode(), product.getName()));
+            labels.putIfAbsent(product.getId(), new ProductLabel(product.getCode(), product.getName(), product.getSalePrice()));
         }
         return labels;
     }
@@ -216,6 +216,7 @@ public class GoodsCheckService {
                 line.getProductoId(),
                 label.code(),
                 label.name(),
+                label.salePrice(),
                 line.getCantidadEsperada(),
                 line.getCantidadRegistrada(),
                 missing,
@@ -235,6 +236,6 @@ public class GoodsCheckService {
                         "estado", check.getEstado().name())));
     }
 
-    private record ProductLabel(String code, String name) {
+    private record ProductLabel(String code, String name, BigDecimal salePrice) {
     }
 }

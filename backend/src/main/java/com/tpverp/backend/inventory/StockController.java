@@ -58,7 +58,7 @@ public class StockController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<InventoryService.StockItem> list(
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) UUID warehouseId) {
@@ -66,7 +66,7 @@ public class StockController {
     }
 
     @GetMapping(value = "/page", params = "!sortBy")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public PagedResult<InventoryService.StockPageItem> page(
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor,
@@ -84,7 +84,7 @@ public class StockController {
     }
 
     @GetMapping(value = "/page", params = "sortBy")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public PagedResult<InventoryService.StockPageItem> page(
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor,
@@ -181,7 +181,7 @@ public class StockController {
     }
 
     @GetMapping("/movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<StockMovement> movements(@RequestParam UUID productId) {
         return service.movements(productId);
     }

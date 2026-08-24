@@ -76,6 +76,20 @@ public class TerminalRegistrationService {
     }
 
     @Transactional
+    public PdaRegistrationResult requestPda(String name) {
+        var stores = tiendaRepository.findAll();
+        if (stores.size() != 1) {
+            throw new IllegalStateException("message.terminal.pda_request_requires_single_store");
+        }
+        var store = stores.getFirst();
+        var terminalName = name.trim();
+        var registration = request(store.getId(), terminalName, TerminalType.PDA);
+        return new PdaRegistrationResult(
+                registration.terminalId(), terminalName, store.getNombreEfectivo(),
+                registration.credential(), registration.status());
+    }
+
+    @Transactional
     public ServerProvisioningResult provisionServer(UserAccount administrator) {
         if (administrator == null || !administrator.isProtegido() || administrator.getTienda() != null) {
             throw new IllegalStateException("message.terminal.server_provision_requires_installation_admin");
@@ -182,6 +196,14 @@ public class TerminalRegistrationService {
     }
 
     public record RegistrationResult(UUID terminalId, String credential, String status) {
+    }
+
+    public record PdaRegistrationResult(
+            UUID terminalId,
+            String terminalCode,
+            String storeName,
+            String terminalCredential,
+            String status) {
     }
 
     public record ServerProvisioningResult(

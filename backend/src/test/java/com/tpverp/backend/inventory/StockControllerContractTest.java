@@ -63,7 +63,7 @@ class StockControllerContractTest {
         assertThat(method.getGenericReturnType().getTypeName())
                 .contains("PagedResult", "StockPageItem");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
+                .contains("STOCK_READ", "STOCK_TRANSFER", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
                 .hasSize(9);
@@ -81,7 +81,7 @@ class StockControllerContractTest {
         assertThat(method.getAnnotation(GetMapping.class).params())
                 .containsExactly("sortBy");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
+                .contains("STOCK_READ", "STOCK_TRANSFER", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
                 .hasSize(14);

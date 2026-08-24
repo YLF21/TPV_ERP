@@ -26,10 +26,11 @@ export type PurchaseDocument = {
 export type GoodsCheckDocumentTypeFilter = "all" | "deliveryNotes" | "invoices";
 type GoodsCheckDocumentSortColumn = "type" | "number" | "date" | "supplier" | "warehouse";
 
-type GoodsCheckItem = {
+export type GoodsCheckItem = {
   productId: string;
   code: string;
   name: string;
+  salePrice?: number | string | null;
   expectedQuantity: number | string;
   registeredQuantity: number | string;
   missingQuantity: number | string;
@@ -45,6 +46,18 @@ export type GoodsCheckView = {
   registrados: GoodsCheckItem[];
 };
 
+
+export type GoodsCheckLineFilter = "all" | "missing" | "registered";
+
+export function filterGoodsCheckItems(check: GoodsCheckView, filter: GoodsCheckLineFilter) {
+  if (filter === "missing") {
+    return check.todos.filter((item) => Number(item.missingQuantity) > 0 || Number(item.extraQuantity) > 0);
+  }
+  if (filter === "registered") {
+    return check.todos.filter((item) => Number(item.registeredQuantity) > 0);
+  }
+  return check.todos;
+}
 type PagedResult<T> = {
   items: T[];
   nextCursor?: string | null;
@@ -57,6 +70,8 @@ type GoodsCheckPanelProps = {
   t: (key: string) => string;
   warehouses?: GoodsCheckWarehouseOption[];
   suppliers?: GoodsCheckSupplierOption[];
+  separateWorkflow?: boolean;
+  onWorkflowViewChange?: (view: "documents" | "check") => void;
 };
 
 type GoodsCheckWarehouseOption = {
@@ -176,22 +191,29 @@ export async function loadGoodsCheckDocuments(token: string) {
     .sort((left, right) => (right.date ?? right.fecha ?? "").localeCompare(left.date ?? left.fecha ?? "") || (right.number ?? right.numero ?? "").localeCompare(left.number ?? left.numero ?? ""));
 }
 
-export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers = [] }: GoodsCheckPanelProps) {
+export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers = [], separateWorkflow = false, onWorkflowViewChange }: GoodsCheckPanelProps) {
   const [documents, setDocuments] = useState<PurchaseDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<GoodsCheckDocumentTypeFilter>("all");
+  const [lineFilter, setLineFilter] = useState<GoodsCheckLineFilter>("all");
   const [check, setCheck] = useState<GoodsCheckView | null>(null);
+  const [lastProductId, setLastProductId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [workflowView, setWorkflowView] = useState<"documents" | "check">("documents");
   const [documentSort, setDocumentSort] = useState<TableSort<GoodsCheckDocumentSortColumn> | null>(null);
   const codeRef = useRef<HTMLInputElement | null>(null);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { maximumFractionDigits: 3 }
+  ), [locale]);
+  const currencyFormatter = useMemo(() => new Intl.NumberFormat(
+    locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
+    { style: "currency", currency: "EUR" }
   ), [locale]);
   const displayDocuments = useMemo(() => documents.map((document) => ({
     ...document,
@@ -213,6 +235,15 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
   const selectedDocument = visibleDocuments.find(
     (document) => document.id === selectedDocumentId
   ) ?? null;
+  const visibleItems = useMemo(
+    () => check ? filterGoodsCheckItems(check, lineFilter) : [],
+    [check, lineFilter]);
+  const activeDocument = displayDocuments.find((document) => document.id === check?.documentId) ?? selectedDocument;
+
+  function openWorkflowView(nextView: "documents" | "check") {
+    setWorkflowView(nextView);
+    onWorkflowViewChange?.(nextView);
+  }
 
   useEffect(() => {
     setSelectedDocumentId((current) => (
@@ -258,6 +289,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
       setSelectedDocumentId(document.id);
       setCheck(value);
       setStatus(t("goodsCheck.imported"));
+      if (separateWorkflow) openWorkflowView("check");
       window.setTimeout(() => codeRef.current?.focus(), 0);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("goodsCheck.importError"));
@@ -283,12 +315,20 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
         body: { code: code.trim(), quantity: normalizedQuantity }
       });
       setCheck(value);
+      const changed = value.todos.find((item) => {
+        const previous = check.todos.find((candidate) => candidate.productId === item.productId);
+        return String(previous?.registeredQuantity ?? "0") !== String(item.registeredQuantity);
+      });
+      setLastProductId(changed?.productId ?? null);
+      setLineFilter("all");
+      navigator.vibrate?.(60);
       setCode("");
       setQuantity("1");
       setStatus(t("goodsCheck.registered"));
       window.setTimeout(() => codeRef.current?.focus(), 0);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("goodsCheck.scanError"));
+      navigator.vibrate?.([100, 60, 100]);
     } finally {
       setBusy(false);
     }
@@ -296,6 +336,11 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
 
   async function closeCheck() {
     if (!token || !check || check.status !== "ABIERTA") return;
+    const extraLines = check.todos.filter((item) => Number(item.extraQuantity) > 0).length;
+    if ((check.faltantes.length > 0 || extraLines > 0)
+      && !window.confirm(t("goodsCheck.closeConfirm")
+        .replace("{missing}", String(check.faltantes.length))
+        .replace("{extra}", String(extraLines)))) return;
     setBusy(true);
     setStatus("");
     try {
@@ -305,6 +350,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
       });
       setCheck(value);
       setStatus(value.status === "COMPLETA" ? t("goodsCheck.complete") : t("goodsCheck.differences"));
+      if (separateWorkflow) openWorkflowView("documents");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("goodsCheck.closeError"));
     } finally {
@@ -313,8 +359,8 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
   }
 
   return (
-    <section className="goods-check-panel">
-      <div className="goods-check-documents">
+    <section className={`goods-check-panel${separateWorkflow ? " goods-check-panel-separate" : ""}`}>
+      {(!separateWorkflow || workflowView === "documents") && <div className="goods-check-documents">
         <header className="goods-check-documents-header">
           <div className="stock-history-toolbar goods-check-toolbar">
             <label className="goods-check-search">
@@ -361,6 +407,13 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
               <small>{t("goodsCheck.documents")}</small>
             </span>
           </div>
+          {separateWorkflow && check?.status === "ABIERTA" && (
+            <button type="button" className="goods-check-resume" onClick={() => openWorkflowView("check")}>
+              <span>{t("goodsCheck.active")}</span>
+              <strong>{activeDocument?.number ?? activeDocument?.numero ?? ""}</strong>
+              <small>{t("goodsCheck.continue")}</small>
+            </button>
+          )}
         </header>
         <div className="stock-history-table-scroll goods-check-document-list">
           {loading ? (
@@ -414,11 +467,11 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
                     }
                   }}
                 >
-                  <td>{t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice")}</td>
-                  <td>{document.number ?? document.numero}</td>
-                  <td>{document.date ?? document.fecha}</td>
-                  <td title={document.supplierId ?? undefined}>{document.proveedorNombre ?? document.supplierId ?? "-"}</td>
-                  <td title={document.warehouseId ?? undefined}>{document.almacenNombre ?? document.warehouseId ?? "-"}</td>
+                  <td data-label={t("goodsCheck.column.type")}>{t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice")}</td>
+                  <td data-label={t("goodsCheck.column.number")}>{document.number ?? document.numero}</td>
+                  <td data-label={t("salesReport.column.date")}>{document.date ?? document.fecha}</td>
+                  <td data-label={t("warehouseDocument.supplier")} title={document.supplierId ?? undefined}>{document.proveedorNombre ?? document.supplierId ?? "-"}</td>
+                  <td data-label={t("stock.column.warehouse")} title={document.warehouseId ?? undefined}>{document.almacenNombre ?? document.warehouseId ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -430,13 +483,19 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
             </div>
           )}
         </div>
-      </div>
+        {separateWorkflow && status && <p className="stock-operation-status goods-check-list-status" aria-live="polite">{status}</p>}
+      </div>}
 
-      <div className="goods-check-workspace">
+      {(!separateWorkflow || workflowView === "check") && <div className="goods-check-workspace">
         <div className="stock-history-context goods-check-active-heading">
+          {separateWorkflow && (
+            <button type="button" className="goods-check-back" disabled={busy} onClick={() => openWorkflowView("documents")}>
+              ← {t("common.back")}
+            </button>
+          )}
           <div>
             <small>{check ? t("goodsCheck.active") : t("goodsCheck.noActive")}</small>
-            {check && <strong>{selectedDocument?.numero ?? ""}</strong>}
+            {check && <strong>{activeDocument?.number ?? activeDocument?.numero ?? ""}</strong>}
           </div>
           {check && (
             <div className={`goods-check-status status-${check.status.toLocaleLowerCase()}`}>
@@ -461,12 +520,29 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
               </div>
               <button type="button" className="secondary" disabled={check.status !== "ABIERTA" || busy} onClick={() => void closeCheck()}>{t("goodsCheck.close")}</button>
             </form>
+            <div className="goods-check-progress" role="group" aria-label={t("goodsCheck.progress")}>
+              <button type="button" className={lineFilter === "all" ? "selected" : ""} onClick={() => setLineFilter("all")}>
+                <span>{t("goodsCheck.filter.linesAll")}</span><strong>{check.todos.length}</strong>
+              </button>
+              <button type="button" className={lineFilter === "missing" ? "selected" : ""} onClick={() => setLineFilter("missing")}>
+                <span>{t("goodsCheck.filter.linesDifferences")}</span>
+                <strong>{check.todos.filter((item) => Number(item.missingQuantity) > 0 || Number(item.extraQuantity) > 0).length}</strong>
+              </button>
+              <button type="button" className={lineFilter === "registered" ? "selected" : ""} onClick={() => setLineFilter("registered")}>
+                <span>{t("goodsCheck.filter.linesRegistered")}</span><strong>{check.registrados.length}</strong>
+              </button>
+              <span className="goods-check-extra-summary">
+                <small>{t("goodsCheck.extraLines")}</small>
+                <strong>{check.todos.filter((item) => Number(item.extraQuantity) > 0).length}</strong>
+              </span>
+            </div>
             <div className="stock-history-table-scroll goods-check-lines">
               <table className="report-table">
                 <thead>
                   <tr>
                     <th>{t("goodsCheck.column.code")}</th>
                     <th>{t("goodsCheck.column.product")}</th>
+                    <th>{t("goodsCheck.column.price")}</th>
                     <th>{t("goodsCheck.column.expected")}</th>
                     <th>{t("goodsCheck.column.registered")}</th>
                     <th>{t("goodsCheck.column.missing")}</th>
@@ -474,16 +550,18 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
                   </tr>
                 </thead>
                 <tbody>
-                  {check.todos.map((item) => (
-                    <tr key={item.productId} className={Number(item.missingQuantity) > 0 || Number(item.extraQuantity) > 0 ? "goods-check-difference" : ""}>
-                      <td>{item.code}</td>
-                      <td>{item.name}</td>
-                      <td>{numberFormatter.format(Number(item.expectedQuantity))}</td>
-                      <td>{numberFormatter.format(Number(item.registeredQuantity))}</td>
-                      <td>{numberFormatter.format(Number(item.missingQuantity))}</td>
-                      <td>{numberFormatter.format(Number(item.extraQuantity))}</td>
+                  {visibleItems.map((item) => (
+                    <tr key={item.productId} className={`${Number(item.missingQuantity) > 0 || Number(item.extraQuantity) > 0 ? "goods-check-difference" : ""}${item.productId === lastProductId ? " goods-check-last-scan" : ""}`}>
+                      <td data-label={t("goodsCheck.column.code")}>{item.code}</td>
+                      <td data-label={t("goodsCheck.column.product")}>{item.name}</td>
+                      <td data-label={t("goodsCheck.column.price")}>{currencyFormatter.format(Number(item.salePrice ?? 0))}</td>
+                      <td data-label={t("goodsCheck.column.expected")}>{numberFormatter.format(Number(item.expectedQuantity))}</td>
+                      <td data-label={t("goodsCheck.column.registered")}>{numberFormatter.format(Number(item.registeredQuantity))}</td>
+                      <td data-label={t("goodsCheck.column.missing")}>{numberFormatter.format(Number(item.missingQuantity))}</td>
+                      <td data-label={t("goodsCheck.column.extra")}>{numberFormatter.format(Number(item.extraQuantity))}</td>
                     </tr>
                   ))}
+                  {visibleItems.length === 0 && <tr><td colSpan={7}>{t("goodsCheck.filter.empty")}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -495,7 +573,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
           </div>
         )}
         {status && <p className="stock-operation-status" aria-live="polite">{status}</p>}
-      </div>
+      </div>}
     </section>
   );
 }

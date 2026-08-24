@@ -14,6 +14,11 @@ type LoginScreenProps = {
   terminalContext: TerminalContext;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogin: (session: UserSession) => void;
+  presentation?: "desktop" | "embedded";
+  heading?: string;
+  notice?: string;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -22,8 +27,21 @@ const languageOptions: Array<{ code: LocaleCode; label: string }> = [
   { code: "zh", label: "中文" }
 ];
 
-export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLogin }: LoginScreenProps) {
+export function LoginScreen({
+  app,
+  locale,
+  terminalContext,
+  onLocaleChange,
+  onLogin,
+  presentation = "desktop",
+  heading,
+  notice,
+  secondaryActionLabel,
+  onSecondaryAction
+}: LoginScreenProps) {
   const t = createTranslator(locale);
+  const desktopChrome = presentation === "desktop";
+  const screenHeading = heading ?? t(app === "venta" ? "venta.title" : "gestion.title");
   const historyKey = useMemo(() => `tpverp.${app}.loginUsers`, [app]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -120,60 +138,40 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
   }
 
   return (
-    <main className="login-screen">
-      <header className="entry-topbar">
-        <strong className="app-brand-static">{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
-      </header>
-      <TopDateTime locale={locale} />
-      <div className="login-store-heading">
-        <strong>{terminalContext.storeName}</strong>
-        <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
-      </div>
-      <div ref={languagePickerRef} style={{ display: "contents" }}>
-        <button
-          type="button"
-          className="language-button"
-          aria-expanded={languageOpen}
-          aria-haspopup="listbox"
-          aria-label={t("login.language")}
-          title={t("login.language")}
-          onClick={() => setLanguageOpen((open) => !open)}
-        >
-          <img alt="" src={languageIcon} />
-        </button>
-        {languageOpen && (
-          <section className="language-picker" aria-label={t("login.language")}>
-            {languageOptions.map((option) => (
-              <button
-                type="button"
-                className={option.code === locale ? "selected" : ""}
-                key={option.code}
-                onClick={() => {
-                  onLocaleChange(option.code);
-                  setLanguageOpen(false);
-                }}
-              >
-                <span>{option.label}</span>
-                <strong>{option.code.toUpperCase()}</strong>
-              </button>
-            ))}
-          </section>
-        )}
-      </div>
-      <button
-        type="button"
-        className="shutdown-button"
-        aria-label={t("login.shutdown")}
-        title={t("login.shutdown")}
-        onClick={() => setShutdownOpen(true)}
-      >
-        ⏻
-      </button>
+    <main className={`login-screen login-screen-${presentation}`}>
+      {desktopChrome && (
+        <>
+          <header className="entry-topbar">
+            <strong className="app-brand-static">{screenHeading}</strong>
+          </header>
+          <TopDateTime locale={locale} />
+          <div className="login-store-heading">
+            <strong>{terminalContext.storeName}</strong>
+            <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
+          </div>
+          <div ref={languagePickerRef} style={{ display: "contents" }}>
+            <button type="button" className="language-button" aria-expanded={languageOpen} aria-haspopup="listbox" aria-label={t("login.language")} title={t("login.language")} onClick={() => setLanguageOpen((open) => !open)}>
+              <img alt="" src={languageIcon} />
+            </button>
+            {languageOpen && (
+              <section className="language-picker" aria-label={t("login.language")}>
+                {languageOptions.map((option) => (
+                  <button type="button" className={option.code === locale ? "selected" : ""} key={option.code} onClick={() => { onLocaleChange(option.code); setLanguageOpen(false); }}>
+                    <span>{option.label}</span><strong>{option.code.toUpperCase()}</strong>
+                  </button>
+                ))}
+              </section>
+            )}
+          </div>
+          <button type="button" className="shutdown-button" aria-label={t("login.shutdown")} title={t("login.shutdown")} onClick={() => setShutdownOpen(true)}>⏻</button>
+        </>
+      )}
       <form className="login-panel" onSubmit={submit}>
         <header className="login-panel-heading">
-          <strong>{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
+          <strong>{screenHeading}</strong>
           <span>{`${terminalContext.storeName} - ${t("login.terminalPrefix")} ${terminalContext.terminalCode}`}</span>
         </header>
+        {notice && <p className="login-inline-notice">{notice}</p>}
         <label>
           <span>{t("login.user")}</span>
           <input
@@ -233,6 +231,15 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
             {t("login.backendRetry")}
           </button>
         )}
+        {secondaryActionLabel && onSecondaryAction && (
+          <button
+            type="button"
+            className="login-secondary-action"
+            onClick={onSecondaryAction}
+          >
+            {secondaryActionLabel}
+          </button>
+        )}
       </form>
       {shutdownOpen && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">
@@ -250,7 +257,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
           </section>
         </div>
       )}
-      <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
+      {desktopChrome && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
     </main>
   );
 }

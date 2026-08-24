@@ -366,7 +366,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			<expression><![CDATA[$F{nombre_cliente} == null ? "" : $F{nombre_cliente}.trim()]]></expression>
 		</element>
 		<element kind="textField" uuid="f6ba42cc-f6f9-4724-99c7-c1ef05017c2d" x="3" y="210" width="201" height="12" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Center">
-			<expression><![CDATA[($F{codigo_cliente} == null || $F{codigo_cliente}.trim().isEmpty() ? "" : "Cód.: " + $F{codigo_cliente}.trim()) + ($F{telefono_cliente} == null || $F{telefono_cliente}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono_cliente}.trim()) + ($F{tarifa} == null || $F{tarifa}.trim().isEmpty() ? "" : " · " + $F{tarifa}.trim())]]></expression>
+			<expression><![CDATA[($F{codigo_cliente} == null || $F{codigo_cliente}.trim().isEmpty() ? "" : "Cód.: " + $F{codigo_cliente}.trim()) + ($F{telefono_cliente} == null || $F{telefono_cliente}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono_cliente}.trim()) ]]></expression>
 		</element>
 		<element kind="textField" uuid="d9265e60-49d7-409c-b9bf-bd47a6fe4df2" x="3" y="223" width="201" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{porcentaje_descuento_cliente} != null && $F{porcentaje_descuento_cliente}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
@@ -385,14 +385,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 		<element kind="line" uuid="c283629a-eb11-49ad-ac79-913c90871909" x="2" y="268" width="203" height="1">
 			<pen lineWidth="0.5" lineStyle="Dashed"/>
 		</element>
-		<element kind="staticText" uuid="5058e582-e00a-46a3-bd18-916437ff5885" x="3" y="270" width="201" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
-			<printWhenExpression><![CDATA[$F{observacion_ticket} != null && !$F{observacion_ticket}.trim().isEmpty()]]></printWhenExpression>
-			<text><![CDATA[CONDICIONES DE DEVOLUCIÓN]]></text>
-		</element>
-		<element kind="line" uuid="12d4459f-0bd3-492c-b742-bfa69df15bee" x="2" y="283" width="203" height="1">
-			<pen lineWidth="0.5"/>
-		</element>
-		<element kind="textField" uuid="ff9393b1-e24c-4ba6-aa9f-10035779b68e" x="3" y="287" width="201" height="36" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
+		<element kind="textField" uuid="ff9393b1-e24c-4ba6-aa9f-10035779b68e" x="3" y="272" width="201" height="36" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
 			<expression><![CDATA[$F{observacion_ticket}]]></expression>
 		</element>
 		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="65" y="326" width="76" height="45">

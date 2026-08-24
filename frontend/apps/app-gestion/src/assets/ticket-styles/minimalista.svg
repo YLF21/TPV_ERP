@@ -76,16 +76,16 @@
     <!-- Cliente -->
     <line x1="15" y1="430" x2="205" y2="430" stroke="#111" stroke-width=".6"/>
     <text x="18" y="446" font-size="7.6" font-weight="700">CLIENTE DEMO 01</text>
-    <text x="18" y="461" font-size="6.8">Código: C-001-000101 · Tel.: 610000001 · VENTA</text>
+    <text x="18" y="461" font-size="6.8">Código: C-001-000101 · Tel.: 610000001</text>
     <text x="18" y="475" font-size="6.8">Descuento Socio: 2%</text>
 
     <!-- Condiciones -->
-    <text x="18" y="499" font-size="7.5" font-weight="700">CONDICIONES DE DEVOLUCIÓN</text>
-    <line x1="15" y1="507" x2="205" y2="507" stroke="#111" stroke-width=".55"/>
-    <text x="18" y="520" font-size="5.8">Devoluciones: 30 días desde la compra. Producto sin</text>
-    <text x="18" y="530" font-size="5.8">usar, en perfecto estado y con embalaje y accesorios.</text>
-    <text x="18" y="540" font-size="5.8">Reembolso por el mismo método de pago. Fuera de</text>
-    <text x="18" y="550" font-size="5.8">plazo o condiciones, podrá rechazarse.</text>
+
+
+    <text x="18" y="499" font-size="5.8">Devoluciones: 30 días desde la compra. Producto sin</text>
+    <text x="18" y="509" font-size="5.8">usar, en perfecto estado y con embalaje y accesorios.</text>
+    <text x="18" y="519" font-size="5.8">Reembolso por el mismo método de pago. Fuera de</text>
+    <text x="18" y="529" font-size="5.8">plazo o condiciones, podrá rechazarse.</text>
 
     <!-- QR y agradecimiento -->
     <g transform="translate(24 558) scale(.62)" fill="#000">

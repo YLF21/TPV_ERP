@@ -65,6 +65,7 @@ class SecurityConfiguration {
 				"/api/v1/installation/license-request",
 				"/api/v1/license/validate",
 				"/api/v1/terminals/request",
+				"/api/v1/terminals/pda/request",
 				"/",
 				"/actuator/health",
 				"/actuator/health/**"));

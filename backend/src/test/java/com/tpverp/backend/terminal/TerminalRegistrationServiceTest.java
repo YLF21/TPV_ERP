@@ -79,6 +79,41 @@ class TerminalRegistrationServiceTest {
     }
 
     @Test
+    void pdaRequestUsesTheOnlyConfiguredStoreAndReturnsBrowserIdentity() {
+        var store = store("001");
+        var terminals = mock(TerminalRepository.class);
+        var stores = mock(StoreRepository.class);
+        var encoder = mock(PasswordEncoder.class);
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(stores.findById(store.getId())).thenReturn(Optional.of(store));
+        when(terminals.findByTiendaIdAndNombreIgnoreCase(store.getId(), "PDA ALMACEN"))
+                .thenReturn(Optional.empty());
+        when(encoder.encode(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("credential-hash");
+        when(terminals.save(org.mockito.ArgumentMatchers.any(Terminal.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = service(terminals, stores, encoder, mock(AuditService.class))
+                .requestPda(" PDA ALMACEN ");
+
+        assertThat(result.terminalCode()).isEqualTo("PDA ALMACEN");
+        assertThat(result.storeName()).isEqualTo(store.getNombreEfectivo());
+        assertThat(result.terminalCredential()).isNotBlank();
+        assertThat(result.status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void pdaRequestRejectsAmbiguousStoreConfiguration() {
+        var stores = mock(StoreRepository.class);
+        when(stores.findAll()).thenReturn(List.of(store("001"), store("002")));
+
+        assertThatThrownBy(() -> service(mock(TerminalRepository.class), stores)
+                .requestPda("PDA ALMACEN"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("message.terminal.pda_request_requires_single_store");
+    }
+
+    @Test
     void installationAdminCanProvisionAndRotateTheUniqueServerCredential() {
         var store = store("001");
         var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "old-hash");

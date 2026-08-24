@@ -1,0 +1,1698 @@
+:root {
+  color: #13263a;
+  background: #edf2f7;
+  font-family: Inter, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: auto;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.pda-enrollment {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+  background: linear-gradient(145deg, #061f42, #0d4d7e);
+}
+
+.pda-enrollment-card {
+  width: min(100%, 460px);
+  box-sizing: border-box;
+  display: grid;
+  gap: 22px;
+  padding: 26px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(0, 16, 38, 0.35);
+}
+
+.pda-enrollment-card header,
+.pda-enrollment-card form,
+.pda-enrollment-card label {
+  display: grid;
+  gap: 8px;
+}
+
+.pda-enrollment-card header > span {
+  color: #1c6ca8;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.pda-enrollment-card header strong {
+  color: #07254f;
+  font-size: 28px;
+}
+
+.pda-enrollment-card header p {
+  margin: 0;
+  color: #52677b;
+  line-height: 1.5;
+}
+
+.pda-enrollment-card label > span {
+  color: #344b61;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pda-enrollment-card input,
+.pda-enrollment-card select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 13px;
+  border: 1px solid #8ea2b5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.pda-enrollment-card form button {
+  min-height: 52px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: #0a4f88;
+  color: #fff;
+  font-weight: 900;
+}
+
+.pda-enrollment-card button:disabled { opacity: .5; }
+.pda-error { color: #a52626; }
+
+.pda-login-shell .login-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.pda-login-shell .shutdown-button { display: none; }
+
+.pda-pending-banner {
+  position: fixed;
+  z-index: 20;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  width: min(calc(100% - 24px), 620px);
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid #c38a32;
+  border-radius: 7px;
+  background: #fff3d9;
+  color: #68430f;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.pda-reset-device {
+  position: fixed;
+  z-index: 21;
+  right: 14px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid #8ea2b5;
+  border-radius: 6px;
+  background: #fff;
+  color: #173653;
+  font-weight: 800;
+}
+
+.pda-app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #edf2f7;
+}
+
+.pda-app-header {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-sizing: border-box;
+  padding: max(9px, env(safe-area-inset-top)) 16px 9px;
+  background: #07254f;
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(3, 24, 52, .25);
+}
+
+.pda-app-header > div:first-child { display: grid; gap: 2px; }
+.pda-app-header span { color: #b9cde0; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
+.pda-app-header strong { font-size: 18px; }
+
+.pda-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pda-header-actions small { color: #d4e0eb; }
+.pda-header-actions select,
+.pda-header-actions button {
+  min-height: 40px;
+  border: 1px solid rgba(255,255,255,.45);
+  border-radius: 5px;
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  font-weight: 800;
+}
+.pda-header-actions select { padding: 0 8px; }
+.pda-header-actions select option { color: #10283f; }
+.pda-header-actions button { padding: 0 12px; }
+
+.pda-app-shell .goods-check-panel {
+  height: auto;
+  min-height: calc(100dvh - 66px);
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  overflow: visible;
+}
+
+.pda-app-shell .goods-check-documents,
+.pda-app-shell .goods-check-workspace {
+  min-height: 420px;
+  height: auto;
+}
+
+.pda-app-shell .goods-check-document-list { max-height: 42vh; }
+.pda-app-shell .goods-check-lines { max-height: 58vh; }
+
+@media (max-width: 700px) {
+  .pda-app-header { align-items: flex-start; padding-inline: 12px; }
+  .pda-app-header strong { font-size: 15px; }
+  .pda-header-actions small { display: none; }
+  .pda-header-actions button {
+    position: relative;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    overflow: hidden;
+    color: transparent;
+    white-space: nowrap;
+  }
+  .pda-header-actions button::after { content: "↪"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 22px; }
+
+  .pda-app-shell .goods-check-panel { gap: 10px; padding: 10px; }
+  .pda-app-shell .goods-check-documents,
+  .pda-app-shell .goods-check-workspace { min-height: 0; border-radius: 7px; }
+  .pda-app-shell .goods-check-documents-summary { display: none; }
+  .pda-app-shell .goods-check-document-list { max-height: 46vh; padding: 8px; }
+  .pda-app-shell .goods-check-document-list .report-table,
+  .pda-app-shell .goods-check-lines .report-table { min-width: 0; border-collapse: separate; border-spacing: 0 8px; }
+  .pda-app-shell .goods-check-document-list thead,
+  .pda-app-shell .goods-check-document-list colgroup,
+  .pda-app-shell .goods-check-lines thead { display: none; }
+  .pda-app-shell .goods-check-document-list tbody,
+  .pda-app-shell .goods-check-lines tbody { display: grid; gap: 8px; }
+  .pda-app-shell .goods-check-document-list tr,
+  .pda-app-shell .goods-check-lines tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+    border: 1px solid #b9c7d5;
+    border-radius: 7px;
+    background: #fff;
+  }
+  .pda-app-shell .goods-check-document-list td,
+  .pda-app-shell .goods-check-lines td {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    padding: 9px 10px;
+    border: 0;
+    border-bottom: 1px solid #e1e7ed;
+    white-space: normal;
+  }
+  .pda-app-shell .goods-check-document-list td::before,
+  .pda-app-shell .goods-check-lines td::before {
+    content: attr(data-label);
+    color: #6a7c8e;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+  }
+  .pda-app-shell .goods-check-document-list td:nth-child(4),
+  .pda-app-shell .goods-check-lines td:nth-child(2) { grid-column: 1 / -1; }
+  .pda-app-shell .goods-check-document-list tr.selected td { background: #07254f; }
+  .pda-app-shell .goods-check-scan-form { grid-template-columns: 1fr; padding: 12px; }
+  .pda-app-shell .goods-check-register-control { grid-template-columns: minmax(0, 1fr) minmax(130px, .8fr); }
+  .pda-app-shell .goods-check-register-control > button { width: 100%; }
+  .pda-app-shell .goods-check-scan-form input,
+  .pda-app-shell .goods-check-scan-form button { min-height: 52px; font-size: 16px; }
+  .pda-app-shell .goods-check-scan-form > button.secondary { width: 100%; }
+  .pda-app-shell .goods-check-lines { max-height: none; padding: 8px; }
+  .pda-app-shell .goods-check-active-heading { position: static; }
+}
+
+@media (max-width: 390px) {
+  .pda-enrollment-card { padding: 20px; }
+  .pda-pending-banner { font-size: 11px; }
+  .pda-app-shell .goods-check-type-filter { grid-template-columns: 1fr; }
+  .pda-app-shell .goods-check-register-control { grid-template-columns: 1fr; }
+}
+
+.pda-app-navigation {
+  position: sticky;
+  z-index: 9;
+  top: 66px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #b6c4d1;
+  background: #dfe7ef;
+}
+.pda-app-navigation button { min-height: 46px; border: 1px solid #8fa2b5; border-radius: 6px; background: #fff; color: #23415f; font-weight: 900; }
+.pda-app-navigation button.selected { border-color: #07254f; background: #07254f; color: #fff; }
+.pda-module-view:not([hidden]) { display: contents; }
+.pda-module-view[hidden] { display: none !important; }
+
+.pda-app-shell .goods-check-panel-separate .goods-check-documents {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.pda-app-shell .goods-check-panel-separate .goods-check-workspace {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
+.pda-app-shell .goods-check-panel-separate .goods-check-documents,
+.pda-app-shell .goods-check-panel-separate .goods-check-workspace {
+  min-height: calc(100dvh - 150px);
+}
+
+.pda-app-shell .goods-check-resume {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  margin: 0 14px 12px;
+  padding: 12px 14px;
+  border: 1px solid #2578b9;
+  border-radius: 7px;
+  background: #e8f3fc;
+  color: #123d63;
+  text-align: left;
+}
+
+.pda-app-shell .goods-check-resume span {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pda-app-shell .goods-check-resume strong {
+  grid-column: 1;
+  font-size: 16px;
+}
+
+.pda-app-shell .goods-check-resume small {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-weight: 900;
+}
+
+.pda-app-shell .goods-check-back {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #91a6ba;
+  border-radius: 5px;
+  background: #fff;
+  color: #173b5d;
+  font-weight: 900;
+}
+
+.pda-app-shell .goods-check-list-status {
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-top: 1px solid #d4dce5;
+}
+
+@media (max-width: 700px) {
+  .pda-app-shell .goods-check-panel-separate .goods-check-documents,
+  .pda-app-shell .goods-check-panel-separate .goods-check-workspace {
+    min-height: calc(100dvh - 150px);
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-workspace {
+    grid-template-rows: auto auto auto minmax(min-content, 1fr) auto;
+    align-content: stretch;
+    overflow: visible;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-lines {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-self: auto !important;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-active-heading {
+    align-items: center;
+    padding: 10px 12px;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-progress {
+    align-content: start;
+    grid-auto-rows: 84px;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-progress > button,
+  .pda-app-shell .goods-check-panel-separate .goods-check-extra-summary {
+    height: 84px;
+    min-height: 84px;
+  }
+
+  .pda-app-shell .goods-check-back {
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+}
+
+.pda-lookup { width: min(100%, 820px); min-height: calc(100dvh - 130px); box-sizing: border-box; display: grid; align-content: start; gap: 14px; margin: 0 auto; padding: 18px; }
+.pda-lookup > header { display: grid; gap: 4px; }
+.pda-lookup > header span { color: #276b9e; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.pda-lookup h2 { margin: 0; color: #07254f; font-size: 24px; }
+.pda-lookup > header p { margin: 0; color: #5b6f83; line-height: 1.4; }
+.pda-lookup > form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; padding: 14px; border: 1px solid #b7c5d2; border-radius: 8px; background: #fff; }
+.pda-lookup > form label { display: grid; gap: 5px; color: #344b61; font-size: 12px; font-weight: 900; }
+.pda-lookup > form input { min-height: 52px; box-sizing: border-box; padding: 0 12px; border: 1px solid #8298ac; border-radius: 6px; font-size: 18px; }
+.pda-lookup > form button { min-height: 52px; padding: 0 20px; border: 0; border-radius: 6px; background: #0a568e; color: #fff; font-weight: 900; }
+.pda-lookup-error { margin: 0; padding: 13px; border: 1px solid #cf8f8f; border-radius: 7px; background: #fff0f0; color: #922d2d; font-weight: 800; }
+.pda-lookup-empty { min-height: 240px; display: grid; place-items: center; padding: 20px; border: 1px dashed #a9bac9; border-radius: 9px; color: #617589; text-align: center; }
+.pda-lookup-result { overflow: hidden; border: 1px solid #afbecd; border-radius: 10px; background: #fff; box-shadow: 0 9px 25px rgba(18, 49, 79, .08); }
+.pda-lookup-result > header { padding: 16px; border-bottom: 1px solid #d5dfe7; background: #f7fafc; }
+.pda-lookup-result > header span { color: #5d7287; font-size: 12px; font-weight: 900; }
+.pda-lookup-result h3 { margin: 4px 0 0; color: #102f4d; font-size: 22px; }
+.pda-lookup-metrics { display: grid; grid-template-columns: 1fr 1fr; }
+.pda-lookup-metrics > div { min-height: 112px; display: grid; align-content: center; justify-items: center; gap: 7px; border-bottom: 1px solid #d5dfe7; }
+.pda-lookup-metrics > div:first-child { border-right: 1px solid #d5dfe7; }
+.pda-lookup-metrics span { color: #607589; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+.pda-lookup-metrics strong { color: #153a5e; font-size: 31px; }
+.pda-lookup-metrics .price strong { color: #16663a; }
+.pda-lookup-stock { padding: 15px; }
+.pda-lookup-stock h4 { margin: 0 0 9px; color: #26445f; }
+.pda-lookup-stock > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 45px; padding: 0 11px; border-top: 1px solid #e0e6ec; }
+.pda-lookup-stock > div strong { font-size: 18px; }
+
+@media (max-width: 560px) {
+  .pda-lookup { padding: 12px; }
+  .pda-lookup > form { grid-template-columns: 1fr; }
+  .pda-lookup > form button { width: 100%; }
+  .pda-lookup-metrics strong { font-size: 25px; }
+}
+
+/* Login dedicado para PDA: sin el marco de escritorio de APP Gestión. */
+.pda-login-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 50% 15%, rgba(49, 133, 190, .34), transparent 36%),
+    linear-gradient(145deg, #061f42, #0d4d7e);
+}
+
+.pda-login-card {
+  width: min(100%, 460px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(0, 16, 38, .38);
+}
+
+.pda-login-brand {
+  display: grid;
+  gap: 5px;
+  padding: 23px 24px 19px;
+  background: #072b5a;
+  color: #fff;
+}
+
+.pda-login-brand span {
+  color: #8fc8ef;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .09em;
+}
+
+.pda-login-brand strong { font-size: 26px; }
+.pda-login-brand p { margin: 0; color: #d2e3f1; font-size: 13px; line-height: 1.4; }
+
+.pda-login-shell .login-screen {
+  min-height: 0;
+  display: block;
+  background: transparent;
+}
+
+.pda-login-shell .login-panel {
+  position: static;
+  width: auto;
+  min-width: 0;
+  transform: none;
+  margin: 0;
+  padding: 18px 24px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.pda-login-shell .login-panel-heading strong { color: #0a3767; font-size: 20px; }
+.pda-login-shell .login-panel-heading span { color: #617387; }
+.pda-login-shell .login-panel input,
+.pda-login-shell .login-panel > button { min-height: 52px; font-size: 16px; }
+
+.pda-login-shell .pda-pending-banner {
+  position: static;
+  z-index: auto;
+  width: auto;
+  transform: none;
+  box-sizing: border-box;
+  margin: 16px 24px 0;
+  padding: 12px 14px;
+  border: 1px solid #d7a44e;
+  border-radius: 9px;
+  background: #fff3d9;
+  color: #68430f;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.pda-login-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px 24px 22px;
+  border-top: 1px solid #dfe6ed;
+  background: #f7fafc;
+}
+
+.pda-login-actions label { display: grid; gap: 5px; }
+.pda-login-actions label span { color: #52677b; font-size: 11px; font-weight: 900; }
+.pda-login-actions select,
+.pda-login-actions .pda-reset-device {
+  position: static;
+  z-index: auto;
+  right: auto;
+  bottom: auto;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #8ea2b5;
+  border-radius: 7px;
+  background: #fff;
+  color: #173653;
+  font-weight: 800;
+}
+
+.pda-login-actions select { width: 100%; padding: 0 10px; }
+.pda-login-actions .pda-reset-device { padding: 0 13px; }
+
+@media (max-width: 390px) {
+  .pda-login-shell { padding-inline: 10px; }
+  .pda-login-brand { padding: 19px 18px 16px; }
+  .pda-login-shell .login-panel { padding: 16px 18px; }
+}
+
+/* El tema de escritorio usa !important y 100vw/100vh; esta variante los neutraliza. */
+.pda-login-shell .login-screen.login-screen-embedded {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  display: block !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 18px 24px 20px !important;
+  transform: none !important;
+  gap: 13px !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel-heading {
+  margin: 0 0 2px !important;
+  padding: 11px 13px !important;
+  gap: 0 !important;
+  border: 1px solid #d7e2ec !important;
+  border-radius: 8px !important;
+  background: #f2f6fa !important;
+  color: #314b64 !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel-heading strong {
+  display: none;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel-heading span {
+  color: #526a80 !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel input,
+.pda-login-shell .login-screen-embedded .login-panel > button {
+  height: 48px !important;
+  min-height: 48px !important;
+  border-radius: 8px !important;
+  font-size: 16px !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel input {
+  padding: 0 13px !important;
+  border-color: #91a6b9 !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel > button {
+  border-color: #0a5d9f !important;
+  background: #0a5d9f !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-server-status {
+  min-height: 30px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  justify-content: center;
+}
+
+@media (max-width: 390px) {
+  .pda-login-shell .login-screen-embedded .login-panel {
+    padding: 16px 18px 18px !important;
+  }
+}
+/* Identidad visual de almacén: diferenciada de APP Gestión. */
+.pda-login-shell {
+  background-color: #06191d !important;
+  background-image:
+    radial-gradient(circle at 18% 18%, rgba(20, 184, 166, .22), transparent 28%),
+    radial-gradient(circle at 82% 78%, rgba(245, 158, 11, .13), transparent 24%),
+    linear-gradient(145deg, #05181e 0%, #0b3035 55%, #0b4142 100%) !important;
+}
+
+.pda-login-card {
+  width: min(100%, 500px);
+  border: 1px solid rgba(153, 246, 228, .28);
+  border-radius: 24px;
+  background: #f8fbfb;
+  box-shadow: 0 30px 90px rgba(0, 11, 14, .55);
+}
+
+.pda-login-brand {
+  position: relative;
+  min-height: 142px;
+  align-content: center;
+  padding: 28px 112px 25px 30px;
+  background: linear-gradient(135deg, #0b5c5d 0%, #0d7771 100%);
+}
+
+.pda-login-brand::after {
+  content: "▥";
+  position: absolute;
+  top: 50%;
+  right: 30px;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .13);
+  color: #d4fff7;
+  font-size: 31px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.pda-login-brand span {
+  color: #a7f3e5;
+  letter-spacing: .14em;
+}
+
+.pda-login-brand strong {
+  color: #ffffff;
+  font-size: 29px;
+  letter-spacing: -.02em;
+}
+
+.pda-login-brand p {
+  color: #d9f7f2;
+  font-size: 14px;
+}
+
+.pda-login-shell .pda-pending-banner {
+  border-color: #f0b64d;
+  border-left-width: 5px;
+  background: #fff8e8;
+  color: #704507;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel {
+  background: #f8fbfb !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel-heading {
+  border-color: #cbe2df !important;
+  background: #eaf6f4 !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel-heading span {
+  color: #315e5b !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel input {
+  border-color: #8eb2ae !important;
+  background: #ffffff !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel input:focus {
+  border-color: #0f8b80 !important;
+  box-shadow: 0 0 0 3px rgba(15, 139, 128, .18) !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-panel > button {
+  border-color: #0b716a !important;
+  background: linear-gradient(180deg, #108b81, #0b716a) !important;
+  box-shadow: 0 8px 18px rgba(11, 113, 106, .2) !important;
+}
+
+.pda-login-shell .login-screen-embedded .login-server-status.online {
+  border-color: #8bd1b2;
+  background: #e9f8f0;
+  color: #17603c;
+}
+
+.pda-login-actions {
+  border-top-color: #d5e7e4;
+  background: #eef7f6;
+}
+
+.pda-login-actions select,
+.pda-login-actions .pda-reset-device {
+  border-color: #9bbab7;
+  background: rgba(255, 255, 255, .86);
+  color: #254f4c;
+}
+
+.pda-login-actions .pda-reset-device:hover,
+.pda-login-actions .pda-reset-device:focus-visible {
+  border-color: #0f8b80;
+  background: #ffffff;
+  color: #08665f;
+}
+
+@media (max-width: 390px) {
+  .pda-login-brand { min-height: 126px; padding-right: 82px; }
+  .pda-login-brand::after { right: 18px; width: 50px; height: 50px; border-radius: 15px; }
+  .pda-login-brand strong { font-size: 25px; }
+}
+
+.pda-classic-login-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.pda-classic-login-shell .login-inline-notice {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #d8b165;
+  border-radius: 3px;
+  background: #fff8e8;
+  color: #704b12;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.pda-classic-login-shell .login-panel .login-secondary-action {
+  border-color: #8fa5b9 !important;
+  background: #ffffff !important;
+  color: #274966 !important;
+  box-shadow: none !important;
+}
+
+.pda-classic-login-shell .login-panel .login-secondary-action:hover,
+.pda-classic-login-shell .login-panel .login-secondary-action:focus-visible {
+  border-color: #2a72b6 !important;
+  background: #edf5fd !important;
+  color: #0b3c69 !important;
+}
+
+/* Opción 3: traducción móvil fiel al acceso clásico de APP GESTIÓN. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell { min-height: 100dvh; background: #edf2f7; }
+  .pda-classic-login-shell .login-screen {
+    position: relative !important; display: block !important; min-height: 100dvh !important;
+    box-sizing: border-box; padding: 0 16px 58px !important; overflow: visible !important;
+    background: #edf2f7 !important;
+  }
+  .pda-classic-login-shell .login-screen::before { display: none; }
+  .pda-classic-login-shell .entry-topbar {
+    position: relative !important; inset: auto !important; z-index: 2; min-height: 46px;
+    max-width: none; margin: 0 -16px; padding: 0 52px 0 16px; box-sizing: border-box;
+    border-bottom: 1px solid #c9d4df; background: #fff;
+  }
+  .pda-classic-login-shell .app-brand-static {
+    min-width: 0; min-height: 32px; justify-content: flex-start; padding: 0; border: 0;
+    background: transparent; color: #173653; font-size: 14px;
+  }
+  .pda-classic-login-shell .top-date-time {
+    position: absolute !important; top: 15px !important; right: 54px !important; z-index: 3;
+    color: #425b73; font-size: 10px; font-weight: 800; white-space: nowrap;
+  }
+  .pda-classic-login-shell .language-button {
+    top: 7px !important; right: 12px !important; width: 32px !important; height: 32px !important;
+    border-radius: 4px !important; box-shadow: none !important;
+  }
+  .pda-classic-login-shell .language-button img { width: 17px !important; height: 17px !important; }
+  .pda-classic-login-shell .shutdown-button { display: none !important; }
+  .pda-classic-login-shell .login-store-heading {
+    position: relative !important; inset: auto !important; z-index: 1; width: auto !important;
+    max-width: none !important; min-height: 46px; margin: 0 -16px; padding: 0 16px;
+    box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; transform: none !important; border-bottom: 1px solid #c9d4df;
+    background: #fff; text-align: left;
+  }
+  .pda-classic-login-shell .login-store-heading strong {
+    min-width: 0; color: #173653 !important; font-size: 14px !important; font-weight: 900;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pda-classic-login-shell .login-store-heading span {
+    flex: 0 0 auto; min-height: 28px; padding: 0 8px; border: 1px solid #d7e0ea;
+    border-radius: 3px; background: #f3f7fb; color: #526a80 !important; font-size: 10px !important;
+    font-weight: 800; white-space: nowrap;
+  }
+  .pda-classic-login-shell .login-panel {
+    position: relative !important; inset: auto !important; z-index: 1; width: 100% !important;
+    max-width: none !important; max-height: none !important; margin: 22px 0 0 !important;
+    padding: 0 18px 18px !important; box-sizing: border-box; transform: none !important;
+    gap: 13px !important; overflow: visible !important; border: 1px solid #c4d0dc !important;
+    border-radius: 4px !important; background: #fff !important;
+    box-shadow: 0 5px 14px rgba(31,55,86,.12) !important;
+  }
+  .pda-classic-login-shell .login-panel-heading {
+    margin: 0 -18px 6px !important; padding: 20px 18px 16px !important; border: 0 !important;
+    border-radius: 3px 3px 0 0 !important; background: #07254f !important; color: #fff !important;
+  }
+  .pda-classic-login-shell .login-panel-heading strong {
+    display: block !important; color: #fff !important; font-size: 25px !important; line-height: 1 !important;
+  }
+  .pda-classic-login-shell .login-panel-heading span {
+    margin-top: 7px; color: #d6e4f0 !important; font-size: 11px !important; line-height: 1.35;
+  }
+  .pda-classic-login-shell .login-panel label {
+    gap: 6px !important; color: #526a80 !important; font-size: 12px !important; font-weight: 900 !important;
+  }
+  .pda-classic-login-shell .login-panel input {
+    height: 52px !important; min-height: 52px !important; border: 1px solid #91a6b9 !important;
+    border-radius: 4px !important; background: #fff !important; color: #173653 !important; font-size: 16px !important;
+  }
+  .pda-classic-login-shell .login-panel input:focus {
+    border-color: #2a72b6 !important; box-shadow: 0 0 0 3px rgba(42,114,182,.15) !important;
+  }
+  .pda-classic-login-shell .login-panel > button[type="submit"] {
+    height: 52px !important; min-height: 52px !important; border: 1px solid #1f5f9f !important;
+    border-radius: 4px !important; background: #2a72b6 !important; color: #fff !important;
+    box-shadow: none !important; font-size: 16px !important;
+  }
+  .pda-classic-login-shell .login-server-status {
+    min-height: 32px; justify-content: flex-start; border-radius: 3px; font-size: 12px;
+  }
+  .pda-classic-login-shell .login-inline-notice { margin: 0; }
+  .pda-classic-login-shell .login-panel .login-secondary-action {
+    min-height: 44px !important; height: auto !important; margin-top: 1px;
+    border: 1px solid #8fa5b9 !important; border-radius: 4px !important;
+    background: #fff !important; color: #2a72b6 !important; box-shadow: none !important;
+  }
+  .pda-classic-login-shell .login-screen > .report-footer-context {
+    position: fixed !important; right: 0 !important; bottom: 0 !important; left: 0 !important; z-index: 4;
+    min-height: 46px; display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,.8fr) minmax(0,1fr);
+    align-items: center; gap: 0; padding: 0 10px; box-sizing: border-box;
+    border-top: 1px solid #c4d0dc; background: #fff; color: #425b73;
+    box-shadow: 0 -2px 8px rgba(31,55,86,.08);
+  }
+  .pda-classic-login-shell .report-footer-context span {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 10px; font-weight: 800;
+  }
+  .pda-classic-login-shell .report-footer-context span:nth-child(2) { display: none; }
+  .pda-classic-login-shell .report-footer-context .report-connection { justify-content: flex-end; gap: 4px; }
+}
+
+
+/* PDA: neutraliza el ancho mínimo de escritorio en viewport móvil. */
+@media (max-width: 600px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 0;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+}
+
+
+/* PDA: la fecha comparte la barra superior sin heredar el centrado de escritorio. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .top-date-time {
+    top: 15px !important;
+    right: 54px !important;
+    left: auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    transform: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+}
+
+
+/* PDA: tercera línea reservada para fecha y hora en móvil. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .top-date-time {
+    top: 50px !important;
+    right: 16px !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    z-index: 3 !important;
+  }
+
+  .pda-classic-login-shell .login-store-heading {
+    min-height: 72px;
+    padding: 26px 16px 8px;
+    align-items: flex-end;
+  }
+}
+
+
+/* PDA: cabecera móvil centrada y sin distribución lateral. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .entry-topbar {
+    min-height: 74px;
+    height: 74px !important;
+    padding: 5px 52px 36px 16px;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .pda-classic-login-shell .app-brand-static {
+    min-width: 102px !important;
+    justify-content: center;
+  }
+
+  .pda-classic-login-shell .top-date-time {
+    top: 47px !important;
+    right: auto !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+  }
+
+  .pda-classic-login-shell .login-store-heading {
+    min-height: 46px;
+    padding: 0 16px;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+}
+
+
+/* PDA: reduce el espacio superior y evita el centrado vertical heredado. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .entry-topbar {
+    height: 60px !important;
+    min-height: 60px !important;
+    padding: 8px 52px 20px 16px !important;
+    align-items: flex-start !important;
+  }
+
+  .pda-classic-login-shell .app-brand-static {
+    align-self: flex-start !important;
+    margin: 0 !important;
+  }
+
+  .pda-classic-login-shell .top-date-time {
+    top: 40px !important;
+    font-size: 10px !important;
+  }
+
+  .pda-classic-login-shell .login-store-heading {
+    min-height: 46px;
+  }
+}
+
+
+/* PDA: asegura que la fecha/hora sea visible dentro de la cabecera móvil. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .top-date-time {
+    position: absolute !important;
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    top: 40px !important;
+    right: 16px !important;
+    left: auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: 20px !important;
+    padding: 0 !important;
+    transform: none !important;
+    color: #173653 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    font-size: 10px !important;
+    line-height: 20px !important;
+    z-index: 30 !important;
+  }
+}
+
+
+/* PDA: composición móvil fiel a la referencia APP GESTION. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .entry-topbar {
+    position: relative !important;
+    height: 54px !important;
+    min-height: 54px !important;
+    margin: 0 -16px;
+    padding: 0 16px !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    background: #fff !important;
+    border-bottom: 1px solid #c4d0dc !important;
+  }
+
+  .pda-classic-login-shell .app-brand-static {
+    min-width: 0 !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: #173653 !important;
+    font-size: 18px !important;
+    justify-content: flex-start !important;
+  }
+
+  .pda-classic-login-shell .top-date-time {
+    top: 17px !important;
+    right: 16px !important;
+    left: auto !important;
+    height: 20px !important;
+    color: #173653 !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+  }
+
+  .pda-classic-login-shell .language-button,
+  .pda-classic-login-shell .shutdown-button,
+  .pda-classic-login-shell .login-store-heading {
+    display: none !important;
+  }
+
+  .pda-classic-login-shell .login-panel {
+    width: min(350px, 100%) !important;
+    margin: 150px auto 0 !important;
+    padding: 0 18px 18px !important;
+    border: 1px solid #c4d0dc !important;
+    border-radius: 6px !important;
+    background: #fff !important;
+    box-shadow: 0 8px 22px rgba(31,55,86,.12) !important;
+  }
+
+  .pda-classic-login-shell .login-panel-heading {
+    margin: 0 -18px 30px !important;
+    padding: 28px 18px 22px !important;
+    border-radius: 5px 5px 0 0 !important;
+    background: #07254f !important;
+  }
+
+  .pda-classic-login-shell .login-panel-heading strong {
+    font-size: 25px !important;
+  }
+
+  .pda-classic-login-shell .login-panel-heading span {
+    margin-top: 8px;
+    font-size: 12px !important;
+  }
+
+  .pda-classic-login-shell .login-panel label {
+    font-size: 13px !important;
+  }
+
+  .pda-classic-login-shell .login-panel input,
+  .pda-classic-login-shell .login-panel > button[type="submit"] {
+    height: 52px !important;
+    min-height: 52px !important;
+    font-size: 16px !important;
+  }
+
+  .pda-classic-login-shell .login-panel .login-secondary-action {
+    min-height: 44px !important;
+    margin-top: 4px;
+    border: 0 !important;
+    background: transparent !important;
+    color: #2a72b6 !important;
+    font-size: 15px !important;
+  }
+}
+
+
+/* PDA: cabecera superior con marca a la izquierda y fecha a la derecha. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .entry-topbar {
+    position: relative !important;
+    display: block !important;
+    height: 54px !important;
+    min-height: 54px !important;
+    padding: 0 !important;
+  }
+
+  .pda-classic-login-shell .app-brand-static {
+    position: absolute !important;
+    top: 11px !important;
+    left: 16px !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: 32px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  .pda-classic-login-shell .top-date-time {
+    position: absolute !important;
+    top: 17px !important;
+    right: 16px !important;
+    left: auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    text-align: right !important;
+  }
+}
+
+
+/* PDA: evita que la marca se parta y fija la cabecera en los extremos. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .entry-topbar .app-brand-static {
+    position: fixed !important;
+    top: 16px !important;
+    left: 16px !important;
+    right: auto !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 28px !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    line-height: 28px !important;
+    text-align: left !important;
+    transform: none !important;
+    color: #173653 !important;
+    font-size: 18px !important;
+  }
+
+  .pda-classic-login-shell .top-date-time {
+    position: fixed !important;
+    top: 20px !important;
+    right: 16px !important;
+    left: auto !important;
+    width: max-content !important;
+    max-width: calc(100vw - 170px) !important;
+    white-space: nowrap !important;
+    text-align: right !important;
+  }
+}
+
+
+/* PDA: selector de idioma visible en la cabecera móvil. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .language-button {
+    display: grid !important;
+    position: fixed !important;
+    top: 16px !important;
+    right: 16px !important;
+    left: auto !important;
+    z-index: 20 !important;
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border: 1px solid #b8c8d8 !important;
+    border-radius: 5px !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .pda-classic-login-shell .language-button img {
+    width: 20px !important;
+    height: 20px !important;
+  }
+}
+
+/* PDA: fecha y hora centradas en la cabecera móvil. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .top-date-time {
+    position: fixed !important;
+    top: 22px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    z-index: 19 !important;
+    width: max-content !important;
+    max-width: calc(100vw - 170px) !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+  }
+}
+
+/* PDA: intercambia la posición del título y la fecha en móvil. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .top-date-time {
+    top: 22px !important;
+    left: 16px !important;
+    right: auto !important;
+    transform: none !important;
+    width: max-content !important;
+    max-width: calc(100vw - 170px) !important;
+    text-align: left !important;
+  }
+
+  .pda-classic-login-shell .entry-topbar .app-brand-static {
+    position: fixed !important;
+    top: 16px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: max-content !important;
+    max-width: calc(100vw - 170px) !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    line-height: 28px !important;
+  }
+}
+
+/* PDA: orden final de la cabecera móvil. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .language-button {
+    left: 16px !important;
+    right: auto !important;
+  }
+
+  .pda-classic-login-shell .top-date-time {
+    left: auto !important;
+    right: 16px !important;
+    transform: none !important;
+    text-align: right !important;
+  }
+
+  .pda-classic-login-shell .entry-topbar .app-brand-static {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    text-align: center !important;
+  }
+}
+
+/* PDA: menú de idioma alineado con el icono izquierdo. */
+@media (max-width: 600px) {
+  .pda-classic-login-shell .language-picker {
+    position: fixed !important;
+    top: 60px !important;
+    left: 16px !important;
+    right: auto !important;
+    z-index: 30 !important;
+    width: min(190px, calc(100vw - 32px)) !important;
+    padding: 8px !important;
+    border: 1px solid #b8c8d8 !important;
+    border-radius: 5px !important;
+    background: #fff !important;
+    box-shadow: 0 8px 20px rgba(31,55,86,.18) !important;
+  }
+}
+
+/* PDA: evita que el listado de documentos estire un hueco vacío en móvil. */
+@media (max-width: 700px) {
+  .pda-app-shell .goods-check-panel-separate .goods-check-documents {
+    min-height: 0 !important;
+    height: auto !important;
+    grid-template-rows: auto auto auto !important;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-document-list {
+    max-height: 52vh !important;
+    min-height: 0 !important;
+  }
+}
+
+/* PDA: indicadores en una sola fila con desplazamiento horizontal. */
+@media (max-width: 700px) {
+  .pda-app-shell .goods-check-panel-separate .goods-check-progress {
+    display: flex !important;
+    grid-template-columns: none !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 9px 10px !important;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-progress > button,
+  .pda-app-shell .goods-check-panel-separate .goods-check-extra-summary {
+    flex: 0 0 148px !important;
+    width: 148px !important;
+    height: 64px !important;
+    min-height: 64px !important;
+    scroll-snap-align: start;
+  }
+}
+
+/* PDA: estado vacío más compacto y legible en móvil. */
+@media (max-width: 700px) {
+  .pda-app-shell .goods-check-panel-separate .goods-check-lines .goods-check-empty {
+    min-height: 72px !important;
+    height: auto !important;
+    padding: 12px 10px !important;
+    gap: 0 !important;
+    border: 1px solid #b9c7d5;
+    border-radius: 7px;
+    background: #fff;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-lines .goods-check-empty strong {
+    max-width: none !important;
+    white-space: nowrap !important;
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+  }
+}
+
+/* PDA: compacta el panel de comprobación y la fila vacía de líneas. */
+@media (max-width: 700px) {
+  .pda-app-shell .goods-check-panel-separate {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-workspace {
+    min-height: calc(100dvh - 150px) !important;
+    height: auto !important;
+    grid-template-rows: auto auto auto minmax(min-content, 1fr) auto !important;
+    align-content: stretch !important;
+  }
+
+  .pda-app-shell .goods-check-panel-separate .goods-check-lines tbody tr td[colspan] {
+    min-height: 48px !important;
+    height: 48px !important;
+    padding: 10px !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+  }
+}
+/* PDA: consulta e impresión de etiquetas de producto. */
+.pda-label-actions {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+  padding: 14px 15px;
+  border-top: 1px solid #d5dfe7;
+  background: #f7fafc;
+}
+
+.pda-label-actions label {
+  display: grid;
+  gap: 5px;
+  color: #344b61;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pda-label-actions input,
+.pda-label-actions button {
+  box-sizing: border-box;
+  min-height: 48px;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.pda-label-actions input {
+  width: 100%;
+  border: 1px solid #8298ac;
+  padding: 0 10px;
+  background: #fff;
+  font-size: 18px;
+}
+
+.pda-label-actions button {
+  border: 1px solid #0a568e;
+  padding: 0 16px;
+  background: #0a568e;
+  color: #fff;
+  font-weight: 900;
+}
+
+.pda-label-actions button:disabled { opacity: .48; }
+.pda-label-actions small { grid-column: 1 / -1; color: #8b4d18; font-weight: 800; }
+.pda-label-print-area { display: none; }
+
+@media (max-width: 700px) {
+  .pda-app-shell .goods-check-panel-separate .goods-check-lines td:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 390px) {
+  .pda-label-actions { grid-template-columns: 88px minmax(0, 1fr); }
+}
+
+@media print {
+  @page { size: 58mm 40mm; margin: 0; }
+
+  html,
+  body,
+  #root {
+    width: 58mm !important;
+    min-width: 58mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body * { visibility: hidden !important; }
+
+  .pda-label-print-area,
+  .pda-label-print-area * { visibility: visible !important; }
+
+  .pda-label-print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block !important;
+    width: 58mm;
+    margin: 0;
+    padding: 0;
+  }
+
+  .pda-print-label {
+    width: 58mm;
+    height: 40mm;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto 12mm auto;
+    align-content: stretch;
+    box-sizing: border-box;
+    break-after: page;
+    page-break-after: always;
+    overflow: hidden;
+    padding: 2.4mm 3mm 2mm;
+    background: #fff;
+    color: #000;
+    font-family: Arial, sans-serif;
+  }
+
+  .pda-print-label:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .pda-print-label > small {
+    overflow: hidden;
+    font-size: 7pt;
+    font-weight: 700;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pda-print-label-name {
+    overflow: hidden;
+    align-self: center;
+    font-size: 10pt;
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  .pda-print-label-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2mm;
+    font-size: 8pt;
+  }
+
+  .pda-print-label-meta b { font-size: 14pt; }
+  .pda-label-barcode { width: 100%; height: 12mm; fill: #000; }
+  .pda-print-label-ean { font-size: 7pt; letter-spacing: .8pt; text-align: center; }
+}
+/* Menú principal y reposición PDA. */
+.pda-home {
+  width: min(100%, 980px);
+  min-height: calc(100dvh - 66px);
+  box-sizing: border-box;
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  margin: 0 auto;
+  padding: clamp(22px, 5vw, 54px);
+}
+
+.pda-home > header { display: grid; gap: 7px; }
+.pda-home > header span,
+.pda-replenishment > header span { color: #2671a7; font-size: 12px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.pda-home h1,
+.pda-replenishment h2 { margin: 0; color: #07254f; font-size: clamp(26px, 4vw, 38px); }
+.pda-home > header p,
+.pda-replenishment > header p { margin: 0; color: #587086; line-height: 1.45; }
+
+.pda-home-menu {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pda-home-menu button {
+  min-height: 190px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 10px;
+  padding: 24px;
+  border: 1px solid #aabac9;
+  border-radius: 14px;
+  background: #fff;
+  color: #173653;
+  text-align: left;
+  box-shadow: 0 10px 26px rgba(18, 49, 79, .08);
+}
+
+.pda-home-menu button:hover,
+.pda-home-menu button:focus-visible { border-color: #1475b8; box-shadow: 0 0 0 3px rgba(20, 117, 184, .16), 0 12px 28px rgba(18, 49, 79, .12); }
+.pda-home-menu button b { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 13px; background: #e3f1fb; color: #0a5e99; font-size: 31px; }
+.pda-home-menu button span { color: #0b3157; font-size: 21px; font-weight: 900; letter-spacing: 0; }
+.pda-home-menu button small { color: #607589; font-size: 13px; font-weight: 650; line-height: 1.4; }
+
+.pda-module-toolbar {
+  position: sticky;
+  z-index: 9;
+  top: 66px;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 7px 12px;
+  border-bottom: 1px solid #b7c5d2;
+  background: rgba(237, 242, 247, .96);
+  backdrop-filter: blur(7px);
+}
+
+.pda-module-toolbar button { min-height: 42px; padding: 0 14px; border: 1px solid #8fa4b8; border-radius: 7px; background: #fff; color: #163c60; font-weight: 900; }
+.pda-module-toolbar strong { grid-column: 2; color: #173653; text-align: center; }
+
+.pda-replenishment {
+  width: min(100%, 820px);
+  min-height: calc(100dvh - 124px);
+  box-sizing: border-box;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.pda-replenishment > header { display: grid; gap: 4px; }
+.pda-replenishment h2 { font-size: 24px; }
+.pda-replenishment-search,
+.pda-replenishment-card > form { display: grid; gap: 11px; padding: 14px; border: 1px solid #b7c5d2; border-radius: 9px; background: #fff; }
+.pda-replenishment-search { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.pda-replenishment label { display: grid; gap: 5px; color: #344b61; font-size: 12px; font-weight: 900; }
+.pda-replenishment input,
+.pda-replenishment select { min-height: 52px; box-sizing: border-box; width: 100%; padding: 0 12px; border: 1px solid #8298ac; border-radius: 6px; background: #fff; font-size: 17px; }
+.pda-replenishment button { min-height: 52px; padding: 0 20px; border: 0; border-radius: 6px; background: #0a568e; color: #fff; font-weight: 900; }
+.pda-replenishment button:disabled { opacity: .52; }
+.pda-replenishment-error,
+.pda-replenishment-status { margin: 0; padding: 13px; border-radius: 7px; font-weight: 800; }
+.pda-replenishment-error { border: 1px solid #cf8f8f; background: #fff0f0; color: #922d2d; }
+.pda-replenishment-status { border: 1px solid #78b995; background: #eaf8f0; color: #17613b; }
+.pda-replenishment-empty { min-height: 230px; display: grid; place-items: center; padding: 20px; border: 1px dashed #a9bac9; border-radius: 9px; color: #617589; text-align: center; }
+.pda-replenishment-card { overflow: hidden; border: 1px solid #afbecd; border-radius: 10px; background: #fff; box-shadow: 0 9px 25px rgba(18, 49, 79, .08); }
+.pda-replenishment-card > header { padding: 15px; border-bottom: 1px solid #d5dfe7; background: #f7fafc; }
+.pda-replenishment-card > header span { color: #5d7287; font-size: 12px; font-weight: 900; }
+.pda-replenishment-card h3 { margin: 4px 0 0; color: #102f4d; font-size: 22px; }
+.pda-replenishment-stock { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border-bottom: 1px solid #d5dfe7; }
+.pda-replenishment-stock > div { min-height: 76px; display: grid; align-content: center; gap: 5px; padding: 12px 15px; border-right: 1px solid #e0e6ec; }
+.pda-replenishment-stock span { color: #607589; font-size: 12px; font-weight: 800; }
+.pda-replenishment-stock strong { color: #153a5e; font-size: 24px; }
+.pda-replenishment-card > form { border: 0; border-radius: 0; }
+
+@media (max-width: 700px) {
+  .pda-home { gap: 16px; padding: 18px 14px; }
+  .pda-home-menu { grid-template-columns: 1fr; gap: 11px; }
+  .pda-home-menu button { min-height: 118px; grid-template-columns: 54px minmax(0, 1fr); align-items: center; align-content: center; padding: 17px; }
+  .pda-home-menu button b { grid-row: 1 / span 2; }
+  .pda-home-menu button span,
+  .pda-home-menu button small { grid-column: 2; }
+  .pda-module-toolbar { top: 66px; }
+  .pda-module-toolbar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pda-replenishment { padding: 12px; }
+  .pda-replenishment-search { grid-template-columns: 1fr; }
+  .pda-replenishment-search button { width: 100%; }
+}
+
+@media (max-width: 390px) {
+  .pda-home-menu button { min-height: 108px; }
+  .pda-module-toolbar { padding-inline: 8px; }
+  .pda-module-toolbar button { padding-inline: 9px; }
+}
+/* Sugerencias inteligentes de reposición PDA. */
+.pda-replenishment-suggestions {
+  overflow: hidden;
+  border: 1px solid #aebfce;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 9px 24px rgba(18, 49, 79, .07);
+}
+
+.pda-replenishment-suggestions > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 15px;
+  border-bottom: 1px solid #d4dee7;
+  background: #f6f9fb;
+}
+
+.pda-replenishment-suggestions h3 { margin: 0; color: #123a60; font-size: 19px; }
+.pda-replenishment-suggestions header p { margin: 4px 0 0; color: #617589; font-size: 12px; line-height: 1.35; }
+.pda-replenishment-suggestions .secondary { min-height: 52px; border: 1px solid #879eb3; background: #fff; color: #214665; }
+.pda-replenishment-list-empty { min-height: 120px; display: grid; place-items: center; padding: 18px; color: #607589; text-align: center; }
+.pda-replenishment-list-summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; border-bottom: 1px solid #dde5ec; color: #244661; font-size: 12px; }
+.pda-replenishment-list-summary button { min-height: 32px; padding: 0 10px; border: 1px solid #8ca2b6; background: #fff; color: #1b496d; }
+.pda-replenishment-list { display: grid; gap: 9px; padding: 11px; }
+.pda-replenishment-list > article { position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr); overflow: hidden; border: 1px solid #b6c5d3; border-radius: 8px; background: #fff; }
+.pda-replenishment-list > article:has(input:checked) { border-color: #1475b8; box-shadow: 0 0 0 2px rgba(20, 117, 184, .14); }
+.pda-replenishment-list > article.unavailable { background: #f5f6f7; opacity: .78; }
+.pda-replenishment-check { display: grid !important; place-items: center; border-right: 1px solid #dce4eb; background: #f7fafc; }
+.pda-replenishment .pda-replenishment-check input { width: 20px; height: 20px; min-height: 20px; margin: 0; padding: 0; accent-color: #0b689f; }
+.pda-replenishment-item {
+  min-height: 96px !important;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px 13px;
+  align-content: center;
+  padding: 12px 14px !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  color: #213b55 !important;
+  text-align: left;
+}
+.pda-replenishment-item .code { grid-column: 1 / -1; color: #547088; font-size: 11px; font-weight: 900; }
+.pda-replenishment-item > strong { grid-column: 1 / -1; color: #0b3157; font-size: 17px; }
+.pda-replenishment-item > span:not(.code) { color: #617589; font-size: 11px; }
+.pda-replenishment-item > span b { color: #173b5d; font-size: 14px; }
+.pda-replenishment-item small { grid-column: 1 / -1; color: #27704b; font-weight: 800; }
+.pda-replenishment-list > article.unavailable small { color: #8a4d22; }
+.pda-replenishment-suggestions > footer { position: sticky; bottom: 0; padding: 11px; border-top: 1px solid #d4dee7; background: rgba(247, 250, 252, .96); }
+.pda-replenishment-suggestions > footer button { width: 100%; }
+.pda-replenishment-suggestions > .pda-replenishment-error { margin: 11px; }
+
+@media (max-width: 700px) {
+  .pda-replenishment-suggestions > header { grid-template-columns: 1fr auto; align-items: end; }
+  .pda-replenishment-suggestions > header > div { grid-column: 1 / -1; }
+  .pda-replenishment-suggestions > header label { min-width: 0; }
+  .pda-replenishment-list { padding: 8px; }
+  .pda-replenishment-list > article { grid-template-columns: 34px minmax(0, 1fr); }
+  .pda-replenishment-item { grid-template-columns: 1fr 1fr !important; padding: 11px 10px !important; }
+  .pda-replenishment-item > span:not(.code) { display: grid; gap: 2px; }
+}
+
+@media (max-width: 390px) {
+  .pda-replenishment-suggestions > header { grid-template-columns: 1fr; }
+  .pda-replenishment-suggestions > header > div { grid-column: 1; }
+  .pda-replenishment-suggestions .secondary { width: 100%; }
+}

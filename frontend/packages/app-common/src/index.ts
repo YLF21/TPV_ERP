@@ -8,6 +8,7 @@ export { ErpSelect } from "./components/ErpSelect";
 export type { ErpSelectOption } from "./components/ErpSelect";
 export { LoginScreen } from "./components/LoginScreen";
 export { PromotionListScreen } from "./components/PromotionListScreen";
+export { productLabelEanBits } from "./components/productLabelBarcode";
 export { visibleSalesReports } from "./components/salesReportAccess";
 export { visibleStockViewsForSession, userCanManageWarehouses } from "./components/stockAccess";
 export type { StockViewKey } from "./components/stockAccess";

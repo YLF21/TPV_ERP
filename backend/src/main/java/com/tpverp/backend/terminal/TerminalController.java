@@ -32,6 +32,12 @@ public class TerminalController {
         return service.request(request.tiendaId(), request.name(), request.type());
     }
 
+    @PostMapping("/pda/request")
+    public TerminalRegistrationService.PdaRegistrationResult requestPda(
+            @Valid @RequestBody PdaRequest request) {
+        return service.requestPda(request.name());
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
     public List<TerminalRegistrationService.TerminalItem> list() {
@@ -65,5 +71,8 @@ public class TerminalController {
             @NotNull UUID tiendaId,
             @NotBlank String name,
             @NotNull TerminalType type) {
+    }
+
+    public record PdaRequest(@NotBlank String name) {
     }
 }
