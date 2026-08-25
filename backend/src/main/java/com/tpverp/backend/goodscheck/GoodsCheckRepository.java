@@ -1,5 +1,6 @@
 package com.tpverp.backend.goodscheck;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,4 +13,6 @@ public interface GoodsCheckRepository extends JpaRepository<GoodsCheck, UUID> {
 
     Optional<GoodsCheck> findByDocumentoIdAndEstadoAndTiendaId(
             UUID documentId, GoodsCheckStatus status, UUID storeId);
+
+    List<GoodsCheck> findAllByTiendaIdOrderByCreadoEnDesc(UUID storeId);
 }

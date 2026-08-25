@@ -433,7 +433,10 @@ describe("WarehouseDocumentDialog", () => {
     expect(firstRowCells()[0].textContent).toContain("13,50");
 
     const nameHeader = container.querySelector('[data-column-key="name"]') as HTMLElement;
-    fireEvent.keyDown(nameHeader.querySelector("button") as HTMLButtonElement, { key: "ArrowRight" });
+    fireEvent.keyDown(
+      nameHeader.querySelector(".table-layout-column-resizer") as HTMLButtonElement,
+      { key: "ArrowRight" }
+    );
     const stored = JSON.parse(localStorage.getItem(
       tableLayoutStorageKey("gestion", "maria", "warehouse.outputs.lines")
     ) ?? "{}") as { columns: Array<{ key: string; width: number }> };

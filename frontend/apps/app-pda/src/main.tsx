@@ -12,6 +12,10 @@ import {
 import { GoodsCheckPanel } from "../../../packages/app-common/src/components/GoodsCheckPanel";
 import { PdaProductLookup } from "./PdaProductLookup";
 import { PdaReplenishment } from "./PdaReplenishment";
+import { PdaStockCount } from "./PdaStockCount";
+import { PdaHistory } from "./PdaHistory";
+import { PdaWorkboard } from "./PdaWorkboard";
+import { PdaHomeDashboard } from "./PdaHomeDashboard";
 import { clearPdaIdentity, readPdaIdentity, writePdaIdentity, type PdaIdentity } from "./pdaIdentity";
 import "./pda.css";
 
@@ -217,7 +221,7 @@ function PdaWorkspace({
 }) {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
-  const [view, setView] = useState<"home" | "check" | "lookup" | "replenishment">("home");
+  const [view, setView] = useState<"home" | "check" | "lookup" | "replenishment" | "count" | "history" | "work">("home");
   const t = createTranslator(locale);
 
   useEffect(() => {
@@ -250,15 +254,19 @@ function PdaWorkspace({
       </header>
       {view === "home" && <section className="pda-home">
         <header><span>{t("pda.home.eyebrow")}</span><h1>{t("pda.home.title")}</h1><p>{t("pda.home.subtitle")}</p></header>
+        <PdaHomeDashboard token={session.accessToken} locale={locale} warehouses={warehouses} onOpen={setView} />
         <nav className="pda-home-menu" aria-label={t("pda.navigation")}>
           <button type="button" onClick={() => setView("lookup")}><b aria-hidden="true">⌕</b><span>{t("pda.navigation.lookup")}</span><small>{t("pda.home.lookupHelp")}</small></button>
           <button type="button" onClick={() => setView("check")}><b aria-hidden="true">✓</b><span>{t("pda.navigation.check")}</span><small>{t("pda.home.checkHelp")}</small></button>
           <button type="button" onClick={() => setView("replenishment")}><b aria-hidden="true">⇄</b><span>{t("pda.navigation.replenishment")}</span><small>{t("pda.home.replenishmentHelp")}</small></button>
+          <button type="button" onClick={() => setView("count")}><b aria-hidden="true">≣</b><span>{t("pda.navigation.count")}</span><small>{t("pda.home.countHelp")}</small></button>
+          <button type="button" onClick={() => setView("history")}><b aria-hidden="true">↺</b><span>{t("pda.navigation.history")}</span><small>{t("pda.home.historyHelp")}</small></button>
+          <button type="button" onClick={() => setView("work")}><b aria-hidden="true">▦</b><span>{t("pda.navigation.work")}</span><small>{t("pda.home.workHelp")}</small></button>
         </nav>
       </section>}
       {view !== "home" && <nav className="pda-module-toolbar" aria-label={t("pda.navigation")}>
         <button type="button" onClick={() => setView("home")}>← {t("pda.navigation.home")}</button>
-        <strong>{t(view === "check" ? "pda.navigation.check" : view === "lookup" ? "pda.navigation.lookup" : "pda.navigation.replenishment")}</strong>
+        <strong>{t(view === "check" ? "pda.navigation.check" : view === "lookup" ? "pda.navigation.lookup" : view === "count" ? "pda.navigation.count" : view === "history" ? "pda.navigation.history" : view === "work" ? "pda.navigation.work" : "pda.navigation.replenishment")}</strong>
       </nav>}
       <div className="pda-module-view" hidden={view !== "check"}>
         <GoodsCheckPanel
@@ -281,6 +289,15 @@ function PdaWorkspace({
       </div>
       <div className="pda-module-view" hidden={view !== "replenishment"}>
         <PdaReplenishment token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
+      </div>
+      <div className="pda-module-view" hidden={view !== "count"}>
+        <PdaStockCount token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
+      </div>
+      <div className="pda-module-view" hidden={view !== "history"}>
+        <PdaHistory token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
+      </div>
+      <div className="pda-module-view" hidden={view !== "work"}>
+        <PdaWorkboard token={session.accessToken} locale={locale} warehouses={warehouses} />
       </div>
     </main>
   );

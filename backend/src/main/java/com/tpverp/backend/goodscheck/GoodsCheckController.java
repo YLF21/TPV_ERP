@@ -3,6 +3,7 @@ package com.tpverp.backend.goodscheck;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -24,6 +25,12 @@ public class GoodsCheckController {
 
     public GoodsCheckController(GoodsCheckService service) {
         this.service = service;
+    }
+
+    @GetMapping
+    @PreAuthorize(CHECK_PERMISSION)
+    public List<GoodsCheckSummary> list() {
+        return service.list();
     }
 
     @PostMapping("/documents/{documentId}/start")

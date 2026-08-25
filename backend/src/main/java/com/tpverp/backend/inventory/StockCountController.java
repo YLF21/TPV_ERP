@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/stock-counts")
-@PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_ALMACEN')")
+@PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_ALMACEN', 'STOCK_ADJUST')")
 public class StockCountController {
     private final StockCountService service;
     public StockCountController(StockCountService service) { this.service = service; }

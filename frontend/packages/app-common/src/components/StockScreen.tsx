@@ -4455,6 +4455,13 @@ export function StockScreen({
             onReorder={reorderSelectedColumn}
             onMove={moveSelectedColumn}
             onResize={resizeSelectedColumn}
+            onToggleVisibility={stockTableLayout.toggleColumnVisibility}
+            columnVisibilityOptions={selectedColumnSettings.map((candidate) => ({
+              key: candidate.key,
+              label: t(selectedColumnDefinitionByKey.get(candidate.key)?.labelKey ?? candidate.key),
+              visible: candidate.visible,
+              disabled: candidate.visible && visibleSelectedColumnSettings.length <= 1
+            }))}
             sortDirection={selectedView === "stock.topSales" && topSalesSorting.sort?.column === column.key
               ? topSalesSorting.sort.direction
               : inventoryHeader && inventorySort?.column === column.key
@@ -5069,6 +5076,13 @@ export function StockScreen({
             onReorder={bulkTableLayout.reorderColumns}
             onMove={bulkTableLayout.moveColumn}
             onResize={bulkTableLayout.resizeColumn}
+            onToggleVisibility={bulkTableLayout.toggleColumnVisibility}
+            columnVisibilityOptions={bulkTableLayout.layout.map((candidate) => ({
+              key: candidate.key,
+              label: t(definitionsByKey.get(candidate.key)?.labelKey ?? candidate.key),
+              visible: candidate.visible,
+              disabled: candidate.visible && visibleBulkColumns.length <= 1
+            }))}
             wrapLabel={!pair}
           >
             {content}
@@ -7463,6 +7477,13 @@ export function StockScreen({
                             onReorder={warehouseDetailTableLayout.reorderColumns}
                             onMove={warehouseDetailTableLayout.moveColumn}
                             onResize={warehouseDetailTableLayout.resizeColumn}
+                            onToggleVisibility={warehouseDetailTableLayout.toggleColumnVisibility}
+                            columnVisibilityOptions={warehouseDetailTableLayout.layout.map((candidate) => ({
+                              key: candidate.key,
+                              label: t(stockWarehouseDetailColumns.find((item) => item.key === candidate.key)?.labelKey ?? candidate.key),
+                              visible: candidate.visible,
+                              disabled: candidate.visible && visibleWarehouseDetailColumns.length <= 1
+                            }))}
                             sortDirection={warehouseDetailSorting.sort?.column === column.key ? warehouseDetailSorting.sort.direction : null}
                             sortLabel={t(definition.labelKey)}
                             onSort={warehouseDetailSorting.toggleSort}

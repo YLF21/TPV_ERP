@@ -3931,6 +3931,16 @@ export function SalesReportScreen({
                             moveVisibleReportColumn(selectedReportTableLayout, attribute, direction);
                           }}
                           onResize={selectedReportTableLayout.resizeColumn}
+                          onToggleVisibility={column.key === "total"
+                            ? undefined
+                            : selectedReportTableLayout.toggleColumnVisibility}
+                          columnVisibilityOptions={selectedReportTableLayout.layout.map((candidate) => ({
+                            key: candidate.key,
+                            label: t(reportAttributeLabelKey(selectedReport, candidate.key)),
+                            visible: candidate.visible,
+                            disabled: candidate.key === "total"
+                              || (candidate.visible && visibleColumnLayout.length <= 1)
+                          }))}
                         >
                           {t(reportAttributeLabelKey(selectedReport, column.key))}
                         </TableLayoutHeaderCell>

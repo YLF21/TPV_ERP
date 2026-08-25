@@ -223,3 +223,40 @@ final result: passed
 - Verificación técnica: 47 pruebas del componente superadas y compilaciones de Gestión y Venta completadas correctamente.
 
 final result: passed
+
+---
+
+# Design QA — tablas configurables de APP VENTA
+
+final result: passed
+
+## Fuente de verdad
+
+- Vídeo de referencia: `D:/xwechat_files/wxid_1491564915814_a00c/temp/RWTemp/2026-08/2f2f98c34fcef295646dc8647a3fcaa4/dac1bf21bb6c998dd53623e9fd3978d9.mp4`
+- Fotogramas analizados: `.codex-video-analysis/contact_sheet_small.jpg`
+- Implementación validada: APP VENTA en `http://127.0.0.1:5173/`
+- Viewport: 1920 × 1080
+
+## Evidencias
+
+- Estado inicial: `output/design-qa/app-venta-table-default.png`
+- Menú de columna: `output/design-qa/app-venta-table-menu.png`
+- Movimiento y redimensionado: `output/design-qa/app-venta-table-interactions.png`
+- Comparación conjunta: `output/design-qa/table-comparison-small.jpg`
+
+## Comprobaciones
+
+- El encabezado conserva el lenguaje visual azul de APP VENTA y adopta el patrón operativo del vídeo.
+- Cada columna dispone de un tirador visual para arrastrar y un menú de opciones independiente.
+- El menú ofrece ordenar, mover a izquierda/derecha y ocultar cuando la columna lo permite.
+- `Escape` cierra el menú y devuelve el foco a su botón.
+- El separador permite ampliar o reducir el ancho y también admite teclado.
+- El orden de las columnas cambia sin solapamientos ni recortes en la barra de herramientas o la tabla.
+- Las preferencias se mantienen mediante la infraestructura existente de usuario y tabla.
+
+## Validación automatizada
+
+- Playwright visual/interactivo: 1 prueba superada.
+- Vitest de pantallas afectadas: 332 pruebas superadas.
+- Compilación de `@tpverp/app-venta`: superada.
+- `git diff --check`: sin errores de espacios.

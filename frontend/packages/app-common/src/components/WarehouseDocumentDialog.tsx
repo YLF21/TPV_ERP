@@ -1807,6 +1807,7 @@ export function WarehouseDocumentDialog({
                           onReorder={tableLayout.reorderColumns}
                           onMove={tableLayout.moveColumn}
                           onResize={tableLayout.resizeColumn}
+                          onToggleVisibility={tableLayout.toggleColumnVisibility}
                         >
                           {label}
                         </TableLayoutHeaderCell>

@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -88,6 +89,15 @@ public class GoodsCheckService {
     public GoodsCheckView get(UUID id) {
         var check = find(id);
         return view(check, purchaseDocument(check.getDocumentoId()));
+    }
+
+    @Transactional(readOnly = true)
+    public List<GoodsCheckSummary> list() {
+        var storeId = organization.currentStore().getId();
+        return checks.findAllByTiendaIdOrderByCreadoEnDesc(storeId).stream()
+                .map(check -> summary(check, inputs.findByIdAndStoreId(check.getDocumentoId(), storeId)
+                        .map(WarehouseInput::getNumber).orElse(null)))
+                .toList();
     }
 
     @Transactional
@@ -198,6 +208,15 @@ public class GoodsCheckService {
                 all,
                 all.stream().filter(item -> item.missingQuantity().signum() > 0).toList(),
                 all.stream().filter(item -> item.registeredQuantity().signum() > 0).toList());
+    }
+
+    private static GoodsCheckSummary summary(GoodsCheck check, String documentNumber) {
+        long differences = check.getLineas().stream()
+                .filter(line -> line.getCantidadEsperada().compareTo(line.getCantidadRegistrada()) != 0)
+                .count();
+        return new GoodsCheckSummary(check.getId(), check.getDocumentoId(), documentNumber,
+                check.getEstado(), check.getCreadoEn(), check.getCerradoEn(),
+                check.getLineas().size(), differences);
     }
 
     private Map<UUID, ProductLabel> labels(WarehouseInput document) {

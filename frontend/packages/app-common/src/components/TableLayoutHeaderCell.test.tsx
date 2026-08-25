@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 
@@ -120,5 +120,75 @@ describe("TableLayoutHeaderCell sorting", () => {
     expect(container.querySelector("button button")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "N" }));
     expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the column menu, moves or hides the column, and closes with Escape", () => {
+    const onMove = vi.fn();
+    const onToggleVisibility = vi.fn();
+    render(
+      <table><thead><tr><TableLayoutHeaderCell
+        column={{ key: "customer", width: 180, visible: true }}
+        resizeLabel="Cambiar ancho de cliente"
+        onReorder={vi.fn()}
+        onMove={onMove}
+        onResize={vi.fn()}
+        onToggleVisibility={onToggleVisibility}
+      >Cliente</TableLayoutHeaderCell></tr></thead></table>
+    );
+
+    const menuButton = screen.getByRole("button", { name: "Opciones de columna" });
+    fireEvent.click(menuButton);
+    expect(screen.getByRole("menu")).toBeVisible();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Mover a la derecha/ }));
+    expect(onMove).toHaveBeenCalledWith("customer", 1);
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.click(menuButton);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ocultar columna" }));
+    expect(onToggleVisibility).toHaveBeenCalledWith("customer");
+
+    fireEvent.click(menuButton);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(menuButton).toHaveFocus();
+  });
+
+  it("keeps the column editor open while scrolling and modifying several columns", async () => {
+    const onToggleVisibility = vi.fn();
+    render(
+      <table><thead><tr><TableLayoutHeaderCell
+        column={{ key: "customer", width: 180, visible: true }}
+        resizeLabel="Cambiar ancho de cliente"
+        onReorder={vi.fn()}
+        onMove={vi.fn()}
+        onResize={vi.fn()}
+        onToggleVisibility={onToggleVisibility}
+        columnVisibilityOptions={[
+          { key: "customer", label: "Cliente", visible: true },
+          { key: "status", label: "Estado", visible: false }
+        ]}
+      >Cliente</TableLayoutHeaderCell></tr></thead></table>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Opciones de columna" }));
+    expect(screen.getByText("Modificar columnas")).toBeVisible();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Cliente" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "Estado" })).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Estado" }));
+    expect(onToggleVisibility).toHaveBeenCalledWith("status");
+    expect(screen.getByRole("menu")).toBeVisible();
+
+    const visibilityList = screen.getByRole("group", { name: "Modificar columnas" });
+    fireEvent.scroll(visibilityList);
+    expect(screen.getByRole("menu")).toBeVisible();
+
+    onToggleVisibility.mockClear();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Cliente" }));
+    expect(screen.getByRole("menu")).toBeVisible();
+    expect(onToggleVisibility).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(onToggleVisibility).toHaveBeenCalledWith("customer"));
   });
 });

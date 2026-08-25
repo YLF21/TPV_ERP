@@ -731,6 +731,7 @@ export function WarehouseOperationsPanel({
                   onReorder={tableLayout.reorderColumns}
                   onMove={tableLayout.moveColumn}
                   onResize={tableLayout.resizeColumn}
+                  onToggleVisibility={tableLayout.toggleColumnVisibility}
                 >
                   {columnLabels[column.key]}
                 </TableLayoutHeaderCell>

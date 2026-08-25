@@ -18,6 +18,7 @@ class GoodsCheckControllerContractTest {
         assertThat(GoodsCheckController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/goods-checks");
 
+        assertGetRoot("list");
         assertPost("start", "/documents/{documentId}/start");
         assertPost("importDocument", "/documents/{documentId}/import");
         assertGet("get", "/{id}");
@@ -31,6 +32,11 @@ class GoodsCheckControllerContractTest {
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
     }
 
+    private void assertGetRoot(String methodName) throws Exception {
+        var method = method(methodName);
+        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);
+        assertThat(method.getAnnotation(GetMapping.class).value()).isEmpty();
+    }
     private void assertGet(String methodName, String path) throws Exception {
         var method = method(methodName);
         assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);

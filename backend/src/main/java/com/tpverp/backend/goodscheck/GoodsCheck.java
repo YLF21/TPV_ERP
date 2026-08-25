@@ -73,6 +73,14 @@ public class GoodsCheck {
         return estado;
     }
 
+    public Instant getCreadoEn() {
+        return creadoEn;
+    }
+
+    public Instant getCerradoEn() {
+        return cerradoEn;
+    }
+
     public List<GoodsCheckLine> getLineas() {
         return List.copyOf(lineas);
     }

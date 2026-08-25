@@ -18,6 +18,7 @@ payment-terminal-bridge/**/target/
 .codex/
 .superpowers/brainstorm/
 .codex-runtime/
+.codex-video-analysis/
 artifacts/
 exportaciones/
 *.jasper

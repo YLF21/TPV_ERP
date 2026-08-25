@@ -614,6 +614,13 @@ export function SalesActivityPanel({
               onReorder={documentTableLayout.reorderColumns}
               onMove={documentTableLayout.moveColumn}
               onResize={documentTableLayout.resizeColumn}
+              onToggleVisibility={documentTableLayout.toggleColumnVisibility}
+              columnVisibilityOptions={documentTableLayout.layout.map((candidate) => ({
+                key: candidate.key,
+                label: t(documentDefinitionsByKey.get(candidate.key)!.labelKey),
+                visible: candidate.visible,
+                disabled: candidate.visible && visibleDocumentColumns.length <= 1
+              }))}
             >
               {t(definition.labelKey)}
             </TableLayoutHeaderCell>;

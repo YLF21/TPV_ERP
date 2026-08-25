@@ -15,7 +15,7 @@ class StockCountControllerContractTest {
         assertThat(StockCountController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/stock-counts");
         assertThat(StockCountController.class.getAnnotation(PreAuthorize.class).value())
-                .contains("ADMIN", "GESTION_ALMACEN");
+                .contains("ADMIN", "GESTION_ALMACEN", "STOCK_ADJUST");
         var mappings = Arrays.stream(StockCountController.class.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(PostMapping.class))
                 .map(Method::getName).toList();
