@@ -1808,6 +1808,14 @@ export function WarehouseDocumentDialog({
                           onMove={tableLayout.moveColumn}
                           onResize={tableLayout.resizeColumn}
                           onToggleVisibility={tableLayout.toggleColumnVisibility}
+                          columnVisibilityOptions={tableLayout.layout.map((candidate) => {
+                            const candidateDefinition = warehouseDocumentColumns.find((item) => item.key === candidate.key);
+                            return {
+                              key: candidate.key,
+                              label: candidateDefinition ? t(candidateDefinition.labelKey) : candidate.key,
+                              visible: candidate.visible
+                            };
+                          })}
                         >
                           {label}
                         </TableLayoutHeaderCell>

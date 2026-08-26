@@ -732,6 +732,11 @@ export function WarehouseOperationsPanel({
                   onMove={tableLayout.moveColumn}
                   onResize={tableLayout.resizeColumn}
                   onToggleVisibility={tableLayout.toggleColumnVisibility}
+                  columnVisibilityOptions={tableLayout.layout.map((candidate) => ({
+                    key: candidate.key,
+                    label: columnLabels[candidate.key],
+                    visible: candidate.visible
+                  }))}
                 >
                   {columnLabels[column.key]}
                 </TableLayoutHeaderCell>

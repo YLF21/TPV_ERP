@@ -153,6 +153,41 @@ describe("TableLayoutHeaderCell sorting", () => {
     expect(menuButton).toHaveFocus();
   });
 
+  it("closes the previous column menu when another column menu opens", () => {
+    render(
+      <table><thead><tr>
+        <TableLayoutHeaderCell
+          column={{ key: "customer", width: 180, visible: true }}
+          resizeLabel="Cambiar ancho de cliente"
+          onReorder={vi.fn()}
+          onMove={vi.fn()}
+          onResize={vi.fn()}
+          onToggleVisibility={vi.fn()}
+        >Cliente</TableLayoutHeaderCell>
+        <TableLayoutHeaderCell
+          column={{ key: "status", width: 120, visible: true }}
+          resizeLabel="Cambiar ancho de estado"
+          onReorder={vi.fn()}
+          onMove={vi.fn()}
+          onResize={vi.fn()}
+          onToggleVisibility={vi.fn()}
+        >Estado</TableLayoutHeaderCell>
+      </tr></thead></table>
+    );
+
+    const menuButtons = screen.getAllByRole("button", { name: "Opciones de columna" });
+    fireEvent.click(menuButtons[0]);
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(menuButtons[0]).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.pointerDown(menuButtons[1]);
+    fireEvent.click(menuButtons[1]);
+
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(menuButtons[0]).toHaveAttribute("aria-expanded", "false");
+    expect(menuButtons[1]).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("keeps the column editor open while scrolling and modifying several columns", async () => {
     const onToggleVisibility = vi.fn();
     render(

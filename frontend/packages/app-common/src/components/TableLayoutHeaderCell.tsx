@@ -191,9 +191,6 @@ export function TableLayoutHeaderCell<Key extends string>({
       aria-haspopup="menu"
       aria-expanded={menuOpen}
       title={copy.menu}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-      }}
       onClick={toggleMenu}
     >
       <DotsThreeVertical aria-hidden="true" weight="bold" />
