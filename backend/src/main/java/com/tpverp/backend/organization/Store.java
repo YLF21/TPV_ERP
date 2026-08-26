@@ -107,6 +107,10 @@ public class Store {
         return moneda;
     }
 
+    public Map<String, String> getDireccion() {
+        return Map.copyOf(direccion);
+    }
+
     public String getNombreEfectivo() {
         return nombre == null ? empresa.getRazonSocial() : nombre;
     }

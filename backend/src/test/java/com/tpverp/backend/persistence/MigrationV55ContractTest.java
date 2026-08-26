@@ -39,7 +39,7 @@ class MigrationV55ContractTest {
         String schema = "tpv_erp_v55_" + UUID.randomUUID().toString().replace("-", "");
 
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(url, user, password)
                     .schemas(schema)
                     .defaultSchema(schema)

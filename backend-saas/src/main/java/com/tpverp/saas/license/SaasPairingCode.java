@@ -35,6 +35,16 @@ public class SaasPairingCode {
     @Column(name = "consumed_at")
     private Instant consumedAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consumed_installation_id")
+    private SaasInstallation consumedInstallation;
+
+    @Column(name = "link_recovery_token_hash", length = 64)
+    private String linkRecoveryTokenHash;
+
+    @Column(name = "previous_installation_token_hash", length = 64)
+    private String previousInstallationTokenHash;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
@@ -56,9 +66,13 @@ public class SaasPairingCode {
         this.company = company;
         this.store = store;
         this.license = license;
-        this.code = code;
+        this.code = LicenseProvisioningData.requiredCode(code, "code");
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;
+    }
+
+    public UUID getId() {
+        return id;
     }
 
     public SaasCompany getCompany() {
@@ -81,6 +95,26 @@ public class SaasPairingCode {
         return consumedAt;
     }
 
+    public SaasInstallation getConsumedInstallation() {
+        return consumedInstallation;
+    }
+
+    public boolean hasLinkRecoveryTokenHash(String value) {
+        return constantTimeEquals(linkRecoveryTokenHash, value);
+    }
+
+    public boolean hasPreviousInstallationTokenHash(String value) {
+        return constantTimeEquals(previousInstallationTokenHash, value);
+    }
+
+    public boolean hasRetryCredentialContext() {
+        return linkRecoveryTokenHash != null || previousInstallationTokenHash != null;
+    }
+
+    public boolean hasLinkRecoveryCredentialContext() {
+        return linkRecoveryTokenHash != null;
+    }
+
     public Instant getExpiresAt() {
         return expiresAt;
     }
@@ -89,11 +123,46 @@ public class SaasPairingCode {
         return consumedAt == null && expiresAt.isAfter(now);
     }
 
-    public void consume(Instant now) {
+    public void consume(Instant now, SaasInstallation installation) {
+        consume(now, installation, null, null);
+    }
+
+    public void consume(
+            Instant now,
+            SaasInstallation installation,
+            String recoveryTokenHash,
+            String previousTokenHash) {
+        if (installation == null) {
+            throw new IllegalArgumentException("La instalacion consumidora es obligatoria");
+        }
+        if (consumedAt != null || consumedInstallation != null) {
+            throw new IllegalStateException("El codigo de enlace ya esta consumido");
+        }
         consumedAt = now;
+        consumedInstallation = installation;
+        linkRecoveryTokenHash = recoveryTokenHash;
+        previousInstallationTokenHash = previousTokenHash;
+    }
+
+    public void rememberPreviousInstallationTokenHash(String value) {
+        if (previousInstallationTokenHash != null) {
+            return;
+        }
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("previousInstallationTokenHash es obligatorio");
+        }
+        previousInstallationTokenHash = value;
     }
 
     public void expire(Instant now) {
         expiresAt = now;
+    }
+
+    private static boolean constantTimeEquals(String expected, String actual) {
+        return expected != null
+                && actual != null
+                && java.security.MessageDigest.isEqual(
+                        expected.getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                        actual.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
     }
 }

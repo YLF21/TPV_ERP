@@ -2,13 +2,13 @@ package com.tpverp.backend.party.loyalty.central;
 
 import java.util.UUID;
 import java.util.Optional;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
 @Profile("!dev")
-@ConditionalOnProperty(name = "tpv.sync.central-url", havingValue = "", matchIfMissing = true)
+@ConditionalOnExpression("'${tpv.sync.central-url:}' == ''")
 public class DisabledMemberBalanceCentralGateway implements MemberBalanceCentralGateway {
 
     @Override

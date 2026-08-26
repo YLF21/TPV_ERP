@@ -136,12 +136,38 @@ export type TicketPaymentPrint = {
   reference?: string;
 };
 
+export type FiscalPrintSnapshot = {
+  formatVersion: string;
+  generatorVersion: string;
+  mode: "NO_VERIFACTU" | "VERIFACTU";
+  environment: "TEST" | "PRODUCTION";
+  qrUrl: string;
+  qrPayloadSha256: string;
+  prefix: string;
+  legend?: string | null;
+  testNotice?: string | null;
+  issuerName?: string | null;
+  issuerTaxId?: string | null;
+  issuerAddress?: {
+    linea1?: string;
+    codigoPostal?: string;
+    ciudad?: string;
+    provincia?: string;
+    pais?: string;
+    telefono?: string;
+    email?: string;
+  } | null;
+};
+
 export type TicketPrintRequest = {
   requireRenderedDocument?: boolean;
   layout?: "STANDARD" | "GIFT_RECEIPT" | "CANCELLATION_RECEIPT";
   title?: string;
   notice?: string;
   logo?: string;
+  qrUrl?: string;
+  qrImage?: string;
+  fiscal?: FiscalPrintSnapshot;
   documentRaster?: string;
   renderedPdf?: { contentType: "application/pdf"; base64: string };
   notes?: string[];
@@ -188,6 +214,7 @@ export type A4DocumentPrintRequest = {
   bankAccounts?: Array<{ bankName: string; iban: string }>;
   qrUrl?: string;
   qrImage?: string;
+  fiscal?: FiscalPrintSnapshot;
   renderedPdf?: { contentType: "application/pdf"; base64: string };
   metadata?: Array<{ label: string; value: string }>;
   notes?: string[];

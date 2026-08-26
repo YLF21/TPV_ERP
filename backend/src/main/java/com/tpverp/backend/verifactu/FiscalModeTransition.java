@@ -31,19 +31,29 @@ public class FiscalModeTransition {
     private FiscalModeTransitionStatus status;
     @Column(name = "fecha_fin_verifactu") private LocalDate verifactuEndDate;
     @Column(name = "ack_aeat", length = 128) private String aeatAckReference;
+    @Column(name = "transicion_origen_id") private UUID sourceTransitionId;
+    @Column(name = "ultimo_error_codigo", length = 64) private String lastErrorCode;
+    @Column(name = "ultimo_error", columnDefinition = "text") private String lastError;
 
     protected FiscalModeTransition() {}
 
     public FiscalModeTransition(UUID companyId, UUID installationId, FiscalMode previousMode,
             FiscalMode newMode, Instant requestedAt, String cause, String reason,
             long expectedVersion) {
+        this(companyId, installationId, previousMode, newMode, requestedAt, requestedAt,
+                cause, reason, expectedVersion);
+    }
+
+    public FiscalModeTransition(UUID companyId, UUID installationId, FiscalMode previousMode,
+            FiscalMode newMode, Instant requestedAt, Instant effectiveAt,
+            String cause, String reason, long expectedVersion) {
         this.id = UUID.randomUUID();
         this.companyId = companyId;
         this.installationId = installationId;
         this.previousMode = previousMode;
         this.newMode = newMode;
         this.requestedAt = requestedAt;
-        this.effectiveAt = requestedAt;
+        this.effectiveAt = effectiveAt;
         this.causa = cause;
         this.motivo = reason;
         this.expectedVersion = expectedVersion;
@@ -79,6 +89,38 @@ public class FiscalModeTransition {
     public FiscalModeTransitionStatus getStatus() { return status; }
     public LocalDate getVerifactuEndDate() { return verifactuEndDate; }
     public String getAeatAckReference() { return aeatAckReference; }
+    public UUID getSourceTransitionId() { return sourceTransitionId; }
+    public String getLastErrorCode() { return lastErrorCode; }
+    public String getLastError() { return lastError; }
     public long getExpectedVersion() { return expectedVersion; }
+    public String getCause() { return causa; }
     public String getReason() { return motivo; }
+
+    static FiscalModeTransition failed(
+            FiscalModeTransition scheduled,
+            Instant failedAt,
+            String errorCode,
+            String error) {
+        var failureEffectiveAt = failedAt.equals(scheduled.getEffectiveAt())
+                ? failedAt.plusMillis(1) : failedAt;
+        var failure = new FiscalModeTransition(
+                scheduled.getCompanyId(), scheduled.getInstallationId(),
+                scheduled.getPreviousMode(), scheduled.getNewMode(), failedAt,
+                failureEffectiveAt, "SCHEDULED_WORKER",
+                "Fallo al aplicar la transicion programada",
+                scheduled.getExpectedVersion(), scheduled.getVerifactuEndDate(),
+                scheduled.getAeatAckReference());
+        failure.status = FiscalModeTransitionStatus.FALLIDA;
+        failure.sourceTransitionId = scheduled.getId();
+        failure.lastErrorCode = required(errorCode, "errorCode");
+        failure.lastError = required(error, "error");
+        return failure;
+    }
+
+    private static String required(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " es obligatorio");
+        }
+        return value.trim();
+    }
 }

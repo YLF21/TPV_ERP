@@ -549,9 +549,15 @@ public class SalePaymentSessionService {
       queueMemberBalanceFinalization(finalized.session());
       var printTicket = documents.renderTicketPrintView(
              finalized.ticket(), finalized.printTicket());
+      var additionalPrintTickets = finalized.additionalPrintDocuments().stream()
+              .map(document -> documents.renderTicketPrintView(
+                      document, documents.ticketPrintView(document)))
+              .toList();
      return new Finalization(
              finalized.session(),
              printTicket,
+             additionalPrintTickets,
+             finalized.nonFiscalSummary(),
              issuedVoucher(finalized.issuedVoucher(), finalized.originTicketNumber()));
  }
  private TransactionalFinalization finalizeTransaction(
@@ -565,10 +571,24 @@ public class SalePaymentSessionService {
      var session = scoped(sessions.findLocked(id).orElseThrow(), auth);
      if (session.getTicketId() != null) {
          var ticket = documents.loadForPrint(session.getTicketId());
+         var compensatingOrigin = documents.findCompensatingOrigin(session.getTicketId());
+         if (compensatingOrigin.isPresent()) {
+             var refund = compensatingOrigin.orElseThrow();
+             return new TransactionalFinalization(
+                     session,
+                     ticket,
+                     documents.ticketPrintView(ticket),
+                     List.of(refund),
+                     documents.ticketPrintViewFromExchange(ticket, refund),
+                     issuedVoucherFor(ticket),
+                     ticket.getNumero());
+         }
          return new TransactionalFinalization(
                  session,
                  ticket,
                  documents.loadTicketPrintView(session.getTicketId()),
+                 List.of(),
+                 null,
                  issuedVoucherFor(ticket),
                  ticket.getNumero());
      }
@@ -679,6 +699,8 @@ public class SalePaymentSessionService {
      }
       CommercialDocument ticket;
       TicketPrintView printTicket;
+      List<CommercialDocument> additionalPrintDocuments = List.of();
+      TicketPrintView nonFiscalSummary = null;
       Voucher issuedVoucher = null;
       if (session.getDirection() == SalePaymentSessionDirection.REFUND) {
          var payouts = approved.stream().map(allocation ->
@@ -771,7 +793,9 @@ public class SalePaymentSessionService {
                                          null, null, ticket.getNumero())),
                                  auth);
              }
-             printTicket = documents.ticketPrintViewFromExchange(ticket, refund);
+            printTicket = documents.ticketPrintView(ticket);
+            additionalPrintDocuments = List.of(refund);
+            nonFiscalSummary = documents.ticketPrintViewFromExchange(ticket, refund);
          } else {
              ticket = refund;
              printTicket = documents.ticketPrintView(refund);
@@ -803,7 +827,8 @@ public class SalePaymentSessionService {
      }
      var saved = sessions.save(session);
      return new TransactionalFinalization(
-             saved, ticket, printTicket, issuedVoucher, ticket.getNumero());
+             saved, ticket, printTicket, additionalPrintDocuments,
+             nonFiscalSummary, issuedVoucher, ticket.getNumero());
  }
  public SalePaymentSession cancel(UUID id,Authentication auth){return Objects.requireNonNull(transactions.execute(ignored->{var s=scoped(sessions.findLocked(id).orElseThrow(),auth);s.cancel();sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));}
  public SalePaymentSession discardSimulation(UUID id,String reason,Authentication auth){return Objects.requireNonNull(transactions.execute(ignored->{var normalizedReason=SimulatorDiscardReason.require(reason);var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var configuration=configurations.required(s.getTerminalId());if(!configuration.terminalId().equals(s.getTerminalId())||!configuration.storeId().equals(s.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(!configuration.testMode())throw new IllegalStateException("simulator_discard_requires_test_mode");s.discardSimulation(normalizedReason,requireUser(auth).getId());sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));}
@@ -816,16 +841,14 @@ public class SalePaymentSessionService {
               || session.getMemberBalanceSynchronizedAt() != null) {
          return;
      }
-     try {
-         memberBalanceProtocol.markTicketCommitted(
-                 session.getMemberBalanceReservationId(), session.getTicketId());
-         var reservation = memberBalanceProtocol.finalizePrepared(
-                 session.getMemberBalanceReservationId());
-         if (reservation.getStatus() == LocalMemberBalanceReservationStatus.CONSUMED) {
-             markMemberBalanceSynchronized(sessionId);
-         }
-     } catch (RuntimeException error) {
-         LOGGER.warn("Queda pendiente finalizar el saldo socio de la sesion {}", sessionId, error);
+     memberBalanceProtocol.markTicketCommitted(
+             session.getMemberBalanceReservationId(), session.getTicketId());
+     var reservation = memberBalanceProtocol.finalizePrepared(
+             session.getMemberBalanceReservationId());
+     if (reservation.getStatus() == LocalMemberBalanceReservationStatus.CONSUMED) {
+         markMemberBalanceSynchronized(sessionId);
+     } else {
+         throw new IllegalStateException("member_balance_finalization_pending");
      }
  }
 
@@ -838,14 +861,12 @@ public class SalePaymentSessionService {
              || session.getStatus() != SalePaymentSessionStatus.CANCELLED) {
          return;
      }
-     try {
-         var reservation = memberBalanceProtocol.abortPrepared(
-                 session.getMemberBalanceReservationId());
-         if (reservation.isClosed()) {
-             markMemberBalanceSynchronized(sessionId);
-         }
-     } catch (RuntimeException error) {
-         LOGGER.warn("Queda pendiente abortar el saldo socio de la sesion {}", sessionId, error);
+     var reservation = memberBalanceProtocol.abortPrepared(
+             session.getMemberBalanceReservationId());
+     if (reservation.isClosed()) {
+         markMemberBalanceSynchronized(sessionId);
+     } else {
+         throw new IllegalStateException("member_balance_abort_pending");
      }
  }
 
@@ -1284,16 +1305,36 @@ public class SalePaymentSessionService {
  public record Finalization(
          SalePaymentSession session,
          TicketPrintView printTicket,
+         List<TicketPrintView> additionalPrintTickets,
+         TicketPrintView nonFiscalSummary,
          IssuedVoucher issuedVoucher) {
      public Finalization(SalePaymentSession session, TicketPrintView printTicket) {
-         this(session, printTicket, null);
+         this(session, printTicket, List.of(), null, null);
+     }
+     public Finalization(
+             SalePaymentSession session,
+             TicketPrintView printTicket,
+             IssuedVoucher issuedVoucher) {
+         this(session, printTicket, List.of(), null, issuedVoucher);
+     }
+     public Finalization {
+         additionalPrintTickets = additionalPrintTickets == null
+                 ? List.of()
+                 : List.copyOf(additionalPrintTickets);
      }
  }
  private record TransactionalFinalization(
          SalePaymentSession session,
          CommercialDocument ticket,
          TicketPrintView printTicket,
+         List<CommercialDocument> additionalPrintDocuments,
+         TicketPrintView nonFiscalSummary,
          Voucher issuedVoucher,
          String originTicketNumber) {
+     private TransactionalFinalization {
+         additionalPrintDocuments = additionalPrintDocuments == null
+                 ? List.of()
+                 : List.copyOf(additionalPrintDocuments);
+     }
  }
 }

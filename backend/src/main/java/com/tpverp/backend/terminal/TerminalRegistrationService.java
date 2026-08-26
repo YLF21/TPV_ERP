@@ -125,7 +125,14 @@ public class TerminalRegistrationService {
         if (installationStatusService.status().mode() == OperationalMode.RESTRICTED) {
             throw new IllegalStateException("message.terminal.approval_requires_demo_or_license");
         }
-        Terminal terminal = currentTerminal(terminalId);
+        UUID storeId = currentStore().getId();
+        // Serializa las aprobaciones de una misma tienda para que dos altas
+        // simultaneas no puedan superar el cupo Windows/PDA observado.
+        tiendaRepository.findByIdForUpdate(storeId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message.organization.store_not_found"));
+        Terminal terminal = terminalRepository.findByIdAndTiendaId(terminalId, storeId)
+                .orElseThrow(() -> new IllegalArgumentException("message.terminal.not_found"));
         if (!terminal.isAprobada()) {
             validateQuota(terminal);
             terminal.approve();

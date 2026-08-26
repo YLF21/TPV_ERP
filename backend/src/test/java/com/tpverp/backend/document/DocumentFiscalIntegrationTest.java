@@ -250,6 +250,7 @@ class DocumentFiscalIntegrationTest {
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-08-03T13:20:22Z"),
                 mode,
-                mode == OperationalMode.DEVELOPMENT ? null : "LICENSE");
+                mode == OperationalMode.DEVELOPMENT ? null : "LICENSE",
+                true);
     }
 }

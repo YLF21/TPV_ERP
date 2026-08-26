@@ -7,7 +7,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "saas_company")
@@ -34,6 +38,10 @@ public class SaasCompany {
     @Column(name = "commercial_profile", nullable = false)
     private CommercialProfile commercialProfile = CommercialProfile.MAYORISTA;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "company_address", columnDefinition = "jsonb")
+    private Map<String, String> companyAddress;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -46,6 +54,12 @@ public class SaasCompany {
 
     public SaasCompany(UUID id, String name, String taxId, TaxpayerType taxpayerType,
             TaxRegime taxRegime, CommercialProfile commercialProfile, Instant createdAt) {
+        this(id, name, taxId, taxpayerType, taxRegime, commercialProfile, null, createdAt);
+    }
+
+    public SaasCompany(UUID id, String name, String taxId, TaxpayerType taxpayerType,
+            TaxRegime taxRegime, CommercialProfile commercialProfile,
+            Map<String, String> companyAddress, Instant createdAt) {
         this.id = id;
         this.name = name;
         this.taxId = taxId;
@@ -53,6 +67,7 @@ public class SaasCompany {
         this.taxRegime = taxRegime;
         this.commercialProfile = commercialProfile == null
                 ? CommercialProfile.MAYORISTA : commercialProfile;
+        this.companyAddress = copy(companyAddress);
         this.createdAt = createdAt;
     }
 
@@ -80,8 +95,8 @@ public class SaasCompany {
         return commercialProfile;
     }
 
-    public void updateData(String name, TaxpayerType taxpayerType, TaxRegime taxRegime) {
-        updateData(name, taxpayerType, taxRegime, CommercialProfile.MAYORISTA);
+    public Map<String, String> getCompanyAddress() {
+        return companyAddress == null ? null : Map.copyOf(companyAddress);
     }
 
     public void updateData(String name, TaxpayerType taxpayerType, TaxRegime taxRegime,
@@ -89,7 +104,16 @@ public class SaasCompany {
         this.name = name;
         this.taxpayerType = taxpayerType;
         this.taxRegime = taxRegime;
-        this.commercialProfile = commercialProfile == null
-                ? CommercialProfile.MAYORISTA : commercialProfile;
+        this.commercialProfile = java.util.Objects.requireNonNull(
+                commercialProfile, "commercialProfile");
+    }
+
+    public void updateFiscalAddress(Map<String, String> companyAddress) {
+        this.companyAddress = copy(LicenseProvisioningData.fiscalAddress(
+                companyAddress, "companyAddress"));
+    }
+
+    private static Map<String, String> copy(Map<String, String> value) {
+        return value == null ? null : new LinkedHashMap<>(value);
     }
 }

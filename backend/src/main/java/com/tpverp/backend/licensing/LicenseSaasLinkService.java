@@ -10,6 +10,7 @@ import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
@@ -31,15 +32,19 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 public class LicenseSaasLinkService {
 
     private final InstallationRepository installations;
     private final CompanyRepository companies;
     private final StoreRepository stores;
+    private final CurrentOrganization organization;
     private final LicenseRepository licenses;
     private final LicenseSaasLinkClient client;
     private final LicenseSaasCredentialStore credentials;
+    private final LicenseSaasCacheAuthenticator cacheAuthenticator;
     private final TerminalRepository terminals;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
@@ -51,9 +56,11 @@ public class LicenseSaasLinkService {
             InstallationRepository installations,
             CompanyRepository companies,
             StoreRepository stores,
+            CurrentOrganization organization,
             LicenseRepository licenses,
             LicenseSaasLinkClient client,
             LicenseSaasCredentialStore credentials,
+            LicenseSaasCacheAuthenticator cacheAuthenticator,
             TerminalRepository terminals,
             PasswordEncoder passwordEncoder,
             Clock clock,
@@ -63,9 +70,11 @@ public class LicenseSaasLinkService {
         this.installations = installations;
         this.companies = companies;
         this.stores = stores;
+        this.organization = organization;
         this.licenses = licenses;
         this.client = client;
         this.credentials = credentials;
+        this.cacheAuthenticator = cacheAuthenticator;
         this.terminals = terminals;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
@@ -75,26 +84,113 @@ public class LicenseSaasLinkService {
     }
 
     @Transactional
-    public LicenseSaasLinkResult link(String pairingCode) {
+    public synchronized LicenseSaasLinkResult link(String pairingCode, UUID localStoreId) {
+        if (stores.count() == 0) {
+            throw new LicenseValidationException(
+                    "La base esta vacia; use la ruta de aprovisionamiento inicial SaaS");
+        }
+        Store authenticatedStore = organization.currentStore();
+        if (localStoreId != null && !localStoreId.equals(authenticatedStore.getId())) {
+            throw new LicenseValidationException(
+                    "localStoreId no coincide con la tienda de la sesion autenticada");
+        }
+        return link(pairingCode, Optional.of(authenticatedStore));
+    }
+
+    @Transactional
+    public synchronized LicenseSaasLinkResult bootstrapEmptyDatabase(String pairingCode) {
+        if (!businessDatabaseIsEmpty()) {
+            throw new LicenseValidationException(
+                    "El aprovisionamiento inicial solo esta permitido con la base vacia");
+        }
+        return link(pairingCode, Optional.empty());
+    }
+
+    private boolean businessDatabaseIsEmpty() {
+        return companies.count() == 0
+                && stores.count() == 0
+                && licenses.count() == 0
+                && terminals.count() == 0;
+    }
+
+    private LicenseSaasLinkResult link(String pairingCode, Optional<Store> existingStore) {
         Installation installation = currentInstallation();
-        Optional<Store> existingStore = stores.findAll().stream().findFirst();
         String normalizedCode = required(pairingCode, "pairingCode");
+        validateSingleSaasStoreBinding(installation, existingStore);
+        // This credential must be durable before SaaS can consume the one-time
+        // pairing code. If the HTTP response is lost, the same local attempt can
+        // prove ownership without ever knowing the first installation token.
+        String recoveryToken = credentials.getOrCreateLinkRecoveryToken();
         LicenseSaasLinkResponse response = client.link(existingStore
                 .map(store -> requestWithLocalStore(normalizedCode, installation, store))
-                .orElseGet(() -> requestWithoutLocalStore(normalizedCode, installation)));
+                .orElseGet(() -> requestWithoutLocalStore(normalizedCode, installation)),
+                recoveryToken);
+        LicenseSaasLinkResponseContract.requireCurrent(response);
         Store store = resolveStore(response, existingStore);
         Terminal server = ensureServerTerminal(store);
-        activateLinkedLicense(installation, store, response);
+        // La nueva credencial queda protegida antes de usarla como clave HMAC.
+        // Si la transaccion local falla, el secreto de recuperacion se conserva.
         credentials.writeToken(response.installationToken());
+        activateLinkedLicense(installation, store, response);
         auditService.record(
                 "LICENSE_SAAS_LINKED",
                 AuditResult.EXITO,
                 Map.of("reference", response.licenseReference(), "saasStoreId", response.storeId()));
+        clearLinkRecoveryTokenAfterCommit();
         return new LicenseSaasLinkResult(
                 response,
                 store.getEmpresa().getId(),
                 store.getId(),
                 server.getId());
+    }
+
+    private void validateSingleSaasStoreBinding(
+            Installation installation,
+            Optional<Store> requestedStore) {
+        var linkedLicenses = licenses.findByInstalacion_IdAndActivaTrue(installation.getId()).stream()
+                .filter(license -> license.isSaasLinked()
+                        || license.getSaasCompanyId() != null
+                        || license.getSaasStoreId() != null)
+                .toList();
+        if (linkedLicenses.isEmpty()) {
+            return;
+        }
+        if (linkedLicenses.stream().anyMatch(license ->
+                license.getSaasCompanyId() == null || license.getSaasStoreId() == null)) {
+            throw new LicenseValidationException(
+                    "La licencia SaaS activa no identifica de forma segura su empresa y tienda; "
+                            + "corrija la vinculacion antes de consumir otro codigo de enlace");
+        }
+        boolean sameLocalStore = requestedStore.isPresent()
+                && linkedLicenses.stream().allMatch(license ->
+                        license.getTiendaId().equals(requestedStore.get().getId()));
+        long saasStores = linkedLicenses.stream()
+                .map(License::getSaasStoreId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+        long references = linkedLicenses.stream()
+                .map(License::getReferencia)
+                .distinct()
+                .count();
+        if (!sameLocalStore || saasStores > 1 || references > 1) {
+            throw new LicenseValidationException(
+                    "Una instalacion local solo puede vincularse a una tienda SaaS; "
+                            + "desvincule o sustituya la instalacion antes de enlazar otra tienda");
+        }
+    }
+
+    private void clearLinkRecoveryTokenAfterCommit() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            credentials.clearLinkRecoveryToken();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                credentials.clearLinkRecoveryToken();
+            }
+        });
     }
 
     private Terminal ensureServerTerminal(Store store) {
@@ -124,7 +220,10 @@ public class LicenseSaasLinkService {
                 store.getId(),
                 store.getCodigoTienda(),
                 store.getEmpresa().getTaxId(),
-                store.getEmpresa().getRazonSocial());
+                store.getEmpresa().getRazonSocial(),
+                store.getEmpresa().getDomicilioFiscal(),
+                store.getDireccion(),
+                store.getTimezone());
     }
 
     private LicenseSaasLinkRequest requestWithoutLocalStore(String pairingCode, Installation installation) {
@@ -141,7 +240,7 @@ public class LicenseSaasLinkService {
 
     private Store resolveStore(LicenseSaasLinkResponse response, Optional<Store> existingStore) {
         if (existingStore.isPresent()) {
-            validateResponse(existingStore.get().getEmpresa(), response);
+            validateResponse(existingStore.get(), response);
             return existingStore.get();
         }
         validateOfficialOrganization(response);
@@ -155,7 +254,7 @@ public class LicenseSaasLinkService {
                 response.storeName(),
                 response.storeAddress(),
                 addressHash(response.storeAddress()),
-                "Atlantic/Canary",
+                required(response.timeZoneId(), "timeZoneId"),
                 "EUR",
                 "es-ES"));
         commercialBootstrap.initializeStore(store.getId(), company.getId());
@@ -173,13 +272,12 @@ public class LicenseSaasLinkService {
                     || !license.getInstalacionId().equals(installation.getId())) {
                 throw new LicenseValidationException("Esta licencia ya fue importada");
             }
-            if (response.commercialProfile() != null) {
-                license.updateCommercialProfile(response.commercialProfile());
-            }
+            license.updateCommercialProfile(response.commercialProfile());
             markSaasStatus(license, store, response, Instant.now(clock));
+            cacheAuthenticator.seal(license);
             licenses.save(license);
             updateDefaultTax(
-                    store.getId(), response.impuestos(), commercialProfile(response));
+                    store.getId(), response.impuestos(), response.commercialProfile());
             commercialBootstrap.ensureOpenPriceProduct(store.getId());
             return;
         }
@@ -197,7 +295,7 @@ public class LicenseSaasLinkService {
                 SpanishTaxId.normalize(taxId(response)),
                 response.taxpayerType(),
                 response.impuestos(),
-                commercialProfile(response),
+                response.commercialProfile(),
                 "SAAS_LINK:" + response.licenseReference(),
                 hash(response),
                 4,
@@ -207,9 +305,10 @@ public class LicenseSaasLinkService {
                 null,
                 true);
         markSaasStatus(license, store, response, now);
+        cacheAuthenticator.seal(license);
         licenses.save(license);
         updateDefaultTax(
-                store.getId(), response.impuestos(), commercialProfile(response));
+                store.getId(), response.impuestos(), response.commercialProfile());
         commercialBootstrap.ensureOpenPriceProduct(store.getId());
     }
 
@@ -231,14 +330,16 @@ public class LicenseSaasLinkService {
                     response.verifactuPolicyVersion(),
                     Objects.requireNonNull(response.verifactuPolicyUpdatedAt(), "verifactuPolicyUpdatedAt"));
         }
-        if (response.status() == LicenseSaasStatus.VALIDA) {
-            license.markSaasValidated(now, response.validUntil());
-        } else {
-            license.markSaasRejected(now, response.status(), response.validUntil());
-        }
+        license.applySaasLicenseSnapshot(
+                now,
+                response.status(),
+                response.validUntil(),
+                response.maxWindows(),
+                response.maxPda(),
+                response.licenseVersion());
     }
 
-    private void validateResponse(Company company, LicenseSaasLinkResponse response) {
+    private void validateResponse(Store store, LicenseSaasLinkResponse response) {
         Objects.requireNonNull(response, "response");
         required(response.licenseReference(), "licenseReference");
         Objects.requireNonNull(response.companyId(), "companyId");
@@ -253,6 +354,26 @@ public class LicenseSaasLinkService {
         if (response.maxWindows() < 1 || response.maxPda() < 0) {
             throw new LicenseValidationException("Los cupos de la licencia no son validos");
         }
+        if (response.licenseVersion() < 1) {
+            throw new LicenseValidationException("La version de licencia SaaS no es valida");
+        }
+        String responseStoreCode = required(response.storeCode(), "storeCode");
+        if (!store.getCodigoTienda().equals(responseStoreCode)) {
+            throw new LicenseValidationException(
+                    "El codigo de tienda de la licencia no coincide con la tienda local");
+        }
+        String responseTimeZone = required(response.timeZoneId(), "timeZoneId");
+        try {
+            responseTimeZone = com.tpverp.backend.organization.StoreFiscalIdentity.timezone(
+                    responseTimeZone);
+        } catch (IllegalArgumentException exception) {
+            throw new LicenseValidationException("La zona horaria de la licencia no es valida");
+        }
+        if (!store.getTimezone().equals(responseTimeZone)) {
+            throw new LicenseValidationException(
+                    "La zona horaria de la licencia no coincide con la tienda local");
+        }
+        Company company = store.getEmpresa();
         String normalized = SpanishTaxId.normalize(taxId(response));
         if (Company.DEMO_TAX_ID.equals(company.getTaxId())) {
             company.adoptLicensedTaxId(normalized);
@@ -264,9 +385,21 @@ public class LicenseSaasLinkService {
     }
 
     private void validateOfficialOrganization(LicenseSaasLinkResponse response) {
-        validateResponse(new Company(taxId(response), response.companyName(), response.companyAddress()), response);
-        required(response.storeCode(), "storeCode");
+        Objects.requireNonNull(response, "response");
+        required(response.licenseReference(), "licenseReference");
+        Objects.requireNonNull(response.companyId(), "companyId");
+        Objects.requireNonNull(response.storeId(), "storeId");
+        if (response.maxWindows() < 1 || response.maxPda() < 0 || response.licenseVersion() < 1) {
+            throw new LicenseValidationException("Los cupos o la version de licencia no son validos");
+        }
+        SpanishTaxId.validate(taxId(response));
+        com.tpverp.backend.organization.StoreFiscalIdentity.code(
+                required(response.storeCode(), "storeCode"));
+        com.tpverp.backend.organization.StoreFiscalIdentity.timezone(
+                required(response.timeZoneId(), "timeZoneId"));
+        required(response.companyName(), "companyName");
         required(response.storeName(), "storeName");
+        Objects.requireNonNull(response.companyAddress(), "companyAddress");
         Objects.requireNonNull(response.storeAddress(), "storeAddress");
     }
 
@@ -277,6 +410,8 @@ public class LicenseSaasLinkService {
         metadata.put("saasStoreId", response.storeId().toString());
         metadata.put("verifactuActivationDate", response.verifactuActivationDate().toString());
         metadata.put("verifactuPolicyVersion", response.verifactuPolicyVersion());
+        metadata.put("saasLicenseVersion", response.licenseVersion());
+        metadata.put("timeZoneId", response.timeZoneId());
         return metadata;
     }
 
@@ -286,6 +421,7 @@ public class LicenseSaasLinkService {
                     + "|" + response.companyId()
                     + "|" + response.storeId()
                     + "|" + response.validUntil()
+                    + "|" + response.licenseVersion()
                     + "|" + response.verifactuActivationDate()
                     + "|" + response.verifactuPolicyVersion()
                     + "|" + response.installationToken();
@@ -336,13 +472,6 @@ public class LicenseSaasLinkService {
                     storeId,
                     percentage);
         }
-    }
-
-    private static CommercialProfile commercialProfile(
-            LicenseSaasLinkResponse response) {
-        return response.commercialProfile() == null
-                ? CommercialProfile.MAYORISTA
-                : response.commercialProfile();
     }
 
     private Installation currentInstallation() {

@@ -153,6 +153,34 @@ class VerifactuControllerContractTest {
     }
 
     @Test
+    void fiscalCommonApiSeparatesReadManageAndAdminOperations()
+            throws NoSuchMethodException {
+        assertThat(FiscalController.class.getAnnotation(RequestMapping.class).value())
+                .containsExactly("/api/v1/fiscal");
+
+        assertThat(FiscalController.class.getDeclaredMethod("status")
+                .getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(fiscalReadAuthorization());
+        assertThat(FiscalController.class.getDeclaredMethod("events")
+                .getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(fiscalReadAuthorization());
+        assertThat(FiscalController.class.getDeclaredMethod("integrityCheck")
+                .getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(fiscalManageAuthorization());
+        assertThat(FiscalController.class.getDeclaredMethod(
+                "export", FiscalExportRequest.class)
+                .getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(fiscalManageAuthorization());
+        assertAdminOnly(FiscalController.class.getDeclaredMethod(
+                "transition", FiscalController.ModeTransitionRequest.class));
+        assertAdminOnly(FiscalController.class.getDeclaredMethod(
+                "requiredSubmission", FiscalRequiredSubmissionRequest.class));
+        assertAdminOnly(FiscalController.class.getDeclaredMethod(
+                "requiredSubmissionExport", UUID.class,
+                FiscalRequiredSubmissionExportRequest.class));
+    }
+
+    @Test
     void exposesScopedManualRetryWithFiscalManagePermission() throws NoSuchMethodException {
         assertThat(VerifactuAdminActionController.class
                 .getAnnotation(RequestMapping.class).value())

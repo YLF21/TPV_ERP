@@ -123,7 +123,12 @@ type CheckoutMockProps = {
       requirePassword: boolean;
     };
   }> | null;
-  onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
+  onFinalized: (
+    printTicket: ConfirmedTicketPrintSnapshot,
+    summary: PaymentFinalizationSummary,
+    additionalPrintTickets?: ConfirmedTicketPrintSnapshot[],
+    nonFiscalSummary?: ConfirmedTicketPrintSnapshot,
+  ) => void;
 };
 
 const {
@@ -3461,6 +3466,46 @@ describe("SaleScreen", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+  });
+
+  it("prints exchange rectification before replacement and retries only the failed fiscal document", async () => {
+    const attempts = new Map<string, number>();
+    const printTicket = vi.fn(async (request: { documentNumber: string }) => {
+      const attempt = (attempts.get(request.documentNumber) ?? 0) + 1;
+      attempts.set(request.documentNumber, attempt);
+      if (request.documentNumber === "RECT-EXCHANGE" && attempt === 1) {
+        return { ok: false, code: "PRINT_FAILED", message: "paper jam" } as const;
+      }
+      return { ok: true } as const;
+    });
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    const replacement = printSnapshot("SALE-EXCHANGE");
+    const rectification = printSnapshot("RECT-EXCHANGE");
+    const summary = { ...printSnapshot("SUMMARY-EXCHANGE"), nonFiscalSummary: true };
+    act(() => checkoutProps.current?.onFinalized(
+      replacement,
+      { kind: "CASH", totalCents: 110, receivedCents: 110 },
+      [rectification],
+      summary,
+    ));
+
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
+    expect(printTicket.mock.calls.map(([request]) => request.documentNumber))
+      .toEqual(["RECT-EXCHANGE", "SALE-EXCHANGE"]);
+    expect(printTicket).not.toHaveBeenCalledWith(
+      expect.objectContaining({ documentNumber: "SUMMARY-EXCHANGE" }),
+      expect.anything(),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("El cobro se ha completado");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(3));
+    expect(printTicket.mock.calls[2][0].documentNumber).toBe("RECT-EXCHANGE");
+    await waitFor(() => expect(screen.getByRole("status"))
+      .toHaveTextContent("Ticket enviado a la impresora"));
   });
 
   it("prints the exact issued refund voucher and retries only its note", async () => {

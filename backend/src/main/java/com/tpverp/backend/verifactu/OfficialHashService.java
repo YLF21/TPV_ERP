@@ -46,7 +46,7 @@ public final class OfficialHashService {
                 + "&NIF=" + text(input.obligatedTaxId())
                 + "&TipoEvento=" + text(input.eventType())
                 + "&HuellaEvento=" + text(input.previousHash())
-                + "&FechaHoraHusoGenEvento=" + input.generatedAt());
+                + "&FechaHoraHusoGenEvento=" + GENERATED_AT.format(input.generatedAt()));
     }
 
     private static String number(BigDecimal value) {

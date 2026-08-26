@@ -1,27 +1,56 @@
 package com.tpverp.saas.license;
 
+import com.tpverp.saas.admin.LoginAttemptLimiter;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1/license")
 public class LicenseController {
 
+    private static final String PAIRING_CODE_SCOPE = "";
+
     private final LicenseLinkService linkService;
     private final LicenseValidationService validationService;
+    private final LoginAttemptLimiter attempts;
 
-    public LicenseController(LicenseLinkService linkService, LicenseValidationService validationService) {
+    public LicenseController(
+            LicenseLinkService linkService,
+            LicenseValidationService validationService,
+            LoginAttemptLimiter attempts) {
         this.linkService = linkService;
         this.validationService = validationService;
+        this.attempts = attempts;
     }
 
     @PostMapping("/link")
-    public LicenseSaasLinkResponse link(@Valid @RequestBody LicenseSaasLinkRequest request) {
-        return linkService.link(request);
+    public LicenseSaasLinkResponse link(
+            @Valid @RequestBody LicenseSaasLinkRequest request,
+            @RequestHeader(name = "X-TPV-Installation-Token", required = false) String previousToken,
+            @RequestHeader(name = "X-TPV-Link-Recovery-Token", required = false) String recoveryToken) {
+        String pairingCode = pairingAttemptKey(request.pairingCode());
+        if (attempts.blocked("license-link-code", pairingCode, PAIRING_CODE_SCOPE)) {
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "Demasiados intentos de enlace; vuelva a intentarlo mas tarde");
+        }
+        try {
+            LicenseSaasLinkResponse response = linkService.link(request, previousToken, recoveryToken);
+            attempts.success("license-link-code", pairingCode, PAIRING_CODE_SCOPE);
+            return response;
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode().is4xxClientError()
+                    && exception.getStatusCode() != HttpStatus.TOO_MANY_REQUESTS) {
+                attempts.failure("license-link-code", pairingCode, PAIRING_CODE_SCOPE);
+            }
+            throw exception;
+        }
     }
 
     @PostMapping("/validate")
@@ -29,5 +58,13 @@ public class LicenseController {
             @Valid @RequestBody LicenseSaasValidationRequest request,
             @RequestHeader(name = "X-TPV-Installation-Token", required = false) String token) {
         return validationService.validate(request, token);
+    }
+
+    private String pairingAttemptKey(String pairingCode) {
+        try {
+            return LicenseProvisioningData.requiredCode(pairingCode, "pairingCode");
+        } catch (IllegalArgumentException exception) {
+            return "INVALID-PAIRING-CODE";
+        }
     }
 }

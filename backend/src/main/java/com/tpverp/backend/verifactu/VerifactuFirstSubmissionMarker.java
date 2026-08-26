@@ -3,6 +3,7 @@ package com.tpverp.backend.verifactu;
 import com.tpverp.backend.licensing.LicenseRepository;
 import java.time.ZoneId;
 import java.time.LocalDate;
+import java.time.Clock;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,15 +15,27 @@ public class VerifactuFirstSubmissionMarker {
     private final VerifactuConfigurationRepository configurations;
     private final LicenseRepository licenses;
     private final VerifactuActivationService activation;
+    private final Clock clock;
     private FiscalRuntimeProperties runtime;
 
+    @Autowired
+    public VerifactuFirstSubmissionMarker(
+            VerifactuConfigurationRepository configurations,
+            LicenseRepository licenses,
+            VerifactuActivationService activation,
+            Clock clock) {
+        this.configurations = configurations;
+        this.licenses = licenses;
+        this.activation = activation;
+        this.clock = clock;
+    }
+
+    /** Compatibility constructor for focused embedders. */
     public VerifactuFirstSubmissionMarker(
             VerifactuConfigurationRepository configurations,
             LicenseRepository licenses,
             VerifactuActivationService activation) {
-        this.configurations = configurations;
-        this.licenses = licenses;
-        this.activation = activation;
+        this(configurations, licenses, activation, Clock.systemUTC());
     }
 
     @Autowired(required = false)
@@ -33,25 +46,33 @@ public class VerifactuFirstSubmissionMarker {
     @Transactional
     public void mark(FiscalRecord record) {
         var configuration = configuration(record);
-        if (configuration.getFirstSubmissionAt() != null) {
-            return;
-        }
         var license = licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
                         record.getStoreId(), record.getInstallationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No existe una licencia activa para la tienda e instalacion"));
-        activation.markFirstSubmission(
-                configuration,
-                license.getTaxpayerType(),
-                license.getVerifactuActivationDate(),
-                record.getGeneratedAt(),
-                ZoneId.of(record.getTimezone()));
-        if (runtime != null && runtime.runtimeClass() == FiscalRuntimeClass.REAL) {
-            var localSubmissionDate = record.getGeneratedAt()
-                    .atZone(ZoneId.of(record.getTimezone())).toLocalDate();
-            configuration.lockVerifactuUntil(localSubmissionDate.plusYears(1));
+        var acknowledgedAt = clock.instant();
+        var fiscalZone = ZoneId.of(record.getTimezone());
+        var firstSubmissionWasMissing = configuration.getFirstSubmissionAt() == null;
+        if (firstSubmissionWasMissing) {
+            activation.markFirstSubmission(
+                    configuration,
+                    license.getTaxpayerType(),
+                    license.getVerifactuActivationDate(),
+                    acknowledgedAt,
+                    fiscalZone);
         }
-        configurations.save(configuration);
+        var blockedUntilBefore = configuration.getVerifactuBlockedUntil();
+        if (runtime != null && runtime.runtimeClass() == FiscalRuntimeClass.REAL
+                && activation.isSifAdaptationRequired(
+                        license.getTaxpayerType(), acknowledgedAt, fiscalZone)) {
+            var localSubmissionDate = acknowledgedAt.atZone(fiscalZone).toLocalDate();
+            configuration.lockVerifactuUntil(LocalDate.of(localSubmissionDate.getYear(), 12, 31));
+        }
+        if (firstSubmissionWasMissing
+                || !java.util.Objects.equals(blockedUntilBefore,
+                        configuration.getVerifactuBlockedUntil())) {
+            configurations.save(configuration);
+        }
     }
     // Bloquea la reversibilidad tras la primera remision aceptada por AEAT.
 

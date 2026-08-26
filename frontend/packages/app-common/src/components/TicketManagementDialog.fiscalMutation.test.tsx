@@ -4,16 +4,21 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
-import { printConfirmedTicketAutomatically } from "../sale/ticketPrinting";
+import {
+  outputConfirmedTicketsSequentially,
+  printConfirmedTicketAutomatically
+} from "../sale/ticketPrinting";
 import { TicketManagementDialog } from "./TicketManagementDialog";
 
 vi.mock("../api/client", () => ({ apiRequest: vi.fn() }));
 vi.mock("../sale/ticketPrinting", () => ({
+  outputConfirmedTicketsSequentially: vi.fn(),
   printConfirmedTicketAutomatically: vi.fn()
 }));
 
 const request = vi.mocked(apiRequest);
 const printTicket = vi.mocked(printConfirmedTicketAutomatically);
+const printTicketSet = vi.mocked(outputConfirmedTicketsSequentially);
 
 const confirmedTicket = {
   id: "ticket-1",
@@ -36,6 +41,18 @@ const printSnapshot = {
   payments: [{ method: "EFECTIVO", amount: 10 }],
   total: 10
 };
+const rectificationPrintSnapshot = {
+  ...printSnapshot,
+  documentId: "refund-1",
+  documentNumber: "R-001",
+  total: -10
+};
+const nonFiscalSummary = {
+  ...printSnapshot,
+  documentId: "summary-1",
+  documentNumber: "CAMBIO-001",
+  nonFiscalSummary: true
+};
 const refundOptions = [{
   lineId: "line-1",
   code: "P-1",
@@ -55,13 +72,18 @@ beforeEach(() => {
   operationFailurePath = "";
   request.mockReset();
   printTicket.mockReset();
+  printTicketSet.mockReset();
   localStorage.clear();
   request.mockImplementation(async (path) => {
     if (path === "/tickets") return loadedTickets as never;
     if (path === "/customers/sale-options") return [customer] as never;
     if (path === "/vouchers") return [voucher] as never;
     if (path === "/tickets/ticket-1/return-options") return refundOptions as never;
-    if (path === "/tickets/ticket-1/print") return printSnapshot as never;
+    if (path === "/tickets/ticket-1/print-set") return {
+      printTicket: printSnapshot,
+      additionalPrintTickets: [rectificationPrintSnapshot],
+      nonFiscalSummary
+    } as never;
     if (path === operationFailurePath) throw new Error("operación rechazada");
     if (path === "/tickets/ticket-1/returns") {
       return { receipt: printSnapshot } as never;
@@ -72,6 +94,7 @@ beforeEach(() => {
     throw new Error(`Petición inesperada: ${path}`);
   });
   printTicket.mockResolvedValue({ status: "PRINTED" });
+  printTicketSet.mockResolvedValue({ status: "PRINTED" });
 });
 
 afterEach(() => {
@@ -143,7 +166,13 @@ describe("TicketManagementDialog onFiscalMutation", () => {
     renderDialog(onFiscalMutation);
 
     fireEvent.click(await screen.findByRole("button", { name: "Reimprimir ticket" }));
-    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(printTicketSet).toHaveBeenCalledWith(
+      [rectificationPrintSnapshot, printSnapshot],
+      { storeName: "Tienda", terminalCode: "01" },
+      "DEFAULT",
+      "es"
+    ));
+    expect(printTicketSet.mock.calls[0]?.[0]).not.toContain(nonFiscalSummary);
 
     fireEvent.change(screen.getByLabelText("Vale activo"), {
       target: { value: voucher.code }

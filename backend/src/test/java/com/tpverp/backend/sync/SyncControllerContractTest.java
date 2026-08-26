@@ -45,6 +45,22 @@ class SyncControllerContractTest {
     }
 
     @Test
+    void exponeIncidenciasYReintentoManualSoloParaAdmin() throws NoSuchMethodException {
+        var list = SyncController.class.getDeclaredMethod("incidents");
+        var retry = SyncController.class.getDeclaredMethod(
+                "retry", UUID.class, SyncController.ManualRetryRequest.class);
+
+        assertThat(list.getAnnotation(GetMapping.class).value())
+                .containsExactly("/outbox/incidents");
+        assertThat(list.getAnnotation(PreAuthorize.class).value())
+                .contains("hasRole('ADMIN')");
+        assertThat(retry.getAnnotation(PostMapping.class).value())
+                .containsExactly("/outbox/events/{eventId}/retry");
+        assertThat(retry.getAnnotation(PreAuthorize.class).value())
+                .contains("hasRole('ADMIN')");
+    }
+
+    @Test
     void flushResponseExponeEventosEnviados() {
         var response = new SyncOutboxFlushResponse(3);
 

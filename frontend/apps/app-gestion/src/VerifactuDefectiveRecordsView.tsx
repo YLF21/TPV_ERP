@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ErpSelect, TableSortButton, nextTableSort, useTableSortPreference, type LocaleCode } from "@tpverp/app-common";
+import {
+  ErpSelect,
+  TableLayoutHeaderCell,
+  nextTableSort,
+  useTableLayoutPreference,
+  useTableSortPreference,
+  visibleTableColumns,
+  type LocaleCode,
+  type TableColumnDefinition
+} from "@tpverp/app-common";
+import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
 import {
   loadVerifactuAdminDefectiveRecords,
   verifactuDocumentTypes,
@@ -8,6 +18,7 @@ import {
   type VerifactuAdminDefectiveRecordPage
 } from "./verifactuManagementApi";
 import {
+  formatVerifactuDate,
   formatVerifactuDateTime,
   verifactuOperationLabel,
   verifactuStatusLabel,
@@ -17,6 +28,16 @@ import {
 const defectiveStatuses = ["RECHAZADO", "DEFECTUOSO", "ACEPTADO_CON_ERRORES"] as const;
 const defectiveSortColumns = ["sequence", "document", "documentType", "fiscalOperation", "issueDate", "status", "updatedAt", "errorCode"] as const;
 type DefectiveSortColumn = typeof defectiveSortColumns[number];
+const defectiveColumnDefinitions = [
+  { key: "sequence", defaultWidth: 88 },
+  { key: "document", defaultWidth: 190 },
+  { key: "documentType", defaultWidth: 110 },
+  { key: "fiscalOperation", defaultWidth: 150 },
+  { key: "issueDate", defaultWidth: 120 },
+  { key: "status", defaultWidth: 150 },
+  { key: "updatedAt", defaultWidth: 180 },
+  { key: "errorCode", defaultWidth: 140 }
+] as const satisfies readonly TableColumnDefinition<DefectiveSortColumn>[];
 
 const emptyFilters: VerifactuAdminDefectiveFilters = {
   dateFrom: "",
@@ -35,6 +56,7 @@ const emptyPage: VerifactuAdminDefectiveRecordPage = {
 
 export function VerifactuDefectiveRecordsView({
   locale,
+  timezone = null,
   token,
   username,
   revision,
@@ -43,6 +65,7 @@ export function VerifactuDefectiveRecordsView({
   onOpenResolution
 }: {
   locale: LocaleCode;
+  timezone?: string | null;
   token?: string;
   username: string;
   revision: number;
@@ -57,6 +80,14 @@ export function VerifactuDefectiveRecordsView({
     columns: defectiveSortColumns,
     defaultSort: null
   });
+  const tableLayout = useTableLayoutPreference({
+    app: "gestion",
+    username,
+    accessToken: token,
+    tableKey: "gestion.verifactu.defective",
+    definitions: defectiveColumnDefinitions
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
   const initialFilters = { ...emptyFilters, sortBy: sorting.sort?.column, sortDirection: sorting.sort?.direction };
   const [draft, setDraft] = useState<VerifactuAdminDefectiveFilters>(initialFilters);
   const [filters, setFilters] = useState<VerifactuAdminDefectiveFilters>(initialFilters);
@@ -64,6 +95,7 @@ export function VerifactuDefectiveRecordsView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [filterError, setFilterError] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const request = useRef(0);
 
   useEffect(() => {
@@ -98,14 +130,16 @@ export function VerifactuDefectiveRecordsView({
     ...verifactuOperations.map((operation) => ({ value: operation, label: verifactuOperationLabel(operation, t) }))
   ], [t]);
 
-  function apply(event: FormEvent) {
+  function apply(event: FormEvent): boolean {
     event.preventDefault();
     if (draft.dateFrom && draft.dateTo && draft.dateFrom > draft.dateTo) {
       setFilterError(true);
-      return;
+      return false;
     }
     setFilterError(false);
     setFilters({ ...draft, page: 0 });
+    setFiltersOpen(false);
+    return true;
   }
 
   function clear() {
@@ -124,7 +158,18 @@ export function VerifactuDefectiveRecordsView({
 
   return (
     <div className="gestion-verifactu-defective">
-      <form className="gestion-verifactu-filters" onSubmit={apply}>
+      {filtersOpen && <FiscalWorkspaceDialog
+        id="verifactu-defective-filters"
+        title={t("verifactu.ui.filters")}
+        closeLabel={t("verifactu.ui.close")}
+        onClose={() => setFiltersOpen(false)}
+        purpose="filters"
+        footer={<>
+          <button type="button" onClick={clear}>{t("verifactu.management.clearFilters")}</button>
+          <button type="submit" form="verifactu-defective-filters-form" className="primary">{t("verifactu.management.applyFilters")}</button>
+        </>}
+      >
+      <form id="verifactu-defective-filters-form" className="gestion-verifactu-filters" onSubmit={(event) => { apply(event); }}>
         <label>
           <span>{t("verifactu.management.dateFrom")}</span>
           <input type="date" value={draft.dateFrom} onChange={(event) => setDraft({ ...draft, dateFrom: event.target.value })} />
@@ -164,12 +209,9 @@ export function VerifactuDefectiveRecordsView({
           <span>{t("verifactu.management.documentNumber")}</span>
           <input maxLength={64} value={draft.documentNumber} onChange={(event) => setDraft({ ...draft, documentNumber: event.target.value })} />
         </label>
-        <div className="gestion-verifactu-filter-actions">
-          <button type="submit" className="primary">{t("verifactu.management.applyFilters")}</button>
-          <button type="button" onClick={clear}>{t("verifactu.management.clearFilters")}</button>
-        </div>
         {filterError && <p role="alert">{t("verifactu.management.invalidDateRange")}</p>}
       </form>
+      </FiscalWorkspaceDialog>}
 
       <section className="gestion-verifactu-table-panel">
         <header>
@@ -177,7 +219,19 @@ export function VerifactuDefectiveRecordsView({
             <h3>{t("verifactu.management.defectiveTitle")}</h3>
             <span>{page.totalElements} {t("verifactu.management.records")}</span>
           </div>
-          {loading && <span className="gestion-verifactu-loading" role="status" aria-live="polite">{t("verifactu.management.updating")}</span>}
+          <div className="fiscal-records-toolbar">
+            {loading && <span className="gestion-verifactu-loading" role="status" aria-live="polite">{t("verifactu.management.updating")}</span>}
+            <button
+              type="button"
+              className="gestion-verifactu-filter-trigger"
+              aria-haspopup="dialog"
+              aria-expanded={filtersOpen}
+              aria-label={`${t("verifactu.ui.filters")}${countActiveFilters(filters) ? ` (${countActiveFilters(filters)})` : ""}`}
+              onClick={() => setFiltersOpen(true)}
+            >
+              {t("verifactu.ui.filters")}{countActiveFilters(filters) ? ` (${countActiveFilters(filters)})` : ""}
+            </button>
+          </div>
         </header>
         {!loading && error ? (
           <div className="gestion-verifactu-message error" role="alert">{t("verifactu.management.defectiveError")}</div>
@@ -185,23 +239,34 @@ export function VerifactuDefectiveRecordsView({
           <div className="gestion-verifactu-message">{t("verifactu.management.emptyDefective")}</div>
         ) : (
           <div className="gestion-verifactu-table-scroll">
-            <table className="gestion-verifactu-table">
-              <thead><tr>
-                {defectiveSortColumns.map((column) => { const label = t(`verifactu.management.${column}`); return <th aria-sort={sorting.sort?.column === column ? (sorting.sort.direction === "asc" ? "ascending" : "descending") : "none"} key={column}><TableSortButton label={label} direction={sorting.sort?.column === column ? sorting.sort.direction : null} onSort={() => changeSort(column)}>{label}</TableSortButton></th>; })}
-                <th>{t("verifactu.management.attempts")}</th>
-                <th>{t("verifactu.resolution.actions")}</th>
-              </tr></thead>
-              <tbody>{page.items.map((item) => (
-                <tr key={item.recordId}>
-                  <td>{item.sequence}</td>
-                  <td>{item.documentNumber}</td>
-                  <td>{item.documentType}</td>
-                  <td>{verifactuOperationLabel(item.operation, t)}</td>
-                  <td>{formatDate(item.issueDate, locale)}</td>
-                  <td><span className={`gestion-verifactu-state state-${item.status.toLowerCase()}`}>{verifactuStatusLabel(item.status, t)}</span></td>
-                  <td>{formatVerifactuDateTime(item.updatedAt, locale)}</td>
-                  <td>{item.errorCode || "—"}</td>
-                  <td>
+          <table className="gestion-verifactu-table" aria-rowcount={page.totalElements}>
+            <colgroup>
+              {visibleColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}
+              <col style={{ width: "170px" }} />
+              <col style={{ width: "170px" }} />
+            </colgroup>
+            <thead><tr>
+              {visibleColumns.map((column) => {
+                const label = t(`verifactu.management.${column.key}`);
+                return <TableLayoutHeaderCell
+                  column={column}
+                  key={column.key}
+                  sortDirection={sorting.sort?.column === column.key ? sorting.sort.direction : null}
+                  sortLabel={label}
+                  onSort={changeSort}
+                  resizeLabel={`${t("verifactu.ui.resizeColumn")} ${label}`}
+                  onReorder={tableLayout.reorderColumns}
+                  onMove={tableLayout.moveColumn}
+                  onResize={tableLayout.resizeColumn}
+                >{label}</TableLayoutHeaderCell>;
+              })}
+              <th>{t("verifactu.management.attempts")}</th>
+              <th>{t("verifactu.resolution.actions")}</th>
+            </tr></thead>
+            <tbody>{page.items.map((item) => (
+              <tr key={item.recordId}>
+                {visibleColumns.map((column) => <td data-column-key={column.key} key={column.key}>{renderDefectiveCell(item, column.key, locale, timezone, t)}</td>)}
+                <td>
                     <button
                       type="button"
                       className="gestion-verifactu-link-button"
@@ -223,7 +288,7 @@ export function VerifactuDefectiveRecordsView({
                   </td>
                 </tr>
               ))}</tbody>
-            </table>
+          </table>
           </div>
         )}
         <footer className="gestion-verifactu-pagination">
@@ -240,7 +305,24 @@ function selectedLabel(options: readonly { value: string; label: string }[], val
   return options.find((option) => option.value === value)?.label ?? "—";
 }
 
-function formatDate(value: string, _locale: LocaleCode) {
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("es-ES", { dateStyle: "short" }).format(date);
+function countActiveFilters(filters: VerifactuAdminDefectiveFilters) {
+  return [filters.dateFrom, filters.dateTo, filters.status, filters.documentType, filters.operation, filters.documentNumber]
+    .filter((value) => Boolean(value)).length;
+}
+
+function renderDefectiveCell(
+  item: VerifactuAdminDefectiveRecordPage["items"][number],
+  column: DefectiveSortColumn,
+  locale: LocaleCode,
+  timezone: string | null,
+  t: VerifactuTranslator
+) {
+  if (column === "sequence") return <span className="numeric">{item.sequence}</span>;
+  if (column === "document") return item.documentNumber;
+  if (column === "documentType") return item.documentType;
+  if (column === "fiscalOperation") return verifactuOperationLabel(item.operation, t);
+  if (column === "issueDate") return formatVerifactuDate(item.issueDate, locale);
+  if (column === "status") return <span className={`gestion-verifactu-state state-${item.status.toLowerCase()}`}>{verifactuStatusLabel(item.status, t)}</span>;
+  if (column === "updatedAt") return formatVerifactuDateTime(item.updatedAt, locale, timezone);
+  return item.errorCode || "—";
 }

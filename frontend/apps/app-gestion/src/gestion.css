@@ -408,6 +408,28 @@ body,
   background: rgba(255, 255, 255, 0.3);
 }
 
+.gestion-operational-status {
+  margin-top: 14px;
+}
+
+.gestion-operational-status > .settings-card,
+.gestion-operational-status .operational-status-panel,
+.gestion-operational-status .operational-incidents-board,
+.gestion-operational-status .operational-incident-group,
+.gestion-operational-status .operational-retry-editor {
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.gestion-operational-status > .settings-card {
+  background: var(--gestion-panel);
+}
+
+.gestion-operational-status .settings-card button,
+.gestion-operational-status .operational-retry-editor textarea {
+  border-radius: 3px;
+}
+
 .gestion-widget {
   min-width: 0;
   min-height: 0;
@@ -1612,15 +1634,67 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 }
 
 .gestion-verifactu-workspace {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.gestion-verifactu-header { margin-bottom: 0; }
+.gestion-verifactu-header { flex: 0 0 auto; margin-bottom: 0; }
 .gestion-verifactu-header p { margin: 5px 0 0; color: var(--gestion-muted); font-size: var(--gestion-font-body); }
 
+.gestion-verifactu-fiscal-strip {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(190px, .8fr) minmax(0, 2.2fr);
+  align-items: stretch;
+  margin: 0 0 12px;
+  border: 1px solid var(--gestion-border-dark);
+  border-left: 5px solid var(--gestion-navy);
+  background: #fff;
+}
+.gestion-verifactu-fiscal-strip.runtime-sandbox { border-left-color: #a46a16; }
+.gestion-verifactu-fiscal-strip.is-unavailable { border-left-color: #8796a4; }
+.gestion-verifactu-fiscal-primary { display: grid; align-content: center; gap: 3px; padding: 10px 13px; background: #e9eff4; }
+.gestion-verifactu-fiscal-primary span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 950; letter-spacing: .07em; text-transform: uppercase; }
+.gestion-verifactu-fiscal-primary strong { color: var(--gestion-navy); font-size: 18px; }
+.gestion-verifactu-fiscal-facts { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+.gestion-verifactu-fiscal-facts > div { min-width: 0; display: grid; align-content: center; gap: 3px; padding: 8px 11px; border-left: 1px solid #d1d9df; }
+.gestion-verifactu-fiscal-facts dt { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-verifactu-fiscal-facts dd { min-width: 0; margin: 0; color: var(--gestion-text); font-size: var(--gestion-font-label); font-weight: 850; overflow-wrap: anywhere; }
+.gestion-verifactu-fiscal-notices { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 7px 12px; border-top: 1px solid #c6d0d8; background: #f7f9fa; color: #33485c; font-size: var(--gestion-font-label); }
+.gestion-verifactu-fiscal-notices.has-error { border-top-color: #d8a3a3; background: #fff2f2; color: #882a2a; }
+.gestion-verifactu-fiscal-notices span { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+.gestion-verifactu-fiscal-notices strong { color: var(--gestion-navy); }
+.gestion-verifactu-fiscal-notices.has-error strong { color: #882a2a; }
+
+.gestion-verifactu-sandbox {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid #c9a86f;
+  border-left: 5px solid #a46a16;
+  background: #fff7e8;
+  color: #644414;
+  font-size: var(--gestion-font-label);
+  font-weight: 800;
+}
+.gestion-verifactu-sandbox > strong { color: #704b17; font-size: var(--gestion-font-control); }
+.gestion-verifactu-sandbox > span { overflow-wrap: anywhere; }
+.gestion-verifactu-sandbox label { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.gestion-verifactu-sandbox select,
+.gestion-verifactu-sandbox button { min-height: 32px; box-sizing: border-box; border: 1px solid #9d7b43; border-radius: 2px; background: #fff; color: #4d3817; font: inherit; font-size: var(--gestion-font-label); font-weight: 850; }
+.gestion-verifactu-sandbox select { padding: 0 7px; }
+.gestion-verifactu-sandbox button { padding: 0 10px; cursor: pointer; }
+.gestion-verifactu-sandbox button:hover,
+.gestion-verifactu-sandbox button:focus-visible { background: #fff0d2; }
+.gestion-verifactu-sandbox [role="alert"] { flex-basis: 100%; color: var(--gestion-negative); }
+
 .gestion-verifactu-tabs {
+  flex: 0 0 auto;
   display: flex;
   gap: 0;
   margin: 0 0 13px;
@@ -1646,6 +1720,32 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-tabs button:hover,
 .gestion-verifactu-tabs button:focus-visible { background: #edf2f6; }
 .gestion-verifactu-tabs button.active { background: var(--gestion-navy); color: #fff; }
+
+.gestion-verifactu-navigation {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 12px;
+  border: 1px solid var(--gestion-border-dark);
+  border-bottom: 3px solid var(--gestion-navy);
+  background: #dbe2e8;
+}
+.gestion-verifactu-navigation .gestion-verifactu-tabs { min-width: 0; margin: 0; border: 0; }
+.gestion-verifactu-navigation .gestion-verifactu-tabs button { min-height: 42px; padding-inline: 13px; font-size: var(--gestion-font-body); }
+.gestion-verifactu-refresh {
+  min-width: 106px;
+  border: 0;
+  border-left: 1px solid #aeb9c2;
+  background: #edf2f6;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-size: var(--gestion-font-body);
+  font-weight: 900;
+  cursor: pointer;
+}
+.gestion-verifactu-refresh:hover,
+.gestion-verifactu-refresh:focus-visible { background: #fff; }
+.gestion-verifactu-refresh:disabled { opacity: .48; cursor: default; }
 
 .gestion-verifactu-summary,
 .gestion-verifactu-queue { min-height: 0; overflow: auto; }
@@ -1777,7 +1877,10 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-certificate-warning { margin: 0; padding: 10px 11px; border-left: 4px solid #a46a16; background: #fff7e8; color: #644414; font-size: var(--gestion-font-body); font-weight: 750; line-height: 1.4; }
 .gestion-verifactu-certificate-warning.danger { border-left-color: var(--gestion-negative); background: #fff0f0; color: #7f2929; }
 
-.gestion-verifactu-queue { display: grid; grid-template-rows: auto minmax(360px, 1fr); gap: 12px; }
+.gestion-verifactu-queue { width: 100%; height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(360px, 1fr); gap: 12px; overflow: hidden; }
+.gestion-verifactu-records > .gestion-verifactu-table-panel,
+.gestion-verifactu-queue > .gestion-verifactu-table-panel,
+.gestion-verifactu-defective > .gestion-verifactu-table-panel { width: 100%; min-width: 0; align-self: stretch; }
 .gestion-verifactu-filters { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 9px; padding: 11px; border: 1px solid var(--gestion-border-dark); background: #f8fafb; }
 .gestion-verifactu-filters label { min-width: 0; display: grid; align-content: start; gap: 4px; color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
 .gestion-verifactu-filters input,
@@ -1799,9 +1902,10 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-table-panel header span { color: var(--gestion-muted); font-size: var(--gestion-font-label); font-weight: 800; }
 .gestion-verifactu-loading { color: var(--gestion-navy) !important; }
 .gestion-verifactu-table-scroll { min-height: 0; overflow: auto; }
-.gestion-verifactu-table { width: 100%; min-width: 850px; border-collapse: collapse; font-size: var(--gestion-font-body); }
+.gestion-verifactu-table { width: 100%; min-width: 850px; border-collapse: collapse; table-layout: fixed; font-size: var(--gestion-font-body); }
 .gestion-verifactu-table th { position: sticky; top: 0; z-index: 1; height: 38px; padding: 0 10px; border-right: 1px solid #b9c3cc; border-bottom: 1px solid var(--gestion-border-dark); background: #d7e0e8; color: #253b50; font-size: var(--gestion-font-micro); font-weight: 950; text-align: left; text-transform: uppercase; }
 .gestion-verifactu-table td { height: 43px; padding: 0 10px; border-right: 1px solid #d8dee3; border-bottom: 1px solid #d8dee3; color: #263746; }
+.gestion-verifactu-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gestion-verifactu-table th:last-child,
 .gestion-verifactu-table td:last-child { border-right: 0; }
 .gestion-verifactu-table tbody tr:nth-child(even) { background: #f7f9fa; }
@@ -1825,6 +1929,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-message.error { border-color: #d7aaaa; background: #fff5f5; color: var(--gestion-negative); }
 
 .gestion-verifactu-review-layout {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -1854,6 +1959,160 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 
 .gestion-verifactu-link-button:hover,
 .gestion-verifactu-link-button:focus-visible { background: #e5eef6; }
+
+.fiscal-records-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.fiscal-records-toolbar button,
+.gestion-verifactu-filter-trigger {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid #7f8e9b;
+  border-radius: 2px;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-size: var(--gestion-font-label);
+  font-weight: 900;
+  cursor: pointer;
+}
+.fiscal-records-toolbar button:hover,
+.fiscal-records-toolbar button:focus-visible,
+.gestion-verifactu-filter-trigger:hover,
+.gestion-verifactu-filter-trigger:focus-visible { background: #edf3f8; }
+.fiscal-records-toolbar button.primary { border-color: var(--gestion-navy); background: var(--gestion-navy); color: #fff; }
+
+.fiscal-workspace-dialog-backdrop { overscroll-behavior: contain; }
+.fiscal-workspace-dialog {
+  width: min(900px, calc(100vw - 48px));
+  box-sizing: border-box;
+  max-height: min(90vh, calc(100vh - 48px));
+  min-height: min(280px, calc(100vh - 48px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #142f4e;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, .34);
+}
+.fiscal-workspace-dialog > header {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  background: var(--gestion-navy);
+  color: #fff;
+}
+.fiscal-workspace-dialog > header h2 { margin: 0; font-size: 18px; }
+.fiscal-workspace-dialog > header button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, .48);
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.fiscal-workspace-dialog > header button:hover,
+.fiscal-workspace-dialog > header button:focus-visible { background: rgba(255, 255, 255, .13); }
+.fiscal-workspace-dialog > header button:focus-visible { outline: 2px solid #b8d7f2; outline-offset: 2px; }
+.fiscal-workspace-dialog > header button:disabled { opacity: .45; cursor: default; }
+.fiscal-workspace-dialog-body { min-height: 0; overflow: auto; background: #f3f6f8; }
+.fiscal-workspace-dialog-body > .gestion-verifactu-filters { border: 0; }
+.fiscal-workspace-dialog > footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 18px; border-top: 1px solid #aeb9c2; background: #e9eef2; }
+.fiscal-workspace-dialog > footer button { min-height: 44px; padding: 0 16px; border: 1px solid #7f8e9b; background: #fff; color: var(--gestion-navy); font: inherit; font-weight: 900; cursor: pointer; }
+.fiscal-workspace-dialog > footer button.primary { border-color: var(--gestion-navy); background: var(--gestion-navy); color: #fff; }
+.fiscal-workspace-dialog > footer button:focus-visible { outline: 2px solid #4c8fca; outline-offset: 2px; }
+.fiscal-workspace-dialog.fiscal-workspace-dialog-purpose-filters { width: min(960px, calc(100vw - 48px)); min-height: min(320px, calc(100vh - 48px)); }
+.fiscal-workspace-dialog.fiscal-workspace-dialog-purpose-export { width: min(860px, calc(100vw - 48px)); min-height: min(300px, calc(100vh - 48px)); }
+.fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters input,
+.fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters .erp-select__trigger {
+  min-height: 44px;
+}
+.fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters .erp-select__trigger { min-height: 44px !important; }
+.fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters > p { padding-top: 2px; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-fields { gap: 16px; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-fields input,
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-fields select { min-height: 44px; padding-inline: 10px; }
+.fiscal-workspace-dialog.fiscal-workspace-dialog-purpose-export form { gap: 16px; padding: 20px; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs {
+  margin: 0 20px 20px;
+  border: 1px solid var(--gestion-border-dark);
+  background: #fff;
+}
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > header {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid #aeb9c2;
+  background: #e3e9ee;
+}
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > header h3 { margin: 0; color: var(--gestion-navy); font-size: 15px; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > header button,
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #7f8e9b;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 14px; padding: 12px 14px; border-bottom: 1px solid #d7dde2; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li:last-child { border-bottom: 0; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > div:last-child { display: flex; justify-content: flex-end; gap: 8px; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > span { color: var(--gestion-muted); font-size: var(--gestion-font-label); font-weight: 800; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > span:nth-child(2) { grid-column: 1; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > span:nth-child(3),
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > span:nth-child(4) { grid-column: 1; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > div:last-child { grid-column: 2; grid-row: 1 / span 3; }
+.fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul button:disabled { opacity: .5; cursor: default; }
+.fiscal-workspace-dialog-drawer {
+  width: min(680px, 100vw);
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  justify-self: end;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  animation: fiscal-drawer-in 140ms ease-out;
+}
+.fiscal-workspace-dialog-backdrop.has-drawer { padding: 0; place-items: stretch; }
+@keyframes fiscal-drawer-in { from { transform: translateX(24px); opacity: .82; } to { transform: translateX(0); opacity: 1; } }
+
+@media (max-width: 900px) {
+  .fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters,
+  .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .gestion-modal-backdrop.fiscal-workspace-dialog-backdrop { padding: 16px; }
+  .fiscal-workspace-dialog,
+  .fiscal-workspace-dialog.fiscal-workspace-dialog-purpose-filters,
+  .fiscal-workspace-dialog.fiscal-workspace-dialog-purpose-export { width: 100%; min-height: min(260px, calc(100vh - 32px)); }
+  .fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters,
+  .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-fields { grid-template-columns: 1fr; }
+  .fiscal-workspace-dialog > header { padding-inline: 14px; }
+  .fiscal-workspace-dialog > footer { padding-inline: 14px; }
+  .fiscal-workspace-dialog > footer button { flex: 1 1 0; }
+  .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs { margin-inline: 14px; }
+  .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li { grid-template-columns: 1fr; }
+  .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > div:last-child { grid-column: 1; grid-row: auto; justify-content: stretch; }
+  .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-jobs > ul > li > div:last-child button { flex: 1 1 0; }
+}
 
 .gestion-verifactu-attempts {
   min-width: 0;
@@ -1969,6 +2228,89 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-diagnostic-card small { color: #526678; font-size: var(--gestion-font-label); line-height: 1.35; }
 .gestion-verifactu-observed-at { justify-self: end; margin: 0; color: var(--gestion-muted); font-size: var(--gestion-font-label); font-weight: 800; }
 
+.gestion-fiscal-compliance { height: 100%; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(360px, 1fr) auto; gap: 12px; overflow: auto; }
+.gestion-fiscal-compliance > section { min-width: 0; align-self: stretch; }
+.gestion-fiscal-compliance .gestion-fiscal-events { grid-column: 1 / -1; }
+.gestion-fiscal-compliance .gestion-fiscal-events { min-height: 360px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.gestion-fiscal-compliance .gestion-verifactu-panel > header { justify-content: space-between; gap: 10px; padding-block: 7px; }
+.gestion-fiscal-compliance .gestion-verifactu-panel > p { margin: 0; padding: 10px 12px; color: var(--gestion-muted); font-size: var(--gestion-font-label); line-height: 1.4; }
+.gestion-fiscal-integrity-result { margin: 0 12px 12px; padding: 10px; border-left: 5px solid var(--gestion-positive); background: #edf8f1; }
+.gestion-fiscal-integrity-result.has-anomalies { border-left-color: var(--gestion-negative); background: #fff1f1; }
+.gestion-fiscal-integrity-result dl { display: flex; gap: 22px; margin: 8px 0 0; }
+.gestion-fiscal-integrity-result dt { color: var(--gestion-muted); font-size: var(--gestion-font-micro); }
+.gestion-fiscal-integrity-result dd { margin: 2px 0 0; font-weight: 900; }
+.gestion-fiscal-export form,
+.gestion-fiscal-requirement form { display: grid; gap: 9px; padding: 0 12px 12px; }
+.gestion-fiscal-export-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.gestion-fiscal-export label,
+.gestion-fiscal-requirement label { display: grid; gap: 4px; color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-fiscal-export input,
+.gestion-fiscal-export select,
+.gestion-fiscal-requirement input { min-height: 36px; box-sizing: border-box; border: 1px solid #8796a4; background: #fff; color: var(--gestion-text); font: inherit; }
+.gestion-fiscal-compliance button { min-height: 36px; padding: 0 12px; border: 1px solid #8392a0; background: #fff; color: var(--gestion-navy); font: inherit; font-weight: 900; cursor: pointer; }
+.gestion-fiscal-compliance button.primary { border-color: var(--gestion-navy); background: var(--gestion-navy); color: #fff; }
+.gestion-fiscal-compliance button:disabled { opacity: .48; cursor: default; }
+.gestion-fiscal-requirement-ready { display: flex; align-items: center; gap: 10px; margin: 0 12px 12px; padding: 9px; border: 1px solid #aeb9c2; background: #f3f6f8; }
+.gestion-fiscal-requirement-ready button { margin-left: auto; }
+.gestion-fiscal-requirement-period { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px 10px; }
+.gestion-fiscal-requirement-period label { display: grid; gap: 4px; color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-fiscal-requirement-period input { min-height: 36px; box-sizing: border-box; border: 1px solid #8796a4; background: #fff; color: var(--gestion-text); font: inherit; }
+.gestion-fiscal-cursor-navigation { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 8px 12px 10px; border-top: 1px solid #d6dee5; background: #f3f6f8; }
+.gestion-fiscal-cursor-navigation span { margin-inline: auto; color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 800; }
+.gestion-fiscal-cursor-navigation button { min-height: 44px; padding-inline: 14px; }
+.gestion-verifactu-readonly-note { border-left: 4px solid #9a6b22; background: #fff7e8; }
+.gestion-fiscal-mode-control { height: 100%; display: grid; grid-template-columns: minmax(280px, .75fr) minmax(360px, 1.25fr); gap: 12px; overflow: auto; }
+.gestion-fiscal-mode-control .gestion-verifactu-panel { align-self: start; }
+.gestion-fiscal-mode-control .gestion-verifactu-panel > header { padding-block: 7px; }
+.gestion-fiscal-mode-control .gestion-verifactu-panel > p { margin: 0; padding: 12px; color: var(--gestion-muted); font-size: var(--gestion-font-label); line-height: 1.45; }
+.gestion-fiscal-mode-control form { display: grid; gap: 10px; padding: 12px; }
+.gestion-fiscal-mode-control form label { display: grid; gap: 4px; color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-fiscal-mode-control input,
+.gestion-fiscal-mode-control select,
+.gestion-fiscal-mode-control textarea { min-height: 36px; box-sizing: border-box; border: 1px solid #8796a4; background: #fff; color: var(--gestion-text); font: inherit; }
+.gestion-fiscal-mode-control textarea { min-height: 76px; resize: vertical; }
+.gestion-fiscal-mode-control small { text-transform: none; }
+.gestion-fiscal-mode-control button { min-height: 38px; border: 1px solid var(--gestion-navy); background: var(--gestion-navy); color: #fff; font: inherit; font-weight: 900; cursor: pointer; }
+.gestion-fiscal-mode-control button:disabled { opacity: .48; cursor: default; }
+.gestion-fiscal-mode-warning,
+.gestion-fiscal-mode-scheduled { padding: 10px; border-left: 5px solid #a46a16; background: #fff7e8; color: #664515; font-weight: 750; line-height: 1.4; }
+.gestion-fiscal-mode-scheduled { display: grid; gap: 5px; margin: 12px; }
+.gestion-fiscal-mode-scheduled.has-error { border-left-color: var(--gestion-negative); background: #fff1f1; color: var(--gestion-negative); }
+.gestion-fiscal-mode-exit-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.gestion-verifactu-records { height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.gestion-verifactu-records > .gestion-verifactu-table-panel { min-width: 0; }
+.gestion-verifactu-record-detail { min-width: 0; min-height: 0; }
+.fiscal-record-detail-navigation { display: flex; align-items: center; justify-content: flex-end; gap: 7px; padding: 9px; border-bottom: 1px solid #aeb9c2; background: #e9eef2; }
+.fiscal-record-detail-navigation .gestion-eyebrow { margin-right: auto; }
+.fiscal-record-detail-navigation button { min-height: 32px; border: 1px solid #7f8e9b; background: #fff; color: var(--gestion-navy); font: inherit; font-weight: 900; cursor: pointer; }
+.fiscal-record-detail-navigation button:disabled { opacity: .45; cursor: default; }
+.gestion-verifactu-record-detail-body { min-height: 0; overflow: auto; }
+.gestion-verifactu-record-detail-columns { display: grid; grid-template-columns: 1fr; gap: 9px; padding: 9px; background: #eef2f5; }
+.gestion-verifactu-details-link { display: flex; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid #d7dde2; font-size: var(--gestion-font-label); }
+.gestion-verifactu-details-link a { color: #174d7c; font-weight: 900; }
+.gestion-verifactu-details code { font-size: var(--gestion-font-micro); }
+.gestion-verifactu-hash { display: inline-flex; align-items: flex-start; gap: 7px; flex-wrap: wrap; max-width: 100%; }
+.gestion-verifactu-hash code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-family: var(--gestion-mono, ui-monospace, SFMono-Regular, Consolas, monospace); }
+.gestion-verifactu-hash button { min-height: 27px; border: 1px solid #7f8e9b; background: #fff; color: var(--gestion-navy); font: inherit; font-size: var(--gestion-font-micro); font-weight: 800; cursor: pointer; }
+.gestion-verifactu-hash.compact { display: flex; }
+.gestion-verifactu-compliance-hash { position: relative; min-width: 0; max-width: 100%; }
+.gestion-verifactu-table td:has(.gestion-verifactu-compliance-hash) { overflow: visible; white-space: normal; }
+.gestion-verifactu-compliance-hash summary { display: inline-flex; align-items: center; min-height: 28px; max-width: 100%; cursor: pointer; list-style-position: inside; color: var(--gestion-navy); }
+.gestion-verifactu-compliance-hash summary::marker { color: #52728f; }
+.gestion-verifactu-compliance-hash summary code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gestion-verifactu-compliance-hash-full { display: grid; gap: 6px; min-width: 0; max-width: 100%; padding: 8px; border: 1px solid #b7c3cc; background: #f3f6f8; white-space: normal; }
+.gestion-verifactu-compliance-hash-full code { overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; font-family: var(--gestion-mono, ui-monospace, SFMono-Regular, Consolas, monospace); }
+.gestion-verifactu-compliance-hash-full button { justify-self: start; min-height: 36px; }
+.gestion-verifactu-export-options { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 10px; padding: 14px; }
+.gestion-verifactu-export-options label { min-width: 0; display: grid; gap: 4px; color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-verifactu-export-options input,
+.gestion-verifactu-export-options .erp-select__trigger { min-height: 44px; box-sizing: border-box; border: 1px solid #9ba8b2; padding: 4px 10px; font: inherit; }
+.fiscal-workspace-dialog-purpose-export .gestion-verifactu-export-options .erp-select > .erp-select__trigger { height: 44px; min-height: 44px !important; }
+.gestion-verifactu-export-options > button { min-height: 36px; border: 1px solid var(--gestion-navy); background: var(--gestion-navy); color: #fff; font: inherit; font-weight: 900; cursor: pointer; }
+.gestion-verifactu-export-options > p { grid-column: 1 / -1; margin: 0; font-size: var(--gestion-font-label); font-weight: 800; }
+.gestion-fiscal-export-dialog { width: min(860px, 94vw); }
+.gestion-fiscal-export-dialog form { display: grid; gap: 10px; padding: 14px; }
+
 @media (max-width: 1320px) {
   .gestion-verifactu-review-layout.has-detail { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .gestion-verifactu-review-layout.has-detail .gestion-verifactu-view { min-height: 560px; }
@@ -2020,11 +2362,20 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   .gestion-warehouse-list { min-height: 420px; border-right: 0; border-bottom: 1px solid var(--gestion-border-dark); }
   .gestion-warehouse-detail { min-height: 300px; }
   .gestion-verifactu-workspace { height: auto !important; overflow: auto; }
+  .gestion-verifactu-navigation { grid-template-columns: minmax(0, 1fr); }
+  .gestion-verifactu-refresh { min-height: 38px; border-top: 1px solid #aeb9c2; border-left: 0; }
   .gestion-verifactu-summary,
   .gestion-verifactu-queue,
   .gestion-verifactu-defective,
   .gestion-verifactu-certificate,
-  .gestion-verifactu-diagnostics { overflow: visible; }
+  .gestion-verifactu-diagnostics,
+  .gestion-fiscal-compliance,
+  .gestion-verifactu-records { height: auto; overflow: visible; }
+  .gestion-fiscal-compliance { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .gestion-fiscal-compliance .gestion-fiscal-events { grid-column: 1; }
+  .gestion-fiscal-export-fields { grid-template-columns: 1fr; }
+  .gestion-fiscal-requirement-period { grid-template-columns: 1fr; }
+  .gestion-fiscal-mode-control { height: auto; grid-template-columns: 1fr; overflow: visible; }
   .gestion-verifactu-certificate { height: auto; }
   .gestion-verifactu-metrics { grid-template-columns: 1fr 1fr; }
   .gestion-verifactu-metric:nth-child(2) { border-right: 0; }
@@ -2036,6 +2387,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   .gestion-verifactu-counts span:nth-last-child(-n + 4) { border-bottom: 1px solid #d7dde2; }
   .gestion-verifactu-counts span:nth-last-child(-n + 2) { border-bottom: 0; }
   .gestion-verifactu-filters { grid-template-columns: 1fr 1fr; }
+  .gestion-verifactu-export-options { grid-template-columns: 1fr; }
   .gestion-verifactu-number-filter { grid-column: auto; }
   .gestion-verifactu-table-panel { min-height: 520px; }
   .gestion-verifactu-diagnostic-banner { align-items: flex-start; flex-direction: column; gap: 8px; }
@@ -2352,6 +2704,91 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   .gestion-payment-methods-header aside {
     width: auto;
   }
+}
+
+.gestion-license-workspace { display: grid; align-content: start; gap: 14px; overflow: auto; }
+.gestion-license-heading { display: flex; align-items: stretch; justify-content: space-between; gap: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--gestion-border); }
+.gestion-license-heading h2,
+.gestion-license-heading p { margin: 0; }
+.gestion-license-heading h2 { margin-top: 3px; color: var(--gestion-navy); }
+.gestion-license-heading p { margin-top: 5px; color: var(--gestion-muted); }
+.gestion-license-heading > div > span,
+.gestion-license-heading aside > span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.gestion-license-heading aside { min-width: 280px; padding: 10px 12px; border: 1px solid #a9b8c7; background: #f5f7f9; }
+.gestion-license-heading aside strong,
+.gestion-license-heading aside small { display: block; }
+.gestion-license-heading aside strong { margin-top: 4px; color: var(--gestion-navy); }
+.gestion-license-heading aside small { margin-top: 4px; color: var(--gestion-muted); }
+.gestion-license-message { margin: 0; padding: 9px 12px; border: 1px solid; }
+.gestion-license-message.success { border-color: #6d9878; background: #edf6ef; color: #224d2c; }
+.gestion-license-message.error { border-color: #b66b6b; background: #fff1f1; color: #7b2020; }
+.gestion-license-summary { display: grid; grid-template-columns: minmax(440px, 1.25fr) minmax(320px, .75fr); gap: 14px; }
+.gestion-license-current,
+.gestion-license-pairing,
+.gestion-license-history { border: 1px solid var(--gestion-border-dark); background: #fff; }
+.gestion-license-current > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--gestion-border); background: #f5f7f9; }
+.gestion-license-current > header div { display: grid; gap: 3px; }
+.gestion-license-current > header span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-license-current > header strong { color: var(--gestion-navy); font-size: 19px; }
+.gestion-license-status { padding: 5px 8px; border: 1px solid #7d8b98; background: #edf1f4; color: #3d5062; font-size: 11px; text-transform: uppercase; }
+.gestion-license-status.status-VALIDA { border-color: #4d8060; background: #eaf5ed; color: #245332; }
+.gestion-license-status.status-CADUCADA,
+.gestion-license-status.status-BLOQUEADA_MANUAL { border-color: #b66b6b; background: #fff1f1; color: #7b2020; }
+.gestion-license-status.status-REQUIERE_ACTUALIZACION { border-color: #b7822f; background: #fff5df; color: #77500f; }
+.gestion-license-current dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.gestion-license-current dl div { min-width: 0; padding: 11px 14px; border-bottom: 1px solid #d9e0e6; }
+.gestion-license-current dl div:nth-child(odd) { border-right: 1px solid #d9e0e6; }
+.gestion-license-current dt { color: var(--gestion-muted); font-size: 12px; font-weight: 800; }
+.gestion-license-current dd { margin: 3px 0 0; overflow-wrap: anywhere; color: var(--gestion-navy); font-weight: 850; }
+.gestion-license-current footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 14px; }
+.gestion-license-current button,
+.gestion-license-pairing button { min-height: 38px; padding: 0 14px; border: 1px solid var(--gestion-border-dark); border-radius: 0; background: #fff; color: var(--gestion-navy); font: inherit; font-weight: 900; }
+.gestion-license-current button.primary,
+.gestion-license-pairing button { border-color: var(--gestion-navy); background: var(--gestion-navy); color: #fff; }
+.gestion-license-current button:disabled,
+.gestion-license-pairing button:disabled { cursor: not-allowed; opacity: .55; }
+.gestion-license-state { min-height: 116px; display: grid; place-items: center; margin: 0; padding: 18px; color: var(--gestion-muted); text-align: center; }
+.gestion-license-pairing { display: grid; align-content: start; gap: 14px; padding: 15px 16px; }
+.gestion-license-pairing header span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
+.gestion-license-pairing h3,
+.gestion-license-pairing p { margin: 0; }
+.gestion-license-pairing h3 { margin-top: 3px; color: var(--gestion-navy); }
+.gestion-license-pairing p { margin-top: 4px; color: var(--gestion-muted); line-height: 1.4; }
+.gestion-license-pairing label { display: grid; gap: 5px; color: var(--gestion-navy); font-weight: 850; }
+.gestion-license-pairing input { min-height: 40px; border: 1px solid #657a90; border-radius: 0; padding: 7px 9px; font: inherit; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.gestion-license-pairing small { color: var(--gestion-muted); line-height: 1.4; }
+.gestion-license-history > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--gestion-border); background: #f5f7f9; }
+.gestion-license-history h3,
+.gestion-license-history p { margin: 0; }
+.gestion-license-history h3 { color: var(--gestion-navy); }
+.gestion-license-history p { margin-top: 3px; color: var(--gestion-muted); }
+.gestion-license-history > header > strong { min-width: 42px; padding: 6px 9px; border: 1px solid #a8b6c4; background: #fff; color: var(--gestion-navy); text-align: center; }
+.gestion-license-table { overflow-x: auto; }
+.gestion-license-table > div { min-width: 760px; display: grid; grid-template-columns: minmax(210px, 1.2fr) minmax(210px, 1fr) minmax(150px, .7fr) 120px; gap: 12px; align-items: center; padding: 10px 13px; border-bottom: 1px solid #d9e0e6; }
+.gestion-license-table > div.head { min-height: 36px; background: #e9eef3; color: #263c55; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+.gestion-license-table > div > span { min-width: 0; }
+.gestion-license-table > div > span strong,
+.gestion-license-table > div > span small,
+.gestion-license-table > div > span time { display: block; overflow-wrap: anywhere; }
+.gestion-license-table > div > span small { margin-top: 3px; color: var(--gestion-muted); font-size: 12px; }
+.gestion-license-table b.active,
+.gestion-license-table b.inactive { display: inline-block; padding: 4px 7px; border: 1px solid; font-size: 11px; text-transform: uppercase; }
+.gestion-license-table b.active { border-color: #4d8060; background: #eaf5ed; color: #245332; }
+.gestion-license-table b.inactive { border-color: #9aa7b4; background: #f1f3f5; color: #586875; }
+.gestion-license-table > p { margin: 0; padding: 22px 14px; color: var(--gestion-muted); text-align: center; }
+
+.server-setup-license { display: grid; gap: 12px; padding: 13px; border: 1px solid #a87521; background: #fff8e9; }
+.server-setup-license header { display: grid; gap: 3px; }
+.server-setup-license header strong { color: #62400b; }
+.server-setup-license header span,
+.server-setup-license > small { color: #765a2a; font-size: 12px; line-height: 1.4; }
+.server-setup-license label { display: grid; gap: 5px; color: var(--gestion-navy); font-weight: 850; }
+.server-setup-license input { min-height: 38px; border: 1px solid #7b6747; border-radius: 0; padding: 7px 9px; font: inherit; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+@media (max-width: 980px) {
+  .gestion-license-heading { display: grid; }
+  .gestion-license-heading aside { min-width: 0; }
+  .gestion-license-summary { grid-template-columns: 1fr; }
 }
 
 .gestion-operation-security-workspace {
@@ -4677,4 +5114,36 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
   .gestion-terminal-layout { grid-template-columns: 1fr; overflow: auto; }
   .gestion-terminal-list { max-height: 320px; border-right: 0; border-bottom: 1px solid var(--gestion-border-dark); }
   .gestion-terminal-detail { min-height: 280px; }
+}
+
+@media (max-width: 1100px) {
+  .gestion-verifactu-fiscal-strip { grid-template-columns: minmax(165px, .7fr) minmax(0, 2fr); }
+  .gestion-verifactu-fiscal-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gestion-verifactu-fiscal-facts > div:nth-child(-n + 2) { border-bottom: 1px solid #d1d9df; }
+  .gestion-verifactu-fiscal-facts > div:nth-child(odd) { border-left: 0; }
+  .gestion-verifactu-review-layout.has-detail { grid-template-columns: minmax(0, 1fr) 330px; }
+}
+
+@media (max-width: 760px) {
+  .gestion-verifactu-fiscal-strip { grid-template-columns: 1fr; }
+  .gestion-verifactu-fiscal-primary { padding: 9px 11px; }
+  .gestion-verifactu-fiscal-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gestion-verifactu-fiscal-facts > div { border-left: 0; border-top: 1px solid #d1d9df; }
+  .gestion-verifactu-fiscal-facts > div:nth-child(-n + 2) { border-top: 1px solid #d1d9df; }
+  .gestion-verifactu-tabs button { min-height: 44px; padding: 0 13px; }
+  .gestion-verifactu-review-layout.has-detail { grid-template-columns: 1fr; overflow: auto; }
+  .gestion-verifactu-review-layout.has-detail .gestion-verifactu-view { min-height: 420px; overflow: visible; }
+  .gestion-verifactu-review-layout.has-detail .gestion-verifactu-attempts,
+  .gestion-verifactu-review-layout.has-detail .gestion-verifactu-resolution { min-height: 360px; }
+  .gestion-verifactu-summary-grid { grid-template-columns: 1fr; }
+  .gestion-verifactu-status,
+  .gestion-verifactu-certificate-state { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .gestion-verifactu-status p,
+  .gestion-verifactu-certificate-state p { max-width: none; text-align: left; }
+  .gestion-verifactu-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gestion-verifactu-metric:nth-child(2) { border-right: 0; }
+  .gestion-verifactu-metric:nth-child(-n + 2) { border-bottom: 1px solid #c9d1d8; }
+  .gestion-verifactu-sandbox { align-items: stretch; flex-direction: column; }
+  .gestion-verifactu-sandbox button,
+  .gestion-verifactu-sandbox select { min-height: 40px; }
 }

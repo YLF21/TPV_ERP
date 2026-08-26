@@ -11,6 +11,8 @@ import java.util.Arrays;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class VerifactuActivationPolicyAdminService {
@@ -49,7 +51,13 @@ public class VerifactuActivationPolicyAdminService {
         VerifactuActivationPolicy policy = required(taxpayerType);
         var previousDate = policy.getActivationDate();
         String actor = audit.currentUsername();
-        policy.update(request.activationDate(), clock.instant(), actor, request.reason());
+        try {
+            VerifactuActivationPolicy.validateActivationDate(taxpayerType, request.activationDate());
+            policy.update(request.activationDate(), clock.instant(), actor, request.reason());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    exception.getMessage(), exception);
+        }
         VerifactuActivationPolicy saved = policies.saveAndFlush(policy);
         audit.log(
                 "UPDATE_VERIFACTU_ACTIVATION_POLICY",
@@ -78,6 +86,6 @@ public class VerifactuActivationPolicyAdminService {
                 policy.getUpdatedBy(),
                 policy.getReason(),
                 licenses.countByCompany_TaxpayerTypeAndStatus(type, LicenseSaasStatus.VALIDA),
-                installations.countByCompany_TaxpayerType(type));
+                installations.countByCompany_TaxpayerTypeAndActiveTrue(type));
     }
 }

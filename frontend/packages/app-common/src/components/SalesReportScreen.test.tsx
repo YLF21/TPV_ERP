@@ -1867,8 +1867,9 @@ describe("SalesReportScreen", () => {
           }]
         });
       }
-      if (path === "/tickets/ticket-1/print") {
+      if (path === "/tickets/ticket-1/print-set") {
         return Promise.resolve({
+          printTicket: {
           documentId: "ticket-1",
           documentNumber: "T-001",
           issuedAt: `${todayIso}T12:00:00Z`,
@@ -1880,6 +1881,32 @@ describe("SalesReportScreen", () => {
           ticketRenderedPdf: {
             contentType: "application/pdf",
             base64: "JVBERi0xLjc="
+          },
+          ticketRenderedImage: {
+            contentType: "image/png",
+            base64: "cHJpbWFyeQ=="
+          }
+          },
+          additionalPrintTickets: [{
+            documentId: "rectification-1",
+            documentNumber: "R-001",
+            issuedAt: `${todayIso}T11:59:00Z`,
+            lines: [{ name: "Producto devuelto", quantity: -1, price: 50, total: -60.5 }],
+            payments: [],
+            total: -60.5,
+            ticketRenderedImage: {
+              contentType: "image/png",
+              base64: "cmVmdW5k"
+            }
+          }],
+          nonFiscalSummary: {
+            documentId: "summary-1",
+            documentNumber: "CAMBIO-001",
+            issuedAt: `${todayIso}T12:00:00Z`,
+            lines: [],
+            payments: [],
+            total: 0,
+            nonFiscalSummary: true
           }
         });
       }
@@ -1895,8 +1922,6 @@ describe("SalesReportScreen", () => {
       close: vi.fn()
     };
     vi.spyOn(window, "open").mockReturnValue(previewWindow as unknown as Window);
-    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:ticket-copy");
-
     render(
       <SalesReportScreen
         app="venta"
@@ -1921,14 +1946,17 @@ describe("SalesReportScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Imprimir copia" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/tickets/ticket-1/print",
+      "/tickets/ticket-1/print-set",
       { token: "token" }
     ));
-    expect(createObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
-    expect(previewWindow.location.replace).toHaveBeenCalledWith("blob:ticket-copy");
-    expect(previewWindow.document.write).not.toHaveBeenCalled();
-    expect(previewWindow.print).not.toHaveBeenCalled();
-    createObjectUrl.mockRestore();
+    expect(previewWindow.document.write).toHaveBeenCalledWith(
+      expect.stringMatching(/cmVmdW5k[\s\S]*cHJpbWFyeQ==/)
+    );
+    expect(previewWindow.document.write).not.toHaveBeenCalledWith(
+      expect.stringContaining("CAMBIO-001")
+    );
+    expect(previewWindow.print).toHaveBeenCalledTimes(1);
+    expect(previewWindow.location.replace).not.toHaveBeenCalled();
   });
 
   it("closes the report filter dialog with Escape", () => {

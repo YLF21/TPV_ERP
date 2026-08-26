@@ -38,6 +38,7 @@ export function VerifactuResolutionPanel({
   target,
   token,
   locale: _locale,
+  timezone: _timezone,
   t,
   onClose,
   onCompleted
@@ -45,6 +46,7 @@ export function VerifactuResolutionPanel({
   target: VerifactuResolutionTarget | null;
   token?: string;
   locale: LocaleCode;
+  timezone?: string | null;
   t: VerifactuTranslator;
   onClose: () => void;
   onCompleted: () => void;

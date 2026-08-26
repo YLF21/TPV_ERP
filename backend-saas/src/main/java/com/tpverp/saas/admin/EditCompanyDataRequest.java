@@ -10,8 +10,5 @@ public record EditCompanyDataRequest(
         @NotBlank String name,
         @NotNull TaxpayerType taxpayerType,
         @NotNull TaxRegime impuestos,
-        CommercialProfile commercialProfile) {
-    public EditCompanyDataRequest(String name, TaxpayerType taxpayerType, TaxRegime impuestos) {
-        this(name, taxpayerType, impuestos, CommercialProfile.MAYORISTA);
-    }
+        @NotNull CommercialProfile commercialProfile) {
 }

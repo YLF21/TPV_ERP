@@ -25,4 +25,26 @@ describe("GestionDashboard", () => {
     expect(html).not.toContain("gestion.placeholder");
     expect(html).not.toContain("gestion.products");
   });
+
+  it("adds the localized operational incident surface for administrators", () => {
+    const html = renderToStaticMarkup(
+      <GestionDashboard
+        session={{
+          username: "admin",
+          displayName: "ADMIN",
+          accessToken: "admin-token",
+          permissions: ["ADMIN", "APP_GESTION_ACCESS"]
+        }}
+        locale="zh"
+        t={(key) => key}
+        onOpenSales={vi.fn()}
+        onOpenStock={vi.fn()}
+        onOpenPromotions={vi.fn()}
+        onOpenControlAlerts={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("运行状态");
+    expect(html).toContain("gestion-operational-status");
+  });
 });

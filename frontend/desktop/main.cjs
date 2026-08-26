@@ -778,6 +778,7 @@ async function printTicket(ticket, config) {
   if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
     let logoRaster;
     let documentRaster;
+    let qrRaster;
     if (typeof ticket?.documentRaster === "string" && ticket.documentRaster.startsWith("data:image/")) {
       const source = nativeImage.createFromDataURL(ticket.documentRaster);
       if (!source.isEmpty()) {
@@ -801,6 +802,18 @@ async function printTicket(ticket, config) {
         logoRaster = { width: size.width, height: size.height, bgra: resized.toBitmap() };
       }
     }
+    if (typeof ticket?.qrImage === "string" && ticket.qrImage.startsWith("data:image/")) {
+      const source = nativeImage.createFromDataURL(ticket.qrImage);
+      if (!source.isEmpty()) {
+        const sourceSize = source.getSize();
+        const scale = Math.min(1, 280 / sourceSize.width, 280 / sourceSize.height);
+        const width = Math.max(1, Math.round(sourceSize.width * scale));
+        const height = Math.max(1, Math.round(sourceSize.height * scale));
+        const resized = scale < 1 ? source.resize({ width, height, quality: "best" }) : source;
+        const size = resized.getSize();
+        qrRaster = { width: size.width, height: size.height, bgra: resized.toBitmap() };
+      }
+    }
     if (ticket?.requireRenderedDocument && !documentRaster) {
       return structuredError("PRINT_FAILED", "El raster Jasper del documento es obligatorio");
     }
@@ -809,7 +822,7 @@ async function printTicket(ticket, config) {
       sendBuffer: (buffer) => sendTicketPrinterRawBuffer(routedConfig, buffer),
       ticketBuffer: documentRaster
         ? buildRasterDocumentBuffer(documentRaster, nextConfig.escposAdditionalFeedLines)
-        : buildTicketBuffer({ ...ticket, logoRaster }, nextConfig.escposAdditionalFeedLines),
+        : buildTicketBuffer({ ...ticket, logoRaster, qrRaster }, nextConfig.escposAdditionalFeedLines),
       drawerBuffer: shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
         ? buildCashDrawerBuffer()
         : undefined,

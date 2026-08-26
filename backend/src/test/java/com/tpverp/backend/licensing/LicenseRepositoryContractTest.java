@@ -2,8 +2,10 @@ package com.tpverp.backend.licensing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import jakarta.persistence.LockModeType;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 class LicenseRepositoryContractTest {
@@ -30,5 +32,34 @@ class LicenseRepositoryContractTest {
         assertThat(query).isNotNull();
         assertThat(query.value()).contains("license.tienda.id = :tiendaId");
         assertThat(query.value()).contains("order by license.validaDesde desc");
+    }
+
+    @Test
+    void fiscalTimezoneQueryScopesActiveLicenseByCompanyAndInstallation() throws Exception {
+        var method = LicenseRepository.class.getMethod(
+                "findActiveStoreTimezonesByCompanyIdAndInstallationId",
+                UUID.class, UUID.class);
+
+        var query = method.getAnnotation(Query.class);
+
+        assertThat(query).isNotNull();
+        assertThat(query.value())
+                .contains("select distinct license.tienda.timezone")
+                .contains("license.tienda.empresa.id = :companyId")
+                .contains("license.instalacion.id = :installationId")
+                .contains("license.activa = true");
+    }
+
+    @Test
+    void saasRefreshQueriesSerializeUpdatesWithPessimisticLocks() throws Exception {
+        var byStore = LicenseRepository.class.getMethod(
+                "findActiveForSaasValidationForUpdate", UUID.class, UUID.class);
+        var byId = LicenseRepository.class.getMethod(
+                "findByIdForSaasValidationForUpdate", UUID.class);
+
+        assertThat(byStore.getAnnotation(Lock.class).value())
+                .isEqualTo(LockModeType.PESSIMISTIC_WRITE);
+        assertThat(byId.getAnnotation(Lock.class).value())
+                .isEqualTo(LockModeType.PESSIMISTIC_WRITE);
     }
 }

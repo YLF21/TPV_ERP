@@ -2,6 +2,7 @@ package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -39,7 +40,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FiscalRecordService.class, FiscalChainPostgreSqlTest.Configuration.class})
+@Import({FlywayPostgreSqlConfiguration.class, FiscalRecordService.class, FiscalMandatoryActivationService.class,
+        FiscalChainPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_PASSWORD", matches = ".+")
@@ -63,6 +65,8 @@ class FiscalChainPostgreSqlTest {
     @Autowired private FiscalSubmissionStateRepository states;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactionManager;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private FiscalEventService fiscalEvents;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -195,6 +199,13 @@ class FiscalChainPostgreSqlTest {
         assertThat(records.count()).isEqualTo(2);
         assertThat(jdbc.queryForObject(
                 "select ultima_secuencia from cadena_fiscal", Long.class)).isEqualTo(2L);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from transicion_modo_fiscal
+                where empresa_id = ? and causa = 'LICENSE_POLICY'
+                """, Integer.class, fixture.companyId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                select modo_actual from configuracion_verifactu where empresa_id = ?
+                """, String.class, fixture.companyId())).isEqualTo("VERIFACTU");
     }
 
     @Test
@@ -345,13 +356,17 @@ class FiscalChainPostgreSqlTest {
                     id, tienda_id, instalacion_id, referencia, valida_desde,
                     valida_hasta, max_windows, max_pda, tax_id, taxpayer_type,
                     regimen_impuesto, blob_original, hash, format_version,
-                    importada_en, ultima_validacion_saas, import_result, activa)
+                    importada_en, ultima_validacion_saas, import_result, activa,
+                    verifactu_activation_date, verifactu_policy_version,
+                    verifactu_policy_updated_at)
                 values (?, ?, ?, 'LIC-FISCAL', ?, ?, 1, 0, 'B12345674',
-                    'SOCIEDAD', 'IGIC', 'blob', 'hash', 3, ?, ?, 'ACEPTADA', true)
+                    'SOCIEDAD', 'IGIC', 'blob', 'hash', 3, ?, ?, 'ACEPTADA', true,
+                    '2027-01-01', 1, ?)
                 """,
                 UUID.randomUUID(), fixture.storeId(), fixture.installationId(),
                 java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
                 java.sql.Timestamp.from(Instant.parse("2030-01-01T00:00:00Z")),
+                java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
                 java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
                 java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
         jdbc.update("""
@@ -502,6 +517,11 @@ class FiscalChainPostgreSqlTest {
         @Bean
         FiscalDocumentPolicy documentPolicy() {
             return new FiscalDocumentPolicy();
+        }
+
+        @Bean
+        FiscalRuntimeProperties fiscalRuntimeProperties() {
+            return new FiscalRuntimeProperties(new org.springframework.mock.env.MockEnvironment());
         }
     }
 

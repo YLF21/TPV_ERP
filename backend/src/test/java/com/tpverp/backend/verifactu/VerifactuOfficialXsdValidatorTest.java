@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -84,6 +85,21 @@ class VerifactuOfficialXsdValidatorTest {
                 """))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("XSD");
+    }
+
+    @Test
+    void rechazaDesdeFicheroAntesDeIncluirElSobreEnElZip() throws Exception {
+        var path = Files.createTempFile("required-invalid", ".xml");
+        try {
+            Files.writeString(path, "<sfLR:RegFactuSistemaFacturacion xmlns:sfLR=\""
+                    + "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/"
+                    + "es/aeat/tike/cont/ws/SuministroLR.xsd\"/>");
+            assertThatThrownBy(() -> validator().validate(path))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("XSD");
+        } finally {
+            Files.deleteIfExists(path);
+        }
     }
 
     private static VerifactuOfficialXsdValidator validator() {

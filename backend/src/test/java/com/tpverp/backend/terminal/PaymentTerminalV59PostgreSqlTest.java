@@ -3,6 +3,8 @@ package com.tpverp.backend.terminal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.UUID;
@@ -16,7 +18,7 @@ class PaymentTerminalV59PostgreSqlTest {
         var password=System.getenv().getOrDefault("TPV_ERP_TEST_DB_PASSWORD","admin");
         assumeTrue(canConnect(url,user,password)); var schema="tpv_v59_"+UUID.randomUUID().toString().replace("-","");
         try {
-            var base=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).createSchemas(true).target("58").load();base.migrate();
+            var base=FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure()).dataSource(url,user,password).schemas(schema).defaultSchema(schema).createSchemas(true).target("58").load();base.migrate();
             var company=UUID.randomUUID();var store=UUID.randomUUID();var terminal=UUID.randomUUID();var legacyConfiguration=UUID.randomUUID();var address="{\"linea1\":\"a\",\"ciudad\":\"c\",\"codigoPostal\":\"1\",\"provincia\":\"p\",\"pais\":\"ES\"}";
             try(var c=DriverManager.getConnection(url,user,password);var s=c.createStatement()){
                 s.executeUpdate("insert into "+schema+".empresa(id,tax_id,razon_social,domicilio_fiscal) values ('"+company+"','B1','C','"+address+"')");
@@ -24,7 +26,7 @@ class PaymentTerminalV59PostgreSqlTest {
                 s.executeUpdate("insert into "+schema+".terminal(id,tienda_id,nombre,tipo,credential_hash) values ('"+terminal+"','"+store+"','T','TERMINAL_VENTA','h')");
                 s.executeUpdate("insert into "+schema+".configuracion_pago_terminal(id,terminal_id,card_mode,provider,enabled,test_mode,provider_parameters,secret_reference) values ('"+legacyConfiguration+"','"+terminal+"','INTEGRATED','REDSYS_TPV_PC',true,true,'{}','legacy:raw-reference')");
             }
-            Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).load().migrate();
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure()).dataSource(url,user,password).schemas(schema).defaultSchema(schema).load().migrate();
             try(var c=DriverManager.getConnection(url,user,password);var s=c.createStatement()){
                 var reference="pts_0123456789abcdef0123456789abcdef";
                 try(var result=s.executeQuery("select secret_reference,secret_reference_version,enabled,last_connection_status from "+schema+".configuracion_pago_terminal where id='"+legacyConfiguration+"'")){assertThat(result.next()).isTrue();assertThat(result.getString(1)).isNull();assertThat(result.getObject(2)).isNull();assertThat(result.getBoolean(3)).isFalse();assertThat(result.getString(4)).isEqualTo("ERROR");}

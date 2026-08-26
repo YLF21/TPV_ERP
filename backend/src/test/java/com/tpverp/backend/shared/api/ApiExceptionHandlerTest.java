@@ -1,6 +1,7 @@
 package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
+import com.tpverp.backend.document.FiscalQrUnavailableException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.PaymentSessionClosedException;
 import com.tpverp.backend.document.SalePaymentSessionStatus;
@@ -388,6 +389,29 @@ class ApiExceptionHandlerTest {
         assertEquals(false, problem.getProperties().get("retryable"));
         assertEquals("FINALIZED", problem.getProperties().get("paymentSessionStatus"));
         assertEquals("The payment session has already been finalized.", problem.getDetail());
+    }
+
+    @Test
+    void reportsFiscalQrPrintFailureAsExplicitlyRetryableWithoutLosingTheSale() {
+        var documentId = UUID.randomUUID();
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.fiscalQrUnavailable(
+                new FiscalQrUnavailableException(
+                        documentId,
+                        FiscalQrUnavailableException.Reason.FROZEN_SNAPSHOT_MISSING),
+                request);
+
+        assertEquals(503, problem.getStatus());
+        assertEquals(FiscalQrUnavailableException.CODE, problem.getProperties().get("code"));
+        assertEquals(documentId.toString(), problem.getProperties().get("documentId"));
+        assertEquals("FROZEN_SNAPSHOT_MISSING",
+                problem.getProperties().get("fiscalQrFailure"));
+        assertEquals(true, problem.getProperties().get("retryable"));
+        assertEquals(
+                "No se puede imprimir el documento fiscal porque su QR tributario no está disponible. La venta permanece confirmada; vuelva a intentar la impresión.",
+                problem.getDetail());
     }
 
     @Test

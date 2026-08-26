@@ -1,5 +1,8 @@
 package com.tpverp.saas.sync;
 
+import static com.tpverp.saas.SaasTestData.fiscalAddress;
+import static com.tpverp.saas.SaasTestData.validCif;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.saas.admin.CreateCompanyRequest;
 import com.tpverp.saas.admin.CreateCompanyResponse;
+import com.tpverp.saas.fiscal.SaasFiscalStatusRepository;
 import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.LicenseSaasLinkResponse;
 import com.tpverp.saas.license.TaxRegime;
@@ -33,10 +37,11 @@ class SyncEventApiTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired SaasSyncEventRepository events;
+    @Autowired SaasFiscalStatusRepository fiscalStatuses;
 
     @Test
     void guardaEventoSyncConTokenValido() throws Exception {
-        CreateCompanyResponse company = createCompany("B44444444");
+        CreateCompanyResponse company = createCompany("B44444543");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         UUID eventId = UUID.randomUUID();
 
@@ -54,7 +59,61 @@ class SyncEventApiTest {
                                 Map.of("numero", "T-1")))))
                 .andExpect(status().isOk());
 
-        assertThat(events.existsById(eventId)).isTrue();
+        SaasSyncEvent persisted = events.findById(eventId).orElseThrow();
+        assertThat(persisted.getProjectionStatus())
+                .isEqualTo(SaasSyncEvent.ProjectionStatus.IGNORED);
+        assertThat(persisted.getProjectedAt()).isNotNull();
+
+        var statusResult = mvc.perform(get("/api/v1/admin/sync/projection-status")
+                        .queryParam("companyId", company.companyId().toString())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var projectionStatus = mapper.readValue(
+                statusResult.getResponse().getContentAsString(),
+                AdminSyncProjectionStatusView.class);
+        assertThat(projectionStatus.ignored()).isEqualTo(1);
+        assertThat(projectionStatus.received()).isZero();
+        assertThat(projectionStatus.error()).isZero();
+    }
+
+    @Test
+    void persisteComoProjectedUnInformeFiscalValido() throws Exception {
+        CreateCompanyResponse company = createCompany("B30303030");
+        UUID installationId = UUID.randomUUID();
+        LicenseSaasLinkResponse link = link(company, installationId);
+        UUID eventId = UUID.randomUUID();
+
+        mvc.perform(post("/api/v1/sync/events")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new SyncEventRequest(
+                                eventId,
+                                company.companyId(),
+                                company.storeId(),
+                                1L,
+                                null,
+                                "FISCAL_STATUS",
+                                UUID.randomUUID(),
+                                SyncOperation.ACTUALIZAR,
+                                Map.of(
+                                        "installationId", installationId.toString(),
+                                        "companyId", company.companyId().toString(),
+                                        "storeId", company.storeId().toString(),
+                                        "effectiveMode", "VERIFACTU",
+                                        "activationState", "ACTIVE",
+                                        "modeVersion", 1,
+                                        "runtimeClass", "SANDBOX",
+                                        "endpointEnvironment", "TEST",
+                                        "transportMode", "SIMULATED",
+                                        "reportedAt", "2026-08-25T14:00:00Z")))))
+                .andExpect(status().isOk());
+
+        SaasSyncEvent persisted = events.findById(eventId).orElseThrow();
+        assertThat(persisted.getProjectionStatus())
+                .isEqualTo(SaasSyncEvent.ProjectionStatus.PROJECTED);
+        assertThat(persisted.getProjectedAt()).isNotNull();
+        assertThat(persisted.getProjectionError()).isNull();
     }
 
     @Test
@@ -106,6 +165,107 @@ class SyncEventApiTest {
     }
 
     @Test
+    void conservaComoErrorElInformeFiscalInvalidoSinRomperLaTransaccion() throws Exception {
+        CreateCompanyResponse company = createCompany("B20202020");
+        UUID installationId = UUID.randomUUID();
+        LicenseSaasLinkResponse link = link(company, installationId);
+        UUID eventId = UUID.randomUUID();
+        SyncEventRequest request = new SyncEventRequest(
+                eventId,
+                company.companyId(),
+                company.storeId(),
+                1L,
+                null,
+                "FISCAL_STATUS",
+                UUID.randomUUID(),
+                SyncOperation.ACTUALIZAR,
+                Map.of(
+                        "installationId", installationId.toString(),
+                        "companyId", company.companyId().toString(),
+                        "storeId", company.storeId().toString(),
+                        "effectiveMode", "VERIFACTU",
+                        "activationState", "ACTIVE",
+                        "modeVersion", 0,
+                        "runtimeClass", "SANDBOX",
+                        "endpointEnvironment", "TEST",
+                        "transportMode", "SIMULATED",
+                        "reportedAt", "fecha-invalida"));
+
+        mvc.perform(post("/api/v1/sync/events")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(status().isConflict());
+
+        mvc.perform(post("/api/v1/sync/events")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(status().isConflict());
+
+        var persisted = events.findById(eventId).orElseThrow();
+        assertThat(persisted.getProjectionStatus())
+                .isEqualTo(SaasSyncEvent.ProjectionStatus.ERROR);
+        assertThat(persisted.getProjectionError()).contains("reportedAt");
+    }
+
+    @Test
+    void reproyectaUnDuplicadoEnErrorSinDuplicarElEstadoFiscal() throws Exception {
+        CreateCompanyResponse company = createCompany("B21212121");
+        UUID installationId = UUID.randomUUID();
+        LicenseSaasLinkResponse link = link(company, installationId);
+        UUID eventId = UUID.randomUUID();
+        String reportedAt = Instant.now().minusSeconds(60).toString();
+        SyncEventRequest request = new SyncEventRequest(
+                eventId,
+                company.companyId(),
+                company.storeId(),
+                1L,
+                null,
+                "FISCAL_STATUS",
+                UUID.randomUUID(),
+                SyncOperation.ACTUALIZAR,
+                Map.of(
+                        "installationId", installationId.toString(),
+                        "companyId", company.companyId().toString(),
+                        "storeId", company.storeId().toString(),
+                        "effectiveMode", "VERIFACTU",
+                        "activationState", "ACTIVE",
+                        "modeVersion", 1,
+                        "runtimeClass", "SANDBOX",
+                        "endpointEnvironment", "TEST",
+                        "transportMode", "SIMULATED",
+                        "reportedAt", reportedAt));
+        mvc.perform(post("/api/v1/sync/events")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        SaasSyncEvent failed = events.findById(eventId).orElseThrow();
+        failed.markFailed("Fallo transitorio simulado");
+        events.saveAndFlush(failed);
+
+        mvc.perform(post("/api/v1/sync/events")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        SaasSyncEvent recovered = events.findById(eventId).orElseThrow();
+        assertThat(recovered.getProjectionStatus())
+                .isEqualTo(SaasSyncEvent.ProjectionStatus.PROJECTED);
+        assertThat(recovered.getProjectedAt()).isNotNull();
+        assertThat(recovered.getProjectionError()).isNull();
+        assertThat(events.findAll())
+                .filteredOn(event -> event.getEventId().equals(eventId))
+                .hasSize(1);
+        assertThat(fiscalStatuses.findAll())
+                .filteredOn(status -> status.getSourceInstallationId().equals(installationId))
+                .hasSize(1);
+    }
+
+    @Test
     void consultaEventosSyncPorTipoDesdeAdmin() throws Exception {
         CreateCompanyResponse company = createCompany("B77777777");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
@@ -148,7 +308,14 @@ class SyncEventApiTest {
         assertThat(sales)
                 .filteredOn(event -> event.eventId().equals(saleEventId))
                 .singleElement()
-                .satisfies(event -> assertThat(event.payload()).containsEntry("numero", "T-100"));
+                .satisfies(event -> {
+                    assertThat(event.payload()).containsEntry("numero", "T-100");
+                    assertThat(event.projectionStatus())
+                            .isEqualTo(SaasSyncEvent.ProjectionStatus.IGNORED);
+                    assertThat(event.projectedAt()).isNotNull();
+                    assertThat(event.projectionError()).isNull();
+                    assertThat(event.schemaVersion()).isEqualTo(1);
+                });
         assertThat(stock)
                 .extracting(AdminSyncEventView::eventId)
                 .contains(stockEventId);
@@ -272,6 +439,8 @@ class SyncEventApiTest {
 
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
+                        .header("X-TPV-Link-Recovery-Token",
+                                "recovery-token-0123456789abcdef0123456789abcdef")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new LicenseSaasLinkRequest(
                                 company.pairingCode(),
@@ -279,9 +448,12 @@ class SyncEventApiTest {
                                 "INST-1",
                                 "public-key",
                                 company.storeId(),
-                                "TIENDA-1",
-                                "B00000000",
-                                "Empresa"))))
+                                "001",
+                                "DEMO-00000000",
+                                "Empresa",
+                                null,
+                                null,
+                                "Atlantic/Canary"))))
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), LicenseSaasLinkResponse.class);
@@ -325,12 +497,16 @@ class SyncEventApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateCompanyRequest(
                                 "Empresa",
-                                taxId,
+                                validCif(taxId),
                                 TaxpayerType.SOCIEDAD,
                                 TaxRegime.IGIC,
-                                "TIENDA-1",
+                                com.tpverp.saas.license.CommercialProfile.MAYORISTA,
+                                fiscalAddress(),
+                                "001",
                                 "Tienda 1",
-                                Instant.parse("2027-07-01T00:00:00Z"),
+                                fiscalAddress(),
+                                "Atlantic/Canary",
+                                Instant.parse("2099-07-01T00:00:00Z"),
                                 2,
                                 1))))
                 .andExpect(status().isOk())

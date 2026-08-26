@@ -16,7 +16,21 @@ public class InstallationAuthenticator {
     }
 
     public void requireToken(SaasInstallation installation, String token) {
-        if (token == null || token.isBlank() || !installation.hasTokenHash(tokens.hash(token))) {
+        if (!installation.isActive()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token de instalacion invalido");
+        }
+        requireKnownToken(installation, token);
+    }
+
+    /**
+     * Verifies ownership of an already linked installation even after it has
+     * been revoked. This is intentionally only used by license validation so
+     * the local ERP can receive the blocking status instead of treating a
+     * revocation as a transient outage.
+     */
+    public void requireKnownToken(SaasInstallation installation, String token) {
+        if (token == null || token.isBlank()
+                || !installation.hasTokenHash(tokens.hash(token))) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token de instalacion invalido");
         }
     }
@@ -31,6 +45,7 @@ public class InstallationAuthenticator {
         }
         String tokenHash = tokens.hash(token);
         return candidates.stream()
+                .filter(SaasInstallation::isActive)
                 .filter(candidate -> candidate.getCompany().getId().equals(companyId))
                 .filter(candidate -> candidate.getStore().getId().equals(storeId))
                 .filter(candidate -> candidate.hasTokenHash(tokenHash))

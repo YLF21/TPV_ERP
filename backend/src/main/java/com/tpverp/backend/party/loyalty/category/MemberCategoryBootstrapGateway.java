@@ -1,5 +1,6 @@
 package com.tpverp.backend.party.loyalty.category;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -80,6 +81,7 @@ public interface MemberCategoryBootstrapGateway {
             String assignmentAction) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record BootstrapStatus(
             UUID bootstrapId,
             String status,

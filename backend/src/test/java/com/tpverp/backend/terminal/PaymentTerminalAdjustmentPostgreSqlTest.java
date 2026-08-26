@@ -1,6 +1,7 @@
 package com.tpverp.backend.terminal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -29,7 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(PaymentTerminalAdjustmentService.class)
+@Import({FlywayPostgreSqlConfiguration.class, PaymentTerminalAdjustmentService.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_PASSWORD", matches = ".+")

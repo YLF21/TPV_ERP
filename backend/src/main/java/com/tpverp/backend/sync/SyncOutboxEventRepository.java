@@ -14,7 +14,31 @@ public interface SyncOutboxEventRepository extends JpaRepository<SyncOutboxEvent
 
     List<SyncOutboxEvent> findByStatusOrderByCreatedAtAsc(SyncOutboxStatus status);
 
-    long countByStatus(SyncOutboxStatus status);
+    @Query("""
+            select count(event)
+              from SyncOutboxEvent event
+             where event.companyId = :companyId
+               and event.status = :status
+               and (event.storeId = :storeId or event.storeId is null)
+            """)
+    long countForStore(
+            @Param("companyId") UUID companyId,
+            @Param("storeId") UUID storeId,
+            @Param("status") SyncOutboxStatus status);
+
+    @Query("""
+            select event
+              from SyncOutboxEvent event
+             where event.companyId = :companyId
+               and event.status = :status
+               and (event.storeId = :storeId or event.storeId is null)
+             order by event.updatedAt asc
+            """)
+    List<SyncOutboxEvent> findIncidentsForStore(
+            @Param("companyId") UUID companyId,
+            @Param("storeId") UUID storeId,
+            @Param("status") SyncOutboxStatus status,
+            org.springframework.data.domain.Pageable pageable);
 
     @Query(value = """
             select event.*
@@ -23,7 +47,8 @@ public interface SyncOutboxEventRepository extends JpaRepository<SyncOutboxEvent
                     and event.proximo_intento_en <= :now)
                 or (event.estado = 'ENVIANDO'
                     and (event.reclamado_en is null or event.reclamado_en <= :staleBefore))
-             order by case when event.estado = 'ENVIANDO' then 0 else 1 end,
+             order by case when event.tipo_entidad = 'FISCAL_STATUS' then 0 else 1 end,
+                      case when event.estado = 'ENVIANDO' then 0 else 1 end,
                       coalesce(event.proximo_intento_en, event.reclamado_en, event.creado_en),
                       event.creado_en,
                       event.id
@@ -38,4 +63,10 @@ public interface SyncOutboxEventRepository extends JpaRepository<SyncOutboxEvent
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select event from SyncOutboxEvent event where event.eventId = :eventId")
     Optional<SyncOutboxEvent> findLockedByEventId(@Param("eventId") UUID eventId);
+
+    Optional<SyncOutboxEvent> findTopByCompanyIdAndStoreIdAndEntityTypeAndEntityIdOrderByCreatedAtDesc(
+            UUID companyId,
+            UUID storeId,
+            String entityType,
+            UUID entityId);
 }

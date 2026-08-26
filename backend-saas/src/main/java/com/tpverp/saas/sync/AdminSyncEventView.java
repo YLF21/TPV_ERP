@@ -12,6 +12,10 @@ public record AdminSyncEventView(
         String entityType,
         UUID entityId,
         SyncOperation operation,
+        SaasSyncEvent.ProjectionStatus projectionStatus,
+        Instant projectedAt,
+        String projectionError,
+        int schemaVersion,
         Instant receivedAt,
         Map<String, Object> payload) {
 }

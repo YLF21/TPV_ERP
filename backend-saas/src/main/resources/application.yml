@@ -8,7 +8,7 @@ spring:
   datasource:
     url: ${TPV_SAAS_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_saas}
     username: ${TPV_SAAS_DB_USERNAME:tpv_erp_saas}
-    password: ${TPV_SAAS_DB_PASSWORD:admin}
+    password: ${TPV_SAAS_DB_PASSWORD:}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,6 +18,8 @@ tpv:
   saas:
     admin-default-allowed: ${TPV_SAAS_ADMIN_DEFAULT_ALLOWED:false}
     legacy-basic-auth-enabled: ${TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED:false}
+    operational-incidents:
+      category-bootstrap-inactivity: ${TPV_SAAS_CATEGORY_BOOTSTRAP_INACTIVITY:PT1H}
     cors:
       allowed-origins: ${TPV_SAAS_CORS_ALLOWED_ORIGINS:}
     secrets:

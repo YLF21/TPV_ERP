@@ -48,6 +48,10 @@ public class FiscalQrUrlService {
         if (mode == FiscalMode.PRE_SIF) {
             throw new IllegalArgumentException("PRE_SIF no puede generar un QR fiscal");
         }
+        if (record.getOperation() != FiscalRecordOperation.ALTA) {
+            throw new IllegalArgumentException(
+                    "RegistroAnulacion no genera un QR de factura");
+        }
         if (record.getTotalAmount() == null) {
             throw new IllegalArgumentException("importe total es obligatorio para el QR");
         }
@@ -58,6 +62,30 @@ public class FiscalQrUrlService {
                 + "&importe=" + encode(record.getTotalAmount()
                         .setScale(2, RoundingMode.HALF_UP)
                         .toPlainString());
+    }
+
+    /** Validates a frozen URL against its asserted mode and environment. */
+    public boolean isOfficialUrlFor(
+            String value,
+            FiscalMode mode,
+            FiscalEndpointEnvironment environment) {
+        if (value == null || mode == null || environment == null || mode == FiscalMode.PRE_SIF) {
+            return false;
+        }
+        String prefix = base(mode, environment) + "?";
+        if (!value.startsWith(prefix) || value.indexOf('#') >= 0) {
+            return false;
+        }
+        String[] parameters = value.substring(prefix.length()).split("&", -1);
+        return parameters.length == 4
+                && nonEmptyParameter(parameters[0], "nif=")
+                && nonEmptyParameter(parameters[1], "numserie=")
+                && nonEmptyParameter(parameters[2], "fecha=")
+                && nonEmptyParameter(parameters[3], "importe=");
+    }
+
+    private static boolean nonEmptyParameter(String value, String prefix) {
+        return value.startsWith(prefix) && value.length() > prefix.length();
     }
 
     private static String base(FiscalMode mode, FiscalEndpointEnvironment environment) {

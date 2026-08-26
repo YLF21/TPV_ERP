@@ -82,6 +82,44 @@ class HttpMemberBalanceCentralGatewayTest {
                                 .isEqualTo(MemberBalanceCentralException.Kind.UNAVAILABLE));
     }
 
+    @Test
+    void interpretaComoAusenteUnBootstrapDeCarteraNoEncontrado() throws Exception {
+        HttpServer server = discoveryServer(
+                "/api/v2/loyalty/member-wallet/bootstrap/discover", 404);
+        try {
+            server.start();
+            HttpMemberBalanceCentralGateway gateway = gateway(server, "token-local");
+
+            Optional<MemberBalanceCentralGateway.MemberWalletBootstrapStatus> result =
+                    gateway.discoverBootstrap(
+                            new MemberBalanceCentralGateway.BootstrapStoreRequest(
+                                    UUID.randomUUID(), UUID.randomUUID()));
+
+            assertThat(result).isEmpty();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void interpretaComoAusenteUnBootstrapDePuntosNoEncontrado() throws Exception {
+        HttpServer server = discoveryServer(
+                "/api/v2/loyalty/member-points/bootstrap/discover", 404);
+        try {
+            server.start();
+            HttpMemberBalanceCentralGateway gateway = gateway(server, "token-local");
+
+            Optional<MemberBalanceCentralGateway.PointsBootstrapStatus> result =
+                    gateway.discoverPointsBootstrap(
+                            new MemberBalanceCentralGateway.PointsBootstrapStoreRequest(
+                                    UUID.randomUUID(), UUID.randomUUID()));
+
+            assertThat(result).isEmpty();
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private HttpMemberBalanceCentralGateway gateway(HttpServer server, String token) {
         LicenseSaasCredentialStore credentials = mock(LicenseSaasCredentialStore.class);
         when(credentials.readToken()).thenReturn(Optional.of(token));
@@ -105,6 +143,16 @@ class HttpMemberBalanceCentralGatewayTest {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(status, body.length);
             exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        return server;
+    }
+
+    private HttpServer discoveryServer(String path, int status) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(path, exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(status, -1);
             exchange.close();
         });
         return server;

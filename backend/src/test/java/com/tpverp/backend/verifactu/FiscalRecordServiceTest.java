@@ -92,6 +92,21 @@ class FiscalRecordServiceTest {
     }
 
     @Test
+    void emiteVerifactuAntesDeLaFechaObligatoriaTrasActivacionVoluntaria() {
+        var configuration = new VerifactuConfiguration(command.companyId());
+        configuration.activateVoluntarily(Instant.parse("2026-06-14T09:00:00Z"));
+        configuration.changeMode(FiscalMode.VERIFACTU,
+                Instant.parse("2026-06-14T09:00:00Z"), null);
+        stubContext(configuration, document);
+        stubEmptyChain();
+
+        var saved = service().register(command);
+
+        assertThat(saved.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        verify(states).save(any(FiscalSubmissionState.class));
+    }
+
+    @Test
     void bloqueaEmisionNoVerifactuConAlarmaDeIntegridadActiva() {
         stubActive(document);
         var configuration = new VerifactuConfiguration(command.companyId());
@@ -156,6 +171,67 @@ class FiscalRecordServiceTest {
 
         assertThatThrownBy(() -> fiscal.register(command))
                 .isInstanceOf(VerifactuInactiveException.class);
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+        verify(records, never()).save(any(FiscalRecord.class));
+    }
+
+    @Test
+    void aplicaLaActivacionObligatoriaAntesDeCrearLaCadenaYElRegistro() {
+        var license = stubIdentity(document);
+        when(license.getVerifactuActivationDate())
+                .thenReturn(LocalDate.of(2026, 6, 14));
+        var configuration = new VerifactuConfiguration(command.companyId());
+        configuration.changeMode(
+                FiscalMode.NO_VERIFACTU, NOW.minusSeconds(3600), null);
+        var mandatory = mock(FiscalMandatoryActivationService.class);
+        when(mandatory.prepareEmission(license.getId(), TRUNCATED_NOW))
+                .thenAnswer(invocation -> {
+                    configuration.changeMode(FiscalMode.VERIFACTU, TRUNCATED_NOW, null);
+                    return configuration;
+                });
+        stubEmptyChain();
+
+        var saved = service(mandatory).register(command);
+
+        assertThat(saved.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        var order = inOrder(mandatory, chains, records);
+        order.verify(mandatory).prepareEmission(license.getId(), TRUNCATED_NOW);
+        order.verify(chains).insertIfMissing(
+                any(), eq(command.companyId()), eq(command.installationId()), any());
+        order.verify(records).save(any(FiscalRecord.class));
+    }
+
+    @Test
+    void noCreaCadenaSiFallaLaTransicionObligatoriaEnLaEmision() {
+        var license = stubIdentity(document);
+        var mandatory = mock(FiscalMandatoryActivationService.class);
+        when(mandatory.prepareEmission(license.getId(), TRUNCATED_NOW))
+                .thenThrow(new FiscalMandatoryActivationException(
+                        "Emision fiscal bloqueada: no se pudo aplicar VERI*FACTU"));
+
+        assertThatThrownBy(() -> service(mandatory).register(command))
+                .isInstanceOf(FiscalMandatoryActivationException.class)
+                .hasMessageContaining("Emision fiscal bloqueada");
+
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+        verify(records, never()).save(any(FiscalRecord.class));
+    }
+
+    @Test
+    void defensaAdicionalNuncaPermiteNoVerifactuTrasLaFechaObligatoria() {
+        var license = stubIdentity(document);
+        when(license.getVerifactuActivationDate())
+                .thenReturn(LocalDate.of(2026, 6, 14));
+        var configuration = new VerifactuConfiguration(command.companyId());
+        configuration.changeMode(
+                FiscalMode.NO_VERIFACTU, NOW.minusSeconds(3600), null);
+        when(configurations.findByCompanyId(command.companyId()))
+                .thenReturn(Optional.of(configuration));
+
+        assertThatThrownBy(() -> service().register(command))
+                .isInstanceOf(FiscalMandatoryActivationException.class)
+                .hasMessageContaining("fecha automatica de licencia VERI*FACTU");
+
         verify(chains, never()).insertIfMissing(any(), any(), any(), any());
         verify(records, never()).save(any(FiscalRecord.class));
     }
@@ -467,6 +543,45 @@ class FiscalRecordServiceTest {
     }
 
     @Test
+    void subsanacionPosteriorALaFechaObligatoriaUsaElModoActualVerifactu() {
+        var original = new FiscalRecord(
+                chain.getId(), command.companyId(), command.installationId(), command.storeId(),
+                command.documentId(), 1, FiscalRecordOperation.ALTA, FiscalDocumentType.F2,
+                "001-260614-000001", LocalDate.of(2026, 6, 14),
+                TRUNCATED_NOW.minusSeconds(60), "Atlantic/Canary", "B12345674",
+                new BigDecimal("2.10"), new BigDecimal("12.10"), null,
+                "A".repeat(64), "B".repeat(64), Map.of("numero", "001-260614-000001"),
+                "1.0", "SHA-256", "0.0.1", FiscalMode.NO_VERIFACTU);
+        chain.advance(original, TRUNCATED_NOW.minusSeconds(60));
+        var license = activeLicense();
+        when(license.getVerifactuActivationDate())
+                .thenReturn(LocalDate.of(2026, 6, 14));
+        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
+                command.storeId(), command.installationId()))
+                .thenReturn(Optional.of(license));
+        var configuration = new VerifactuConfiguration(command.companyId(),
+                FiscalMode.NO_VERIFACTU);
+        var mandatory = mock(FiscalMandatoryActivationService.class);
+        when(mandatory.prepareEmission(license.getId(), TRUNCATED_NOW))
+                .thenAnswer(invocation -> {
+                    configuration.changeMode(FiscalMode.VERIFACTU, TRUNCATED_NOW, null);
+                    return configuration;
+                });
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var correctedSnapshot = Map.<String, Object>of(
+                "impuestoTotal", new BigDecimal("2.10"),
+                "total", new BigDecimal("12.10"),
+                "subsanacion", "S");
+
+        var correction = service(mandatory).registerCorrection(original, correctedSnapshot);
+
+        assertThat(correction.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        verify(states).save(any(FiscalSubmissionState.class));
+    }
+
+    @Test
     void bloqueaAntesDeComprobarLaUnicidadLogica() {
         stubActive(document);
         when(chains.findForUpdate(command.companyId(), command.installationId()))
@@ -500,6 +615,40 @@ class FiscalRecordServiceTest {
         var state = ArgumentCaptor.forClass(FiscalSubmissionState.class);
         verify(states).save(state.capture());
         assertThat(field(state.getValue(), "updatedAt")).isEqualTo(TRUNCATED_NOW);
+    }
+
+    @Test
+    void reevaluaModoConElInstanteOficialTrasEsperarElLockDeCadena() {
+        // El 14/06/2026 comienza a las 23:00Z en Atlantic/Canary (UTC+1).
+        // Los dos instantes quedan a cada lado de ese limite civil local.
+        var beforeBoundary = Instant.parse("2026-06-13T22:59:59Z");
+        var afterBoundary = Instant.parse("2026-06-13T23:00:01Z");
+        var movingClock = new MovingClock(beforeBoundary);
+        var license = stubIdentity(document);
+        when(license.isOperationalAt(any(Instant.class))).thenReturn(true);
+        when(license.getVerifactuActivationDate()).thenReturn(LocalDate.of(2026, 6, 14));
+        var configuration = new VerifactuConfiguration(command.companyId(), FiscalMode.NO_VERIFACTU);
+        var mandatory = mock(FiscalMandatoryActivationService.class);
+        when(mandatory.prepareEmission(eq(license.getId()), any(Instant.class)))
+                .thenAnswer(invocation -> {
+                    var at = invocation.getArgument(1, Instant.class);
+                    if (!at.isBefore(afterBoundary)) {
+                        configuration.changeMode(FiscalMode.VERIFACTU, at, null);
+                    }
+                    return configuration;
+                });
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenAnswer(invocation -> {
+                    movingClock.set(afterBoundary);
+                    return Optional.of(chain);
+                });
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var saved = service(mandatory, movingClock).register(command);
+
+        assertThat(saved.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        assertThat(field(saved, "generatedAt")).isEqualTo(afterBoundary.truncatedTo(
+                java.time.temporal.ChronoUnit.SECONDS));
     }
 
     private void assertRejected(CommercialDocument invalidDocument, FiscalRecordCommand invalidCommand) {
@@ -544,11 +693,11 @@ class FiscalRecordServiceTest {
                 .thenReturn(Optional.of(configuration));
     }
 
-    private void stubIdentity(CommercialDocument persistedDocument) {
-        stubIdentity(command, persistedDocument);
+    private License stubIdentity(CommercialDocument persistedDocument) {
+        return stubIdentity(command, persistedDocument);
     }
 
-    private void stubIdentity(
+    private License stubIdentity(
             FiscalRecordCommand value, CommercialDocument persistedDocument) {
         var company = new Company("B12345674", "Company", address());
         var store = new Store(
@@ -566,6 +715,7 @@ class FiscalRecordServiceTest {
         when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
                 value.storeId(), value.installationId()))
                 .thenReturn(Optional.of(license));
+        return license;
     }
 
     private FiscalRecordService service() {
@@ -574,6 +724,47 @@ class FiscalRecordServiceTest {
                 companies, stores, installations, documents, customers,
                 new VerifactuActivationService(), new FiscalSnapshotFactory(),
                 new FiscalDocumentPolicy(), Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private FiscalRecordService service(FiscalMandatoryActivationService mandatoryActivation) {
+        return service(mandatoryActivation, Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private FiscalRecordService service(
+            FiscalMandatoryActivationService mandatoryActivation, Clock serviceClock) {
+        return new FiscalRecordService(
+                chains, records, relations, states, configurations, licenses,
+                companies, stores, installations, documents, customers,
+                new VerifactuActivationService(), new FiscalSnapshotFactory(),
+                new FiscalDocumentPolicy(), serviceClock,
+                mandatoryActivation);
+    }
+
+    private static final class MovingClock extends Clock {
+        private Instant instant;
+
+        private MovingClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        private void set(Instant instant) {
+            this.instant = instant;
+        }
+
+        @Override
+        public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 
     private static FiscalRecordCommand command(
@@ -646,6 +837,7 @@ class FiscalRecordServiceTest {
 
     private static License activeLicense() {
         var license = mock(License.class);
+        when(license.getId()).thenReturn(UUID.randomUUID());
         when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
         when(license.getTaxId()).thenReturn("B12345674");
         when(license.getValidaDesde()).thenReturn(NOW.minusSeconds(60));

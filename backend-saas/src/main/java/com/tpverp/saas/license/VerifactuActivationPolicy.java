@@ -63,10 +63,20 @@ public class VerifactuActivationPolicy {
     }
 
     public void update(LocalDate activationDate, Instant updatedAt, String updatedBy, String reason) {
-        this.activationDate = Objects.requireNonNull(activationDate, "activationDate");
+        validateActivationDate(taxpayerType, activationDate);
+        this.activationDate = activationDate;
         this.updatedAt = Objects.requireNonNull(updatedAt, "updatedAt");
         this.updatedBy = required(updatedBy, "updatedBy", 80);
         this.reason = required(reason, "reason", 500);
+    }
+
+    public static void validateActivationDate(
+            TaxpayerType taxpayerType, LocalDate activationDate) {
+        Objects.requireNonNull(taxpayerType, "taxpayerType");
+        Objects.requireNonNull(activationDate, "activationDate");
+        // This is an explicit product/licence policy date. The statutory SIF
+        // adaptation dates do not cap it because NO VERI*FACTU remains a
+        // lawful alternative after those dates.
     }
 
     private static String required(String value, String field, int maxLength) {

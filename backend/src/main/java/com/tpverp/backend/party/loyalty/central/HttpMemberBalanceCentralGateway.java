@@ -267,6 +267,9 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
             Object payload,
             Class<T> responseType) {
         HttpResponse<String> response = send(target, path, payload);
+        if (response.statusCode() == 404) {
+            return Optional.empty();
+        }
         if (response.statusCode() >= 200 && response.statusCode() < 300) {
             if (response.statusCode() == 204
                     || response.body() == null

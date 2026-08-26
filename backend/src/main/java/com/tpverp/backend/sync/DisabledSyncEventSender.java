@@ -1,10 +1,10 @@
 package com.tpverp.backend.sync;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "tpv.sync.central-url", havingValue = "", matchIfMissing = true)
+@ConditionalOnExpression("'${tpv.sync.central-url:}' == ''")
 public class DisabledSyncEventSender implements SyncEventSender {
 
     @Override

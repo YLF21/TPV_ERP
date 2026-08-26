@@ -10,12 +10,14 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import com.tpverp.backend.licensing.LicenseSaasCredentialStore;
+import com.tpverp.backend.licensing.SaasLicenseIdentityResolver;
 
 class HttpSyncEventSenderTest {
 
@@ -107,6 +109,84 @@ class HttpSyncEventSenderTest {
             sender.send(event());
 
             assertThat(token.get()).isEqualTo("token-local");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void conservaCamposJsonNulosAlEnviarElEvento() throws Exception {
+        var received = new AtomicReference<JsonNode>();
+        HttpServer server = server(200, received);
+        try {
+            server.start();
+            var payload = new LinkedHashMap<String, Object>();
+            payload.put("modeSince", null);
+            payload.put("effectiveMode", "VERIFACTU");
+            var event = new SyncOutboxEvent(
+                    UUID.randomUUID(),
+                    UUID.randomUUID(),
+                    null,
+                    "FISCAL_STATUS",
+                    UUID.randomUUID(),
+                    SyncOperation.ACTUALIZAR,
+                    payload,
+                    Instant.parse("2026-08-25T12:00:00Z"));
+            var sender = new HttpSyncEventSender(
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                    mapper,
+                    HttpClient.newHttpClient());
+
+            sender.send(event);
+
+            assertThat(received.get().get("payload").has("modeSince")).isTrue();
+            assertThat(received.get().get("payload").get("modeSince").isNull()).isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void enviaLaIdentidadCentralAsignadaPorLaLicencia() throws Exception {
+        var received = new AtomicReference<JsonNode>();
+        HttpServer server = server(200, received);
+        try {
+            server.start();
+            UUID centralCompanyId = UUID.randomUUID();
+            UUID centralStoreId = UUID.randomUUID();
+            UUID localCompanyId = UUID.randomUUID();
+            UUID localStoreId = UUID.randomUUID();
+            var identities = org.mockito.Mockito.mock(SaasLicenseIdentityResolver.class);
+            org.mockito.Mockito.when(identities.resolve(
+                            org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(new SaasLicenseIdentityResolver.SaasIdentity(
+                            centralCompanyId, centralStoreId));
+            var sender = new HttpSyncEventSender(
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                    credentials("token-local"),
+                    identities,
+                    mapper,
+                    HttpClient.newHttpClient());
+
+            sender.send(new SyncOutboxEvent(
+                    localCompanyId,
+                    localStoreId,
+                    null,
+                    "FISCAL_STATUS",
+                    UUID.randomUUID(),
+                    SyncOperation.ACTUALIZAR,
+                    Map.of("companyId", localCompanyId, "storeId", localStoreId),
+                    Instant.parse("2026-08-25T12:00:00Z")));
+
+            assertThat(received.get().get("companyId").asText())
+                    .isEqualTo(centralCompanyId.toString());
+            assertThat(received.get().get("storeId").asText())
+                    .isEqualTo(centralStoreId.toString());
+            assertThat(received.get().get("payload").get("companyId").asText())
+                    .isEqualTo(centralCompanyId.toString());
+            assertThat(received.get().get("payload").get("storeId").asText())
+                    .isEqualTo(centralStoreId.toString());
         } finally {
             server.stop(0);
         }

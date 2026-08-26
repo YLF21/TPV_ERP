@@ -7,6 +7,7 @@ export { AppFrame } from "./components/AppFrame";
 export { ErpSelect } from "./components/ErpSelect";
 export type { ErpSelectOption } from "./components/ErpSelect";
 export { LoginScreen } from "./components/LoginScreen";
+export { OperationalStatusCard } from "./components/OperationalStatusCard";
 export { PromotionListScreen } from "./components/PromotionListScreen";
 export { productLabelEanBits } from "./components/productLabelBarcode";
 export { visibleSalesReports } from "./components/salesReportAccess";

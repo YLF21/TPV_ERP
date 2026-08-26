@@ -16,14 +16,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @Profile("dev")
-@ConditionalOnProperty(name = "tpv.sync.central-url", havingValue = "", matchIfMissing = true)
+@ConditionalOnExpression("'${tpv.sync.central-url:}' == ''")
 public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGateway {
 
     private static final int HEARTBEAT_INTERVAL_SECONDS = 30;

@@ -8,12 +8,16 @@ import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.document.DocumentLineTotals;
+import com.tpverp.backend.document.FiscalPrintView;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.document.SalesInvoiceRectificationRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.verifactu.FiscalEndpointEnvironment;
+import com.tpverp.backend.verifactu.FiscalMode;
+import com.tpverp.backend.verifactu.FiscalPrintSnapshotFactory;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -121,6 +125,22 @@ public class InvoiceJasperRenderer {
                 qrUrl, logoDataUri, format).map(RenderedDocument::pdf);
     }
 
+    /** Renders exclusively from the persisted fiscal print snapshot metadata. */
+    public Optional<byte[]> renderWithFiscalSnapshot(
+            CommercialDocument document,
+            Store store,
+            Company company,
+            Customer customer,
+            InvoicePresentationSnapshot presentation,
+            FiscalPrintView fiscal,
+            String logoDataUri,
+            DocumentTemplateFormat format) {
+        requireFrozenIssuer(fiscal);
+        return renderDocumentWithFiscalSnapshot(
+                document, store, company, customer, presentation,
+                fiscal, logoDataUri, format).map(RenderedDocument::pdf);
+    }
+
     public Optional<RenderedDocument> renderDocument(
             CommercialDocument document,
             Store store,
@@ -128,6 +148,34 @@ public class InvoiceJasperRenderer {
             Customer customer,
             InvoicePresentationSnapshot presentation,
             String qrUrl,
+            String logoDataUri,
+            DocumentTemplateFormat format) {
+        return renderDocumentInternal(document, store, company, customer, presentation,
+                compatibilityFiscal(qrUrl), logoDataUri, format);
+    }
+
+    /** Reprints with mode, environment and wording frozen at fiscal issuance. */
+    public Optional<RenderedDocument> renderDocumentWithFiscalSnapshot(
+            CommercialDocument document,
+            Store store,
+            Company company,
+            Customer customer,
+            InvoicePresentationSnapshot presentation,
+            FiscalPrintView fiscal,
+            String logoDataUri,
+            DocumentTemplateFormat format) {
+        requireFrozenIssuer(fiscal);
+        return renderDocumentInternal(document, store, company, customer, presentation,
+                fiscal, logoDataUri, format);
+    }
+
+    private Optional<RenderedDocument> renderDocumentInternal(
+            CommercialDocument document,
+            Store store,
+            Company company,
+            Customer customer,
+            InvoicePresentationSnapshot presentation,
+            FiscalPrintView fiscal,
             String logoDataUri,
             DocumentTemplateFormat format) {
         Objects.requireNonNull(document, "document");
@@ -150,7 +198,8 @@ public class InvoiceJasperRenderer {
         }
         return renderPayload(
                 reference, templateType, format, store, company,
-                data(document, store, company, customer, presentation, qrUrl, logoDataUri),
+                dataWithFiscalSnapshot(
+                        document, store, company, customer, presentation, fiscal, logoDataUri),
                 logoDataUri);
     }
 
@@ -347,6 +396,18 @@ public class InvoiceJasperRenderer {
             InvoicePresentationSnapshot presentation,
             String qrUrl,
             String logoDataUri) {
+        return dataWithFiscalSnapshot(document, store, company, customer, presentation,
+                compatibilityFiscal(qrUrl), logoDataUri);
+    }
+
+    ObjectNode dataWithFiscalSnapshot(
+            CommercialDocument document,
+            Store store,
+            Company company,
+            Customer customer,
+            InvoicePresentationSnapshot presentation,
+            FiscalPrintView fiscal,
+            String logoDataUri) {
         var root = mapper.createObjectNode();
         var documentNode = root.putObject("document");
         documentNode.put("type", document.getTipo().name());
@@ -360,20 +421,33 @@ public class InvoiceJasperRenderer {
         documentNode.put("operationDate", document.getFecha().toString());
 
         var issuer = root.putObject("issuer");
+        boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA;
+        boolean compatibilityFiscal = fiscal != null
+                && "LEGACY_COMPAT".equals(fiscal.formatVersion());
+        if (invoice && fiscal != null && !compatibilityFiscal) {
+            requireFrozenIssuer(fiscal);
+        }
+        boolean frozenIssuer = invoice && fiscal != null
+                && fiscal.hasFrozenIssuerIdentity();
+        String issuerName = frozenIssuer ? fiscal.issuerName() : company.getRazonSocial();
+        String issuerTaxId = frozenIssuer ? fiscal.issuerTaxId() : company.getTaxId();
+        Map<String, String> issuerAddress = frozenIssuer
+                ? fiscal.issuerAddress() : company.getDomicilioFiscal();
         boolean showStoreName = presentation.shouldShowStoreName();
         root.put("showStoreName", showStoreName);
         issuer.put("tradeName", store.getNombreEfectivo());
-        issuer.put("legalName", company.getRazonSocial());
+        issuer.put("legalName", issuerName);
         issuer.put("headerPrimaryName", showStoreName
-                ? store.getNombreEfectivo() : company.getRazonSocial());
+                ? store.getNombreEfectivo() : issuerName);
         putNullable(issuer, "headerSecondaryName",
-                showStoreName ? company.getRazonSocial() : null);
-        issuer.put("taxId", company.getTaxId());
-        address(issuer.putObject("address"), company.getDomicilioFiscal());
-        putNullable(issuer, "phone", company.getDomicilioFiscal().get("telefono"));
-        putNullable(issuer, "email", company.getDomicilioFiscal().get("email"));
+                showStoreName ? issuerName : null);
+        issuer.put("taxId", issuerTaxId);
+        address(issuer.putObject("address"), issuerAddress);
+        putNullable(issuer, "phone", issuerAddress.get("telefono"));
+        putNullable(issuer, "email", issuerAddress.get("email"));
         putNullable(issuer, "logoDataUri", logoDataUri);
-        putNullable(issuer, "details", issuerDetails(company));
+        putNullable(issuer, "details", issuerDetails(issuerTaxId, issuerAddress));
 
         var customerNode = root.putObject("customer");
         if (customer != null) {
@@ -407,21 +481,28 @@ public class InvoiceJasperRenderer {
             putNullable(rectification, "method", metadata == null ? null : metadata.getMethod().name());
         }
 
-        boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA
-                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA;
-        String fiscalQrUrl = invoice ? qrUrl : null;
-        boolean noVerifactuQr = fiscalQrUrl != null
-                && fiscalQrUrl.contains("ValidarQRNoVerifactu");
-        boolean testFiscalQr = fiscalQrUrl != null && fiscalQrUrl.contains("prewww2.aeat.es");
-        var fiscal = root.putObject("fiscal");
-        fiscal.put("qrRequired", fiscalQrUrl != null && !fiscalQrUrl.isBlank());
-        fiscal.put("mode", !invoice ? "NOT_APPLICABLE"
-                : fiscalQrUrl == null || fiscalQrUrl.isBlank()
-                        ? "NOT_APPLICABLE" : noVerifactuQr ? "NO_VERIFACTU" : "VERIFACTU");
-        putNullable(fiscal, "verificationUrl", fiscalQrUrl);
-        putNullable(fiscal, "legend", invoice && !noVerifactuQr && fiscalQrUrl != null
-                ? "Factura verificable en la sede electrónica de la AEAT" : null);
-        fiscal.put("testData", testFiscalQr);
+        FiscalPrintView frozenFiscal = invoice ? fiscal : null;
+        String fiscalQrUrl = frozenFiscal == null ? null : frozenFiscal.qrUrl();
+        var fiscalNode = root.putObject("fiscal");
+        fiscalNode.put("qrRequired", fiscalQrUrl != null && !fiscalQrUrl.isBlank());
+        fiscalNode.put("mode", frozenFiscal == null
+                ? "NOT_APPLICABLE" : frozenFiscal.mode().name());
+        putNullable(fiscalNode, "environment", frozenFiscal == null
+                ? null : frozenFiscal.environment().name());
+        putNullable(fiscalNode, "formatVersion", frozenFiscal == null
+                ? null : frozenFiscal.formatVersion());
+        putNullable(fiscalNode, "generatorVersion", frozenFiscal == null
+                ? null : frozenFiscal.generatorVersion());
+        putNullable(fiscalNode, "verificationUrl", fiscalQrUrl);
+        putNullable(fiscalNode, "payloadSha256", frozenFiscal == null
+                ? null : frozenFiscal.qrPayloadSha256());
+        putNullable(fiscalNode, "qrPrefix", frozenFiscal == null
+                ? null : frozenFiscal.prefix());
+        putNullable(fiscalNode, "legend", frozenFiscal == null ? null : frozenFiscal.legend());
+        putNullable(fiscalNode, "testNotice", frozenFiscal == null
+                ? null : frozenFiscal.testNotice());
+        fiscalNode.put("testData", frozenFiscal != null
+                && frozenFiscal.environment() == FiscalEndpointEnvironment.TEST);
 
         var lines = root.putArray("lines");
         document.getLineas().stream()
@@ -476,6 +557,26 @@ public class InvoiceJasperRenderer {
         root.put("fiscalProfile", presentation.fiscalProfile().name());
         root.put("currency", store.getMoneda());
         return root;
+    }
+
+    /**
+     * Compatibility for old internal callers. It deliberately does not inspect
+     * the URL; all production print paths use {@link #renderWithFiscalSnapshot}.
+     */
+    private static FiscalPrintView compatibilityFiscal(String qrUrl) {
+        if (qrUrl == null || qrUrl.isBlank()) {
+            return null;
+        }
+        return new FiscalPrintView(
+                "LEGACY_COMPAT",
+                "LEGACY_COMPAT",
+                FiscalMode.VERIFACTU,
+                FiscalEndpointEnvironment.PRODUCTION,
+                qrUrl,
+                "LEGACY_UNVERIFIED",
+                FiscalPrintSnapshotFactory.PREFIX,
+                FiscalPrintSnapshotFactory.VERIFACTU_LEGEND,
+                null);
     }
 
     private static void verifyReference(
@@ -568,15 +669,21 @@ public class InvoiceJasperRenderer {
         putNullable(target, "countryName", source.get("pais"));
     }
 
-    private static String issuerDetails(Company company) {
-        var source = company.getDomicilioFiscal();
+    private static String issuerDetails(
+            String issuerTaxId, Map<String, String> source) {
         return compactLines(
-                labeled("NIF: ", company.getTaxId()),
+                labeled("NIF: ", issuerTaxId),
                 source.get("linea1"),
                 locality(source.get("codigoPostal"), source.get("ciudad"),
                         source.get("provincia")),
                 labeled("País: ", source.get("pais")),
                 joinNonBlank(" · ", source.get("telefono"), source.get("email")));
+    }
+
+    private static void requireFrozenIssuer(FiscalPrintView fiscal) {
+        if (fiscal == null || !fiscal.hasFrozenIssuerIdentity()) {
+            throw new IllegalStateException("fiscal_print_issuer_identity_missing");
+        }
     }
 
     private static String customerDetails(Customer customer) {

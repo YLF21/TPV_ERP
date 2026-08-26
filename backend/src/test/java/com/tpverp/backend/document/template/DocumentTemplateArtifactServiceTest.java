@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditResult;
@@ -91,7 +92,7 @@ class DocumentTemplateArtifactServiceTest {
     }
 
     @Test
-    void verifiesStoredHashAndRecompilesBeforeActivation() throws Exception {
+    void blocksFiscalCustomActivationUntilRenderAndQrDecodeEvidenceExists() throws Exception {
         var templates = mock(DocumentTemplateRepository.class);
         var organization = mock(CurrentOrganization.class);
         var compiler = mock(SafeJrxmlCompiler.class);
@@ -121,11 +122,12 @@ class DocumentTemplateArtifactServiceTest {
                 storage, catalog,
                 mock(AuditService.class), Clock.systemUTC());
 
-        var result = service.activate(template.getId());
+        assertThatThrownBy(() -> service.activate(template.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage(
+                        "document_template_fiscal_custom_activation_requires_visual_validation");
 
-        assertThat(result).isSameAs(expected);
-        verify(compiler).compile(any(byte[].class));
-        verify(catalog).activateValidatedCurrentStoreTemplate(template.getId());
+        verifyNoInteractions(compiler, catalog);
     }
 
     @Test
@@ -174,12 +176,19 @@ class DocumentTemplateArtifactServiceTest {
         return """
                 <jasperReport name="fiscal" language="java">
                   <query language="sql"><![CDATA[
-                    SELECT sif.qr_url FROM snapshot_impresion_fiscal sif
+                    SELECT sif.qr_url, sif.qr_leyenda, sif.aviso_pruebas
+                    FROM snapshot_impresion_fiscal sif
                     WHERE sif.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
                   ]]></query>
                   <textField><textFieldExpression><![CDATA[$F{qr_url}]]></textFieldExpression></textField>
-                  <staticText><text><![CDATA[QR tributario:]]></text></staticText>
-                  <component kind="barcode4j:QRCode" errorCorrectionLevel="M"/>
+                  <textField><textFieldExpression><![CDATA[$F{qr_leyenda}]]></textFieldExpression></textField>
+                  <textField><textFieldExpression><![CDATA[$F{aviso_pruebas}]]></textFieldExpression></textField>
+                  <textField><textFieldExpression><![CDATA[$F{qr_prefijo}]]></textFieldExpression></textField>
+                  <element kind="component" width="99" height="99">
+                    <component kind="barcode4j:QRCode" errorCorrectionLevel="M" margin="4">
+                      <codeExpression><![CDATA[$F{qr_url}]]></codeExpression>
+                    </component>
+                  </element>
                 </jasperReport>
                 """.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }

@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: saas-dev
+
+tpv:
+  license:
+    # The SaaS compose publishes the web gateway on 8088. The gateway forwards
+    # /api to the central API, so the local ERP never needs a second credential
+    # or an exposed backend port.
+    saas-url: ${TPV_LICENSE_SAAS_URL:http://127.0.0.1:8088}
+  sync:
+    # Share the same gateway with licensing so fiscal status and the remaining
+    # outbox events reach the SaaS API in the local integrated environment.
+    central-url: ${TPV_SYNC_CENTRAL_URL:http://127.0.0.1:8088}
+    # A linked DEV installation must exercise the same automatic outbox flow as
+    # a deployed store. Production keeps its explicit opt-in outside this profile.
+    worker-enabled: ${TPV_SYNC_WORKER_ENABLED:true}
+    worker-delay-ms: ${TPV_SYNC_WORKER_DELAY_MS:5000}

@@ -7,6 +7,7 @@ import com.tpverp.saas.license.InstallationAuthenticator;
 import com.tpverp.saas.license.SaasInstallation;
 import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.TokenHasher;
+import com.tpverp.saas.fiscal.FiscalStatusSyncProjector;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -24,10 +25,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class SyncEventService {
 
     private MemberPointsSyncProjector memberPointsSyncProjector;
+    private FiscalStatusSyncProjector fiscalStatusSyncProjector;
 
     @org.springframework.beans.factory.annotation.Autowired
     void setMemberPointsSyncProjector(MemberPointsSyncProjector memberPointsSyncProjector) {
         this.memberPointsSyncProjector = memberPointsSyncProjector;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setFiscalStatusSyncProjector(FiscalStatusSyncProjector fiscalStatusSyncProjector) {
+        this.fiscalStatusSyncProjector = fiscalStatusSyncProjector;
     }
 
     private final SaasInstallationRepository installations;
@@ -58,7 +65,8 @@ public class SyncEventService {
 
     @Transactional(noRollbackFor = {
             MemberWalletSyncProjector.ProjectionException.class,
-            MemberPointsSyncProjector.ProjectionException.class
+            MemberPointsSyncProjector.ProjectionException.class,
+            FiscalStatusSyncProjector.ProjectionException.class
     })
     public SyncEventReceipt receive(SyncEventRequest request, String token) {
         SaasInstallation installation = authenticate(request, token);
@@ -73,11 +81,15 @@ public class SyncEventService {
         if (duplicate.isPresent()) {
             SaasSyncEvent existing = duplicate.get();
             if (sameEvent(existing, installation, request, payloadHash)) {
+                if (existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.ERROR) {
+                    project(existing, request, clock.instant());
+                }
                 return new SyncEventReceipt(request.eventId(), true);
             }
             String error = "El eventId ya existe con contenido o procedencia diferente. hashRecibido="
                     + payloadHash;
             existing.recordConflict(error);
+            events.saveAndFlush(existing);
             throw MemberWalletSyncProjector.conflict(error);
         }
 
@@ -95,26 +107,40 @@ public class SyncEventService {
                 payloadHash,
                 schemaVersion,
                 received.value());
-        events.save(event);
+        event = events.save(event);
 
-        if (!(memberPointsSyncProjector.supports(request.entityType(), request.operation()) || walletProjector.supports(request.entityType(), request.operation()))) {
-            event.markIgnored(received.value());
-            return new SyncEventReceipt(request.eventId(), true);
+        project(event, request, received.value());
+        return new SyncEventReceipt(request.eventId(), true);
+    }
+
+    private void project(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        if (!(memberPointsSyncProjector.supports(request.entityType(), request.operation())
+                || walletProjector.supports(request.entityType(), request.operation())
+                || fiscalStatusSyncProjector.supports(request.entityType(), request.operation()))) {
+            event.markIgnored(projectedAt);
+            return;
         }
 
         try {
             if (memberPointsSyncProjector.supports(request.entityType(), request.operation())) {
-                memberPointsSyncProjector.project(event, request.payload(), received.value());
+                memberPointsSyncProjector.project(event, request.payload(), event.getReceivedAt());
+            } else if (fiscalStatusSyncProjector.supports(request.entityType(), request.operation())) {
+                fiscalStatusSyncProjector.project(event, request.payload(), event.getReceivedAt());
             } else {
-                walletProjector.project(event, request.payload(), received.value());
+                walletProjector.project(event, request.payload(), event.getReceivedAt());
             }
-            event.markProjected(received.value());
-            return new SyncEventReceipt(request.eventId(), true);
+            event.markProjected(projectedAt);
         } catch (MemberWalletSyncProjector.ProjectionException exception) {
             event.markFailed(exception.getReason());
+            events.saveAndFlush(event);
             throw exception;
         } catch (MemberPointsSyncProjector.ProjectionException exception) {
             event.markFailed(exception.getReason());
+            events.saveAndFlush(event);
+            throw exception;
+        } catch (FiscalStatusSyncProjector.ProjectionException exception) {
+            event.markFailed(exception.getReason());
+            events.saveAndFlush(event);
             throw exception;
         }
     }
@@ -122,6 +148,7 @@ public class SyncEventService {
     private SaasInstallation authenticate(SyncEventRequest request, String token) {
         String tokenHash = token == null ? "" : tokens.hash(token);
         SaasInstallation installation = installations.findByCompany_Id(request.companyId()).stream()
+                .filter(SaasInstallation::isActive)
                 .filter(candidate -> request.storeId() == null || candidate.getStore().getId().equals(request.storeId()))
                 .filter(candidate -> candidate.hasTokenHash(tokenHash))
                 .findFirst()

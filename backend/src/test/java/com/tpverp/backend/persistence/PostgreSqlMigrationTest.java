@@ -31,7 +31,7 @@ class PostgreSqlMigrationTest {
         UUID adminId = UUID.randomUUID();
         String existingPasswordHash = "$2a$10$existing.password.hash.is.preserved.exactly";
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(url, user, password)
                     .schemas(schema)
                     .defaultSchema(schema)
@@ -79,7 +79,7 @@ class PostgreSqlMigrationTest {
                         """.formatted(schema, adminId, storeId, existingPasswordHash, roleId));
             }
 
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(url, user, password)
                     .schemas(schema)
                     .defaultSchema(schema)
@@ -118,7 +118,7 @@ class PostgreSqlMigrationTest {
 
         String schema = "tpv_erp_test_" + UUID.randomUUID().toString().replace("-", "");
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                 .dataSource(url, user, password)
                 .schemas(schema)
                 .defaultSchema(schema)

@@ -5,7 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
@@ -77,7 +79,7 @@ public class MemberCategoryOfficialSnapshotApplicationService {
                 official.categoryHash(),
                 official.assignmentHash(),
                 official.snapshotChecksum(),
-                now);
+                timestamp(now));
 
         upsertCategories(localCompanyId, official.categories());
         applyAssignments(localCompanyId, official.assignments());
@@ -92,7 +94,7 @@ public class MemberCategoryOfficialSnapshotApplicationService {
                 update member_category_official_snapshot
                 set status = 'APPLIED', applied_at = ?
                 where id = ?
-                """, clock.instant(), receiptId);
+                """, timestamp(clock.instant()), receiptId);
     }
 
     @Transactional
@@ -138,7 +140,8 @@ public class MemberCategoryOfficialSnapshotApplicationService {
                 feed.nextConfigRevision(), feed.nextConfigId(),
                 feed.fromAssignmentRevision(), feed.fromAssignmentId(),
                 feed.nextAssignmentRevision(), feed.nextAssignmentId(),
-                categories.size(), assignments.size(), feed.pageChecksum(), clock.instant());
+                categories.size(), assignments.size(), feed.pageChecksum(),
+                timestamp(clock.instant()));
     }
 
     private void recalculateAutomaticMembers(UUID companyId) {
@@ -435,5 +438,9 @@ public class MemberCategoryOfficialSnapshotApplicationService {
         } catch (Exception exception) {
             throw new IllegalStateException("SHA-256 no disponible", exception);
         }
+    }
+
+    private static Timestamp timestamp(Instant value) {
+        return Timestamp.from(value);
     }
 }

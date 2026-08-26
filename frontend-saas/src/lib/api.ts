@@ -9,6 +9,7 @@ import type {
   BillingPayment,
   BillingSummary,
   CompanyOperations,
+  CommercialProfile,
   CreateCompanyRequest,
   CreateCompanyResponse,
   Credentials,
@@ -24,6 +25,8 @@ import type {
   InventoryStock,
   InstallationSummary,
   LicenseSummary,
+  OperationalIncident,
+  OperationalIncidentCancellation,
   PairingCodeResponse,
   SaasStatus,
   SalesDocument,
@@ -33,6 +36,7 @@ import type {
   SupportTicket,
   SupportTicketComment,
   SyncEventView,
+  SyncProjectionStatus,
   TenantDashboard,
   TenantPortalData,
   TenantSession,
@@ -41,8 +45,11 @@ import type {
   TaxRegime,
   TechnicalStatus,
   TaxpayerType,
-  VerifactuActivationPolicy
+  VerifactuActivationPolicy,
+  FiscalStatusAdmin,
+  FiscalCompanyStatusAdmin
 } from "./types";
+import { extractApiErrorMessage } from "./problem-detail.mjs";
 
 const API_BASE = import.meta.env.VITE_SAAS_API_BASE_URL ?? "";
 
@@ -59,6 +66,8 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+export { extractApiErrorMessage };
 
 function authHeader(credentials: Credentials) {
   if (!credentials.accessToken) {
@@ -167,6 +176,14 @@ export const api = {
     return request<InstallationSummary[]>(credentials, "/api/v1/admin/installations");
   },
 
+  revokeInstallation(credentials: Credentials, installationId: string, reason: string) {
+    return request<InstallationSummary>(
+      credentials,
+      `/api/v1/admin/installations/${encodeURIComponent(installationId)}/revoke`,
+      { method: "POST", body: { reason } }
+    );
+  },
+
   users(credentials: Credentials) {
     return request<AdminUser[]>(credentials, "/api/v1/admin/users");
   },
@@ -189,7 +206,12 @@ export const api = {
   editCompany(
     credentials: Credentials,
     companyId: string,
-    payload: { name: string; taxpayerType: TaxpayerType; impuestos: TaxRegime }
+    payload: {
+      name: string;
+      taxpayerType: TaxpayerType;
+      impuestos: TaxRegime;
+      commercialProfile: CommercialProfile;
+    }
   ) {
     return request<LicenseSummary>(credentials, `/api/v1/admin/companies/${companyId}`, {
       method: "PUT",
@@ -525,6 +547,35 @@ export const api = {
     return request<SyncEventView[]>(credentials, syncPath("/api/v1/admin/sync/events", companyId, storeId));
   },
 
+  fiscalProvisioning(credentials: Credentials, companyId: string) {
+    return request<import("./types").FiscalProvisioning>(
+      credentials, `/api/v1/admin/companies/${companyId}/fiscal-provisioning`
+    );
+  },
+
+  updateFiscalProvisioning(
+    credentials: Credentials,
+    companyId: string,
+    payload: {
+      companyAddress: import("./types").FiscalAddress;
+      stores: Array<{
+        storeId: string;
+        storeAddress: import("./types").FiscalAddress;
+        timeZoneId: string;
+      }>;
+    }
+  ) {
+    return request<import("./types").FiscalProvisioning>(
+      credentials,
+      `/api/v1/admin/companies/${companyId}/fiscal-provisioning`,
+      { method: "PUT", body: payload }
+    );
+  },
+
+  syncProjectionStatus(credentials: Credentials, companyId?: string, storeId?: string) {
+    return request<SyncProjectionStatus>(credentials, syncPath("/api/v1/admin/sync/projection-status", companyId, storeId));
+  },
+
   sales(credentials: Credentials, companyId?: string, storeId?: string) {
     return request<SyncEventView[]>(credentials, syncPath("/api/v1/admin/sync/sales", companyId, storeId));
   },
@@ -543,6 +594,37 @@ export const api = {
 
   cashClosures(credentials: Credentials, companyId?: string, storeId?: string) {
     return request<SyncEventView[]>(credentials, syncPath("/api/v1/admin/sync/cash-closures", companyId, storeId));
+  },
+
+  operationalIncidents(credentials: Credentials, companyId?: string) {
+    return request<OperationalIncident[]>(
+      credentials,
+      syncPath("/api/v1/admin/operational-incidents", companyId)
+    );
+  },
+
+  cancelMemberCategoryBootstrapIncident(
+    credentials: Credentials,
+    companyId: string,
+    bootstrapId: string,
+    payload: { commandId: string; expectedStatus: string; reason: string }
+  ) {
+    return request<OperationalIncidentCancellation>(
+      credentials,
+      `/api/v1/admin/operational-incidents/companies/${encodeURIComponent(companyId)}/member-category-bootstraps/${encodeURIComponent(bootstrapId)}/cancel`,
+      { method: "POST", body: payload }
+    );
+  },
+
+  fiscalStatus(credentials: Credentials, companyId?: string) {
+    const path = companyId
+      ? `/api/v1/admin/fiscal-status/companies/${encodeURIComponent(companyId)}`
+      : "/api/v1/admin/fiscal-status";
+    return request<FiscalStatusAdmin[]>(credentials, path);
+  },
+
+  fiscalCompanyStatus(credentials: Credentials) {
+    return request<FiscalCompanyStatusAdmin[]>(credentials, "/api/v1/admin/fiscal-status/companies");
   },
 
   tenantPortal(credentials: Credentials): Promise<TenantPortalData> {

@@ -14,6 +14,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class TenantAuthInterceptor implements HandlerInterceptor {
 
+    private static final String ACCOUNT_SCOPE = "";
+
     private final SaasTenantUserRepository users;
     private final AdminPasswordHasher passwords;
     private final LoginAttemptLimiter attempts;
@@ -45,7 +47,8 @@ public class TenantAuthInterceptor implements HandlerInterceptor {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales cliente requeridas");
             return false;
         }
-        if (sessionUsername == null && attempts.blocked("tenant", username, request.getRemoteAddr())) {
+        if (sessionUsername == null
+                && attempts.blocked("tenant-account", username, ACCOUNT_SCOPE)) {
             response.setHeader("Retry-After", Long.toString(LoginAttemptLimiter.BLOCK_DURATION.toSeconds()));
             response.sendError(429, "Demasiados intentos de autenticacion");
             return false;
@@ -54,23 +57,44 @@ public class TenantAuthInterceptor implements HandlerInterceptor {
         if (user == null || !user.isActive()
                 || (sessionUsername == null && !passwords.matches(password, user.getPasswordHash()))) {
             if (sessionUsername == null) {
-                attempts.failure("tenant", username, request.getRemoteAddr());
+                attempts.failure("tenant-account", username, ACCOUNT_SCOPE);
             }
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales cliente invalidas");
             return false;
         }
         if (sessionUsername == null) {
-            attempts.success("tenant", username, request.getRemoteAddr());
+            attempts.success("tenant-account", username, ACCOUNT_SCOPE);
         }
         if (sessionUsername == null && passwords.needsUpgrade(user.getPasswordHash())) {
             user.changePasswordHash(passwords.hash(password));
             users.save(user);
         }
+        TenantRole role;
+        try {
+            role = TenantRole.parse(user.getRoleName());
+        } catch (IllegalArgumentException exception) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Rol cliente no valido");
+            return false;
+        }
+        if (isErpWrite(request) && !role.canWriteErpMasters()) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "El rol cliente no puede modificar maestros ERP");
+            return false;
+        }
         request.setAttribute(TenantContextHolder.ATTRIBUTE, new TenantContext(
                 user.getCompany().getId(),
                 user.getUsername(),
-                user.getRoleName()));
+                role.name()));
         return true;
+    }
+
+    private static boolean isErpWrite(HttpServletRequest request) {
+        if (!request.getRequestURI().startsWith("/api/v1/tenant/erp/")) {
+            return false;
+        }
+        return switch (request.getMethod()) {
+            case "POST", "PUT", "PATCH", "DELETE" -> true;
+            default -> false;
+        };
     }
 
 }

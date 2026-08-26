@@ -42,8 +42,19 @@ unidad de red o una ruta situada dentro de imagenes de producto o backups.
    TPV_DB_USERNAME=<usuario-limitado-del-backend>
    TPV_DB_PASSWORD=<secreto>
    TPV_VERIFACTU_SECRET_DIRECTORY=C:\ProgramData\TPV ERP\secrets\verifactu
+   TPV_VERIFACTU_RUNTIME_CLASS=REAL
    TPV_VERIFACTU_ENDPOINT_MODE=TEST
+   TPV_VERIFACTU_ENDPOINT_ENVIRONMENT=TEST
+   TPV_VERIFACTU_TRANSPORT_MODE=AEAT
+   TPV_VERIFACTU_AEAT_TEST_NETWORK_ENABLED=true
+   TPV_VERIFACTU_PRODUCTION_ENABLED=false
    TPV_VERIFACTU_WORKER_ENABLED=false
+   TPV_VERIFACTU_PRODUCER_NAME=<nombre legal definitivo del productor>
+   TPV_VERIFACTU_PRODUCER_TAX_ID=<NIF legal definitivo del productor>
+   TPV_VERIFACTU_SYSTEM_NAME=<nombre definitivo declarado del SIF>
+   TPV_VERIFACTU_SYSTEM_ID=<identificador definitivo declarado del SIF>
+   TPV_VERIFACTU_SYSTEM_VERSION=<version exacta del build que se prueba y desplegara>
+   TPV_VERIFACTU_DECLARATION_HASH=<SHA-256 hexadecimal de la declaracion responsable>
    ```
 
    El comando Java del servicio debe incluir el acceso nativo requerido por
@@ -55,16 +66,32 @@ unidad de red o una ruta situada dentro de imagenes de producto o backups.
 
 5. Inicie el backend, importe el `.p12` o `.pfx` desde APP GESTION y compruebe
    en el diagnostico VeriFactu que el certificado se puede abrir y esta vigente.
-6. Complete las pruebas contra el entorno de AEAT correspondiente. Cambie a
-   `PRODUCTION` y habilite el worker solo cuando la instalacion este autorizada
-   para remitir registros reales:
+6. Complete las pruebas contra AEAT TEST y conserve su evidencia. El opt-in
+   `TPV_VERIFACTU_AEAT_TEST_NETWORK_ENABLED=true` es obligatorio para que el
+   transporte pueda abrir conexiones de preproduccion. La identidad del productor,
+   el SIF, la version y el hash de declaracion utilizados en AEAT TEST deben ser
+   ya los definitivos y no pueden cambiar al promover ese mismo build. Para pasar
+   a produccion cambie de forma atomica solo los controles de entorno siguientes,
+   solo despues de cerrar la
+   declaracion responsable y autorizar expresamente la instalacion para remitir
+   registros reales:
 
    ```text
+   TPV_VERIFACTU_RUNTIME_CLASS=REAL
    TPV_VERIFACTU_ENDPOINT_MODE=PRODUCTION
+   TPV_VERIFACTU_ENDPOINT_ENVIRONMENT=PRODUCTION
+   TPV_VERIFACTU_TRANSPORT_MODE=AEAT
+   TPV_VERIFACTU_AEAT_TEST_NETWORK_ENABLED=false
+   TPV_VERIFACTU_PRODUCTION_ENABLED=true
    TPV_VERIFACTU_WORKER_ENABLED=true
    ```
 
-   Reinicie el servicio despues de modificar sus variables.
+   Mantenga sin cambios las seis variables de identidad configuradas para TEST.
+   Si el build cambia, debe usar su nueva version real y repetir AEAT TEST antes
+   de promoverla. Reinicie el servicio despues de modificar sus variables. El backend aborta
+   el arranque si mezcla TEST y PRODUCTION, conserva identidades
+   DEV/provisionales o no recibe el hash de la declaracion; en TEST, el
+   transporte rechaza cualquier envio si falta su opt-in de red.
 
 El script es idempotente: puede repetirse con el servicio detenido para reparar
 ACL. Antes de cualquier cambio valida la ruta fija, los ancestros existentes,

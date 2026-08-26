@@ -3,6 +3,7 @@ package com.tpverp.backend.installation;
 import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.licensing.LicenseSaasCacheAuthenticator;
 import com.tpverp.backend.security.domain.RoleRepository;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
@@ -100,12 +101,14 @@ class InstallationBootstrapConfiguration {
 			CompanyRepository empresaRepository,
 			Clock clock,
 			@Value("${tpv.dev.unlicensed-access-enabled:false}")
-			boolean unlicensedDevelopmentAccessEnabled) {
+			boolean unlicensedDevelopmentAccessEnabled,
+			LicenseSaasCacheAuthenticator cacheAuthenticator) {
 		return new InstallationStatusService(
 				instalacionRepository,
 				licenciaRepository,
 				empresaRepository,
 				clock,
-				unlicensedDevelopmentAccessEnabled);
+				unlicensedDevelopmentAccessEnabled,
+				cacheAuthenticator);
 	}
 }

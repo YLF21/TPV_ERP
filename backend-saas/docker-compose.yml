@@ -2,17 +2,64 @@ services:
   postgres:
     image: postgres:17
     container_name: tpv-erp-saas-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tpv_erp_saas}
       POSTGRES_USER: ${POSTGRES_USER:-tpv_erp_saas}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
-    ports:
-      - "5433:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env}
     volumes:
       - tpv_erp_saas_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tpv_erp_saas} -d ${POSTGRES_DB:-tpv_erp_saas}"]
       interval: 10s
+      timeout: 5s
+      retries: 5
+
+  saas-backend:
+    build:
+      context: ..
+      dockerfile: backend-saas/Dockerfile
+    container_name: tpv-erp-saas-backend
+    restart: unless-stopped
+    environment:
+      # El compose base es siempre productivo. El override DEV cambia este
+      # valor de forma explicita, evitando desplegar accidentalmente con dev.
+      SPRING_PROFILES_ACTIVE: prod
+      TPV_SAAS_PORT: 8090
+      TPV_SAAS_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tpv_erp_saas}
+      TPV_SAAS_DB_USERNAME: ${POSTGRES_USER:-tpv_erp_saas}
+      TPV_SAAS_DB_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env}
+      TPV_SAAS_ADMIN_DEFAULT_ALLOWED: ${TPV_SAAS_ADMIN_DEFAULT_ALLOWED:-false}
+      TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED: ${TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED:-false}
+      TPV_SAAS_SECRET_ENCRYPTION_KEY: ${TPV_SAAS_SECRET_ENCRYPTION_KEY:?Define TPV_SAAS_SECRET_ENCRYPTION_KEY in .env}
+      TPV_SAAS_CORS_ALLOWED_ORIGINS: ${TPV_SAAS_CORS_ALLOWED_ORIGINS:-http://localhost:8088}
+      TPV_SAAS_FORWARD_HEADERS_STRATEGY: ${TPV_SAAS_FORWARD_HEADERS_STRATEGY:-framework}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8090/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  saas-frontend:
+    build:
+      context: ..
+      dockerfile: frontend-saas/Dockerfile
+    container_name: tpv-erp-saas-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TPV_SAAS_WEB_PORT:-8088}:80"
+    depends_on:
+      saas-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1/"]
+      interval: 15s
       timeout: 5s
       retries: 5
 

@@ -24,6 +24,13 @@ public class AdminSyncController {
         return service.events(companyId, storeId);
     }
 
+    @GetMapping("/projection-status")
+    public AdminSyncProjectionStatusView projectionStatus(
+            @RequestParam(required = false) UUID companyId,
+            @RequestParam(required = false) UUID storeId) {
+        return service.projectionStatus(companyId, storeId);
+    }
+
     @GetMapping("/sales")
     public List<AdminSyncEventView> sales(
             @RequestParam(required = false) UUID companyId,

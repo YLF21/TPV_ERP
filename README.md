@@ -51,16 +51,27 @@ npm.cmd run dev:venta
 Para el SaaS:
 
 ```powershell
-cd backend-saas
-Copy-Item .env.example .env
-docker compose up -d
-$env:SPRING_PROFILES_ACTIVE = "demo"
-.\mvnw.cmd spring-boot:run
+.\tools\start-saas-dev.cmd
 ```
 
-Antes de gestionar claves de integraciones, define
-`TPV_SAAS_SECRET_ENCRYPTION_KEY` con 32 bytes aleatorios codificados en Base64.
-La clave debe proceder del gestor de secretos del entorno y no de Git.
+El comando crea `backend-saas\.env` si falta, construye backend y frontend,
+espera a que el backend este saludable y publica el panel solo en
+`http://127.0.0.1:8088`. PostgreSQL queda disponible en loopback en el puerto
+`5433`. El usuario inicial del laboratorio es `admin` con contrasena `admin`;
+debe cambiarse antes de usar cualquier despliegue no local.
+
+Para conectar el backend normal de tienda con ese SaaS y con el laboratorio
+fiscal, abre otra consola en la raiz:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "dev,saas-dev,fiscal-dev"
+$env:TPV_DB_PASSWORD = "<password-local>"
+.\backend\mvnw.cmd -f backend\pom.xml spring-boot:run
+```
+
+El detalle de produccion, secretos y proxy HTTPS se documenta en
+`backend-saas/README.md`. Nunca reutilices la clave DEV de `.env.example` fuera
+del laboratorio local.
 
 ## Verificación
 

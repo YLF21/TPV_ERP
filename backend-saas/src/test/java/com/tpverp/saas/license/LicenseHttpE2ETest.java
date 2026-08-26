@@ -1,6 +1,8 @@
 package com.tpverp.saas.license;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.tpverp.saas.SaasTestData.fiscalAddress;
+import static com.tpverp.saas.SaasTestData.validCif;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,12 +38,16 @@ class LicenseHttpE2ETest {
                 "/api/v1/admin/companies",
                 new CreateCompanyRequest(
                         "Empresa E2E",
-                        "B80808080",
+                        validCif("B80808080"),
                         TaxpayerType.SOCIEDAD,
                         TaxRegime.IGIC,
-                        "TIENDA-1",
+                        CommercialProfile.MAYORISTA,
+                        fiscalAddress(),
+                        "001",
                         "Tienda 1",
-                        Instant.parse("2027-07-01T00:00:00Z"),
+                        fiscalAddress(),
+                        "Atlantic/Canary",
+                        Instant.parse("2099-07-01T00:00:00Z"),
                         2,
                         1),
                 basic("admin", "admin"),
@@ -56,18 +62,22 @@ class LicenseHttpE2ETest {
                         "INST-E2E",
                         "public-key",
                         UUID.fromString(company.get("storeId").asText()),
-                        "TIENDA-1",
-                        "B80808080",
-                        "Empresa E2E"),
+                        "001",
+                        validCif("B80808080"),
+                        "Empresa E2E",
+                        null,
+                        null,
+                        "Atlantic/Canary"),
                 null,
-                null);
+                null,
+                "recovery-token-0123456789abcdef0123456789abcdef");
 
         assertThat(link.get("licenseReference").asText()).isEqualTo(company.get("licenseReference").asText());
         assertThat(link.get("installationToken").asText()).isNotBlank();
 
         JsonNode firstValidation = validate(company, installationId, link.get("installationToken").asText());
         assertThat(firstValidation.get("status").asText()).isEqualTo("VALIDA");
-        assertThat(firstValidation.get("validUntil").asText()).isEqualTo("2027-07-01T00:00:00Z");
+        assertThat(firstValidation.get("validUntil").asText()).isEqualTo("2099-07-01T00:00:00Z");
 
         postJson(
                 "/api/v1/admin/licenses/" + company.get("licenseReference").asText() + "/block",
@@ -93,6 +103,15 @@ class LicenseHttpE2ETest {
     }
 
     private JsonNode postJson(String path, Object body, String authorization, String token) throws Exception {
+        return postJson(path, body, authorization, token, null);
+    }
+
+    private JsonNode postJson(
+            String path,
+            Object body,
+            String authorization,
+            String token,
+            String recoveryToken) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .POST(HttpRequest.BodyPublishers.ofString(
@@ -102,6 +121,9 @@ class LicenseHttpE2ETest {
         }
         if (token != null) {
             builder.header("X-TPV-Installation-Token", token);
+        }
+        if (recoveryToken != null) {
+            builder.header("X-TPV-Link-Recovery-Token", recoveryToken);
         }
         var response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isBetween(200, 299);

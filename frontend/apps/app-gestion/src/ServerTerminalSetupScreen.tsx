@@ -22,6 +22,10 @@ type ProvisioningResult = {
   terminalCredential: string;
 };
 
+type InstallationStatus = {
+  organizationProvisioned?: boolean;
+};
+
 export function ServerTerminalSetupScreen({
   locale,
   onProvisioned
@@ -36,21 +40,29 @@ export function ServerTerminalSetupScreen({
   const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+  const [organizationProvisioned, setOrganizationProvisioned] = useState<boolean | null>(null);
+  const [pairingCode, setPairingCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    void checkBackendConnection().then((online) => {
-      if (!cancelled) setBackendOnline(online);
+    void loadBackendStatus().then(({ online, provisioned }) => {
+      if (!cancelled) {
+        setBackendOnline(online);
+        setOrganizationProvisioned(provisioned);
+      }
     });
     return () => { cancelled = true; };
   }, []);
 
   async function retryConnection() {
     setBackendOnline(null);
+    setOrganizationProvisioned(null);
     setError("");
-    setBackendOnline(await checkBackendConnection());
+    const status = await loadBackendStatus();
+    setBackendOnline(status.online);
+    setOrganizationProvisioned(status.provisioned);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -59,10 +71,15 @@ export function ServerTerminalSetupScreen({
       setError(t("gestion.serverSetup.passwordFormat"));
       return;
     }
-    if (backendOnline !== true) return;
+    if (backendOnline !== true || organizationProvisioned === null) return;
+    if (!organizationProvisioned && !pairingCode.trim()) {
+      setError(t("gestion.serverSetup.pairingRequired"));
+      return;
+    }
     setBusy(true);
     setError("");
     let token = "";
+    let organizationReady = organizationProvisioned;
     try {
       const login = await apiRequest<InstallationLoginResult>("/auth/installation-login", {
         method: "POST",
@@ -81,6 +98,15 @@ export function ServerTerminalSetupScreen({
           body: { currentPassword: password, newPassword }
         });
         token = changed.accessToken;
+      }
+      if (!organizationProvisioned) {
+        await apiRequest("/licenses/link-saas/bootstrap-empty", {
+          method: "POST",
+          token,
+          body: { pairingCode: pairingCode.trim() }
+        });
+        organizationReady = true;
+        setOrganizationProvisioned(true);
       }
       const provisioned = await apiRequest<ProvisioningResult>("/terminals/server/provision", {
         method: "POST",
@@ -103,7 +129,9 @@ export function ServerTerminalSetupScreen({
         ? t("gestion.serverSetup.offline")
         : caught instanceof ApiError && caught.status === 401
           ? t("gestion.serverSetup.invalidAdmin")
-          : t("gestion.serverSetup.error"));
+          : !organizationReady
+            ? t("gestion.serverSetup.licenseError")
+            : t("gestion.serverSetup.error"));
     } finally {
       if (token) {
         void apiRequest("/auth/logout", { method: "POST", token }).catch(() => undefined);
@@ -178,10 +206,47 @@ export function ServerTerminalSetupScreen({
             />
           </label>
         )}
+        {organizationProvisioned === false && (
+          <section className="server-setup-license">
+            <header>
+              <strong>{t("gestion.serverSetup.licenseTitle")}</strong>
+              <span>{t("gestion.serverSetup.licenseDescription")}</span>
+            </header>
+            <label>
+              <span>{t("gestion.licenses.pairingCode")}</span>
+              <input
+                autoComplete="off"
+                spellCheck={false}
+                value={pairingCode}
+                disabled={busy}
+                onChange={(event) => setPairingCode(event.currentTarget.value)}
+                placeholder={t("gestion.licenses.pairingPlaceholder")}
+              />
+            </label>
+            <small>{t("gestion.serverSetup.licenseSecurity")}</small>
+          </section>
+        )}
         {error && <strong className="login-error">{error}</strong>}
-        <button type="submit" disabled={busy || backendOnline !== true}>{busy ? t("login.loading") : t("gestion.serverSetup.submit")}</button>
+        <button
+          type="submit"
+          disabled={busy || backendOnline !== true || organizationProvisioned === null
+            || (organizationProvisioned === false && !pairingCode.trim())}
+        >
+          {busy ? t("login.loading") : t("gestion.serverSetup.submit")}
+        </button>
         <p className="server-setup-note">{t("gestion.serverSetup.secureStorage")}</p>
       </form>
     </main>
   );
+}
+
+async function loadBackendStatus(): Promise<{ online: boolean; provisioned: boolean | null }> {
+  if (!await checkBackendConnection()) return { online: false, provisioned: null };
+  try {
+    const status = await apiRequest<InstallationStatus>("/installation/status");
+    // Compatibility with older backends: the original status contract implied an existing store.
+    return { online: true, provisioned: status.organizationProvisioned !== false };
+  } catch {
+    return { online: false, provisioned: null };
+  }
 }

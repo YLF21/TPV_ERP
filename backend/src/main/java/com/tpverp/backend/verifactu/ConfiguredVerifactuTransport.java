@@ -43,7 +43,6 @@ public class ConfiguredVerifactuTransport implements VerifactuTransport {
     public VerifactuTransportResponse send(String endpoint, String soapEnvelope) {
         requireNetworkOptIn();
         endpoints.requireOfficial(endpoint);
-        propertiesFactory.current();
         try (var managed = keyStores.activeForCurrentCompany()) {
             var password = managed.password();
             try {
@@ -60,7 +59,6 @@ public class ConfiguredVerifactuTransport implements VerifactuTransport {
             UUID companyId, UUID installationId, String endpoint, String soapEnvelope) {
         requireNetworkOptIn();
         endpoints.requireOfficial(endpoint);
-        propertiesFactory.current();
         try (var managed = keyStores.activeForCompany(companyId, installationId)) {
             var password = managed.password();
             try {

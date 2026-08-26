@@ -133,6 +133,7 @@ public class DocumentTemplateArtifactService {
                 && template.getStatus() != DocumentTemplateStatus.ACTIVE) {
             throw new IllegalStateException("document_template_not_validated");
         }
+        rejectFiscalCustomActivationWithoutVisualProof(template);
         verifyStoredArtifact(template);
         return catalog.activateValidatedCurrentStoreTemplate(templateId);
     }
@@ -146,6 +147,7 @@ public class DocumentTemplateArtifactService {
         if (!template.canReactivate()) {
             throw new IllegalStateException("document_template_not_reactivatable");
         }
+        rejectFiscalCustomActivationWithoutVisualProof(template);
         verifyStoredArtifact(template);
         return catalog.reactivateCurrentStoreTemplate(templateId);
     }
@@ -183,6 +185,20 @@ public class DocumentTemplateArtifactService {
         } catch (IOException exception) {
             throw new IllegalStateException(
                     "document_template_artifact_read_failed", exception);
+        }
+    }
+
+    private static void rejectFiscalCustomActivationWithoutVisualProof(
+            DocumentTemplate template) {
+        if (template.getType() == DocumentTemplateType.TICKET
+                || template.getType() == DocumentTemplateType.FACTURA_VENTA
+                || template.getType() == DocumentTemplateType.RECTIFICATIVA_VENTA) {
+            // A structural check cannot prove the final raster is decodable.
+            // Integrated templates are verified by the application build;
+            // imported fiscal artifacts stay fail-closed until activation can
+            // persist render + ZXing evidence.
+            throw new IllegalStateException(
+                    "document_template_fiscal_custom_activation_requires_visual_validation");
         }
     }
 

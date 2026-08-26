@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.UUID;
@@ -19,7 +20,8 @@ class PaymentTerminalV57PostgreSqlTest {
         assumeTrue(canConnect(url, user, password), "PostgreSQL de pruebas no disponible");
         var schema = "tpv_v57_" + UUID.randomUUID().toString().replace("-", "");
         try {
-            Flyway.configure().dataSource(url, user, password).schemas(schema).defaultSchema(schema)
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
+                    .dataSource(url, user, password).schemas(schema).defaultSchema(schema)
                     .createSchemas(true).target("56").load().migrate();
             var checkout = UUID.randomUUID();
             try (var connection = DriverManager.getConnection(url, user, password);
@@ -35,7 +37,8 @@ class PaymentTerminalV57PostgreSqlTest {
                         + checkout + "','" + terminal + "','" + "a".repeat(64)
                         + "','{\"schemaVersion\":1,\"ticket\":{}}',12.10,'APPROVED','REF','AUTH','ok',now(),now(),now())");
             }
-            Flyway.configure().dataSource(url, user, password).schemas(schema).defaultSchema(schema).load().migrate();
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
+                    .dataSource(url, user, password).schemas(schema).defaultSchema(schema).load().migrate();
             try (var connection = DriverManager.getConnection(url, user, password);
                     var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery("select provider,mode,configuration_hash,configuration_version,external_reference,authorization_code from " + schema + ".payment_terminal_operation where id='" + checkout + "'")) {

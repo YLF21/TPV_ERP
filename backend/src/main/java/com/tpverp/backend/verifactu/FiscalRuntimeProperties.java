@@ -13,6 +13,7 @@ public class FiscalRuntimeProperties {
 
     private final FiscalRuntimeClass runtimeClass;
     private final FiscalEndpointEnvironment endpointEnvironment;
+    private final VerifactuEndpointMode endpointMode;
     private final FiscalTransportMode transportMode;
     private final boolean sandboxEnabled;
     private final boolean aeatTestNetworkEnabled;
@@ -23,12 +24,15 @@ public class FiscalRuntimeProperties {
     private final String producerName;
     private final String producerTaxId;
     private final String systemVersion;
+    private final String declarationHash;
 
     public FiscalRuntimeProperties(Environment environment) {
         runtimeClass = enumValue(environment, "tpv.verifactu.runtime-class",
                 FiscalRuntimeClass.REAL);
         endpointEnvironment = enumValue(environment, "tpv.verifactu.endpoint-environment",
                 FiscalEndpointEnvironment.TEST);
+        endpointMode = enumValue(environment, "tpv.verifactu.endpoint-mode",
+                VerifactuEndpointMode.TEST);
         transportMode = enumValue(environment, "tpv.verifactu.transport-mode",
                 FiscalTransportMode.AEAT);
         sandboxEnabled = Boolean.parseBoolean(environment.getProperty(
@@ -44,6 +48,8 @@ public class FiscalRuntimeProperties {
         producerName = environment.getProperty("tpv.verifactu.producer-name", "");
         producerTaxId = environment.getProperty("tpv.verifactu.producer-tax-id", "");
         systemVersion = environment.getProperty("tpv.verifactu.system-version", "");
+        declarationHash = normalizeHash(environment.getProperty(
+                "tpv.verifactu.declaration-hash", ""));
         validate();
     }
 
@@ -53,6 +59,10 @@ public class FiscalRuntimeProperties {
 
     public FiscalEndpointEnvironment endpointEnvironment() {
         return endpointEnvironment;
+    }
+
+    public VerifactuEndpointMode endpointMode() {
+        return endpointMode;
     }
 
     public FiscalTransportMode transportMode() {
@@ -92,12 +102,17 @@ public class FiscalRuntimeProperties {
         return devSigningPassword;
     }
 
+    public String declarationHash() {
+        return declarationHash;
+    }
+
     /**
      * REAL production can only be enabled after replacing the clearly fictitious
      * laboratory identity with the declared fiscal software identity.
      */
     public void requireProductionIdentity() {
-        if (runtimeClass != FiscalRuntimeClass.REAL) {
+        if (runtimeClass != FiscalRuntimeClass.REAL
+                || endpointEnvironment != FiscalEndpointEnvironment.PRODUCTION) {
             return;
         }
         rejectPlaceholder("tpv.verifactu.producer-name", producerName,
@@ -110,9 +125,22 @@ public class FiscalRuntimeProperties {
         rejectPlaceholder("tpv.verifactu.system-version", systemVersion,
                 value -> value.equalsIgnoreCase("0.0.1")
                         || value.toUpperCase(Locale.ROOT).contains("SNAPSHOT"));
+        if (declarationHash == null) {
+            throw new IllegalStateException(
+                    "tpv.verifactu.declaration-hash es obligatorio en REAL/PRODUCTION");
+        }
     }
 
     private void validate() {
+        var modeEnvironment = switch (endpointMode) {
+            case TEST, TEST_SEAL -> FiscalEndpointEnvironment.TEST;
+            case PRODUCTION, PRODUCTION_SEAL -> FiscalEndpointEnvironment.PRODUCTION;
+        };
+        if (endpointEnvironment != modeEnvironment) {
+            throw new IllegalStateException(
+                    "tpv.verifactu.endpoint-mode " + endpointMode
+                            + " no coincide con endpoint-environment " + endpointEnvironment);
+        }
         if (runtimeClass == FiscalRuntimeClass.SANDBOX && !sandboxEnabled) {
             throw new IllegalStateException(
                     "SANDBOX fiscal requiere tpv.verifactu.dev-sandbox.enabled=true");
@@ -147,6 +175,18 @@ public class FiscalRuntimeProperties {
             throw new IllegalStateException(
                     key + " contiene una identidad provisional; se bloquea REAL/PRODUCTION");
         }
+    }
+
+    private static String normalizeHash(String value) {
+        var normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (!normalized.matches("[0-9A-F]{64}")) {
+            throw new IllegalStateException(
+                    "tpv.verifactu.declaration-hash debe ser un SHA-256 de 64 hexadecimales");
+        }
+        return normalized;
     }
 
     /** Blocks any certificate-backed AEAT TEST request until explicitly enabled. */

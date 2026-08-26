@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -62,11 +63,11 @@ public class MemberCategoryBootstrapService {
                 "select pg_advisory_xact_lock(hashtext(?)::bigint)",
                 (rs, row) -> Boolean.TRUE,
                 context.companyId().toString());
-        UUID existing = activeBootstrap(context.companyId());
+        UUID existing = discoverableBootstrap(context.companyId());
         if (existing != null) {
             return status(existing, context);
         }
-        List<UUID> expectedStores = installations.findByCompany_Id(context.companyId()).stream()
+        List<UUID> expectedStores = installations.findByCompany_IdAndActiveTrue(context.companyId()).stream()
                 .map(value -> value.getStore().getId())
                 .distinct()
                 .sorted(Comparator.comparing(UUID::toString))
@@ -80,7 +81,7 @@ public class MemberCategoryBootstrapService {
                 insert into saas_member_category_bootstrap (
                     id, company_id, status, expected_store_count, created_at
                 ) values (?, ?, 'COLLECTING', ?, ?)
-                """, id, context.companyId(), expectedStores.size(), now);
+                """, id, context.companyId(), expectedStores.size(), timestamp(now));
         expectedStores.forEach(storeId -> jdbc.update("""
                 insert into saas_member_category_bootstrap_store (
                     id, bootstrap_id, store_id
@@ -127,7 +128,7 @@ public class MemberCategoryBootstrapService {
                 request.categoryChunkCount(), request.assignmentChunkCount(),
                 request.categoryCount(), request.assignmentCount(),
                 hash(request.categoryHash()), hash(request.assignmentHash()),
-                hash(request.snapshotChecksum()), clock.instant());
+                hash(request.snapshotChecksum()), timestamp(clock.instant()));
         jdbc.update("""
                 update saas_member_category_bootstrap_store
                 set snapshot_id=? where bootstrap_id=? and store_id=?
@@ -195,7 +196,7 @@ public class MemberCategoryBootstrapService {
                             ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, UUID.randomUUID(), snapshotId, value.memberId(),
                             value.categoryId(), value.lockAutomatic(),
-                            value.lockKnown(), value.assignedAt(),
+                            value.lockKnown(), timestamp(value.assignedAt()),
                             value.assignmentSource(), value.assignmentAction());
                 }
             }
@@ -209,7 +210,7 @@ public class MemberCategoryBootstrapService {
                     chunk_hash, record_count, created_at
                 ) values (?, ?, ?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), snapshotId, kind, index,
-                normalized.hash(), normalized.size(), clock.instant());
+                normalized.hash(), normalized.size(), timestamp(clock.instant()));
         return status(bootstrapId, context);
     }
 
@@ -238,9 +239,9 @@ public class MemberCategoryBootstrapService {
         }
         Instant now = clock.instant();
         jdbc.update("update saas_member_category_bootstrap_snapshot set completed_at=? where snapshot_id=?",
-                now, snapshotId);
+                timestamp(now), snapshotId);
         jdbc.update("update saas_member_category_bootstrap_store set completed_at=? where bootstrap_id=? and store_id=?",
-                now, bootstrapId, context.storeId());
+                timestamp(now), bootstrapId, context.storeId());
         int missing = jdbc.queryForObject("""
                 select count(*) from saas_member_category_bootstrap_store
                 where bootstrap_id=? and completed_at is null
@@ -305,7 +306,7 @@ public class MemberCategoryBootstrapService {
                        active, sort_order, ?, ?
                 from saas_member_category_bootstrap_category
                 where snapshot_id=?
-                """, companyId, configRevision, now, canonicalSnapshot);
+                """, companyId, configRevision, timestamp(now), canonicalSnapshot);
         for (AssignmentValue assignment : merged.values()) {
             jdbc.update("""
                     insert into saas_member_category_assignment (
@@ -315,15 +316,15 @@ public class MemberCategoryBootstrapService {
                     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, assignment.memberId(), companyId, assignment.categoryId(),
                     assignment.lockAutomatic(), assignment.lockKnown(),
-                    assignment.assignedAt(), assignment.assignmentSource(),
-                    assignment.assignmentAction(), assignmentRevision, now);
+                    timestamp(assignment.assignedAt()), assignment.assignmentSource(),
+                    assignment.assignmentAction(), assignmentRevision, timestamp(now));
         }
         jdbc.update("""
                 update saas_member_category_bootstrap
                 set status='COMPLETED', config_revision=?, assignment_revision=?,
                     completed_at=?, conflict_reason=null
                 where id=?
-                """, configRevision, assignmentRevision, now, bootstrapId);
+                """, configRevision, assignmentRevision, timestamp(now), bootstrapId);
     }
 
     private MergeAssignments mergeAssignments(List<StoreSnapshot> snapshots) {
@@ -573,11 +574,14 @@ public class MemberCategoryBootstrapService {
                 installation.getCompany().getId(), installation.getStore().getId());
     }
 
-    private UUID activeBootstrap(UUID companyId) {
+    UUID discoverableBootstrap(UUID companyId) {
         List<UUID> values = jdbc.query("""
                 select id from saas_member_category_bootstrap
-                where company_id=? and status in ('COLLECTING','CONFLICT')
-                order by created_at desc limit 1
+                where company_id=?
+                  and status in ('COMPLETED','COLLECTING','CONFLICT')
+                order by case when status='COMPLETED' then 0 else 1 end,
+                         created_at desc
+                limit 1
                 """, (rs, row) -> rs.getObject(1, UUID.class), companyId);
         return values.isEmpty() ? null : values.get(0);
     }
@@ -743,6 +747,10 @@ public class MemberCategoryBootstrapService {
         } catch (Exception exception) {
             throw new IllegalStateException("SHA-256 no disponible", exception);
         }
+    }
+
+    private static Timestamp timestamp(Instant value) {
+        return Timestamp.from(value);
     }
 
     private static void ensureDistinct(List<UUID> values) {

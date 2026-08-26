@@ -1454,6 +1454,47 @@ describe("CustomerPendingSaleDialog", () => {
     ));
   });
 
+  it("offers a safe reprint when the backend could not prepare the initial document", async () => {
+    const onSuccess = vi.fn();
+    const printDocument = vi.fn().mockResolvedValue({ status: "PRINTED" });
+    const recovered = { documentId: "doc-reprint", documentType: "FACTURA_VENTA", documentNumber: "FV-2", lines: [], baseTotal: "100.00", taxTotal: "21.00", total: "121.00" };
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "121.00" })
+      .mockResolvedValueOnce({
+        document: { id: "doc-reprint", numero: "FV-2" },
+        printDocument: null,
+        printPreparationError: "document_print_preparation_failed",
+      })
+      .mockResolvedValueOnce(recovered);
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{ ...draft, type: "FACTURA_VENTA" }}
+      endpointBase="/pos/sales-document-checkouts"
+      paymentMethods={{}}
+      request={request}
+      terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+      printDocument={printDocument}
+      onCancel={vi.fn()}
+      onSuccess={onSuccess}
+    />);
+    const confirmButton = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
+    await waitFor(() => expect((confirmButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(
+      { documentId: "doc-reprint", documentNumber: "FV-2" },
+      expect.any(Function),
+      expect.any(String),
+    ));
+
+    const retry = onSuccess.mock.calls[0][1] as () => Promise<unknown>;
+    await retry();
+
+    expect(request).toHaveBeenNthCalledWith(3, "/invoices/doc-reprint/print-document", { token: undefined });
+    expect(printDocument).toHaveBeenCalledWith(
+      recovered, { storeName: "Tienda", terminalCode: "01" }, undefined, "es",
+    );
+  });
+
   it("uses the normal checkout panel and confirms a Ctrl+F document paid in cash", async () => {
     const onSuccess = vi.fn();
     const request = vi.fn()

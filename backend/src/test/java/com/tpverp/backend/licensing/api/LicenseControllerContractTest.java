@@ -3,7 +3,6 @@ package com.tpverp.backend.licensing.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tpverp.backend.licensing.LicenseSaasAdminService;
 import com.tpverp.backend.licensing.LicenseSaasLinkService;
 import com.tpverp.backend.licensing.LicenseSaasValidationService;
 import com.tpverp.backend.licensing.application.LicenseService;
@@ -16,22 +15,12 @@ import org.springframework.web.server.ResponseStatusException;
 class LicenseControllerContractTest {
 
     @Test
-    void reservesMutatingLicenseActionsForAdmin() throws NoSuchMethodException {
+    void doesNotExposeLocalOverridesForTheCentralSaasLicenseState() {
         assertThat(LicenseController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/licenses");
-
-        assertThat(LicenseController.class.getDeclaredMethod("block", String.class)
-                .getAnnotation(PostMapping.class).value())
-                .containsExactly("/{reference}/block");
-        assertThat(LicenseController.class.getDeclaredMethod("block", String.class)
-                .getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasRole('ADMIN')");
-        assertThat(LicenseController.class.getDeclaredMethod("unblock", String.class)
-                .getAnnotation(PostMapping.class).value())
-                .containsExactly("/{reference}/unblock");
-        assertThat(LicenseController.class.getDeclaredMethod("unblock", String.class)
-                .getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasRole('ADMIN')");
+        assertThat(java.util.Arrays.stream(LicenseController.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName))
+                .doesNotContain("block", "unblock");
     }
 
     @Test
@@ -47,6 +36,14 @@ class LicenseControllerContractTest {
         assertThat(LicenseController.LinkSaasResponse.class.getRecordComponents())
                 .extracting(component -> component.getName())
                 .doesNotContain("installationToken");
+        assertThat(LicenseController.LinkSaasRequest.class.getRecordComponents())
+                .extracting(component -> component.getName())
+                .containsExactly("pairingCode", "localStoreId");
+        assertThat(LicenseController.class.getDeclaredMethod(
+                        "bootstrapEmptyDatabase",
+                        LicenseController.BootstrapLinkSaasRequest.class)
+                .getAnnotation(PostMapping.class).value())
+                .containsExactly("/link-saas/bootstrap-empty");
     }
 
     @Test
@@ -78,7 +75,6 @@ class LicenseControllerContractTest {
     void bloqueaActivacionLocalPorArchivoCuandoNoEstaHabilitada() {
         var controller = new LicenseController(
                 org.mockito.Mockito.mock(LicenseService.class),
-                org.mockito.Mockito.mock(LicenseSaasAdminService.class),
                 org.mockito.Mockito.mock(LicenseSaasLinkService.class),
                 org.mockito.Mockito.mock(LicenseSaasValidationService.class),
                 false);

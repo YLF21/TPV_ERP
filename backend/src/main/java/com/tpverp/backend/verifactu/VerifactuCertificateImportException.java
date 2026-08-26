@@ -30,12 +30,21 @@ public final class VerifactuCertificateImportException extends IllegalArgumentEx
         CERTIFICATE_CHAIN_INVALID(
                 "CERTIFICATE_CHAIN_INVALID",
                 "message.verifactu.certificate.chain_invalid"),
+        CERTIFICATE_CHAIN_UNTRUSTED(
+                "CERTIFICATE_CHAIN_UNTRUSTED",
+                "message.verifactu.certificate.chain_untrusted"),
         KEY_PAIR_MISMATCH(
                 "CERTIFICATE_KEY_PAIR_MISMATCH",
                 "message.verifactu.certificate.key_pair_mismatch"),
         KEY_ALGORITHM_UNSUPPORTED(
                 "CERTIFICATE_KEY_ALGORITHM_UNSUPPORTED",
                 "message.verifactu.certificate.key_algorithm_unsupported"),
+        SELF_SIGNED_NOT_ALLOWED(
+                "CERTIFICATE_SELF_SIGNED_NOT_ALLOWED",
+                "message.verifactu.certificate.self_signed_not_allowed"),
+        KEY_USAGE_INVALID(
+                "CERTIFICATE_KEY_USAGE_INVALID",
+                "message.verifactu.certificate.key_usage_invalid"),
         PRIVATE_KEY_ENCODING_INVALID(
                 "CERTIFICATE_PRIVATE_KEY_ENCODING_INVALID",
                 "message.verifactu.certificate.private_key_encoding_invalid"),

@@ -73,7 +73,7 @@ public class VerifactuCertificateDeletionPolicy {
             return VerifactuCertificateDeletionDecision.blocked(FIRST_SUBMISSION_RECORDED);
         }
 
-        var installation = installations.findAll().stream().findFirst().orElse(null);
+        var installation = resolveInstallationOrNull();
         if (installation == null) {
             return VerifactuCertificateDeletionDecision.blocked(LICENSE_NOT_AVAILABLE);
         }
@@ -97,5 +97,16 @@ public class VerifactuCertificateDeletionPolicy {
             return VerifactuCertificateDeletionDecision.blocked(NON_FINAL_SUBMISSIONS_EXIST);
         }
         return VerifactuCertificateDeletionDecision.allowed();
+    }
+
+    private com.tpverp.backend.installation.Installation resolveInstallationOrNull() {
+        try {
+            return FiscalInstallationResolver.resolveCurrent(organization, installations, licenses);
+        } catch (IllegalStateException exception) {
+            if ("La instalacion fiscal no esta inicializada".equals(exception.getMessage())) {
+                return null;
+            }
+            throw exception;
+        }
     }
 }

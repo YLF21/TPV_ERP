@@ -2,7 +2,6 @@ package com.tpverp.backend.licensing.api;
 
 import com.tpverp.backend.licensing.application.LicensePreview;
 import com.tpverp.backend.licensing.application.LicenseService;
-import com.tpverp.backend.licensing.LicenseSaasAdminService;
 import com.tpverp.backend.licensing.LicenseSaasLinkResult;
 import com.tpverp.backend.licensing.LicenseSaasLinkService;
 import com.tpverp.backend.licensing.LicenseSaasValidationResponse;
@@ -28,19 +27,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class LicenseController {
 
     private final LicenseService licenseService;
-    private final LicenseSaasAdminService saasAdmin;
     private final LicenseSaasLinkService saasLink;
     private final LicenseSaasValidationService saasValidation;
     private final boolean localFileActivationEnabled;
 
     public LicenseController(
             LicenseService licenseService,
-            LicenseSaasAdminService saasAdmin,
             LicenseSaasLinkService saasLink,
             LicenseSaasValidationService saasValidation,
             @Value("${tpv.license.local-file-activation-enabled:false}") boolean localFileActivationEnabled) {
         this.licenseService = licenseService;
-        this.saasAdmin = saasAdmin;
         this.saasLink = saasLink;
         this.saasValidation = saasValidation;
         this.localFileActivationEnabled = localFileActivationEnabled;
@@ -63,7 +59,14 @@ public class LicenseController {
     @PostMapping("/link-saas")
     @PreAuthorize("hasRole('ADMIN')")
     public LinkSaasResponse linkSaas(@Valid @RequestBody LinkSaasRequest request) {
-        return LinkSaasResponse.from(saasLink.link(request.pairingCode()));
+        return LinkSaasResponse.from(saasLink.link(request.pairingCode(), request.localStoreId()));
+    }
+
+    @PostMapping("/link-saas/bootstrap-empty")
+    @PreAuthorize("hasRole('ADMIN')")
+    public LinkSaasResponse bootstrapEmptyDatabase(
+            @Valid @RequestBody BootstrapLinkSaasRequest request) {
+        return LinkSaasResponse.from(saasLink.bootstrapEmptyDatabase(request.pairingCode()));
     }
 
     @PostMapping("/validate-saas")
@@ -76,18 +79,6 @@ public class LicenseController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LICENSES_MANAGE')")
     public List<LicenseService.LicenseHistoryItem> history() {
         return licenseService.history();
-    }
-
-    @PostMapping("/{reference}/block")
-    @PreAuthorize("hasRole('ADMIN')")
-    public LicenseSaasValidationResponse block(@PathVariable String reference) {
-        return saasAdmin.block(reference);
-    }
-
-    @PostMapping("/{reference}/unblock")
-    @PreAuthorize("hasRole('ADMIN')")
-    public LicenseSaasValidationResponse unblock(@PathVariable String reference) {
-        return saasAdmin.unblock(reference);
     }
 
     private void requireLocalFileActivationEnabled() {
@@ -106,7 +97,10 @@ public class LicenseController {
             @NotBlank String confirmationHash) {
     }
 
-    public record LinkSaasRequest(@NotBlank String pairingCode) {
+    public record LinkSaasRequest(@NotBlank String pairingCode, UUID localStoreId) {
+    }
+
+    public record BootstrapLinkSaasRequest(@NotBlank String pairingCode) {
     }
 
     public record LinkSaasResponse(

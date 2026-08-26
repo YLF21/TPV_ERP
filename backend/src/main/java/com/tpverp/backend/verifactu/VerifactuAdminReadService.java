@@ -2,6 +2,7 @@ package com.tpverp.backend.verifactu;
 
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.DateTimeException;
@@ -19,6 +20,7 @@ public class VerifactuAdminReadService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final CurrentOrganization organization;
+    private final InstallationRepository installations;
     private final VerifactuAdminReadRepository reads;
     private final VerifactuConfigurationRepository configurations;
     private final LicenseRepository licenses;
@@ -40,7 +42,25 @@ public class VerifactuAdminReadService {
             VerifactuClockMonitor clockMonitor,
             Environment environment,
             Clock clock) {
+        this(organization, null, reads, configurations, licenses, activation,
+                certificates, properties, clockMonitor, environment, clock);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public VerifactuAdminReadService(
+            CurrentOrganization organization,
+            InstallationRepository installations,
+            VerifactuAdminReadRepository reads,
+            VerifactuConfigurationRepository configurations,
+            LicenseRepository licenses,
+            VerifactuActivationService activation,
+            ManagedVerifactuCertificateRepository certificates,
+            VerifactuSubmissionPropertiesFactory properties,
+            VerifactuClockMonitor clockMonitor,
+            Environment environment,
+            Clock clock) {
         this.organization = organization;
+        this.installations = installations;
         this.reads = reads;
         this.configurations = configurations;
         this.licenses = licenses;
@@ -55,15 +75,19 @@ public class VerifactuAdminReadService {
     @Transactional(readOnly = true)
     public VerifactuAdminSummaryView summary() {
         var store = organization.currentStore();
-        var companyId = store.getEmpresa().getId();
-        var storeId = store.getId();
+        var scope = scope(store);
+        var companyId = scope.companyId();
+        var storeId = scope.storeId();
         var now = clock.instant();
-        var activationSummary = activationSummary(store.getTimezone(), companyId, storeId, now);
+        var activationSummary = activationSummary(store.getTimezone(), companyId, storeId,
+                scope.installationId(), now);
         var counts = new EnumMap<FiscalSubmissionStatus, Long>(FiscalSubmissionStatus.class);
         for (var status : FiscalSubmissionStatus.values()) {
             counts.put(status, 0L);
         }
-        counts.putAll(reads.countByStatus(companyId, storeId));
+        counts.putAll(scope.installationId() == null
+                ? reads.countByStatus(companyId, storeId)
+                : reads.countByStatus(companyId, storeId, scope.installationId()));
         return new VerifactuAdminSummaryView(
                 activationSummary.active(),
                 activationSummary.mode(),
@@ -73,7 +97,9 @@ public class VerifactuAdminReadService {
                 Boolean.TRUE.equals(environment.getProperty(
                         "tpv.verifactu.worker-enabled", Boolean.class, false)),
                 counts,
-                reads.findOldestPendingAt(companyId, storeId),
+                scope.installationId() == null
+                        ? reads.findOldestPendingAt(companyId, storeId)
+                        : reads.findOldestPendingAt(companyId, storeId, scope.installationId()),
                 certificateSummary(companyId, now),
                 clockSummary());
     }
@@ -93,17 +119,15 @@ public class VerifactuAdminReadService {
         var normalizedNumber = normalizeDocumentNumber(documentNumber);
         var store = organization.currentStore();
         var zone = ZoneId.of(store.getTimezone());
-        return reads.findSubmissions(
-                store.getEmpresa().getId(),
-                store.getId(),
-                startOfDay(dateFrom, zone),
-                startOfNextDay(dateTo, zone),
-                status,
-                documentType,
-                operation,
-                normalizedNumber,
-                page,
-                size);
+        var scope = scope(store);
+        if (scope.installationId() == null) {
+            return reads.findSubmissions(scope.companyId(), scope.storeId(),
+                    startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                    documentType, operation, normalizedNumber, page, size);
+        }
+        return reads.findSubmissions(scope.companyId(), scope.storeId(), scope.installationId(),
+                startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                documentType, operation, normalizedNumber, page, size);
     }
 
     @Transactional(readOnly = true)
@@ -123,19 +147,16 @@ public class VerifactuAdminReadService {
         var normalizedNumber = normalizeDocumentNumber(documentNumber);
         var store = organization.currentStore();
         var zone = ZoneId.of(store.getTimezone());
-        var companyId = store.getEmpresa().getId();
-        return reads.findSubmissions(
-                companyId,
-                store.getId(),
-                startOfDay(dateFrom, zone),
-                startOfNextDay(dateTo, zone),
-                status,
-                documentType,
-                operation,
-                normalizedNumber,
-                page,
-                size,
-                sortBy,
+        var scope = scope(store);
+        if (scope.installationId() == null) {
+            return reads.findSubmissions(scope.companyId(), scope.storeId(),
+                    startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                    documentType, operation, normalizedNumber, page, size, sortBy,
+                    sortDirection);
+        }
+        return reads.findSubmissions(scope.companyId(), scope.storeId(), scope.installationId(),
+                startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                documentType, operation, normalizedNumber, page, size, sortBy,
                 sortDirection);
     }
 
@@ -143,6 +164,7 @@ public class VerifactuAdminReadService {
             String timezone,
             java.util.UUID companyId,
             java.util.UUID storeId,
+            java.util.UUID installationId,
             Instant now) {
         var configuration = configurations.findByCompanyId(companyId);
         if (configuration.filter(VerifactuConfiguration::isVoluntarilyActive).isPresent()) {
@@ -155,9 +177,10 @@ public class VerifactuAdminReadService {
             return new ActivationSummary(
                     true, "LOCKED", current.getActivatedAt(), current.getFirstSubmissionAt());
         }
-        var license = licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId).stream()
-                .filter(License::isActiva)
-                .findFirst();
+        var license = installationId == null
+                ? licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId).stream()
+                        .filter(License::isActiva).findFirst()
+                : licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(storeId, installationId);
         if (license.isEmpty()) {
             return new ActivationSummary(
                     false, "UNAVAILABLE", null,
@@ -165,24 +188,36 @@ public class VerifactuAdminReadService {
         }
         var zone = ZoneId.of(timezone);
         var activeLicense = license.orElseThrow();
-        if (activation.isAutomaticallyRequired(
-                activeLicense.getTaxpayerType(),
-                activeLicense.getVerifactuActivationDate(),
-                now,
-                zone)) {
+        var licensedActivationDate = activeLicense.getVerifactuActivationDate();
+        if (activeLicense.getTaxpayerType() != null && licensedActivationDate != null) {
+            var effectiveActivationAt = activation.activationInstant(
+                    activeLicense.getTaxpayerType(), licensedActivationDate, zone);
+            if (now.isBefore(effectiveActivationAt)) {
+                return new ActivationSummary(
+                        false, "LICENSE_SCHEDULED", effectiveActivationAt,
+                        configuration.map(VerifactuConfiguration::getFirstSubmissionAt)
+                                .orElse(null));
+            }
             return new ActivationSummary(
                     true,
-                    activeLicense.getVerifactuActivationDate() == null
-                            ? "LEGAL_FALLBACK" : "LICENSE_POLICY",
-                    activation.activationInstant(
-                            activeLicense.getTaxpayerType(),
-                            activeLicense.getVerifactuActivationDate(),
-                            zone),
+                    "LICENSE_POLICY",
+                    effectiveActivationAt,
                     configuration.map(VerifactuConfiguration::getFirstSubmissionAt).orElse(null));
         }
         return new ActivationSummary(
                 false, "INACTIVE", null,
                 configuration.map(VerifactuConfiguration::getFirstSubmissionAt).orElse(null));
+    }
+
+    private Scope scope(com.tpverp.backend.organization.Store store) {
+        var company = store.getEmpresa();
+        if (company == null) {
+            throw new IllegalStateException("La empresa de la tienda no esta inicializada");
+        }
+        var installationId = installations == null || licenses == null
+                ? null
+                : FiscalInstallationResolver.resolveCurrent(organization, installations, licenses).getId();
+        return new Scope(company.getId(), store.getId(), installationId);
     }
 
     private VerifactuAdminCertificateSummary certificateSummary(
@@ -277,5 +312,9 @@ public class VerifactuAdminReadService {
             String mode,
             Instant effectiveActivationAt,
             Instant firstSubmissionAt) {
+    }
+
+    private record Scope(java.util.UUID companyId, java.util.UUID storeId,
+            java.util.UUID installationId) {
     }
 }

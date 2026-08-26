@@ -73,12 +73,14 @@ function safeErrorCode(value: unknown): string | null {
 
 export function VerifactuCertificateView({
   locale,
+  timezone = null,
   token,
   revision,
   t,
   onChanged
 }: {
   locale: LocaleCode;
+  timezone?: string | null;
   token?: string;
   revision: number;
   t: VerifactuTranslator;
@@ -147,6 +149,7 @@ export function VerifactuCertificateView({
         <CertificatePanel
           certificate={active}
           locale={locale}
+          timezone={timezone}
           title={t("verifactu.certificate.activeTitle")}
           t={t}
         />
@@ -161,6 +164,7 @@ export function VerifactuCertificateView({
         <CertificatePanel
           certificate={previous}
           locale={locale}
+          timezone={timezone}
           title={t("verifactu.certificate.previousTitle")}
           t={t}
           secondary
@@ -221,12 +225,14 @@ export function VerifactuCertificateView({
 function CertificatePanel({
   certificate,
   locale,
+  timezone,
   title,
   t,
   secondary = false
 }: {
   certificate: VerifactuManagedCertificate;
   locale: LocaleCode;
+  timezone?: string | null;
   title: string;
   t: VerifactuTranslator;
   secondary?: boolean;
@@ -253,8 +259,8 @@ function CertificatePanel({
           label={t("verifactu.certificate.daysRemaining")}
           value={daysRemainingLabel(certificate.daysRemaining, t)}
         />
-        <Detail label={t("verifactu.certificate.validFrom")} value={formatVerifactuDateTime(certificate.validFrom, locale)} />
-        <Detail label={t("verifactu.certificate.validUntil")} value={formatVerifactuDateTime(certificate.validUntil, locale)} />
+        <Detail label={t("verifactu.certificate.validFrom")} value={formatVerifactuDateTime(certificate.validFrom, locale, timezone)} />
+        <Detail label={t("verifactu.certificate.validUntil")} value={formatVerifactuDateTime(certificate.validUntil, locale, timezone)} />
         <Detail label={t("verifactu.certificate.fingerprint")} value={certificate.fingerprint} mono wide />
       </dl>
     </section>

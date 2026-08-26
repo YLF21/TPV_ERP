@@ -37,7 +37,18 @@ public class VerifactuAdminReviewReadRepository {
             String documentNumber,
             int page,
             int size) {
-        return findDefectiveRecords(companyId, storeId, updatedFrom, updatedToExclusive, status, documentType, operation, documentNumber, page, size, null, null);
+        return findDefectiveRecords(companyId, storeId, null, updatedFrom, updatedToExclusive,
+                status, documentType, operation, documentNumber, page, size, null, null);
+    }
+
+    public VerifactuAdminDefectiveRecordPage findDefectiveRecords(
+            UUID companyId, UUID storeId, UUID installationId,
+            Instant updatedFrom, Instant updatedToExclusive,
+            FiscalSubmissionStatus status, FiscalDocumentType documentType,
+            FiscalRecordOperation operation, String documentNumber, int page, int size) {
+        return findDefectiveRecords(companyId, storeId, installationId, updatedFrom,
+                updatedToExclusive, status, documentType, operation, documentNumber,
+                page, size, null, null);
     }
 
     public VerifactuAdminDefectiveRecordPage findDefectiveRecords(
@@ -53,8 +64,27 @@ public class VerifactuAdminReviewReadRepository {
             int size,
             String sortBy,
             String sortDirection) {
+        return findDefectiveRecords(companyId, storeId, null, updatedFrom, updatedToExclusive,
+                status, documentType, operation, documentNumber, page, size, sortBy,
+                sortDirection);
+    }
+
+    public VerifactuAdminDefectiveRecordPage findDefectiveRecords(
+            UUID companyId,
+            UUID storeId,
+            UUID installationId,
+            Instant updatedFrom,
+            Instant updatedToExclusive,
+            FiscalSubmissionStatus status,
+            FiscalDocumentType documentType,
+            FiscalRecordOperation operation,
+            String documentNumber,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection) {
         var query = defectiveQuery(
-                companyId, storeId, updatedFrom, updatedToExclusive,
+                companyId, storeId, installationId, updatedFrom, updatedToExclusive,
                 status, documentType, operation, documentNumber);
         long totalElements = valueOrZero(jdbc.queryForObject(
                 "select count(*) " + query.sql(), query.parameters(), Long.class));
@@ -116,14 +146,20 @@ public class VerifactuAdminReviewReadRepository {
     }
 
     public boolean recordExists(UUID companyId, UUID storeId, UUID recordId) {
+        return recordExists(companyId, storeId, null, recordId);
+    }
+
+    public boolean recordExists(
+            UUID companyId, UUID storeId, UUID installationId, UUID recordId) {
+        var filter = installationFilter(installationId);
         var total = jdbc.queryForObject("""
                         select count(*)
                         from registro_fiscal record
                         where record.id = :recordId
                           and record.empresa_id = :companyId
                           and record.tienda_id = :storeId
-                        """,
-                scope(companyId, storeId).addValue("recordId", recordId),
+                        """ + filter,
+                scope(companyId, storeId, installationId).addValue("recordId", recordId),
                 Long.class);
         return valueOrZero(total) == 1;
     }
@@ -134,14 +170,21 @@ public class VerifactuAdminReviewReadRepository {
             UUID recordId,
             int page,
             int size) {
-        var parameters = scope(companyId, storeId).addValue("recordId", recordId);
+        return findAttempts(companyId, storeId, null, recordId, page, size);
+    }
+
+    public VerifactuAdminAttemptPage findAttempts(
+            UUID companyId, UUID storeId, UUID installationId,
+            UUID recordId, int page, int size) {
+        var parameters = scope(companyId, storeId, installationId).addValue("recordId", recordId);
+        var filter = installationFilter(installationId);
         var from = """
                 from intento_envio_fiscal attempt
                 join registro_fiscal record on record.id = attempt.registro_id
                 where record.id = :recordId
                   and record.empresa_id = :companyId
                   and record.tienda_id = :storeId
-                """;
+                """ + filter;
         long totalElements = valueOrZero(jdbc.queryForObject(
                 "select count(*) " + from, parameters, Long.class));
         int totalPages = totalPages(totalElements, size);
@@ -174,16 +217,23 @@ public class VerifactuAdminReviewReadRepository {
     }
 
     public VerifactuAdminDiagnosticEvent findLastAttempt(UUID companyId, UUID storeId) {
+        return findLastAttempt(companyId, storeId, null);
+    }
+
+    public VerifactuAdminDiagnosticEvent findLastAttempt(
+            UUID companyId, UUID storeId, UUID installationId) {
+        var filter = installationFilter(installationId);
         var items = jdbc.query("""
                         select attempt.intentado_en, attempt.estado
                         from intento_envio_fiscal attempt
                         join registro_fiscal record on record.id = attempt.registro_id
                         where record.empresa_id = :companyId
                           and record.tienda_id = :storeId
+                        """ + filter + """
                         order by attempt.intentado_en desc, attempt.id desc
                         limit 1
                         """,
-                scope(companyId, storeId),
+                scope(companyId, storeId, installationId),
                 (result, rowNumber) -> new VerifactuAdminDiagnosticEvent(
                         result.getTimestamp("intentado_en").toInstant(),
                         FiscalSubmissionStatus.valueOf(result.getString("estado"))));
@@ -193,14 +243,15 @@ public class VerifactuAdminReviewReadRepository {
     private FilteredQuery defectiveQuery(
             UUID companyId,
             UUID storeId,
+            UUID installationId,
             Instant updatedFrom,
             Instant updatedToExclusive,
             FiscalSubmissionStatus status,
             FiscalDocumentType documentType,
             FiscalRecordOperation operation,
             String documentNumber) {
-        var sql = new StringBuilder(DEFECTIVE_FROM);
-        var parameters = scope(companyId, storeId);
+        var sql = new StringBuilder(DEFECTIVE_FROM).append(installationFilter(installationId));
+        var parameters = scope(companyId, storeId, installationId);
         var filters = new ArrayList<String>();
         if (updatedFrom != null) {
             filters.add("state.actualizado_en >= :updatedFrom");
@@ -233,10 +284,21 @@ public class VerifactuAdminReviewReadRepository {
         return new FilteredQuery(sql.toString(), parameters);
     }
 
-    private static MapSqlParameterSource scope(UUID companyId, UUID storeId) {
-        return new MapSqlParameterSource()
+    private static MapSqlParameterSource scope(
+            UUID companyId, UUID storeId, UUID installationId) {
+        var parameters = new MapSqlParameterSource()
                 .addValue("companyId", companyId)
                 .addValue("storeId", storeId);
+        if (installationId != null) {
+            parameters.addValue("installationId", installationId);
+        }
+        return parameters;
+    }
+
+    private static String installationFilter(UUID installationId) {
+        return installationId == null
+                ? ""
+                : " and record.instalacion_id = :installationId\n";
     }
 
     private static int totalPages(long totalElements, int size) {

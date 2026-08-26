@@ -50,12 +50,12 @@ public class MemberCategoryBootstrapCaptureService {
             UUID storeId,
             UUID bootstrapId,
             UUID snapshotId) {
-        var freeze = coordinator.freeze(
-                companyId, storeId, bootstrapId, snapshotId);
         var existing = snapshots.findById(snapshotId);
         if (existing.isPresent()) {
             return CaptureResult.from(existing.get());
         }
+        var freeze = coordinator.freeze(
+                companyId, storeId, bootstrapId, snapshotId);
         if (snapshots.findByBootstrapIdAndStoreId(bootstrapId, storeId).isPresent()) {
             throw new IllegalStateException(
                     "El bootstrap ya tiene otro snapshot de categorias para la tienda");

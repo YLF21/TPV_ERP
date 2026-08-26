@@ -1,10 +1,9 @@
 package com.tpverp.backend.organization;
 
-import java.util.Set;
+import java.time.DateTimeException;
+import java.time.ZoneId;
 
 public final class StoreFiscalIdentity {
-
-    private static final Set<String> TIMEZONES = Set.of("Atlantic/Canary", "Europe/Madrid");
 
     private StoreFiscalIdentity() {
     }
@@ -17,9 +16,13 @@ public final class StoreFiscalIdentity {
     }
 
     public static String timezone(String value) {
-        if (!TIMEZONES.contains(value)) {
+        if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("La zona horaria fiscal no es valida");
         }
-        return value;
+        try {
+            return ZoneId.of(value.trim()).getId();
+        } catch (DateTimeException exception) {
+            throw new IllegalArgumentException("La zona horaria fiscal no es valida", exception);
+        }
     }
 }

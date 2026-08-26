@@ -18,7 +18,7 @@ class DocumentDiscountMigrationPostgreSqlTest {
         assumeTrue(canConnect(url, user, password), "PostgreSQL de pruebas no disponible");
         var schema = "document_discount_" + UUID.randomUUID().toString().replace("-", "");
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(url, user, password)
                     .schemas(schema)
                     .defaultSchema(schema)

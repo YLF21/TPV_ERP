@@ -2,5 +2,5 @@ package com.tpverp.backend.licensing;
 
 public interface LicenseSaasLinkClient {
 
-    LicenseSaasLinkResponse link(LicenseSaasLinkRequest request);
+    LicenseSaasLinkResponse link(LicenseSaasLinkRequest request, String recoveryToken);
 }

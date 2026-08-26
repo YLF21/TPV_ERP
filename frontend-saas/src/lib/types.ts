@@ -1,6 +1,14 @@
 export type TaxpayerType = "SOCIEDAD" | "AUTONOMO";
 export type TaxRegime = "IVA" | "IGIC";
-export type LicenseStatus = "VALIDA" | "BLOQUEADA_MANUAL";
+export type CommercialProfile = "MAYORISTA" | "MINORISTA";
+export type FiscalAddress = {
+  linea1: string;
+  ciudad: string;
+  codigoPostal: string;
+  provincia: string;
+  pais: string;
+};
+export type LicenseStatus = "VALIDA" | "BLOQUEADA_MANUAL" | "CADUCADA";
 export type SyncOperation = "CREAR" | "ACTUALIZAR" | "BORRAR" | "ANULAR" | "CONFIRMAR" | "CERRAR";
 
 export type Credentials = {
@@ -23,8 +31,12 @@ export type CreateCompanyRequest = {
   taxId: string;
   taxpayerType: TaxpayerType;
   impuestos: TaxRegime;
+  commercialProfile: CommercialProfile;
+  companyAddress: FiscalAddress;
   storeCode: string;
   storeName: string;
+  storeAddress: FiscalAddress;
+  timeZoneId: string;
   validUntil: string;
   maxWindows: number;
   maxPda: number;
@@ -45,6 +57,9 @@ export type LicenseSummary = {
   companyId: string;
   companyName: string;
   taxId: string;
+  taxpayerType: TaxpayerType;
+  taxRegime: TaxRegime;
+  commercialProfile: CommercialProfile;
   status: LicenseStatus;
   validUntil: string;
   maxWindows: number;
@@ -63,6 +78,23 @@ export type InstallationSummary = {
   operatingSystem: string | null;
   terminalName: string | null;
   lastIp: string | null;
+  active: boolean;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  revocationReason: string | null;
+  version: number;
+};
+
+export type FiscalProvisioning = {
+  companyId: string;
+  companyAddress: FiscalAddress | null;
+  stores: Array<{
+    storeId: string;
+    storeCode: string;
+    storeName: string;
+    storeAddress: FiscalAddress | null;
+    timeZoneId: string;
+  }>;
 };
 
 export type AdminUser = {
@@ -90,6 +122,41 @@ export type VerifactuActivationPolicy = {
   reason: string;
   activeLicenses: number;
   linkedInstallations: number;
+};
+
+export type FiscalStatusAdmin = {
+  companyId: string;
+  companyName: string;
+  taxId: string;
+  storeId: string;
+  storeName: string;
+  installationId: string | null;
+  installationReference: string | null;
+  effectiveMode: "PRE_SIF" | "NO_VERIFACTU" | "VERIFACTU" | string;
+  activationState: "ACTIVE" | "PENDING" | "DUE_REVIEW" | "UNKNOWN" | string;
+  modeVersion: number;
+  modeSince: string | null;
+  activationDate: string | null;
+  policyVersion: number | null;
+  runtimeClass: string | null;
+  endpointEnvironment: string | null;
+  transportMode: string | null;
+  reportedAt: string | null;
+  receivedAt: string | null;
+  stale: boolean;
+};
+
+export type FiscalCompanyStatusAdmin = {
+  companyId: string;
+  companyName: string;
+  taxId: string;
+  effectiveMode: string;
+  activationState: string;
+  stores: number;
+  installations: number;
+  unlinkedStores: number;
+  staleInstallations: number;
+  lastReportedAt: string | null;
 };
 
 export type PairingCodeResponse = {
@@ -340,8 +407,47 @@ export type SyncEventView = {
   entityType: string;
   entityId: string;
   operation: SyncOperation;
+  projectionStatus: "RECEIVED" | "PROJECTED" | "IGNORED" | "ERROR" | string;
+  projectedAt: string | null;
+  projectionError: string | null;
+  schemaVersion: number;
   receivedAt: string;
   payload: Record<string, unknown>;
+};
+
+export type OperationalIncident = {
+  incidentType: string;
+  companyId: string;
+  targetId: string;
+  status: string;
+  expectedStoreCount: number;
+  completedStoreCount: number;
+  snapshotCount: number;
+  chunkCount: number;
+  conflictSummary: string | null;
+  createdAt: string;
+  lastActivityAt: string;
+  inactive: boolean;
+  cancellable: boolean;
+  completedBaselineId: string | null;
+};
+
+export type OperationalIncidentCancellation = {
+  commandId: string;
+  companyId: string;
+  bootstrapId: string;
+  previousStatus: string;
+  status: string;
+  cancelledAt: string;
+  idempotentReplay: boolean;
+};
+
+export type SyncProjectionStatus = {
+  received: number;
+  projected: number;
+  ignored: number;
+  error: number;
+  oldestReceivedAt: string | null;
 };
 
 export type SalesSummary = {

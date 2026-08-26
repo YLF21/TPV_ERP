@@ -73,21 +73,21 @@ public class VerifactuConfiguration {
         this.activatedAt = value;
     }
 
-    // Records a voluntary submission or the exact legal activation instant.
-    public void markFirstSubmission(Instant submittedAt, Instant legalActivationAt) {
-        if (!voluntarilyActive && legalActivationAt == null) {
+    // Records a voluntary submission or the exact licensed activation instant.
+    public void markFirstSubmission(Instant submittedAt, Instant licensedActivationAt) {
+        if (!voluntarilyActive && licensedActivationAt == null) {
             throw new IllegalStateException("VERI*FACTU debe estar activo");
         }
         if (firstSubmissionAt != null) {
             throw new IllegalStateException("message.verifactu.first_submission_already_registered");
         }
         var value = Objects.requireNonNull(submittedAt, "submittedAt");
-        var effectiveActivation = activatedAt == null ? legalActivationAt : activatedAt;
+        var effectiveActivation = activatedAt == null ? licensedActivationAt : activatedAt;
         if (value.isBefore(effectiveActivation)) {
             throw new IllegalArgumentException("message.verifactu.submission_before_activation");
         }
         if (activatedAt == null) {
-            activatedAt = legalActivationAt;
+            activatedAt = licensedActivationAt;
         }
         firstSubmissionAt = value;
     }

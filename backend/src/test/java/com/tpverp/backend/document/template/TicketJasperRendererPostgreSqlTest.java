@@ -15,6 +15,7 @@ import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import com.tpverp.backend.organization.TicketPrintStyle;
 import com.tpverp.backend.organization.TicketTemplateOrigin;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -43,9 +44,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.annotation.Import;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(FlywayPostgreSqlConfiguration.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TicketJasperRendererPostgreSqlTest {
 
@@ -115,6 +118,38 @@ class TicketJasperRendererPostgreSqlTest {
         var raster = ImageIO.read(new java.io.ByteArrayInputStream(rendered.png()));
         assertThat(raster.getWidth()).isEqualTo(576);
         assertThat(decodeQr(raster)).isEqualTo(QR_URL);
+    }
+
+    @Test
+    void rendersAndDecodesEditableStandaloneTicketWithFrozenIssuer() throws Exception {
+        var fixture = insertFixture();
+        byte[] source = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
+                "..", "plantillas documentos", "ticekt_v1.jrxml"));
+        var report = new TicketJrxmlBundleCompiler().compileUpload(Map.of(
+                TicketJrxmlBundleCompiler.MASTER_FILENAME, source))
+                .reports().get(TicketJrxmlBundleCompiler.MASTER_FILENAME);
+        var parameters = new java.util.HashMap<String, Object>();
+        parameters.put("TIENDA_ID", fixture.document().getTiendaId().toString());
+        parameters.put("DOCUMENTO_ID", fixture.document().getId().toString());
+
+        net.sf.jasperreports.engine.JasperPrint print;
+        try (var connection = dataSource.getConnection()) {
+            print = net.sf.jasperreports.engine.JasperFillManager.fillReport(
+                    new java.io.ByteArrayInputStream(report.compiled()),
+                    parameters, connection);
+        }
+        var raster = InvoiceJasperRenderer.ticketRaster(print);
+        var pdf = net.sf.jasperreports.engine.JasperExportManager.exportReportToPdf(print);
+
+        assertThat(decodeQr(ImageIO.read(new java.io.ByteArrayInputStream(raster))))
+                .isEqualTo(QR_URL);
+        try (var loaded = Loader.loadPDF(pdf)) {
+            assertThat(new PDFTextStripper().getText(loaded))
+                    .contains("Obligado congelado SL", "B12345674",
+                            "Calle congelada 7", "QR tributario:",
+                            "Factura verificable", "ENTORNO DE PRUEBAS")
+                    .doesNotContain("Calle Test 1");
+        }
     }
 
     private Fixture insertFixture() throws Exception {
@@ -223,6 +258,19 @@ class TicketJasperRendererPostgreSqlTest {
                 document.getId(), document.getNumero(), document.getFecha(), timestamp(NOW),
                 "A".repeat(64), "B".repeat(64));
         jdbc.update("""
+                insert into artefacto_registro_fiscal (
+                    registro_id, modo_fiscal, entorno, sandbox,
+                    obligado_nombre, obligado_nif, obligado_direccion,
+                    xml_sin_firmar, xml_hash, qr_url, qr_hash, qr_prefijo,
+                    qr_leyenda, aviso_pruebas, creado_en)
+                values (?, 'VERIFACTU', 'TEST', true,
+                    'Obligado congelado SL', 'B12345674', cast(? as jsonb),
+                    '<RegistroAlta/>', ?, ?, ?, 'QR tributario:',
+                    'Factura verificable en la sede electrónica de la AEAT',
+                    'ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL', ?)
+                """, recordId, address("Calle congelada 7"), "C".repeat(64),
+                QR_URL, sha256(QR_URL), timestamp(NOW));
+        jdbc.update("""
                 insert into snapshot_impresion_fiscal (
                     registro_id, modo_fiscal, entorno, version_formato, generador_version,
                     qr_url, qr_hash, qr_prefijo, qr_leyenda, aviso_pruebas, creado_en)
@@ -246,7 +294,11 @@ class TicketJasperRendererPostgreSqlTest {
     }
 
     private static String address() {
-        return "{\"linea1\":\"Calle Test 1\",\"ciudad\":\"Las Palmas\","
+        return address("Calle Test 1");
+    }
+
+    private static String address(String line1) {
+        return "{\"linea1\":\"" + line1 + "\",\"ciudad\":\"Las Palmas\","
                 + "\"codigoPostal\":\"35001\",\"provincia\":\"Las Palmas\",\"pais\":\"ES\"}";
     }
 

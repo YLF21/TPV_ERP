@@ -59,7 +59,13 @@ class ManagedCertificateKeyStoreFactoryTest {
         }
         return new VerifactuCertificateImporter(
                 new VerifactuPkcs12KeyStoreLoader(), new CertificateTaxIdExtractor(),
-                new VerifactuCertificateValidator(Clock.systemUTC()))
+                new VerifactuCertificateValidator(Clock.systemUTC()), sandboxRuntime())
                 .importPkcs12(Files.readAllBytes(path), "secreto".toCharArray(), "B12345674");
+    }
+
+    private static FiscalRuntimeProperties sandboxRuntime() {
+        var runtime = org.mockito.Mockito.mock(FiscalRuntimeProperties.class);
+        org.mockito.Mockito.when(runtime.isSandbox()).thenReturn(true);
+        return runtime;
     }
 }

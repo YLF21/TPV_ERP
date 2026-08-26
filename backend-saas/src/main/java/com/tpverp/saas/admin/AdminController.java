@@ -41,6 +41,18 @@ public class AdminController {
         return service.editCompany(companyId, request);
     }
 
+    @GetMapping("/companies/{companyId}/fiscal-provisioning")
+    public FiscalProvisioningResponse fiscalProvisioning(@PathVariable UUID companyId) {
+        return service.fiscalProvisioning(companyId);
+    }
+
+    @PutMapping("/companies/{companyId}/fiscal-provisioning")
+    public FiscalProvisioningResponse updateFiscalProvisioning(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody UpdateFiscalProvisioningRequest request) {
+        return service.updateFiscalProvisioning(companyId, request);
+    }
+
     @GetMapping("/companies/{companyId}/operations")
     public CompanyOperationsResponse companyOperations(@PathVariable UUID companyId) {
         return service.companyOperations(companyId);
@@ -272,6 +284,13 @@ public class AdminController {
     @GetMapping("/installations")
     public List<InstallationSummaryResponse> installations() {
         return service.installations();
+    }
+
+    @PostMapping("/installations/{installationId}/revoke")
+    public InstallationSummaryResponse revokeInstallation(
+            @PathVariable UUID installationId,
+            @Valid @RequestBody RevokeInstallationRequest request) {
+        return service.revokeInstallation(installationId, request);
     }
 
     @GetMapping("/audit")

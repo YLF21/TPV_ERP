@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,6 +27,8 @@ public class FiscalCorrectionService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final VerifactuDefectClassifier defects;
+    private final InstallationRepository installations;
+    private final LicenseRepository licenses;
 
     public FiscalCorrectionService(
             FiscalRecordRepository records,
@@ -35,6 +39,22 @@ public class FiscalCorrectionService {
             ApplicationEventPublisher events,
             Clock clock,
             VerifactuDefectClassifier defects) {
+        this(records, states, fiscalRecords, snapshots, organization, events, clock, defects,
+                null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FiscalCorrectionService(
+            FiscalRecordRepository records,
+            FiscalSubmissionStateRepository states,
+            FiscalRecordService fiscalRecords,
+            FiscalCorrectionSnapshot snapshots,
+            CurrentOrganization organization,
+            ApplicationEventPublisher events,
+            Clock clock,
+            VerifactuDefectClassifier defects,
+            InstallationRepository installations,
+            LicenseRepository licenses) {
         this.records = records;
         this.states = states;
         this.fiscalRecords = fiscalRecords;
@@ -43,6 +63,8 @@ public class FiscalCorrectionService {
         this.events = events;
         this.clock = clock;
         this.defects = defects;
+        this.installations = installations;
+        this.licenses = licenses;
     }
 
     // Creates an isolated correction per tenant and schedules submission after transaction commit.
@@ -55,6 +77,13 @@ public class FiscalCorrectionService {
         var storeId = organization.currentStore().getId();
         var original = records.findByIdAndCompanyIdAndStoreId(recordId, companyId, storeId)
                 .orElseThrow(() -> new IllegalArgumentException("registro fiscal no encontrado"));
+        if (installations != null && licenses != null) {
+            var installation = FiscalInstallationResolver.resolveCurrent(
+                    organization, installations, licenses);
+            if (!installation.getId().equals(original.getInstallationId())) {
+                throw new IllegalArgumentException("registro fiscal no encontrado");
+            }
+        }
         var state = states.findForUpdate(recordId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "estado de envio fiscal no encontrado"));

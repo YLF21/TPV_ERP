@@ -23,12 +23,14 @@ export function VerifactuAttemptHistoryPanel({
   target,
   token,
   locale,
+  timezone = null,
   t,
   onClose
 }: {
   target: VerifactuAttemptTarget | null;
   token?: string;
   locale: LocaleCode;
+  timezone?: string | null;
   t: VerifactuTranslator;
   onClose: () => void;
 }) {
@@ -95,7 +97,7 @@ export function VerifactuAttemptHistoryPanel({
             <article key={attempt.attemptId}>
               <div>
                 <strong>{verifactuStatusLabel(attempt.status, t)}</strong>
-                <time>{formatVerifactuDateTime(attempt.attemptedAt, locale)}</time>
+                <time>{formatVerifactuDateTime(attempt.attemptedAt, locale, timezone)}</time>
               </div>
               <dl>
                 <div>

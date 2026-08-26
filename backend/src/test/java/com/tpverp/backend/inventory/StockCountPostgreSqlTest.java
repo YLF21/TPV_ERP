@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -39,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({StockCountService.class, StockCountPostgreSqlTest.Configuration.class})
+@Import({FlywayPostgreSqlConfiguration.class, StockCountService.class, StockCountPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_PASSWORD", matches = ".+")

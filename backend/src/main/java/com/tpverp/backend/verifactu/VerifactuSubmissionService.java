@@ -1,8 +1,8 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.installation.InstallationRepository;
-import com.tpverp.backend.organization.CompanyRepository;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -19,8 +19,8 @@ public class VerifactuSubmissionService {
     private final VerifactuOfficialXsdValidator validator;
     private final VerifactuFirstSubmissionMarker firstSubmissions;
     private final FiscalCorrectionCompletionService corrections;
-    private CompanyRepository companies;
-    private InstallationRepository installations;
+    private final FrozenFiscalIdentityResolver identities;
+    private FiscalRecordArtifactRepository artifacts;
     private FiscalRuntimeProperties runtime;
 
     public VerifactuSubmissionService(
@@ -33,7 +33,8 @@ public class VerifactuSubmissionService {
             VerifactuResponseParser responses,
             VerifactuOfficialXsdValidator validator,
             VerifactuFirstSubmissionMarker firstSubmissions,
-            FiscalCorrectionCompletionService corrections) {
+            FiscalCorrectionCompletionService corrections,
+            FrozenFiscalIdentityResolver identities) {
         this.xml = xml;
         this.soap = soap;
         this.endpoints = endpoints;
@@ -44,14 +45,12 @@ public class VerifactuSubmissionService {
         this.validator = validator;
         this.firstSubmissions = firstSubmissions;
         this.corrections = corrections;
+        this.identities = identities;
     }
 
-    /** Fiscal XML must resolve identity from the persisted company and installation. */
     @Autowired(required = false)
-    void setFiscalIdentityRepositories(CompanyRepository companies,
-            InstallationRepository installations) {
-        this.companies = companies;
-        this.installations = installations;
+    void setFrozenArtifacts(FiscalRecordArtifactRepository artifacts) {
+        this.artifacts = artifacts;
     }
 
     @Autowired(required = false)
@@ -64,8 +63,23 @@ public class VerifactuSubmissionService {
             throw new IllegalArgumentException(
                     "Solo se pueden enviar registros fiscales VERI*FACTU");
         }
-        var configuration = properties.current();
-        var fiscalXml = fiscalXml(record, configuration);
+        final FrozenSubmissionArtifact frozen;
+        try {
+            frozen = frozenArtifact(record);
+        } catch (UnresolvedLegacyFiscalIdentityException exception) {
+            var result = new VerifactuSubmissionResult(
+                    FiscalSubmissionStatus.DEFECTUOSO,
+                    "LEGACY_IDENTITY_UNRESOLVED",
+                    exception.getMessage(),
+                    null);
+            attempts.recordDefective(
+                    record.getId(), result.errorCode(), result.error(), null);
+            return result;
+        }
+        var artifact = frozen.artifact();
+        var fiscalXml = xml.frozenBatchXml(
+                frozen.issuerName(), frozen.issuerTaxId(),
+                java.util.List.of(artifact.getUnsignedXml()));
         try {
             validator.validate(fiscalXml);
         } catch (IllegalArgumentException exception) {
@@ -82,11 +96,12 @@ public class VerifactuSubmissionService {
         try {
             var response = transport.send(
                     record.getCompanyId(), record.getInstallationId(),
-                    endpoints.resolve(configuration.mode()), envelope);
+                    endpoints.resolve(endpointMode(artifact.getEnvironment())), envelope);
             // Keeps older transport test doubles source-compatible while the real
             // implementation always receives the explicit fiscal identity above.
             if (response == null) {
-                response = transport.send(endpoints.resolve(configuration.mode()), envelope);
+                response = transport.send(
+                        endpoints.resolve(endpointMode(artifact.getEnvironment())), envelope);
             }
             return recordResult(record, responses.parse(response));
         } catch (VerifactuTransportException exception) {
@@ -99,34 +114,55 @@ public class VerifactuSubmissionService {
     }
     // Envia un registro fiscal ya reclamado y aplica la politica de estado sin bloquear ventas.
 
-    private String fiscalXml(FiscalRecord record, VerifactuSubmissionProperties configuration) {
-        if (companies == null || installations == null) {
-            if (runtime != null && !runtime.isSandbox()) {
-                throw new IllegalStateException(
-                        "La identidad fiscal persistida es obligatoria fuera de SANDBOX");
-            }
-            return xml.batchXml(new VerifactuXmlBatchRequest(
-                    "Company", record.getIssuerTaxId(), List.of(record),
-                    system(configuration, record.getInstallationId().toString())));
+    private FrozenSubmissionArtifact frozenArtifact(FiscalRecord record) {
+        if (artifacts == null || runtime == null) {
+            throw new IllegalStateException(
+                    "El envio VERI*FACTU requiere artefacto y entorno fiscal congelados");
         }
-        var company = companies.findById(record.getCompanyId())
-                .orElseThrow(() -> new IllegalStateException("Empresa fiscal no encontrada"));
-        var installation = installations.findById(record.getInstallationId())
-                .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));
-        return xml.batchXml(new VerifactuXmlBatchRequest(
-                company.getRazonSocial(), record.getIssuerTaxId(), List.of(record),
-                system(configuration, installation.getReferencia())));
+        var artifact = artifacts.findByRecordId(record.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "No existe el artefacto fiscal congelado del registro"));
+        if (artifact.getFiscalMode() != FiscalMode.VERIFACTU
+                || artifact.getEnvironment() == null
+                || artifact.getUnsignedXml() == null) {
+            throw new IllegalStateException(
+                    "El artefacto VERI*FACTU no contiene XML y entorno congelados");
+        }
+        if (runtime.endpointEnvironment() != artifact.getEnvironment()) {
+            throw new IllegalStateException(
+                    "El entorno actual no coincide con el entorno congelado del artefacto");
+        }
+        var calculatedHash = sha256(artifact.getUnsignedXml());
+        if (!calculatedHash.equalsIgnoreCase(String.valueOf(artifact.getXmlHash()))) {
+            throw new IllegalStateException(
+                    "El XML congelado no coincide con su huella persistida");
+        }
+        var identity = identities.resolve(record, artifact);
+        return new FrozenSubmissionArtifact(
+                artifact, identity.issuerName(), identity.issuerTaxId());
     }
 
-    private VerifactuSystemInfo system(
-            VerifactuSubmissionProperties configuration, String installationNumber) {
-        var system = new VerifactuSystemInfo(
-                configuration.producerName(), configuration.producerTaxId(),
-                configuration.systemName(), configuration.systemId(),
-                configuration.systemVersion(),
-                installationNumber,
-                true, false, false);
-        return system;
+    private static VerifactuEndpointMode endpointMode(FiscalEndpointEnvironment environment) {
+        return switch (environment) {
+            case TEST -> VerifactuEndpointMode.TEST;
+            case PRODUCTION -> VerifactuEndpointMode.PRODUCTION;
+        };
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().withUpperCase().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception exception) {
+            throw new IllegalStateException("SHA-256 no disponible", exception);
+        }
+    }
+
+    private record FrozenSubmissionArtifact(
+            FiscalRecordArtifact artifact,
+            String issuerName,
+            String issuerTaxId) {
     }
 
     private VerifactuSubmissionResult recordResult(

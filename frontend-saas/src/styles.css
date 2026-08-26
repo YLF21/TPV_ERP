@@ -43,7 +43,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -463,7 +464,7 @@ h2 {
 
 .sync-health-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -476,6 +477,63 @@ h2 {
 .sync-health-grid .metric strong {
   margin-top: 10px;
   font-size: 22px;
+}
+
+.projection-health-panel {
+  display: grid;
+  gap: 10px;
+  margin: -4px 0 18px;
+  border: 1px solid rgba(198, 216, 239, 0.82);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(247, 251, 255, 0.72);
+}
+
+.projection-health-panel > strong {
+  color: #2b456b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.projection-health-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.projection-metric {
+  min-width: 0;
+  border-left: 3px solid #bfd2ea;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.projection-metric.warning {
+  border-left-color: #d18a32;
+  background: rgba(255, 247, 231, 0.78);
+}
+
+.projection-metric span,
+.projection-metric strong {
+  display: block;
+}
+
+.projection-metric span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.projection-metric strong {
+  margin-top: 4px;
+  color: #15325c;
+  font-size: 17px;
 }
 
 .metric,
@@ -635,8 +693,7 @@ h2 {
 }
 
 .notice,
-.permission-hint,
-.demo-hint {
+.permission-hint {
   margin-bottom: 16px;
   border-radius: 14px;
   padding: 12px 14px;
@@ -665,11 +722,68 @@ h2 {
   color: #5f3200;
 }
 
-.demo-hint {
-  border: 1px solid #c9daee;
-  color: #40536f;
-  background: #f6fbff;
-  font-size: 14px;
+.incident-cancel-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(300px, 1.4fr) auto;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 14px;
+  border: 1px solid rgba(225, 165, 84, 0.68);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(255, 248, 235, 0.82);
+}
+
+.incident-cancel-panel > div:first-child {
+  min-width: 0;
+}
+
+.incident-cancel-panel strong,
+.incident-cancel-panel small {
+  display: block;
+}
+
+.incident-cancel-panel small {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.incident-cancel-panel p {
+  margin: 8px 0 0;
+  color: #6e4719;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.incident-cancel-panel label {
+  display: grid;
+  gap: 6px;
+  color: #4d3a24;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.incident-cancel-panel textarea {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+}
+
+.operational-incident-table th,
+.operational-incident-table td {
+  padding: 10px 8px;
+}
+
+.operational-incident-table td {
+  font-size: 13px;
+}
+
+.operational-incident-table td small {
+  max-width: 260px;
+  margin-top: 3px;
 }
 
 .login-page {
@@ -877,6 +991,25 @@ h2 {
 
 .form-grid.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.address-fields {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(198, 216, 239, 0.82);
+  border-radius: 13px;
+}
+
+.address-fields legend {
+  padding: 0 6px;
+  color: #243856;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 label {
@@ -1607,6 +1740,14 @@ tbody tr.billing-due {
   grid-column: 1 / -1;
 }
 
+.fiscal-store-provisioning {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.28fr);
+  align-items: end;
+  gap: 12px;
+  min-width: 0;
+}
+
 .phase2-form h3 {
   margin: 0 0 4px;
   color: #1d2d48;
@@ -1658,6 +1799,50 @@ tbody tr.billing-due {
   color: #24364f;
   font-size: 14px;
   font-weight: 800;
+}
+
+.event-row-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-row-heading .status-pill {
+  min-height: 23px;
+  padding: 2px 8px;
+}
+
+.event-projection-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 7px;
+}
+
+.event-projection-meta span {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.event-projection-error {
+  margin-top: 9px;
+  border-left: 3px solid #cc624f;
+  padding: 7px 9px;
+  color: var(--danger);
+  background: rgba(255, 240, 237, 0.72);
+}
+
+.event-projection-error strong,
+.event-projection-error span {
+  display: block;
+}
+
+.event-projection-error span {
+  margin-top: 2px;
+  color: #7b342c;
+  overflow-wrap: anywhere;
 }
 
 code {
@@ -1720,6 +1905,11 @@ pre {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .address-fields {
+    grid-column: span 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .two-column,
   .detail-columns,
   .company-detail-grid,
@@ -1747,6 +1937,14 @@ pre {
 
   .alert-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .projection-health-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .incident-cancel-panel {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1829,6 +2027,11 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .address-fields {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+  }
+
   .launch-pad {
     padding: 18px;
   }
@@ -1882,6 +2085,10 @@ pre {
 
   .event-row,
   .audit-row {
+    grid-template-columns: 1fr;
+  }
+
+  .projection-health-grid {
     grid-template-columns: 1fr;
   }
 }

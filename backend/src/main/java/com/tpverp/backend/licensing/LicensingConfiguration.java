@@ -7,6 +7,7 @@ import com.tpverp.backend.licensing.application.LicenseEnvelopeDecoder;
 import com.tpverp.backend.licensing.application.LicenseService;
 import com.tpverp.backend.licensing.application.TrustedIssuerKeyProvider;
 import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.shared.crypto.SecretProtectorFactory;
@@ -49,7 +50,8 @@ class LicensingConfiguration {
             Clock clock,
             AuditService auditService,
             JdbcTemplate jdbcTemplate,
-            CommercialBootstrapService commercialBootstrap) {
+            CommercialBootstrapService commercialBootstrap,
+            CurrentOrganization organization) {
         return new LicenseService(
                 instalacionRepository,
                 tiendaRepository,
@@ -60,7 +62,8 @@ class LicensingConfiguration {
                 clock,
                 auditService,
                 jdbcTemplate,
-                commercialBootstrap);
+                commercialBootstrap,
+                organization);
     }
 
     @Bean
@@ -70,6 +73,12 @@ class LicensingConfiguration {
         return new LicenseSaasCredentialStore(
                 keyDirectory,
                 SecretProtectorFactory.portableOrWindowsDpapi(portableSecretKey));
+    }
+
+    @Bean
+    LicenseSaasCacheAuthenticator licenseSaasCacheAuthenticator(
+            LicenseSaasCredentialStore credentials) {
+        return new LicenseSaasCacheAuthenticator(credentials);
     }
 
     @Bean
@@ -83,8 +92,9 @@ class LicensingConfiguration {
     @Bean
     @ConditionalOnProperty("tpv.license.saas-url")
     LicenseSaasLinkClient httpLicenseSaasLinkClient(
-            @Value("${tpv.license.saas-url}") URI saasUrl) {
-        return new HttpLicenseSaasLinkClient(saasUrl, new ObjectMapper());
+            @Value("${tpv.license.saas-url}") URI saasUrl,
+            LicenseSaasCredentialStore credentials) {
+        return new HttpLicenseSaasLinkClient(saasUrl, credentials, new ObjectMapper());
     }
 
     @Bean
@@ -105,13 +115,17 @@ class LicensingConfiguration {
             StoreRepository tiendaRepository,
             LicenseRepository licenciaRepository,
             LicenseSaasValidationClient client,
-            Clock clock) {
+            Clock clock,
+            CurrentOrganization organization,
+            LicenseSaasCacheAuthenticator cacheAuthenticator) {
         return new LicenseSaasValidationService(
                 instalacionRepository,
                 tiendaRepository,
                 licenciaRepository,
                 client,
-                clock);
+                clock,
+                organization,
+                cacheAuthenticator);
     }
 
     @Bean
@@ -125,9 +139,11 @@ class LicensingConfiguration {
             InstallationRepository instalacionRepository,
             CompanyRepository empresaRepository,
             StoreRepository tiendaRepository,
+            CurrentOrganization organization,
             LicenseRepository licenciaRepository,
             LicenseSaasLinkClient client,
             LicenseSaasCredentialStore credentials,
+            LicenseSaasCacheAuthenticator cacheAuthenticator,
             TerminalRepository terminalRepository,
             PasswordEncoder passwordEncoder,
             Clock clock,
@@ -138,22 +154,17 @@ class LicensingConfiguration {
                 instalacionRepository,
                 empresaRepository,
                 tiendaRepository,
+                organization,
                 licenciaRepository,
                 client,
                 credentials,
+                cacheAuthenticator,
                 terminalRepository,
                 passwordEncoder,
                 clock,
                 auditService,
                 jdbcTemplate,
                 commercialBootstrap);
-    }
-
-    @Bean
-    LicenseSaasAdminService licenseSaasAdminService(
-            LicenseRepository licenciaRepository,
-            Clock clock) {
-        return new LicenseSaasAdminService(licenciaRepository, clock);
     }
 
     @Bean

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { UserSession } from "@tpverp/app-common";
+import { OperationalStatusCard, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import {
   changeDashboardWidgetHeight,
   dashboardWidgetDefaults,
@@ -37,6 +37,7 @@ type Translator = (key: string) => string;
 
 type GestionDashboardProps = {
   session: UserSession;
+  locale?: LocaleCode;
   t: Translator;
   onOpenSales: () => void;
   onOpenStock: () => void;
@@ -68,6 +69,7 @@ const defaultDashboardDataSource: DashboardDataSource = {
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 export function GestionDashboard({
   session,
+  locale = "es",
   t,
   onOpenSales,
   onOpenStock,
@@ -276,6 +278,12 @@ export function GestionDashboard({
             ))}
           </section>
         )}
+
+        {session.permissions.includes("ADMIN") ? (
+          <div className="gestion-operational-status">
+            <OperationalStatusCard locale={locale} token={session.accessToken} />
+          </div>
+        ) : null}
     </section>
   );
 }

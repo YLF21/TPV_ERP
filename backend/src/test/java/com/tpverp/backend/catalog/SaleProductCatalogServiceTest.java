@@ -337,7 +337,8 @@ class SaleProductCatalogServiceTest {
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-31T00:00:00Z"),
                 mode,
-                null));
+                null,
+                true));
     }
 
     private void configuredPriceLookup(String lookupValue) {

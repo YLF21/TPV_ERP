@@ -1,6 +1,7 @@
 package com.tpverp.backend.licensing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import java.time.Clock;
@@ -19,6 +21,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class LicenseSaasValidationServiceTest {
@@ -29,12 +33,22 @@ class LicenseSaasValidationServiceTest {
     private final StoreRepository stores = org.mockito.Mockito.mock(StoreRepository.class);
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
     private final LicenseSaasValidationClient client = org.mockito.Mockito.mock(LicenseSaasValidationClient.class);
+    private final LicenseSaasCredentialStore credentials =
+            org.mockito.Mockito.mock(LicenseSaasCredentialStore.class);
+    private final LicenseSaasCacheAuthenticator cacheAuthenticator =
+            new LicenseSaasCacheAuthenticator(credentials);
     private final LicenseSaasValidationService service = new LicenseSaasValidationService(
             installations,
             stores,
             licenses,
             client,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            cacheAuthenticator);
+
+    @BeforeEach
+    void protectedInstallationTokenIsAvailable() {
+        when(credentials.readToken()).thenReturn(Optional.of("installation-token"));
+    }
 
     @Test
     void actualizaUltimaValidacionYVigenciaCuandoSaasDevuelveValida() {
@@ -43,7 +57,7 @@ class LicenseSaasValidationServiceTest {
         var license = license(store, installation);
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
-        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
                 .thenReturn(Optional.of(license));
         when(client.validate(new LicenseSaasValidationRequest(
                 installation.getId(),
@@ -57,7 +71,10 @@ class LicenseSaasValidationServiceTest {
                         java.time.LocalDate.of(2027, 1, 1),
                         4,
                         Instant.parse("2026-07-22T10:00:00Z"),
-                        CommercialProfile.MINORISTA));
+                        CommercialProfile.MINORISTA,
+                        3,
+                        2,
+                        7));
 
         service.validateActiveLicense();
 
@@ -67,6 +84,11 @@ class LicenseSaasValidationServiceTest {
         assertThat(license.getVerifactuActivationDate()).isEqualTo(java.time.LocalDate.of(2027, 1, 1));
         assertThat(license.getVerifactuPolicyVersion()).isEqualTo(4L);
         assertThat(license.getCommercialProfile()).isEqualTo(CommercialProfile.MINORISTA);
+        assertThat(license.getMaxWindows()).isEqualTo(3);
+        assertThat(license.getMaxPda()).isEqualTo(2);
+        assertThat(license.getSaasLicenseVersion()).isEqualTo(7);
+        assertThat(license.getFormatVersion()).isEqualTo(6);
+        assertThat(cacheAuthenticator.isAuthentic(license)).isTrue();
         verify(licenses).save(license);
     }
 
@@ -81,7 +103,7 @@ class LicenseSaasValidationServiceTest {
                 Instant.parse("2026-07-01T00:00:00Z"));
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
-        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
                 .thenReturn(Optional.of(license));
         when(client.validate(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new LicenseSaasValidationResponse(
@@ -105,7 +127,7 @@ class LicenseSaasValidationServiceTest {
         var license = license(store, installation);
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
-        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
                 .thenReturn(Optional.of(license));
         when(client.validate(new LicenseSaasValidationRequest(
                 installation.getId(),
@@ -132,7 +154,7 @@ class LicenseSaasValidationServiceTest {
         var license = license(store, installation);
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
-        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
                 .thenReturn(Optional.of(license));
         when(client.validate(new LicenseSaasValidationRequest(
                 installation.getId(),
@@ -157,13 +179,233 @@ class LicenseSaasValidationServiceTest {
         var store = store();
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
-        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
                 .thenReturn(Optional.empty());
 
         service.validateActiveLicense();
 
         verify(client, never()).validate(org.mockito.Mockito.any());
         verify(licenses, never()).save(org.mockito.Mockito.any());
+    }
+
+    @Test
+    void incluyeLegacyFormatoCuatroSinVersionSaasParaSuPrimerUpgrade() {
+        License legacy = license(store(), installation());
+        when(licenses.findByActivaTrueOrderByValidaDesdeDesc()).thenReturn(List.of(legacy));
+
+        assertThat(service.activeSaasLicenseIds()).containsExactly(legacy.getId());
+    }
+
+    @Test
+    void scheduledRefreshLocksTheSelectedLicenseBeforeCallingSaas() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        when(licenses.findByIdForSaasValidationForUpdate(license.getId()))
+                .thenReturn(Optional.of(license));
+        when(installations.findById(installation.getId()))
+                .thenReturn(Optional.of(installation));
+        when(stores.findWithCompanyById(store.getId()))
+                .thenReturn(Optional.of(store));
+        when(client.validate(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new LicenseSaasValidationResponse(
+                        LicenseSaasStatus.VALIDA,
+                        Instant.parse("2027-08-10T00:00:00Z")));
+
+        service.validateLicense(license.getId());
+
+        verify(licenses).findByIdForSaasValidationForUpdate(license.getId());
+        verify(licenses).save(license);
+    }
+
+    @Test
+    void recuperaFormatoCincoConRespuestaSaasAutoritativaTrasRoundTripPostgresql() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        license.applySaasLicenseSnapshot(
+                NOW,
+                LicenseSaasStatus.VALIDA,
+                Instant.parse("2027-08-10T00:00:00Z"),
+                2,
+                1,
+                7);
+        org.springframework.test.util.ReflectionTestUtils.setField(license, "formatVersion", 5);
+        String legacyMac = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                cacheAuthenticator,
+                "mac",
+                license,
+                "installation-token",
+                "TPV-ERP-SAAS-LICENSE-CACHE-V5",
+                false);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                license, "hash", legacyMac);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                license,
+                "validaDesde",
+                license.getValidaDesde().plusNanos(1_000));
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
+                .thenReturn(Optional.of(license));
+        when(client.validate(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new LicenseSaasValidationResponse(
+                        LicenseSaasStatus.VALIDA,
+                        Instant.parse("2027-08-10T00:00:00Z"),
+                        null,
+                        0,
+                        null,
+                        CommercialProfile.MAYORISTA,
+                        2,
+                        1,
+                        7,
+                        license.getSaasCompanyId(),
+                        license.getSaasStoreId(),
+                        license.getReferencia(),
+                        license.getTaxId()));
+
+        service.validateActiveLicense();
+
+        assertThat(license.getFormatVersion()).isEqualTo(6);
+        assertThat(cacheAuthenticator.isAuthentic(license)).isTrue();
+        verify(licenses).save(license);
+    }
+
+    @Test
+    void noActualizaFormatoCincoSiLaRespuestaNoEstaVinculadaAIdentidadCentral() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        license.applySaasLicenseSnapshot(
+                NOW,
+                LicenseSaasStatus.VALIDA,
+                Instant.parse("2027-08-10T00:00:00Z"),
+                2,
+                1,
+                7);
+        org.springframework.test.util.ReflectionTestUtils.setField(license, "formatVersion", 5);
+        String legacyMac = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                cacheAuthenticator,
+                "mac",
+                license,
+                "installation-token",
+                "TPV-ERP-SAAS-LICENSE-CACHE-V5",
+                false);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                license, "hash", legacyMac);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                license,
+                "validaDesde",
+                license.getValidaDesde().plusNanos(1_000));
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
+                .thenReturn(Optional.of(license));
+        when(client.validate(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new LicenseSaasValidationResponse(
+                        LicenseSaasStatus.VALIDA,
+                        Instant.parse("2027-08-10T00:00:00Z"),
+                        null,
+                        0,
+                        null,
+                        CommercialProfile.MAYORISTA,
+                        2,
+                        1,
+                        7,
+                        UUID.randomUUID(),
+                        license.getSaasStoreId(),
+                        license.getReferencia(),
+                        license.getTaxId()));
+
+        assertThatThrownBy(service::validateActiveLicense)
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("identidad central");
+        assertThat(license.getFormatVersion()).isEqualTo(5);
+        verify(licenses, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void consultaLaLicenciaDeLaTiendaAutenticadaSinElegirLaPrimeraTienda() {
+        var installation = installation();
+        var authenticatedStore = store();
+        var organization = org.mockito.Mockito.mock(CurrentOrganization.class);
+        var scopedService = new LicenseSaasValidationService(
+                installations,
+                stores,
+                licenses,
+                client,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                organization,
+                cacheAuthenticator);
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(organization.currentStore()).thenReturn(authenticatedStore);
+        when(licenses.findActiveForSaasValidationForUpdate(
+                authenticatedStore.getId(), installation.getId()))
+                .thenReturn(Optional.empty());
+
+        scopedService.validateActiveLicense();
+
+        verify(stores, never()).findAll();
+        verify(licenses).findActiveForSaasValidationForUpdate(
+                authenticatedStore.getId(), installation.getId());
+    }
+
+    @Test
+    void rechazaCondicionesDistintasConLaMismaVersionSaas() {
+        var license = license(store(), installation());
+        Instant validUntil = Instant.parse("2027-08-10T00:00:00Z");
+        license.applySaasLicenseSnapshot(
+                NOW, LicenseSaasStatus.VALIDA, validUntil, 2, 1, 5);
+
+        assertThatThrownBy(() -> license.applySaasLicenseSnapshot(
+                NOW.plusSeconds(60), LicenseSaasStatus.VALIDA, validUntil, 3, 1, 5))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("misma version");
+    }
+
+    @Test
+    void rechazaCacheFormatoSeisManipuladoAntesDeConsultarSaas() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        license.applySaasLicenseSnapshot(
+                NOW, LicenseSaasStatus.VALIDA,
+                Instant.parse("2027-08-10T00:00:00Z"), 2, 1, 1);
+        cacheAuthenticator.seal(license);
+        license.markSaasBlocked(NOW.plusSeconds(1));
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findActiveForSaasValidationForUpdate(
+                store.getId(), installation.getId())).thenReturn(Optional.of(license));
+
+        assertThatThrownBy(service::validateActiveLicense)
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("no es autentico");
+
+        verify(client, never()).validate(org.mockito.Mockito.any());
+        verify(licenses, never()).save(org.mockito.Mockito.any());
+    }
+
+    @Test
+    void rechazaCacheFormatoSeisSiFaltaElTokenProtegido() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        license.applySaasLicenseSnapshot(
+                NOW, LicenseSaasStatus.VALIDA,
+                Instant.parse("2027-08-10T00:00:00Z"), 2, 1, 1);
+        cacheAuthenticator.seal(license);
+        when(credentials.readToken()).thenReturn(Optional.empty());
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findActiveForSaasValidationForUpdate(
+                store.getId(), installation.getId())).thenReturn(Optional.of(license));
+
+        assertThatThrownBy(service::validateActiveLicense)
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("falta su credencial");
+
+        verify(client, never()).validate(org.mockito.Mockito.any());
     }
 
     private static Installation installation() {
@@ -189,9 +431,12 @@ class LicenseSaasValidationServiceTest {
                 TaxRegime.IGIC,
                 "{}",
                 "hash",
-                3,
+                4,
                 Instant.parse("2026-06-08T00:00:00Z"),
-                Map.of(),
+                Map.of(
+                        "source", "SAAS_LINK",
+                        "saasCompanyId", UUID.randomUUID().toString(),
+                        "saasStoreId", UUID.randomUUID().toString()),
                 ImportResult.ACEPTADA,
                 null,
                 true);

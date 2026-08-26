@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -47,6 +48,44 @@ class FiscalQrUrlServiceTest {
                 .startsWith("https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu?")
                 .contains("nif=B12345674", "numserie=FV-001-26-000001",
                         "fecha=02-06-2026", "importe=157.26");
+    }
+
+    @Test
+    void validatesFrozenUrlAgainstItsExplicitModeAndEnvironment() {
+        var record = record("B12345674", "FV-001-26-000001",
+                LocalDate.of(2026, 6, 2), new BigDecimal("157.26"));
+        var frozen = service.url(
+                record, FiscalMode.NO_VERIFACTU, FiscalEndpointEnvironment.TEST);
+
+        assertThat(service.isOfficialUrlFor(
+                frozen, FiscalMode.NO_VERIFACTU, FiscalEndpointEnvironment.TEST)).isTrue();
+        assertThat(service.isOfficialUrlFor(
+                frozen, FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST)).isFalse();
+        assertThat(service.isOfficialUrlFor(
+                frozen, FiscalMode.NO_VERIFACTU, FiscalEndpointEnvironment.PRODUCTION)).isFalse();
+        assertThat(service.isOfficialUrlFor(
+                frozen + "&extra=1", FiscalMode.NO_VERIFACTU,
+                FiscalEndpointEnvironment.TEST)).isFalse();
+    }
+
+    @Test
+    void cancellationDoesNotGenerateAnInvoiceQr() {
+        var alta = record("B12345674", "FV-001-26-000001",
+                LocalDate.of(2026, 6, 2), new BigDecimal("157.26"));
+        var cancellation = new FiscalRecord(
+                alta.chainId(), alta.getCompanyId(), alta.getInstallationId(),
+                alta.getStoreId(), alta.getDocumentId(), 2,
+                FiscalRecordOperation.ANULACION, alta.getDocumentType(), alta.getNumber(),
+                alta.getIssueDate(), Instant.parse("2026-06-02T10:05:00Z"),
+                alta.getTimezone(), alta.getIssuerTaxId(), null, null, alta.getHash(),
+                "C".repeat(64), "D".repeat(64), Map.of("anulacion", true),
+                alta.getFormatVersion(), alta.getAlgorithmVersion(),
+                alta.getApplicationVersion(), FiscalMode.VERIFACTU);
+
+        assertThatThrownBy(() -> service.url(
+                cancellation, FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no genera un QR");
     }
 
     private FiscalRecord record(

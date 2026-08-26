@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.installation.InstallationStatusService;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
@@ -31,6 +32,7 @@ public class DocumentFiscalIntegration {
     private final ApplicationEventPublisher events;
     private final SalesInvoiceRectificationService rectifications;
     private final InstallationStatusService installationStatus;
+    private final LicenseRepository licenses;
     private FiscalRuntimeProperties runtimeProperties;
 
     public DocumentFiscalIntegration(
@@ -41,6 +43,20 @@ public class DocumentFiscalIntegration {
             ApplicationEventPublisher events,
             SalesInvoiceRectificationService rectifications,
             InstallationStatusService installationStatus) {
+        this(fiscalRecords, recordRepository, organization, installations, events,
+                rectifications, installationStatus, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DocumentFiscalIntegration(
+            FiscalRecordService fiscalRecords,
+            FiscalRecordRepository recordRepository,
+            CurrentOrganization organization,
+            InstallationRepository installations,
+            ApplicationEventPublisher events,
+            SalesInvoiceRectificationService rectifications,
+            InstallationStatusService installationStatus,
+            LicenseRepository licenses) {
         this.fiscalRecords = fiscalRecords;
         this.recordRepository = recordRepository;
         this.organization = organization;
@@ -48,6 +64,7 @@ public class DocumentFiscalIntegration {
         this.events = events;
         this.rectifications = rectifications;
         this.installationStatus = installationStatus;
+        this.licenses = licenses;
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -146,7 +163,8 @@ public class DocumentFiscalIntegration {
             var record = fiscalRecords.register(command(document, operation, type));
             publishQueuedIfNeeded(record);
         } catch (VerifactuInactiveException ignored) {
-            // VERI*FACTU desactivado permite operar hasta activacion legal o voluntaria.
+            // VERI*FACTU desactivado permite operar hasta la fecha automatica
+            // de licencia o la activacion voluntaria.
         }
     }
 
@@ -196,8 +214,23 @@ public class DocumentFiscalIntegration {
         if (runtimeProperties != null && runtimeProperties.isSandbox()) {
             return false;
         }
-        return installationStatus.status().mode()
-                == com.tpverp.backend.shared.access.OperationalMode.DEVELOPMENT;
+        if (installationStatus.status().mode()
+                != com.tpverp.backend.shared.access.OperationalMode.DEVELOPMENT) {
+            return false;
+        }
+        // DEVELOPMENT remains PRE-SIF compatible until a real SaaS license is
+        // linked. Once licensed, the same normal sale path must create the
+        // fiscal record instead of silently bypassing VeriFactu.
+        if (licenses == null) {
+            return true;
+        }
+        var storeId = organization.currentStore().getId();
+        var installationId = installations.findAll().stream().findFirst()
+                .map(com.tpverp.backend.installation.Installation::getId)
+                .orElse(null);
+        return installationId == null
+                || licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(storeId, installationId)
+                        .isEmpty();
     }
 
     private void publishQueuedIfNeeded(com.tpverp.backend.verifactu.FiscalRecord record) {

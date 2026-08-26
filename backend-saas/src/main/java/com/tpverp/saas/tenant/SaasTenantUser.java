@@ -52,7 +52,7 @@ public class SaasTenantUser {
         this.company = company;
         this.username = username;
         this.passwordHash = passwordHash;
-        this.roleName = roleName;
+        this.roleName = TenantRole.parse(roleName).name();
         this.active = active;
         this.createdAt = createdAt;
     }

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
@@ -22,12 +23,14 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(FlywayPostgreSqlConfiguration.class)
 class VoucherManagementRepositoryPostgreSqlTest {
 
     private static final String URL = environment(

@@ -37,7 +37,7 @@ public class MemberPointsBootstrapAdminService {
         List<SaasStore> companyStores=stores.findByCompany_IdOrderByCodeAsc(companyId);
         if(companyStores.isEmpty()) throw conflict("La empresa no tiene tiendas para congelar");
         List<UUID> missing=companyStores.stream().map(SaasStore::getId)
-            .filter(id->!installations.existsByCompany_IdAndStore_Id(companyId,id)).toList();
+            .filter(id->!installations.existsByStore_IdAndActiveTrue(id)).toList();
         if(!missing.isEmpty()) throw conflict("Tiendas sin instalacion vinculada: "+missing);
         SaasMemberPointsBootstrap bootstrap=bootstraps.save(new SaasMemberPointsBootstrap(UUID.randomUUID(),company,clock.instant()));
         companyStores.forEach(store->expectedStores.save(new SaasMemberPointsBootstrapStore(UUID.randomUUID(),bootstrap,store.getId())));

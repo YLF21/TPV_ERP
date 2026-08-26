@@ -11,6 +11,7 @@ import com.tpverp.backend.inventory.StockMovementSyncPublisher;
 import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
@@ -55,7 +56,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({DocumentService.class, InventoryDocumentGateway.class, StockMovementSyncPublisher.class,
+@Import({FlywayPostgreSqlConfiguration.class, DocumentService.class, InventoryDocumentGateway.class, StockMovementSyncPublisher.class,
         SyncOutboxService.class, DocumentFiscalIntegration.class, FiscalRecordService.class,
         VerifactuActivationService.class, FiscalSnapshotFactory.class, FiscalDocumentPolicy.class,
         PaymentTerminalRefundDocumentPostgreSqlTest.Configuration.class})
@@ -122,7 +123,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
                                 NOW.minusSeconds(3600),
                                 NOW.plusSeconds(3600),
                                 com.tpverp.backend.shared.access.OperationalMode.LICENSED,
-                                "LICENSE"));
+                                "LICENSE",
+                                true));
     }
     @AfterAll static void dropSchema() { execute("drop schema if exists " + SCHEMA + " cascade"); }
 

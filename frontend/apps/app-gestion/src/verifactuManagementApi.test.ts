@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createVerifactuCorrection,
+  createFiscalExport,
+  createFiscalExportJob,
+  createFiscalRequiredSubmissionExportJob,
+  downloadFiscalExportZip,
+  downloadFiscalExportJob,
+  loadFiscalExportJobStatus,
+  loadFiscalExportJobs,
+  loadFiscalEventsCursor,
+  loadFiscalExportHistoryCursor,
+  loadFiscalRequiredSubmissionsCursor,
+  retryFiscalExportJob,
   deleteVerifactuCertificate,
   importVerifactuCertificate,
   loadVerifactuAdminAttempts,
@@ -16,6 +27,88 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("VeriFactu management API", () => {
+  it("crea trabajos con payload exacto para filtros y conserva el prefijo", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "job-1", status: "QUEUED" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const signal = new AbortController().signal;
+    await createFiscalExportJob({ kind: "BILLING", scope: "FILTERED", periodStart: null, periodEnd: null, recordIds: [], dateFrom: "2026-08-01", dateTo: "2026-08-26", documentNumberPrefix: " T-1 ", operation: "ALTA" }, "token", signal);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ kind: "BILLING", scope: "FILTERED", periodStart: null, periodEnd: null, recordIds: [], dateFrom: "2026-08-01", dateTo: "2026-08-26", documentNumberPrefix: "T-1", operation: "ALTA" });
+    expect(fetchMock.mock.calls[0][1]?.signal).toBe(signal);
+  });
+
+  it("usa paginas cursor acotadas para eventos e historiales", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => new Response(JSON.stringify({
+      items: [], size: 50, nextCursor: null, previousCursor: null,
+      hasNext: false, hasPrevious: false, snapshotSequence: 8
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const signal = new AbortController().signal;
+    await loadFiscalEventsCursor("token", 500, "event-cursor", signal);
+    await loadFiscalExportHistoryCursor("token", 50, null, signal);
+    await loadFiscalRequiredSubmissionsCursor("token", 25, "history-cursor", signal);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/fiscal/events/cursor?size=100&cursor=event-cursor");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/fiscal/exports/cursor?size=50");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/fiscal/required-submissions/cursor?size=25&cursor=history-cursor");
+    expect(fetchMock.mock.calls.every((call) => call[1]?.signal === signal)).toBe(true);
+  });
+
+  it("crea la atencion de requerimiento como trabajo durable", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "job-req", status: "QUEUED" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const signal = new AbortController().signal;
+    await createFiscalRequiredSubmissionExportJob("req/1", "2026-08-01T00:00:00Z", "2026-08-31T23:59:59Z", "token", signal);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/fiscal/required-submissions/req%2F1/export-jobs");
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ periodStart: "2026-08-01T00:00:00Z", periodEnd: "2026-08-31T23:59:59Z" });
+    expect(fetchMock.mock.calls[0][1]?.signal).toBe(signal);
+  });
+
+  it("lista, consulta y descarga trabajos con AbortSignal", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 20 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "RUNNING", processed: 2 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-2", status: "QUEUED", processed: 0 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(new Blob(["zip"]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const signal = new AbortController().signal;
+    await loadFiscalExportJobs("token", 0, 20, signal);
+    await loadFiscalExportJobStatus("job-1", "token", signal);
+    await retryFiscalExportJob("job-1", "token", signal);
+    await downloadFiscalExportJob("job-1", "token", signal);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/fiscal/export-jobs?page=0&size=20");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/fiscal/export-jobs/job-1");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/fiscal/export-jobs/job-1/retry");
+    expect(fetchMock.mock.calls[2][1]?.method).toBe("POST");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/fiscal/export-jobs/job-1/download");
+    expect(fetchMock.mock.calls.every((call) => call[1]?.signal === signal)).toBe(true);
+  });
+
+  it("sends validated export selection and filters to the backend contract", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ xml: [], recordCount: 1 }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createFiscalExport("BILLING", null, null, "token", {
+      recordIds: ["record-1"], documentNumber: " T-1 ", operation: "ALTA"
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      kind: "BILLING", periodStart: null, periodEnd: null,
+      recordIds: ["record-1"], documentNumber: "T-1", operation: "ALTA"
+    });
+  });
+
+  it("descarga el ZIP reglamentario desde el endpoint binario", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["zip"]), {
+      status: 200, headers: { "Content-Type": "application/zip" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await downloadFiscalExportZip("BILLING", "2026-01-01T00:00:00.000Z", "2026-12-31T23:59:59.000Z", "token", {});
+    expect(result).toBeInstanceOf(Blob);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/fiscal/exports/download");
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer token" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({ kind: "BILLING", periodStart: "2026-01-01T00:00:00.000Z" });
+  });
+
   it("loads the sanitized summary contract", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ active: false }), {
       status: 200,

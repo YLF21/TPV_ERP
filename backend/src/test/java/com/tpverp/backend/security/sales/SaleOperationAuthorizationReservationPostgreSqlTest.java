@@ -3,6 +3,7 @@ package com.tpverp.backend.security.sales;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Instant;
@@ -30,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({
+@Import({FlywayPostgreSqlConfiguration.class,
     SaleOperationAuthorizationAttemptService.class,
     SaleOperationAuthorizationReservationPostgreSqlTest.Configuration.class
 })

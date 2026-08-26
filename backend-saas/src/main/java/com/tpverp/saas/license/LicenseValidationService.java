@@ -1,6 +1,7 @@
 package com.tpverp.saas.license;
 
 import java.time.Clock;
+import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,17 +31,38 @@ public class LicenseValidationService {
         SaasInstallation installation = installations
                 .findByInstallationIdAndLicense_Reference(request.installationId(), request.licenseReference())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Instalacion no vinculada"));
-        authenticator.requireToken(installation, token);
-        installation.validatedAt(clock.instant());
+        Instant now = clock.instant();
+        if (installation.isActive()) {
+            authenticator.requireToken(installation, token);
+            installation.validatedAt(now);
+        } else {
+            // A revoked installation must receive a signed, authoritative
+            // blocking state. Returning 401 here would make the local ERP keep
+            // its last valid snapshot until the offline grace period expires.
+            authenticator.requireKnownToken(installation, token);
+        }
         SaasLicense license = installation.getLicense();
+        LicenseSaasStatus effectiveStatus = !installation.isActive()
+                ? LicenseSaasStatus.BLOQUEADA_MANUAL
+                : license.getStatus() == LicenseSaasStatus.VALIDA
+                && !now.isBefore(license.getValidUntil())
+                ? LicenseSaasStatus.CADUCADA
+                : license.getStatus();
         VerifactuPolicySnapshot policy = verifactuPolicies.required(
                 license.getCompany().getTaxpayerType());
         return new LicenseSaasValidationResponse(
-                license.getStatus(),
+                effectiveStatus,
                 license.getValidUntil(),
                 policy.activationDate(),
                 policy.version(),
                 policy.updatedAt(),
-                license.getCompany().getCommercialProfile());
+                license.getCompany().getCommercialProfile(),
+                license.getMaxWindows(),
+                license.getMaxPda(),
+                license.getLicenseVersion(),
+                license.getCompany().getId(),
+                installation.getStore().getId(),
+                license.getReference(),
+                license.getCompany().getTaxId());
     }
 }

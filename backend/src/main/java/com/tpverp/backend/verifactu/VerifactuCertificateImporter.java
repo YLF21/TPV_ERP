@@ -7,11 +7,17 @@ import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.Signature;
 import java.security.GeneralSecurityException;
+import java.security.cert.CertPathValidator;
 import java.security.cert.CertificateFactory;
+import java.security.cert.PKIXParameters;
+import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -23,14 +29,17 @@ public class VerifactuCertificateImporter {
     private final VerifactuPkcs12KeyStoreLoader keyStores;
     private final CertificateTaxIdExtractor taxIds;
     private final VerifactuCertificateValidator validator;
+    private final FiscalRuntimeProperties runtime;
 
     public VerifactuCertificateImporter(
             VerifactuPkcs12KeyStoreLoader keyStores,
             CertificateTaxIdExtractor taxIds,
-            VerifactuCertificateValidator validator) {
+            VerifactuCertificateValidator validator,
+            FiscalRuntimeProperties runtime) {
         this.keyStores = keyStores;
         this.taxIds = taxIds;
         this.validator = validator;
+        this.runtime = runtime;
     }
 
     // Converts a validated PKCS#12 into public material and DPAPI-ready PKCS#8.
@@ -52,6 +61,17 @@ public class VerifactuCertificateImporter {
             var chain = x509Chain(keyStore, alias);
             var leaf = chain.getFirst();
             var failures = new ArrayList<VerifactuCertificateImportException.Failure>();
+            if (!validChain(chain)) {
+                failures.add(VerifactuCertificateImportException.Failure.CERTIFICATE_CHAIN_INVALID);
+            }
+            if (!runtime.isSandbox() && !trustedByJvm(chain)) {
+                failures.add(
+                        VerifactuCertificateImportException.Failure.CERTIFICATE_CHAIN_UNTRUSTED);
+            }
+            if (!runtime.isSandbox() && isSelfSigned(leaf)) {
+                failures.add(
+                        VerifactuCertificateImportException.Failure.SELF_SIGNED_NOT_ALLOWED);
+            }
 
             try {
                 var status = validator.validate(leaf);
@@ -82,9 +102,15 @@ public class VerifactuCertificateImporter {
                 }
             }
 
-            var keyPairFailure = keyPairFailure(privateKey, leaf);
-            if (keyPairFailure != null) {
-                failures.add(keyPairFailure);
+            if (!isRsa(privateKey.getAlgorithm())
+                    || !isRsa(leaf.getPublicKey().getAlgorithm())) {
+                failures.add(
+                        VerifactuCertificateImportException.Failure.KEY_ALGORITHM_UNSUPPORTED);
+            } else {
+                var keyPairFailure = keyPairFailure(privateKey, leaf);
+                if (keyPairFailure != null) {
+                    failures.add(keyPairFailure);
+                }
             }
             if (!failures.isEmpty()) {
                 throw VerifactuCertificateImportException.of(failures);
@@ -154,11 +180,87 @@ public class VerifactuCertificateImporter {
         return chain;
     }
 
+    private static boolean validChain(ArrayList<X509Certificate> chain) {
+        try {
+            for (int index = 0; index < chain.size() - 1; index++) {
+                X509Certificate child = chain.get(index);
+                X509Certificate issuer = chain.get(index + 1);
+                child.verify(issuer.getPublicKey());
+            }
+            if (chain.size() == 1) {
+                // Development certificates are intentionally self-signed. They
+                // are accepted only for structural checks; REAL activation still
+                // requires an operator-managed qualified certificate.
+                chain.getFirst().verify(chain.getFirst().getPublicKey());
+            }
+            return true;
+        } catch (GeneralSecurityException exception) {
+            return false;
+        }
+    }
+
+    private static boolean isSelfSigned(X509Certificate certificate) {
+        if (!certificate.getSubjectX500Principal().equals(
+                certificate.getIssuerX500Principal())) {
+            return false;
+        }
+        try {
+            certificate.verify(certificate.getPublicKey());
+            return true;
+        } catch (GeneralSecurityException exception) {
+            return false;
+        }
+    }
+
+    private static boolean trustedByJvm(ArrayList<X509Certificate> chain) {
+        try {
+            var factory = TrustManagerFactory.getInstance(
+                    TrustManagerFactory.getDefaultAlgorithm());
+            factory.init((KeyStore) null);
+            var anchors = new LinkedHashSet<TrustAnchor>();
+            for (var manager : factory.getTrustManagers()) {
+                if (manager instanceof X509TrustManager x509) {
+                    for (var issuer : x509.getAcceptedIssuers()) {
+                        anchors.add(new TrustAnchor(issuer, null));
+                    }
+                }
+            }
+            if (anchors.isEmpty()) {
+                return false;
+            }
+            var pathCertificates = new ArrayList<>(chain);
+            var finalCertificate = pathCertificates.getLast();
+            if (anchors.stream().map(TrustAnchor::getTrustedCert)
+                    .anyMatch(finalCertificate::equals)) {
+                pathCertificates.removeLast();
+            }
+            if (pathCertificates.isEmpty()) {
+                return false;
+            }
+            var path = CertificateFactory.getInstance("X.509")
+                    .generateCertPath(pathCertificates);
+            var parameters = new PKIXParameters(anchors);
+            // Revocation needs an explicit OCSP/CRL policy and network boundary;
+            // trust anchoring remains fail-closed independently of that future step.
+            parameters.setRevocationEnabled(false);
+            CertPathValidator.getInstance("PKIX").validate(path, parameters);
+            return true;
+        } catch (GeneralSecurityException exception) {
+            return false;
+        }
+    }
+
+    private static boolean isRsa(String algorithm) {
+        return "RSA".equalsIgnoreCase(algorithm);
+    }
+
     private static VerifactuCertificateImportException.Failure invalidValidity(String warning) {
         return switch (warning) {
             case "CERTIFICATE_EXPIRED" -> VerifactuCertificateImportException.Failure.EXPIRED;
             case "CERTIFICATE_NOT_YET_VALID" ->
                     VerifactuCertificateImportException.Failure.NOT_YET_VALID;
+            case "CERTIFICATE_KEY_USAGE_INVALID" ->
+                    VerifactuCertificateImportException.Failure.KEY_USAGE_INVALID;
             default -> VerifactuCertificateImportException.Failure.STRUCTURE_INVALID;
         };
     }
@@ -186,12 +288,7 @@ public class VerifactuCertificateImporter {
     }
 
     private static String signatureAlgorithm(String keyAlgorithm) {
-        return switch (keyAlgorithm.toUpperCase(java.util.Locale.ROOT)) {
-            case "RSA" -> "SHA256withRSA";
-            case "EC", "ECDSA" -> "SHA256withECDSA";
-            case "DSA" -> "SHA256withDSA";
-            default -> null;
-        };
+        return isRsa(keyAlgorithm) ? "SHA256withRSA" : null;
     }
 
     private static String fingerprint(X509Certificate certificate) throws Exception {

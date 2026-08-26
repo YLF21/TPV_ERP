@@ -1,11 +1,16 @@
 package com.tpverp.backend.document;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.document.template.TicketJasperRenderer;
 import java.util.UUID;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -36,6 +41,29 @@ class TicketControllerJasperContractTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void returnsTheOrderedFiscalPrintSetWithoutAutoPrintingTheSummary() throws Exception {
+        UUID id = UUID.randomUUID();
+        var sale = new TicketPrintView(
+                id, "T-002", Instant.parse("2026-08-25T12:00:00Z"),
+                List.of(), List.of(), new BigDecimal("12.00"));
+        var refund = new TicketPrintView(
+                UUID.randomUUID(), "R-001", Instant.parse("2026-08-25T11:59:00Z"),
+                List.of(), List.of(), new BigDecimal("-10.00"));
+        when(service.loadRenderedTicketPrintSet(id)).thenReturn(
+                new DocumentService.TicketPrintSet(sale, List.of(refund), null));
+
+        mvc.perform(get("/api/v1/tickets/{id}/print-set", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.printTicket.documentNumber").value("T-002"))
+                .andExpect(jsonPath("$.additionalPrintTickets[0].documentNumber")
+                        .value("R-001"))
+                .andExpect(jsonPath("$.nonFiscalSummary").doesNotExist());
+
+        verify(service).loadRenderedTicketPrintSet(id);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void returnsAnInlinePdfUsingTheRequestedBuiltInTemplate() throws Exception {
         UUID id = UUID.randomUUID();
         var ticket = mock(CommercialDocument.class);
@@ -55,6 +83,7 @@ class TicketControllerJasperContractTest {
 
         verify(jasperRenderer).render(
                 ticket, TicketJasperRenderer.Template.MINIMALISTA);
+        verify(service).requireFiscalQrReadyForPrint(id);
     }
 
     @Test
@@ -83,6 +112,31 @@ class TicketControllerJasperContractTest {
                 .andExpect(status().isOk());
 
         verify(jasperRenderer).render(ticket, TicketJasperRenderer.Template.COMPACTA);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void fiscalPdfFailsAsRetryableBeforeRenderingWhenFrozenQrIsUnavailable() throws Exception {
+        UUID id = UUID.randomUUID();
+        var ticket = mock(CommercialDocument.class);
+        when(service.loadForPrint(id)).thenReturn(ticket);
+        doThrow(new FiscalQrUnavailableException(
+                id, FiscalQrUnavailableException.Reason.FROZEN_SNAPSHOT_MISSING))
+                .when(service).requireFiscalQrReadyForPrint(id);
+
+        mvc.perform(get("/api/v1/tickets/{id}/pdf", id)
+                        .param("template", "principal")
+                        .header("Accept-Language", "es-ES"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(FiscalQrUnavailableException.CODE))
+                .andExpect(jsonPath("$.documentId").value(id.toString()))
+                .andExpect(jsonPath("$.fiscalQrFailure")
+                        .value("FROZEN_SNAPSHOT_MISSING"))
+                .andExpect(jsonPath("$.retryable").value(true));
+
+        verify(jasperRenderer, never()).render(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test

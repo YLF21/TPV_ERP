@@ -5,7 +5,7 @@ spring:
   datasource:
     url: ${TPV_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_dev}
     username: ${TPV_DB_USERNAME:tpv_erp}
-    password: ${TPV_DB_PASSWORD:}
+    password: ${TPV_DB_PASSWORD:admin}
 
 springdoc:
   api-docs:
@@ -24,3 +24,8 @@ tpv:
       enabled: ${TPV_DEV_SAMPLE_DATA_ENABLED:false}
       # Optional ISO date (yyyy-MM-dd). Empty keeps demo periods relative to today.
       base-date: ${TPV_DEV_SAMPLE_DATA_BASE_DATE:}
+  verifactu:
+    export-job-directory: '${TPV_VERIFACTU_EXPORT_JOB_DIRECTORY:${user.home}/.tpv-erp/fiscal-exports-dev}'
+    export-job-single-instance: ${TPV_VERIFACTU_EXPORT_JOB_SINGLE_INSTANCE:true}
+    export-job-max-records: ${TPV_VERIFACTU_EXPORT_JOB_MAX_RECORDS:1000000}
+    export-job-max-xml-bytes: ${TPV_VERIFACTU_EXPORT_JOB_MAX_XML_BYTES:2000000000}

@@ -74,21 +74,22 @@ public class SalesDocumentCheckoutController {
         var document = service.createDocument(request, authentication);
         var printable = request.completionMode()
                 == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
-                ? null : preparePrintDocument(printing, document.getId());
-        return new Result(views.documentView(document), printable);
+                ? new PreparedPrint(null, null)
+                : preparePrintDocument(printing, document.getId());
+        return new Result(views.documentView(document), printable.document(), printable.errorCode());
     }
 
-    static CustomerReceivablePrintService.CommercialDocumentPrint preparePrintDocument(
+    static PreparedPrint preparePrintDocument(
             CustomerReceivablePrintService printing,
             UUID documentId) {
         try {
-            return printing.document(documentId);
+            return new PreparedPrint(printing.document(documentId), null);
         } catch (RuntimeException failure) {
             // The document mutation has already committed. A printer/template failure must not
             // turn a confirmed sale into an apparently failed sale or encourage a duplicate retry.
             LOGGER.error("Could not prepare print data for confirmed document {}", documentId,
                     failure);
-            return null;
+            return new PreparedPrint(null, "document_print_preparation_failed");
         }
     }
 
@@ -123,5 +124,15 @@ public class SalesDocumentCheckoutController {
 
     public record Result(
             DocumentView document,
-            CustomerReceivablePrintService.CommercialDocumentPrint printDocument) {}
+            CustomerReceivablePrintService.CommercialDocumentPrint printDocument,
+            String printPreparationError) {
+        public Result(DocumentView document,
+                CustomerReceivablePrintService.CommercialDocumentPrint printDocument) {
+            this(document, printDocument, null);
+        }
+    }
+
+    record PreparedPrint(
+            CustomerReceivablePrintService.CommercialDocumentPrint document,
+            String errorCode) {}
 }

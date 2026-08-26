@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,9 +40,9 @@ public class FiscalSandboxController {
     }
 
     @PutMapping("/scenario")
-    public FiscalSandboxStatusView scenario(@RequestBody ScenarioRequest request) {
+    public FiscalSandboxStatusView scenario(@Valid @RequestBody ScenarioRequest request) {
         requireSandbox();
-        simulator.setNextOutcome(request == null ? null : request.outcome());
+        simulator.setNextOutcome(request.outcome());
         return status();
     }
 
@@ -56,6 +58,6 @@ public class FiscalSandboxController {
         }
     }
 
-    public record ScenarioRequest(SimulatedAeatOutcome outcome) {
+    public record ScenarioRequest(@NotNull SimulatedAeatOutcome outcome) {
     }
 }

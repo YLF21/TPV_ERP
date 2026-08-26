@@ -1,6 +1,7 @@
 package com.tpverp.backend.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.context.annotation.Import;
 
 import com.tpverp.backend.catalog.ProductSupplierRepository;
 import com.tpverp.backend.party.Supplier;
@@ -27,6 +28,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(FlywayPostgreSqlConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_PASSWORD", matches = ".+")

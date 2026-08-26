@@ -17,6 +17,7 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
@@ -46,7 +47,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PosCashService.class, PosCashTicketSnapshot.class})
+@Import({FlywayPostgreSqlConfiguration.class, PosCashService.class, PosCashTicketSnapshot.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 class PosCashIdempotencyPostgreSqlTest {
     private static final String URL = System.getenv("TPV_ERP_TEST_DB_URL");
