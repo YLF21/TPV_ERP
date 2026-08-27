@@ -124,7 +124,7 @@ class VerifactuAdminServiceTest {
     }
 
     @Test
-    void statusIncluyeActivacionLegalAunqueFalteCertificado() {
+    void noFuerzaActivacionPorFechaLegalSifAunqueFalteCertificado() {
         var dependencies = activationDependencies(TaxpayerType.SOCIEDAD);
         var properties = Mockito.mock(VerifactuSubmissionPropertiesFactory.class);
         when(properties.current()).thenThrow(new IllegalArgumentException("certificado obligatorio"));
@@ -136,9 +136,9 @@ class VerifactuAdminServiceTest {
         var status = service.status();
 
         assertThat(status.certificateConfigured()).isFalse();
-        assertThat(status.verifactuActive()).isTrue();
-        assertThat(status.activationMode()).isEqualTo("LEGAL_FALLBACK");
-        assertThat(status.effectiveActivationAt()).isEqualTo(Instant.parse("2027-01-01T00:00:00Z"));
+        assertThat(status.verifactuActive()).isFalse();
+        assertThat(status.activationMode()).isEqualTo("INACTIVE");
+        assertThat(status.effectiveActivationAt()).isNull();
     }
 
     @Test

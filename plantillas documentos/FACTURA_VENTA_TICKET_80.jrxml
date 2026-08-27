@@ -123,11 +123,17 @@
 	<field name="fiscalVerificationUrl" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.verificationUrl"/>
 	</field>
+	<field name="fiscalQrPrefix" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.qrPrefix"/>
+	</field>
 	<field name="fiscalLegend" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.legend"/>
 	</field>
 	<field name="fiscalTestData" class="java.lang.Boolean">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.testData"/>
+	</field>
+	<field name="fiscalTestNotice" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.testNotice"/>
 	</field>
 	<field name="grossAmount" class="java.math.BigDecimal">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.grossAmount"/>
@@ -266,7 +272,7 @@
 			</element>
 		</band>
 	</detail>
-	<summary height="444" splitType="Stretch">
+	<summary height="460" splitType="Stretch">
 		<element kind="staticText" uuid="edc48977-d611-4285-bd1f-761ef76da81b" x="0" y="5" width="211" height="13" fontName="SansSerif" fontSize="8.0" bold="true">
 			<text><![CDATA[DESGLOSE DE IMPUESTOS]]></text>
 		</element>
@@ -396,43 +402,43 @@
 			<printWhenExpression><![CDATA[$F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalLegend}]]></expression>
 		</element>
-		<element kind="staticText" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a103" positionType="Float" x="20" y="234" width="171" height="12" fontName="SansSerif" fontSize="6.0" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a103" positionType="Float" x="20" y="234" width="171" height="12" fontName="SansSerif" fontSize="6.0" bold="true" hTextAlign="Center" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty()]]></printWhenExpression>
-			<text><![CDATA[QR tributario:]]></text>
+			<expression><![CDATA[$F{fiscalQrPrefix}]]></expression>
 		</element>
-		<element kind="staticText" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a104" positionType="Float" x="20" y="364" width="171" height="12" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center">
-			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && java.lang.Boolean.TRUE.equals($F{fiscalTestData}) && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
-			<text><![CDATA[ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL]]></text>
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a104" positionType="Float" x="20" y="378" width="171" height="12" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalTestNotice} != null && !$F{fiscalTestNotice}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
+			<expression><![CDATA[$F{fiscalTestNotice}]]></expression>
 		</element>
-		<element kind="staticText" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a107" positionType="Float" x="20" y="400" width="171" height="8" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center">
-			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && java.lang.Boolean.TRUE.equals($F{fiscalTestData}) && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
-			<text><![CDATA[ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL]]></text>
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a107" positionType="Float" x="20" y="416" width="171" height="8" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalTestNotice} != null && !$F{fiscalTestNotice}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{fiscalTestNotice}]]></expression>
 		</element>
-		<element kind="component" uuid="e3152778-2ca9-45a8-a31b-f67440cbec99" positionType="Float" x="63" y="314" width="86" height="86">
+		<element kind="component" uuid="e3152778-2ca9-45a8-a31b-f67440cbec99" positionType="Float" x="56" y="314" width="100" height="100">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
-			<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
+			<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="component" uuid="6ce4efb4-a029-4231-b43a-8860bcc795f7" positionType="Float" x="63" y="276" width="86" height="86">
+		<element kind="component" uuid="6ce4efb4-a029-4231-b43a-8860bcc795f7" positionType="Float" x="56" y="276" width="100" height="100">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
-			<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
+			<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="line" uuid="ca40dff6-3af5-46d9-ad37-3b031ca0a835" positionType="Float" x="35" y="410" width="141" height="1">
+		<element kind="line" uuid="ca40dff6-3af5-46d9-ad37-3b031ca0a835" positionType="Float" x="35" y="430" width="141" height="1">
 			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="a31ff610-8f0c-4232-a26b-e822f28732a2" positionType="Float" x="20" y="416" width="171" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+		<element kind="staticText" uuid="a31ff610-8f0c-4232-a26b-e822f28732a2" positionType="Float" x="20" y="436" width="171" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<text><![CDATA[Gracias por su confianza]]></text>
 		</element>
-		<element kind="line" uuid="be288493-e55e-4254-8b2d-f28c755eea44" positionType="Float" x="35" y="372" width="141" height="1">
+		<element kind="line" uuid="be288493-e55e-4254-8b2d-f28c755eea44" positionType="Float" x="35" y="392" width="141" height="1">
 			<printWhenExpression><![CDATA[!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="66ba0ee6-cbd3-412e-9981-0c412d4beb22" positionType="Float" x="20" y="378" width="171" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+		<element kind="staticText" uuid="66ba0ee6-cbd3-412e-9981-0c412d4beb22" positionType="Float" x="20" y="398" width="171" height="14" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
 			<printWhenExpression><![CDATA[!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<text><![CDATA[Gracias por su confianza]]></text>
 		</element>

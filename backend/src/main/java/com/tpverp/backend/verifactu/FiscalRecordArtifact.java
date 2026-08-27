@@ -7,8 +7,13 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** Immutable XML and print evidence attached to exactly one fiscal record. */
 @Entity
@@ -34,6 +39,16 @@ public class FiscalRecordArtifact {
     @Column(name = "version_sistema_id")
     private UUID systemVersionId;
 
+    @Column(name = "obligado_nombre", length = 250)
+    private String issuerName;
+
+    @Column(name = "obligado_nif", length = 9)
+    private String issuerTaxId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "obligado_direccion", columnDefinition = "jsonb")
+    private Map<String, String> issuerAddress;
+
     @Column(name = "xml_sin_firmar", nullable = false, columnDefinition = "text")
     private String unsignedXml;
 
@@ -46,13 +61,13 @@ public class FiscalRecordArtifact {
     @Column(name = "certificado_huella", length = 128)
     private String certificateFingerprint;
 
-    @Column(name = "qr_url", nullable = false, columnDefinition = "text")
+    @Column(name = "qr_url", columnDefinition = "text")
     private String qrUrl;
 
-    @Column(name = "qr_hash", nullable = false, length = 64)
+    @Column(name = "qr_hash", length = 64)
     private String qrHash;
 
-    @Column(name = "qr_prefijo", nullable = false, length = 64)
+    @Column(name = "qr_prefijo", length = 64)
     private String qrPrefix;
 
     @Column(name = "qr_leyenda", columnDefinition = "text")
@@ -67,6 +82,68 @@ public class FiscalRecordArtifact {
     protected FiscalRecordArtifact() {
     }
 
+    public FiscalRecordArtifact(
+            UUID recordId,
+            FiscalMode fiscalMode,
+            FiscalEndpointEnvironment environment,
+            boolean sandbox,
+            UUID systemVersionId,
+            String issuerName,
+            String issuerTaxId,
+            Map<String, String> issuerAddress,
+            String unsignedXml,
+            String signedXml,
+            String certificateFingerprint,
+            String xmlHash,
+            FiscalPrintSnapshot printSnapshot,
+            Instant createdAt) {
+        this.recordId = recordId;
+        this.fiscalMode = fiscalMode;
+        this.environment = environment;
+        this.sandbox = sandbox;
+        this.systemVersionId = systemVersionId;
+        this.issuerName = required(issuerName, "issuerName");
+        this.issuerTaxId = required(issuerTaxId, "issuerTaxId");
+        this.issuerAddress = requiredAddress(issuerAddress);
+        this.unsignedXml = unsignedXml;
+        this.signedXml = signedXml;
+        this.certificateFingerprint = certificateFingerprint;
+        this.xmlHash = xmlHash;
+        copyPrintSnapshot(printSnapshot);
+        this.createdAt = createdAt;
+    }
+
+    /** Compatibility constructor for fixtures created after V203 but before V207. */
+    public FiscalRecordArtifact(
+            UUID recordId,
+            FiscalMode fiscalMode,
+            FiscalEndpointEnvironment environment,
+            boolean sandbox,
+            UUID systemVersionId,
+            String issuerName,
+            String issuerTaxId,
+            String unsignedXml,
+            String signedXml,
+            String certificateFingerprint,
+            String xmlHash,
+            FiscalPrintSnapshot printSnapshot,
+            Instant createdAt) {
+        this.recordId = recordId;
+        this.fiscalMode = fiscalMode;
+        this.environment = environment;
+        this.sandbox = sandbox;
+        this.systemVersionId = systemVersionId;
+        this.issuerName = required(issuerName, "issuerName");
+        this.issuerTaxId = required(issuerTaxId, "issuerTaxId");
+        this.unsignedXml = unsignedXml;
+        this.signedXml = signedXml;
+        this.certificateFingerprint = certificateFingerprint;
+        this.xmlHash = xmlHash;
+        copyPrintSnapshot(printSnapshot);
+        this.createdAt = createdAt;
+    }
+
+    /** Compatibility constructor for historical fixtures created before V203. */
     public FiscalRecordArtifact(
             UUID recordId,
             FiscalMode fiscalMode,
@@ -88,11 +165,7 @@ public class FiscalRecordArtifact {
         this.signedXml = signedXml;
         this.certificateFingerprint = certificateFingerprint;
         this.xmlHash = xmlHash;
-        this.qrUrl = printSnapshot.qrUrl();
-        this.qrHash = printSnapshot.qrPayloadSha256();
-        this.qrPrefix = printSnapshot.prefix();
-        this.qrLegend = printSnapshot.legend();
-        this.testNotice = printSnapshot.testNotice();
+        copyPrintSnapshot(printSnapshot);
         this.createdAt = createdAt;
     }
 
@@ -130,6 +203,11 @@ public class FiscalRecordArtifact {
     public FiscalEndpointEnvironment getEnvironment() { return environment; }
     public boolean isSandbox() { return sandbox; }
     public UUID getSystemVersionId() { return systemVersionId; }
+    public String getIssuerName() { return issuerName; }
+    public String getIssuerTaxId() { return issuerTaxId; }
+    public Map<String, String> getIssuerAddress() {
+        return issuerAddress == null ? null : Collections.unmodifiableMap(issuerAddress);
+    }
     public String getUnsignedXml() { return unsignedXml; }
     public String getSignedXml() { return signedXml; }
     public String getCertificateFingerprint() { return certificateFingerprint; }
@@ -140,4 +218,34 @@ public class FiscalRecordArtifact {
     public String getQrLegend() { return qrLegend; }
     public String getTestNotice() { return testNotice; }
     public Instant getCreatedAt() { return createdAt; }
+
+    private void copyPrintSnapshot(FiscalPrintSnapshot printSnapshot) {
+        if (printSnapshot == null) {
+            return;
+        }
+        this.qrUrl = printSnapshot.qrUrl();
+        this.qrHash = printSnapshot.qrPayloadSha256();
+        this.qrPrefix = printSnapshot.prefix();
+        this.qrLegend = printSnapshot.legend();
+        this.testNotice = printSnapshot.testNotice();
+    }
+
+    private static String required(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " es obligatorio");
+        }
+        return value.trim();
+    }
+
+    private static Map<String, String> requiredAddress(Map<String, String> value) {
+        if (value == null) {
+            throw new IllegalArgumentException("issuerAddress es obligatorio");
+        }
+        var copy = new LinkedHashMap<>(value);
+        for (String key : new String[] {
+                "linea1", "codigoPostal", "ciudad", "provincia", "pais"}) {
+            copy.put(key, required(copy.get(key), "issuerAddress." + key));
+        }
+        return copy;
+    }
 }

@@ -11,6 +11,7 @@ import com.tpverp.backend.inventory.StockMovementSyncPublisher;
 import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
@@ -21,6 +22,7 @@ import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.verifactu.FiscalDocumentPolicy;
+import com.tpverp.backend.verifactu.FiscalQrImageService;
 import com.tpverp.backend.verifactu.FiscalRecordService;
 import com.tpverp.backend.verifactu.FiscalSnapshotFactory;
 import com.tpverp.backend.verifactu.VerifactuActivationService;
@@ -55,7 +57,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({DocumentService.class, InventoryDocumentGateway.class, StockMovementSyncPublisher.class,
+@Import({FlywayPostgreSqlConfiguration.class, DocumentService.class, InventoryDocumentGateway.class, StockMovementSyncPublisher.class,
         SyncOutboxService.class, DocumentFiscalIntegration.class, FiscalRecordService.class,
         VerifactuActivationService.class, FiscalSnapshotFactory.class, FiscalDocumentPolicy.class,
         PaymentTerminalRefundDocumentPostgreSqlTest.Configuration.class})
@@ -92,6 +94,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
     @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private DocumentFiscalQrService fiscalQr;
+    @MockitoBean private FiscalQrImageService fiscalQrImages;
     @MockitoBean private com.tpverp.backend.audit.AuditService audit;
     @MockitoBean private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
     @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
@@ -122,7 +126,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
                                 NOW.minusSeconds(3600),
                                 NOW.plusSeconds(3600),
                                 com.tpverp.backend.shared.access.OperationalMode.LICENSED,
-                                "LICENSE"));
+                                "LICENSE",
+                                true));
     }
     @AfterAll static void dropSchema() { execute("drop schema if exists " + SCHEMA + " cascade"); }
 

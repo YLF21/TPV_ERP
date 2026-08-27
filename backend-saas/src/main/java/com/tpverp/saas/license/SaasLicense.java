@@ -42,6 +42,9 @@ public class SaasLicense {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "license_version", nullable = false)
+    private long licenseVersion;
+
     protected SaasLicense() {
     }
 
@@ -61,6 +64,7 @@ public class SaasLicense {
         this.maxWindows = maxWindows;
         this.maxPda = maxPda;
         this.createdAt = createdAt;
+        this.licenseVersion = 1L;
     }
 
     public UUID getId() {
@@ -91,17 +95,28 @@ public class SaasLicense {
         return maxPda;
     }
 
+    public long getLicenseVersion() {
+        return licenseVersion;
+    }
+
     public void renew(Instant validUntil, int maxWindows, int maxPda) {
         this.validUntil = validUntil;
-        this.maxWindows = Math.max(1, maxWindows);
-        this.maxPda = Math.max(0, maxPda);
+        this.maxWindows = maxWindows;
+        this.maxPda = maxPda;
+        licenseVersion++;
     }
 
     public void block() {
-        status = LicenseSaasStatus.BLOQUEADA_MANUAL;
+        if (status != LicenseSaasStatus.BLOQUEADA_MANUAL) {
+            status = LicenseSaasStatus.BLOQUEADA_MANUAL;
+            licenseVersion++;
+        }
     }
 
     public void unblock() {
-        status = LicenseSaasStatus.VALIDA;
+        if (status != LicenseSaasStatus.VALIDA) {
+            status = LicenseSaasStatus.VALIDA;
+            licenseVersion++;
+        }
     }
 }

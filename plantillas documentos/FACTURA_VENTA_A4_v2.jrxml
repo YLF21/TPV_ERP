@@ -170,11 +170,17 @@
 	<field name="fiscalVerificationUrl" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.verificationUrl"/>
 	</field>
+	<field name="fiscalQrPrefix" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.qrPrefix"/>
+	</field>
 	<field name="fiscalLegend" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.legend"/>
 	</field>
 	<field name="fiscalTestData" class="java.lang.Boolean">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.testData"/>
+	</field>
+	<field name="fiscalTestNotice" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscal.testNotice"/>
 	</field>
 	<field name="grandTotal" class="java.math.BigDecimal">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.totals.grandTotal"/>
@@ -230,7 +236,7 @@
 	<title height="214" splitType="Stretch">
 		<element kind="component" uuid="15dca588-6330-4aec-9ecb-5c4c2f668206" x="457" y="9" width="99" height="99">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty()]]></printWhenExpression>
-			<component kind="barcode4j:QRCode" margin="2" errorCorrectionLevel="M">
+			<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
 			</component>
 		</element>
@@ -288,20 +294,20 @@
 		<element kind="staticText" uuid="3c2b3127-1362-4325-b057-479d7bebd0ab" x="0" y="147" width="90" height="28" fontName="SansSerif" fontSize="9.0" bold="true" vTextAlign="Middle" forecolor="#557086">
 			<text><![CDATA[N.º DOCUMENTO]]></text>
 		</element>
-		<element kind="staticText" uuid="d50d206f-ba16-4a71-9cbc-72634ac08534" x="457" y="0" width="98" height="9" fontSize="6.0" bold="true">
+		<element kind="textField" uuid="d50d206f-ba16-4a71-9cbc-72634ac08534" x="457" y="0" width="98" height="9" fontSize="6.0" bold="true" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty()]]></printWhenExpression>
-			<text><![CDATA[QR tributario:]]></text>
+			<expression><![CDATA[$F{fiscalQrPrefix}]]></expression>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 		</element>
-		<element kind="textField" uuid="ad0d35b2-69d6-4fe3-9e2c-40fcd6a0ba43" x="457" y="107" width="98" height="11" fontName="SansSerif" fontSize="5.5" textAdjust="StretchHeight" blankWhenNull="true" bold="true" hTextAlign="Center" vTextAlign="Top">
-			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && "VERIFACTU".equalsIgnoreCase($F{fiscalMode}) && !java.lang.Boolean.TRUE.equals($F{fiscalTestData})]]></printWhenExpression>
-			<expression><![CDATA["VERI*FACTU"]]></expression>
+		<element kind="textField" uuid="ad0d35b2-69d6-4fe3-9e2c-40fcd6a0ba43" x="457" y="107" width="98" height="24" fontName="SansSerif" fontSize="5.0" textAdjust="StretchHeight" blankWhenNull="true" bold="true" hTextAlign="Center" vTextAlign="Top">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{fiscalLegend}]]></expression>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 		</element>
-		<element kind="staticText" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a102" x="457" y="119" width="98" height="24" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" vTextAlign="Top">
-			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && java.lang.Boolean.TRUE.equals($F{fiscalTestData})]]></printWhenExpression>
-			<text><![CDATA[ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL]]></text>
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a102" x="457" y="132" width="98" height="24" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" vTextAlign="Top" blankWhenNull="true">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalTestNotice} != null && !$F{fiscalTestNotice}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{fiscalTestNotice}]]></expression>
 		</element>
 		<property name="com.jaspersoft.studio.unit.height" value="px"/>
 	</title>

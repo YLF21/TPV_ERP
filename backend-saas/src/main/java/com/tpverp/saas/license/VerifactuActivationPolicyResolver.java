@@ -14,9 +14,17 @@ public class VerifactuActivationPolicyResolver {
 
     @Transactional(readOnly = true)
     public VerifactuPolicySnapshot required(TaxpayerType taxpayerType) {
-        return policies.findById(taxpayerType)
-                .map(VerifactuPolicySnapshot::from)
+        VerifactuActivationPolicy policy = policies.findById(taxpayerType)
                 .orElseThrow(() -> new IllegalStateException(
                         "No existe politica VERI*FACTU para " + taxpayerType));
+        try {
+            VerifactuActivationPolicy.validateActivationDate(
+                    policy.getTaxpayerType(), policy.getActivationDate());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException(
+                    "La politica VERI*FACTU persistida no es utilizable: "
+                            + exception.getMessage(), exception);
+        }
+        return VerifactuPolicySnapshot.from(policy);
     }
 }

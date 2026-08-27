@@ -13,11 +13,13 @@ import {
 
 export function VerifactuDiagnosticsView({
   locale,
+  timezone = null,
   token,
   revision,
   t
 }: {
   locale: LocaleCode;
+  timezone?: string | null;
   token?: string;
   revision: number;
   t: VerifactuTranslator;
@@ -88,7 +90,7 @@ export function VerifactuDiagnosticsView({
         <DiagnosticCard
           label={t("verifactu.management.lastRecordedAttempt")}
           value={diagnostics.lastAttempt
-            ? formatVerifactuDateTime(diagnostics.lastAttempt.occurredAt, locale)
+            ? formatVerifactuDateTime(diagnostics.lastAttempt.occurredAt, locale, timezone)
             : "—"}
           meta={diagnostics.lastAttempt
             ? verifactuStatusLabel(diagnostics.lastAttempt.status, t)
@@ -97,7 +99,7 @@ export function VerifactuDiagnosticsView({
       </div>
 
       <p className="gestion-verifactu-observed-at">
-        {t("verifactu.management.observedAt")}: {formatVerifactuDateTime(diagnostics.observedAt, locale)}
+        {t("verifactu.management.observedAt")}: {formatVerifactuDateTime(diagnostics.observedAt, locale, timezone)}
       </p>
     </div>
   );

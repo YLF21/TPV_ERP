@@ -3,6 +3,7 @@ package com.tpverp.backend.sync;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,13 @@ public class SyncOutboxService {
     @Transactional
     public SyncOutboxEvent save(SyncOutboxEvent event) {
         return repository.save(event);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<SyncOutboxEvent> latest(
+            UUID companyId, UUID storeId, String entityType, UUID entityId) {
+        return repository.findTopByCompanyIdAndStoreIdAndEntityTypeAndEntityIdOrderByCreatedAtDesc(
+                companyId, storeId, entityType, entityId);
     }
 
     @Transactional

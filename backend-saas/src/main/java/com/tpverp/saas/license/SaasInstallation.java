@@ -7,6 +7,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -41,6 +44,12 @@ public class SaasInstallation {
     @Column(name = "token_hash", nullable = false)
     private String tokenHash;
 
+    @Column(name = "link_recovery_token_hash", length = 64)
+    private String linkRecoveryTokenHash;
+
+    @Column(name = "current_pairing_code_id")
+    private UUID currentPairingCodeId;
+
     @Column(name = "linked_at", nullable = false)
     private Instant linkedAt;
 
@@ -59,6 +68,22 @@ public class SaasInstallation {
     @Column(name = "last_ip")
     private String lastIp;
 
+    @Column(nullable = false)
+    private boolean active;
+
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Column(name = "revoked_by")
+    private String revokedBy;
+
+    @Column(name = "revocation_reason")
+    private String revocationReason;
+
+    @Version
+    @Column(nullable = false)
+    private long version;
+
     protected SaasInstallation() {
     }
 
@@ -72,6 +97,21 @@ public class SaasInstallation {
             String installationPublicKey,
             String tokenHash,
             Instant linkedAt) {
+        this(id, company, store, license, installationId, installationReference,
+                installationPublicKey, tokenHash, null, linkedAt);
+    }
+
+    public SaasInstallation(
+            UUID id,
+            SaasCompany company,
+            SaasStore store,
+            SaasLicense license,
+            UUID installationId,
+            String installationReference,
+            String installationPublicKey,
+            String tokenHash,
+            String linkRecoveryTokenHash,
+            Instant linkedAt) {
         this.id = id;
         this.company = company;
         this.store = store;
@@ -80,7 +120,9 @@ public class SaasInstallation {
         this.installationReference = installationReference;
         this.installationPublicKey = installationPublicKey;
         this.tokenHash = tokenHash;
+        this.linkRecoveryTokenHash = linkRecoveryTokenHash;
         this.linkedAt = linkedAt;
+        this.active = true;
     }
 
     public UUID getId() {
@@ -131,11 +173,84 @@ public class SaasInstallation {
         return lastIp;
     }
 
+    public boolean isActive() {
+        return active;
+    }
+
+    public Instant getRevokedAt() {
+        return revokedAt;
+    }
+
+    public String getRevokedBy() {
+        return revokedBy;
+    }
+
+    public String getRevocationReason() {
+        return revocationReason;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public void revoke(Instant now, String actor, String reason) {
+        if (!active) {
+            return;
+        }
+        if (now == null || actor == null || actor.isBlank() || reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("La revocacion exige fecha, actor y motivo");
+        }
+        active = false;
+        revokedAt = now;
+        revokedBy = actor.trim();
+        revocationReason = reason.trim();
+    }
+
     public boolean hasTokenHash(String value) {
-        return tokenHash.equals(value);
+        return constantTimeEquals(tokenHash, value);
+    }
+
+    public boolean hasLinkRecoveryTokenHash(String value) {
+        return constantTimeEquals(linkRecoveryTokenHash, value);
+    }
+
+    public boolean isCurrentPairing(UUID pairingCodeId) {
+        return currentPairingCodeId == null || currentPairingCodeId.equals(pairingCodeId);
+    }
+
+    public void usePairing(UUID pairingCodeId) {
+        if (!active) {
+            throw new IllegalStateException("La instalacion esta revocada");
+        }
+        if (pairingCodeId == null) {
+            throw new IllegalArgumentException("pairingCodeId es obligatorio");
+        }
+        currentPairingCodeId = pairingCodeId;
+    }
+
+    String tokenHashSnapshot() {
+        return tokenHash;
+    }
+
+    public void rotateTokenHash(String value) {
+        if (!active) {
+            throw new IllegalStateException("La instalacion esta revocada");
+        }
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("tokenHash es obligatorio");
+        }
+        tokenHash = value;
     }
 
     public void validatedAt(Instant now) {
         lastValidatedAt = now;
+    }
+
+    private static boolean constantTimeEquals(String expected, String actual) {
+        return expected != null
+                && actual != null
+                && MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.US_ASCII),
+                        actual.getBytes(StandardCharsets.US_ASCII));
     }
 }

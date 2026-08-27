@@ -2140,6 +2140,30 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(printTicket("T-SUMMARY"),expectedSummary));
  });
+ it("forwards both fiscal exchange documents and keeps the combined summary separate", async () => {
+  const allocations=[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"1.10",status:"APPROVED"}];
+  const session={id:"session-exchange",total:"1.10",status:"COVERED",allocations};
+  const replacement=printTicket("SALE-EXCHANGE");
+  const rectification=printTicket("RECT-EXCHANGE");
+  const nonFiscalSummary={...printTicket("SUMMARY-EXCHANGE"),nonFiscalSummary:true};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-exchange/finalize")return {...session,status:"FINALIZED",ticketNumber:"SALE-EXCHANGE",printTicket:replacement,additionalPrintTickets:[rectification],nonFiscalSummary};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:110,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+
+  fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(
+   replacement,
+   {kind:"CASH",totalCents:110,receivedCents:110},
+   [rectification],
+   nonFiscalSummary,
+  ));
+ });
  it("keeps the recoverable session when a finalized response omits printTicket", async () => {
   const collecting={id:"session-done-empty",total:"12.10",status:"COLLECTING",allocations:[]};
   const covered={...collecting,status:"COVERED",allocations:[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"12.10",status:"APPROVED"}]};

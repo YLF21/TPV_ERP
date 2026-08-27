@@ -165,6 +165,15 @@ function buildTicketBuffer(ticket, configuredAdditionalLines = 0) {
     chunks.push(line(padColumns(labels.total, money(ticket.total))));
     chunks.push(Buffer.from([ESC, 0x45, 0x00]));
   }
+  if (ticket.qrRaster) {
+    const fiscalSnapshot = ticket.fiscal && typeof ticket.fiscal === "object" ? ticket.fiscal : null;
+    chunks.push(Buffer.from([ESC, 0x61, 0x01]));
+    chunks.push(line(fiscalSnapshot?.prefix || "QR tributario:"));
+    chunks.push(buildRasterImageBuffer(ticket.qrRaster));
+    if (fiscalSnapshot?.legend) chunks.push(line(fiscalSnapshot.legend));
+    if (fiscalSnapshot?.testNotice) chunks.push(line(fiscalSnapshot.testNotice));
+    chunks.push(Buffer.from([ESC, 0x61, 0x00]));
+  }
   if (ticket.notice) {
     chunks.push(Buffer.from([ESC, 0x61, 0x01]));
     chunks.push(Buffer.from([ESC, 0x45, 0x01]));

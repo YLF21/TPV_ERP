@@ -103,6 +103,7 @@ class SalesDocumentCheckoutControllerContractTest {
 
         assertThat(result.document()).isSameAs(view);
         assertThat(result.printDocument()).isNull();
+        assertThat(result.printPreparationError()).isEqualTo("document_print_preparation_failed");
     }
 
     private static void assertEndpoint(String name, Class<?> requestType, String path)

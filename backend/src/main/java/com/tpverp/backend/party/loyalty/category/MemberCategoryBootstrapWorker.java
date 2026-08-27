@@ -9,6 +9,8 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -16,6 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty("tpv.sync.central-url")
 public class MemberCategoryBootstrapWorker {
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(MemberCategoryBootstrapWorker.class);
     private static final int CHUNK_SIZE = 500;
     private final MemberBalanceCentralContextResolver contexts;
     private final MemberCategoryBootstrapCaptureService capture;
@@ -52,8 +56,12 @@ public class MemberCategoryBootstrapWorker {
         for (var context : contexts.resolveBootstrapContexts()) {
             try {
                 synchronize(context);
-            } catch (RuntimeException ignored) {
-                // Cada tienda se reintenta de forma independiente y nunca bloquea operativa local.
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Bootstrap local de categorias aplazado para tienda SaaS {}: {}",
+                        context.storeId(),
+                        exception.getMessage(),
+                        exception);
             }
         }
     }
@@ -125,7 +133,7 @@ public class MemberCategoryBootstrapWorker {
         try {
             if (upload.getStatus() == MemberCategoryBootstrapUpload.Status.PENDING) {
                 upload.start(bootstrapId, now);
-                uploads.save(upload);
+                upload = uploads.save(upload);
             }
             int categoryChunks = chunkCount(snapshot.getCategoryCount());
             int assignmentChunks = chunkCount(snapshot.getAssignmentCount());
@@ -148,7 +156,7 @@ public class MemberCategoryBootstrapWorker {
                         hashCategoryChunk(values),
                         values);
                 upload.recordCategoryChunk(clock.instant());
-                uploads.save(upload);
+                upload = uploads.save(upload);
             }
             while (upload.getAssignmentChunksUploaded() < assignmentChunks) {
                 int index = upload.getAssignmentChunksUploaded();
@@ -162,7 +170,7 @@ public class MemberCategoryBootstrapWorker {
                         hashAssignmentChunk(values),
                         values);
                 upload.recordAssignmentChunk(clock.instant());
-                uploads.save(upload);
+                upload = uploads.save(upload);
             }
             var central = gateway.complete(
                     bootstrapId,
@@ -171,11 +179,10 @@ public class MemberCategoryBootstrapWorker {
                     upload.getStoreId(),
                     snapshot.getSnapshotChecksum());
             upload.waitForCentralResult(clock.instant());
-            uploads.save(upload);
+            upload = uploads.save(upload);
             finish(context, snapshot, upload, central);
         } catch (RuntimeException exception) {
-            upload.scheduleRetry(exception.getMessage(), clock.instant());
-            uploads.save(upload);
+            scheduleRetry(upload, exception);
         }
     }
 
@@ -197,8 +204,7 @@ public class MemberCategoryBootstrapWorker {
                 upload.markApplied(clock.instant());
                 uploads.save(upload);
             } catch (RuntimeException exception) {
-                upload.scheduleRetry(exception.getMessage(), clock.instant());
-                uploads.save(upload);
+                scheduleRetry(upload, exception);
             }
             return;
         }
@@ -216,6 +222,14 @@ public class MemberCategoryBootstrapWorker {
             upload.defer(clock.instant());
             uploads.save(upload);
         }
+    }
+
+    private void scheduleRetry(
+            MemberCategoryBootstrapUpload attempted,
+            RuntimeException exception) {
+        var latest = uploads.findById(attempted.getId()).orElse(attempted);
+        latest.scheduleRetry(exception.getMessage(), clock.instant());
+        uploads.save(latest);
     }
 
     private List<MemberCategoryBootstrapGateway.CategoryValue> categoryChunk(

@@ -29,13 +29,15 @@ class SalePaymentSessionControllerContractTest {
  @Test void finalizeResponseCarriesTheConfirmedTicketSnapshot() {
   var viewComponents=SalePaymentSessionController.View.class.getRecordComponents();
   assertThat(Arrays.stream(viewComponents).map(RecordComponent::getName))
-    .contains("printTicket","issuedVoucher","voucherOnlyRefund");
+    .contains("printTicket","additionalPrintTickets","nonFiscalSummary","issuedVoucher","voucherOnlyRefund");
   assertThat(Arrays.stream(viewComponents)
     .filter(component->component.getName().equals("printTicket"))
     .findFirst().orElseThrow().getType()).isEqualTo(TicketPrintView.class);
-  var service=mock(SalePaymentSessionService.class);var controller=new SalePaymentSessionController(service);var auth=mock(Authentication.class);var id=UUID.randomUUID();var session=SalePaymentSession.reserve(id,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);var snapshot=new TicketPrintView(UUID.randomUUID(),"T-1",Instant.parse("2026-07-15T10:15:30Z"),List.of(),List.of(),BigDecimal.TEN);var issuedVoucher=new SalePaymentSessionService.IssuedVoucher("V123",BigDecimal.TEN,Instant.parse("2026-07-15T10:15:31Z"),"T-1");
-  when(service.finalizeSession(id,auth)).thenReturn(new SalePaymentSessionService.Finalization(session,snapshot,issuedVoucher));when(service.get(id,auth)).thenReturn(session);
+  var service=mock(SalePaymentSessionService.class);var controller=new SalePaymentSessionController(service);var auth=mock(Authentication.class);var id=UUID.randomUUID();var session=SalePaymentSession.reserve(id,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);var snapshot=new TicketPrintView(UUID.randomUUID(),"T-1",Instant.parse("2026-07-15T10:15:30Z"),List.of(),List.of(),BigDecimal.TEN);var rectification=new TicketPrintView(UUID.randomUUID(),"R-1",Instant.parse("2026-07-15T10:15:29Z"),List.of(),List.of(),BigDecimal.TEN.negate());var summary=new TicketPrintView(snapshot.documentId(),snapshot.documentNumber(),snapshot.issuedAt(),List.of(),List.of(),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,null,null,null,null,null,null,null,true);var issuedVoucher=new SalePaymentSessionService.IssuedVoucher("V123",BigDecimal.TEN,Instant.parse("2026-07-15T10:15:31Z"),"T-1");
+  when(service.finalizeSession(id,auth)).thenReturn(new SalePaymentSessionService.Finalization(session,snapshot,List.of(rectification),summary,issuedVoucher));when(service.get(id,auth)).thenReturn(session);
   assertThat(controller.finalizeSession(id,auth).printTicket()).isSameAs(snapshot);
+  assertThat(controller.finalizeSession(id,auth).additionalPrintTickets()).containsExactly(rectification);
+  assertThat(controller.finalizeSession(id,auth).nonFiscalSummary()).isSameAs(summary);
   assertThat(controller.finalizeSession(id,auth).issuedVoucher().code()).isEqualTo("V123");
   assertThat(controller.get(id,auth).printTicket()).isNull();
   assertThat(controller.get(id,auth).issuedVoucher()).isNull();

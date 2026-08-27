@@ -19,7 +19,17 @@ logging:
     com.tpverp.backend: INFO
 
 tpv:
+  license:
+    saas-url: ${TPV_LICENSE_SAAS_URL}
+  sync:
+    central-url: ${TPV_SYNC_CENTRAL_URL:${TPV_LICENSE_SAAS_URL}}
+    worker-enabled: ${TPV_SYNC_WORKER_ENABLED:true}
+    worker-delay-ms: ${TPV_SYNC_WORKER_DELAY_MS:60000}
   verifactu:
     secret-directory: '${TPV_VERIFACTU_SECRET_DIRECTORY:C:\ProgramData\TPV ERP\secrets\verifactu}'
     secret-acl-mode: ${TPV_VERIFACTU_SECRET_ACL_MODE:STRICT}
     secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'
+    export-job-directory: '${TPV_VERIFACTU_EXPORT_JOB_DIRECTORY:C:\\ProgramData\\TPV ERP\\exports\\fiscal}'
+    export-job-single-instance: ${TPV_VERIFACTU_EXPORT_JOB_SINGLE_INSTANCE:true}
+    export-job-max-records: ${TPV_VERIFACTU_EXPORT_JOB_MAX_RECORDS:1000000}
+    export-job-max-xml-bytes: ${TPV_VERIFACTU_EXPORT_JOB_MAX_XML_BYTES:2000000000}

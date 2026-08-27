@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -15,16 +17,31 @@ public class VerifactuResolutionPolicyService {
     private final FiscalRecordRepository records;
     private final FiscalSubmissionStateRepository states;
     private final VerifactuDefectClassifier defects;
+    private final InstallationRepository installations;
+    private final LicenseRepository licenses;
 
     public VerifactuResolutionPolicyService(
             CurrentOrganization organization,
             FiscalRecordRepository records,
             FiscalSubmissionStateRepository states,
             VerifactuDefectClassifier defects) {
+        this(organization, records, states, defects, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public VerifactuResolutionPolicyService(
+            CurrentOrganization organization,
+            FiscalRecordRepository records,
+            FiscalSubmissionStateRepository states,
+            VerifactuDefectClassifier defects,
+            InstallationRepository installations,
+            LicenseRepository licenses) {
         this.organization = organization;
         this.records = records;
         this.states = states;
         this.defects = defects;
+        this.installations = installations;
+        this.licenses = licenses;
     }
 
     @Transactional(readOnly = true)
@@ -33,6 +50,13 @@ public class VerifactuResolutionPolicyService {
         var record = records.findByIdAndCompanyIdAndStoreId(
                         recordId, store.getEmpresa().getId(), store.getId())
                 .orElseThrow(() -> new NoSuchElementException("Registro fiscal no encontrado"));
+        if (installations != null && licenses != null) {
+            var installation = FiscalInstallationResolver.resolveCurrent(
+                    organization, installations, licenses);
+            if (!installation.getId().equals(record.getInstallationId())) {
+                throw new NoSuchElementException("Registro fiscal no encontrado");
+            }
+        }
         var state = states.findById(recordId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Estado de envio fiscal no encontrado"));

@@ -1,9 +1,13 @@
 package com.tpverp.backend.licensing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -17,11 +21,13 @@ import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
 import com.tpverp.backend.terminal.TerminalType;
+import java.lang.reflect.Modifier;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -30,6 +36,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,9 +48,12 @@ class LicenseSaasLinkServiceTest {
     private final InstallationRepository installations = org.mockito.Mockito.mock(InstallationRepository.class);
     private final CompanyRepository companies = org.mockito.Mockito.mock(CompanyRepository.class);
     private final StoreRepository stores = org.mockito.Mockito.mock(StoreRepository.class);
+    private final CurrentOrganization organization = org.mockito.Mockito.mock(CurrentOrganization.class);
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
     private final LicenseSaasLinkClient client = org.mockito.Mockito.mock(LicenseSaasLinkClient.class);
     private final LicenseSaasCredentialStore credentials = org.mockito.Mockito.mock(LicenseSaasCredentialStore.class);
+    private final LicenseSaasCacheAuthenticator cacheAuthenticator =
+            new LicenseSaasCacheAuthenticator(credentials);
     private final TerminalRepository terminals = org.mockito.Mockito.mock(TerminalRepository.class);
     private final PasswordEncoder passwordEncoder = org.mockito.Mockito.mock(PasswordEncoder.class);
     private final AuditService audit = org.mockito.Mockito.mock(AuditService.class);
@@ -54,15 +64,23 @@ class LicenseSaasLinkServiceTest {
             installations,
             companies,
             stores,
+            organization,
             licenses,
             client,
             credentials,
+            cacheAuthenticator,
             terminals,
             passwordEncoder,
             Clock.fixed(NOW, ZoneOffset.UTC),
             audit,
             jdbc,
             commercialBootstrap);
+
+    @BeforeEach
+    void recoveryCredentialExistsBeforeEachAttempt() {
+        when(credentials.getOrCreateLinkRecoveryToken()).thenReturn("recovery-token");
+        when(credentials.readToken()).thenReturn(Optional.of("token-instalacion"));
+    }
 
     @Test
     void vinculaInstalacionConSaasYActivaLicenciaDevuelta() {
@@ -73,24 +91,26 @@ class LicenseSaasLinkServiceTest {
         var saasCompanyId = UUID.randomUUID();
         var saasStoreId = UUID.randomUUID();
         when(installations.findAll()).thenReturn(List.of(installation));
-        when(stores.findAll()).thenReturn(List.of(store));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
         when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
                 .thenReturn(Optional.of(server));
         when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
                 .thenReturn(Optional.of(previous));
-        when(client.link(any())).thenReturn(saasResponse(saasCompanyId, saasStoreId));
+        when(client.link(any(), any())).thenReturn(saasResponse(saasCompanyId, saasStoreId));
 
-        LicenseSaasLinkResult result = service.link("ABC123");
+        LicenseSaasLinkResult result = service.link("ABC123", null);
 
         var request = ArgumentCaptor.forClass(LicenseSaasLinkRequest.class);
-        verify(client).link(request.capture());
+        verify(client).link(request.capture(), eq("recovery-token"));
         assertThat(request.getValue().pairingCode()).isEqualTo("ABC123");
         assertThat(request.getValue().installationId()).isEqualTo(installation.getId());
         assertThat(request.getValue().installationReference()).isEqualTo("INST-1");
         assertThat(request.getValue().installationPublicKey()).isEqualTo("public-key");
         assertThat(request.getValue().storeId()).isEqualTo(store.getId());
         assertThat(request.getValue().storeCode()).isEqualTo("001");
-        assertThat(request.getValue().taxId()).isEqualTo("B12345678");
+        assertThat(request.getValue().taxId()).isEqualTo("B12345674");
+        assertThat(request.getValue().timeZoneId()).isEqualTo("Atlantic/Canary");
 
         var saved = ArgumentCaptor.forClass(License.class);
         verify(licenses).save(saved.capture());
@@ -104,13 +124,23 @@ class LicenseSaasLinkServiceTest {
         assertThat(saved.getValue().getUltimaValidacionSaas()).isEqualTo(NOW);
         assertThat(saved.getValue().getVerifactuActivationDate()).isEqualTo(java.time.LocalDate.of(2027, 1, 1));
         assertThat(saved.getValue().getVerifactuPolicyVersion()).isEqualTo(3L);
+        assertThat(saved.getValue().getFormatVersion()).isEqualTo(6);
+        assertThat(cacheAuthenticator.isAuthentic(saved.getValue())).isTrue();
         assertThat(result.license().licenseReference()).isEqualTo("LIC-SAAS-1");
         assertThat(result.serverTerminalId()).isEqualTo(server.getId());
-        verify(credentials).writeToken("token-instalacion");
         verify(audit).record(
                 org.mockito.Mockito.eq("LICENSE_SAAS_LINKED"),
                 org.mockito.Mockito.eq(AuditResult.EXITO),
                 org.mockito.Mockito.anyMap());
+        var order = inOrder(credentials, client, audit);
+        order.verify(credentials).getOrCreateLinkRecoveryToken();
+        order.verify(client).link(any(), eq("recovery-token"));
+        order.verify(credentials).writeToken("token-instalacion");
+        order.verify(audit).record(
+                org.mockito.Mockito.eq("LICENSE_SAAS_LINKED"),
+                org.mockito.Mockito.eq(AuditResult.EXITO),
+                org.mockito.Mockito.anyMap());
+        order.verify(credentials).clearLinkRecoveryToken();
     }
 
     @Test
@@ -119,24 +149,24 @@ class LicenseSaasLinkServiceTest {
         var saasCompanyId = UUID.randomUUID();
         var saasStoreId = UUID.randomUUID();
         when(installations.findAll()).thenReturn(List.of(installation));
-        when(stores.findAll()).thenReturn(List.of());
-        when(client.link(any())).thenReturn(saasResponse(saasCompanyId, saasStoreId));
+        when(client.link(any(), any())).thenReturn(saasResponse(saasCompanyId, saasStoreId));
         when(companies.save(any(Company.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(stores.save(any(Store.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(passwordEncoder.encode(any())).thenReturn("server-hash");
         when(terminals.save(any(Terminal.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        LicenseSaasLinkResult result = service.link("ABC123");
+        LicenseSaasLinkResult result = service.bootstrapEmptyDatabase("ABC123");
 
         var request = ArgumentCaptor.forClass(LicenseSaasLinkRequest.class);
-        verify(client).link(request.capture());
+        verify(client).link(request.capture(), eq("recovery-token"));
         assertThat(request.getValue().storeId()).isNull();
         assertThat(request.getValue().storeCode()).isNull();
         assertThat(request.getValue().taxId()).isNull();
+        assertThat(request.getValue().timeZoneId()).isNull();
 
         var company = ArgumentCaptor.forClass(Company.class);
         verify(companies).save(company.capture());
-        assertThat(company.getValue().getTaxId()).isEqualTo("B12345678");
+        assertThat(company.getValue().getTaxId()).isEqualTo("B12345674");
         assertThat(company.getValue().getRazonSocial()).isEqualTo("EMPRESA REAL");
 
         var store = ArgumentCaptor.forClass(Store.class);
@@ -165,13 +195,14 @@ class LicenseSaasLinkServiceTest {
         var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash");
         var existing = license(store, installation, "LIC-SAAS-1");
         when(installations.findAll()).thenReturn(List.of(installation));
-        when(stores.findAll()).thenReturn(List.of(store));
-        when(client.link(any())).thenReturn(saasResponse(UUID.randomUUID(), UUID.randomUUID()));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+        when(client.link(any(), any())).thenReturn(saasResponse(UUID.randomUUID(), UUID.randomUUID()));
         when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
                 .thenReturn(Optional.of(server));
         when(licenses.findByReferencia("LIC-SAAS-1")).thenReturn(Optional.of(existing));
 
-        LicenseSaasLinkResult result = service.link("ABC123");
+        LicenseSaasLinkResult result = service.link("ABC123", store.getId());
 
         assertThat(result.serverTerminalId()).isEqualTo(server.getId());
         verify(licenses).save(existing);
@@ -184,17 +215,188 @@ class LicenseSaasLinkServiceTest {
         var store = store();
         var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash");
         when(installations.findAll()).thenReturn(List.of(installation));
-        when(stores.findAll()).thenReturn(List.of(store));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
         when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
                 .thenReturn(Optional.of(server));
-        when(client.link(any())).thenReturn(saasResponse(
+        when(client.link(any(), any())).thenReturn(saasResponse(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialProfile.MINORISTA));
 
-        service.link("ABC123");
+        service.link("ABC123", null);
 
         verify(jdbc).update(
                 contains("where tienda_id = ? and porcentaje = ?"),
                 eq(store.getId()), eq(new java.math.BigDecimal("0.00")));
+    }
+
+    @Test
+    void rechazaRespuestaActualSinPerfilComercialAntesDePersistirCredenciales() {
+        var installation = installation();
+        var store = store();
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+        when(client.link(any(), any())).thenReturn(saasResponse(
+                UUID.randomUUID(), UUID.randomUUID(), null));
+
+        assertThatThrownBy(() -> service.link("ABC123", null))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("commercialProfile");
+
+        verify(credentials, never()).writeToken(any());
+        verify(licenses, never()).save(any());
+    }
+
+    @Test
+    void rechazaClasificacionFiscalODomiciliosIncompletosSinValoresPorDefecto() {
+        var installation = installation();
+        var store = store();
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+
+        assertIncompleteResponse(store, responseWithFiscalData(
+                TaxpayerType.SOCIEDAD, null, CommercialProfile.MAYORISTA,
+                address(), address()), "impuestos");
+        assertIncompleteResponse(store, responseWithFiscalData(
+                null, TaxRegime.IGIC, CommercialProfile.MAYORISTA,
+                address(), address()), "taxpayerType");
+        assertIncompleteResponse(store, responseWithFiscalData(
+                TaxpayerType.SOCIEDAD, TaxRegime.IGIC, CommercialProfile.MAYORISTA,
+                null, address()), "companyAddress");
+        assertIncompleteResponse(store, responseWithFiscalData(
+                TaxpayerType.SOCIEDAD, TaxRegime.IGIC, CommercialProfile.MAYORISTA,
+                address(), Map.of("linea1", "Calle Uno")), "storeAddress.ciudad");
+
+        verify(credentials, never()).writeToken(any());
+        verify(licenses, never()).save(any());
+    }
+
+    @Test
+    void rechazaLocalStoreIdQueNoCoincideConLaTiendaAutenticada() {
+        var store = store();
+        when(stores.count()).thenReturn(2L);
+        when(organization.currentStore()).thenReturn(store);
+
+        assertThatThrownBy(() -> service.link("ABC123", UUID.randomUUID()))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("tienda de la sesion autenticada");
+    }
+
+    @Test
+    void rechazaRutaDeBootstrapSiYaExisteUnaTienda() {
+        when(stores.count()).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.bootstrapEmptyDatabase("ABC123"))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("base vacia");
+    }
+
+    @Test
+    void rechazaOtraTiendaAntesDeConsumirPairingEnLaMismaInstalacion() {
+        var installation = installation();
+        var alreadyLinkedStore = store();
+        var requestedStore = store();
+        var linkedLicense = license(alreadyLinkedStore, installation, "LIC-SAAS-OTRA");
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(2L);
+        when(organization.currentStore()).thenReturn(requestedStore);
+        when(licenses.findByInstalacion_IdAndActivaTrue(installation.getId()))
+                .thenReturn(List.of(linkedLicense));
+
+        assertThatThrownBy(() -> service.link("ABC123", null))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("solo puede vincularse a una tienda SaaS");
+
+        verify(client, never()).link(any(), any());
+        verify(credentials, never()).getOrCreateLinkRecoveryToken();
+    }
+
+    @Test
+    void rechazaFailClosedLicenciaSaasLegacySinIdentidadCentralCompleta() {
+        var installation = installation();
+        var store = store();
+        var malformed = new License(
+                store,
+                installation,
+                "LIC-SAAS-LEGACY",
+                Instant.parse("2026-06-08T00:00:00Z"),
+                Instant.parse("2027-08-01T00:00:00Z"),
+                1,
+                0,
+                "B12345674",
+                TaxpayerType.SOCIEDAD,
+                TaxRegime.IGIC,
+                "SAAS_LINK:LIC-SAAS-LEGACY",
+                "hash-legacy",
+                3,
+                Instant.parse("2026-06-08T00:00:00Z"),
+                Map.of("source", "SAAS_LINK"),
+                ImportResult.ACEPTADA,
+                null,
+                true);
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+        when(licenses.findByInstalacion_IdAndActivaTrue(installation.getId()))
+                .thenReturn(List.of(malformed));
+
+        assertThatThrownBy(() -> service.link("ABC123", null))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining("no identifica de forma segura");
+
+        verify(client, never()).link(any(), any());
+        verify(credentials, never()).getOrCreateLinkRecoveryToken();
+    }
+
+    @Test
+    void conservaRecuperacionCuandoSaasConsumeElCodigoPeroLaRespuestaSePierde() {
+        var installation = installation();
+        var store = store();
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+        when(client.link(any(), any())).thenThrow(new IllegalStateException("respuesta perdida"));
+
+        assertThatThrownBy(() -> service.link("ABC123", null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("respuesta perdida");
+
+        verify(credentials).getOrCreateLinkRecoveryToken();
+        verify(credentials, never()).writeToken(org.mockito.ArgumentMatchers.anyString());
+        verify(credentials, never()).clearLinkRecoveryToken();
+    }
+
+    @Test
+    void conservaRecuperacionSiNoPuedePersistirLaCredencialDevuelta() {
+        var installation = installation();
+        var store = store();
+        var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash");
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+        when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
+                .thenReturn(Optional.of(server));
+        when(client.link(any(), any())).thenReturn(saasResponse(UUID.randomUUID(), UUID.randomUUID()));
+        doThrow(new IllegalStateException("disco no disponible"))
+                .when(credentials).writeToken("token-instalacion");
+
+        assertThatThrownBy(() -> service.link("ABC123", null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("disco no disponible");
+
+        verify(credentials, never()).clearLinkRecoveryToken();
+    }
+
+    @Test
+    void serializaLosEnlacesLocalesQueCompartenElMismoAlmacenDeCredenciales()
+            throws Exception {
+        assertThat(Modifier.isSynchronized(LicenseSaasLinkService.class
+                .getMethod("link", String.class, UUID.class)
+                .getModifiers())).isTrue();
+        assertThat(Modifier.isSynchronized(LicenseSaasLinkService.class
+                .getMethod("bootstrapEmptyDatabase", String.class)
+                .getModifiers())).isTrue();
     }
 
     private static Installation installation() {
@@ -202,7 +404,7 @@ class LicenseSaasLinkServiceTest {
     }
 
     private static Store store() {
-        var company = new Company("B12345678", "Company", address());
+        var company = new Company("B12345674", "Company", address());
         return new Store(company, "Store", address(), "hash", "Atlantic/Canary", "EUR", "es-ES");
     }
 
@@ -215,14 +417,17 @@ class LicenseSaasLinkServiceTest {
                 Instant.parse("2026-08-01T00:00:00Z"),
                 1,
                 0,
-                "B12345678",
+                "B12345674",
                 TaxpayerType.SOCIEDAD,
                 TaxRegime.IGIC,
                 "{}",
                 "hash-" + reference,
                 3,
                 Instant.parse("2026-06-08T00:00:00Z"),
-                Map.of(),
+                Map.of(
+                        "source", "SAAS_LINK",
+                        "saasCompanyId", UUID.randomUUID().toString(),
+                        "saasStoreId", UUID.randomUUID().toString()),
                 ImportResult.ACEPTADA,
                 null,
                 true);
@@ -243,23 +448,62 @@ class LicenseSaasLinkServiceTest {
 
     private static LicenseSaasLinkResponse saasResponse(
             UUID companyId, UUID storeId, CommercialProfile commercialProfile) {
+        return responseWithFiscalData(
+                companyId,
+                storeId,
+                TaxpayerType.SOCIEDAD,
+                TaxRegime.IGIC,
+                commercialProfile,
+                address(),
+                address());
+    }
+
+    private void assertIncompleteResponse(
+            Store store, LicenseSaasLinkResponse response, String missingField) {
+        when(client.link(any(), any())).thenReturn(response);
+        assertThatThrownBy(() -> service.link("ABC123", store.getId()))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class)
+                .hasMessageContaining(missingField);
+    }
+
+    private static LicenseSaasLinkResponse responseWithFiscalData(
+            TaxpayerType taxpayerType,
+            TaxRegime taxRegime,
+            CommercialProfile commercialProfile,
+            Map<String, String> companyAddress,
+            Map<String, String> storeAddress) {
+        return responseWithFiscalData(
+                UUID.randomUUID(), UUID.randomUUID(), taxpayerType, taxRegime,
+                commercialProfile, companyAddress, storeAddress);
+    }
+
+    private static LicenseSaasLinkResponse responseWithFiscalData(
+            UUID companyId,
+            UUID storeId,
+            TaxpayerType taxpayerType,
+            TaxRegime taxRegime,
+            CommercialProfile commercialProfile,
+            Map<String, String> companyAddress,
+            Map<String, String> storeAddress) {
         return new LicenseSaasLinkResponse(
                 "LIC-SAAS-1",
                 companyId,
                 storeId,
-                "B12345678",
+                "B12345674",
                 "EMPRESA REAL",
-                address(),
+                companyAddress,
                 "001",
                 "TIENDA 001",
-                address(),
+                storeAddress,
+                "Atlantic/Canary",
                 Instant.parse("2027-08-10T00:00:00Z"),
                 LicenseSaasStatus.VALIDA,
                 2,
                 1,
-                "B12345678",
-                TaxpayerType.SOCIEDAD,
-                TaxRegime.IGIC,
+                1,
+                "B12345674",
+                taxpayerType,
+                taxRegime,
                 commercialProfile,
                 java.time.LocalDate.of(2027, 1, 1),
                 3,

@@ -45,8 +45,7 @@ public class FiscalSystemVersion {
         this.systemId = required(systemId, "systemId");
         this.systemVersion = required(systemVersion, "systemVersion");
         this.installationNumber = required(installationNumber, "installationNumber");
-        this.declarationHash = declarationHash == null || declarationHash.isBlank()
-                ? null : declarationHash.trim();
+        this.declarationHash = declarationHash(declarationHash);
         this.sandbox = sandbox;
         this.createdAt = required(createdAt, "createdAt");
     }
@@ -66,14 +65,30 @@ public class FiscalSystemVersion {
 
     public boolean matches(String producerTaxId, String producerName,
             String systemName, String systemId, String systemVersion,
-            String installationNumber, boolean sandbox) {
+            String installationNumber, String declarationHash, boolean sandbox) {
         return this.producerTaxId.equals(producerTaxId)
                 && this.producerName.equals(producerName)
                 && this.systemName.equals(systemName)
                 && this.systemId.equals(systemId)
                 && this.systemVersion.equals(systemVersion)
                 && this.installationNumber.equals(installationNumber)
+                && java.util.Objects.equals(
+                        declarationHash(this.declarationHash),
+                        declarationHash(declarationHash))
                 && this.sandbox == sandbox;
+    }
+
+    private static String declarationHash(String value) {
+        var normalized = value == null
+                ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (!normalized.matches("[0-9A-F]{64}")) {
+            throw new IllegalArgumentException(
+                    "declarationHash debe ser un SHA-256 de 64 hexadecimales");
+        }
+        return normalized;
     }
 
     private static String required(String value, String field) {

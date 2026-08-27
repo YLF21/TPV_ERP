@@ -19,7 +19,7 @@ public class VerifactuCertificateValidator {
         var now = clock.instant();
         var notBefore = certificate.getNotBefore().toInstant();
         var notAfter = certificate.getNotAfter().toInstant();
-        var warning = warning(now, notBefore, notAfter);
+        var warning = warning(certificate, now, notBefore, notAfter);
         return new VerifactuCertificateStatus(
                 warning == null,
                 warning,
@@ -29,12 +29,29 @@ public class VerifactuCertificateValidator {
     }
     // Evalua si el certificado puede usarse y devuelve avisos no bloqueantes para pantalla.
 
-    private static String warning(java.time.Instant now, java.time.Instant notBefore, java.time.Instant notAfter) {
+    private static String warning(
+            X509Certificate certificate,
+            java.time.Instant now,
+            java.time.Instant notBefore,
+            java.time.Instant notAfter) {
         if (now.isAfter(notAfter)) {
             return "CERTIFICATE_EXPIRED";
         }
         if (now.isBefore(notBefore)) {
             return "CERTIFICATE_NOT_YET_VALID";
+        }
+        // A signing certificate must be usable for digital signatures. Some
+        // providers omit KeyUsage, in which case the issuer policy is the
+        // authority and the importer performs the key-pair challenge.
+        boolean[] keyUsage = certificate.getKeyUsage();
+        if (keyUsage != null
+                && (keyUsage.length == 0
+                        || (!keyUsage[0] && (keyUsage.length < 2 || !keyUsage[1])))) {
+            return "CERTIFICATE_KEY_USAGE_INVALID";
+        }
+        // A CA certificate must never be selected as the signing leaf.
+        if (certificate.getBasicConstraints() >= 0) {
+            return "CERTIFICATE_KEY_USAGE_INVALID";
         }
         return null;
     }

@@ -209,7 +209,7 @@ describe("HardwareSettingsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Detectar impresoras" }));
     await waitFor(() => expect(listPrinters).toHaveBeenCalledOnce());
     const printerSelect = screen.getByRole("button", { name: "Impresora Windows" });
-    expect(printerSelect.textContent).toContain("EPSON TM-T20");
+    await waitFor(() => expect(printerSelect.textContent).toContain("EPSON TM-T20"));
 
     fireEvent.click(printerSelect);
     fireEvent.click(screen.getByRole("option", { name: /WPS Print to PDF/ }));

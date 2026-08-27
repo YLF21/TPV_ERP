@@ -3,6 +3,7 @@ package com.tpverp.backend.cash;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.UUID;
@@ -29,7 +30,7 @@ class CashClosureQueryRepositoryPostgreSqlTest {
         var olderAId = UUID.randomUUID();
         var terminalBClosureId = UUID.randomUUID();
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(database.url(), database.user(), database.password())
                     .schemas(schema)
                     .defaultSchema(schema)

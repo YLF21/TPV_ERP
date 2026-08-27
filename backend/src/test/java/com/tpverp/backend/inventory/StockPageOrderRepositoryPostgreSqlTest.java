@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.PriceUseMode;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.math.BigDecimal;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -25,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(StockPageOrderRepository.class)
+@Import({FlywayPostgreSqlConfiguration.class, StockPageOrderRepository.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_PASSWORD", matches = ".+")

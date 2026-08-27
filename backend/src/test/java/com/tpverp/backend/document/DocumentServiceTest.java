@@ -2472,6 +2472,170 @@ class DocumentServiceTest {
         assertThat(quoted.getLineas()).hasSize(1);
     }
 
+    @Test
+    void fiscalQrIsResolvedOnlyByThePostCommitPrintJob() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+
+        var transactionalView = service.ticketPrintView(ticket);
+
+        assertThat(transactionalView.qrUrl()).isNull();
+        assertThat(transactionalView.qrImage()).isNull();
+        verifyNoInteractions(fiscalQr, fiscalQrImages);
+    }
+
+    @Test
+    void fiscalPrintUsesTheFrozenQrPayloadAndGeneratedImage() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+        var url = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674";
+        var fiscalData = new DocumentFiscalQrService.FiscalQrPrintData(
+                url, "a".repeat(64), "AEAT_QR_0.5.0", "TPV-ERP-2026.08.25",
+                com.tpverp.backend.verifactu.FiscalMode.NO_VERIFACTU,
+                com.tpverp.backend.verifactu.FiscalEndpointEnvironment.TEST,
+                "Prefijo congelado:", null, "Aviso congelado");
+        when(fiscalQr.resolveForPrint(ticket.getId())).thenReturn(Optional.of(fiscalData));
+        when(fiscalQrImages.png(url, 240)).thenReturn(
+                new com.tpverp.backend.verifactu.FiscalQrImage(
+                        new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47,
+                                0x0D, 0x0A, 0x1A, 0x0A},
+                        "image/png"));
+
+        var printed = service.renderTicketPrintView(ticket, service.ticketPrintView(ticket));
+
+        assertThat(printed.qrUrl()).isEqualTo(url);
+        assertThat(printed.qrImage()).startsWith("data:image/png;base64,");
+        assertThat(printed.fiscal()).isEqualTo(fiscalData.toView());
+    }
+
+    @Test
+    void nonFiscalPrintRemainsQrFree() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+        when(fiscalQr.resolveForPrint(ticket.getId())).thenReturn(Optional.empty());
+
+        var printed = service.renderTicketPrintView(ticket, service.ticketPrintView(ticket));
+
+        assertThat(printed.qrUrl()).isNull();
+        assertThat(printed.qrImage()).isNull();
+        verifyNoInteractions(fiscalQrImages);
+    }
+
+    @Test
+    void compensatingExchangeSummaryNeverInheritsSaleQrOrJasperRaster() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        var renderer = org.mockito.Mockito.mock(
+                com.tpverp.backend.document.template.TicketJasperRenderer.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        service.setTicketJasperRenderer(renderer);
+        var refund = draft(CommercialDocumentType.TICKET);
+        refund.confirm("001-260608-00001", user.getId(), NOW, false);
+        var sale = draft(CommercialDocumentType.TICKET);
+        sale.confirm("001-260608-00002", user.getId(), NOW, false);
+
+        var printed = service.renderTicketPrintView(
+                sale, service.ticketPrintViewFromExchange(sale, refund));
+
+        assertThat(printed.nonFiscalSummary()).isTrue();
+        assertThat(printed.qrUrl()).isNull();
+        assertThat(printed.qrImage()).isNull();
+        assertThat(printed.fiscal()).isNull();
+        assertThat(printed.ticketRenderedPdf()).isNull();
+        assertThat(printed.ticketRenderedImage()).isNull();
+        verifyNoInteractions(fiscalQr, fiscalQrImages, renderer);
+    }
+
+    @Test
+    void compensatingExchangeReprintReconstructsRectificationBeforeReplacementSale() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var refund = draft(CommercialDocumentType.TICKET);
+        refund.confirm("R-001", user.getId(), NOW.minusSeconds(1), false);
+        var sale = draft(CommercialDocumentType.TICKET);
+        sale.confirm("T-002", user.getId(), NOW, false);
+        when(documentRepository.findById(sale.getId())).thenReturn(Optional.of(sale));
+        when(documentRepository.findById(refund.getId())).thenReturn(Optional.of(refund));
+        when(relationRepository.findOriginId(sale.getId(), DocumentRelationType.COMPENSA))
+                .thenReturn(Optional.of(refund.getId()));
+        when(fiscalQr.resolveForPrint(any())).thenReturn(Optional.empty());
+
+        var printSet = service.loadRenderedTicketPrintSet(sale.getId());
+
+        assertThat(printSet.printTicket().documentId()).isEqualTo(sale.getId());
+        assertThat(printSet.additionalPrintTickets()).singleElement()
+                .extracting(TicketPrintView::documentId)
+                .isEqualTo(refund.getId());
+        assertThat(printSet.nonFiscalSummary()).isNotNull();
+        assertThat(printSet.nonFiscalSummary().nonFiscalSummary()).isTrue();
+        assertThat(printSet.nonFiscalSummary().qrUrl()).isNull();
+        assertThat(printSet.nonFiscalSummary().ticketRenderedImage()).isNull();
+        var compatiblePrint = service.loadRenderedTicketPrintView(sale.getId());
+        assertThat(compatiblePrint.documentId()).isEqualTo(sale.getId());
+        assertThat(compatiblePrint.nonFiscalSummary()).isFalse();
+        verify(fiscalQr, times(3)).resolveForPrint(any());
+        verifyNoInteractions(fiscalQrImages);
+    }
+
+    @Test
+    void fiscalPrintFailsExplicitlyWhenQrImageCannotBeGenerated() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+        var url = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674";
+        when(fiscalQr.resolveForPrint(ticket.getId())).thenReturn(Optional.of(
+                new DocumentFiscalQrService.FiscalQrPrintData(url, "a".repeat(64))));
+        when(fiscalQrImages.png(url, 240))
+                .thenThrow(new IllegalStateException("qr_encoder_failed"));
+
+        assertThatThrownBy(() -> service.renderTicketPrintView(
+                ticket, service.ticketPrintView(ticket)))
+                .isInstanceOf(FiscalQrUnavailableException.class)
+                .extracting(error -> ((FiscalQrUnavailableException) error).reason())
+                .isEqualTo(FiscalQrUnavailableException.Reason.IMAGE_GENERATION_FAILED);
+    }
+
+    @Test
+    void fiscalPrintRejectsAResponseThatIsNotActuallyPng() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+        var url = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674";
+        when(fiscalQr.resolveForPrint(ticket.getId())).thenReturn(Optional.of(
+                new DocumentFiscalQrService.FiscalQrPrintData(url, "a".repeat(64))));
+        when(fiscalQrImages.png(url, 240)).thenReturn(
+                new com.tpverp.backend.verifactu.FiscalQrImage(
+                        "not-png".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "image/png"));
+
+        assertThatThrownBy(() -> service.renderTicketPrintView(
+                ticket, service.ticketPrintView(ticket)))
+                .isInstanceOf(FiscalQrUnavailableException.class)
+                .extracting(error -> ((FiscalQrUnavailableException) error).reason())
+                .isEqualTo(FiscalQrUnavailableException.Reason.IMAGE_GENERATION_FAILED);
+    }
+
     private CommercialDocument draft(CommercialDocumentType type) {
         var command = command(type);
         var document = new CommercialDocument(

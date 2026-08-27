@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -19,6 +20,9 @@ import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.FiscalAddress;
+import com.tpverp.backend.verifactu.FiscalEndpointEnvironment;
+import com.tpverp.backend.verifactu.FiscalMode;
+import com.tpverp.backend.verifactu.FiscalPrintSnapshotFactory;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -171,7 +175,32 @@ class CustomerReceivablePrintServiceTest {
         when(presentations.create(DocumentTemplateType.FACTURA_VENTA))
                 .thenReturn("snapshot");
         when(presentations.read("snapshot")).thenReturn(presentation);
-        when(renderer.render(document, store, company, customer, presentation, null))
+        var qrUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674";
+        var fiscalData = new DocumentFiscalQrService.FiscalQrPrintData(
+                qrUrl,
+                "A".repeat(64),
+                FiscalPrintSnapshotFactory.FORMAT_VERSION,
+                "TPV-ERP-2026.08.25",
+                FiscalMode.VERIFACTU,
+                FiscalEndpointEnvironment.TEST,
+                "Prefijo congelado:",
+                "Leyenda congelada",
+                "Aviso congelado",
+                "Obligado congelado SL",
+                "B12345674",
+                java.util.Map.of(
+                        "linea1", "Calle congelada 7",
+                        "codigoPostal", "35007",
+                        "ciudad", "Telde",
+                        "provincia", "Las Palmas",
+                        "pais", "ES"));
+        when(fiscalQr.resolveForPrint(document.getId())).thenReturn(Optional.of(fiscalData));
+        when(qrImages.png(qrUrl, 240)).thenReturn(
+                new com.tpverp.backend.verifactu.FiscalQrImage(
+                        pngSignature(), "image/png"));
+        when(renderer.renderWithFiscalSnapshot(
+                document, store, company, customer, presentation, fiscalData.toView(), null,
+                com.tpverp.backend.document.template.DocumentTemplateFormat.A4))
                 .thenReturn(Optional.of("%PDF-1.7".getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
         var service = new CustomerReceivablePrintService(
                 documents, payments, organization, customers, presentations,
@@ -180,8 +209,103 @@ class CustomerReceivablePrintServiceTest {
         var printable = service.document(document.getId());
 
         assertThat(printable.renderedPdf().contentType()).isEqualTo("application/pdf");
+        assertThat(printable.qrUrl()).isEqualTo(qrUrl);
+        assertThat(printable.qrImage()).startsWith("data:image/png;base64,");
+        assertThat(printable.fiscal()).isEqualTo(fiscalData.toView());
+        assertThat(printable.fiscal().prefix()).isEqualTo("Prefijo congelado:");
+        assertThat(printable.fiscal().testNotice()).isEqualTo("Aviso congelado");
+        assertThat(printable.issuer().name()).isEqualTo("Obligado congelado SL");
+        assertThat(printable.issuer().taxId()).isEqualTo("B12345674");
+        assertThat(printable.issuer().address().line1()).isEqualTo("Calle congelada 7");
         assertThat(java.util.Base64.getDecoder().decode(printable.renderedPdf().base64()))
                 .startsWith((byte) '%', (byte) 'P', (byte) 'D', (byte) 'F');
+    }
+
+    @Test
+    void rectificationCannotRenderA4OrRasterWithoutItsFrozenQrSnapshot() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var payments = mock(DocumentPaymentRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var customers = mock(CustomerRepository.class);
+        var presentations = mock(InvoicePresentationSnapshotFactory.class);
+        var fiscalQr = mock(DocumentFiscalQrService.class);
+        var qrImages = mock(com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        var renderer = mock(InvoiceJasperRenderer.class);
+        var address = java.util.Map.of(
+                "linea1", "Calle 1", "codigoPostal", "35001",
+                "ciudad", "Las Palmas", "provincia", "Las Palmas", "pais", "ES");
+        var company = new Company("B12345678", "TPV ERP SL", address);
+        var store = new Store(company, "001", "Tienda", address,
+                UUID.randomUUID().toString(), "Atlantic/Canary", "EUR", "es-ES");
+        var customer = new Customer(company, "Cliente", DocumentType.CIF,
+                "B87654321", new FiscalAddress(
+                        "Calle 2", "35002", "Las Palmas", "Las Palmas", "ES"),
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.assignClientCode(store.getId(), "C-1");
+        var document = rectification(store.getId(), customer.getId());
+        var presentation = new InvoicePresentationSnapshot(
+                2, InvoiceFiscalProfile.IGIC, null, List.of());
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(documents.findCustomerDocumentForPrint(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+        when(customers.findByIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(customer));
+        when(presentations.create(DocumentTemplateType.RECTIFICATIVA_VENTA))
+                .thenReturn("rectification-snapshot");
+        when(presentations.read("rectification-snapshot")).thenReturn(presentation);
+        when(fiscalQr.resolveForPrint(document.getId())).thenThrow(
+                new FiscalQrUnavailableException(document.getId(),
+                        FiscalQrUnavailableException.Reason.FROZEN_SNAPSHOT_MISSING));
+        var service = new CustomerReceivablePrintService(
+                documents, payments, organization, customers, presentations,
+                fiscalQr, qrImages, renderer);
+
+        assertThatThrownBy(() -> service.document(document.getId()))
+                .isInstanceOf(FiscalQrUnavailableException.class)
+                .extracting(error -> ((FiscalQrUnavailableException) error).reason())
+                .isEqualTo(FiscalQrUnavailableException.Reason.FROZEN_SNAPSHOT_MISSING);
+        verifyNoInteractions(qrImages, renderer);
+    }
+
+    @Test
+    void fiscalA4CannotRenderWhenGeneratedQrIsNotPng() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var payments = mock(DocumentPaymentRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var customers = mock(CustomerRepository.class);
+        var fiscalQr = mock(DocumentFiscalQrService.class);
+        var qrImages = mock(com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        var renderer = mock(InvoiceJasperRenderer.class);
+        var store = mock(Store.class);
+        var company = new Company("B12345678", "TPV ERP SL", java.util.Map.of(
+                "linea1", "Calle 1", "codigoPostal", "35001", "ciudad", "Las Palmas",
+                "provincia", "Las Palmas", "pais", "ES"));
+        var customer = mock(Customer.class);
+        var document = document(UUID.randomUUID());
+        when(store.getId()).thenReturn(document.getTiendaId());
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(documents.findCustomerDocumentForPrint(document.getId(), document.getTiendaId()))
+                .thenReturn(Optional.of(document));
+        when(customers.findByIdAndCompanyId(document.getClienteId(), company.getId()))
+                .thenReturn(Optional.of(customer));
+        var qrUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674";
+        when(fiscalQr.resolveForPrint(document.getId())).thenReturn(Optional.of(
+                new DocumentFiscalQrService.FiscalQrPrintData(qrUrl, "A".repeat(64))));
+        when(qrImages.png(qrUrl, 240)).thenReturn(
+                new com.tpverp.backend.verifactu.FiscalQrImage(
+                        "not-png".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "image/png"));
+        var service = new CustomerReceivablePrintService(
+                documents, payments, organization, customers, null,
+                fiscalQr, qrImages, renderer);
+
+        assertThatThrownBy(() -> service.document(document.getId()))
+                .isInstanceOf(FiscalQrUnavailableException.class)
+                .extracting(error -> ((FiscalQrUnavailableException) error).reason())
+                .isEqualTo(FiscalQrUnavailableException.Reason.IMAGE_GENERATION_FAILED);
+        verifyNoInteractions(renderer);
     }
 
     @Test
@@ -225,7 +349,7 @@ class CustomerReceivablePrintServiceTest {
         assertThat(printable.qrUrl()).isNull();
         assertThat(printable.qrImage()).isNull();
         assertThat(printable.renderedPdf()).isNotNull();
-        verify(fiscalQr, never()).qrUrl(any());
+        verify(fiscalQr, never()).resolveForPrint(any());
         verify(customers, never()).findByIdAndCompanyId(any(), any());
     }
 
@@ -349,5 +473,24 @@ class CustomerReceivablePrintServiceTest {
         document.confirm("AV-1", UUID.randomUUID(),
                 Instant.parse("2026-08-10T10:00:00Z"), false);
         return document;
+    }
+
+    private static CommercialDocument rectification(UUID storeId, UUID customerId) {
+        var document = new CommercialDocument(storeId, UUID.randomUUID(),
+                CommercialDocumentType.RECTIFICATIVA_VENTA, LocalDate.of(2026, 8, 10),
+                UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(document, UUID.randomUUID(), 1,
+                BigDecimal.ONE.negate(), "P1", "8430000000010", "Producto", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO, true,
+                "IGIC", new BigDecimal("7.00")));
+        document.setParties(customerId, null, null);
+        document.confirm("RV-1", UUID.randomUUID(),
+                Instant.parse("2026-08-10T10:00:00Z"), false);
+        return document;
+    }
+
+    private static byte[] pngSignature() {
+        return new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47,
+                0x0D, 0x0A, 0x1A, 0x0A};
     }
 }

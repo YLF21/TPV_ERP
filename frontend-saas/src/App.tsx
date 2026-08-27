@@ -1,5 +1,5 @@
-import { createContext, FormEvent, useContext, useEffect, useMemo, useState } from "react";
-import { api, ApiError } from "./lib/api";
+import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { api, ApiError, extractApiErrorMessage } from "./lib/api";
 import type {
   AdminNotification,
   AdminSession,
@@ -23,6 +23,7 @@ import type {
   InventoryStock,
   InstallationSummary,
   LicenseSummary,
+  OperationalIncident,
   PairingCodeResponse,
   SaasStatus,
   SalesDocument,
@@ -31,18 +32,25 @@ import type {
   SupportTicket,
   SupportTicketComment,
   SyncEventView,
+  SyncProjectionStatus,
   TenantPortalData,
   TenantUser,
   TaxRegime,
   TechnicalStatus,
   TaxpayerType,
-  VerifactuActivationPolicy
+  CommercialProfile,
+  FiscalAddress,
+  FiscalProvisioning,
+  VerifactuActivationPolicy,
+  FiscalStatusAdmin,
+  FiscalCompanyStatusAdmin
 } from "./lib/types";
 
-type View = "dashboard" | "licenses" | "sync" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "subscriptions" | "reports";
+type View = "dashboard" | "licenses" | "sync" | "fiscal" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "subscriptions" | "reports";
 type Notice = { type: "success" | "error"; text: string } | null;
 type LicenseAction = "block" | "unblock" | "pairing";
 type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
+type TenantAssignableRoleName = "MANAGER" | "VIEWER" | "BILLING";
 type Language = "es" | "en" | "zh";
 type AuthMode = "admin" | "tenant";
 
@@ -62,6 +70,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     licensesCompanies: "Licencias y empresas",
     licenses: "Licencias",
     sync: "Sincronizacion",
+    fiscal: "Estado fiscal",
     users: "Usuarios",
     audit: "Auditoria",
     supportCenter: "Soporte",
@@ -103,8 +112,20 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     taxId: "NIF/CIF",
     type: "Tipo",
     taxes: "Impuestos",
+    commercialProfile: "Perfil comercial",
     storeCode: "Codigo tienda",
     storeName: "Nombre tienda",
+    storeTimeZone: "Zona horaria de la tienda",
+    companyAddress: "Domicilio fiscal de la empresa",
+    storeAddress: "Domicilio de la tienda",
+    fiscalProvisioning: "Datos fiscales de aprovisionamiento",
+    fiscalProvisioningSubtitle: "Identidad operativa usada al vincular o sustituir una instalación",
+    fiscalProvisioningUpdated: "Datos fiscales actualizados.",
+    addressLine: "Direccion",
+    city: "Ciudad",
+    postalCode: "Codigo postal",
+    province: "Provincia",
+    country: "Pais",
     validUntil: "Valida hasta",
     creating: "Creando",
     createLicense: "Crear licencia",
@@ -119,6 +140,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     quotas: "Cupos",
     valid: "Valida",
     blockedStatus: "Bloqueada",
+    expiredStatus: "Caducada",
     generateCode: "Generar codigo",
     generating: "Generando",
     block: "Bloquear",
@@ -147,6 +169,28 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     lastValidation: "Ultima validacion",
     pending: "Pendiente",
     noLinkedInstallations: "No hay instalaciones vinculadas.",
+    notLinked: "Sin vincular",
+    fiscalStatusSubtitle: "Modalidad efectiva comunicada por cada tienda e instalacion",
+    fiscalCompany: "Empresa",
+    fiscalStore: "Tienda",
+    fiscalInstallation: "Instalacion",
+    fiscalMode: "Modalidad",
+    fiscalActivationState: "Estado activacion",
+    fiscalEnvironment: "Entorno",
+    fiscalTransport: "Transporte",
+    fiscalLastReport: "Ultimo reporte",
+    fiscalActivationDate: "Fecha obligatoria",
+    fiscalNoData: "Aun no hay estados fiscales recibidos.",
+    fiscalPreSif: "PRE-SIF",
+    fiscalNoVerifactu: "NO VERI*FACTU",
+    fiscalVerifactu: "VERI*FACTU",
+    fiscalActive: "Activo",
+    fiscalPending: "Pendiente",
+    fiscalDueReview: "Requiere activacion local",
+    fiscalUnknown: "Sin politica conocida",
+    fiscalMixed: "Mixto",
+    fiscalStale: "Sin comunicacion reciente",
+    fiscalReadOnly: "Consulta de solo lectura: la modalidad se decide y activa en la instalacion local.",
     syncSubtitle: "Eventos enviados desde tiendas",
     consultingEvents: "Consultando eventos",
     events: "Eventos",
@@ -154,8 +198,44 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     stock: "Stock",
     cash: "Caja",
     allCompanies: "Todas las empresas",
-    demoHint: "Mostrando ejemplos locales porque no hay eventos reales para este filtro.",
     noEventsForFilter: "No hay eventos para el filtro actual.",
+    incidents: "Incidencias",
+    operationalIncidents: "Incidencias operativas",
+    operationalIncidentsSubtitle: "Procesos centrales detenidos que requieren una decision administrativa auditada",
+    operationalIncidentCount: "Incidencias activas",
+    noOperationalIncidents: "No hay incidencias operativas para el filtro actual.",
+    operationalIncidentPermission: "Se requiere VIEW_ADMIN_DATA para consultar incidencias y MANAGE_OPERATIONAL_INCIDENTS para resolverlas.",
+    incidentProcess: "Proceso",
+    memberCategoryBootstrap: "Bootstrap de categorias de socio",
+    incidentProgress: "Tiendas",
+    incidentInactivity: "Inactividad",
+    incidentInactive: "Inactiva",
+    incidentRecent: "Actividad reciente",
+    incidentSnapshots: "Snapshots",
+    incidentChunks: "Bloques",
+    incidentLastActivity: "Ultima actividad",
+    incidentConflict: "Conflicto",
+    incidentBaseline: "Baseline completado",
+    cancelIncident: "Cancelar residual",
+    cancelIncidentTitle: "Cancelar bootstrap residual",
+    cancelIncidentWarning: "La cancelacion queda auditada y no elimina datos. Confirma que el proceso residual no contiene informacion util.",
+    cancelIncidentReason: "Motivo obligatorio",
+    cancelIncidentReasonPlaceholder: "Ej.: bootstrap residual vacio revisado por soporte",
+    cancelIncidentReasonRequired: "Indica un motivo de al menos 5 caracteres.",
+    confirmCancellation: "Confirmar cancelacion",
+    cancelling: "Cancelando",
+    close: "Cerrar",
+    incidentCancelled: "Bootstrap residual cancelado y auditado.",
+    incidentConflictReloaded: "La incidencia ha cambiado desde la consulta. Se han recargado los datos.",
+    eventProjection: "Proyeccion",
+    eventSchemaVersion: "Esquema",
+    eventProjectionError: "Error de proyeccion",
+    projectionHealth: "Estado de proyeccion central",
+    projectionReceived: "Pendientes RECEIVED",
+    projectionProjected: "PROJECTED",
+    projectionIgnored: "IGNORED",
+    projectionErrors: "ERROR",
+    projectionOldestReceived: "Pendiente mas antiguo",
     payload: "Payload",
     product: "Producto",
     warehouse: "Almacen",
@@ -189,6 +269,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     companyDetail: "Ficha de empresa",
     companyDetailSubtitle: "Licencia, instalaciones y actividad sincronizada",
     selectCompany: "Selecciona una empresa para ver el detalle.",
+    companySelectionChanged: "La empresa seleccionada ha cambiado. Revisa los datos y vuelve a intentarlo.",
     syncHealth: "Salud de sincronizacion",
     syncHealthSubtitle: "Actividad recibida por tiendas",
     eventsToday: "Eventos hoy",
@@ -204,12 +285,21 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     licenseExpires: "Caduca",
     withoutValidation: "Sin validacion",
     stale: "Atrasada",
+    revoked: "Revocada",
+    revokeInstallation: "Revocar instalacion",
+    revocationReasonPrompt: "Indica el motivo de revocacion (minimo 5 caracteres). La instalacion dejara de validar y sincronizar:",
+    revocationReasonRequired: "El motivo de revocacion debe tener al menos 5 caracteres.",
+    installationRevoked: "Instalacion revocada y credencial invalidada.",
+    revokedAt: "Revocada el",
+    revokedBy: "Revocada por",
+    actions: "Acciones",
     phase2Operations: "Gestion SaaS",
     phase2OperationsSubtitle: "Licencia, facturacion y soporte",
     saveChanges: "Guardar cambios",
     saving: "Guardando",
     renewLicense: "Renovar licencia",
     editCompany: "Editar empresa",
+    fiscalIdentityLocked: "Tipo de obligado y regimen fiscal bloqueados tras emitir la licencia.",
     plan: "Plan",
     billingStatus: "Estado de pago",
     renewalDate: "Fecha renovacion",
@@ -406,6 +496,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     licensesCompanies: "Licenses and companies",
     licenses: "Licenses",
     sync: "Synchronization",
+    fiscal: "Fiscal status",
     users: "Users",
     audit: "Audit",
     supportCenter: "Support",
@@ -444,8 +535,20 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     taxId: "Tax ID",
     type: "Type",
     taxes: "Taxes",
+    commercialProfile: "Commercial profile",
     storeCode: "Store code",
     storeName: "Store name",
+    storeTimeZone: "Store time zone",
+    companyAddress: "Company fiscal address",
+    storeAddress: "Store address",
+    fiscalProvisioning: "Fiscal provisioning data",
+    fiscalProvisioningSubtitle: "Operational identity used when linking or replacing an installation",
+    fiscalProvisioningUpdated: "Fiscal provisioning data updated.",
+    addressLine: "Address line",
+    city: "City",
+    postalCode: "Postal code",
+    province: "Province",
+    country: "Country",
     validUntil: "Valid until",
     creating: "Creating",
     createLicense: "Create license",
@@ -460,6 +563,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     quotas: "Quotas",
     valid: "Valid",
     blockedStatus: "Blocked",
+    expiredStatus: "Expired",
     generateCode: "Generate code",
     generating: "Generating",
     block: "Block",
@@ -488,6 +592,28 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     lastValidation: "Last validation",
     pending: "Pending",
     noLinkedInstallations: "No linked installations.",
+    notLinked: "Not linked",
+    fiscalStatusSubtitle: "Effective modality reported by each store and installation",
+    fiscalCompany: "Company",
+    fiscalStore: "Store",
+    fiscalInstallation: "Installation",
+    fiscalMode: "Modality",
+    fiscalActivationState: "Activation state",
+    fiscalEnvironment: "Environment",
+    fiscalTransport: "Transport",
+    fiscalLastReport: "Last report",
+    fiscalActivationDate: "Mandatory date",
+    fiscalNoData: "No fiscal status has been received yet.",
+    fiscalPreSif: "PRE-SIF",
+    fiscalNoVerifactu: "NO VERI*FACTU",
+    fiscalVerifactu: "VERI*FACTU",
+    fiscalActive: "Active",
+    fiscalPending: "Pending",
+    fiscalDueReview: "Local activation required",
+    fiscalUnknown: "Policy unknown",
+    fiscalMixed: "Mixed",
+    fiscalStale: "No recent communication",
+    fiscalReadOnly: "Read-only view: modality is selected and activated at the local installation.",
     syncSubtitle: "Events sent from stores",
     consultingEvents: "Checking events",
     events: "Events",
@@ -495,8 +621,44 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     stock: "Stock",
     cash: "Cash",
     allCompanies: "All companies",
-    demoHint: "Showing local examples because there are no real events for this filter.",
     noEventsForFilter: "No events for the current filter.",
+    incidents: "Incidents",
+    operationalIncidents: "Operational incidents",
+    operationalIncidentsSubtitle: "Stalled central processes requiring an audited administrative decision",
+    operationalIncidentCount: "Active incidents",
+    noOperationalIncidents: "No operational incidents for the current filter.",
+    operationalIncidentPermission: "VIEW_ADMIN_DATA is required to view incidents and MANAGE_OPERATIONAL_INCIDENTS to resolve them.",
+    incidentProcess: "Process",
+    memberCategoryBootstrap: "Member category bootstrap",
+    incidentProgress: "Stores",
+    incidentInactivity: "Inactivity",
+    incidentInactive: "Inactive",
+    incidentRecent: "Recent activity",
+    incidentSnapshots: "Snapshots",
+    incidentChunks: "Chunks",
+    incidentLastActivity: "Last activity",
+    incidentConflict: "Conflict",
+    incidentBaseline: "Completed baseline",
+    cancelIncident: "Cancel residual",
+    cancelIncidentTitle: "Cancel residual bootstrap",
+    cancelIncidentWarning: "Cancellation is audited and does not delete data. Confirm that the residual process contains no useful information.",
+    cancelIncidentReason: "Required reason",
+    cancelIncidentReasonPlaceholder: "E.g. empty residual bootstrap reviewed by support",
+    cancelIncidentReasonRequired: "Enter a reason with at least 5 characters.",
+    confirmCancellation: "Confirm cancellation",
+    cancelling: "Cancelling",
+    close: "Close",
+    incidentCancelled: "Residual bootstrap cancelled and audited.",
+    incidentConflictReloaded: "The incident changed after it was loaded. The data has been refreshed.",
+    eventProjection: "Projection",
+    eventSchemaVersion: "Schema",
+    eventProjectionError: "Projection error",
+    projectionHealth: "Central projection status",
+    projectionReceived: "Pending RECEIVED",
+    projectionProjected: "PROJECTED",
+    projectionIgnored: "IGNORED",
+    projectionErrors: "ERROR",
+    projectionOldestReceived: "Oldest pending",
     payload: "Payload",
     product: "Product",
     warehouse: "Warehouse",
@@ -530,6 +692,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     companyDetail: "Company profile",
     companyDetailSubtitle: "License, installations and synchronized activity",
     selectCompany: "Select a company to view details.",
+    companySelectionChanged: "The selected company changed. Review the data and try again.",
     syncHealth: "Synchronization health",
     syncHealthSubtitle: "Activity received from stores",
     eventsToday: "Events today",
@@ -545,12 +708,21 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     licenseExpires: "Expires",
     withoutValidation: "Without validation",
     stale: "Delayed",
+    revoked: "Revoked",
+    revokeInstallation: "Revoke installation",
+    revocationReasonPrompt: "Enter the revocation reason (at least 5 characters). The installation will no longer validate or sync:",
+    revocationReasonRequired: "The revocation reason must contain at least 5 characters.",
+    installationRevoked: "Installation revoked and credential invalidated.",
+    revokedAt: "Revoked at",
+    revokedBy: "Revoked by",
+    actions: "Actions",
     phase2Operations: "SaaS management",
     phase2OperationsSubtitle: "License, billing and support",
     saveChanges: "Save changes",
     saving: "Saving",
     renewLicense: "Renew license",
     editCompany: "Edit company",
+    fiscalIdentityLocked: "Taxpayer type and tax regime are locked after the license is issued.",
     plan: "Plan",
     billingStatus: "Billing status",
     renewalDate: "Renewal date",
@@ -639,6 +811,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     licensesCompanies: "许可证和公司",
     licenses: "许可证",
     sync: "同步",
+    fiscal: "税务状态",
     users: "用户",
     audit: "审计",
     logout: "退出",
@@ -651,6 +824,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     refreshing: "刷新中",
     loadingSaas: "正在加载 SaaS 数据...",
     noLoadedData: "暂无已加载数据。",
+    companySelectionChanged: "所选公司已更改。请检查数据后重试。",
     username: "用户",
     password: "密码",
     enter: "登录",
@@ -669,12 +843,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     auditRecent: "最近管理操作",
     createCompany: "新增公司",
     createCompanySubtitle: "创建公司、门店、许可证和配对码",
+    fiscalIdentityLocked: "许可证签发后，纳税人类型和税制将被锁定。",
     company: "公司",
     taxId: "税号",
     type: "类型",
     taxes: "税制",
+    commercialProfile: "商业模式",
     storeCode: "门店代码",
     storeName: "门店名称",
+    storeTimeZone: "门店时区",
+    companyAddress: "公司税务地址",
+    storeAddress: "门店地址",
+    fiscalProvisioning: "税务配置资料",
+    fiscalProvisioningSubtitle: "绑定或更换安装时使用的业务身份资料",
+    fiscalProvisioningUpdated: "税务配置资料已更新。",
+    addressLine: "地址",
+    city: "城市",
+    postalCode: "邮政编码",
+    province: "省/州",
+    country: "国家",
     validUntil: "有效期至",
     creating: "创建中",
     createLicense: "创建许可证",
@@ -689,6 +876,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     quotas: "配额",
     valid: "有效",
     blockedStatus: "已锁定",
+    expiredStatus: "已过期",
     generateCode: "生成代码",
     generating: "生成中",
     block: "锁定",
@@ -717,6 +905,36 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     lastValidation: "最后验证",
     pending: "待处理",
     noLinkedInstallations: "暂无已绑定安装。",
+    notLinked: "未绑定",
+    revoked: "已撤销",
+    revokeInstallation: "撤销安装",
+    revocationReasonPrompt: "请输入撤销原因（至少 5 个字符）。该安装将无法继续验证或同步：",
+    revocationReasonRequired: "撤销原因必须至少包含 5 个字符。",
+    installationRevoked: "安装已撤销，凭据已失效。",
+    revokedAt: "撤销时间",
+    revokedBy: "撤销人",
+    actions: "操作",
+    fiscalStatusSubtitle: "每个门店和安装报告的当前税务模式",
+    fiscalCompany: "公司",
+    fiscalStore: "门店",
+    fiscalInstallation: "安装",
+    fiscalMode: "模式",
+    fiscalActivationState: "启用状态",
+    fiscalEnvironment: "环境",
+    fiscalTransport: "传输",
+    fiscalLastReport: "最后报告",
+    fiscalActivationDate: "强制日期",
+    fiscalNoData: "尚未收到税务状态。",
+    fiscalPreSif: "PRE-SIF",
+    fiscalNoVerifactu: "NO VERI*FACTU",
+    fiscalVerifactu: "VERI*FACTU",
+    fiscalActive: "已启用",
+    fiscalPending: "待处理",
+    fiscalDueReview: "需要本地启用",
+    fiscalUnknown: "未知策略",
+    fiscalMixed: "混合",
+    fiscalStale: "近期无通信",
+    fiscalReadOnly: "只读视图：模式由本地安装选择和启用。",
     syncSubtitle: "门店发送的事件",
     consultingEvents: "正在查询事件",
     events: "事件",
@@ -724,8 +942,44 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     stock: "库存",
     cash: "收银",
     allCompanies: "全部公司",
-    demoHint: "当前筛选没有真实事件，正在显示本地示例。",
     noEventsForFilter: "当前筛选暂无事件。",
+    incidents: "事件异常",
+    operationalIncidents: "运行事件异常",
+    operationalIncidentsSubtitle: "需要审计管理决策的已停滞中央流程",
+    operationalIncidentCount: "活动异常数",
+    noOperationalIncidents: "当前筛选没有运行事件异常。",
+    operationalIncidentPermission: "查看异常需要 VIEW_ADMIN_DATA 权限，处理异常需要 MANAGE_OPERATIONAL_INCIDENTS 权限。",
+    incidentProcess: "流程",
+    memberCategoryBootstrap: "会员类别引导流程",
+    incidentProgress: "门店",
+    incidentInactivity: "活动状态",
+    incidentInactive: "已停滞",
+    incidentRecent: "近期有活动",
+    incidentSnapshots: "快照",
+    incidentChunks: "数据块",
+    incidentLastActivity: "最后活动",
+    incidentConflict: "冲突",
+    incidentBaseline: "已完成基线",
+    cancelIncident: "取消残留流程",
+    cancelIncidentTitle: "取消残留引导流程",
+    cancelIncidentWarning: "取消操作会被审计且不会删除数据。请确认残留流程中没有有效信息。",
+    cancelIncidentReason: "必填原因",
+    cancelIncidentReasonPlaceholder: "例如：支持人员已确认残留引导流程为空",
+    cancelIncidentReasonRequired: "请输入至少 5 个字符的原因。",
+    confirmCancellation: "确认取消",
+    cancelling: "正在取消",
+    close: "关闭",
+    incidentCancelled: "残留引导流程已取消并记录审计。",
+    incidentConflictReloaded: "该异常自加载后已发生变化，数据已刷新。",
+    eventProjection: "投影状态",
+    eventSchemaVersion: "架构版本",
+    eventProjectionError: "投影错误",
+    projectionHealth: "中央投影状态",
+    projectionReceived: "待处理 RECEIVED",
+    projectionProjected: "PROJECTED",
+    projectionIgnored: "IGNORED",
+    projectionErrors: "ERROR",
+    projectionOldestReceived: "最早待处理时间",
     payload: "载荷",
     product: "商品",
     warehouse: "仓库",
@@ -776,15 +1030,20 @@ const initialCompanyForm: CreateCompanyRequest = {
   taxId: "",
   taxpayerType: "SOCIEDAD",
   impuestos: "IVA",
-  storeCode: "",
+  commercialProfile: "MAYORISTA",
+  companyAddress: { linea1: "", ciudad: "", codigoPostal: "", provincia: "", pais: "ES" },
+  storeCode: "001",
   storeName: "",
+  storeAddress: { linea1: "", ciudad: "", codigoPostal: "", provincia: "", pais: "ES" },
+  timeZoneId: "Atlantic/Canary",
   validUntil: toLocalInput(addYears(new Date(), 1)),
   maxWindows: 1,
   maxPda: 0
 };
 
-const DEMO_COMPANY_ID = "00000000-0000-4000-8000-000000000001";
-const DEMO_STORE_ID = "00000000-0000-4000-8000-000000000002";
+function emptyFiscalAddress(): FiscalAddress {
+  return { linea1: "", ciudad: "", codigoPostal: "", provincia: "", pais: "ES" };
+}
 
 export default function App() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
@@ -809,7 +1068,7 @@ export default function App() {
     [language]
   );
   const visibleData = useMemo(() => (data ? filterDashboardData(data, searchQuery) : null), [data, searchQuery]);
-  const permissions = useMemo(() => new Set(session?.permissions ?? fallbackPermissions(credentials?.username)), [session, credentials]);
+  const permissions = useMemo(() => new Set(session?.permissions ?? []), [session]);
 
   useEffect(() => {
     if (credentials) {
@@ -823,10 +1082,7 @@ export default function App() {
     try {
       const [dashboard, nextSession] = await Promise.all([
         api.dashboard(activeCredentials),
-        api.session(activeCredentials).catch((error) => {
-          if (isMissingPhase3Endpoint(error)) return fallbackSession(activeCredentials.username);
-          throw error;
-        })
+        api.session(activeCredentials)
       ]);
       setData(dashboard);
       setTenantData(null);
@@ -917,6 +1173,7 @@ export default function App() {
           <NavButton active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")} label={i18n.t("dashboard")} />
           <NavButton active={activeView === "licenses"} onClick={() => setActiveView("licenses")} label={i18n.t("licenses")} />
           <NavButton active={activeView === "sync"} onClick={() => setActiveView("sync")} label={i18n.t("sync")} />
+          <NavButton active={activeView === "fiscal"} onClick={() => setActiveView("fiscal")} label={i18n.t("fiscal")} />
           <NavButton active={activeView === "users"} onClick={() => setActiveView("users")} label={i18n.t("users")} />
           <NavButton active={activeView === "support"} onClick={() => setActiveView("support")} label={i18n.t("supportCenter")} />
           <NavButton active={activeView === "health"} onClick={() => setActiveView("health")} label={i18n.t("customerHealth")} />
@@ -983,7 +1240,15 @@ export default function App() {
                 onNotice={setNotice}
               />
             )}
-            {activeView === "sync" && <SyncView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />}
+            {activeView === "sync" && (
+              <SyncView
+                credentials={credentials}
+                licenses={visibleData.licenses}
+                permissions={permissions}
+                onNotice={setNotice}
+              />
+            )}
+            {activeView === "fiscal" && <FiscalStatusView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />}
             {activeView === "users" && (
               <UsersView
                 credentials={credentials}
@@ -1430,9 +1695,12 @@ function LicensesView({
   const [busy, setBusy] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => licenses[0]?.companyId ?? "");
   const canCreateCompany = permissions.has("ADD_COMPANY");
-  const canManageCompany = permissions.has("EDIT_COMPANY_DATA") || permissions.has("RENEW_LICENSE");
+  const canEditCompany = permissions.has("EDIT_COMPANY_DATA");
+  const canRenewLicense = permissions.has("RENEW_LICENSE");
   const canGenerateCode = permissions.has("REGENERATE_PAIRING_CODE");
-  const canChangeLicenseStatus = permissions.has("BLOCK_LICENSE") || permissions.has("UNBLOCK_LICENSE");
+  const canBlockLicense = permissions.has("BLOCK_LICENSE");
+  const canUnblockLicense = permissions.has("UNBLOCK_LICENSE");
+  const canRevokeInstallation = permissions.has("REVOKE_INSTALLATION");
   const selectedCompany = licenses.find((license) => license.companyId === selectedCompanyId) ?? licenses[0] ?? null;
 
   useEffect(() => {
@@ -1466,6 +1734,12 @@ function LicensesView({
   }
 
   async function licenseAction(reference: string, action: LicenseAction) {
+    const permitted = action === "block"
+      ? canBlockLicense
+      : action === "unblock"
+        ? canUnblockLicense
+        : canGenerateCode;
+    if (!permitted) return;
     setBusy(`${action}:${reference}`);
     try {
       if (action === "block") {
@@ -1499,6 +1773,26 @@ function LicensesView({
     }
   }
 
+  async function revokeInstallation(installation: InstallationSummary) {
+    if (!canRevokeInstallation || !installation.active) return;
+    const reason = window.prompt(t("revocationReasonPrompt"))?.trim();
+    if (reason == null) return;
+    if (reason.length < 5) {
+      onNotice({ type: "error", text: t("revocationReasonRequired") });
+      return;
+    }
+    setBusy(`revoke:${installation.installationId}`);
+    try {
+      await api.revokeInstallation(credentials, installation.installationId, reason);
+      onNotice({ type: "success", text: t("installationRevoked") });
+      onChanged();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="view-grid">
       <VerifactuPolicySection
@@ -1526,6 +1820,17 @@ function LicensesView({
               options={["IVA", "IGIC"]}
               onChange={(impuestos) => setCompanyForm({ ...companyForm, impuestos: impuestos as TaxRegime })}
             />
+            <Select
+              label={t("commercialProfile")}
+              value={companyForm.commercialProfile}
+              options={["MAYORISTA", "MINORISTA"]}
+              onChange={(commercialProfile) => setCompanyForm({ ...companyForm, commercialProfile: commercialProfile as CommercialProfile })}
+            />
+            <AddressFields
+              title={t("companyAddress")}
+              value={companyForm.companyAddress}
+              onChange={(companyAddress) => setCompanyForm({ ...companyForm, companyAddress })}
+            />
             <Input
               label={t("storeCode")}
               value={companyForm.storeCode}
@@ -1533,6 +1838,17 @@ function LicensesView({
               required
             />
             <Input label={t("storeName")} value={companyForm.storeName} onChange={(storeName) => setCompanyForm({ ...companyForm, storeName })} />
+            <AddressFields
+              title={t("storeAddress")}
+              value={companyForm.storeAddress}
+              onChange={(storeAddress) => setCompanyForm({ ...companyForm, storeAddress })}
+            />
+            <Select
+              label={t("storeTimeZone")}
+              value={companyForm.timeZoneId}
+              options={["Atlantic/Canary", "Europe/Madrid"]}
+              onChange={(timeZoneId) => setCompanyForm({ ...companyForm, timeZoneId })}
+            />
             <Input
               label={t("validUntil")}
               type="datetime-local"
@@ -1573,7 +1889,8 @@ function LicensesView({
           licenses={licenses}
           onAction={(reference, action) => void licenseAction(reference, action)}
           busy={busy}
-          showStatusActions={canChangeLicenseStatus}
+          showBlockAction={canBlockLicense}
+          showUnblockAction={canUnblockLicense}
           showPairingAction={canGenerateCode}
           selectedCompanyId={selectedCompany?.companyId}
           onSelectCompany={setSelectedCompanyId}
@@ -1585,14 +1902,23 @@ function LicensesView({
         license={selectedCompany}
         installations={installations.filter((installation) => installation.companyId === selectedCompany?.companyId)}
         events={events.filter((event) => event.companyId === selectedCompany?.companyId)}
-        canManage={canManageCompany}
+        canEditCompany={canEditCompany}
+        canRenewLicense={canRenewLicense}
+        canRevokeInstallation={canRevokeInstallation}
+        installationBusy={busy}
+        onRevokeInstallation={(installation) => void revokeInstallation(installation)}
         onChanged={onChanged}
         onNotice={onNotice}
       />
 
       <section className="content-section">
         <SectionHeader title={t("linkedInstallations")} subtitle={`${installations.length} ${t("installations").toLowerCase()}`} />
-        <InstallationsTable installations={installations} />
+        <InstallationsTable
+          installations={installations}
+          canRevoke={canRevokeInstallation}
+          busy={busy}
+          onRevoke={(installation) => void revokeInstallation(installation)}
+        />
       </section>
     </div>
   );
@@ -1734,33 +2060,46 @@ function taxpayerLabel(taxpayerType: TaxpayerType, t: (key: string) => string) {
   return taxpayerType === "SOCIEDAD" ? t("verifactuCompany") : t("verifactuSelfEmployed");
 }
 
-function SyncView({ credentials, licenses, onNotice }: { credentials: Credentials; licenses: LicenseSummary[]; onNotice: (notice: Notice) => void }) {
+function fiscalModeLabel(mode: string, t: (key: string) => string) {
+  if (mode === "VERIFACTU") return t("fiscalVerifactu");
+  if (mode === "NO_VERIFACTU") return t("fiscalNoVerifactu");
+  if (mode === "PRE_SIF") return t("fiscalPreSif");
+  if (mode === "MIXED") return t("fiscalMixed");
+  return t("fiscalUnknown");
+}
+
+function fiscalStateLabel(state: string, t: (key: string) => string) {
+  if (state === "ACTIVE") return t("fiscalActive");
+  if (state === "PENDING") return t("fiscalPending");
+  if (state === "DUE_REVIEW") return t("fiscalDueReview");
+  if (state === "MIXED") return t("fiscalMixed");
+  return t("fiscalUnknown");
+}
+
+function FiscalStatusView({ credentials, licenses, onNotice }: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  onNotice: (notice: Notice) => void;
+}) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"events" | "sales" | "stock" | "cash">("events");
+  const [rows, setRows] = useState<FiscalStatusAdmin[]>([]);
+  const [companyRows, setCompanyRows] = useState<FiscalCompanyStatusAdmin[]>([]);
   const [companyId, setCompanyId] = useState("");
-  const [events, setEvents] = useState<SyncEventView[]>([]);
-  const [stock, setStock] = useState<StockSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
+  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const visibleRows = rows.filter((row) => !companyId || row.companyId === companyId);
 
-  const companyOptions = useMemo(() => uniqueCompanies(licenses), [licenses]);
-  const sampleCompanies = companyOptions.length > 0 ? companyOptions : [{ companyId: DEMO_COMPANY_ID, companyName: "Empresa demo" }];
-  const displayEvents = events.length > 0 ? events : sampleSyncEvents(mode, sampleCompanies, companyId);
-  const displayStock = stock.length > 0 ? stock : sampleStock(sampleCompanies, companyId);
-  const showingSamples = mode === "stock" ? stock.length === 0 : events.length === 0;
-  const healthEvents = mode === "stock" ? sampleSyncEvents("events", sampleCompanies, companyId) : displayEvents;
-  const lastReceivedAt = latestDate(healthEvents.map((event) => event.receivedAt));
-
-  useEffect(() => {
-    void load();
-  }, [mode, companyId]);
+  useEffect(() => { void load(); }, [credentials.username, companyId]);
 
   async function load() {
     setLoading(true);
     try {
-      if (mode === "events") setEvents(await api.events(credentials, companyId || undefined));
-      if (mode === "sales") setEvents(await api.sales(credentials, companyId || undefined));
-      if (mode === "stock") setStock(await api.stockCurrent(credentials, companyId || undefined));
-      if (mode === "cash") setEvents(await api.cashClosures(credentials, companyId || undefined));
+      const [nextRows, nextCompanyRows] = await Promise.all([
+        api.fiscalStatus(credentials, companyId || undefined),
+        companyId ? Promise.resolve([] as FiscalCompanyStatusAdmin[]) : api.fiscalCompanyStatus(credentials)
+      ]);
+      setRows(nextRows);
+      setCompanyRows(nextCompanyRows);
       onNotice(null);
     } catch (error) {
       onNotice({ type: "error", text: errorMessage(error) });
@@ -1771,13 +2110,207 @@ function SyncView({ credentials, licenses, onNotice }: { credentials: Credential
 
   return (
     <section className="content-section">
-      <SectionHeader title={t("sync")} subtitle={loading ? t("consultingEvents") : t("syncSubtitle")} />
+      <SectionHeader title={t("fiscal")} subtitle={loading ? t("refreshing") : t("fiscalStatusSubtitle")} />
+      <div className="permission-hint">{t("fiscalReadOnly")}</div>
+      <div className="toolbar">
+        <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+          <option value="">{t("allCompanies")}</option>
+          {companies.map((company) => <option key={company.companyId} value={company.companyId}>{company.companyName}</option>)}
+        </select>
+      </div>
+      {!companyId && companyRows.length > 0 && <div className="table-wrap">
+        <table>
+          <thead><tr><th>{t("fiscalCompany")}</th><th>{t("fiscalMode")}</th><th>{t("fiscalActivationState")}</th><th>{t("installations")}</th><th>{t("fiscalLastReport")}</th></tr></thead>
+          <tbody>{companyRows.map((row) => <tr key={row.companyId}>
+            <td><strong>{row.companyName}</strong><small>{row.taxId}</small></td>
+            <td>{fiscalModeLabel(row.effectiveMode, t)}</td>
+            <td>{fiscalStateLabel(row.activationState, t)}</td>
+            <td>
+              {row.installations} / {row.stores}
+              {row.unlinkedStores > 0 ? ` (${row.unlinkedStores} ${t("notLinked")})` : ""}
+              {row.staleInstallations > 0 ? ` · ${row.staleInstallations} ${t("staleInstallations")}` : ""}
+            </td>
+            <td>{row.lastReportedAt ? formatDate(row.lastReportedAt) : "-"}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+      {visibleRows.length === 0 ? <EmptyState text={t("fiscalNoData")} /> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              <th>{t("fiscalCompany")}</th><th>{t("fiscalStore")}</th><th>{t("fiscalInstallation")}</th>
+              <th>{t("fiscalMode")}</th><th>{t("fiscalActivationState")}</th><th>{t("fiscalActivationDate")}</th>
+              <th>{t("fiscalEnvironment")}</th><th>{t("fiscalTransport")}</th><th>{t("fiscalLastReport")}</th>
+            </tr></thead>
+            <tbody>{visibleRows.map((row) => (
+              <tr key={`${row.storeId}:${row.installationId ?? "unlinked"}`}>
+                <td><strong>{row.companyName}</strong><small>{row.taxId}</small></td>
+                <td>{row.storeName}</td>
+                <td><strong>{row.installationReference || t("notLinked")}</strong><small>{row.installationId || "—"}</small></td>
+                <td><StatusPill status={fiscalModeLabel(row.effectiveMode, t)} tone={row.effectiveMode === "VERIFACTU" ? "ok" : row.effectiveMode === "NO_VERIFACTU" ? "warning" : "muted"} /></td>
+                <td><StatusPill status={row.stale ? t("fiscalStale") : fiscalStateLabel(row.activationState, t)} tone={row.stale || row.activationState === "DUE_REVIEW" ? "warning" : row.activationState === "ACTIVE" ? "ok" : "muted"} /></td>
+                <td>{row.activationDate ? formatDate(row.activationDate) : "-"}</td>
+                <td>{row.runtimeClass && row.endpointEnvironment ? `${row.runtimeClass} / ${row.endpointEnvironment}` : "-"}</td>
+                <td>{row.transportMode || "-"}</td>
+                <td>{row.reportedAt ? formatDate(row.reportedAt) : "-"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SyncView({
+  credentials,
+  licenses,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const [mode, setMode] = useState<"events" | "sales" | "stock" | "cash" | "incidents">("events");
+  const [companyId, setCompanyId] = useState("");
+  const [events, setEvents] = useState<SyncEventView[]>([]);
+  const [healthEvents, setHealthEvents] = useState<SyncEventView[]>([]);
+  const [stock, setStock] = useState<StockSnapshot[]>([]);
+  const [incidents, setIncidents] = useState<OperationalIncident[]>([]);
+  const [projectionStatus, setProjectionStatus] = useState<SyncProjectionStatus | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ incident: OperationalIncident; commandId: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const companyOptions = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const companyNames = useMemo(
+    () => new Map(companyOptions.map((company) => [company.companyId, company.companyName])),
+    [companyOptions]
+  );
+  const canViewIncidents = permissions.has("VIEW_ADMIN_DATA");
+  const canManageIncidents = permissions.has("MANAGE_OPERATIONAL_INCIDENTS");
+  const lastReceivedAt = latestDate(healthEvents.map((event) => event.receivedAt));
+
+  useEffect(() => {
+    setCancelTarget(null);
+    setCancelReason("");
+    void load();
+  }, [mode, companyId, canViewIncidents]);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const selectedCompanyId = companyId || undefined;
+      const allEventsPromise = api.events(credentials, selectedCompanyId);
+      const incidentsPromise = canViewIncidents
+        ? api.operationalIncidents(credentials, selectedCompanyId)
+        : Promise.resolve([] as OperationalIncident[]);
+      const projectionStatusPromise = api.syncProjectionStatus(credentials, selectedCompanyId);
+      const selectedDataPromise = mode === "sales"
+        ? api.sales(credentials, selectedCompanyId)
+        : mode === "stock"
+          ? api.stockCurrent(credentials, selectedCompanyId)
+          : mode === "cash"
+            ? api.cashClosures(credentials, selectedCompanyId)
+            : Promise.resolve(null);
+      const [nextHealthEvents, nextIncidents, nextProjectionStatus, selectedData] = await Promise.all([
+        allEventsPromise,
+        incidentsPromise,
+        projectionStatusPromise,
+        selectedDataPromise
+      ]);
+      setHealthEvents(nextHealthEvents);
+      setIncidents(nextIncidents);
+      setProjectionStatus(nextProjectionStatus);
+      if (mode === "events") setEvents(nextHealthEvents);
+      if (mode === "sales" || mode === "cash") setEvents(selectedData as SyncEventView[]);
+      if (mode === "stock") setStock(selectedData as StockSnapshot[]);
+      onNotice(null);
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function requestCancellation(incident: OperationalIncident) {
+    setCancelTarget({ incident, commandId: crypto.randomUUID() });
+    setCancelReason("");
+  }
+
+  async function cancelIncident(event: FormEvent) {
+    event.preventDefault();
+    if (!cancelTarget || !canManageIncidents) return;
+    const reason = cancelReason.trim();
+    if (reason.length < 5) {
+      onNotice({ type: "error", text: t("cancelIncidentReasonRequired") });
+      return;
+    }
+    setCancelling(true);
+    try {
+      await api.cancelMemberCategoryBootstrapIncident(
+        credentials,
+        cancelTarget.incident.companyId,
+        cancelTarget.incident.targetId,
+        {
+          commandId: cancelTarget.commandId,
+          expectedStatus: cancelTarget.incident.status,
+          reason
+        }
+      );
+      setCancelTarget(null);
+      setCancelReason("");
+      await load();
+      onNotice({ type: "success", text: t("incidentCancelled") });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setCancelTarget(null);
+        setCancelReason("");
+        await load();
+        onNotice({ type: "error", text: t("incidentConflictReloaded") });
+      } else {
+        onNotice({ type: "error", text: errorMessage(error) });
+      }
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  return (
+    <section className="content-section">
+      <SectionHeader
+        title={mode === "incidents" ? t("operationalIncidents") : t("sync")}
+        subtitle={loading ? t("consultingEvents") : mode === "incidents" ? t("operationalIncidentsSubtitle") : t("syncSubtitle")}
+      />
       <div className="sync-health-grid">
         <Metric label={t("eventsToday")} value={healthEvents.filter((event) => isToday(event.receivedAt)).length} />
         <Metric label={t("salesEvents")} value={healthEvents.filter((event) => event.entityType === "DOCUMENTO").length} />
-        <Metric label={t("stockEvents")} value={mode === "stock" ? displayStock.length : healthEvents.filter((event) => event.entityType === "STOCK_MOVEMENT").length} />
+        <Metric label={t("stockEvents")} value={mode === "stock" ? stock.length : healthEvents.filter((event) => event.entityType === "STOCK_MOVEMENT").length} />
         <Metric label={t("cashEvents")} value={healthEvents.filter((event) => event.entityType === "CIERRE_CAJA").length} />
         <Metric label={t("lastSync")} value={lastReceivedAt ? formatDate(lastReceivedAt) : "-"} />
+        <Metric
+          label={t("operationalIncidentCount")}
+          value={canViewIncidents ? incidents.length : "-"}
+          tone={canViewIncidents && incidents.length > 0 ? "warning" : undefined}
+        />
+      </div>
+      <div className="projection-health-panel" aria-label={t("projectionHealth")}>
+        <strong>{t("projectionHealth")}</strong>
+        <div className="projection-health-grid">
+          <ProjectionMetric label={t("projectionReceived")} value={projectionStatus?.received ?? 0} warning={(projectionStatus?.received ?? 0) > 0} />
+          <ProjectionMetric label={t("projectionProjected")} value={projectionStatus?.projected ?? 0} />
+          <ProjectionMetric label={t("projectionIgnored")} value={projectionStatus?.ignored ?? 0} />
+          <ProjectionMetric label={t("projectionErrors")} value={projectionStatus?.error ?? 0} warning={(projectionStatus?.error ?? 0) > 0} />
+          <ProjectionMetric
+            label={t("projectionOldestReceived")}
+            value={projectionStatus?.oldestReceivedAt ? formatDate(projectionStatus.oldestReceivedAt) : "-"}
+            warning={Boolean(projectionStatus?.oldestReceivedAt)}
+          />
+        </div>
       </div>
       <div className="toolbar">
         <Segmented
@@ -1786,9 +2319,10 @@ function SyncView({ credentials, licenses, onNotice }: { credentials: Credential
             ["events", t("events")],
             ["sales", t("sales")],
             ["stock", t("stock")],
-            ["cash", t("cash")]
+            ["cash", t("cash")],
+            ["incidents", canViewIncidents ? `${t("incidents")} (${incidents.length})` : t("incidents")]
           ]}
-          onChange={(value) => setMode(value as "events" | "sales" | "stock" | "cash")}
+          onChange={(value) => setMode(value as "events" | "sales" | "stock" | "cash" | "incidents")}
         />
         <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
           <option value="">{t("allCompanies")}</option>
@@ -1799,8 +2333,64 @@ function SyncView({ credentials, licenses, onNotice }: { credentials: Credential
           ))}
         </select>
       </div>
-      {showingSamples && <div className="demo-hint">{t("demoHint")}</div>}
-      {mode === "stock" ? <StockTable rows={displayStock} /> : <EventsTable events={displayEvents} />}
+      {mode === "incidents" && !canViewIncidents && (
+        <div className="permission-hint">{t("operationalIncidentPermission")}</div>
+      )}
+      {mode === "incidents" && cancelTarget && (
+        <form className="incident-cancel-panel" onSubmit={cancelIncident}>
+          <div>
+            <span className="eyebrow">{t("cancelIncidentTitle")}</span>
+            <strong>{companyNames.get(cancelTarget.incident.companyId) ?? cancelTarget.incident.companyId}</strong>
+            <small>{cancelTarget.incident.targetId}</small>
+            <p>{t("cancelIncidentWarning")}</p>
+          </div>
+          <label>
+            <span>{t("cancelIncidentReason")}</span>
+            <textarea
+              className="control-input"
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              placeholder={t("cancelIncidentReasonPlaceholder")}
+              minLength={5}
+              maxLength={1000}
+              rows={3}
+              required
+              autoFocus
+            />
+          </label>
+          <div className="row-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setCancelTarget(null);
+                setCancelReason("");
+              }}
+              disabled={cancelling}
+            >
+              {t("close")}
+            </button>
+            <button className="danger-button subtle" type="submit" disabled={cancelling || cancelReason.trim().length < 5}>
+              {cancelling ? t("cancelling") : t("confirmCancellation")}
+            </button>
+          </div>
+        </form>
+      )}
+      {mode === "incidents" ? (
+        canViewIncidents ? (
+          <OperationalIncidentsTable
+            rows={incidents}
+            companyNames={companyNames}
+            canManage={canManageIncidents}
+            busyTargetId={cancelling ? cancelTarget?.incident.targetId ?? null : null}
+            onCancel={requestCancellation}
+          />
+        ) : null
+      ) : mode === "stock" ? (
+        <StockTable rows={stock} />
+      ) : (
+        <EventsTable events={events} />
+      )}
     </section>
   );
 }
@@ -1827,11 +2417,16 @@ function UsersView({
   const [roleName, setRoleName] = useState<SaasAdminRoleName>("ADMIN");
   const [tenantCompanyId, setTenantCompanyId] = useState("");
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
+  const [tenantUsersCompanyId, setTenantUsersCompanyId] = useState("");
   const [tenantUsername, setTenantUsername] = useState("");
   const [tenantPassword, setTenantPassword] = useState("");
-  const [tenantRoleName, setTenantRoleName] = useState("MANAGER");
+  const [tenantRoleName, setTenantRoleName] = useState<TenantAssignableRoleName>("MANAGER");
   const [tenantPasswordByUser, setTenantPasswordByUser] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const tenantUsersRequestId = useRef(0);
+  const tenantUsersMutationId = useRef(0);
+  const selectedTenantCompanyIdRef = useRef(tenantCompanyId);
+  selectedTenantCompanyIdRef.current = tenantCompanyId;
   const canManageUsers = permissions.has("MANAGE_ADMIN_USERS");
   const canManageTenantUsers = permissions.has("MANAGE_TENANT_USERS");
 
@@ -1842,8 +2437,13 @@ function UsersView({
   }, [companyOptions, tenantCompanyId]);
 
   useEffect(() => {
+    tenantUsersRequestId.current += 1;
+    tenantUsersMutationId.current += 1;
+    setTenantPasswordByUser({});
+    setBusy((current) => current?.includes("tenant") ? null : current);
     if (!tenantCompanyId) {
       setTenantUsers([]);
+      setTenantUsersCompanyId("");
       return;
     }
     void loadTenantUsers(tenantCompanyId);
@@ -1879,10 +2479,18 @@ function UsersView({
   }
 
   async function loadTenantUsers(companyId: string) {
+    const requestId = ++tenantUsersRequestId.current;
     try {
       const response = await api.tenantUsers(credentials, companyId);
+      if (requestId !== tenantUsersRequestId.current
+          || selectedTenantCompanyIdRef.current !== companyId) return;
       setTenantUsers(response);
+      setTenantUsersCompanyId(companyId);
     } catch (error) {
+      if (requestId !== tenantUsersRequestId.current
+          || selectedTenantCompanyIdRef.current !== companyId) return;
+      setTenantUsers([]);
+      setTenantUsersCompanyId(companyId);
       onNotice({ type: "error", text: errorMessage(error) });
     }
   }
@@ -1890,53 +2498,88 @@ function UsersView({
   async function createTenantUser(event: FormEvent) {
     event.preventDefault();
     if (!tenantCompanyId) return;
+    const companyId = tenantCompanyId;
+    const mutationId = ++tenantUsersMutationId.current;
     setBusy("create-tenant-user");
     try {
-      await api.createTenantUser(credentials, tenantCompanyId, {
+      const created = await api.createTenantUser(credentials, companyId, {
         username: tenantUsername,
         password: tenantPassword,
         roleName: tenantRoleName
       });
+      if (!isCurrentTenantMutation(companyId, mutationId) || created.companyId !== companyId) return;
       setTenantUsername("");
       setTenantPassword("");
       onNotice({ type: "success", text: t("tenantUserCreated") });
-      await loadTenantUsers(tenantCompanyId);
+      if (selectedTenantCompanyIdRef.current === companyId) {
+        await loadTenantUsers(companyId);
+      }
     } catch (error) {
+      if (!isCurrentTenantMutation(companyId, mutationId)) return;
       onNotice({ type: "error", text: userManagementErrorMessage(error) });
     } finally {
-      setBusy(null);
+      if (isCurrentTenantMutation(companyId, mutationId)) setBusy(null);
     }
   }
 
   async function changeTenantPassword(user: string) {
     const nextPassword = tenantPasswordByUser[user]?.trim();
     if (!nextPassword) return;
+    const companyId = tenantCompanyId;
+    if (!ownsSelectedTenantUser(companyId, user)) {
+      onNotice({ type: "error", text: t("companySelectionChanged") });
+      return;
+    }
+    const mutationId = ++tenantUsersMutationId.current;
     setBusy(`tenant-password-${user}`);
     try {
       await api.changeTenantPassword(credentials, user, nextPassword);
+      if (!isCurrentTenantMutation(companyId, mutationId)) return;
       setTenantPasswordByUser((current) => ({ ...current, [user]: "" }));
       onNotice({ type: "success", text: t("tenantUserUpdated") });
     } catch (error) {
+      if (!isCurrentTenantMutation(companyId, mutationId)) return;
       onNotice({ type: "error", text: userManagementErrorMessage(error) });
     } finally {
-      setBusy(null);
+      if (isCurrentTenantMutation(companyId, mutationId)) setBusy(null);
     }
   }
 
   async function deactivateTenantUser(user: string) {
+    const companyId = tenantCompanyId;
+    if (!ownsSelectedTenantUser(companyId, user)) {
+      onNotice({ type: "error", text: t("companySelectionChanged") });
+      return;
+    }
+    const mutationId = ++tenantUsersMutationId.current;
     setBusy(`tenant-disable-${user}`);
     try {
       await api.deactivateTenantUser(credentials, user);
+      if (!isCurrentTenantMutation(companyId, mutationId)) return;
       onNotice({ type: "success", text: t("tenantUserDisabled") });
-      if (tenantCompanyId) {
-        await loadTenantUsers(tenantCompanyId);
+      if (selectedTenantCompanyIdRef.current === companyId) {
+        await loadTenantUsers(companyId);
       }
     } catch (error) {
+      if (!isCurrentTenantMutation(companyId, mutationId)) return;
       onNotice({ type: "error", text: userManagementErrorMessage(error) });
     } finally {
-      setBusy(null);
+      if (isCurrentTenantMutation(companyId, mutationId)) setBusy(null);
     }
   }
+
+  function ownsSelectedTenantUser(companyId: string, username: string) {
+    return companyId.length > 0
+      && tenantUsersCompanyId === companyId
+      && tenantUsers.some((user) => user.companyId === companyId && user.username === username);
+  }
+
+  function isCurrentTenantMutation(companyId: string, mutationId: number) {
+    return mutationId === tenantUsersMutationId.current
+      && selectedTenantCompanyIdRef.current === companyId;
+  }
+
+  const visibleTenantUsers = tenantUsersCompanyId === tenantCompanyId ? tenantUsers : [];
 
   return (
     <div className="view-grid">
@@ -2034,12 +2677,12 @@ function UsersView({
               <select
                 className="control-input"
                 value={tenantRoleName}
-                onChange={(event) => setTenantRoleName(event.target.value)}
+                onChange={(event) => setTenantRoleName(event.target.value as TenantAssignableRoleName)}
                 disabled={!tenantCompanyId}
               >
-                <option value="OWNER">OWNER</option>
                 <option value="MANAGER">MANAGER</option>
                 <option value="VIEWER">VIEWER</option>
+                <option value="BILLING">BILLING</option>
               </select>
             </label>
             <div className="form-actions">
@@ -2049,7 +2692,7 @@ function UsersView({
             </div>
           </form>
         )}
-        {tenantUsers.length === 0 ? (
+        {visibleTenantUsers.length === 0 ? (
           <EmptyState text={t("noTenantUsers")} />
         ) : (
           <div className="table-wrap">
@@ -2064,7 +2707,7 @@ function UsersView({
                 </tr>
               </thead>
               <tbody>
-                {tenantUsers.map((user) => (
+                {visibleTenantUsers.map((user) => (
                   <tr key={user.username}>
                     <td>{user.username}</td>
                     <td>{user.roleName}</td>
@@ -2155,11 +2798,7 @@ function CustomerHealthView({
       setHealth(await api.customerHealth(credentials));
       onNotice(null);
     } catch (error) {
-      if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
-        setHealth(fallbackHealth(licenses));
-        onNotice(null);
-        return;
-      }
+      setHealth([]);
       onNotice({ type: "error", text: errorMessage(error) });
     }
   }
@@ -2299,10 +2938,7 @@ function BillingView({
     try {
       setSummary(await api.billingSummary(credentials));
     } catch (error) {
-      if (isMissingPhase3Endpoint(error)) {
-        setSummary(fallbackBilling(licenses));
-        return;
-      }
+      setSummary(null);
       onNotice({ type: "error", text: errorMessage(error) });
     }
   }
@@ -2312,11 +2948,7 @@ function BillingView({
       setInvoices(await api.billingInvoices(credentials, companyId));
       onNotice(null);
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 500) {
-        setInvoices([]);
-        onNotice(null);
-        return;
-      }
+      setInvoices([]);
       onNotice({ type: "error", text: errorMessage(error) });
     }
   }
@@ -3505,10 +4137,8 @@ function SupportView({
 
     if (nextTechnicalStatus.status === "fulfilled") {
       setTechnicalStatus(nextTechnicalStatus.value);
-    } else if (isMissingPhase3Endpoint(nextTechnicalStatus.reason) || isRecoverableBackendDataError(nextTechnicalStatus.reason)) {
-      setTechnicalStatus(fallbackTechnicalStatus(licenses));
-      onNotice(null);
     } else {
+      setTechnicalStatus(null);
       onNotice({ type: "error", text: errorMessage(nextTechnicalStatus.reason) });
     }
 
@@ -3794,13 +4424,23 @@ function TicketList({
   );
 }
 
+function licenseStatusPresentation(
+  status: LicenseSummary["status"],
+  t: (key: string) => string
+): { label: string; tone: "ok" | "warning" } {
+  if (status === "CADUCADA") return { label: t("expiredStatus"), tone: "warning" };
+  if (status === "BLOQUEADA_MANUAL") return { label: t("blockedStatus"), tone: "warning" };
+  return { label: t("valid"), tone: "ok" };
+}
+
 function LicenseTable({
   licenses,
   compact = false,
   onAction,
   busy,
   showPairingAction = true,
-  showStatusActions = true,
+  showBlockAction = true,
+  showUnblockAction = true,
   selectedCompanyId,
   onSelectCompany
 }: {
@@ -3809,12 +4449,14 @@ function LicenseTable({
   onAction?: (reference: string, action: LicenseAction) => void;
   busy?: string | null;
   showPairingAction?: boolean;
-  showStatusActions?: boolean;
+  showBlockAction?: boolean;
+  showUnblockAction?: boolean;
   selectedCompanyId?: string;
   onSelectCompany?: (companyId: string) => void;
 }) {
   const { t } = useI18n();
-  const showActionColumn = Boolean(onAction && (showPairingAction || showStatusActions));
+  const showActionColumn = Boolean(onAction
+    && (showPairingAction || showBlockAction || showUnblockAction));
   if (licenses.length === 0) return <EmptyState text={t("noLicenses")} />;
   return (
     <div className="table-wrap">
@@ -3850,8 +4492,8 @@ function LicenseTable({
               </td>
               <td>
                 <StatusPill
-                  status={license.status === "VALIDA" ? t("valid") : t("blockedStatus")}
-                  tone={license.status === "VALIDA" ? "ok" : "warning"}
+                  status={licenseStatusPresentation(license.status, t).label}
+                  tone={licenseStatusPresentation(license.status, t).tone}
                 />
               </td>
               <td>{formatDate(license.validUntil)}</td>
@@ -3869,14 +4511,16 @@ function LicenseTable({
                       {busy === `pairing:${license.licenseReference}` ? t("generating") : t("generateCode")}
                     </button>
                   )}
-                  {showStatusActions && (
-                    license.status === "VALIDA" ? (
-                      <button className="small-button danger" type="button" onClick={() => onAction?.(license.licenseReference, "block")} disabled={busy === `block:${license.licenseReference}`}>
-                        {t("block")}
-                      </button>
-                    ) : (
+                  {license.status === "BLOQUEADA_MANUAL" ? (
+                    showUnblockAction && (
                       <button className="small-button" type="button" onClick={() => onAction?.(license.licenseReference, "unblock")} disabled={busy === `unblock:${license.licenseReference}`}>
                         {t("unblock")}
+                      </button>
+                    )
+                  ) : (
+                    showBlockAction && (
+                      <button className="small-button danger" type="button" onClick={() => onAction?.(license.licenseReference, "block")} disabled={busy === `block:${license.licenseReference}`}>
+                        {t("block")}
                       </button>
                     )
                   )}
@@ -3922,7 +4566,17 @@ function TenantAccessPanel({ access }: { access: { username: string; password: s
   );
 }
 
-function InstallationsTable({ installations }: { installations: InstallationSummary[] }) {
+function InstallationsTable({
+  installations,
+  canRevoke = false,
+  busy = null,
+  onRevoke
+}: {
+  installations: InstallationSummary[];
+  canRevoke?: boolean;
+  busy?: string | null;
+  onRevoke?: (installation: InstallationSummary) => void;
+}) {
   const { t } = useI18n();
   if (installations.length === 0) return <EmptyState text={t("noLinkedInstallations")} />;
   return (
@@ -3931,10 +4585,12 @@ function InstallationsTable({ installations }: { installations: InstallationSumm
         <thead>
           <tr>
             <th>{t("installations")}</th>
+            <th>{t("status")}</th>
             <th>{t("license")}</th>
             <th>{t("linkedAt")}</th>
             <th>{t("lastValidation")}</th>
             <th>{t("deviceDetails")}</th>
+            {canRevoke && <th>{t("actions")}</th>}
           </tr>
         </thead>
         <tbody>
@@ -3943,6 +4599,21 @@ function InstallationsTable({ installations }: { installations: InstallationSumm
               <td>
                 <strong>{installation.installationReference}</strong>
                 <small>{installation.installationId}</small>
+              </td>
+              <td>
+                <StatusPill
+                  status={installation.active ? t("active") : t("revoked")}
+                  tone={installation.active ? "ok" : "warning"}
+                />
+                {!installation.active && installation.revokedAt && (
+                  <small>{t("revokedAt")}: {formatDate(installation.revokedAt)}</small>
+                )}
+                {!installation.active && installation.revokedBy && (
+                  <small>{t("revokedBy")}: {installation.revokedBy}</small>
+                )}
+                {!installation.active && installation.revocationReason && (
+                  <small>{installation.revocationReason}</small>
+                )}
               </td>
               <td>{installation.licenseReference}</td>
               <td>{formatDate(installation.linkedAt)}</td>
@@ -3956,6 +4627,20 @@ function InstallationsTable({ installations }: { installations: InstallationSumm
                 <small>{t("operatingSystem")}: {installation.operatingSystem || t("notAvailable")}</small>
                 <small>{t("lastIp")}: {installation.lastIp || t("notAvailable")}</small>
               </td>
+              {canRevoke && (
+                <td>
+                  {installation.active && (
+                    <button
+                      className="danger-button subtle"
+                      type="button"
+                      disabled={busy === `revoke:${installation.installationId}`}
+                      onClick={() => onRevoke?.(installation)}
+                    >
+                      {t("revokeInstallation")}
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -3969,7 +4654,11 @@ function CompanyDetail({
   license,
   installations,
   events,
-  canManage,
+  canEditCompany,
+  canRenewLicense,
+  canRevokeInstallation,
+  installationBusy,
+  onRevokeInstallation,
   onChanged,
   onNotice
 }: {
@@ -3977,7 +4666,11 @@ function CompanyDetail({
   license: LicenseSummary | null;
   installations: InstallationSummary[];
   events: SyncEventView[];
-  canManage: boolean;
+  canEditCompany: boolean;
+  canRenewLicense: boolean;
+  canRevokeInstallation: boolean;
+  installationBusy: string | null;
+  onRevokeInstallation: (installation: InstallationSummary) => void;
   onChanged: () => void;
   onNotice: (notice: Notice) => void;
 }) {
@@ -3985,36 +4678,100 @@ function CompanyDetail({
   const [companyName, setCompanyName] = useState("");
   const [taxpayerType, setTaxpayerType] = useState<TaxpayerType>("SOCIEDAD");
   const [taxRegime, setTaxRegime] = useState<TaxRegime>("IVA");
+  const [commercialProfile, setCommercialProfile] = useState<CommercialProfile>("MAYORISTA");
   const [validUntil, setValidUntil] = useState("");
   const [maxWindows, setMaxWindows] = useState("1");
   const [maxPda, setMaxPda] = useState("0");
   const [operations, setOperations] = useState<CompanyOperations | null>(null);
+  const [fiscalProvisioning, setFiscalProvisioning] = useState<FiscalProvisioning | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const companyDetailRequestId = useRef(0);
+  const companyDetailMutationId = useRef(0);
+  const selectedCompanyIdRef = useRef<string | null>(license?.companyId ?? null);
+  selectedCompanyIdRef.current = license?.companyId ?? null;
 
   useEffect(() => {
     if (!license) return;
     setCompanyName(license.companyName);
+    setTaxpayerType(license.taxpayerType);
+    setTaxRegime(license.taxRegime);
+    setCommercialProfile(license.commercialProfile);
     setValidUntil(toLocalInput(new Date(license.validUntil)));
     setMaxWindows(String(license.maxWindows));
     setMaxPda(String(license.maxPda));
+  }, [
+    license?.companyId,
+    license?.companyName,
+    license?.taxpayerType,
+    license?.taxRegime,
+    license?.commercialProfile,
+    license?.validUntil,
+    license?.maxWindows,
+    license?.maxPda,
+  ]);
+
+  useEffect(() => {
+    const companyId = license?.companyId ?? null;
+    const requestId = ++companyDetailRequestId.current;
+    companyDetailMutationId.current += 1;
     setOperations(null);
-    void loadOperations(license.companyId);
+    setFiscalProvisioning(null);
+    setBusy(null);
+    if (!companyId) return;
+    void loadOperations(companyId, requestId);
+    void loadFiscalProvisioning(companyId, requestId);
   }, [license?.companyId]);
 
-  async function loadOperations(companyId: string) {
+  async function loadOperations(companyId: string, requestId: number) {
     try {
-      setOperations(await api.companyOperations(credentials, companyId));
+      const loaded = await api.companyOperations(credentials, companyId);
+      if (!isCurrentCompanyRequest(companyId, requestId) || loaded.companyId !== companyId) return;
+      setOperations(loaded);
     } catch {
+      if (!isCurrentCompanyRequest(companyId, requestId)) return;
       setOperations(defaultCompanyOperations(companyId));
     }
   }
 
+  async function loadFiscalProvisioning(companyId: string, requestId: number) {
+    try {
+      const loaded = await api.fiscalProvisioning(credentials, companyId);
+      if (!isCurrentCompanyRequest(companyId, requestId) || loaded.companyId !== companyId) return;
+      setFiscalProvisioning({
+        ...loaded,
+        companyAddress: loaded.companyAddress ?? emptyFiscalAddress(),
+        stores: loaded.stores.map((store) => ({
+          ...store,
+          storeAddress: store.storeAddress ?? emptyFiscalAddress(),
+        })),
+      });
+    } catch (error) {
+      if (!isCurrentCompanyRequest(companyId, requestId)) return;
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  function isCurrentCompanyRequest(companyId: string, requestId: number) {
+    return requestId === companyDetailRequestId.current
+      && selectedCompanyIdRef.current === companyId;
+  }
+
+  function isCurrentCompanyMutation(companyId: string, mutationId: number) {
+    return mutationId === companyDetailMutationId.current
+      && selectedCompanyIdRef.current === companyId;
+  }
+
   async function saveCompany(event: FormEvent) {
     event.preventDefault();
-    if (!license) return;
+    if (!license || !canEditCompany) return;
     setBusy("company");
     try {
-      await api.editCompany(credentials, license.companyId, { name: companyName, taxpayerType, impuestos: taxRegime });
+      await api.editCompany(credentials, license.companyId, {
+        name: companyName,
+        taxpayerType,
+        impuestos: taxRegime,
+        commercialProfile,
+      });
       onNotice({ type: "success", text: t("companyUpdated") });
       onChanged();
     } catch (error) {
@@ -4026,7 +4783,7 @@ function CompanyDetail({
 
   async function renewSelectedLicense(event: FormEvent) {
     event.preventDefault();
-    if (!license) return;
+    if (!license || !canRenewLicense) return;
     setBusy("license");
     try {
       await api.renewLicense(credentials, license.licenseReference, {
@@ -4043,12 +4800,49 @@ function CompanyDetail({
     }
   }
 
+  async function saveFiscalProvisioning(event: FormEvent) {
+    event.preventDefault();
+    if (!license || !canEditCompany || !fiscalProvisioning?.companyAddress) return;
+    const companyId = license.companyId;
+    if (fiscalProvisioning.companyId !== companyId) {
+      onNotice({ type: "error", text: t("companySelectionChanged") });
+      return;
+    }
+    const mutationId = ++companyDetailMutationId.current;
+    setBusy("fiscal-provisioning");
+    try {
+      const saved = await api.updateFiscalProvisioning(credentials, companyId, {
+        companyAddress: fiscalProvisioning.companyAddress,
+        stores: fiscalProvisioning.stores.map((store) => ({
+          storeId: store.storeId,
+          storeAddress: store.storeAddress ?? emptyFiscalAddress(),
+          timeZoneId: store.timeZoneId,
+        })),
+      });
+      if (!isCurrentCompanyMutation(companyId, mutationId) || saved.companyId !== companyId) return;
+      setFiscalProvisioning(saved);
+      onNotice({ type: "success", text: t("fiscalProvisioningUpdated") });
+      onChanged();
+    } catch (error) {
+      if (!isCurrentCompanyMutation(companyId, mutationId)) return;
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      if (isCurrentCompanyMutation(companyId, mutationId)) setBusy(null);
+    }
+  }
+
   async function saveOperations(event: FormEvent) {
     event.preventDefault();
-    if (!license || !operations) return;
+    if (!license || !operations || !canEditCompany) return;
+    const companyId = license.companyId;
+    if (operations.companyId !== companyId) {
+      onNotice({ type: "error", text: t("companySelectionChanged") });
+      return;
+    }
+    const mutationId = ++companyDetailMutationId.current;
     setBusy("operations");
     try {
-      const saved = await api.updateCompanyOperations(credentials, license.companyId, {
+      const saved = await api.updateCompanyOperations(credentials, companyId, {
         planName: operations.planName,
         billingStatus: operations.billingStatus,
         renewalDate: operations.renewalDate ? new Date(operations.renewalDate).toISOString() : null,
@@ -4058,13 +4852,15 @@ function CompanyDetail({
         contactEmail: operations.contactEmail,
         notes: operations.notes
       });
+      if (!isCurrentCompanyMutation(companyId, mutationId) || saved.companyId !== companyId) return;
       setOperations(saved);
       onNotice({ type: "success", text: t("operationsUpdated") });
       onChanged();
     } catch (error) {
+      if (!isCurrentCompanyMutation(companyId, mutationId)) return;
       onNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setBusy(null);
+      if (isCurrentCompanyMutation(companyId, mutationId)) setBusy(null);
     }
   }
 
@@ -4077,9 +4873,16 @@ function CompanyDetail({
     );
   }
 
-  const stores = new Set(installations.map((installation) => installation.storeId)).size;
+  const activeInstallations = installations.filter((installation) => installation.active);
+  const stores = new Set(activeInstallations.map((installation) => installation.storeId)).size;
   const recentEvents = events.slice(0, 4);
-  const operationsForm = operations ?? defaultCompanyOperations(license.companyId);
+  const operationsForm = operations?.companyId === license.companyId
+    ? operations
+    : defaultCompanyOperations(license.companyId);
+  const fiscalProvisioningForm = fiscalProvisioning?.companyId === license.companyId
+    ? fiscalProvisioning
+    : null;
+  const statusPresentation = licenseStatusPresentation(license.status, t);
 
   return (
     <section className="content-section company-detail">
@@ -4088,16 +4891,21 @@ function CompanyDetail({
         <div className="company-card-main">
           <strong>{license.companyName}</strong>
           <span>{license.taxId}</span>
-          <StatusPill status={license.status === "VALIDA" ? t("valid") : t("blockedStatus")} tone={license.status === "VALIDA" ? "ok" : "warning"} />
+          <StatusPill status={statusPresentation.label} tone={statusPresentation.tone} />
         </div>
-        <Metric label={t("installations")} value={installations.length} />
+        <Metric label={t("installations")} value={activeInstallations.length} />
         <Metric label={t("stores")} value={stores} />
         <Metric label={t("quotas")} value={`${license.maxWindows} W / ${license.maxPda} PDA`} detail={`${t("licenseExpires")} ${formatDate(license.validUntil)}`} />
       </div>
       <div className="detail-columns">
         <div>
           <SectionHeader title={t("linkedInstallations")} subtitle={`${installations.length} ${t("installations").toLowerCase()}`} />
-          <InstallationsTable installations={installations} />
+          <InstallationsTable
+            installations={installations}
+            canRevoke={canRevokeInstallation}
+            busy={installationBusy}
+            onRevoke={onRevokeInstallation}
+          />
         </div>
         <div>
           <SectionHeader title={t("recentActivity")} subtitle={events[0] ? formatDate(events[0].receivedAt) : t("noEvents")} />
@@ -4109,10 +4917,12 @@ function CompanyDetail({
         <div className="phase2-grid">
           <form className="stack-form phase2-form" onSubmit={saveCompany}>
             <h3>{t("editCompany")}</h3>
-            <Input label={t("company")} value={companyName} onChange={setCompanyName} disabled={!canManage} required />
-            <Select label={t("type")} value={taxpayerType} options={["SOCIEDAD", "AUTONOMO"]} onChange={(value) => setTaxpayerType(value as TaxpayerType)} disabled={!canManage} />
-            <Select label={t("taxes")} value={taxRegime} options={["IVA", "IGIC"]} onChange={(value) => setTaxRegime(value as TaxRegime)} disabled={!canManage} />
-            {canManage && (
+            <Input label={t("company")} value={companyName} onChange={setCompanyName} disabled={!canEditCompany} required />
+            <Select label={t("type")} value={taxpayerType} options={["SOCIEDAD", "AUTONOMO"]} onChange={(value) => setTaxpayerType(value as TaxpayerType)} disabled />
+            <Select label={t("taxes")} value={taxRegime} options={["IVA", "IGIC"]} onChange={(value) => setTaxRegime(value as TaxRegime)} disabled />
+            <Select label={t("commercialProfile")} value={commercialProfile} options={["MAYORISTA", "MINORISTA"]} onChange={(value) => setCommercialProfile(value as CommercialProfile)} disabled />
+            <small>{t("fiscalIdentityLocked")}</small>
+            {canEditCompany && (
               <button className="secondary-button" type="submit" disabled={busy === "company"}>
                 {busy === "company" ? t("saving") : t("saveChanges")}
               </button>
@@ -4120,31 +4930,75 @@ function CompanyDetail({
           </form>
           <form className="stack-form phase2-form" onSubmit={renewSelectedLicense}>
             <h3>{t("renewLicense")}</h3>
-            <Input label={t("validUntil")} type="datetime-local" value={validUntil} onChange={setValidUntil} disabled={!canManage} required />
-            <Input label="Windows" type="number" value={maxWindows} min={1} onChange={setMaxWindows} disabled={!canManage} required />
-            <Input label="PDA" type="number" value={maxPda} min={0} onChange={setMaxPda} disabled={!canManage} required />
-            {canManage && (
+            <Input label={t("validUntil")} type="datetime-local" value={validUntil} onChange={setValidUntil} disabled={!canRenewLicense} required />
+            <Input label="Windows" type="number" value={maxWindows} min={1} onChange={setMaxWindows} disabled={!canRenewLicense} required />
+            <Input label="PDA" type="number" value={maxPda} min={0} onChange={setMaxPda} disabled={!canRenewLicense} required />
+            {canRenewLicense && (
               <button className="secondary-button" type="submit" disabled={busy === "license"}>
                 {busy === "license" ? t("saving") : t("saveChanges")}
               </button>
             )}
           </form>
+          {fiscalProvisioningForm?.companyAddress && (
+            <form className="stack-form phase2-form wide" onSubmit={saveFiscalProvisioning}>
+              <h3>{t("fiscalProvisioning")}</h3>
+              <small>{t("fiscalProvisioningSubtitle")}</small>
+              <AddressFields
+                title={t("companyAddress")}
+                value={fiscalProvisioningForm.companyAddress}
+                onChange={(companyAddress) => setFiscalProvisioning({ ...fiscalProvisioningForm, companyAddress })}
+                disabled={!canEditCompany}
+              />
+              {fiscalProvisioningForm.stores.map((store) => (
+                <div className="fiscal-store-provisioning" key={store.storeId}>
+                  <AddressFields
+                    title={`${t("storeAddress")}: ${store.storeName} (${store.storeCode})`}
+                    value={store.storeAddress ?? emptyFiscalAddress()}
+                    onChange={(storeAddress) => setFiscalProvisioning({
+                      ...fiscalProvisioningForm,
+                      stores: fiscalProvisioningForm.stores.map((candidate) => candidate.storeId === store.storeId
+                        ? { ...candidate, storeAddress }
+                        : candidate),
+                    })}
+                    disabled={!canEditCompany}
+                  />
+                  <Input
+                    label={t("timezone")}
+                    value={store.timeZoneId}
+                    onChange={(timeZoneId) => setFiscalProvisioning({
+                      ...fiscalProvisioningForm,
+                      stores: fiscalProvisioningForm.stores.map((candidate) => candidate.storeId === store.storeId
+                        ? { ...candidate, timeZoneId }
+                        : candidate),
+                    })}
+                    disabled={!canEditCompany}
+                    required
+                  />
+                </div>
+              ))}
+              {canEditCompany && (
+                <button className="secondary-button" type="submit" disabled={busy === "fiscal-provisioning"}>
+                  {busy === "fiscal-provisioning" ? t("saving") : t("saveChanges")}
+                </button>
+              )}
+            </form>
+          )}
           <form className="stack-form phase2-form wide" onSubmit={saveOperations}>
             <h3>{t("billingStatus")} / {t("supportStatus")}</h3>
             <div className="compact-form-grid">
-              <Input label={t("plan")} value={operationsForm.planName} onChange={(planName) => setOperations({ ...operationsForm, planName })} disabled={!canManage} />
-              <Input label={t("billingStatus")} value={operationsForm.billingStatus} onChange={(billingStatus) => setOperations({ ...operationsForm, billingStatus })} disabled={!canManage} />
+              <Input label={t("plan")} value={operationsForm.planName} onChange={(planName) => setOperations({ ...operationsForm, planName })} disabled={!canEditCompany} />
+              <Input label={t("billingStatus")} value={operationsForm.billingStatus} onChange={(billingStatus) => setOperations({ ...operationsForm, billingStatus })} disabled={!canEditCompany} />
               <Input
                 label={t("renewalDate")}
                 type="datetime-local"
                 value={operationsForm.renewalDate ? toLocalInput(new Date(operationsForm.renewalDate)) : ""}
                 onChange={(renewalDate) => setOperations({ ...operationsForm, renewalDate })}
-                disabled={!canManage}
+                disabled={!canEditCompany}
               />
-              <Input label={t("monthlyPrice")} value={operationsForm.monthlyPrice ?? ""} onChange={(monthlyPrice) => setOperations({ ...operationsForm, monthlyPrice })} disabled={!canManage} />
-              <Input label={t("supportStatus")} value={operationsForm.supportStatus} onChange={(supportStatus) => setOperations({ ...operationsForm, supportStatus })} disabled={!canManage} />
-              <Input label={t("contactName")} value={operationsForm.contactName ?? ""} onChange={(contactName) => setOperations({ ...operationsForm, contactName })} disabled={!canManage} />
-              <Input label={t("contactEmail")} value={operationsForm.contactEmail ?? ""} onChange={(contactEmail) => setOperations({ ...operationsForm, contactEmail })} disabled={!canManage} />
+              <Input label={t("monthlyPrice")} value={operationsForm.monthlyPrice ?? ""} onChange={(monthlyPrice) => setOperations({ ...operationsForm, monthlyPrice })} disabled={!canEditCompany} />
+              <Input label={t("supportStatus")} value={operationsForm.supportStatus} onChange={(supportStatus) => setOperations({ ...operationsForm, supportStatus })} disabled={!canEditCompany} />
+              <Input label={t("contactName")} value={operationsForm.contactName ?? ""} onChange={(contactName) => setOperations({ ...operationsForm, contactName })} disabled={!canEditCompany} />
+              <Input label={t("contactEmail")} value={operationsForm.contactEmail ?? ""} onChange={(contactEmail) => setOperations({ ...operationsForm, contactEmail })} disabled={!canEditCompany} />
             </div>
             <label>
               {t("notes")}
@@ -4152,10 +5006,10 @@ function CompanyDetail({
                 className="control-input text-area"
                 value={operationsForm.notes ?? ""}
                 onChange={(event) => setOperations({ ...operationsForm, notes: event.target.value })}
-                disabled={!canManage}
+                disabled={!canEditCompany}
               />
             </label>
-            {canManage && (
+            {canEditCompany && (
               <button className="secondary-button" type="submit" disabled={busy === "operations"}>
                 {busy === "operations" ? t("saving") : t("saveChanges")}
               </button>
@@ -4184,6 +5038,9 @@ function AlertList({ alerts }: { alerts: Array<{ tone: "warning" | "danger"; tit
 
 function InstallationHealth({ installation }: { installation: InstallationSummary }) {
   const { t } = useI18n();
+  if (!installation.active) {
+    return null;
+  }
   if (!installation.lastValidatedAt) {
     return <StatusPill status={t("withoutValidation")} tone="muted" />;
   }
@@ -4207,12 +5064,30 @@ function EventsTable({ events }: { events: SyncEventView[] }) {
 
 function EventLine({ event }: { event: SyncEventView }) {
   const { t } = useI18n();
+  const projectionTone = event.projectionStatus === "PROJECTED"
+    ? "ok"
+    : event.projectionStatus === "RECEIVED" || event.projectionStatus === "ERROR"
+      ? "warning"
+      : "muted";
   return (
     <article className="event-row">
       <div>
-        <strong>{event.entityType}</strong>
+        <div className="event-row-heading">
+          <strong>{event.entityType}</strong>
+          <StatusPill status={event.projectionStatus} tone={projectionTone} />
+        </div>
         <span>{event.operation} · {formatDate(event.receivedAt)}</span>
         <div className="event-summary">{eventSummary(event)}</div>
+        <div className="event-projection-meta">
+          <span>{t("eventSchemaVersion")}: {event.schemaVersion}</span>
+          {event.projectedAt && <span>{t("eventProjection")}: {formatDate(event.projectedAt)}</span>}
+        </div>
+        {event.projectionError && (
+          <div className="event-projection-error">
+            <strong>{t("eventProjectionError")}</strong>
+            <span>{event.projectionError}</span>
+          </div>
+        )}
       </div>
       <code>{event.entityId}</code>
       <details>
@@ -4220,6 +5095,86 @@ function EventLine({ event }: { event: SyncEventView }) {
         <pre>{JSON.stringify(event.payload, null, 2)}</pre>
       </details>
     </article>
+  );
+}
+
+function OperationalIncidentsTable({
+  rows,
+  companyNames,
+  canManage,
+  busyTargetId,
+  onCancel
+}: {
+  rows: OperationalIncident[];
+  companyNames: Map<string, string>;
+  canManage: boolean;
+  busyTargetId: string | null;
+  onCancel: (incident: OperationalIncident) => void;
+}) {
+  const { t } = useI18n();
+  if (rows.length === 0) return <EmptyState text={t("noOperationalIncidents")} />;
+  return (
+    <div className="table-wrap operational-incident-table">
+      <table>
+        <thead>
+          <tr>
+            <th>{t("company")}</th>
+            <th>{t("incidentProcess")}</th>
+            <th>{t("status")}</th>
+            <th>{t("incidentInactivity")}</th>
+            <th>{t("incidentProgress")}</th>
+            <th>{t("incidentSnapshots")}</th>
+            <th>{t("incidentChunks")}</th>
+            <th>{t("incidentLastActivity")}</th>
+            <th aria-label={t("operations")} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((incident) => (
+            <tr key={`${incident.incidentType}-${incident.targetId}`} className={busyTargetId === incident.targetId ? "is-busy" : undefined}>
+              <td>
+                <strong>{companyNames.get(incident.companyId) ?? incident.companyId}</strong>
+                <small>{incident.companyId}</small>
+              </td>
+              <td>
+                <strong>{incident.incidentType === "MEMBER_CATEGORY_BOOTSTRAP_STALLED" ? t("memberCategoryBootstrap") : incident.incidentType}</strong>
+                <small>{incident.targetId}</small>
+                {incident.completedBaselineId && <small>{t("incidentBaseline")}: {incident.completedBaselineId}</small>}
+              </td>
+              <td>
+                <StatusPill status={incident.status} tone={incident.status === "CONFLICT" ? "warning" : "muted"} />
+                {incident.conflictSummary && <small title={incident.conflictSummary}>{t("incidentConflict")}: {incident.conflictSummary}</small>}
+              </td>
+              <td>
+                <StatusPill
+                  status={incident.inactive ? t("incidentInactive") : t("incidentRecent")}
+                  tone={incident.inactive ? "warning" : "ok"}
+                />
+              </td>
+              <td>{incident.completedStoreCount} / {incident.expectedStoreCount}</td>
+              <td>{incident.snapshotCount}</td>
+              <td>{incident.chunkCount}</td>
+              <td>
+                <strong>{formatDate(incident.lastActivityAt)}</strong>
+                <small>{t("created")}: {formatDate(incident.createdAt)}</small>
+              </td>
+              <td className="table-actions">
+                {incident.cancellable && canManage ? (
+                  <button
+                    className="small-button danger"
+                    type="button"
+                    onClick={() => onCancel(incident)}
+                    disabled={busyTargetId !== null}
+                  >
+                    {t("cancelIncident")}
+                  </button>
+                ) : "-"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -4345,6 +5300,40 @@ function Input({
   );
 }
 
+function ProjectionMetric({ label, value, warning = false }: { label: string; value: number | string; warning?: boolean }) {
+  return (
+    <div className={warning ? "projection-metric warning" : "projection-metric"}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function AddressFields({
+  title,
+  value,
+  onChange,
+  disabled = false
+}: {
+  title: string;
+  value: FiscalAddress;
+  onChange: (value: FiscalAddress) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useI18n();
+  const update = (field: keyof FiscalAddress, next: string) => onChange({ ...value, [field]: next });
+  return (
+    <fieldset className="address-fields">
+      <legend>{title}</legend>
+      <Input label={t("addressLine")} value={value.linea1} onChange={(next) => update("linea1", next)} disabled={disabled} required />
+      <Input label={t("city")} value={value.ciudad} onChange={(next) => update("ciudad", next)} disabled={disabled} required />
+      <Input label={t("postalCode")} value={value.codigoPostal} onChange={(next) => update("codigoPostal", next)} disabled={disabled} required />
+      <Input label={t("province")} value={value.provincia} onChange={(next) => update("provincia", next)} disabled={disabled} required />
+      <Input label={t("country")} value={value.pais} onChange={(next) => update("pais", next)} disabled={disabled} required />
+    </fieldset>
+  );
+}
+
 function Select({
   label,
   value,
@@ -4446,6 +5435,7 @@ function viewTitle(view: View, t: (key: string) => string) {
     dashboard: t("dashboard"),
     licenses: t("licensesCompanies"),
     sync: t("sync"),
+    fiscal: t("fiscal"),
     users: t("adminUsers"),
     support: t("supportCenter"),
     health: t("customerHealth"),
@@ -4476,78 +5466,6 @@ function defaultCompanyOperations(companyId: string): CompanyOperations {
     contactName: "",
     contactEmail: "",
     notes: ""
-  };
-}
-
-function fallbackHealth(licenses: LicenseSummary[]): CustomerHealth[] {
-  return uniqueCompanies(licenses).map((company) => {
-    const license = licenses.find((item) => item.companyId === company.companyId);
-    const validUntil = license?.validUntil ?? null;
-    const isBlocked = license?.status !== "VALIDA";
-    const expiresSoon = validUntil ? new Date(validUntil).getTime() < Date.now() + 30 * 24 * 60 * 60 * 1000 : true;
-    const score = isBlocked ? 45 : expiresSoon ? 70 : 92;
-    return {
-      companyId: company.companyId,
-      companyName: company.companyName,
-      taxId: license?.taxId ?? "",
-      planName: "STANDARD",
-      billingStatus: "PENDIENTE",
-      licenseStatus: license?.status ?? "SIN_LICENCIA",
-      validUntil,
-      installations: 0,
-      staleInstallations: 0,
-      lastValidationAt: null,
-      eventsLast7Days: 0,
-      lastEventAt: null,
-      openTickets: 0,
-      urgentTickets: 0,
-      score,
-      riskLevel: score < 50 ? "DANGER" : score < 75 ? "WARNING" : "OK",
-      signals: [isBlocked ? "Licencia no valida" : expiresSoon ? "Licencia proxima a caducar" : "Operativa estable"]
-    };
-  });
-}
-
-function fallbackTechnicalStatus(licenses: LicenseSummary[]): TechnicalStatus {
-  return {
-    generatedAt: new Date().toISOString(),
-    companies: uniqueCompanies(licenses).length,
-    licenses: licenses.length,
-    installations: 0,
-    eventsToday: 0,
-    openTickets: 0,
-    staleInstallations: 0,
-    lastSyncAt: null
-  };
-}
-
-function fallbackBilling(licenses: LicenseSummary[]): BillingSummary {
-  const companies = uniqueCompanies(licenses).map((company) => {
-    const license = licenses.find((item) => item.companyId === company.companyId);
-    const validUntil = license?.validUntil ?? null;
-    const renewalDueSoon = validUntil ? daysUntil(validUntil) <= 30 : false;
-    return {
-      companyId: company.companyId,
-      companyName: company.companyName,
-      taxId: license?.taxId ?? "",
-      planName: "STANDARD",
-      billingStatus: "PENDIENTE",
-      renewalDate: validUntil,
-      monthlyPrice: "",
-      licenseReference: license?.licenseReference ?? null,
-      validUntil,
-      renewalDueSoon,
-      overdue: false
-    };
-  });
-  return {
-    totalCompanies: companies.length,
-    paidCompanies: 0,
-    pendingCompanies: companies.length,
-    overdueCompanies: 0,
-    renewalsNext30Days: companies.filter((company) => company.renewalDueSoon).length,
-    monthlyRecurringRevenue: "0",
-    companies
   };
 }
 
@@ -4632,7 +5550,8 @@ function operationalAlerts(data: DashboardData, t: (key: string) => string) {
   const alerts: Array<{ tone: "warning" | "danger"; title: string; detail: string }> = [];
   const soon = data.licenses.filter((license) => license.status === "VALIDA" && daysUntil(license.validUntil) <= 30);
   const blocked = data.licenses.filter((license) => license.status === "BLOQUEADA_MANUAL");
-  const stale = data.installations.filter((installation) => !installation.lastValidatedAt || hoursSince(installation.lastValidatedAt) > 48);
+  const stale = data.installations.filter((installation) => installation.active
+    && (!installation.lastValidatedAt || hoursSince(installation.lastValidatedAt) > 48));
 
   soon.slice(0, 3).forEach((license) => {
     alerts.push({
@@ -4732,236 +5651,6 @@ function latestDate(values: string[]) {
   }, null);
 }
 
-function sampleSyncEvents(
-  mode: "events" | "sales" | "stock" | "cash",
-  companies: Array<{ companyId: string; companyName: string }>,
-  selectedCompanyId: string
-): SyncEventView[] {
-  const now = new Date();
-  const profiles = demoProfiles();
-  const selected = companies
-    .map((company, index) => ({ company, index }))
-    .filter((entry) => !selectedCompanyId || entry.company.companyId === selectedCompanyId);
-  const sales = selected.flatMap(({ company, index }) => [
-    sampleEvent({
-      eventId: sampleUuid("1", index, 1),
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      entityType: "DOCUMENTO",
-      entityId: sampleUuid("2", index, 1),
-      operation: "CONFIRMAR",
-      receivedAt: minutesAgo(now, 7 + index * 11),
-      payload: {
-        ...profiles[index % profiles.length],
-        empresa: company.companyName,
-        tipo: "TICKET",
-        numero: `T-2026-${String(145 + index).padStart(6, "0")}`,
-        cliente: profiles[index % profiles.length].clienteTicket,
-        total: profiles[index % profiles.length].totalTicket,
-        impuestos: "IVA",
-        lineas: [
-          {
-            productoId: profiles[index % profiles.length].productoVenta,
-            descripcion: profiles[index % profiles.length].descripcionVenta,
-            cantidad: profiles[index % profiles.length].cantidadVenta,
-            total: profiles[index % profiles.length].totalTicket
-          }
-        ],
-        pagos: [{ metodo: profiles[index % profiles.length].metodoPago, importe: profiles[index % profiles.length].totalTicket }]
-      }
-    }),
-    sampleEvent({
-      eventId: sampleUuid("1", index, 2),
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      entityType: "DOCUMENTO",
-      entityId: sampleUuid("2", index, 2),
-      operation: "CONFIRMAR",
-      receivedAt: minutesAgo(now, 28 + index * 13),
-      payload: {
-        ...profiles[index % profiles.length],
-        empresa: company.companyName,
-        tipo: "FACTURA_VENTA",
-        numero: `FV-2026-${String(32 + index).padStart(6, "0")}`,
-        cliente: profiles[index % profiles.length].clienteFactura,
-        total: profiles[index % profiles.length].totalFactura,
-        impuestos: "IVA",
-        pagos: [{ metodo: "TRANSFERENCIA", importe: profiles[index % profiles.length].totalFactura }]
-      }
-    })
-  ]);
-  const stockEvents = selected.flatMap(({ company, index }) => [
-    sampleEvent({
-      eventId: sampleUuid("1", index, 3),
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      entityType: "STOCK_MOVEMENT",
-      entityId: sampleUuid("2", index, 3),
-      operation: "CREAR",
-      receivedAt: minutesAgo(now, 15 + index * 17),
-      payload: {
-        ...profiles[index % profiles.length],
-        empresa: company.companyName,
-        productoId: profiles[index % profiles.length].productoVenta,
-        almacenId: "ALMACEN-PRINCIPAL",
-        cantidad: profiles[index % profiles.length].cantidadStockSalida,
-        motivo: "Salida por venta"
-      }
-    }),
-    sampleEvent({
-      eventId: sampleUuid("1", index, 4),
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      entityType: "STOCK_MOVEMENT",
-      entityId: sampleUuid("2", index, 4),
-      operation: "CREAR",
-      receivedAt: minutesAgo(now, 42 + index * 19),
-      payload: {
-        ...profiles[index % profiles.length],
-        empresa: company.companyName,
-        productoId: profiles[index % profiles.length].productoEntrada,
-        almacenId: "ALMACEN-PRINCIPAL",
-        cantidad: profiles[index % profiles.length].cantidadStockEntrada,
-        motivo: "Entrada de proveedor"
-      }
-    })
-  ]);
-  const cash = selected.map(({ company, index }) =>
-    sampleEvent({
-      eventId: sampleUuid("1", index, 5),
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      entityType: "CIERRE_CAJA",
-      entityId: sampleUuid("2", index, 5),
-      operation: "CERRAR",
-      receivedAt: minutesAgo(now, 65 + index * 23),
-      payload: {
-        ...profiles[index % profiles.length],
-        empresa: company.companyName,
-        sesion: `CAJA-2026-07-03-T${index + 1}`,
-        terminal: `TPV-0${index + 1}`,
-        apertura: profiles[index % profiles.length].apertura,
-        efectivoDeclarado: profiles[index % profiles.length].efectivo,
-        tarjeta: profiles[index % profiles.length].tarjeta,
-        totalCobrado: profiles[index % profiles.length].totalCaja,
-        descuadre: profiles[index % profiles.length].descuadre
-      }
-    })
-  );
-
-  if (mode === "sales") return sales;
-  if (mode === "stock") return stockEvents;
-  if (mode === "cash") return cash;
-  return [...sales, ...stockEvents, ...cash];
-}
-
-function sampleStock(companies: Array<{ companyId: string; companyName: string }>, selectedCompanyId: string): StockSnapshot[] {
-  const profiles = demoProfiles();
-  const selected = companies
-    .map((company, index) => ({ company, index }))
-    .filter((entry) => !selectedCompanyId || entry.company.companyId === selectedCompanyId);
-  return selected.flatMap(({ company, index }) => [
-    {
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      productId: profiles[index % profiles.length].productoVenta,
-      warehouseId: "ALMACEN-PRINCIPAL",
-      quantity: profiles[index % profiles.length].stockActual
-    },
-    {
-      companyId: company.companyId,
-      storeId: sampleStoreId(index),
-      productId: profiles[index % profiles.length].productoEntrada,
-      warehouseId: "ALMACEN-PRINCIPAL",
-      quantity: profiles[index % profiles.length].stockEntradaActual
-    }
-  ]);
-}
-
-function demoProfiles() {
-  return [
-    {
-      clienteTicket: "Cliente mostrador",
-      clienteFactura: "Gimnasio Centro SL",
-      productoVenta: "CAMISETA-BASIC-BLANCA",
-      descripcionVenta: "Camiseta Basic blanca",
-      productoEntrada: "ZAPATILLA-RUNNER-42",
-      cantidadVenta: "2",
-      totalTicket: "48.75",
-      totalFactura: "186.40",
-      metodoPago: "TARJETA",
-      cantidadStockSalida: "-2",
-      cantidadStockEntrada: "6",
-      stockActual: "34",
-      stockEntradaActual: "6",
-      apertura: "120.00",
-      efectivo: "336.20",
-      tarjeta: "482.15",
-      totalCaja: "818.35",
-      descuadre: "0.00"
-    },
-    {
-      clienteTicket: "Restaurante Norte",
-      clienteFactura: "Hosteleria Plaza SL",
-      productoVenta: "CAFETERA-INDUSTRIAL",
-      descripcionVenta: "Cafetera industrial acero",
-      productoEntrada: "VASO-TAKEAWAY-200",
-      cantidadVenta: "1",
-      totalTicket: "92.30",
-      totalFactura: "240.00",
-      metodoPago: "EFECTIVO",
-      cantidadStockSalida: "-1",
-      cantidadStockEntrada: "100",
-      stockActual: "8",
-      stockEntradaActual: "100",
-      apertura: "90.00",
-      efectivo: "188.50",
-      tarjeta: "241.80",
-      totalCaja: "430.30",
-      descuadre: "-1.50"
-    },
-    {
-      clienteTicket: "Compra rapida tienda",
-      clienteFactura: "Papeleria Sur CB",
-      productoVenta: "BOLSA-PAPEL-MED",
-      descripcionVenta: "Bolsa papel mediana",
-      productoEntrada: "ETIQUETA-PRECIO",
-      cantidadVenta: "12",
-      totalTicket: "31.60",
-      totalFactura: "74.95",
-      metodoPago: "TARJETA",
-      cantidadStockSalida: "-12",
-      cantidadStockEntrada: "250",
-      stockActual: "420",
-      stockEntradaActual: "250",
-      apertura: "150.00",
-      efectivo: "420.00",
-      tarjeta: "96.55",
-      totalCaja: "516.55",
-      descuadre: "0.00"
-    }
-  ];
-}
-
-function sampleEvent(value: Omit<SyncEventView, "installationId">): SyncEventView {
-  return {
-    ...value,
-    installationId: "00000000-0000-4000-8000-000000000003"
-  };
-}
-
-function minutesAgo(date: Date, minutes: number) {
-  return new Date(date.getTime() - minutes * 60_000).toISOString();
-}
-
-function sampleStoreId(index: number) {
-  return index === 0 ? DEMO_STORE_ID : `00000000-0000-4000-8000-${String(index + 2).padStart(12, "0")}`;
-}
-
-function sampleUuid(group: string, companyIndex: number, itemIndex: number) {
-  return `${group}0000000-0000-4000-8000-${String(companyIndex * 10 + itemIndex).padStart(12, "0")}`;
-}
-
 function eventSummary(event: SyncEventView) {
   const payload = event.payload;
   const company = stringPayload(payload.empresa);
@@ -5032,21 +5721,16 @@ async function copyText(text: string) {
 
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
+    const actionableMessage = extractApiErrorMessage(error.message);
+    if (actionableMessage) return actionableMessage;
     if (error.status === 401) return TRANSLATIONS.es.invalidCredentials;
     if (error.status === 403) return TRANSLATIONS.es.forbiddenAction;
     if (error.status === 404) return TRANSLATIONS.es.resourceNotFound;
     if (error.status >= 500) return TRANSLATIONS.es.backendNotUpdated;
-    try {
-      const body = JSON.parse(error.message) as { error?: string; message?: string; status?: number };
-      if (body.message) return body.message;
-      if (body.error === "Internal Server Error") return "Error interno del backend SaaS.";
-      if (body.error === "Not Found") return TRANSLATIONS.es.resourceNotFound;
-      if (body.error === "Forbidden") return TRANSLATIONS.es.forbiddenAction;
-      if (body.error) return body.error;
-      if (body.status) return `Error ${body.status}`;
-    } catch {
-      return cleanTechnicalText(error.message);
-    }
+    if (error.status === 400) return "La solicitud no es válida.";
+    if (error.status === 409) return "La operación entra en conflicto con el estado actual.";
+    if (error.status === 429) return "Demasiadas solicitudes. Espera un momento y vuelve a intentarlo.";
+    return cleanTechnicalText(error.message);
   }
   if (error instanceof TypeError) return TRANSLATIONS.es.networkError;
   if (error instanceof Error) return cleanTechnicalText(error.message);
@@ -5067,45 +5751,6 @@ function isMissingPhase3Endpoint(error: unknown) {
 
 function isRecoverableBackendDataError(error: unknown) {
   return error instanceof ApiError && error.status >= 500;
-}
-
-function fallbackSession(username: string): AdminSession {
-  return {
-    username,
-    permissions: fallbackPermissions(username)
-  };
-}
-
-function fallbackPermissions(username?: string) {
-  const normalized = username?.trim().toLowerCase();
-  if (normalized === "viewer" || normalized === "auditor") {
-    return ["VIEW_ADMIN_DATA", "VIEW_REPORTS"];
-  }
-  if (normalized === "support") {
-    return ["VIEW_ADMIN_DATA", "REGENERATE_PAIRING_CODE", "MANAGE_SUPPORT_TICKETS"];
-  }
-  if (normalized === "billing") {
-    return ["VIEW_ADMIN_DATA", "RENEW_LICENSE", "EDIT_COMPANY_DATA", "MANAGE_BILLING", "MANAGE_SUBSCRIPTIONS", "VIEW_REPORTS"];
-  }
-  return [
-    "ADD_COMPANY",
-    "RENEW_LICENSE",
-    "BLOCK_LICENSE",
-    "UNBLOCK_LICENSE",
-    "EDIT_COMPANY_DATA",
-    "VIEW_ADMIN_DATA",
-    "REGENERATE_PAIRING_CODE",
-    "MANAGE_ADMIN_USERS",
-    "MANAGE_SUPPORT_TICKETS",
-    "MANAGE_FISCAL_POLICY",
-    "MANAGE_BILLING",
-    "MANAGE_TENANT_USERS",
-    "MANAGE_ERP_MASTERS",
-    "MANAGE_OPERATIONS",
-    "MANAGE_SUBSCRIPTIONS",
-    "MANAGE_INTEGRATIONS",
-    "VIEW_REPORTS"
-  ];
 }
 
 function userManagementErrorMessage(error: unknown) {

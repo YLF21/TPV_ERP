@@ -114,6 +114,25 @@ describe("escpos command builder", () => {
     expect(text).toContain("Gracias por su compra");
   });
 
+  it("prints the fiscal QR raster after the fiscal total", () => {
+    const qrRaster = { width: 8, height: 1, bgra: Buffer.alloc(8 * 4, 0) };
+    const buffer = buildTicketBuffer({
+      storeName: "Tienda", terminalCode: "01", lines: [], payments: [], total: 0,
+      qrRaster,
+      fiscal: {
+        prefix: "PREFIJO CONGELADO:",
+        legend: "LEYENDA CONGELADA",
+        testNotice: "AVISO CONGELADO"
+      },
+    });
+    const text = buffer.toString("latin1");
+    expect(text).toContain("PREFIJO CONGELADO:");
+    expect(text).toContain("LEYENDA CONGELADA");
+    expect(text).toContain("AVISO CONGELADO");
+    expect(text.indexOf("PREFIJO CONGELADO:")).toBeGreaterThan(text.lastIndexOf("TOTAL"));
+    expect([...buffer].filter((value, index) => value === 0x1d && buffer[index + 1] === 0x76)).toHaveLength(1);
+  });
+
   it("splits a Jasper ticket raster into bounded ESC/POS bands and cuts once", () => {
     const width = 8;
     const height = 600;

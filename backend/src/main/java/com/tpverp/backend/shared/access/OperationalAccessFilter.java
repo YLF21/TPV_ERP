@@ -8,7 +8,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import com.tpverp.backend.security.domain.OperationalSessionContext;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class OperationalAccessFilter extends OncePerRequestFilter {
@@ -30,7 +32,13 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         OperationCategory category = category(request);
-        OperationalMode mode = statusService.status().mode();
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var session = authentication != null
+                && authentication.getDetails() instanceof OperationalSessionContext operational
+                ? operational : null;
+        OperationalMode mode = session == null
+                ? statusService.status().mode()
+                : statusService.statusForStore(session.storeId()).mode();
         if (!accessPolicy.isAllowed(mode, category)) {
             response.setStatus(423);
             response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);

@@ -9,11 +9,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.installation.Installation;
-import com.tpverp.backend.installation.InstallationRepository;
-import com.tpverp.backend.organization.Company;
-import com.tpverp.backend.organization.CompanyRepository;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -38,54 +36,57 @@ class VerifactuSubmissionServiceTest {
     @Mock private VerifactuOfficialXsdValidator validator;
     @Mock private VerifactuFirstSubmissionMarker firstSubmissions;
     @Mock private FiscalCorrectionCompletionService corrections;
-    @Mock private CompanyRepository companies;
-    @Mock private InstallationRepository installations;
+    @Mock private FrozenFiscalIdentityResolver identities;
+    @Mock private FiscalRecordArtifactRepository artifacts;
     @Mock private FiscalRuntimeProperties runtime;
 
     private FiscalRecord record;
     private VerifactuSubmissionService service;
+    private static final String FROZEN_XML = """
+            <sf:RegistroAlta xmlns:sf="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd">
+              <sf:IDFactura><sf:IDEmisorFactura>B12345674</sf:IDEmisorFactura></sf:IDFactura>
+              <sf:NombreRazonEmisor>Empresa congelada</sf:NombreRazonEmisor>
+            </sf:RegistroAlta>
+            """;
 
     @BeforeEach
     void setUp() {
         record = record();
-        lenient().when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
-                VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         lenient().when(endpoints.resolve(VerifactuEndpointMode.TEST))
                 .thenReturn("https://aeat.test/soap");
-        lenient().when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
+        lenient().when(xml.frozenBatchXml(
+                "Empresa congelada", "B12345674", java.util.List.of(FROZEN_XML)))
+                .thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
         lenient().when(soap.wrap("<sfLR:RegFactuSistemaFacturacion/>"))
                 .thenReturn("<soap/>");
+        lenient().when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
+        lenient().when(artifacts.findByRecordId(record.getId()))
+                .thenReturn(java.util.Optional.of(artifact(FROZEN_XML, sha256(FROZEN_XML))));
+        lenient().when(identities.resolve(any(), any()))
+                .thenReturn(new FrozenFiscalIdentityResolver.FrozenIssuerIdentity(
+                        "Empresa congelada", "B12345674"));
         service = new VerifactuSubmissionService(
                 xml, soap, endpoints, properties, transport, attempts,
-                new VerifactuResponseParser(), validator, firstSubmissions, corrections);
+                new VerifactuResponseParser(), validator, firstSubmissions, corrections,
+                identities);
+        service.setFrozenArtifacts(artifacts);
+        service.setFiscalRuntimeProperties(runtime);
     }
 
     @Test
-    void congelaProductorVersionEmpresaEInstalacionPersistidosEnElXml() {
-        var company = org.mockito.Mockito.mock(Company.class);
-        var installation = org.mockito.Mockito.mock(Installation.class);
-        when(companies.findById(record.getCompanyId())).thenReturn(java.util.Optional.of(company));
-        when(installations.findById(record.getInstallationId()))
-                .thenReturn(java.util.Optional.of(installation));
-        when(company.getRazonSocial()).thenReturn("Empresa de prueba");
-        when(installation.getReferencia()).thenReturn("INST-DEV-001");
-        service.setFiscalIdentityRepositories(companies, installations);
+    void enviaXmlEntornoEIdentidadCongeladosAunqueCambieLaConfiguracionActual() {
         lenient().when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
-                VerifactuEndpointMode.TEST, "SIF ERP", "SIF-01",
-                "Fabricante ERP", "B12345674", "4.2.7"));
+                VerifactuEndpointMode.PRODUCTION, "SIF cambiado", "OTRO"));
         when(transport.send(record.getCompanyId(), record.getInstallationId(),
                 "https://aeat.test/soap", "<soap/>"))
                 .thenReturn(new VerifactuTransportResponse(200, accepted()));
 
         service.submit(record);
 
-        var request = ArgumentCaptor.forClass(VerifactuXmlBatchRequest.class);
-        verify(xml).batchXml(request.capture());
-        assertThat(request.getValue().issuerName()).isEqualTo("Empresa de prueba");
-        assertThat(request.getValue().systemInfo().manufacturerName()).isEqualTo("Fabricante ERP");
-        assertThat(request.getValue().systemInfo().manufacturerTaxId()).isEqualTo("B12345674");
-        assertThat(request.getValue().systemInfo().version()).isEqualTo("4.2.7");
-        assertThat(request.getValue().systemInfo().installationNumber()).isEqualTo("INST-DEV-001");
+        verify(xml).frozenBatchXml(
+                "Empresa congelada", "B12345674", java.util.List.of(FROZEN_XML));
+        verify(endpoints).resolve(VerifactuEndpointMode.TEST);
+        verify(properties, never()).current();
     }
 
     @Test
@@ -100,14 +101,56 @@ class VerifactuSubmissionServiceTest {
     }
 
     @Test
-    void rechazaIdentidadProvisionalCuandoElRuntimeEsReal() {
-        when(runtime.isSandbox()).thenReturn(false);
-        service.setFiscalRuntimeProperties(runtime);
+    void rechazaEnviarSiFaltaElArtefactoCongelado() {
+        when(artifacts.findByRecordId(record.getId())).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> service.submit(record))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("identidad fiscal persistida");
-        verify(xml, never()).batchXml(any());
+                .hasMessageContaining("artefacto fiscal congelado");
+        verify(xml, never()).frozenBatchXml(any(), any(), any());
+    }
+
+    @Test
+    void marcaDefectuosoElLegacySinIdentidadCongeladaInequivoca() {
+        when(identities.resolve(any(), any()))
+                .thenThrow(new UnresolvedLegacyFiscalIdentityException(
+                        "El registro legacy no contiene evidencia fiscal inequivoca"));
+
+        var result = service.submit(record);
+
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
+        assertThat(result.errorCode()).isEqualTo("LEGACY_IDENTITY_UNRESOLVED");
+        assertThat(result.error()).contains("evidencia fiscal inequivoca");
+        verify(attempts).recordDefective(
+                record.getId(),
+                "LEGACY_IDENTITY_UNRESOLVED",
+                "IDENTIDAD_FISCAL_LEGACY_NO_RESUELTA: "
+                        + "El registro legacy no contiene evidencia fiscal inequivoca",
+                null);
+        verify(xml, never()).frozenBatchXml(any(), any(), any());
+        verify(transport, never()).send(any(), any(), any(), any());
+    }
+
+    @Test
+    void rechazaXmlCongeladoAlteradoAntesDelReintento() {
+        when(artifacts.findByRecordId(record.getId()))
+                .thenReturn(java.util.Optional.of(artifact(FROZEN_XML + "alterado",
+                        sha256(FROZEN_XML))));
+
+        assertThatThrownBy(() -> service.submit(record))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("huella persistida");
+        verify(transport, never()).send(any(), any(), any(), any());
+    }
+
+    @Test
+    void rechazaReintentoSiElRuntimeNoCoincideConElEntornoCongelado() {
+        when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.PRODUCTION);
+
+        assertThatThrownBy(() -> service.submit(record))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("entorno congelado");
+        verify(transport, never()).send(any(), any(), any(), any());
     }
 
     @Test
@@ -184,10 +227,8 @@ class VerifactuSubmissionServiceTest {
     }
 
     private void assertXmlRequest() {
-        var request = ArgumentCaptor.forClass(VerifactuXmlBatchRequest.class);
-        verify(xml).batchXml(request.capture());
-        assertThat(request.getValue().records()).containsExactly(record);
-        assertThat(request.getValue().systemInfo().systemName()).isEqualTo("TPV ERP");
+        verify(xml).frozenBatchXml(
+                "Empresa congelada", "B12345674", java.util.List.of(FROZEN_XML));
     }
 
     private static String accepted() {
@@ -235,6 +276,27 @@ class VerifactuSubmissionServiceTest {
         snapshot.put("impuestoTotal", new BigDecimal("2.10"));
         snapshot.put("total", new BigDecimal("12.10"));
         return snapshot;
+    }
+
+    private FiscalRecordArtifact artifact(String frozenXml, String hash) {
+        var print = new FiscalPrintSnapshot(
+                "1.0", "test", FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST,
+                "https://prewww2.aeat.es/qr", "C".repeat(64), "QR tributario:",
+                "VERI*FACTU", "PRUEBA");
+        return new FiscalRecordArtifact(
+                record.getId(), FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST,
+                false, UUID.randomUUID(), "Empresa congelada", "B12345674",
+                frozenXml, null, null, hash, print, Instant.parse("2026-06-16T10:00:00Z"));
+    }
+
+    private static String sha256(String value) {
+        try {
+            return java.util.HexFormat.of().withUpperCase().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
     }
 
     private static void set(Object target, String fieldName, Object value) {

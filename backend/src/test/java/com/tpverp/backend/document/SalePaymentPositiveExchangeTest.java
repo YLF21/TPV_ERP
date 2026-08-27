@@ -118,9 +118,16 @@ class SalePaymentPositiveExchangeTest {
                 anyList(), eq(null), eq(valuation), eq(auth))).thenReturn(refund);
         when(documents.createApprovedExchangeSaleFromSnapshot(
                 eq(snapshot), anyList(), eq(refund), eq(auth))).thenReturn(sale);
+        var salePrint = TicketPrintView.from(sale);
+        var refundPrint = TicketPrintView.from(refund);
         var exchangePrint = TicketPrintView.fromExchange(sale, refund);
+        when(documents.ticketPrintView(sale)).thenReturn(salePrint);
+        when(documents.ticketPrintView(refund)).thenReturn(refundPrint);
         when(documents.ticketPrintViewFromExchange(sale, refund)).thenReturn(exchangePrint);
-        when(documents.renderTicketPrintView(sale, exchangePrint)).thenReturn(exchangePrint);
+        when(documents.renderTicketPrintView(sale, salePrint)).thenReturn(salePrint);
+        when(documents.renderTicketPrintView(refund, refundPrint)).thenReturn(refundPrint);
+        when(documents.loadForPrint(sale.getId())).thenReturn(sale);
+        when(documents.findCompensatingOrigin(sale.getId())).thenReturn(Optional.of(refund));
         when(settlements.recordExistingNegativeTicket(
                 eq(refund), anyList(), eq(auth))).thenReturn(refund);
 
@@ -133,10 +140,25 @@ class SalePaymentPositiveExchangeTest {
         var result = service.finalizeSession(sessionId, auth);
 
         assertThat(result.session().getTicketId()).isEqualTo(sale.getId());
-        assertThat(result.printTicket().total()).isEqualByComparingTo("1.10");
+        assertThat(result.printTicket().documentId()).isEqualTo(sale.getId());
+        assertThat(result.additionalPrintTickets())
+                .extracting(TicketPrintView::documentId)
+                .containsExactly(refund.getId());
+        assertThat(result.nonFiscalSummary()).isSameAs(exchangePrint);
+        assertThat(result.nonFiscalSummary().nonFiscalSummary()).isTrue();
+        assertThat(result.nonFiscalSummary().qrUrl()).isNull();
+        assertThat(result.nonFiscalSummary().ticketRenderedImage()).isNull();
         verify(documents).createApprovedExchangeSaleFromSnapshot(
                 eq(snapshot), anyList(), eq(refund), eq(auth));
         verify(settlements).recordExistingNegativeTicket(eq(refund), anyList(), eq(auth));
+
+        var retried = service.finalizeSession(sessionId, auth);
+
+        assertThat(retried.printTicket().documentId()).isEqualTo(sale.getId());
+        assertThat(retried.additionalPrintTickets())
+                .extracting(TicketPrintView::documentId)
+                .containsExactly(refund.getId());
+        assertThat(retried.nonFiscalSummary().nonFiscalSummary()).isTrue();
     }
 
     @Test
@@ -228,6 +250,15 @@ class SalePaymentPositiveExchangeTest {
                 anyList(), eq(null), eq(valuation), eq(auth))).thenReturn(refund);
         when(documents.createApprovedExchangeSaleFromSnapshot(
                 eq(snapshot), anyList(), eq(refund), eq(auth))).thenReturn(sale);
+        var salePrint = TicketPrintView.from(sale);
+        var refundPrint = TicketPrintView.from(refund);
+        var exchangePrint = TicketPrintView.fromExchange(sale, refund);
+        when(documents.ticketPrintView(sale)).thenReturn(salePrint);
+        when(documents.ticketPrintView(refund)).thenReturn(refundPrint);
+        when(documents.ticketPrintViewFromExchange(sale, refund))
+                .thenReturn(exchangePrint);
+        when(documents.renderTicketPrintView(sale, salePrint)).thenReturn(salePrint);
+        when(documents.renderTicketPrintView(refund, refundPrint)).thenReturn(refundPrint);
 
         var service = new SalePaymentSessionService(
                 sessions, sales, documents, snapshots, methods, organization,

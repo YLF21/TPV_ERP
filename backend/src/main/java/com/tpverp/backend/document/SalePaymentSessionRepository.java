@@ -26,8 +26,53 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
          """)
  List<SalePaymentAllocation> findActiveRefundReservations(
          @Param("originalPaymentIds") Collection<UUID> originalPaymentIds);
- java.util.List<SalePaymentSession> findTop100ByTicketIdIsNotNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc();
- java.util.List<SalePaymentSession> findTop100ByStatusAndTicketIdIsNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc(SalePaymentSessionStatus status);
+ @Query("""
+         select session from SalePaymentSession session
+          where session.ticketId is not null
+            and session.memberBalanceReservationId is not null
+            and session.memberBalanceSynchronizedAt is null
+            and (coalesce(session.memberBalanceAppliedAmount, 0) > 0
+                 or coalesce(session.memberReturnCreditAppliedAmount, 0) > 0)
+            and session.memberBalanceRecoveryManualReview = false
+            and (session.memberBalanceRecoveryNextAttemptAt is null
+                 or session.memberBalanceRecoveryNextAttemptAt <= :now)
+          order by session.updatedAt asc
+         """)
+ List<SalePaymentSession> findMemberBalanceFinalizationRecoveryCandidates(
+         @Param("now") java.time.Instant now,
+         org.springframework.data.domain.Pageable pageable);
+
+ @Query("""
+         select session from SalePaymentSession session
+          where session.status = com.tpverp.backend.document.SalePaymentSessionStatus.CANCELLED
+            and session.ticketId is null
+            and session.memberBalanceReservationId is not null
+            and session.memberBalanceSynchronizedAt is null
+            and (coalesce(session.memberBalanceAppliedAmount, 0) > 0
+                 or coalesce(session.memberReturnCreditAppliedAmount, 0) > 0)
+            and session.memberBalanceRecoveryManualReview = false
+            and (session.memberBalanceRecoveryNextAttemptAt is null
+                 or session.memberBalanceRecoveryNextAttemptAt <= :now)
+          order by session.updatedAt asc
+         """)
+ List<SalePaymentSession> findMemberBalanceAbortRecoveryCandidates(
+         @Param("now") java.time.Instant now,
+         org.springframework.data.domain.Pageable pageable);
+
+ @Query("""
+         select session from SalePaymentSession session
+          where session.storeId = :storeId
+            and session.memberBalanceReservationId is not null
+            and session.memberBalanceSynchronizedAt is null
+            and (coalesce(session.memberBalanceAppliedAmount, 0) > 0
+                 or coalesce(session.memberReturnCreditAppliedAmount, 0) > 0)
+            and (session.ticketId is not null
+                 or session.status = com.tpverp.backend.document.SalePaymentSessionStatus.CANCELLED)
+          order by session.updatedAt asc
+         """)
+ List<SalePaymentSession> findMemberBalanceRecoveryIncidents(
+         @Param("storeId") UUID storeId,
+         org.springframework.data.domain.Pageable pageable);
 
  @Query("""
          select session.ticketId as ticketId,

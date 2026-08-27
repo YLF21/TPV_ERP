@@ -81,4 +81,26 @@ describe("ticket desktop renderer", () => {
     expect(html).toContain("data:image/png;base64,AA==");
     expect(html).toContain("Gracias &lt;cliente&gt;");
   });
+
+  it("renders the persisted fiscal QR only when the fiscal snapshot supplies it", () => {
+    const html = renderTicketHtml({
+      storeName: "Tienda", documentNumber: "T-QR", terminalCode: "01", issuedAt: "2026-08-25",
+      lines: [], payments: [], total: 0,
+      qrUrl: "https://configuracion-actual.invalid/qr",
+      qrImage: "data:image/png;base64,QR==",
+      fiscal: {
+        mode: "VERIFACTU", environment: "TEST",
+        qrUrl: "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=X",
+        prefix: "Prefijo congelado:", legend: "Leyenda congelada",
+        testNotice: "Aviso congelado"
+      }
+    });
+
+    expect(html).toContain("Prefijo congelado:");
+    expect(html).toContain("Leyenda congelada");
+    expect(html).toContain("Aviso congelado");
+    expect(html).toContain("data:image/png;base64,QR==");
+    expect(html).toContain("prewww2.aeat.es");
+    expect(html).not.toContain("configuracion-actual.invalid");
+  });
 });

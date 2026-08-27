@@ -13,6 +13,7 @@ import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentity;
@@ -49,6 +50,7 @@ class LicenseServiceTest {
     @Mock private JdbcTemplate jdbc;
     @Mock private PrivateKey privateKey;
     @Mock private PublicKey publicKey;
+    @Mock private CurrentOrganization organization;
 
     private LicenseService service;
     private Company company;
@@ -62,7 +64,7 @@ class LicenseServiceTest {
         var installation = new Installation(
                 "INST-1", "public-key", Instant.parse("2026-06-08T00:00:00Z"));
         when(installations.findAll()).thenReturn(List.of(installation));
-        when(stores.findAll()).thenReturn(List.of(store));
+        when(organization.currentStore()).thenReturn(store);
         when(identityStore.loadOrCreate())
                 .thenReturn(new InstallationIdentity("key", publicKey, privateKey));
         when(issuerKeys.load()).thenReturn(publicKey);
@@ -70,7 +72,7 @@ class LicenseServiceTest {
         service = new LicenseService(
                 installations, stores, licenses, identityStore, issuerKeys, decoder,
                 Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC),
-                audit, jdbc);
+                audit, jdbc, null, organization);
     }
 
     @Test

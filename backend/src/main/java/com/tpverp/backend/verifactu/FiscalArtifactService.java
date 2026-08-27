@@ -74,13 +74,14 @@ public class FiscalArtifactService {
         var system = new VerifactuSystemInfo(
                 producerName, producerTaxId, systemName, systemId,
                 record.getApplicationVersion(), installation.getReferencia(),
-                true, false, false);
+                false, false, false);
         var systemVersion = systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
                         record.getCompanyId(), record.getInstallationId(),
                         record.getApplicationVersion(), installation.getReferencia())
                 .map(existing -> {
                     if (!existing.matches(producerTaxId, producerName, systemName, systemId,
                             record.getApplicationVersion(), installation.getReferencia(),
+                            runtime.declarationHash(),
                             runtime.isSandbox())) {
                         throw new IllegalStateException(
                                 "La identidad fiscal no coincide con la version SIF congelada");
@@ -90,13 +91,20 @@ public class FiscalArtifactService {
                 .orElseGet(() -> systemVersions.save(new FiscalSystemVersion(
                         record.getCompanyId(), record.getInstallationId(), producerTaxId,
                         producerName, systemName, systemId, record.getApplicationVersion(),
-                        installation.getReferencia(), null, runtime.isSandbox(), Instant.now())));
+                        installation.getReferencia(), runtime.declarationHash(),
+                        runtime.isSandbox(), Instant.now())));
         var unsignedXml = xml.recordXml(new VerifactuXmlBatchRequest(
                 company.getRazonSocial(), record.getIssuerTaxId(), List.of(record), system), record);
         var environment = runtime.endpointEnvironment();
-        var print = snapshots.create(record, record.getFiscalMode(), environment,
-                record.getApplicationVersion());
-        printSnapshots.save(new FiscalPrintSnapshotRecord(record.getId(), print, Instant.now()));
+        // RegistroAnulacion is an AEAT chain record, not a newly issued invoice.
+        // It therefore has XML evidence but no invoice-validation QR or print snapshot.
+        FiscalPrintSnapshot print = null;
+        if (record.getOperation() == FiscalRecordOperation.ALTA) {
+            print = snapshots.create(record, record.getFiscalMode(), environment,
+                    record.getApplicationVersion());
+            printSnapshots.save(new FiscalPrintSnapshotRecord(
+                    record.getId(), print, Instant.now()));
+        }
         var signedXml = record.getFiscalMode() == FiscalMode.NO_VERIFACTU
                 ? signer.sign(record, unsignedXml)
                 : null;
@@ -108,7 +116,8 @@ public class FiscalArtifactService {
         var persistedXml = signedXml == null ? unsignedXml : signedXml;
         artifacts.save(new FiscalRecordArtifact(
                 record.getId(), record.getFiscalMode(), environment, runtime.isSandbox(),
-                systemVersion.getId(),
+                systemVersion.getId(), company.getRazonSocial(), record.getIssuerTaxId(),
+                company.getDomicilioFiscal(),
                 unsignedXml, signedXml, certificateFingerprint, sha256(persistedXml), print, Instant.now()));
     }
 

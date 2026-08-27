@@ -1,25 +1,47 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.organization.StoreRepository;
 import java.time.Instant;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /** Applies due REAL transitions exactly once and emits the NO VERI*FACTU start event. */
 @Component
 public class FiscalModeTransitionScheduler {
+    private static final Logger LOG = LoggerFactory.getLogger(FiscalModeTransitionScheduler.class);
     private final FiscalModeTransitionRepository transitions;
-    private final VerifactuConfigurationRepository configurations;
-    private final FiscalEventService events;
     private final FiscalRuntimeProperties runtime;
+    private final FiscalModeTransitionExecutor executor;
+    private final FiscalModeTransitionFailureRecorder failures;
 
+    @Autowired
+    public FiscalModeTransitionScheduler(FiscalModeTransitionRepository transitions,
+            FiscalRuntimeProperties runtime, FiscalModeTransitionExecutor executor,
+            FiscalModeTransitionFailureRecorder failures) {
+        this.transitions = transitions;
+        this.runtime = runtime;
+        this.executor = executor;
+        this.failures = failures;
+    }
+
+    /** Compatibility constructor used by focused unit tests. */
     public FiscalModeTransitionScheduler(FiscalModeTransitionRepository transitions,
             VerifactuConfigurationRepository configurations, FiscalEventService events,
             FiscalRuntimeProperties runtime) {
         this.transitions = transitions;
-        this.configurations = configurations;
-        this.events = events;
         this.runtime = runtime;
+        this.executor = new FiscalModeTransitionExecutor(transitions, configurations, events);
+        this.failures = new FiscalModeTransitionFailureRecorder(transitions);
+    }
+
+    @Autowired
+    void setLicensePolicy(LicenseRepository licenses, StoreRepository stores,
+            VerifactuActivationService activation) {
+        executor.setLicensePolicy(licenses, stores, activation);
     }
 
     @Scheduled(fixedDelayString = "${tpv.verifactu.mode-transition-worker-delay-ms:60000}")
@@ -29,34 +51,29 @@ public class FiscalModeTransitionScheduler {
         }
     }
 
-    @Transactional
     public int applyDue(Instant now) {
         if (runtime.runtimeClass() != FiscalRuntimeClass.REAL) {
             return 0;
         }
         var due = transitions.findDueWithoutAppliedTransition(
-                FiscalModeTransitionStatus.PROGRAMADA, FiscalModeTransitionStatus.APLICADA, now);
+                FiscalModeTransitionStatus.PROGRAMADA, FiscalModeTransitionStatus.APLICADA,
+                FiscalModeTransitionStatus.FALLIDA, now);
         var applied = 0;
         for (var scheduled : due) {
-            var configuration = configurations.findForUpdateByCompanyId(scheduled.getCompanyId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Configuracion fiscal no encontrada para transicion programada"));
-            if (configuration.getModeVersion() != scheduled.getExpectedVersion()
-                    || configuration.getCurrentMode() != FiscalMode.VERIFACTU) {
-                throw new IllegalStateException(
-                        "La transicion fiscal programada ya no coincide con el modo/version actual");
+            try {
+                if (executor.apply(scheduled.getId(), now)) {
+                    applied++;
+                }
+            } catch (RuntimeException exception) {
+                try {
+                    failures.record(scheduled, now, exception);
+                } catch (RuntimeException persistenceException) {
+                    LOG.error("No se pudo persistir el fallo de la transicion fiscal {}: {}",
+                            scheduled.getId(), persistenceException.getMessage());
+                }
+                LOG.error("No se pudo aplicar la transicion fiscal programada {}: {}",
+                        scheduled.getId(), exception.getMessage());
             }
-            configuration.changeMode(FiscalMode.NO_VERIFACTU, now, null);
-            configurations.save(configuration);
-            transitions.save(new FiscalModeTransition(scheduled.getCompanyId(),
-                    scheduled.getInstallationId(), FiscalMode.VERIFACTU,
-                    FiscalMode.NO_VERIFACTU, now, "SCHEDULED_WORKER",
-                    "Aplicacion de FechaFinVeriFactu " + scheduled.getVerifactuEndDate(),
-                    scheduled.getExpectedVersion()));
-            events.create(scheduled.getCompanyId(), scheduled.getInstallationId(),
-                    FiscalMode.NO_VERIFACTU, FiscalEventType.START_NO_VERIFACTU,
-                    "Salida VERI*FACTU; ACK " + scheduled.getAeatAckReference());
-            applied++;
         }
         return applied;
     }

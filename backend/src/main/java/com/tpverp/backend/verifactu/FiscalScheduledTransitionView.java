@@ -10,5 +10,6 @@ public record FiscalScheduledTransitionView(
         Instant requestedAt,
         Instant effectiveAt,
         LocalDate verifactuEndDate,
-        String aeatAckReference) {
+        String aeatAckReference,
+        String lastErrorCode) {
 }

@@ -17,6 +17,42 @@ public interface FiscalSubmissionStateRepository
     List<FiscalSubmissionState> findAllByStatusInOrderByUpdatedAtDesc(
             Collection<FiscalSubmissionStatus> statuses);
 
+    /**
+     * Defect list projection scoped before joining, avoiding a global state load
+     * followed by one record query per state. The pageable is a hard database
+     * limit and the projection never selects registro_fiscal.snapshot.
+     */
+    @Query("""
+            select new com.tpverp.backend.verifactu.DefectiveFiscalRecordView(
+                state.recordId,
+                record.documentId,
+                state.status,
+                record.operation,
+                record.documentType,
+                record.number,
+                record.issueDate,
+                record.generatedAt,
+                record.totalAmount,
+                snapshot.qrUrl,
+                state.lastErrorCode,
+                state.lastError,
+                state.updatedAt)
+            from FiscalSubmissionState state
+            join FiscalRecord record on record.id = state.recordId
+            left join FiscalPrintSnapshotRecord snapshot on snapshot.recordId = record.id
+            where record.companyId = :companyId
+              and record.storeId = :storeId
+              and record.installationId = :installationId
+              and state.status in :statuses
+            order by state.updatedAt desc, record.sequence desc, record.id desc
+            """)
+    List<DefectiveFiscalRecordView> findDefectiveViews(
+            @Param("companyId") UUID companyId,
+            @Param("storeId") UUID storeId,
+            @Param("installationId") UUID installationId,
+            @Param("statuses") Collection<FiscalSubmissionStatus> statuses,
+            Pageable pageable);
+
     List<FiscalSubmissionState> findAllByStatusInOrderByUpdatedAtAsc(
             Collection<FiscalSubmissionStatus> statuses);
 

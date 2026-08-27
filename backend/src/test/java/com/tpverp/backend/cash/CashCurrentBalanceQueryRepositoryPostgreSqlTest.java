@@ -3,6 +3,7 @@ package com.tpverp.backend.cash;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.sql.DriverManager;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
@@ -28,7 +29,7 @@ class CashCurrentBalanceQueryRepositoryPostgreSqlTest {
         var openSessionId = UUID.randomUUID();
         var closedSessionId = UUID.randomUUID();
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(database.url(), database.user(), database.password())
                     .schemas(schema)
                     .defaultSchema(schema)

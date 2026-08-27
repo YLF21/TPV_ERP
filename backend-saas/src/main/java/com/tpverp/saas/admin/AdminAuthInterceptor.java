@@ -10,6 +10,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class AdminAuthInterceptor implements HandlerInterceptor {
 
+    private static final String ACCOUNT_SCOPE = "";
+
     private final SaasAdminUserRepository users;
     private final AdminPasswordHasher passwords;
     private final LoginAttemptLimiter attempts;
@@ -41,7 +43,8 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin requeridas");
             return false;
         }
-        if (sessionUsername == null && attempts.blocked("admin", username, request.getRemoteAddr())) {
+        if (sessionUsername == null
+                && attempts.blocked("admin-account", username, ACCOUNT_SCOPE)) {
             response.setHeader("Retry-After", Long.toString(LoginAttemptLimiter.BLOCK_DURATION.toSeconds()));
             response.sendError(429, "Demasiados intentos de autenticacion");
             return false;
@@ -51,13 +54,13 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if (user == null || !user.isActive()
                 || (sessionUsername == null && !passwords.matches(password, user.getPasswordHash()))) {
             if (sessionUsername == null) {
-                attempts.failure("admin", username, request.getRemoteAddr());
+                attempts.failure("admin-account", username, ACCOUNT_SCOPE);
             }
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin invalidas");
             return false;
         }
         if (sessionUsername == null) {
-            attempts.success("admin", username, request.getRemoteAddr());
+            attempts.success("admin-account", username, ACCOUNT_SCOPE);
         }
         if (sessionUsername == null && passwords.needsUpgrade(user.getPasswordHash())) {
             user.changePasswordHash(passwords.hash(password));
@@ -76,6 +79,14 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     private AdminPermission requiredPermission(HttpServletRequest request) {
         String method = request.getMethod();
         String path = request.getRequestURI();
+        if (path.startsWith("/api/v1/admin/operational-incidents")
+                && "POST".equals(method)) {
+            return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
+        }
+        if (path.startsWith("/api/v2/admin/")
+                && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
+            return AdminPermission.MANAGE_OPERATIONS;
+        }
         if ("POST".equals(method) && "/api/v1/admin/companies".equals(path)) {
             return AdminPermission.ADD_COMPANY;
         }
@@ -126,6 +137,11 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         }
         if ("POST".equals(method) && path.endsWith("/pairing-codes")) {
             return AdminPermission.REGENERATE_PAIRING_CODE;
+        }
+        if ("POST".equals(method)
+                && path.startsWith("/api/v1/admin/installations/")
+                && path.endsWith("/revoke")) {
+            return AdminPermission.REVOKE_INSTALLATION;
         }
         return AdminPermission.VIEW_ADMIN_DATA;
     }

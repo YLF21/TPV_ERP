@@ -5,7 +5,9 @@ import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.ImportResult;
+import com.tpverp.backend.licensing.LicenseSaasStatus;
 import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
@@ -15,6 +17,7 @@ import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.installation.CommercialBootstrapService;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +37,7 @@ public class LicenseService {
     private final AuditService auditService;
     private final JdbcTemplate jdbc;
     private final CommercialBootstrapService commercialBootstrap;
+    private final CurrentOrganization organization;
 
     public LicenseService(
             InstallationRepository instalacionRepository,
@@ -46,7 +50,7 @@ public class LicenseService {
             AuditService auditService,
             JdbcTemplate jdbc) {
         this(instalacionRepository, tiendaRepository, licenciaRepository, identityStore,
-                issuerKeyProvider, decoder, clock, auditService, jdbc, null);
+                issuerKeyProvider, decoder, clock, auditService, jdbc, null, null);
     }
 
     public LicenseService(
@@ -60,6 +64,22 @@ public class LicenseService {
             AuditService auditService,
             JdbcTemplate jdbc,
             CommercialBootstrapService commercialBootstrap) {
+        this(instalacionRepository, tiendaRepository, licenciaRepository, identityStore,
+                issuerKeyProvider, decoder, clock, auditService, jdbc, commercialBootstrap, null);
+    }
+
+    public LicenseService(
+            InstallationRepository instalacionRepository,
+            StoreRepository tiendaRepository,
+            LicenseRepository licenciaRepository,
+            InstallationIdentityStore identityStore,
+            TrustedIssuerKeyProvider issuerKeyProvider,
+            LicenseEnvelopeDecoder decoder,
+            Clock clock,
+            AuditService auditService,
+            JdbcTemplate jdbc,
+            CommercialBootstrapService commercialBootstrap,
+            CurrentOrganization organization) {
         this.instalacionRepository = instalacionRepository;
         this.tiendaRepository = tiendaRepository;
         this.licenciaRepository = licenciaRepository;
@@ -70,6 +90,7 @@ public class LicenseService {
         this.auditService = auditService;
         this.jdbc = jdbc;
         this.commercialBootstrap = commercialBootstrap;
+        this.organization = organization;
     }
 
     @Transactional(readOnly = true)
@@ -145,6 +166,9 @@ public class LicenseService {
     }
 
     private Store currentStore() {
+        if (organization != null) {
+            return organization.currentStore();
+        }
         return tiendaRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
     }
@@ -198,7 +222,13 @@ public class LicenseService {
             TaxpayerType taxpayerType,
             TaxRegime impuestos,
             CommercialProfile commercialProfile,
-            boolean active) {
+            boolean active,
+            LicenseSaasStatus saasStatus,
+            Instant lastSaasValidationAt,
+            LocalDate verifactuActivationDate,
+            Long verifactuPolicyVersion,
+            Instant verifactuPolicyUpdatedAt,
+            Long licenseVersion) {
 
         static LicenseHistoryItem from(License license) {
             return new LicenseHistoryItem(
@@ -211,7 +241,13 @@ public class LicenseService {
                     license.getTaxpayerType(),
                     license.getRegimenImpuesto(),
                     license.getCommercialProfile(),
-                    license.isActiva());
+                    license.isActiva(),
+                    license.getEstadoSaas(),
+                    license.getUltimaValidacionSaas(),
+                    license.getVerifactuActivationDate(),
+                    license.getVerifactuPolicyVersion(),
+                    license.getVerifactuPolicyUpdatedAt(),
+                    license.getSaasLicenseVersion());
         }
     }
 }

@@ -9,6 +9,10 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -84,6 +88,42 @@ class FiscalSubmissionQueueServiceTest {
         assertThat(result.get(2).errorCode()).isEqualTo("NIF_INVALIDO");
         assertThat(result.get(2).error()).isEqualTo("NIF incorrecto");
         assertThat(result.get(2).updatedAt()).isEqualTo(rejected.getUpdatedAt());
+    }
+
+    @Test
+    void pendingQueueExcludesAnotherInstallationOfTheSameStore() {
+        var currentInstallationId = UUID.randomUUID();
+        var otherInstallationId = UUID.randomUUID();
+        var installation = org.mockito.Mockito.mock(Installation.class);
+        var installationRepository = org.mockito.Mockito.mock(InstallationRepository.class);
+        var licenseRepository = org.mockito.Mockito.mock(LicenseRepository.class);
+        var license = org.mockito.Mockito.mock(License.class);
+        when(installation.getId()).thenReturn(currentInstallationId);
+        when(license.getInstalacionId()).thenReturn(currentInstallationId);
+        when(license.getLocalCompanyId()).thenReturn(company.getId());
+        when(licenseRepository.findActiveByTiendaId(store.getId()))
+                .thenReturn(List.of(license));
+        when(installationRepository.findById(currentInstallationId))
+                .thenReturn(Optional.of(installation));
+        queue = new FiscalSubmissionQueueService(
+                states, records, organization, Clock.fixed(NOW, ZoneOffset.UTC),
+                new VerifactuDefectClassifier(), installationRepository, licenseRepository);
+
+        var current = state(FiscalSubmissionStatus.PENDIENTE);
+        var foreign = state(FiscalSubmissionStatus.PENDIENTE);
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
+                FiscalSubmissionStatus.PENDIENTE,
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO,
+                FiscalSubmissionStatus.RECHAZADO)))
+                .thenReturn(List.of(current, foreign));
+        when(records.findById(current.getRecordId())).thenReturn(Optional.of(
+                record(current.getRecordId(), store.getId(), currentInstallationId, 1)));
+        when(records.findById(foreign.getRecordId())).thenReturn(Optional.of(
+                record(foreign.getRecordId(), store.getId(), otherInstallationId, 2)));
+
+        assertThat(queue.pending()).extracting(FiscalSubmissionQueueItem::sequence)
+                .containsExactly(1L);
     }
 
     @Test
@@ -291,8 +331,13 @@ class FiscalSubmissionQueueServiceTest {
     }
 
     private FiscalRecord record(UUID recordId, UUID storeId, long sequence) {
+        return record(recordId, storeId, UUID.randomUUID(), sequence);
+    }
+
+    private FiscalRecord record(
+            UUID recordId, UUID storeId, UUID installationId, long sequence) {
         var record = new FiscalRecord(
-                UUID.randomUUID(), company.getId(), UUID.randomUUID(), storeId,
+                UUID.randomUUID(), company.getId(), installationId, storeId,
                 UUID.randomUUID(), sequence, FiscalRecordOperation.ALTA, FiscalDocumentType.F1,
                 "FV-001-26-000001", LocalDate.of(2026, 6, 16), NOW,
                 "Atlantic/Canary", "B12345674", new BigDecimal("2.10"),

@@ -3,7 +3,11 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.installation.Installation;
@@ -68,7 +72,7 @@ class FiscalRequiredSubmissionServiceTest {
                 new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));
         var requirement = new FiscalRequiredSubmission(company.getId(), installation.getId(),
                 "REQ-001", Instant.parse("2026-08-24T09:00:00Z"));
-        when(submissions.findByIdAndCompanyIdAndInstallationId(requirement.getId(),
+        when(submissions.findForUpdateByIdAndCompanyIdAndInstallationId(requirement.getId(),
                 company.getId(), installation.getId())).thenReturn(Optional.of(requirement));
         when(submissions.save(any(FiscalRequiredSubmission.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -90,13 +94,77 @@ class FiscalRequiredSubmissionServiceTest {
     }
 
     @Test
+    void unaSolicitudConcurrenteQueLlegaDespuesDelCierreNoGeneraOtraExportacion() {
+        when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(
+                new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));
+        var requirement = new FiscalRequiredSubmission(company.getId(), installation.getId(),
+                "REQ-001", Instant.parse("2026-08-24T09:00:00Z"));
+        when(submissions.findForUpdateByIdAndCompanyIdAndInstallationId(requirement.getId(),
+                company.getId(), installation.getId())).thenReturn(Optional.of(requirement));
+        when(submissions.save(any(FiscalRequiredSubmission.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        var start = OffsetDateTime.of(2026, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC);
+        var end = OffsetDateTime.of(2026, 8, 24, 23, 59, 59, 0, ZoneOffset.UTC);
+        var export = new FiscalExportView(UUID.randomUUID(), FiscalExportKind.BILLING,
+                Instant.parse("2026-08-24T10:00:00Z"), start, end, 1, UUID.randomUUID(),
+                List.of("<RegistroAlta/>") );
+        when(exports.export(FiscalExportKind.BILLING, start, end, "REQ-001"))
+                .thenReturn(export);
+
+        service.export(requirement.getId(), FiscalExportKind.BILLING, start, end);
+
+        assertThatThrownBy(() -> service.export(requirement.getId(), FiscalExportKind.BILLING,
+                start, end))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ya esta cerrado");
+        verify(submissions, times(2)).findForUpdateByIdAndCompanyIdAndInstallationId(
+                requirement.getId(), company.getId(), installation.getId());
+        verify(exports, times(1)).export(FiscalExportKind.BILLING, start, end, "REQ-001");
+        verify(submissions, times(1)).save(requirement);
+    }
+
+    @Test
+    void noPersisteMetadataNiExportaSiElRequerimientoYaEstaCerrado() {
+        when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(
+                new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));
+        var requirement = new FiscalRequiredSubmission(company.getId(), installation.getId(),
+                "REQ-001", Instant.parse("2026-08-24T09:00:00Z"));
+        requirement.markError();
+        when(submissions.findForUpdateByIdAndCompanyIdAndInstallationId(requirement.getId(),
+                company.getId(), installation.getId())).thenReturn(Optional.of(requirement));
+        var start = OffsetDateTime.of(2026, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC);
+        var end = OffsetDateTime.of(2026, 8, 24, 23, 59, 59, 0, ZoneOffset.UTC);
+
+        assertThatThrownBy(() -> service.export(requirement.getId(), FiscalExportKind.BILLING,
+                start, end))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ya esta cerrado");
+        verifyNoInteractions(exports);
+        verify(submissions, never()).save(any(FiscalRequiredSubmission.class));
+    }
+
+    @Test
     void exigePeriodoCompletoParaNoExportarHistoricoIndefinido() {
         when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(
                 new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));
 
-        assertThatThrownBy(() -> service.export(UUID.randomUUID(), FiscalExportKind.EVENTS,
+        assertThatThrownBy(() -> service.export(UUID.randomUUID(), FiscalExportKind.BILLING,
                 null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("periodo completo");
+    }
+
+    @Test
+    void noPermiteCerrarUnRequerimientoConExportacionDeEventos() {
+        when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(
+                new VerifactuConfiguration(company.getId(), FiscalMode.NO_VERIFACTU)));
+        var start = OffsetDateTime.of(2026, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC);
+        var end = OffsetDateTime.of(2026, 8, 24, 23, 59, 59, 0, ZoneOffset.UTC);
+
+        assertThatThrownBy(() -> service.export(UUID.randomUUID(), FiscalExportKind.EVENTS,
+                start, end))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("BILLING");
+        verifyNoInteractions(exports);
     }
 }

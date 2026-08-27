@@ -57,6 +57,24 @@ class DocumentTemplateTest {
     }
 
     @Test
+    void fiscalVisualValidationRetirementCannotBeReactivated() {
+        var template = DocumentTemplate.storeDraft(
+                store(), DocumentTemplateType.FACTURA_VENTA,
+                "FACTURA_A4_FISCAL", 1, "Factura fiscal", null, CREATED_AT);
+        template.validateArtifact(
+                1, "signed:templates/factura-a4-fiscal-v1",
+                "a".repeat(64), CREATED_AT.plusSeconds(60));
+        template.activate(CREATED_AT.plusSeconds(120));
+        template.retire(CREATED_AT.plusSeconds(180),
+                DocumentTemplateRetirementReason.FISCAL_VISUAL_VALIDATION_REQUIRED);
+
+        assertThat(template.canReactivate()).isFalse();
+        assertThatThrownBy(() -> template.reactivate(CREATED_AT.plusSeconds(240)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("document_template_not_reactivatable");
+    }
+
+    @Test
     void keepsVersionOutsideTheTemplateCode() {
         assertThatThrownBy(() -> DocumentTemplate.storeDraft(
                 store(), DocumentTemplateType.FACTURA_VENTA,

@@ -1,7 +1,6 @@
 package com.tpverp.saas.admin;
 
 import com.tpverp.saas.tenant.SaasTenantUserRepository;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class SaasAuthenticationController {
+
+    private static final String ACCOUNT_SCOPE = "";
 
     private final SaasAdminUserRepository admins;
     private final SaasTenantUserRepository tenants;
@@ -36,31 +37,34 @@ public class SaasAuthenticationController {
     }
 
     @PostMapping("/login")
-    public SaasLoginResponse login(@Valid @RequestBody SaasLoginRequest request, HttpServletRequest servletRequest) {
+    public SaasLoginResponse login(@Valid @RequestBody SaasLoginRequest request) {
         String username = request.username().trim();
-        String remoteAddress = servletRequest.getRemoteAddr();
-        if (attempts.blocked("login", username, remoteAddress)) {
+        if (attempts.blocked("login-account", username, ACCOUNT_SCOPE)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos de autenticacion");
         }
 
         var admin = admins.findByUsernameIgnoreCase(username).orElse(null);
+        var tenant = tenants.findByUsernameIgnoreCase(username).orElse(null);
+        if (admin != null && tenant != null) {
+            attempts.failure("login-account", username, ACCOUNT_SCOPE);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");
+        }
         if (admin != null && admin.isActive() && passwords.matches(request.password(), admin.getPasswordHash())) {
             upgradeAdminPassword(admin, request.password());
-            attempts.success("login", username, remoteAddress);
+            attempts.success("login-account", username, ACCOUNT_SCOPE);
             return response("admin", admin.getUsername());
         }
 
-        var tenant = tenants.findByUsernameIgnoreCase(username).orElse(null);
         if (tenant != null && tenant.isActive() && passwords.matches(request.password(), tenant.getPasswordHash())) {
             if (passwords.needsUpgrade(tenant.getPasswordHash())) {
                 tenant.changePasswordHash(passwords.hash(request.password()));
                 tenants.save(tenant);
             }
-            attempts.success("login", username, remoteAddress);
+            attempts.success("login-account", username, ACCOUNT_SCOPE);
             return response("tenant", tenant.getUsername());
         }
 
-        attempts.failure("login", username, remoteAddress);
+        attempts.failure("login-account", username, ACCOUNT_SCOPE);
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");
     }
 

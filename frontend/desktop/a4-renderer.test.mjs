@@ -86,17 +86,24 @@ describe("A4 desktop renderer", () => {
       title: "FACTURA F-1",
       documentNumber: "F-1",
       issuedAt: "2026-08-10",
-      qrUrl: "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu?nif=B123&numserie=F-1&fecha=10-08-2026&importe=10.00",
+      qrUrl: "https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=actual",
       qrImage: "data:image/png;base64,qr",
+      fiscal: {
+        mode: "NO_VERIFACTU", environment: "TEST",
+        qrUrl: "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu?nif=B123&numserie=F-1&fecha=10-08-2026&importe=10.00",
+        prefix: "Prefijo fiscal congelado:", legend: null,
+        testNotice: "Aviso fiscal congelado"
+      },
       lines: [{ name: "Artículo", quantity: 1, price: 10, total: 10 }],
       subtotal: 10,
       tax: 0,
       total: 10,
     });
 
-    expect(html).toContain("QR tributario:");
-    expect(html).toContain("ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL");
+    expect(html).toContain("Prefijo fiscal congelado:");
+    expect(html).toContain("Aviso fiscal congelado");
     expect(html).not.toContain("Factura verificable en la sede electrónica de la AEAT");
+    expect(html).not.toContain("nif=actual");
     expect(html).toContain('alt="QR tributario"');
   });
 });

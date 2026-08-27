@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -210,6 +211,19 @@ public class SyncOutboxEvent {
         return true;
     }
 
+    public void reopenForManualRetry(Instant reopenedAt) {
+        Objects.requireNonNull(reopenedAt, "reopenedAt");
+        if (status != SyncOutboxStatus.DEAD_LETTER) {
+            throw new IllegalStateException(
+                    "Solo un evento DEAD_LETTER admite reintento manual");
+        }
+        this.status = SyncOutboxStatus.PENDIENTE;
+        this.nextAttemptAt = reopenedAt;
+        this.claimedAt = null;
+        this.claimToken = null;
+        this.updatedAt = reopenedAt;
+    }
+
     public UUID getEventId() {
         return eventId;
     }
@@ -243,7 +257,7 @@ public class SyncOutboxEvent {
     }
 
     public Map<String, Object> getPayload() {
-        return Map.copyOf(payload);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(payload));
     }
 
     public Instant getCreatedAt() {
@@ -280,6 +294,10 @@ public class SyncOutboxEvent {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 
     private boolean isOwnedBy(UUID token) {

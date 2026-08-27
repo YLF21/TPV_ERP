@@ -9,12 +9,16 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.licensing.application.TaxpayerType;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -32,12 +36,14 @@ class VerifactuAdminReadServiceTest {
 
     private static final UUID COMPANY_ID = UUID.randomUUID();
     private static final UUID STORE_ID = UUID.randomUUID();
+    private static final UUID INSTALLATION_ID = UUID.randomUUID();
     private static final Instant NOW = Instant.parse("2026-07-21T12:00:00Z");
 
     @Mock private CurrentOrganization organization;
     @Mock private VerifactuAdminReadRepository reads;
     @Mock private VerifactuConfigurationRepository configurations;
     @Mock private LicenseRepository licenses;
+    @Mock private InstallationRepository installations;
     @Mock private VerifactuActivationService activation;
     @Mock private ManagedVerifactuCertificateRepository certificates;
     @Mock private VerifactuSubmissionPropertiesFactory properties;
@@ -97,6 +103,96 @@ class VerifactuAdminReadServiceTest {
         verify(reads).findOldestPendingAt(COMPANY_ID, STORE_ID);
         verify(configurations, never()).insertIfMissing(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void summaryExposesFutureLicenseActivationAsScheduledWithoutActivating() {
+        scope();
+        var activationDate = LocalDate.of(2026, 8, 27);
+        var effectiveAt = Instant.parse("2026-08-27T00:00:00Z");
+        var license = mock(License.class);
+        when(license.isActiva()).thenReturn(true);
+        when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
+        when(license.getVerifactuActivationDate()).thenReturn(activationDate);
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(STORE_ID))
+                .thenReturn(List.of(license));
+        when(configurations.findByCompanyId(COMPANY_ID)).thenReturn(Optional.empty());
+        when(activation.activationInstant(TaxpayerType.SOCIEDAD, activationDate,
+                ZoneId.of("Atlantic/Canary"))).thenReturn(effectiveAt);
+
+        var result = service.summary();
+
+        assertThat(result.active()).isFalse();
+        assertThat(result.activationMode()).isEqualTo("LICENSE_SCHEDULED");
+        assertThat(result.effectiveActivationAt()).isEqualTo(effectiveAt);
+    }
+
+    @Test
+    void summaryMarksExpiredLicensePolicyAsActive() {
+        scope();
+        var activationDate = LocalDate.of(2026, 7, 20);
+        var effectiveAt = Instant.parse("2026-07-20T00:00:00Z");
+        var license = mock(License.class);
+        when(license.isActiva()).thenReturn(true);
+        when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
+        when(license.getVerifactuActivationDate()).thenReturn(activationDate);
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(STORE_ID))
+                .thenReturn(List.of(license));
+        when(configurations.findByCompanyId(COMPANY_ID)).thenReturn(Optional.empty());
+        when(activation.activationInstant(TaxpayerType.SOCIEDAD, activationDate,
+                ZoneId.of("Atlantic/Canary"))).thenReturn(effectiveAt);
+
+        var result = service.summary();
+
+        assertThat(result.active()).isTrue();
+        assertThat(result.activationMode()).isEqualTo("LICENSE_POLICY");
+        assertThat(result.effectiveActivationAt()).isEqualTo(effectiveAt);
+    }
+
+    @Test
+    void summaryKeepsLicenseWithoutExplicitActivationDateInactive() {
+        scope();
+        var license = mock(License.class);
+        when(license.isActiva()).thenReturn(true);
+        when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
+        when(license.getVerifactuActivationDate()).thenReturn(null);
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(STORE_ID))
+                .thenReturn(List.of(license));
+        when(configurations.findByCompanyId(COMPANY_ID)).thenReturn(Optional.empty());
+
+        var result = service.summary();
+
+        assertThat(result.active()).isFalse();
+        assertThat(result.activationMode()).isEqualTo("INACTIVE");
+        assertThat(result.effectiveActivationAt()).isNull();
+        verify(activation, never()).activationInstant(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void submissionsAreScopedToResolvedFiscalInstallation() {
+        scope();
+        var license = mock(License.class);
+        var installation = mock(Installation.class);
+        when(license.getLocalCompanyId()).thenReturn(COMPANY_ID);
+        when(license.getInstalacionId()).thenReturn(INSTALLATION_ID);
+        when(licenses.findActiveByTiendaId(STORE_ID)).thenReturn(List.of(license));
+        when(installations.findById(INSTALLATION_ID)).thenReturn(Optional.of(installation));
+        when(installation.getId()).thenReturn(INSTALLATION_ID);
+        var expected = new VerifactuAdminSubmissionPage(List.of(), 0, 25, 0, 0);
+        when(reads.findSubmissions(COMPANY_ID, STORE_ID, INSTALLATION_ID,
+                null, null, null, null, null, null, 0, 25)).thenReturn(expected);
+
+        var scopedService = new VerifactuAdminReadService(
+                organization, installations, reads, configurations, licenses, activation,
+                certificates, properties, clockMonitor, environment,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThat(scopedService.submissions(null, null, null, null, null, null, 0, 25))
+                .isSameAs(expected);
+        verify(reads).findSubmissions(COMPANY_ID, STORE_ID, INSTALLATION_ID,
+                null, null, null, null, null, null, 0, 25);
     }
 
     @Test

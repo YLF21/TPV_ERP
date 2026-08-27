@@ -27,4 +27,20 @@ class LoginAttemptLimiterTest {
         assertThat(limiter.blocked("admin", "USER", "127.0.0.1")).isTrue();
         assertThat(limiter.blocked("tenant", "user", "127.0.0.1")).isFalse();
     }
+
+    @Test
+    void doesNotEvictActivePartialFailuresWhenTheMapReachesCleanupThreshold() {
+        var limiter = new LoginAttemptLimiter(
+                Clock.fixed(Instant.parse("2026-07-30T12:00:00Z"), ZoneOffset.UTC));
+
+        for (int index = 0; index < LoginAttemptLimiter.MAX_FAILURES - 1; index++) {
+            limiter.failure("login-account", "target", "");
+        }
+        for (int index = 0; index < 9_999; index++) {
+            limiter.failure("login-account", "random-" + index, "");
+        }
+
+        limiter.failure("login-account", "target", "");
+        assertThat(limiter.blocked("login-account", "target", "")).isTrue();
+    }
 }

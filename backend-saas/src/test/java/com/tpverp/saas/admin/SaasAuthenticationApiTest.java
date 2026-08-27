@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -47,5 +48,87 @@ class SaasAuthenticationApiTest {
                 .andExpect(status().isNoContent());
         mvc.perform(get("/api/v1/admin/audit").header("Authorization", bearer))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void blocksAccountEvenWhenEachFailureUsesADifferentForwardedAddress() throws Exception {
+        for (int attempt = 1; attempt <= LoginAttemptLimiter.MAX_FAILURES; attempt++) {
+            String address = "198.51.100." + attempt;
+            mvc.perform(post("/api/v1/auth/login")
+                            .with(request -> {
+                                request.setRemoteAddr(address);
+                                return request;
+                            })
+                            .header("X-Forwarded-For", address)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"username":"admin","password":"incorrecta"}
+                                    """))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mvc.perform(post("/api/v1/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr("198.51.100.250");
+                            return request;
+                        })
+                        .header("X-Forwarded-For", "198.51.100.250")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"admin","password":"admin"}
+                                """))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void successfulLoginClearsAccountFailuresRegardlessOfTheClientAddress() throws Exception {
+        for (int attempt = 1; attempt < LoginAttemptLimiter.MAX_FAILURES; attempt++) {
+            String address = "203.0.113." + attempt;
+            mvc.perform(post("/api/v1/auth/login")
+                            .with(request -> {
+                                request.setRemoteAddr(address);
+                                return request;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"username":"admin","password":"incorrecta"}
+                                    """))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mvc.perform(post("/api/v1/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.200");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"admin","password":"admin"}
+                                """))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.201");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"admin","password":"incorrecta"}
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(post("/api/v1/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.202");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"admin","password":"admin"}
+                                """))
+                .andExpect(status().isOk());
     }
 }

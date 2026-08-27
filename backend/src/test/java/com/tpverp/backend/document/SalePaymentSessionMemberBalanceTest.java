@@ -16,12 +16,14 @@ import com.tpverp.backend.terminal.CardTerminalConfigurationReader;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentTerminalOperationService;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 
 class SalePaymentSessionMemberBalanceTest {
@@ -118,22 +120,46 @@ class SalePaymentSessionMemberBalanceTest {
     void workerRoutesFinalizationAndCancellationIndependently() {
         var repository = mock(SalePaymentSessionRepository.class);
         var service = mock(SalePaymentSessionService.class);
+        var incidents = mock(MemberBalanceRecoveryIncidentService.class);
         var finalized = mock(SalePaymentSession.class);
         var cancelled = mock(SalePaymentSession.class);
         var finalizedId = UUID.randomUUID();
         var cancelledId = UUID.randomUUID();
         when(finalized.getId()).thenReturn(finalizedId);
         when(cancelled.getId()).thenReturn(cancelledId);
-        when(repository.findTop100ByTicketIdIsNotNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc())
+        when(repository.findMemberBalanceFinalizationRecoveryCandidates(
+                any(Instant.class), eq(PageRequest.of(0, 100))))
                 .thenReturn(List.of(finalized));
-        when(repository.findTop100ByStatusAndTicketIdIsNullAndMemberBalanceReservationIdIsNotNullAndMemberBalanceSynchronizedAtIsNullOrderByUpdatedAtAsc(
-                SalePaymentSessionStatus.CANCELLED))
+        when(repository.findMemberBalanceAbortRecoveryCandidates(
+                any(Instant.class), eq(PageRequest.of(0, 100))))
                 .thenReturn(List.of(cancelled));
 
-        new MemberBalanceCheckoutRecoveryWorker(repository, service).recover();
+        new MemberBalanceCheckoutRecoveryWorker(repository, service, incidents).recover();
 
         verify(service).recoverMemberBalanceFinalization(finalizedId);
         verify(service).recoverMemberBalanceAbort(cancelledId);
+    }
+
+    @Test
+    void workerPersistsRecoveryFailureBeforeContinuing() {
+        var repository = mock(SalePaymentSessionRepository.class);
+        var service = mock(SalePaymentSessionService.class);
+        var incidents = mock(MemberBalanceRecoveryIncidentService.class);
+        var finalized = mock(SalePaymentSession.class);
+        var finalizedId = UUID.randomUUID();
+        when(finalized.getId()).thenReturn(finalizedId);
+        when(repository.findMemberBalanceFinalizationRecoveryCandidates(
+                any(Instant.class), eq(PageRequest.of(0, 100))))
+                .thenReturn(List.of(finalized));
+        when(repository.findMemberBalanceAbortRecoveryCandidates(
+                any(Instant.class), eq(PageRequest.of(0, 100))))
+                .thenReturn(List.of());
+        var failure = new IllegalStateException("saas_unavailable");
+        doThrow(failure).when(service).recoverMemberBalanceFinalization(finalizedId);
+
+        new MemberBalanceCheckoutRecoveryWorker(repository, service, incidents).recover();
+
+        verify(incidents).recordFailure(finalizedId, failure);
     }
 
     private static ReservationFixture reservationFixture() {

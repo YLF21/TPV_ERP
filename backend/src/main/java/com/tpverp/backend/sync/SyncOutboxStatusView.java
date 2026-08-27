@@ -4,5 +4,6 @@ public record SyncOutboxStatusView(
         long pending,
         long sending,
         long sent,
-        long error) {
+        long error,
+        long deadLetter) {
 }

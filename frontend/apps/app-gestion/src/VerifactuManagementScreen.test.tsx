@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { UserSession } from "@tpverp/app-common";
-import { VerifactuManagementScreen } from "./VerifactuManagementScreen";
+import { VerifactuManagementScreen, formatAge } from "./VerifactuManagementScreen";
 import * as api from "./verifactuManagementApi";
 
 vi.mock("./verifactuManagementApi", async (importOriginal) => {
@@ -125,6 +125,7 @@ const fiscalStatus: api.FiscalStatus = {
   endpointEnvironment: "TEST",
   transportMode: "SIMULATED",
   productionEnabled: false,
+  timezone: "Atlantic/Canary",
   verifactuBlockedUntil: null
 };
 
@@ -153,7 +154,9 @@ const adminSession: UserSession = {
   permissions: ["ADMIN"]
 };
 
-const t = (key: string) => key;
+const t = (key: string) => key === "verifactu.management.sandboxOutcome.ACCEPTED"
+  ? "Aceptado"
+  : key;
 
 beforeEach(() => {
   vi.mocked(api.loadVerifactuAdminSummary).mockResolvedValue(summary);
@@ -175,6 +178,19 @@ afterEach(() => {
 });
 
 describe("VerifactuManagementScreen", () => {
+  it("formats queue age through translated full unit labels", () => {
+    vi.setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const translated = (key: string) => ({
+      "verifactu.management.age.minute.many": "{count} minutos",
+      "verifactu.management.age.hour.one": "1 hora",
+      "verifactu.management.age.day.many": "{count} días"
+    }[key] ?? key);
+    expect(formatAge("2026-08-26T11:42:00Z", "es", translated)).toBe("18 minutos");
+    expect(formatAge("2026-08-26T11:00:00Z", "es", translated)).toBe("1 hora");
+    expect(formatAge("2026-08-24T12:00:00Z", "es", translated)).toBe("2 días");
+    vi.useRealTimers();
+  });
+
   it("starts in the operational summary without premature administrative actions", async () => {
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
 
@@ -186,11 +202,42 @@ describe("VerifactuManagementScreen", () => {
     expect(screen.queryByRole("button", { name: "verifactu.management.certificate" })).not.toBeInTheDocument();
   });
 
+  it("keeps the fiscal status visible to VERIFACTU_READ and exposes tabs with ARIA state", async () => {
+    render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
+
+    expect(await screen.findByRole("region", {
+      name: "verifactu.management.fiscalStatus"
+    })).toBeInTheDocument();
+    expect(api.loadFiscalStatus).toHaveBeenCalledWith("fiscal-token");
+    expect((await screen.findAllByText("1/7/26, 11:00")).length).toBeGreaterThan(0);
+    expect(api.loadFiscalSandboxStatus).not.toHaveBeenCalled();
+    expect(screen.getByRole("tablist", { name: "verifactu.management.views" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "verifactu.management.summary" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "verifactu-tab-summary");
+  });
+
+  it("keeps navigation first and scopes descriptive status and sandbox content to summary", async () => {
+    render(<VerifactuManagementScreen locale="es" session={adminSession} t={t} />);
+    await screen.findByText("Voluntary");
+    const navigation = screen.getByRole("tablist").parentElement;
+    expect(navigation).toHaveClass("gestion-verifactu-navigation");
+    expect(navigation?.parentElement?.firstElementChild).toBe(navigation);
+
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.queue" }));
+    await screen.findByText("T-2026-0042");
+    expect(screen.queryByRole("region", { name: "verifactu.management.fiscalStatus" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "verifactu.management.sandboxTitle" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.summary" }));
+    expect(await screen.findByRole("region", { name: "verifactu.management.fiscalStatus" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "verifactu.management.sandboxTitle" })).toBeInTheDocument();
+  });
+
   it("shows the real certificate view only to ADMIN and loads it on demand", async () => {
     render(<VerifactuManagementScreen locale="es" session={adminSession} t={t} />);
     await screen.findByText("Voluntary");
 
-    const tab = screen.getByRole("button", { name: "verifactu.management.certificate" });
+    const tab = screen.getByRole("tab", { name: "verifactu.management.certificate" });
     expect(api.loadVerifactuCertificates).not.toHaveBeenCalled();
     fireEvent.click(tab);
 
@@ -210,10 +257,11 @@ describe("VerifactuManagementScreen", () => {
     expect(await screen.findByRole("region", {
       name: "verifactu.management.sandboxTitle"
     })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Aceptado" })).toBeInTheDocument();
     expect(screen.getByText(/verifactu\.management\.sandboxQueue: 3/)).toBeInTheDocument();
     expect(screen.getByText(/verifactu\.management\.sandboxCertificate: verifactu\.management\.certificateValid/)).toBeInTheDocument();
     expect(screen.getByText(/verifactu\.management\.sandboxManualDispatch: verifactu\.management\.sandboxManualDispatchReady/)).toBeInTheDocument();
-    fireEvent.change(screen.getByDisplayValue("ACCEPTED"), { target: { value: "REJECTED" } });
+    fireEvent.change(screen.getByLabelText("verifactu.management.sandboxScenario"), { target: { value: "REJECTED" } });
     fireEvent.click(screen.getByRole("button", { name: "verifactu.management.sandboxApply" }));
     await waitFor(() => expect(api.setFiscalSandboxScenario).toHaveBeenCalledWith("REJECTED", "admin-token"));
 
@@ -222,9 +270,28 @@ describe("VerifactuManagementScreen", () => {
     expect(api.loadFiscalSandboxStatus).toHaveBeenCalledTimes(2);
   });
 
+  it("blocks the simulator controls while an outcome update is in flight", async () => {
+    let resolveScenario!: (value: api.FiscalSandboxStatus) => void;
+    vi.mocked(api.setFiscalSandboxScenario).mockReturnValueOnce(new Promise((resolve) => {
+      resolveScenario = resolve;
+    }));
+    render(<VerifactuManagementScreen locale="es" session={adminSession} t={t} />);
+    await screen.findByRole("region", { name: "verifactu.management.sandboxTitle" });
+    const apply = screen.getByRole("button", { name: "verifactu.management.sandboxApply" });
+    const dispatch = screen.getByRole("button", { name: "verifactu.management.sandboxDispatch" });
+    fireEvent.click(apply);
+    expect(apply).toBeDisabled();
+    expect(dispatch).toBeDisabled();
+    expect(screen.getByLabelText("verifactu.management.sandboxScenario")).toBeDisabled();
+    fireEvent.click(dispatch);
+    expect(api.dispatchFiscalSandboxNext).not.toHaveBeenCalled();
+    resolveScenario(sandboxStatus);
+    await waitFor(() => expect(apply).not.toBeDisabled());
+  });
+
   it("opens the backend resolution for a reader without exposing mutation controls", async () => {
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.queue" }));
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.queue" }));
     await screen.findByText("T-2026-0042");
 
     fireEvent.click(screen.getByRole("button", {
@@ -244,9 +311,13 @@ describe("VerifactuManagementScreen", () => {
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
     await screen.findByText("Voluntary");
 
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.queue" }));
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.queue" }));
 
     expect(await screen.findByText("T-2026-0042")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.ui.filters" }));
+    const filtersDialog = screen.getByRole("dialog", { name: "verifactu.ui.filters" });
+    expect(filtersDialog).toBeInTheDocument();
+    expect(filtersDialog.classList.contains("fiscal-workspace-dialog-purpose-filters")).toBe(true);
     expect(screen.getByRole("button", {
       name: "verifactu.management.status: verifactu.management.allStatuses"
     })).toBeInTheDocument();
@@ -267,8 +338,9 @@ describe("VerifactuManagementScreen", () => {
 
   it("validates dates locally and sends document filters through backend pagination", async () => {
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.queue" }));
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.queue" }));
     await screen.findByText("T-2026-0042");
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.ui.filters" }));
     vi.mocked(api.loadVerifactuAdminSubmissions).mockClear();
 
     fireEvent.change(screen.getByLabelText("verifactu.management.dateFrom"), { target: { value: "2026-07-21" } });
@@ -302,12 +374,16 @@ describe("VerifactuManagementScreen", () => {
   it("loads scoped defective records and opens sanitized attempt history", async () => {
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.defective" }));
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.defective" }));
     expect(await screen.findByText("T-2026-0042")).toBeInTheDocument();
     expect(api.loadVerifactuAdminDefectiveRecords).toHaveBeenCalledWith(expect.objectContaining({
       page: 0,
       size: 25
     }), "fiscal-token");
+
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.ui.filters" }));
+    expect(screen.getByRole("dialog", { name: "verifactu.ui.filters" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.click(screen.getByRole("button", {
       name: "verifactu.management.viewAttempts T-2026-0042"
@@ -328,7 +404,7 @@ describe("VerifactuManagementScreen", () => {
   it("shows passive diagnostics without connection or mutation actions", async () => {
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.diagnostics" }));
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.diagnostics" }));
 
     expect(await screen.findByText("verifactu.management.passiveDiagnostic")).toBeInTheDocument();
     expect(api.loadVerifactuAdminDiagnostics).toHaveBeenCalledWith("fiscal-token");

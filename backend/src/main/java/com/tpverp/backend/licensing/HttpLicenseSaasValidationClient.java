@@ -5,10 +5,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 public class HttpLicenseSaasValidationClient implements LicenseSaasValidationClient {
+
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
     private final URI endpoint;
     private final LicenseSaasCredentialStore credentials;
@@ -19,7 +22,9 @@ public class HttpLicenseSaasValidationClient implements LicenseSaasValidationCli
             URI saasUrl,
             LicenseSaasCredentialStore credentials,
             ObjectMapper mapper) {
-        this(saasUrl, credentials, mapper, HttpClient.newHttpClient());
+        this(saasUrl, credentials, mapper, HttpClient.newBuilder()
+                .connectTimeout(REQUEST_TIMEOUT)
+                .build());
     }
 
     HttpLicenseSaasValidationClient(
@@ -37,6 +42,7 @@ public class HttpLicenseSaasValidationClient implements LicenseSaasValidationCli
     public LicenseSaasValidationResponse validate(LicenseSaasValidationRequest validation) {
         try {
             var builder = HttpRequest.newBuilder(endpoint)
+                    .timeout(REQUEST_TIMEOUT)
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             credentials.readToken()
                     .ifPresent(token -> builder.header("X-TPV-Installation-Token", token));

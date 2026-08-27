@@ -1,4 +1,9 @@
 spring:
+  task:
+    scheduling:
+      pool:
+        size: ${TPV_SCHEDULING_POOL_SIZE:4}
+      thread-name-prefix: tpv-scheduler-
   application:
     name: TPV ERP Backend
   messages:
@@ -85,6 +90,7 @@ tpv:
     system-version: ${TPV_VERIFACTU_SYSTEM_VERSION:4.1.0}
     producer-name: ${TPV_VERIFACTU_PRODUCER_NAME:TPV ERP DEV}
     producer-tax-id: ${TPV_VERIFACTU_PRODUCER_TAX_ID:B00000000}
+    declaration-hash: ${TPV_VERIFACTU_DECLARATION_HASH:}
     worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:false}
     worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}
     # Observes the persisted operating clock every minute; six operating hours

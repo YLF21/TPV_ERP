@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,12 +47,72 @@ public class FiscalRecordService {
     private final FiscalSnapshotFactory snapshots;
     private final FiscalDocumentPolicy policy;
     private final Clock clock;
+    private final FiscalMandatoryActivationService mandatoryActivation;
     private final OfficialHashService officialHashes = new OfficialHashService();
     private final FiscalJsonHasher jsonHasher = new FiscalJsonHasher();
     private FiscalRuntimeProperties runtimeProperties;
     private FiscalArtifactService artifacts;
     private FiscalAlarmRepository alarms;
 
+    @Autowired
+    public FiscalRecordService(
+            FiscalChainRepository chains,
+            FiscalRecordRepository records,
+            FiscalRecordRelationRepository relations,
+            FiscalSubmissionStateRepository states,
+            VerifactuConfigurationRepository configurations,
+            LicenseRepository licenses,
+            CompanyRepository companies,
+            StoreRepository stores,
+            InstallationRepository installations,
+            CommercialDocumentRepository documents,
+            CustomerRepository customers,
+            VerifactuActivationService activation,
+            FiscalSnapshotFactory snapshots,
+            FiscalDocumentPolicy policy,
+            Clock clock,
+            ObjectProvider<FiscalMandatoryActivationService> mandatoryActivation) {
+        this(chains, records, relations, states, configurations, licenses, companies, stores,
+                installations, documents, customers, activation, snapshots, policy, clock,
+                mandatoryActivation.getIfAvailable());
+    }
+
+    FiscalRecordService(
+            FiscalChainRepository chains,
+            FiscalRecordRepository records,
+            FiscalRecordRelationRepository relations,
+            FiscalSubmissionStateRepository states,
+            VerifactuConfigurationRepository configurations,
+            LicenseRepository licenses,
+            CompanyRepository companies,
+            StoreRepository stores,
+            InstallationRepository installations,
+            CommercialDocumentRepository documents,
+            CustomerRepository customers,
+            VerifactuActivationService activation,
+            FiscalSnapshotFactory snapshots,
+            FiscalDocumentPolicy policy,
+            Clock clock,
+            FiscalMandatoryActivationService mandatoryActivation) {
+        this.chains = chains;
+        this.records = records;
+        this.relations = relations;
+        this.states = states;
+        this.configurations = configurations;
+        this.licenses = licenses;
+        this.companies = companies;
+        this.stores = stores;
+        this.installations = installations;
+        this.documents = documents;
+        this.customers = customers;
+        this.activation = activation;
+        this.snapshots = snapshots;
+        this.policy = policy;
+        this.clock = clock;
+        this.mandatoryActivation = mandatoryActivation;
+    }
+
+    /** Kept for focused unit tests and compatibility with existing embedders. */
     public FiscalRecordService(
             FiscalChainRepository chains,
             FiscalRecordRepository records,
@@ -68,21 +129,9 @@ public class FiscalRecordService {
             FiscalSnapshotFactory snapshots,
             FiscalDocumentPolicy policy,
             Clock clock) {
-        this.chains = chains;
-        this.records = records;
-        this.relations = relations;
-        this.states = states;
-        this.configurations = configurations;
-        this.licenses = licenses;
-        this.companies = companies;
-        this.stores = stores;
-        this.installations = installations;
-        this.documents = documents;
-        this.customers = customers;
-        this.activation = activation;
-        this.snapshots = snapshots;
-        this.policy = policy;
-        this.clock = clock;
+        this(chains, records, relations, states, configurations, licenses, companies, stores,
+                installations, documents, customers, activation, snapshots, policy, clock,
+                (FiscalMandatoryActivationService) null);
     }
 
     /** Optional setter keeps direct unit-test construction backwards compatible. */
@@ -150,11 +199,20 @@ public class FiscalRecordService {
             throw new IllegalArgumentException("Solo puede subsanarse un registro de alta");
         }
         validateCorrectionEconomics(original, correctedSnapshot);
-        ensureNoActiveIntegrityAlarm(original.getCompanyId(), original.getInstallationId(),
-                original.getFiscalMode());
         var generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        var mode = modeForCorrection(original, generatedAt);
+        ensureNoActiveIntegrityAlarm(original.getCompanyId(), original.getInstallationId(),
+                mode);
         var chain = chains.findForUpdate(original.getCompanyId(), original.getInstallationId())
                 .orElseThrow(() -> new IllegalStateException("Cadena fiscal no encontrada"));
+        // Capture the official timestamp after acquiring the chain lock so it cannot
+        // precede the timestamp of the record that received the previous sequence.
+        generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        // Re-evaluate the temporal license/mode decision after the lock. A mandatory
+        // activation boundary may be crossed while waiting; the record must use the
+        // official instant and mode that apply when its sequence is reserved.
+        mode = modeForCorrection(original, generatedAt);
+        ensureNoActiveIntegrityAlarm(original.getCompanyId(), original.getInstallationId(), mode);
         if (!original.chainId().equals(chain.getId())) {
             throw new IllegalStateException("El registro no pertenece a la cadena fiscal activa");
         }
@@ -176,8 +234,8 @@ public class FiscalRecordService {
                 original.getIssuerTaxId(), original.getTotalTax(), original.getTotalAmount(),
                 previousHash, hash, jsonHasher.hash(snapshot), snapshot,
                 original.getFormatVersion(), original.getAlgorithmVersion(),
-                original.getApplicationVersion(), original.getFiscalMode()));
-        if (original.getFiscalMode() == FiscalMode.VERIFACTU) {
+                original.getApplicationVersion(), mode));
+        if (mode == FiscalMode.VERIFACTU) {
             states.save(new FiscalSubmissionState(
                     correction.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
         }
@@ -188,6 +246,29 @@ public class FiscalRecordService {
             artifacts.create(correction);
         }
         return correction;
+    }
+
+    private FiscalMode modeForCorrection(FiscalRecord original, Instant generatedAt) {
+        if (mandatoryActivation == null) {
+            return original.getFiscalMode();
+        }
+        var license = licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
+                        original.getStoreId(), original.getInstallationId())
+                .orElseThrow(() -> new FiscalMandatoryActivationException(
+                        "Emision fiscal bloqueada: no existe una licencia activa para la "
+                                + "subsanacion"));
+        if (!license.isOperationalAt(generatedAt)) {
+            throw new FiscalMandatoryActivationException(
+                    "Emision fiscal bloqueada: la licencia no esta vigente para la subsanacion");
+        }
+        if (!SpanishTaxId.validate(license.getTaxId()).equals(original.getIssuerTaxId())) {
+            throw new FiscalMandatoryActivationException(
+                    "Emision fiscal bloqueada: el NIF de la licencia no coincide con el registro");
+        }
+        var configuration = mandatoryActivation.prepareEmission(
+                license.getId(), generatedAt);
+        return resolveMode(configuration, license, generatedAt,
+                ZoneId.of(original.getTimezone()));
     }
 
     private FiscalRecord register(
@@ -209,6 +290,14 @@ public class FiscalRecordService {
         var chain = chains.findForUpdate(command.companyId(), command.installationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la cadena fiscal"));
+        // Sequence order is the fiscal chain order; timestamp it only once that order
+        // has been reserved under the same lock.
+        generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        // Re-evaluate all time-sensitive license/configuration/mode rules after the lock.
+        // This keeps a request waiting at a fiscal boundary from persisting the old mode.
+        context = fiscalContextAt(context, generatedAt);
+        policy.validate(context.document(), command.operation(), command.documentType());
+        ensureNoActiveIntegrityAlarm(command.companyId(), command.installationId(), context.mode());
         if (records.findByDocumentIdAndOperation(
                 command.documentId(), command.operation()).isPresent()) {
             throw new IllegalStateException(
@@ -391,18 +480,49 @@ public class FiscalRecordService {
                     "El NIF de la licencia no coincide con la empresa");
         }
         var customer = customer(document, command.companyId());
-        var initialMode = runtimeProperties != null && runtimeProperties.isSandbox()
-                ? runtimeProperties.sandboxInitialMode() : FiscalMode.PRE_SIF;
-        configurations.insertIfMissingWithMode(
-                UUID.randomUUID(), command.companyId(), initialMode.name());
-        var configuration = configurations.findByCompanyId(command.companyId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "No se pudo inicializar la configuracion VERI*FACTU"));
+        var configuration = prepareFiscalConfiguration(
+                command, license, generatedAt);
         var zone = ZoneId.of(store.getTimezone());
         var mode = resolveMode(configuration, license, generatedAt, zone);
         return new FiscalContext(
                 companyTaxId, zone.getId(),
-                generatedAt.atZone(zone).toOffsetDateTime(), document, customer, mode);
+                generatedAt.atZone(zone).toOffsetDateTime(), document, customer, mode,
+                license, configuration, zone);
+    }
+
+    /**
+     * Revalidates the official instant after the chain lock without repeating the broad
+     * document/company lookups. Mandatory activation is deliberately invoked again because
+     * it may need to apply a transition crossed while waiting for the lock.
+     */
+    private FiscalContext fiscalContextAt(FiscalContext previous, Instant generatedAt) {
+        if (!previous.license().isOperationalAt(generatedAt)) {
+            throw new IllegalStateException("La licencia no esta vigente");
+        }
+        var configuration = mandatoryActivation == null
+                ? previous.configuration()
+                : mandatoryActivation.prepareEmission(previous.license().getId(), generatedAt);
+        var mode = resolveMode(configuration, previous.license(), generatedAt, previous.zone());
+        return new FiscalContext(
+                previous.issuerTaxId(), previous.timezone(),
+                generatedAt.atZone(previous.zone()).toOffsetDateTime(), previous.document(),
+                previous.customer(), mode, previous.license(), configuration, previous.zone());
+    }
+
+    private VerifactuConfiguration prepareFiscalConfiguration(
+            FiscalRecordCommand command,
+            com.tpverp.backend.licensing.License license,
+            Instant generatedAt) {
+        if (mandatoryActivation != null) {
+            return mandatoryActivation.prepareEmission(license.getId(), generatedAt);
+        }
+        var initialMode = runtimeProperties != null && runtimeProperties.isSandbox()
+                ? runtimeProperties.sandboxInitialMode() : FiscalMode.PRE_SIF;
+        configurations.insertIfMissingWithMode(
+                UUID.randomUUID(), command.companyId(), initialMode.name());
+        return configurations.findByCompanyId(command.companyId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "No se pudo inicializar la configuracion VERI*FACTU"));
     }
 
     private Customer customer(CommercialDocument document, UUID companyId) {
@@ -484,7 +604,10 @@ public class FiscalRecordService {
             OffsetDateTime generatedAt,
             CommercialDocument document,
             Customer customer,
-            FiscalMode mode) {
+            FiscalMode mode,
+            com.tpverp.backend.licensing.License license,
+            VerifactuConfiguration configuration,
+            ZoneId zone) {
     }
 
     private FiscalMode resolveMode(
@@ -497,6 +620,14 @@ public class FiscalRecordService {
             configured = FiscalMode.PRE_SIF;
         }
         boolean sandbox = runtimeProperties != null && runtimeProperties.isSandbox();
+        boolean mandatoryDue = activation.isAutomaticallyRequired(
+                license.getTaxpayerType(), license.getVerifactuActivationDate(),
+                generatedAt, zone);
+        if (configured != FiscalMode.VERIFACTU && mandatoryDue) {
+            throw new FiscalMandatoryActivationException(
+                    "Emision fiscal bloqueada: la fecha automatica de licencia VERI*FACTU ya se ha "
+                            + "alcanzado y la transicion no esta aplicada");
+        }
         if (configured == FiscalMode.NO_VERIFACTU) {
             return FiscalMode.NO_VERIFACTU;
         }

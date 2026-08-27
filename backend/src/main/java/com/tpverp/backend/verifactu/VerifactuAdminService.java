@@ -1,5 +1,6 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -31,6 +32,7 @@ public class VerifactuAdminService {
     private final Clock systemClock;
     private final FiscalSubmissionAttemptService attempts;
     private final ManagedVerifactuCertificateRepository managedCertificates;
+    private final InstallationRepository installations;
 
     public VerifactuAdminService(
             VerifactuSubmissionPropertiesFactory properties,
@@ -40,7 +42,28 @@ public class VerifactuAdminService {
             VerifactuSubmissionWorker worker,
             VerifactuSignaturePolicy signatures) {
         this(properties, keyStores, certificates, queue, worker, null, signatures, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
+    }
+
+    public VerifactuAdminService(
+            VerifactuSubmissionPropertiesFactory properties,
+            VerifactuPkcs12KeyStoreLoader keyStores,
+            VerifactuCertificateValidator certificates,
+            FiscalSubmissionQueueService queue,
+            VerifactuSubmissionWorker worker,
+            Environment environment,
+            VerifactuSignaturePolicy signatures,
+            VerifactuClockMonitor clock,
+            VerifactuConfigurationRepository configurations,
+            LicenseRepository licenses,
+            CurrentOrganization organization,
+            VerifactuActivationService activation,
+            Clock systemClock,
+            FiscalSubmissionAttemptService attempts,
+            ManagedVerifactuCertificateRepository managedCertificates) {
+        this(properties, keyStores, certificates, queue, worker, environment, signatures, clock,
+                configurations, licenses, organization, activation, systemClock, attempts,
+                managedCertificates, null);
     }
 
     @Autowired
@@ -59,7 +82,8 @@ public class VerifactuAdminService {
             VerifactuActivationService activation,
             Clock systemClock,
             FiscalSubmissionAttemptService attempts,
-            ManagedVerifactuCertificateRepository managedCertificates) {
+            ManagedVerifactuCertificateRepository managedCertificates,
+            InstallationRepository installations) {
         this.properties = properties;
         this.keyStores = keyStores;
         this.certificates = certificates;
@@ -75,6 +99,7 @@ public class VerifactuAdminService {
         this.systemClock = systemClock;
         this.attempts = attempts;
         this.managedCertificates = managedCertificates;
+        this.installations = installations;
     }
 
     public VerifactuAdminStatusView status() {
@@ -137,7 +162,7 @@ public class VerifactuAdminService {
         configuration.activateVoluntarily(Instant.now(requiredClock()));
         return configurations.save(configuration);
     }
-    // Activa VERI*FACTU de forma reversible hasta primera remision o fecha legal.
+    // Activa VERI*FACTU de forma reversible hasta primera remision o fecha de licencia.
 
     @Transactional
     public VerifactuConfiguration deactivateVoluntary() {
@@ -152,7 +177,7 @@ public class VerifactuAdminService {
                 ZoneId.of(store.getTimezone()));
         return configurations.save(configuration);
     }
-    // Desactiva solo si todavia no hay obligacion legal ni primera remision.
+    // Desactiva solo si todavia no ha vencido la politica de licencia ni hay primera remision.
 
     private ManagedVerifactuCertificate activeCertificate() {
         if (managedCertificates == null) {
@@ -196,7 +221,7 @@ public class VerifactuAdminService {
                 zone)) {
             return new VerifactuActivationStatus(
                     true,
-                    license.getVerifactuActivationDate() == null ? "LEGAL_FALLBACK" : "LICENSE_POLICY",
+                    "LICENSE_POLICY",
                     activation.activationInstant(
                             license.getTaxpayerType(),
                             license.getVerifactuActivationDate(),
@@ -225,6 +250,14 @@ public class VerifactuAdminService {
 
     private License activeLicense() {
         var store = requiredOrganization().currentStore();
+        if (installations != null && licenses != null) {
+            var installation = FiscalInstallationResolver.resolveCurrent(
+                    requiredOrganization(), installations, licenses);
+            return licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
+                            store.getId(), installation.getId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "No existe una licencia activa para la tienda e instalacion"));
+        }
         return licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId()).stream()
                 .filter(License::isActiva)
                 .findFirst()

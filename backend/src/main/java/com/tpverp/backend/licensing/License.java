@@ -94,6 +94,9 @@ public class License {
     @Column(name = "verifactu_policy_updated_at")
     private Instant verifactuPolicyUpdatedAt;
 
+    @Column(name = "saas_license_version")
+    private Long saasLicenseVersion;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "estado_saas", nullable = false, length = 32)
     private LicenseSaasStatus estadoSaas = LicenseSaasStatus.VALIDA;
@@ -166,8 +169,9 @@ public class License {
         if (maxWindows < 1 || maxPda < 0 || formatVersion < 1) {
             throw new IllegalArgumentException("Limites o version de formato invalidos");
         }
-        if (!Objects.requireNonNull(validaHasta, "validaHasta").isAfter(
-                Objects.requireNonNull(validaDesde, "validaDesde"))) {
+        Instant normalizedValidaDesde = normalized(Objects.requireNonNull(validaDesde, "validaDesde"));
+        Instant normalizedValidaHasta = normalized(Objects.requireNonNull(validaHasta, "validaHasta"));
+        if (!normalizedValidaHasta.isAfter(normalizedValidaDesde)) {
             throw new IllegalArgumentException("validaHasta debe ser posterior a validaDesde");
         }
         if (resultadoImportacion == ImportResult.RECHAZADA
@@ -178,8 +182,8 @@ public class License {
         this.tienda = Objects.requireNonNull(tienda, "tienda");
         this.instalacion = Objects.requireNonNull(instalacion, "instalacion");
         this.referencia = required(referencia, "referencia");
-        this.validaDesde = validaDesde;
-        this.validaHasta = validaHasta;
+        this.validaDesde = normalizedValidaDesde;
+        this.validaHasta = normalizedValidaHasta;
         this.maxWindows = maxWindows;
         this.maxPda = maxPda;
         this.taxId = required(taxId, "taxId");
@@ -189,7 +193,7 @@ public class License {
         this.blobOriginal = required(blobOriginal, "blobOriginal");
         this.hash = required(hash, "hash");
         this.formatVersion = formatVersion;
-        this.importadaEn = Objects.requireNonNull(importadaEn, "importadaEn");
+        this.importadaEn = normalized(Objects.requireNonNull(importadaEn, "importadaEn"));
         this.ultimaValidacionSaas = this.importadaEn;
         this.estadoSaas = LicenseSaasStatus.VALIDA;
         this.metadataImportacion = metadataImportacion == null ? null : new LinkedHashMap<>(metadataImportacion);
@@ -218,12 +222,22 @@ public class License {
         return instalacion.getReferencia();
     }
 
+    public String getInstalacionPublicKey() {
+        return instalacion.getPublicKey();
+    }
+
     public UUID getSaasCompanyId() {
         return metadataUuid("saasCompanyId");
     }
 
     public UUID getSaasStoreId() {
         return metadataUuid("saasStoreId");
+    }
+
+    public boolean isSaasLinked() {
+        Object source = metadataImportacion == null ? null : metadataImportacion.get("source");
+        return (source != null && "SAAS_LINK".equalsIgnoreCase(source.toString().trim()))
+                || (blobOriginal != null && blobOriginal.startsWith("SAAS_LINK:"));
     }
 
     public String getReferencia() {
@@ -270,6 +284,10 @@ public class License {
         return formatVersion;
     }
 
+    public Instant getImportadaEn() {
+        return importadaEn;
+    }
+
     public String getHash() {
         return hash;
     }
@@ -298,12 +316,57 @@ public class License {
         return verifactuPolicyUpdatedAt;
     }
 
+    public Long getSaasLicenseVersion() {
+        return saasLicenseVersion;
+    }
+
+    void authenticateSaasCache(String mac) {
+        if (mac == null || !mac.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("MAC de cache SaaS invalida");
+        }
+        hash = mac;
+        formatVersion = LicenseSaasCacheAuthenticator.AUTHENTICATED_FORMAT_VERSION;
+    }
+
+    public void applySaasLicenseSnapshot(
+            Instant validatedAt,
+            LicenseSaasStatus status,
+            Instant validUntil,
+            int maxWindows,
+            int maxPda,
+            long licenseVersion) {
+        validatedAt = normalized(Objects.requireNonNull(validatedAt, "validatedAt"));
+        Objects.requireNonNull(status, "status");
+        validUntil = normalized(Objects.requireNonNull(validUntil, "validUntil"));
+        if (maxWindows < 1 || maxPda < 0 || licenseVersion < 1) {
+            throw new IllegalArgumentException("Version o cupos de licencia SaaS invalidos");
+        }
+        if (saasLicenseVersion != null && licenseVersion < saasLicenseVersion) {
+            throw new IllegalStateException("SaaS devolvio una version de licencia anterior");
+        }
+        if (saasLicenseVersion != null && licenseVersion == saasLicenseVersion
+                && (!validUntil.equals(validaHasta)
+                        || maxWindows != this.maxWindows
+                        || maxPda != this.maxPda)) {
+            throw new IllegalStateException(
+                    "La misma version de licencia SaaS contiene condiciones distintas");
+        }
+        if (saasLicenseVersion == null || licenseVersion > saasLicenseVersion) {
+            validaHasta = validUntil;
+            this.maxWindows = maxWindows;
+            this.maxPda = maxPda;
+            saasLicenseVersion = licenseVersion;
+        }
+        ultimaValidacionSaas = normalized(validatedAt);
+        estadoSaas = status;
+    }
+
     public boolean applyVerifactuPolicy(
             LocalDate activationDate,
             long policyVersion,
             Instant policyUpdatedAt) {
         Objects.requireNonNull(activationDate, "activationDate");
-        Objects.requireNonNull(policyUpdatedAt, "policyUpdatedAt");
+        policyUpdatedAt = normalized(Objects.requireNonNull(policyUpdatedAt, "policyUpdatedAt"));
         if (policyVersion < 0) {
             throw new IllegalArgumentException("Version de politica VERI*FACTU invalida");
         }
@@ -322,26 +385,26 @@ public class License {
         }
         verifactuActivationDate = activationDate;
         verifactuPolicyVersion = policyVersion;
-        verifactuPolicyUpdatedAt = policyUpdatedAt;
+        verifactuPolicyUpdatedAt = normalized(policyUpdatedAt);
         return true;
     }
 
     public void markSaasValidated(Instant validatedAt, Instant validUntil) {
-        ultimaValidacionSaas = Objects.requireNonNull(validatedAt, "validatedAt");
-        validaHasta = Objects.requireNonNull(validUntil, "validUntil");
+        ultimaValidacionSaas = normalized(Objects.requireNonNull(validatedAt, "validatedAt"));
+        validaHasta = normalized(Objects.requireNonNull(validUntil, "validUntil"));
         estadoSaas = LicenseSaasStatus.VALIDA;
     }
 
     public void markSaasBlocked(Instant validatedAt) {
-        ultimaValidacionSaas = Objects.requireNonNull(validatedAt, "validatedAt");
+        ultimaValidacionSaas = normalized(Objects.requireNonNull(validatedAt, "validatedAt"));
         estadoSaas = LicenseSaasStatus.BLOQUEADA_MANUAL;
     }
 
     public void markSaasRejected(Instant validatedAt, LicenseSaasStatus status, Instant validUntil) {
-        ultimaValidacionSaas = Objects.requireNonNull(validatedAt, "validatedAt");
+        ultimaValidacionSaas = normalized(Objects.requireNonNull(validatedAt, "validatedAt"));
         estadoSaas = Objects.requireNonNull(status, "status");
         if (validUntil != null) {
-            validaHasta = validUntil;
+            validaHasta = normalized(validUntil);
         }
     }
     // Stores the exact SaaS rejection state so support can distinguish expired, blocked and update-required licenses.
@@ -377,6 +440,10 @@ public class License {
             throw new IllegalArgumentException(field + " es obligatorio");
         }
         return value.trim();
+    }
+
+    private static Instant normalized(Instant value) {
+        return value.truncatedTo(ChronoUnit.MICROS);
     }
 
     private UUID metadataUuid(String key) {

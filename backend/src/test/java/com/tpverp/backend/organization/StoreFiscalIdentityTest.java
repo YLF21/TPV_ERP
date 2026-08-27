@@ -22,13 +22,13 @@ class StoreFiscalIdentityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Atlantic/Canary", "Europe/Madrid"})
+    @ValueSource(strings = {"Atlantic/Canary", "Europe/Madrid", "Europe/London", "UTC"})
     void acceptsSupportedTimezones(String timezone) {
         assertThat(StoreFiscalIdentity.timezone(timezone)).isEqualTo(timezone);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Europe/London", "UTC", " "})
+    @ValueSource(strings = {"Europe/Does_Not_Exist", "UTC+99", " "})
     void rejectsUnsupportedTimezones(String timezone) {
         assertThatThrownBy(() -> StoreFiscalIdentity.timezone(timezone))
                 .isInstanceOf(IllegalArgumentException.class);

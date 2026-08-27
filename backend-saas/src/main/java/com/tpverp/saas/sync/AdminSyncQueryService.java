@@ -4,15 +4,20 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.Comparator;
+import java.time.Instant;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminSyncQueryService {
+
+    private static final PageRequest RECENT_LIMIT = PageRequest.of(0, 200);
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
@@ -27,20 +32,39 @@ public class AdminSyncQueryService {
 
     @Transactional(readOnly = true)
     public List<AdminSyncEventView> events(UUID companyId, UUID storeId) {
-        return views(filter(events.findTop200ByOrderByReceivedAtDesc(), companyId, storeId));
+        return views(events.findRecent(null, companyId, storeId, RECENT_LIMIT));
+    }
+
+    @Transactional(readOnly = true)
+    public AdminSyncProjectionStatusView projectionStatus(UUID companyId, UUID storeId) {
+        var counts = new EnumMap<SaasSyncEvent.ProjectionStatus, Long>(
+                SaasSyncEvent.ProjectionStatus.class);
+        Instant oldestReceivedAt = null;
+        for (SaasSyncEventRepository.ProjectionStatusCount row
+                : events.countProjectionStatuses(companyId, storeId)) {
+            counts.put(row.getStatus(), row.getTotal());
+            if (row.getStatus() == SaasSyncEvent.ProjectionStatus.RECEIVED) {
+                oldestReceivedAt = row.getOldestReceivedAt();
+            }
+        }
+        return new AdminSyncProjectionStatusView(
+                counts.getOrDefault(SaasSyncEvent.ProjectionStatus.RECEIVED, 0L),
+                counts.getOrDefault(SaasSyncEvent.ProjectionStatus.PROJECTED, 0L),
+                counts.getOrDefault(SaasSyncEvent.ProjectionStatus.IGNORED, 0L),
+                counts.getOrDefault(SaasSyncEvent.ProjectionStatus.ERROR, 0L),
+                oldestReceivedAt);
     }
 
     @Transactional(readOnly = true)
     public List<AdminSyncEventView> sales(UUID companyId, UUID storeId) {
-        return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("DOCUMENTO"), companyId, storeId));
+        return views(events.findRecent("DOCUMENTO", companyId, storeId, RECENT_LIMIT));
     }
 
     @Transactional(readOnly = true)
     public AdminSalesSummaryView salesSummary(UUID companyId, UUID storeId) {
         int count = 0;
         BigDecimal total = BigDecimal.ZERO;
-        for (SaasSyncEvent event : filter(
-                events.findByEntityTypeOrderByReceivedAtAsc("DOCUMENTO"), companyId, storeId)) {
+        for (SaasSyncEvent event : events.findChronological("DOCUMENTO", companyId, storeId)) {
             if (event.getOperation() == SyncOperation.ANULAR) {
                 continue;
             }
@@ -56,14 +80,13 @@ public class AdminSyncQueryService {
 
     @Transactional(readOnly = true)
     public List<AdminSyncEventView> stockMovements(UUID companyId, UUID storeId) {
-        return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("STOCK_MOVEMENT"), companyId, storeId));
+        return views(events.findRecent("STOCK_MOVEMENT", companyId, storeId, RECENT_LIMIT));
     }
 
     @Transactional(readOnly = true)
     public List<AdminStockSnapshotView> stockCurrent(UUID companyId, UUID storeId) {
         Map<StockKey, BigDecimal> snapshot = new LinkedHashMap<>();
-        for (SaasSyncEvent event : filter(
-                events.findByEntityTypeOrderByReceivedAtAsc("STOCK_MOVEMENT"), companyId, storeId)) {
+        for (SaasSyncEvent event : events.findChronological("STOCK_MOVEMENT", companyId, storeId)) {
             Map<String, Object> payload = payload(event.getPayload());
             var key = new StockKey(
                     event.getCompany().getId(),
@@ -87,14 +110,7 @@ public class AdminSyncQueryService {
 
     @Transactional(readOnly = true)
     public List<AdminSyncEventView> cashClosures(UUID companyId, UUID storeId) {
-        return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("CIERRE_CAJA"), companyId, storeId));
-    }
-
-    private List<SaasSyncEvent> filter(List<SaasSyncEvent> values, UUID companyId, UUID storeId) {
-        return values.stream()
-                .filter(event -> companyId == null || event.getCompany().getId().equals(companyId))
-                .filter(event -> storeId == null || event.getStore() != null && event.getStore().getId().equals(storeId))
-                .toList();
+        return views(events.findRecent("CIERRE_CAJA", companyId, storeId, RECENT_LIMIT));
     }
 
     private List<AdminSyncEventView> views(List<SaasSyncEvent> values) {
@@ -110,6 +126,10 @@ public class AdminSyncQueryService {
                 event.getEntityType(),
                 event.getEntityId(),
                 event.getOperation(),
+                event.getProjectionStatus(),
+                event.getProjectedAt(),
+                event.getProjectionError(),
+                event.getSchemaVersion(),
                 event.getReceivedAt(),
                 payload(event.getPayload()));
     }

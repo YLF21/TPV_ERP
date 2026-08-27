@@ -83,6 +83,12 @@ public class TicketController {
         return service.loadRenderedTicketPrintView(id);
     }
 
+    @GetMapping("/{id}/print-set")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
+    public DocumentService.TicketPrintSet printSet(@PathVariable UUID id) {
+        return service.loadRenderedTicketPrintSet(id);
+    }
+
     @GetMapping("/{id}/cancellation-receipt")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public TicketCancellationService.CancellationReceipt cancellationReceipt(
@@ -99,6 +105,7 @@ public class TicketController {
         var selectedTemplate = template == null || template.isBlank()
                 ? jasperRenderer.selectedTemplate()
                 : TicketJasperRenderer.Template.parse(template);
+        service.requireFiscalQrReadyForPrint(id);
         var content = jasperRenderer.render(ticket, selectedTemplate);
         String number = ticket.getNumero() == null ? id.toString() : ticket.getNumero();
         String filename = "ticket-" + number.replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
@@ -166,8 +173,9 @@ public class TicketController {
                 request.authorizerUsername(),
                 request.authorizerPassword(),
                 authentication);
-        return ReturnView.from(result, service.ticketPrintView(
-                result.document(), result.payouts()));
+        var printView = service.ticketPrintView(result.document(), result.payouts());
+        return ReturnView.from(result, service.renderTicketPrintView(
+                result.document(), printView));
     }
 
     @PostMapping("/{id}/cancel")

@@ -75,6 +75,24 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void envuelveElRegistroCongeladoSinReconstruirIdentidadDelSistema() {
+        var frozen = service().recordXml(
+                request(record(FiscalRecordOperation.ALTA), "Empresa congelada"),
+                record(FiscalRecordOperation.ALTA));
+
+        var batch = service().frozenBatchXml(
+                "Empresa congelada", "B12345674", List.of(frozen));
+        var document = parse(batch);
+
+        assertThat(text(document, "NombreRazon", 0)).isEqualTo("Empresa congelada");
+        assertThat(text(document, "NombreRazonEmisor", 0)).isEqualTo("Empresa congelada");
+        assertThat(text(document, "NombreSistemaInformatico", 0)).isEqualTo("TPV ERP");
+        assertThat(text(document, "NumeroInstalacion", 0)).isEqualTo("INST-001");
+        assertThat(text(document, "Huella", 1)).isEqualTo("A".repeat(64));
+        new VerifactuOfficialXsdValidator().validate(batch);
+    }
+
+    @Test
     void usaElRegimenYPorcentajeFiscalDelSnapshotSiExistenLineas() {
         var xml = service().batchXml(request(record(
                 FiscalRecordOperation.ALTA,

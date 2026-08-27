@@ -25,7 +25,7 @@ class CashCloseOperationMigrationPostgreSqlTest {
         var operationId = UUID.randomUUID();
         var attemptId = UUID.randomUUID();
         try {
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(database.url(), database.user(), database.password())
                     .schemas(schema)
                     .defaultSchema(schema)
@@ -81,7 +81,7 @@ class CashCloseOperationMigrationPostgreSqlTest {
                         """.formatted(attemptId, sessionId, userId));
             }
 
-            Flyway.configure()
+            FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                     .dataSource(database.url(), database.user(), database.password())
                     .schemas(schema)
                     .defaultSchema(schema)

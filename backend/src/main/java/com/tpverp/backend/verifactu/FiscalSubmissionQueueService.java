@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,6 +31,8 @@ public class FiscalSubmissionQueueService {
     private final CurrentOrganization organization;
     private final Clock clock;
     private final VerifactuDefectClassifier defects;
+    private final InstallationRepository installations;
+    private final LicenseRepository licenses;
 
     public FiscalSubmissionQueueService(
             FiscalSubmissionStateRepository states,
@@ -36,11 +40,25 @@ public class FiscalSubmissionQueueService {
             CurrentOrganization organization,
             Clock clock,
             VerifactuDefectClassifier defects) {
+        this(states, records, organization, clock, defects, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FiscalSubmissionQueueService(
+            FiscalSubmissionStateRepository states,
+            FiscalRecordRepository records,
+            CurrentOrganization organization,
+            Clock clock,
+            VerifactuDefectClassifier defects,
+            InstallationRepository installations,
+            LicenseRepository licenses) {
         this.states = states;
         this.records = records;
         this.organization = organization;
         this.clock = clock;
         this.defects = defects;
+        this.installations = installations;
+        this.licenses = licenses;
     }
 
     // Returns retryable records for the current store in queue order.
@@ -83,6 +101,13 @@ public class FiscalSubmissionQueueService {
         var storeId = organization.currentStore().getId();
         var record = records.findByIdAndCompanyIdAndStoreId(recordId, companyId, storeId)
                 .orElseThrow(() -> new NoSuchElementException("Registro fiscal no encontrado"));
+        if (installations != null && licenses != null) {
+            var installation = FiscalInstallationResolver.resolveCurrent(
+                    organization, installations, licenses);
+            if (!installation.getId().equals(record.getInstallationId())) {
+                throw new NoSuchElementException("Registro fiscal no encontrado");
+            }
+        }
         requireVerifactu(record);
         var state = states.findForUpdate(recordId)
                 .orElseThrow(() -> new NoSuchElementException(
@@ -112,10 +137,16 @@ public class FiscalSubmissionQueueService {
     private List<QueueCandidate> visibleInQueue() {
         var companyId = organization.currentCompany().getId();
         var storeId = organization.currentStore().getId();
+        var installationId = installations == null || licenses == null
+                ? null
+                : FiscalInstallationResolver.resolveCurrent(
+                        organization, installations, licenses).getId();
         return states.findAllByStatusInOrderByUpdatedAtAsc(VISIBLE_IN_QUEUE).stream()
                 .flatMap(state -> records.findById(state.getRecordId()).stream()
                         .filter(record -> record.getCompanyId().equals(companyId))
                         .filter(record -> record.getStoreId().equals(storeId))
+                        .filter(record -> installationId == null
+                                || installationId.equals(record.getInstallationId()))
                         .filter(this::isVerifactuRecord)
                         .map(record -> new QueueCandidate(record, state)))
                 .toList();

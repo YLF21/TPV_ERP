@@ -94,6 +94,51 @@ public class VerifactuXmlService {
     }
 
     /**
+     * Wraps immutable registration XML in the AEAT batch envelope. Neither the
+     * invoice data nor the SIF identity is rebuilt from current configuration.
+     */
+    public String frozenBatchXml(
+            String issuerName, String issuerTaxId, List<String> frozenRecords) {
+        var name = required(issuerName, "nombre del emisor congelado");
+        var taxId = required(issuerTaxId, "NIF del emisor congelado");
+        if (frozenRecords == null || frozenRecords.isEmpty()) {
+            throw new IllegalArgumentException("Debe existir al menos un registro fiscal congelado");
+        }
+        try {
+            var document = newDocumentBuilder().newDocument();
+            var root = document.createElementNS(LR_NS, "sfLR:RegFactuSistemaFacturacion");
+            root.setAttribute("xmlns:sf", SF_NS);
+            document.appendChild(root);
+            var header = element(document, LR_NS, "sfLR:Cabecera");
+            var obligated = child(document, header, "ObligadoEmision");
+            text(document, obligated, "NombreRazon", name);
+            text(document, obligated, "NIF", taxId);
+            root.appendChild(header);
+            for (String frozenXml : frozenRecords) {
+                var frozenDocument = newDocumentBuilder().parse(
+                        new ByteArrayInputStream(required(frozenXml, "XML fiscal congelado")
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                var frozenRoot = frozenDocument.getDocumentElement();
+                if (frozenRoot == null || !SF_NS.equals(frozenRoot.getNamespaceURI())
+                        || !("RegistroAlta".equals(frozenRoot.getLocalName())
+                                || "RegistroAnulacion".equals(frozenRoot.getLocalName()))) {
+                    throw new IllegalArgumentException(
+                            "El artefacto no contiene RegistroAlta ni RegistroAnulacion");
+                }
+                var container = element(document, LR_NS, "sfLR:RegistroFactura");
+                container.appendChild(document.importNode(frozenRoot, true));
+                root.appendChild(container);
+            }
+            return xml(document);
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "No se pudo envolver el XML fiscal congelado", exception);
+        }
+    }
+
+    /**
      * Serialises exactly one RegistroAlta or RegistroAnulacion as the signing
      * input required by the AEAT signature specification. The batch wrapper is
      * deliberately not part of this document.
@@ -111,6 +156,67 @@ public class VerifactuXmlService {
         }
     }
     // Generates the base official XML used by the future AEAT SOAP client.
+
+    /**
+     * Recovers the obligated identity only from an immutable legacy
+     * {@code RegistroAlta}. It deliberately refuses cancellations and
+     * ambiguous/malformed XML: those records must inherit the identity from
+     * their explicit {@link FiscalRelationType#ANULA} relation.
+     */
+    public FrozenIssuerIdentity frozenAltaIssuerIdentity(String frozenXml) {
+        try {
+            var document = newDocumentBuilder().parse(new ByteArrayInputStream(
+                    required(frozenXml, "XML fiscal congelado")
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            var root = document.getDocumentElement();
+            if (root == null || !SF_NS.equals(root.getNamespaceURI())
+                    || !"RegistroAlta".equals(root.getLocalName())) {
+                throw new IllegalArgumentException(
+                        "La identidad legacy solo puede recuperarse de RegistroAlta");
+            }
+            return new FrozenIssuerIdentity(
+                    uniqueDirectText(root, "NombreRazonEmisor"),
+                    uniqueDirectText(uniqueDirectElement(root, "IDFactura"),
+                            "IDEmisorFactura"));
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "No se pudo recuperar la identidad del XML fiscal congelado", exception);
+        }
+    }
+
+    private static String uniqueDirectText(Element parent, String localName) {
+        return required(uniqueDirectElement(parent, localName).getTextContent(), localName);
+    }
+
+    private static Element uniqueDirectElement(Element parent, String localName) {
+        Element match = null;
+        for (var node = parent.getFirstChild(); node != null; node = node.getNextSibling()) {
+            if (!(node instanceof Element element)
+                    || !SF_NS.equals(element.getNamespaceURI())
+                    || !localName.equals(element.getLocalName())) {
+                continue;
+            }
+            if (match != null) {
+                throw new IllegalArgumentException(
+                        "El XML fiscal contiene una identidad ambigua: " + localName);
+            }
+            match = element;
+        }
+        if (match == null) {
+            throw new IllegalArgumentException(
+                    "El XML fiscal no contiene una identidad inequivoca: " + localName);
+        }
+        return match;
+    }
+
+    public record FrozenIssuerIdentity(String issuerName, String issuerTaxId) {
+        public FrozenIssuerIdentity {
+            issuerName = required(issuerName, "nombre del obligado");
+            issuerTaxId = required(issuerTaxId, "NIF del obligado");
+        }
+    }
 
     private static Element header(Document document, VerifactuXmlBatchRequest request) {
         var header = element(document, LR_NS, "sfLR:Cabecera");

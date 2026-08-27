@@ -21,51 +21,51 @@
 	<query language="sql"><![CDATA[SELECT
 	    CASE
 	        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
-	            THEN COALESCE(NULLIF(TRIM(t.nombre), ''), NULLIF(TRIM(e.razon_social), ''))
-	        ELSE COALESCE(NULLIF(TRIM(e.razon_social), ''), NULLIF(TRIM(t.nombre), ''))
+	            THEN COALESCE(NULLIF(TRIM(t.nombre), ''), CASE WHEN fiscal.registro_id IS NULL THEN NULLIF(TRIM(e.razon_social), '') ELSE fiscal.obligado_nombre END)
+	        ELSE CASE WHEN fiscal.registro_id IS NULL THEN COALESCE(NULLIF(TRIM(e.razon_social), ''), NULLIF(TRIM(t.nombre), '')) ELSE fiscal.obligado_nombre END
 	    END AS nombre_cabecera,
 	    CASE
 	        WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
-	            THEN NULLIF(TRIM(e.razon_social), '')
+	            THEN CASE WHEN fiscal.registro_id IS NULL THEN NULLIF(TRIM(e.razon_social), '') ELSE fiscal.obligado_nombre END
 	        ELSE NULL
 	    END AS nombre_empresa_secundario,
 
     t.nombre AS tienda,
     t.codigo_tienda,
-    t.telefono,
-    t.email,
+    CASE WHEN fiscal.registro_id IS NULL THEN t.telefono ELSE fiscal.obligado_direccion ->> 'telefono' END AS telefono,
+    CASE WHEN fiscal.registro_id IS NULL THEN t.email ELSE fiscal.obligado_direccion ->> 'email' END AS email,
 
-    jsonb_extract_path_text(t.direccion, 'linea1') AS direccion,
-    jsonb_extract_path_text(t.direccion, 'codigoPostal') AS codigo_postal,
-    jsonb_extract_path_text(t.direccion, 'ciudad') AS ciudad,
-    jsonb_extract_path_text(t.direccion, 'provincia') AS provincia,
-    jsonb_extract_path_text(t.direccion, 'pais') AS pais,
+    CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'linea1') ELSE fiscal.obligado_direccion ->> 'linea1' END AS direccion,
+    CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'codigoPostal') ELSE fiscal.obligado_direccion ->> 'codigoPostal' END AS codigo_postal,
+    CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'ciudad') ELSE fiscal.obligado_direccion ->> 'ciudad' END AS ciudad,
+    CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'provincia') ELSE fiscal.obligado_direccion ->> 'provincia' END AS provincia,
+    CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'pais') ELSE fiscal.obligado_direccion ->> 'pais' END AS pais,
 
-    e.tax_id AS cif,
-    e.razon_social,
+    CASE WHEN fiscal.registro_id IS NULL THEN e.tax_id ELSE fiscal.obligado_nif END AS cif,
+    CASE WHEN fiscal.registro_id IS NULL THEN e.razon_social ELSE fiscal.obligado_nombre END AS razon_social,
 
     jsonb_extract_path_text(
-        e.domicilio_fiscal,
+        CASE WHEN fiscal.registro_id IS NULL THEN e.domicilio_fiscal ELSE fiscal.obligado_direccion END,
         'linea1'
     ) AS direccion_fiscal,
 
     jsonb_extract_path_text(
-        e.domicilio_fiscal,
+        CASE WHEN fiscal.registro_id IS NULL THEN e.domicilio_fiscal ELSE fiscal.obligado_direccion END,
         'codigoPostal'
     ) AS codigo_postal_fiscal,
 
     jsonb_extract_path_text(
-        e.domicilio_fiscal,
+        CASE WHEN fiscal.registro_id IS NULL THEN e.domicilio_fiscal ELSE fiscal.obligado_direccion END,
         'ciudad'
     ) AS ciudad_fiscal,
 
     jsonb_extract_path_text(
-        e.domicilio_fiscal,
+        CASE WHEN fiscal.registro_id IS NULL THEN e.domicilio_fiscal ELSE fiscal.obligado_direccion END,
         'provincia'
     ) AS provincia_fiscal,
 
     jsonb_extract_path_text(
-        e.domicilio_fiscal,
+        CASE WHEN fiscal.registro_id IS NULL THEN e.domicilio_fiscal ELSE fiscal.obligado_direccion END,
         'pais'
     ) AS pais_fiscal,
 
@@ -80,6 +80,16 @@ INNER JOIN empresa e
 
 INNER JOIN documento d
     ON d.tienda_id = t.id
+
+LEFT JOIN LATERAL (
+    SELECT rf.id AS registro_id, arf.obligado_nombre, arf.obligado_nif, arf.obligado_direccion
+      FROM registro_fiscal rf
+      INNER JOIN artefacto_registro_fiscal arf ON arf.registro_id = rf.id
+     WHERE rf.documento_id = d.id
+       AND rf.operacion = 'ALTA'
+     ORDER BY rf.secuencia DESC
+     LIMIT 1
+) fiscal ON TRUE
 
 LEFT JOIN configuracion_documento_impreso_tienda cdi
     ON cdi.tienda_id = t.id

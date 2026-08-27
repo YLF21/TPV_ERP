@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
@@ -60,6 +61,7 @@ class FiscalArtifactServiceTest {
         lenient().when(xml.recordXml(any(), any())).thenReturn("<registro/>");
         lenient().when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
         lenient().when(runtime.isSandbox()).thenReturn(true);
+        lenient().when(runtime.declarationHash()).thenReturn("E".repeat(64));
         lenient().when(snapshots.create(record, FiscalMode.VERIFACTU, FiscalEndpointEnvironment.TEST,
                 record.getApplicationVersion())).thenReturn(snapshot());
         service = new FiscalArtifactService(artifacts, systemVersions, printSnapshots,
@@ -76,10 +78,17 @@ class FiscalArtifactServiceTest {
         assertThat(version.getValue().getProducerName()).isEqualTo("Fabricante ERP");
         assertThat(version.getValue().getSystemVersion()).isEqualTo("4.2.7");
         assertThat(version.getValue().getInstallationNumber()).isEqualTo("INST-DEV-001");
+        assertThat(version.getValue().getDeclarationHash()).isEqualTo("E".repeat(64));
 
         var artifact = ArgumentCaptor.forClass(FiscalRecordArtifact.class);
         verify(artifacts).save(artifact.capture());
         assertThat(artifact.getValue().getSystemVersionId()).isEqualTo(version.getValue().getId());
+        assertThat(artifact.getValue().getIssuerName()).isEqualTo("Empresa fiscal");
+        assertThat(artifact.getValue().getIssuerTaxId()).isEqualTo("B12345674");
+        assertThat(artifact.getValue().getIssuerAddress()).containsEntry(
+                "linea1", "Calle 1");
+        assertThat(artifact.getValue().getQrUrl()).isEqualTo(snapshot().qrUrl());
+        verify(printSnapshots).save(any(FiscalPrintSnapshotRecord.class));
     }
 
     @Test
@@ -87,6 +96,21 @@ class FiscalArtifactServiceTest {
         var existing = new FiscalSystemVersion(record.getCompanyId(), record.getInstallationId(),
                 "B12345674", "Otro fabricante", "SIF ERP", "SIF-01", "4.2.7",
                 "INST-DEV-001", null, true, Instant.parse("2026-08-22T10:00:00Z"));
+        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
+                record.getCompanyId(), record.getInstallationId(), record.getApplicationVersion(),
+                installation.getReferencia())).thenReturn(Optional.of(existing));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(record))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("identidad fiscal");
+    }
+
+    @Test
+    void rechazaReutilizarVersionConOtraDeclaracionResponsable() {
+        var existing = new FiscalSystemVersion(record.getCompanyId(), record.getInstallationId(),
+                "B12345674", "Fabricante ERP", "SIF ERP", "SIF-01", "4.2.7",
+                "INST-DEV-001", "F".repeat(64), true,
+                Instant.parse("2026-08-22T10:00:00Z"));
         when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
                 record.getCompanyId(), record.getInstallationId(), record.getApplicationVersion(),
                 installation.getReferencia())).thenReturn(Optional.of(existing));
@@ -111,6 +135,35 @@ class FiscalArtifactServiceTest {
 
         org.mockito.Mockito.verifyNoInteractions(artifacts, printSnapshots, companies,
                 installations, systemVersions, xml, snapshots, signer);
+    }
+
+    @Test
+    void anulacionCreaXmlFiscalSinQrNiSnapshotDeImpresion() {
+        var cancellation = new FiscalRecord(
+                record.chainId(), record.getCompanyId(), record.getInstallationId(),
+                record.getStoreId(), record.getDocumentId(), 2,
+                FiscalRecordOperation.ANULACION, record.getDocumentType(), record.getNumber(),
+                record.getIssueDate(), Instant.parse("2026-08-23T10:05:00Z"),
+                record.getTimezone(), record.getIssuerTaxId(), null, null,
+                record.getHash(), "C".repeat(64), "D".repeat(64),
+                Map.of("registroAnterior", Map.of("huella", record.getHash())),
+                record.getFormatVersion(), record.getAlgorithmVersion(),
+                record.getApplicationVersion(), FiscalMode.VERIFACTU);
+        when(artifacts.existsById(cancellation.getId())).thenReturn(false);
+        when(printSnapshots.existsById(cancellation.getId())).thenReturn(false);
+        when(companies.findById(cancellation.getCompanyId())).thenReturn(Optional.of(company));
+        when(installations.findById(cancellation.getInstallationId()))
+                .thenReturn(Optional.of(installation));
+
+        service.create(cancellation);
+
+        verify(snapshots, never()).create(any(), any(), any(), any());
+        verify(printSnapshots, never()).save(any());
+        var artifact = ArgumentCaptor.forClass(FiscalRecordArtifact.class);
+        verify(artifacts).save(artifact.capture());
+        assertThat(artifact.getValue().getQrUrl()).isNull();
+        assertThat(artifact.getValue().getQrHash()).isNull();
+        assertThat(artifact.getValue().getQrPrefix()).isNull();
     }
 
     private static FiscalPrintSnapshot snapshot() {

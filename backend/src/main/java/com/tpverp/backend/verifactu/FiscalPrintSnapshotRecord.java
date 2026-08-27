@@ -45,5 +45,14 @@ public class FiscalPrintSnapshotRecord {
     }
 
     public UUID getRecordId() { return recordId; }
+    public FiscalMode getMode() { return mode; }
+    public FiscalEndpointEnvironment getEnvironment() { return environment; }
+    public String getFormatVersion() { return formatVersion; }
+    public String getGeneratorVersion() { return generatorVersion; }
     public String getQrUrl() { return qrUrl; }
+    public String getQrHash() { return qrHash; }
+    public String getPrefix() { return prefix; }
+    public String getLegend() { return legend; }
+    public String getTestNotice() { return testNotice; }
+    public Instant getCreatedAt() { return createdAt; }
 }

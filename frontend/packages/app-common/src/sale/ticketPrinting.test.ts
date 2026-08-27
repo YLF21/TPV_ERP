@@ -9,6 +9,7 @@ import {
   printPendingCommercialDocument,
   printConfirmedTicketAutomatically,
   retryConfirmedTicketPrint,
+  ticketAsA4Document,
   ticketPrintRequest,
 } from "./ticketPrinting";
 import type { ConfirmedTicketPrintSnapshot } from "./ticketPrinting";
@@ -42,6 +43,88 @@ function hardwareConfig(printAutomatically: boolean) {
 }
 
 describe("confirmed ticket printing", () => {
+  it("forwards the complete frozen fiscal snapshot to every desktop renderer", () => {
+    const fiscal = {
+      formatVersion: "AEAT_QR_0.5.0",
+      generatorVersion: "TPV-ERP-2026.08.25",
+      mode: "NO_VERIFACTU" as const,
+      environment: "TEST" as const,
+      qrUrl: "https://prewww2.aeat.es/frozen",
+      qrPayloadSha256: "A".repeat(64),
+      prefix: "Prefijo congelado:",
+      legend: null,
+      testNotice: "Aviso congelado",
+      issuerName: "Obligado congelado SL",
+      issuerTaxId: "B12345674",
+      issuerAddress: {
+        linea1: "Calle congelada 7",
+        codigoPostal: "35007",
+        ciudad: "Telde",
+        provincia: "Las Palmas",
+        pais: "ES",
+      },
+    };
+
+    expect(ticketPrintRequest({
+      ...snapshot,
+      qrUrl: fiscal.qrUrl,
+      qrImage: "data:image/png;base64,QR==",
+      fiscal,
+    }, terminal, "es")).toEqual(expect.objectContaining({
+      fiscal,
+      issuer: expect.objectContaining({
+        name: "Obligado congelado SL",
+        taxId: "B12345674",
+        address: "Calle congelada 7, 35007 Telde, Las Palmas, ES",
+      }),
+    }));
+
+    expect(commercialDocumentAsA4Document({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-FROZEN",
+      lines: [],
+      total: 0,
+      qrUrl: fiscal.qrUrl,
+      qrImage: "data:image/png;base64,QR==",
+      fiscal,
+    }, terminal, "es")).toEqual(expect.objectContaining({ fiscal }));
+  });
+
+  it("keeps a compensating exchange summary non-fiscal in raw and A4 routes", () => {
+    const summary = {
+      ...snapshot,
+      nonFiscalSummary: true,
+      qrUrl: "https://prewww2.aeat.es/should-not-print",
+      qrImage: "data:image/png;base64,QR==",
+      fiscal: {
+        formatVersion: "AEAT_QR_0.5.0",
+        generatorVersion: "TPV-ERP-2026.08.25",
+        mode: "VERIFACTU" as const,
+        environment: "TEST" as const,
+        qrUrl: "https://prewww2.aeat.es/should-not-print",
+        qrPayloadSha256: "A".repeat(64),
+        prefix: "QR tributario:",
+        legend: "VERI*FACTU",
+        testNotice: "PRUEBA",
+      },
+      ticketRenderedPdf: { contentType: "application/pdf" as const, base64: "JVBERg==" },
+      ticketRenderedImage: { contentType: "image/png" as const, base64: "iVBORw==" },
+    };
+
+    for (const request of [
+      ticketPrintRequest(summary, terminal, "es"),
+      ticketAsA4Document(summary, terminal, "es"),
+    ]) {
+      expect(request.requireRenderedDocument).toBe(false);
+      expect(request).not.toHaveProperty("qrUrl");
+      expect(request).not.toHaveProperty("qrImage");
+      expect(request).not.toHaveProperty("fiscal");
+      expect(request).not.toHaveProperty("renderedPdf");
+      expect(request).not.toHaveProperty("documentRaster");
+    }
+  });
+
   it("passes a backend-rendered Jasper PDF through to the desktop bridge", () => {
     const renderedPdf = { contentType: "application/pdf" as const, base64: "JVBERi0xLjc=" };
 

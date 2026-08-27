@@ -55,6 +55,14 @@ public class SaasSessionTokenStore {
         }
     }
 
+    public void revokeByUser(String realm, String username) {
+        if (realm == null || realm.isBlank() || username == null || username.isBlank()) {
+            return;
+        }
+        sessions.entrySet().removeIf(entry -> entry.getValue().realm().equals(realm)
+                && entry.getValue().username().equalsIgnoreCase(username));
+    }
+
     private static String hash(String value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")

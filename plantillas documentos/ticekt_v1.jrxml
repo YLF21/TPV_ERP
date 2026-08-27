@@ -18,23 +18,33 @@
 	<query language="sql"><![CDATA[WITH cabecera AS (
     SELECT
         d.id AS documento_id,
-        COALESCE(NULLIF(TRIM(e.razon_social), ''), t.nombre) AS nombre_cabecera,
-        e.tax_id AS cif,
-        t.telefono,
-        t.email,
-        jsonb_extract_path_text(t.direccion, 'linea1') AS direccion,
-        jsonb_extract_path_text(t.direccion, 'codigoPostal') AS codigo_postal,
-        jsonb_extract_path_text(t.direccion, 'ciudad') AS ciudad,
-        jsonb_extract_path_text(t.direccion, 'pais') AS pais,
+        CASE WHEN fiscal.registro_id IS NULL
+             THEN COALESCE(NULLIF(TRIM(e.razon_social), ''), t.nombre)
+             ELSE fiscal.obligado_nombre END AS nombre_cabecera,
+        CASE WHEN fiscal.registro_id IS NULL THEN e.tax_id
+             ELSE fiscal.obligado_nif END AS cif,
+        CASE WHEN fiscal.registro_id IS NULL THEN t.telefono
+             ELSE fiscal.obligado_direccion ->> 'telefono' END AS telefono,
+        CASE WHEN fiscal.registro_id IS NULL THEN t.email
+             ELSE fiscal.obligado_direccion ->> 'email' END AS email,
+        CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'linea1')
+             ELSE fiscal.obligado_direccion ->> 'linea1' END AS direccion,
+        CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'codigoPostal')
+             ELSE fiscal.obligado_direccion ->> 'codigoPostal' END AS codigo_postal,
+        CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'ciudad')
+             ELSE fiscal.obligado_direccion ->> 'ciudad' END AS ciudad,
+        CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'provincia')
+             ELSE fiscal.obligado_direccion ->> 'provincia' END AS provincia,
+        CASE WHEN fiscal.registro_id IS NULL THEN jsonb_extract_path_text(t.direccion, 'pais')
+             ELSE fiscal.obligado_direccion ->> 'pais' END AS pais,
         d.numero AS numero_ticket,
         COALESCE(d.confirmado_en, d.creado_en) AS fecha_ticket,
         d.total AS total_ticket,
         ldt.contenido AS logo_contenido,
-        COALESCE((SELECT sif.qr_url
-            FROM snapshot_impresion_fiscal sif
-            INNER JOIN registro_fiscal rf ON rf.id = sif.registro_id
-            WHERE rf.documento_id = d.id AND rf.operacion = 'ALTA'
-            ORDER BY rf.secuencia DESC LIMIT 1), '') AS contenido_qr,
+        COALESCE(fiscal.qr_url, '') AS contenido_qr,
+        fiscal.qr_prefijo,
+        fiscal.qr_leyenda,
+        fiscal.aviso_pruebas,
         COALESCE(cdi.observaciones_ticket, '') AS observacion_ticket,
         c.nombre_fiscal AS nombre_cliente,
         c.client_id AS codigo_cliente,
@@ -46,6 +56,18 @@
     FROM documento d
     INNER JOIN tienda t ON t.id = d.tienda_id
     INNER JOIN empresa e ON e.id = t.empresa_id
+    LEFT JOIN LATERAL (
+        SELECT rf.id AS registro_id,
+               arf.obligado_nombre, arf.obligado_nif, arf.obligado_direccion,
+               sif.qr_url, sif.qr_prefijo, sif.qr_leyenda, sif.aviso_pruebas
+          FROM registro_fiscal rf
+          INNER JOIN artefacto_registro_fiscal arf ON arf.registro_id = rf.id
+          INNER JOIN snapshot_impresion_fiscal sif ON sif.registro_id = rf.id
+         WHERE rf.documento_id = d.id
+           AND rf.operacion = 'ALTA'
+         ORDER BY rf.secuencia DESC
+         LIMIT 1
+    ) fiscal ON TRUE
     LEFT JOIN cliente c ON c.id = d.cliente_id
     LEFT JOIN usuario u ON u.id = COALESCE(d.confirmado_por, d.creado_por)
         AND u.tienda_id = d.tienda_id
@@ -183,8 +205,9 @@ impuestos AS (
     GROUP BY documento_id
 )
 SELECT
-    c.nombre_cabecera, c.cif, c.telefono, c.email, c.direccion, c.codigo_postal, c.ciudad, c.pais,
-    c.numero_ticket, c.fecha_ticket, c.total_ticket, c.logo_contenido, c.contenido_qr, c.observacion_ticket,
+    c.nombre_cabecera, c.cif, c.telefono, c.email, c.direccion, c.codigo_postal, c.ciudad, c.provincia, c.pais,
+    c.numero_ticket, c.fecha_ticket, c.total_ticket, c.logo_contenido, c.contenido_qr,
+    c.qr_prefijo, c.qr_leyenda, c.aviso_pruebas, c.observacion_ticket,
     c.nombre_cliente, c.codigo_cliente, c.telefono_cliente, c.tarifa, c.porcentaje_descuento_cliente,
     c.usuario_nombre, c.terminal_nombre,
     l.posicion, l.articulo, l.cantidad, l.precio, l.descuento_linea, l.importe_bruto, l.importe_descuento, l.total_linea,
@@ -204,12 +227,16 @@ ORDER BY l.posicion NULLS LAST]]></query>
 	<field name="direccion" class="java.lang.String"/>
 	<field name="codigo_postal" class="java.lang.String"/>
 	<field name="ciudad" class="java.lang.String"/>
+	<field name="provincia" class="java.lang.String"/>
 	<field name="pais" class="java.lang.String"/>
 	<field name="numero_ticket" class="java.lang.String"/>
 	<field name="fecha_ticket" class="java.sql.Timestamp"/>
 	<field name="total_ticket" class="java.math.BigDecimal"/>
 	<field name="logo_contenido" class="byte[]"/>
 	<field name="contenido_qr" class="java.lang.String"/>
+	<field name="qr_prefijo" class="java.lang.String"/>
+	<field name="qr_leyenda" class="java.lang.String"/>
+	<field name="aviso_pruebas" class="java.lang.String"/>
 	<field name="observacion_ticket" class="java.lang.String"/>
 	<field name="nombre_cliente" class="java.lang.String"/>
 	<field name="codigo_cliente" class="java.lang.String"/>
@@ -246,7 +273,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			<expression><![CDATA[($F{cif} == null || $F{cif}.trim().isEmpty() ? "" : "NIF: " + $F{cif}.trim()) + ($F{telefono} == null || $F{telefono}.trim().isEmpty() ? "" : " · Tel.: " + $F{telefono}.trim())]]></expression>
 		</element>
 		<element kind="textField" uuid="e3afac92-cbd8-4519-90e1-cb93bc39027d" x="4" y="62" width="199" height="12" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Center">
-			<expression><![CDATA[($F{direccion} == null ? "" : $F{direccion}.trim()) + ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty() ? "" : " · " + $F{codigo_postal}.trim()) + ($F{ciudad} == null || $F{ciudad}.trim().isEmpty() ? "" : " " + $F{ciudad}.trim()) + ($F{pais} == null || $F{pais}.trim().isEmpty() ? "" : " · " + $F{pais}.trim())]]></expression>
+			<expression><![CDATA[($F{direccion} == null ? "" : $F{direccion}.trim()) + ($F{codigo_postal} == null || $F{codigo_postal}.trim().isEmpty() ? "" : " · " + $F{codigo_postal}.trim()) + ($F{ciudad} == null || $F{ciudad}.trim().isEmpty() ? "" : " " + $F{ciudad}.trim()) + ($F{provincia} == null || $F{provincia}.trim().isEmpty() ? "" : " · " + $F{provincia}.trim()) + ($F{pais} == null || $F{pais}.trim().isEmpty() ? "" : " · " + $F{pais}.trim())]]></expression>
 		</element>
 		<element kind="textField" uuid="bedcf3e1-03ac-468b-8354-12e39928e649" x="4" y="75" width="199" height="11" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
 			<expression><![CDATA[$F{email} == null ? "" : $F{email}.trim()]]></expression>
@@ -300,7 +327,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 			</element>
 		</band>
 	</detail>
-	<summary height="381" splitType="Stretch">
+	<summary height="493" splitType="Stretch">
 		<element kind="line" uuid="f8f69da9-f809-4141-8c4f-445204a94cbc" x="2" y="1" width="203" height="1">
 			<pen lineWidth="0.6" lineStyle="Dashed"/>
 		</element>
@@ -388,17 +415,25 @@ ORDER BY l.posicion NULLS LAST]]></query>
 		<element kind="textField" uuid="ff9393b1-e24c-4ba6-aa9f-10035779b68e" x="3" y="272" width="201" height="36" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
 			<expression><![CDATA[$F{observacion_ticket}]]></expression>
 		</element>
-		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="65" y="326" width="76" height="45">
+		<element kind="component" uuid="019f020f-736d-438e-8edf-9133067854fc" x="54" y="326" width="100" height="100">
 			<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
-			<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
+			<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="staticText" uuid="d1ca4a68-b34a-4a9c-8afc-1c9f52b5b4e0" x="3" y="313" width="201" height="12" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="d1ca4a68-b34a-4a9c-8afc-1c9f52b5b4e0" x="3" y="313" width="201" height="12" fontSize="8.0" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
-			<text><![CDATA[QR tributario:]]></text>
+			<expression><![CDATA[$F{qr_prefijo}]]></expression>
 		</element>
-		<element kind="staticText" uuid="cc188b24-3997-433b-a9af-340657f81e98" x="3" y="369" width="201" height="12" fontSize="9.0" hTextAlign="Center">
+		<element kind="textField" uuid="8f4ff51b-69fa-4471-94f1-f6e68e29bc01" x="3" y="429" width="201" height="22" fontSize="7.0" textAdjust="StretchHeight" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{qr_leyenda} != null && !$F{qr_leyenda}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{qr_leyenda}]]></expression>
+		</element>
+		<element kind="textField" uuid="d45f2929-756e-46ed-a20f-a48429775446" x="3" y="453" width="201" height="18" fontSize="7.0" bold="true" textAdjust="StretchHeight" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$F{aviso_pruebas} != null && !$F{aviso_pruebas}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{aviso_pruebas}]]></expression>
+		</element>
+		<element kind="staticText" uuid="cc188b24-3997-433b-a9af-340657f81e98" x="3" y="476" width="201" height="12" fontSize="9.0" hTextAlign="Center">
 			<text><![CDATA[Gracias por su compra v1]]></text>
 		</element>
 	</summary>

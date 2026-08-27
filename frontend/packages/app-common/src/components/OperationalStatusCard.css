@@ -1,0 +1,296 @@
+.operational-status-card {
+  grid-column: 1 / -1;
+  min-height: auto;
+}
+
+.operational-status-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.operational-status-heading > div {
+  display: grid;
+  gap: 6px;
+}
+
+.operational-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.operational-status-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.operational-status-panel h4 {
+  margin: 0;
+  color: #17233b;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.operational-status-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.status-pill {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef3f8;
+  color: #52657f;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.status-pill.success { background: #eaf7ef; color: #176b38; }
+.status-pill.warning { background: #fff1db; color: #8a5a00; }
+
+.outbox-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.outbox-metrics > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.outbox-metrics span {
+  color: #66758d;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.outbox-metrics strong {
+  color: #17233b;
+  font-size: 17px;
+  font-weight: 950;
+}
+
+@media (max-width: 1000px) {
+  .operational-status-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 680px) {
+  .operational-status-heading { align-items: stretch; flex-direction: column; }
+  .operational-status-grid,
+  .outbox-metrics { grid-template-columns: 1fr; }
+}
+
+.operational-incidents-board {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #bdcadd;
+  border-radius: 12px;
+  background: #f4f7fb;
+}
+
+.operational-incidents-heading,
+.operational-incident-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.operational-incidents-heading h4,
+.operational-incident-group-title h5 {
+  margin: 0;
+  color: #17233b;
+  font-weight: 950;
+}
+
+.operational-incidents-heading h4 { font-size: 16px; }
+.operational-incidents-heading p {
+  margin: 4px 0 0;
+  color: #66758d;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.operational-incident-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d7e0ea;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.operational-incident-group-title {
+  min-height: 42px;
+  padding: 0 12px;
+  border-bottom: 1px solid #d7e0ea;
+  background: #eaf0f7;
+}
+
+.operational-incident-group-title h5 { font-size: 13px; }
+.operational-incident-group-title > span {
+  min-width: 28px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #17233b;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.operational-incident-empty {
+  padding: 15px 12px;
+  color: #52657f;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.operational-incident-table-wrap { width: 100%; overflow-x: auto; }
+.operational-incident-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  color: #17233b;
+  font-size: 12px;
+}
+
+.operational-incident-table th,
+.operational-incident-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e6ecf3;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.operational-incident-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #243b5a;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.operational-incident-table tbody tr:nth-child(even) { background: #f8fafc; }
+.operational-incident-table tbody tr:hover { background: #edf3fa; }
+.operational-incident-table td strong,
+.operational-incident-table td small { display: block; }
+.operational-incident-table td small {
+  margin-top: 2px;
+  color: #66758d;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.operational-incident-table code {
+  color: #244e86;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.operational-incident-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  text-align: center !important;
+}
+
+.operational-incident-error {
+  max-width: 280px;
+  overflow: hidden;
+  color: #8a311f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-card .operational-incident-action {
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.operational-incident-locked {
+  display: inline-block;
+  max-width: 155px;
+  color: #8a311f;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.operational-retry-editor {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.35fr) minmax(280px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e0b560;
+  border-left: 4px solid #c58116;
+  border-radius: 9px;
+  background: #fff8e7;
+}
+
+.operational-retry-editor label {
+  color: #704700;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.operational-retry-editor textarea {
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid #c8a86f;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #17233b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.operational-retry-editor textarea:focus-visible {
+  border-color: #244e86;
+  outline: 3px solid rgba(36, 78, 134, 0.18);
+}
+
+.operational-retry-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-card .operational-retry-actions button {
+  min-width: 0;
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1000px) {
+  .operational-retry-editor { grid-template-columns: 1fr; }
+}

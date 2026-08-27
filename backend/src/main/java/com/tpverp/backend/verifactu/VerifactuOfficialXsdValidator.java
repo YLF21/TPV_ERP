@@ -2,6 +2,7 @@ package com.tpverp.backend.verifactu;
 
 import java.io.InputStream;
 import java.io.StringReader;
+import java.nio.file.Path;
 import javax.xml.XMLConstants;
 import javax.xml.transform.Source;
 import javax.xml.transform.stream.StreamSource;
@@ -25,6 +26,14 @@ public class VerifactuOfficialXsdValidator {
     public void validate(String xml) {
         try {
             schema.newValidator().validate(new StreamSource(new StringReader(xml)));
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("XML VERI*FACTU no cumple XSD oficial", exception);
+        }
+    }
+
+    public void validate(Path xmlPath) {
+        try {
+            schema.newValidator().validate(new StreamSource(xmlPath.toFile()));
         } catch (Exception exception) {
             throw new IllegalArgumentException("XML VERI*FACTU no cumple XSD oficial", exception);
         }

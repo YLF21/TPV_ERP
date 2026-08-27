@@ -8,8 +8,9 @@ import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types
 import { formatEuroAmount, localeTag, parseMoneyValue } from "../money";
 import {
   commercialDocumentAsA4Document,
-  outputConfirmedTicket,
+  outputConfirmedTicketsSequentially,
   printPendingCommercialDocument,
+  type ConfirmedTicketPrintSet,
   type ConfirmedTicketPrintSnapshot,
   type PendingCommercialDocumentPrintSnapshot
 } from "../sale/ticketPrinting";
@@ -160,6 +161,35 @@ function showPdfPreview(preview: Window, pdf: Blob): void {
   preview.opener = null;
   preview.location.replace(objectUrl);
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
+function showTicketPrintSetPreview(
+  preview: Window,
+  snapshots: readonly ConfirmedTicketPrintSnapshot[]
+): void {
+  const renderedImages = snapshots.map((snapshot) => {
+    const rendered = snapshot.ticketRenderedImage;
+    if (rendered?.contentType !== "image/png"
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(rendered.base64)) {
+      throw new Error(`ticket_related_rendered_image_missing:${snapshot.documentId}`);
+    }
+    return rendered.base64;
+  });
+  const pages = renderedImages.map((base64, index) =>
+    `<section class="ticket-page"><img alt="Fiscal document ${index + 1}" src="data:image/png;base64,${base64}"></section>`
+  ).join("");
+  preview.opener = null;
+  preview.document.open();
+  preview.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Fiscal documents</title><style>
+    @page { size: 80mm auto; margin: 0; }
+    html,body { margin: 0; padding: 0; background: #fff; }
+    .ticket-page { width: 80mm; break-after: page; page-break-after: always; }
+    .ticket-page:last-child { break-after: auto; page-break-after: auto; }
+    img { display: block; width: 100%; height: auto; }
+  </style></head><body>${pages}</body></html>`);
+  preview.document.close();
+  preview.focus();
+  preview.setTimeout(() => preview.print(), 250);
 }
 
 const reportIcon: Record<string, string> = {
@@ -2483,11 +2513,21 @@ export function SalesReportScreen({
             : t("salesReport.documentPrintError"));
           return;
         }
-        const snapshot = await request<ConfirmedTicketPrintSnapshot>(
-          `/tickets/${encodeURIComponent(documentPreviewRow.__documentId)}/print`,
+        const printSet = await request<ConfirmedTicketPrintSet>(
+          `/tickets/${encodeURIComponent(documentPreviewRow.__documentId)}/print-set`,
           { token: session.accessToken }
         );
+        const snapshot = printSet.printTicket;
         if (browserPreview) {
+          const orderedFiscalDocuments = [
+            ...(printSet.additionalPrintTickets ?? []),
+            snapshot
+          ];
+          if (orderedFiscalDocuments.length > 1) {
+            showTicketPrintSetPreview(browserPreview, orderedFiscalDocuments);
+            setPrintFeedback(t("salesReport.documentPrintSuccess"));
+            return;
+          }
           let pdf: Blob;
           if (snapshot.ticketRenderedPdf) {
             pdf = renderedPdfBlob(snapshot.ticketRenderedPdf);
@@ -2503,8 +2543,8 @@ export function SalesReportScreen({
           setPrintFeedback(t("salesReport.documentPrintSuccess"));
           return;
         }
-        const outcome = await outputConfirmedTicket(
-          snapshot,
+        const outcome = await outputConfirmedTicketsSequentially(
+          [...(printSet.additionalPrintTickets ?? []), snapshot],
           terminalContext,
           "DEFAULT",
           locale

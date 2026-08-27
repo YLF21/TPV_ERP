@@ -2,6 +2,7 @@ package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
+import com.tpverp.backend.document.FiscalQrUnavailableException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.PaymentSessionClosedException;
 import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
@@ -281,6 +282,24 @@ public class ApiExceptionHandler {
                 request);
         problem.setProperty("documentType", exception.documentType().name());
         problem.setProperty("format", exception.format().name());
+        return problem;
+    }
+
+    @ExceptionHandler(FiscalQrUnavailableException.class)
+    ProblemDetail fiscalQrUnavailable(
+            FiscalQrUnavailableException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var problem = problem(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                FiscalQrUnavailableException.CODE,
+                localizedExceptionDetail(
+                        exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language,
+                request);
+        problem.setProperty("documentId", exception.documentId().toString());
+        problem.setProperty("fiscalQrFailure", exception.reason().name());
+        problem.setProperty("retryable", exception.retryable());
         return problem;
     }
 

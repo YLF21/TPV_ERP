@@ -12,15 +12,15 @@ select 'aaaaaaaa-0000-4000-8000-000000000003', 'Autonomo Servicios Sur', 'C30000
 where not exists (select 1 from saas_company where id = 'aaaaaaaa-0000-4000-8000-000000000003');
 
 insert into saas_store(id, company_id, code, name, created_at)
-select 'bbbbbbbb-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'NORTE-01', 'Tienda Norte Principal', current_timestamp
+select 'bbbbbbbb-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', '001', 'Tienda Norte Principal', current_timestamp
 where not exists (select 1 from saas_store where id = 'bbbbbbbb-0000-4000-8000-000000000001');
 
 insert into saas_store(id, company_id, code, name, created_at)
-select 'bbbbbbbb-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000002', 'CENTRO-01', 'Restaurante Centro', current_timestamp
+select 'bbbbbbbb-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000002', '001', 'Restaurante Centro', current_timestamp
 where not exists (select 1 from saas_store where id = 'bbbbbbbb-0000-4000-8000-000000000002');
 
 insert into saas_store(id, company_id, code, name, created_at)
-select 'bbbbbbbb-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000003', 'SUR-01', 'Oficina Sur', current_timestamp
+select 'bbbbbbbb-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000003', '001', 'Oficina Sur', current_timestamp
 where not exists (select 1 from saas_store where id = 'bbbbbbbb-0000-4000-8000-000000000003');
 
 insert into saas_license(id, company_id, reference, valid_until, status, max_windows, max_pda, created_at)

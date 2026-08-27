@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.DateTimeException;
@@ -23,6 +25,8 @@ public class VerifactuAdminReviewReadService {
             FiscalSubmissionStatus.ACEPTADO_CON_ERRORES);
 
     private final CurrentOrganization organization;
+    private final InstallationRepository installations;
+    private final LicenseRepository licenses;
     private final VerifactuAdminReviewReadRepository reads;
     private final VerifactuSubmissionPropertiesFactory properties;
     private final VerifactuClockMonitor clockMonitor;
@@ -36,7 +40,22 @@ public class VerifactuAdminReviewReadService {
             VerifactuClockMonitor clockMonitor,
             Environment environment,
             Clock clock) {
+        this(organization, null, null, reads, properties, clockMonitor, environment, clock);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public VerifactuAdminReviewReadService(
+            CurrentOrganization organization,
+            InstallationRepository installations,
+            LicenseRepository licenses,
+            VerifactuAdminReviewReadRepository reads,
+            VerifactuSubmissionPropertiesFactory properties,
+            VerifactuClockMonitor clockMonitor,
+            Environment environment,
+            Clock clock) {
         this.organization = organization;
+        this.installations = installations;
+        this.licenses = licenses;
         this.reads = reads;
         this.properties = properties;
         this.clockMonitor = clockMonitor;
@@ -60,17 +79,15 @@ public class VerifactuAdminReviewReadService {
         var normalizedNumber = normalizeDocumentNumber(documentNumber);
         var store = organization.currentStore();
         var zone = ZoneId.of(store.getTimezone());
-        return reads.findDefectiveRecords(
-                store.getEmpresa().getId(),
-                store.getId(),
-                startOfDay(dateFrom, zone),
-                startOfNextDay(dateTo, zone),
-                status,
-                documentType,
-                operation,
-                normalizedNumber,
-                page,
-                size);
+        var scope = scope(store);
+        if (scope.installationId() == null) {
+            return reads.findDefectiveRecords(scope.companyId(), scope.storeId(),
+                    startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                    documentType, operation, normalizedNumber, page, size);
+        }
+        return reads.findDefectiveRecords(scope.companyId(), scope.storeId(), scope.installationId(),
+                startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                documentType, operation, normalizedNumber, page, size);
     }
 
     @Transactional(readOnly = true)
@@ -91,18 +108,16 @@ public class VerifactuAdminReviewReadService {
         var normalizedNumber = normalizeDocumentNumber(documentNumber);
         var store = organization.currentStore();
         var zone = ZoneId.of(store.getTimezone());
-        return reads.findDefectiveRecords(
-                store.getEmpresa().getId(),
-                store.getId(),
-                startOfDay(dateFrom, zone),
-                startOfNextDay(dateTo, zone),
-                status,
-                documentType,
-                operation,
-                normalizedNumber,
-                page,
-                size,
-                sortBy,
+        var scope = scope(store);
+        if (scope.installationId() == null) {
+            return reads.findDefectiveRecords(scope.companyId(), scope.storeId(),
+                    startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                    documentType, operation, normalizedNumber, page, size, sortBy,
+                    sortDirection);
+        }
+        return reads.findDefectiveRecords(scope.companyId(), scope.storeId(), scope.installationId(),
+                startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), status,
+                documentType, operation, normalizedNumber, page, size, sortBy,
                 sortDirection);
     }
 
@@ -110,17 +125,22 @@ public class VerifactuAdminReviewReadService {
     public VerifactuAdminAttemptPage attempts(UUID recordId, int page, int size) {
         validatePage(page, size);
         var store = organization.currentStore();
-        var companyId = store.getEmpresa().getId();
-        if (!reads.recordExists(companyId, store.getId(), recordId)) {
+        var scope = scope(store);
+        var exists = scope.installationId() == null
+                ? reads.recordExists(scope.companyId(), scope.storeId(), recordId)
+                : reads.recordExists(scope.companyId(), scope.storeId(), scope.installationId(), recordId);
+        if (!exists) {
             throw new NoSuchElementException("Registro fiscal no encontrado");
         }
-        return reads.findAttempts(companyId, store.getId(), recordId, page, size);
+        return scope.installationId() == null
+                ? reads.findAttempts(scope.companyId(), scope.storeId(), recordId, page, size)
+                : reads.findAttempts(scope.companyId(), scope.storeId(), scope.installationId(), recordId, page, size);
     }
 
     @Transactional(readOnly = true)
     public VerifactuAdminDiagnosticView diagnostics() {
         var store = organization.currentStore();
-        var companyId = store.getEmpresa().getId();
+        var scope = scope(store);
         var endpointMode = endpointMode();
         return new VerifactuAdminDiagnosticView(
                 endpointMode != null,
@@ -128,7 +148,9 @@ public class VerifactuAdminReviewReadService {
                 Boolean.TRUE.equals(environment.getProperty(
                         "tpv.verifactu.worker-enabled", Boolean.class, false)),
                 clockSummary(),
-                reads.findLastAttempt(companyId, store.getId()),
+                scope.installationId() == null
+                        ? reads.findLastAttempt(scope.companyId(), scope.storeId())
+                        : reads.findLastAttempt(scope.companyId(), scope.storeId(), scope.installationId()),
                 clock.instant());
     }
 
@@ -202,5 +224,19 @@ public class VerifactuAdminReviewReadService {
         } catch (DateTimeException exception) {
             throw new IllegalArgumentException("dateTo no es valida", exception);
         }
+    }
+
+    private Scope scope(com.tpverp.backend.organization.Store store) {
+        var company = store.getEmpresa();
+        if (company == null) {
+            throw new IllegalStateException("La empresa de la tienda no esta inicializada");
+        }
+        var installationId = installations == null || licenses == null
+                ? null
+                : FiscalInstallationResolver.resolveCurrent(organization, installations, licenses).getId();
+        return new Scope(company.getId(), store.getId(), installationId);
+    }
+
+    private record Scope(UUID companyId, UUID storeId, UUID installationId) {
     }
 }

@@ -19,11 +19,10 @@
 		<defaultValueExpression><![CDATA["58109209-2548-4c19-9c4e-6f47c541035b"]]></defaultValueExpression>
 	</parameter>
 	<query language="sql"><![CDATA[SELECT
-    COALESCE((SELECT sif.qr_url
-        FROM snapshot_impresion_fiscal sif
-        INNER JOIN registro_fiscal rf ON rf.id = sif.registro_id
-        WHERE rf.documento_id = d.id AND rf.operacion = 'ALTA'
-        ORDER BY rf.secuencia DESC LIMIT 1), '') AS contenido_qr,
+    COALESCE(fiscal.qr_url, '') AS contenido_qr,
+    COALESCE(fiscal.qr_prefijo, 'QR tributario:') AS qr_prefijo,
+    fiscal.qr_leyenda,
+    fiscal.aviso_pruebas,
     COALESCE(
         cdi.observaciones_ticket,
         ''
@@ -31,6 +30,14 @@
     COALESCE(NULLIF(TRIM(u.user_name), ''), NULLIF(TRIM(u.nombre), '')) AS usuario_nombre,
     NULLIF(TRIM(term.nombre), '') AS terminal_nombre
 FROM documento d
+LEFT JOIN LATERAL (
+    SELECT sif.qr_url, sif.qr_prefijo, sif.qr_leyenda, sif.aviso_pruebas
+      FROM snapshot_impresion_fiscal sif
+      INNER JOIN registro_fiscal rf ON rf.id = sif.registro_id
+     WHERE rf.documento_id = d.id AND rf.operacion = 'ALTA'
+     ORDER BY rf.secuencia DESC
+     LIMIT 1
+) fiscal ON true
 LEFT JOIN configuracion_documento_impreso_tienda cdi
     ON cdi.tienda_id = d.tienda_id
 LEFT JOIN usuario u
@@ -44,6 +51,9 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 		<property name="com.jaspersoft.studio.field.name" value="contenido_qr"/>
 		<property name="com.jaspersoft.studio.field.label" value="contenido_qr"/>
 	</field>
+	<field name="qr_prefijo" class="java.lang.String"/>
+	<field name="qr_leyenda" class="java.lang.String"/>
+	<field name="aviso_pruebas" class="java.lang.String"/>
 	<field name="observacion_ticket" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="observacion_ticket"/>
 		<property name="com.jaspersoft.studio.field.label" value="observacion_ticket"/>
@@ -52,7 +62,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 	<field name="terminal_nombre" class="java.lang.String"/>
 	<background splitType="Stretch"/>
 	<detail>
-		<band height="182" splitType="Stretch">
+		<band height="218" splitType="Stretch">
 			<element kind="textField" uuid="37a6f279-7859-4617-ad52-2dddbe40d066" positionType="Float" x="5" y="35" width="199" height="38" fontSize="8.0" textAdjust="StretchHeight" removeLineWhenBlank="true">
 				<expression><![CDATA[$F{observacion_ticket}]]></expression>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
@@ -82,19 +92,27 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</element>
-			<element kind="staticText" uuid="e52b7e56-6cbf-40ea-8ff4-a6f1c9f9a5ac" positionType="Float" x="5" y="78" width="197" height="12" fontSize="8.0" hTextAlign="Center">
+			<element kind="textField" uuid="e52b7e56-6cbf-40ea-8ff4-a6f1c9f9a5ac" positionType="Float" x="5" y="78" width="197" height="12" fontSize="8.0" hTextAlign="Center">
 				<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
-				<text><![CDATA[QR tributario:]]></text>
+				<expression><![CDATA[$F{qr_prefijo}]]></expression>
 			</element>
-			<element kind="component" uuid="12ced4b2-46ab-45b2-a35b-d0c1258445bc" positionType="Float" x="8" y="91" width="86" height="86">
+			<element kind="component" uuid="12ced4b2-46ab-45b2-a35b-d0c1258445bc" positionType="Float" x="8" y="91" width="100" height="100">
 				<printWhenExpression><![CDATA[$F{contenido_qr} != null && !$F{contenido_qr}.trim().isEmpty()]]></printWhenExpression>
-				<component kind="barcode4j:QRCode" margin="1" errorCorrectionLevel="M">
+				<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 					<codeExpression><![CDATA[$F{contenido_qr}]]></codeExpression>
 				</component>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			</element>
+			<element kind="textField" uuid="ed8b2e6a-513e-49bb-a1ac-c2f95ba959ba" positionType="Float" x="112" y="91" width="87" height="48" fontSize="6.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+				<printWhenExpression><![CDATA[$F{qr_leyenda} != null && !$F{qr_leyenda}.trim().isEmpty()]]></printWhenExpression>
+				<expression><![CDATA[$F{qr_leyenda}]]></expression>
+			</element>
+			<element kind="textField" uuid="291ea7c9-9da0-462b-8cc3-a48de26f535a" positionType="Float" x="5" y="196" width="197" height="16" fontSize="6.0" bold="true" textAdjust="StretchHeight" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{aviso_pruebas} != null && !$F{aviso_pruebas}.trim().isEmpty()]]></printWhenExpression>
+				<expression><![CDATA[$F{aviso_pruebas}]]></expression>
 			</element>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</band>

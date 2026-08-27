@@ -74,7 +74,7 @@ public class MemberWalletBootstrapAdminV2Service {
         }
         List<UUID> storesWithoutInstallation = companyStores.stream()
                 .map(SaasStore::getId)
-                .filter(storeId -> !installations.existsByCompany_IdAndStore_Id(companyId, storeId))
+                .filter(storeId -> !installations.existsByStore_IdAndActiveTrue(storeId))
                 .toList();
         if (!storesWithoutInstallation.isEmpty()) {
             throw conflict("Tiendas sin instalacion vinculada: " + storesWithoutInstallation);

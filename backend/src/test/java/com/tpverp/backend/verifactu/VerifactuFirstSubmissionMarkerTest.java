@@ -15,6 +15,8 @@ import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,16 +26,19 @@ import org.mockito.Mockito;
 class VerifactuFirstSubmissionMarkerTest {
 
     @Test
-    void marcaPrimeraRemisionConLaFechaDelRegistroAceptado() {
+    void marcaPrimeraRemisionConElInstanteRealDelAckYNoConLaGeneracion() {
         var setup = setup(TaxpayerType.SOCIEDAD);
         var record = record(setup.company().getId(), setup.store().getId());
+        var acknowledgedAt = Instant.parse("2027-01-01T00:05:30Z");
 
         new VerifactuFirstSubmissionMarker(
-                setup.configurations(), setup.licenses(), new VerifactuActivationService())
+                setup.configurations(), setup.licenses(), new VerifactuActivationService(),
+                Clock.fixed(acknowledgedAt, ZoneOffset.UTC))
                 .mark(record);
 
-        assertThat(setup.configuration().getFirstSubmissionAt()).isEqualTo(record.getGeneratedAt());
-        assertThat(setup.configuration().getActivatedAt()).isEqualTo(record.getGeneratedAt());
+        assertThat(setup.configuration().getFirstSubmissionAt()).isEqualTo(acknowledgedAt);
+        assertThat(setup.configuration().getActivatedAt())
+                .isEqualTo(Instant.parse("2027-01-01T00:00:00Z"));
         verify(setup.configurations()).save(setup.configuration());
     }
 
@@ -45,7 +50,8 @@ class VerifactuFirstSubmissionMarkerTest {
                 Instant.parse("2026-06-01T00:05:00Z"), null);
 
         new VerifactuFirstSubmissionMarker(
-                setup.configurations(), setup.licenses(), new VerifactuActivationService())
+                setup.configurations(), setup.licenses(), new VerifactuActivationService(),
+                Clock.fixed(Instant.parse("2027-02-01T00:00:00Z"), ZoneOffset.UTC))
                 .mark(record(setup.company().getId(), setup.store().getId()));
 
         verify(setup.configurations(), never()).save(setup.configuration());
@@ -77,7 +83,7 @@ class VerifactuFirstSubmissionMarkerTest {
     }
 
     private static License license(Store store, TaxpayerType taxpayerType) {
-        return new License(
+        var license = new License(
                 store,
                 new com.tpverp.backend.installation.Installation(
                         "PUBLIC", "PRIVATE", Instant.parse("2026-01-01T00:00:00Z")),
@@ -97,6 +103,9 @@ class VerifactuFirstSubmissionMarkerTest {
                 ImportResult.ACEPTADA,
                 null,
                 true);
+        license.applyVerifactuPolicy(LocalDate.of(2027, 1, 1), 1,
+                Instant.parse("2026-01-01T00:00:00Z"));
+        return license;
     }
 
     private static Map<String, String> address() {

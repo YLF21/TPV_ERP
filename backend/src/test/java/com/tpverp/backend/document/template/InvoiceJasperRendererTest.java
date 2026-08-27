@@ -15,6 +15,7 @@ import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.DocumentLineType;
+import com.tpverp.backend.document.FiscalPrintView;
 import com.tpverp.backend.document.InvoiceFiscalProfile;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.organization.Company;
@@ -23,6 +24,9 @@ import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.FiscalAddress;
+import com.tpverp.backend.verifactu.FiscalEndpointEnvironment;
+import com.tpverp.backend.verifactu.FiscalMode;
+import com.tpverp.backend.verifactu.FiscalPrintSnapshotFactory;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -190,15 +194,38 @@ class InvoiceJasperRendererTest {
 
         var qrUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR"
                 + "?nif=B12345678&numserie=FV-2026-1&fecha=10-08-2026&importe=10.00";
-        var pdf = renderer.render(
+        var fiscal = new FiscalPrintView(
+                FiscalPrintSnapshotFactory.FORMAT_VERSION,
+                "TPV-ERP-2026.08.25",
+                FiscalMode.VERIFACTU,
+                FiscalEndpointEnvironment.TEST,
+                qrUrl,
+                "A".repeat(64),
+                FiscalPrintSnapshotFactory.PREFIX,
+                FiscalPrintSnapshotFactory.VERIFACTU_LEGEND,
+                FiscalPrintSnapshotFactory.TEST_NOTICE,
+                "Obligado congelado SL",
+                "B12345678",
+                Map.of(
+                        "linea1", "Calle congelada 7",
+                        "codigoPostal", "35007",
+                        "ciudad", "Telde",
+                        "provincia", "Las Palmas",
+                        "pais", "ES"));
+        var pdf = renderer.renderWithFiscalSnapshot(
                 fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
-                snapshot, qrUrl).orElseThrow();
+                snapshot, fiscal, null, DocumentTemplateFormat.A4).orElseThrow();
 
         assertThat(pdf).startsWith(0x25, 0x50, 0x44, 0x46);
         try (var rendered = Loader.loadPDF(pdf)) {
             assertThat(new PDFTextStripper().getText(rendered))
-                    .contains("FACTURA", "FV-2026-1", "TPV ERP SL",
-                            "QR tributario", "ENTORNO DE PRUEBAS - SIN VALIDEZ");
+                    .contains("FACTURA", "FV-2026-1", "Obligado congelado SL",
+                            "Calle congelada 7",
+                            "QR tributario",
+                            "Factura verificable en la sede electrónica de",
+                            "la AEAT",
+                            "ENTORNO DE PRUEBAS - SIN VALIDEZ")
+                    .doesNotContain("TPV ERP SL", "Calle Emisor 1");
             assertThat(decodeQr(new PDFRenderer(rendered).renderImageWithDPI(0, 150)))
                     .isEqualTo(qrUrl);
         }
@@ -364,6 +391,60 @@ class InvoiceJasperRendererTest {
                 .isEqualByComparingTo("11.57");
         assertThat(json.at("/totals/taxTotal").decimalValue())
                 .isEqualByComparingTo("2.43");
+    }
+
+    @Test
+    void fiscalJsonUsesFrozenMetadataWithoutInferringAnythingFromTheUrl() {
+        var fixture = fixture();
+        var compiler = new SafeJrxmlCompiler();
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                compiler,
+                new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(compiler));
+        var presentation = new InvoicePresentationSnapshot(
+                4, InvoiceFiscalProfile.IVA, null, List.of());
+        var contradictoryUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR"
+                + "?nif=B12345678&numserie=FV-1&fecha=10-08-2026&importe=10.00";
+        var frozen = new FiscalPrintView(
+                "FORMATO-CONGELADO",
+                "GENERADOR-CONGELADO",
+                FiscalMode.NO_VERIFACTU,
+                FiscalEndpointEnvironment.PRODUCTION,
+                contradictoryUrl,
+                "B".repeat(64),
+                "PREFIJO CONGELADO:",
+                null,
+                null,
+                "Obligado congelado SL",
+                "B12345678",
+                Map.of(
+                        "linea1", "Calle congelada 7",
+                        "codigoPostal", "35007",
+                        "ciudad", "Telde",
+                        "provincia", "Las Palmas",
+                        "pais", "ES"));
+
+        var json = renderer.dataWithFiscalSnapshot(
+                fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
+                presentation, frozen, null);
+
+        assertThat(json.at("/fiscal/mode").asText()).isEqualTo("NO_VERIFACTU");
+        assertThat(json.at("/fiscal/environment").asText()).isEqualTo("PRODUCTION");
+        assertThat(json.at("/fiscal/testData").asBoolean()).isFalse();
+        assertThat(json.at("/fiscal/qrPrefix").asText()).isEqualTo("PREFIJO CONGELADO:");
+        assertThat(json.at("/fiscal/legend").isNull()).isTrue();
+        assertThat(json.at("/fiscal/testNotice").isNull()).isTrue();
+        assertThat(json.at("/fiscal/formatVersion").asText()).isEqualTo("FORMATO-CONGELADO");
+        assertThat(json.at("/fiscal/generatorVersion").asText())
+                .isEqualTo("GENERADOR-CONGELADO");
+        assertThat(json.at("/issuer/legalName").asText())
+                .isEqualTo("Obligado congelado SL");
+        assertThat(json.at("/issuer/taxId").asText()).isEqualTo("B12345678");
+        assertThat(json.at("/issuer/address/line1").asText())
+                .isEqualTo("Calle congelada 7");
+        assertThat(json.at("/fiscal/verificationUrl").asText()).isEqualTo(contradictoryUrl);
     }
 
     private static String decodeQr(BufferedImage image) throws Exception {

@@ -3,7 +3,12 @@ import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
 import type { PaymentRefundLineOption, PaymentRefundLineSelection } from "../sale/paymentOperations";
-import { printConfirmedTicketAutomatically, type ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
+import {
+  outputConfirmedTicketsSequentially,
+  printConfirmedTicketAutomatically,
+  type ConfirmedTicketPrintSet,
+  type ConfirmedTicketPrintSnapshot
+} from "../sale/ticketPrinting";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 type TicketPayment = {
@@ -191,8 +196,16 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
     setBusy(true);
     setError("");
     try {
-      const snapshot = await apiRequest<ConfirmedTicketPrintSnapshot>(`/tickets/${encodeURIComponent(selected.id)}/print`, { token });
-      const outcome = await printConfirmedTicketAutomatically(snapshot, terminalContext);
+      const printSet = await apiRequest<ConfirmedTicketPrintSet>(
+        `/tickets/${encodeURIComponent(selected.id)}/print-set`,
+        { token }
+      );
+      const outcome = await outputConfirmedTicketsSequentially(
+        [...(printSet.additionalPrintTickets ?? []), printSet.printTicket],
+        terminalContext,
+        "DEFAULT",
+        locale
+      );
       if (outcome.status === "FAILED") throw new Error(outcome.technicalMessage ?? t("ticketManagement.error.print"));
       setMessage(outcome.status === "SKIPPED" ? t("ticketManagement.print.skipped") : t("ticketManagement.print.success"));
     } catch (reason) {

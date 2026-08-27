@@ -27,7 +27,7 @@ import {
 } from "./SaleCommandMenuBar";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import {
-  outputConfirmedTicket,
+  outputConfirmedTicketsSequentially,
   retryConfirmedTicketPrint,
   type ConfirmedTicketPrintSnapshot,
   type SalePrintMode,
@@ -1086,6 +1086,9 @@ export type CashPaymentResult = {
   authorization?: string;
   reference?: string;
   printTicket?: ConfirmedTicketPrintSnapshot;
+  additionalPrintTickets?: ConfirmedTicketPrintSnapshot[];
+  nonFiscalSummary?: ConfirmedTicketPrintSnapshot;
+  failedPrintTickets?: ConfirmedTicketPrintSnapshot[];
   printStatus?: TicketPrintUiStatus;
   printTechnicalMessage?: string;
   issuedVoucher?: IssuedVoucherPrintSnapshot;
@@ -1198,11 +1201,18 @@ export function cashResultFromFinalization(
 export function paymentResultFromFinalization(
   printTicket: ConfirmedTicketPrintSnapshot,
   summary: PaymentFinalizationSummary,
+  additionalPrintTickets: ConfirmedTicketPrintSnapshot[] = [],
+  nonFiscalSummary?: ConfirmedTicketPrintSnapshot,
 ): CashPaymentResult {
+  const relatedPrintData = {
+    ...(additionalPrintTickets.length > 0 ? { additionalPrintTickets } : {}),
+    ...(nonFiscalSummary ? { nonFiscalSummary } : {}),
+  };
   if (summary.kind === "CASH") {
     return {
       ...cashResultFromFinalization(printTicket.documentNumber, summary.totalCents, summary.receivedCents),
       printTicket,
+      ...relatedPrintData,
       ...(summary.issuedVoucher ? {
         issuedVoucher: summary.issuedVoucher,
         voucherPrintStatus: "PRINTING" as const,
@@ -1218,6 +1228,7 @@ export function paymentResultFromFinalization(
           : summary.kind === "ZERO" ? "Sin liquidación"
             : "Mixto",
     printTicket,
+    ...relatedPrintData,
     ...(summary.issuedVoucher ? {
       issuedVoucher: summary.issuedVoucher,
       voucherPrintStatus: "PRINTING" as const,
@@ -1247,6 +1258,14 @@ export function updateCashResultPrintOutcome(
         ...current,
         printStatus: outcome.status,
         printTechnicalMessage: outcome.technicalMessage,
+        failedPrintTickets: outcome.failedDocuments?.length
+          ? [
+              ...(current.additionalPrintTickets ?? []),
+              current.printTicket,
+            ].filter((ticket) => outcome.failedDocuments?.some(
+              (failure) => failure.documentId === ticket.documentId,
+            ))
+          : undefined,
       }
     : current;
 }
@@ -2601,8 +2620,15 @@ export function SaleScreen({
   function startAutomaticTicketPrint(
     snapshot: ConfirmedTicketPrintSnapshot,
     printMode: SalePrintMode = salePrintMode,
+    additionalPrintTickets: ConfirmedTicketPrintSnapshot[] = [],
   ) {
-    void outputConfirmedTicket(snapshot, terminalContext, printMode, locale)
+    // Fiscal exchange order is deliberate: rectification(s), then replacement sale.
+    void outputConfirmedTicketsSequentially(
+      [...additionalPrintTickets, snapshot],
+      terminalContext,
+      printMode,
+      locale,
+    )
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
   }
 
@@ -2657,9 +2683,17 @@ export function SaleScreen({
     setCashResult((current) => current?.printTicket?.documentId === snapshot.documentId
       ? { ...current, printStatus: "PRINTING", printTechnicalMessage: undefined }
       : current);
-    const retry = lastPrintMode === "DEFAULT"
-      ? retryConfirmedTicketPrint(snapshot, terminalContext)
-      : outputConfirmedTicket(snapshot, terminalContext, lastPrintMode, locale);
+    const retrySnapshots = cashResult?.failedPrintTickets?.length
+      ? cashResult.failedPrintTickets
+      : [...(cashResult?.additionalPrintTickets ?? []), snapshot];
+    const retry = retrySnapshots.length === 1 && lastPrintMode === "DEFAULT"
+      ? retryConfirmedTicketPrint(retrySnapshots[0], terminalContext)
+      : outputConfirmedTicketsSequentially(
+          retrySnapshots,
+          terminalContext,
+          lastPrintMode,
+          locale,
+        );
     void retry
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
   }
@@ -5250,7 +5284,7 @@ export function SaleScreen({
                   locked && reservedTotalCents != null ? reservedTotalCents : null,
                 );
               }}
-              onFinalized={(printTicket, summary) => {
+              onFinalized={(printTicket, summary, additionalPrintTickets = [], nonFiscalSummary) => {
                 const completedPrintMode = salePrintMode;
                 invalidateCashOpening();
                 deletionControl.reset("SALE_FINALIZED");
@@ -5271,9 +5305,18 @@ export function SaleScreen({
                 setMemberBalanceCents(0);
                 setReservedPaymentTotalCents(null);
                 setLastPrintMode(completedPrintMode);
-                const result = paymentResultFromFinalization(printTicket, summary);
+                const result = paymentResultFromFinalization(
+                  printTicket,
+                  summary,
+                  additionalPrintTickets,
+                  nonFiscalSummary,
+                );
                 setCashResult({ ...result, printStatus: "PRINTING" });
-                startAutomaticTicketPrint(printTicket, completedPrintMode);
+                startAutomaticTicketPrint(
+                  printTicket,
+                  completedPrintMode,
+                  additionalPrintTickets,
+                );
                 if (summary.issuedVoucher) {
                   startAutomaticVoucherPrint(summary.issuedVoucher);
                 }

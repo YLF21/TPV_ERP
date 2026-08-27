@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { TableSortDirection } from "./tableSorting";
+import "./TableLayoutHeaderCell.css";
 
 export function TableSortButton({
   children,

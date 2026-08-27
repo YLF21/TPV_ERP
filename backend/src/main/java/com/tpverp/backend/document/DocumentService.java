@@ -61,6 +61,7 @@ import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.terminal.StorePaymentConfiguration;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
 import com.tpverp.backend.terminal.TerminalPaymentConfigurationRepository;
+import com.tpverp.backend.verifactu.FiscalQrImageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -122,6 +123,8 @@ public class DocumentService {
     private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
     private SalesInvoiceRectificationRepository salesInvoiceRectifications;
     private TicketJasperRenderer ticketJasperRenderer;
+    private DocumentFiscalQrService fiscalQr;
+    private FiscalQrImageService fiscalQrImages;
 
     public DocumentService(
             CommercialDocumentRepository documents,
@@ -193,6 +196,14 @@ public class DocumentService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setTicketJasperRenderer(TicketJasperRenderer ticketJasperRenderer) {
         this.ticketJasperRenderer = ticketJasperRenderer;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setFiscalQrServices(
+            DocumentFiscalQrService fiscalQr,
+            FiscalQrImageService fiscalQrImages) {
+        this.fiscalQr = fiscalQr;
+        this.fiscalQrImages = fiscalQrImages;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -1317,7 +1328,7 @@ public class DocumentService {
                 invoiceReturn
                         ? CommercialDocumentType.RECTIFICATIVA_VENTA
                         : CommercialDocumentType.TICKET,
-                LocalDate.now(clock),
+                currentBusinessDate(),
                 organization.currentUser(authentication).getId(), original.getDescuentoGlobal());
         var terminalId = currentTerminal.terminalId(authentication);
         refund.assignOriginTerminal(terminalId);
@@ -1515,7 +1526,7 @@ public class DocumentService {
                 original.getTipo() == CommercialDocumentType.FACTURA_VENTA
                         ? CommercialDocumentType.RECTIFICATIVA_VENTA
                         : CommercialDocumentType.TICKET,
-                LocalDate.now(clock), UUID.randomUUID(), original.getDescuentoGlobal());
+                currentBusinessDate(), UUID.randomUUID(), original.getDescuentoGlobal());
         for (var selected : plan.lines()) preview.addLine(refundLine(preview, selected));
         for (var adjustment : plan.adjustments()) {
             preview.addLine(returnAdjustmentLine(preview, adjustment));
@@ -2158,26 +2169,79 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<CommercialDocument> findCompensatingOrigin(UUID saleDocumentId) {
+        return relations.findOriginId(
+                        Objects.requireNonNull(saleDocumentId, "saleDocumentId"),
+                        DocumentRelationType.COMPENSA)
+                .map(this::loadForPrint);
+    }
+
+    @Transactional(readOnly = true)
     public TicketPrintView loadRenderedTicketPrintView(UUID id) {
+        var sale = loadForPrint(id);
+        // Compatibility endpoint: old clients cannot consume a print set, so
+        // they receive at least the fiscal replacement sale, never the
+        // non-fiscal combined exchange summary.
+        return renderTicketPrintView(sale, ticketPrintView(sale));
+    }
+
+    /**
+     * Reconstructs the complete printable set for a ticket. In a compensating
+     * exchange the rectification is intentionally returned first, followed by
+     * the replacement sale; the combined view is informational and must never
+     * be sent to a fiscal printer automatically.
+     */
+    @Transactional(readOnly = true)
+    public TicketPrintSet loadRenderedTicketPrintSet(UUID id) {
         var sale = loadForPrint(id);
         return relations.findOriginId(sale.getId(), DocumentRelationType.COMPENSA)
                 .map(this::loadForPrint)
-                .map(refund -> ticketPrintViewFromExchange(sale, refund))
-                .orElseGet(() -> renderTicketPrintView(sale, ticketPrintView(sale)));
+                .map(refund -> new TicketPrintSet(
+                        renderTicketPrintView(sale, ticketPrintView(sale)),
+                        List.of(renderTicketPrintView(refund, ticketPrintView(refund))),
+                        ticketPrintViewFromExchange(sale, refund)))
+                .orElseGet(() -> new TicketPrintSet(
+                        renderTicketPrintView(sale, ticketPrintView(sale)),
+                        List.of(),
+                        null));
+    }
+
+    public record TicketPrintSet(
+            TicketPrintView printTicket,
+            List<TicketPrintView> additionalPrintTickets,
+            TicketPrintView nonFiscalSummary) {
+
+        public TicketPrintSet {
+            Objects.requireNonNull(printTicket, "printTicket");
+            additionalPrintTickets = additionalPrintTickets == null
+                    ? List.of()
+                    : List.copyOf(additionalPrintTickets);
+            if (nonFiscalSummary != null && !nonFiscalSummary.nonFiscalSummary()) {
+                throw new IllegalArgumentException(
+                        "nonFiscalSummary must be explicitly marked as non-fiscal");
+            }
+        }
     }
 
     public TicketPrintView renderTicketPrintView(
             CommercialDocument document, TicketPrintView view) {
-        if (ticketJasperRenderer == null) {
+        if (view != null && view.nonFiscalSummary()) {
+            // A compensating exchange is represented fiscally by the negative
+            // rectification and the replacement sale. The combined customer
+            // summary must never inherit either document's QR or Jasper raster.
             return view;
+        }
+        var printable = withFiscalQr(view);
+        if (ticketJasperRenderer == null) {
+            return printable;
         }
         try {
             var rendered = ticketJasperRenderer.renderForPrint(document);
-            return view.withRenderedDocument(rendered.pdf(), rendered.png());
+            return printable.withRenderedDocument(rendered.pdf(), rendered.png());
         } catch (RuntimeException exception) {
             LOGGER.warn("Configured ticket rendering failed for document {}",
                     document.getId(), exception);
-            return view;
+            return printable;
         }
     }
 
@@ -2194,6 +2258,74 @@ public class DocumentService {
             CommercialDocument sale, CommercialDocument refund) {
         return TicketPrintView.fromExchange(sale, refund);
     }
+
+    /** Preflight used by print routes that render directly from the database. */
+    public void requireFiscalQrReadyForPrint(UUID documentId) {
+        resolveFiscalQrImage(documentId);
+    }
+
+    private TicketPrintView withFiscalQr(TicketPrintView view) {
+        if (view == null || view.documentId() == null) {
+            return view;
+        }
+        if (view.nonFiscalSummary()) {
+            return view;
+        }
+        var fiscalQrImage = resolveFiscalQrImage(view.documentId());
+        return fiscalQrImage
+                .map(qr -> view.withFiscalQr(qr.url(), qr.dataUrl(), qr.fiscal()))
+                .orElse(view);
+    }
+
+    private Optional<ResolvedFiscalQrImage> resolveFiscalQrImage(UUID documentId) {
+        if (fiscalQr == null || fiscalQrImages == null) {
+            throw new IllegalStateException("fiscal_qr_printing_services_unavailable");
+        }
+        var fiscalData = fiscalQr.resolveForPrint(documentId);
+        if (fiscalData.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            var url = fiscalData.orElseThrow().url();
+            var image = fiscalQrImages.png(url, 240);
+            var bytes = image.bytes();
+            if (!"image/png".equals(image.contentType()) || !isPng(bytes)) {
+                throw new IllegalStateException("invalid_fiscal_qr_png");
+            }
+            var dataUrl = "data:image/png;base64,"
+                    + java.util.Base64.getEncoder().encodeToString(bytes);
+            return Optional.of(new ResolvedFiscalQrImage(
+                    url,
+                    dataUrl,
+                    fiscalData.orElseThrow().hasFrozenMetadata()
+                            ? fiscalData.orElseThrow().toView() : null));
+        } catch (RuntimeException exception) {
+            if (exception instanceof FiscalQrUnavailableException unavailable) {
+                throw unavailable;
+            }
+            throw new FiscalQrUnavailableException(
+                    documentId,
+                    FiscalQrUnavailableException.Reason.IMAGE_GENERATION_FAILED,
+                    exception);
+        }
+    }
+
+    private static boolean isPng(byte[] value) {
+        byte[] signature = new byte[] {
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        if (value == null || value.length < signature.length) {
+            return false;
+        }
+        for (int index = 0; index < signature.length; index++) {
+            if (value[index] != signature[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private record ResolvedFiscalQrImage(
+            String url, String dataUrl, FiscalPrintView fiscal) {}
 
     @Transactional(readOnly = true)
     public List<CommercialDocument> listTickets() {
@@ -3508,12 +3640,16 @@ public class DocumentService {
             throw new IllegalArgumentException(
                     "message.payment.transfer_date_only_for_transfer");
         }
-        var businessDate = LocalDate.now(clock.withZone(
-                ZoneId.of(organization.currentStore().getTimezone())));
+        var businessDate = currentBusinessDate();
         if (command.transferDate().isAfter(businessDate)) {
             throw new IllegalArgumentException(
                     "message.payment.transfer_date_cannot_be_future");
         }
+    }
+
+    private LocalDate currentBusinessDate() {
+        return LocalDate.now(clock.withZone(
+                ZoneId.of(organization.currentStore().getTimezone())));
     }
 
     private CommercialDocument loadDetailedSalesInvoiceByNumber(String invoiceNumber) {

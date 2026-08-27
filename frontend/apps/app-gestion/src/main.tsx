@@ -105,7 +105,13 @@ const VoucherSettingsScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings";
+const LicenseSaasManagementScreen = lazy(() =>
+  import("./LicenseSaasManagementScreen").then(({ LicenseSaasManagementScreen }) => ({
+    default: LicenseSaasManagementScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -194,6 +200,7 @@ function App() {
         onOpenDocumentTemplates={() => setModule("documentTemplates")}
         onOpenDocumentPrintSettings={() => setModule("documentPrintSettings")}
         onOpenVoucherSettings={() => setModule("voucherSettings")}
+        onOpenLicenses={() => setModule("licenses")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
@@ -231,6 +238,7 @@ function GestionScreen({
   onOpenDocumentTemplates,
   onOpenDocumentPrintSettings,
   onOpenVoucherSettings,
+  onOpenLicenses,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -260,6 +268,7 @@ function GestionScreen({
   onOpenDocumentTemplates: () => void;
   onOpenDocumentPrintSettings: () => void;
   onOpenVoucherSettings: () => void;
+  onOpenLicenses: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
@@ -268,10 +277,12 @@ function GestionScreen({
   const modules = visibleGestionModules(session);
   const verifactuAllowed = modules.includes("gestion.verifactu");
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
+  const canReadLicenses = canConfigurePaymentMethods || session.permissions.includes("LICENSES_MANAGE");
   const canManageDocumentTemplates = modules.includes("gestion.documentTemplates");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
     || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "memberLoyaltySettings" || module === "memberCategories" || module === "internalEan" || module === "documentPrintSettings" || module === "voucherSettings")
       && !canConfigurePaymentMethods)
+    || (module === "licenses" && !canReadLicenses)
     || (module === "documentTemplates" && !canManageDocumentTemplates)
     || (module === "vouchers" && !modules.includes("gestion.sales"))
     ? "dashboard"
@@ -442,7 +453,7 @@ function GestionScreen({
     ...(securityChildren.length > 0
       ? [{ key: "security", label: t("gestion.security.navigation"), children: securityChildren }]
       : []),
-    ...(canConfigurePaymentMethods || canManageDocumentTemplates
+    ...(canConfigurePaymentMethods || canManageDocumentTemplates || canReadLicenses
       ? [{
           key: "configuration",
           label: t("gestion.configuration.navigation"),
@@ -450,6 +461,10 @@ function GestionScreen({
             key: "documentTemplates",
             label: t("gestion.documentTemplates.navigation"),
             onOpen: onOpenDocumentTemplates
+          }] : []), ...(canReadLicenses ? [{
+            key: "licenses",
+            label: t("gestion.licenses.navigation"),
+            onOpen: onOpenLicenses
           }] : []), ...(canConfigurePaymentMethods ? [{
             key: "documentPrintSettings",
             label: t("gestion.documentPrint.navigation"),
@@ -591,10 +606,13 @@ function GestionScreen({
     content = <StoreDocumentPrintSettingsScreen session={session} storeName={terminalContext.storeName} t={t} />;
   } else if (effectiveModule === "voucherSettings" && canConfigurePaymentMethods) {
     content = <VoucherSettingsScreen session={session} storeName={terminalContext.storeName} t={t} />;
+  } else if (effectiveModule === "licenses" && canReadLicenses) {
+    content = <LicenseSaasManagementScreen locale={locale} session={session} storeName={terminalContext.storeName} t={t} />;
   } else {
     content = (
       <GestionDashboard
         session={session}
+        locale={locale}
         t={t}
         onOpenSales={() => onOpenSales(reports[0] ?? "salesReport.dailySales")}
         onOpenStock={() => onOpenStock({ key: stockViews[0] ?? "stock.current", view: stockViews[0] ?? "stock.current" })}

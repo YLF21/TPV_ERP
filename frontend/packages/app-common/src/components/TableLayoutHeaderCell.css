@@ -1,0 +1,193 @@
+.table-layout-header-actions {
+  min-width: 0;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+
+.table-layout-column-menu-button {
+  width: 25px;
+  height: 25px;
+  display: inline-grid;
+  flex: 0 0 25px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+}
+
+.table-layout-column-menu-button svg { width: 16px; height: 16px; pointer-events: none; }
+.table-layout-column-menu-button:hover,
+.table-layout-column-menu-button:focus-visible,
+.table-layout-column-menu-button.is-open {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  outline: none;
+}
+
+.table-layout-column-menu {
+  position: fixed;
+  z-index: 1200;
+  width: 210px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #b8c6d6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17233b;
+  box-shadow: 0 12px 30px rgba(18, 43, 73, 0.22);
+}
+
+.table-layout-column-menu > button {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #17233b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.table-layout-column-menu > button:hover,
+.table-layout-column-menu > button:focus-visible { background: #eaf2fb; color: #123f72; outline: none; }
+.table-layout-column-menu > button.is-danger { color: #a12020; }
+.table-layout-column-menu > button.is-danger:hover,
+.table-layout-column-menu > button.is-danger:focus-visible { background: #fff0f0; color: #821919; }
+.table-layout-column-menu kbd { border: 0; background: transparent; color: #61758c; font: inherit; font-size: 10px; font-weight: 750; }
+.table-layout-column-menu-divider { height: 1px; margin: 4px 2px; background: #dce4ed; }
+.table-layout-column-menu-heading { padding: 5px 8px 3px; color: #50657d; font-size: 10px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+.table-layout-column-visibility-list { display: grid; gap: 2px; max-height: 260px; overflow-y: auto; }
+
+.table-layout-column-visibility-list > button {
+  width: 100%;
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #17233b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+}
+
+.table-layout-column-visibility-list > button:hover,
+.table-layout-column-visibility-list > button:focus-visible { background: #eaf2fb; color: #123f72; outline: none; }
+.table-layout-column-visibility-list > button:disabled { cursor: default; opacity: 0.58; }
+.table-layout-column-visibility-check {
+  width: 17px;
+  height: 17px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #8ba0b7;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #0b5da8;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+.table-layout-header-cell { position: relative; min-width: 0; user-select: none; }
+.table-layout-header-cell.movable { cursor: grab; }
+.table-layout-drag-handle {
+  position: absolute;
+  z-index: 7;
+  inset: 2px auto 2px 0;
+  width: 20px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.25px, transparent 1.5px) center / 6px 6px;
+  opacity: 0.62;
+  touch-action: none;
+}
+.table-layout-header-cell.has-column-menu .table-layout-drag-handle { display: grid; place-items: center; background: none; color: rgba(255, 255, 255, 0.82); }
+.table-layout-header-cell.has-column-menu .table-layout-drag-handle svg { width: 17px; height: 17px; pointer-events: none; }
+.table-layout-drag-handle:hover,
+.table-layout-header-cell.dragging .table-layout-drag-handle { opacity: 1; }
+.table-layout-header-cell.movable > .table-layout-header-label { padding-left: 22px; }
+.table-layout-header-cell.movable > .table-layout-sort-button,
+.table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button { padding-left: 30px; }
+.table-layout-header-cell.movable:active { cursor: grabbing; }
+.table-layout-header-cell:focus-visible { outline: 2px solid #ffffff; outline-offset: -3px; }
+.table-layout-header-cell.dragging { opacity: 0.55; }
+.table-layout-header-cell.has-column-menu.dragging { opacity: 0.72; background: #173d70 !important; box-shadow: inset 0 0 0 2px rgba(94, 167, 255, 0.92); }
+.table-layout-header-cell.drag-over::after { content: ""; position: absolute; z-index: 4; top: 3px; bottom: 3px; left: 0; width: 3px; background: #5ea7ff; pointer-events: none; }
+.table-layout-header-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.report-screen .table-layout-header-cell .table-layout-drag-handle,
+.stock-screen .table-layout-header-cell .table-layout-drag-handle { display: none !important; }
+.report-screen .table-layout-header-cell.movable > .table-layout-header-label,
+.report-screen .table-layout-header-cell.movable > .table-layout-sort-button,
+.report-screen .table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button,
+.stock-screen .table-layout-header-cell.movable > .table-layout-header-label,
+.stock-screen .table-layout-header-cell.movable > .table-layout-sort-button,
+.stock-screen .table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button { padding-left: 0; }
+.report-screen .table-layout-header-controls,
+.report-screen .table-layout-sort-button,
+.stock-screen .table-layout-header-controls,
+.stock-screen .table-layout-sort-button { position: relative; }
+.report-screen .table-layout-header-controls,
+.stock-screen .table-layout-header-controls { width: 100% !important; max-width: 100%; margin: 0 !important; padding: 0 !important; box-sizing: border-box; }
+.report-screen .table-layout-header-controls .table-layout-sort-button,
+.stock-screen .table-layout-header-controls .table-layout-sort-button { width: 100%; max-width: 100%; margin: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; box-sizing: border-box; }
+.report-screen .table-layout-header-actions,
+.stock-screen .table-layout-header-actions { position: absolute; z-index: 2; top: 50%; right: 0; transform: translateY(-50%); }
+.report-screen .table-layout-sort-indicator { position: absolute; right: 54px; }
+.stock-screen .table-layout-sort-indicator { position: absolute; right: 30px; }
+.report-screen .table-layout-header-cell:hover .table-layout-sort-label,
+.report-screen .table-layout-header-cell:focus-within .table-layout-sort-label,
+.stock-screen .table-layout-header-cell:hover .table-layout-sort-label,
+.stock-screen .table-layout-header-cell:focus-within .table-layout-sort-label { max-width: calc(100% - 58px); }
+.report-screen .table-layout-sort-indicator,
+.report-screen .table-layout-column-menu-button,
+.stock-screen .table-layout-sort-indicator,
+.stock-screen .table-layout-column-menu-button { visibility: hidden; opacity: 0; transition: opacity 120ms ease; }
+.report-screen .table-layout-header-cell:hover .table-layout-sort-indicator,
+.report-screen .table-layout-header-cell:focus-within .table-layout-sort-indicator,
+.report-screen .table-layout-header-cell:hover .table-layout-column-menu-button,
+.report-screen .table-layout-header-cell:focus-within .table-layout-column-menu-button,
+.report-screen .table-layout-column-menu-button.is-open,
+.stock-screen .table-layout-header-cell:hover .table-layout-sort-indicator,
+.stock-screen .table-layout-header-cell:focus-within .table-layout-sort-indicator,
+.stock-screen .table-layout-header-cell:hover .table-layout-column-menu-button,
+.stock-screen .table-layout-header-cell:focus-within .table-layout-column-menu-button,
+.stock-screen .table-layout-column-menu-button.is-open { visibility: visible; opacity: 1; }
+
+.table-layout-column-resizer { position: absolute; z-index: 5; top: 0; right: -5px; width: 11px; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: col-resize; touch-action: none; }
+.table-layout-column-resizer::after { content: ""; position: absolute; top: 18%; bottom: 18%; left: 5px; width: 1px; background: rgba(255, 255, 255, 0.35); }
+.table-layout-column-resizer:hover::after,
+.table-layout-column-resizer:focus-visible::after { width: 2px; background: #ffffff; }
+
+.table-layout-sort-button { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; min-width: 0; margin: -9px -10px; padding: 9px 18px 9px 10px; border: 0; border-radius: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.table-layout-sort-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-layout-sort-indicator { display: inline-grid; place-items: center; flex: 0 0 auto; width: 16px; height: 16px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 3px; color: #b9cde1; font-size: 11px; font-weight: 800; line-height: 1; }
+.table-layout-sort-button.is-active .table-layout-sort-indicator { border-color: #ffffff; background: #ffffff; color: var(--tpv-v3-navy, #082d5b); }
+.table-layout-header-controls { display: flex; align-items: center; width: calc(100% + 20px); min-width: 0; margin: -9px -10px; padding-right: 15px; box-sizing: border-box; }
+.table-layout-header-controls .table-layout-sort-button { flex: 1 1 auto; width: auto; margin: 0; padding: 9px 4px 9px 10px; }
+.table-layout-header-action { display: inline-flex; align-items: center; flex: 0 0 auto; margin-left: 2px; }
+.table-layout-sort-button:hover,
+.table-layout-sort-button:focus-visible { background: rgba(255, 255, 255, .12); outline: 2px solid rgba(255, 255, 255, .7); outline-offset: -2px; }
+
+.sale-cart-table .table-layout-drag-handle { display: none; }
+.sale-cart-table .table-layout-header-cell.movable > .table-layout-header-label { padding-left: 0; }
+.sale-cart-table .table-layout-header-cell.movable > .table-layout-sort-button,
+.sale-cart-table .table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button { padding-left: 0; }

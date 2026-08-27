@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
-import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ class AdminProductionGuardTest {
 
     @Test
     void bloqueaArranqueProductivoConAdminPorDefectoActivo() {
-        when(users.findByUsernameIgnoreCase("admin")).thenReturn(Optional.of(admin(DEFAULT_ADMIN_HASH, true)));
+        when(users.findAll()).thenReturn(List.of(user("admin", DEFAULT_ADMIN_HASH, true)));
 
         assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
                 .isInstanceOf(IllegalStateException.class)
@@ -28,30 +28,102 @@ class AdminProductionGuardTest {
     }
 
     @Test
-    void permiteAdminPorDefectoEnTest() {
-        when(users.findByUsernameIgnoreCase("admin")).thenReturn(Optional.of(admin(DEFAULT_ADMIN_HASH, true)));
+    void bloqueaArranqueProductivoConViewerPorDefectoActivo() {
+        when(users.findAll()).thenReturn(List.of(user("viewer", DEFAULT_ADMIN_HASH, true)));
+
+        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Credenciales iniciales")
+                .hasMessageNotContaining(DEFAULT_ADMIN_HASH);
+    }
+
+    @Test
+    void bloqueaTambienElPasswordAdminPorDefectoDespuesDeMigrarloABcrypt() {
+        String bcrypt = new AdminPasswordHasher().hash("admin");
+        when(users.findAll()).thenReturn(List.of(user("admin", bcrypt, true)));
+
+        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Credenciales iniciales")
+                .hasMessageNotContaining(bcrypt);
+    }
+
+    @Test
+    void permiteCredencialesPorDefectoEnTest() {
+        when(users.findAll()).thenReturn(List.of(
+                user("admin", DEFAULT_ADMIN_HASH, true),
+                user("viewer", DEFAULT_ADMIN_HASH, true)));
 
         assertThatCode(() -> new AdminProductionGuard(users, Set.of("test"), false).run())
                 .doesNotThrowAnyException();
     }
 
     @Test
-    void permiteAdminPorDefectoSinPerfilParaDesarrolloLocal() {
-        when(users.findByUsernameIgnoreCase("admin")).thenReturn(Optional.of(admin(DEFAULT_ADMIN_HASH, true)));
+    void permiteCredencialesPorDefectoSinPerfilParaDesarrolloLocal() {
+        when(users.findAll()).thenReturn(List.of(
+                user("admin", DEFAULT_ADMIN_HASH, true),
+                user("viewer", DEFAULT_ADMIN_HASH, true)));
 
         assertThatCode(() -> new AdminProductionGuard(users, Set.of(), false).run())
                 .doesNotThrowAnyException();
     }
 
     @Test
-    void permiteProduccionCuandoAdminTienePasswordCambiada() {
-        when(users.findByUsernameIgnoreCase("admin")).thenReturn(Optional.of(admin("changed", true)));
+    void permiteProduccionCuandoLasCredencialesInicialesSeHanCambiado() {
+        when(users.findAll()).thenReturn(List.of(
+                user("admin", "changed-admin", true),
+                user("viewer", "changed-viewer", true)));
 
         assertThatCode(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
                 .doesNotThrowAnyException();
     }
 
-    private SaasAdminUser admin(String passwordHash, boolean active) {
-        return new SaasAdminUser(UUID.randomUUID(), "admin", passwordHash, active, Instant.parse("2026-07-02T00:00:00Z"));
+    @Test
+    void permiteProduccionConUsuariosSeedInactivos() {
+        when(users.findAll()).thenReturn(List.of(
+                user("admin", DEFAULT_ADMIN_HASH, false),
+                user("viewer", DEFAULT_ADMIN_HASH, false)));
+
+        assertThatCode(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void overrideExplicitoPermiteTemporalmenteCredencialesSeedEnProduccion() {
+        when(users.findAll()).thenReturn(List.of(
+                user("admin", DEFAULT_ADMIN_HASH, true),
+                user("viewer", DEFAULT_ADMIN_HASH, true)));
+
+        assertThatCode(() -> new AdminProductionGuard(users, Set.of("prod"), true).run())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void bloqueaLaClaveDeCifradoDelLaboratorioAunqueSeAutoriceTemporalmenteElAdminSeed() {
+        assertThatThrownBy(() -> new AdminProductionGuard(
+                users, Set.of("prod"), true,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "database-secret").run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TPV_SAAS_SECRET_ENCRYPTION_KEY");
+    }
+
+    @Test
+    void bloqueaLaPasswordDeBaseDeDatosDelEjemploEnProduccion() {
+        assertThatThrownBy(() -> new AdminProductionGuard(
+                users, Set.of("prod"), true,
+                "production-encryption-key",
+                "replace-with-a-strong-database-password").run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TPV_SAAS_DB_PASSWORD");
+    }
+
+    private SaasAdminUser user(String username, String passwordHash, boolean active) {
+        return new SaasAdminUser(
+                UUID.randomUUID(),
+                username,
+                passwordHash,
+                active,
+                Instant.parse("2026-07-02T00:00:00Z"));
     }
 }

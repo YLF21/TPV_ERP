@@ -115,16 +115,24 @@ public class CustomerReceivablePrintService {
         String logoDataUri = presentationSnapshots == null ? null
                 : presentationSnapshots.logoDataUri(
                         presentation, organization.currentStore().getId());
-        String qrUrl = fiscalQr == null
-                || document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
-                ? null
-                : fiscalQr.qrUrl(document.getId());
-        var rendered = jasperRenderer == null ? java.util.Optional.<byte[]>empty()
-                : logoDataUri == null
-                        ? jasperRenderer.render(document, organization.currentStore(), company,
-                                customer, presentation, qrUrl)
-                        : jasperRenderer.render(document, organization.currentStore(), company,
-                                customer, presentation, qrUrl, logoDataUri);
+        var resolvedQr = resolveFiscalQr(document);
+        var fiscalSnapshot = resolvedQr.map(ResolvedFiscalQr::fiscal).orElse(null);
+        String qrUrl = resolvedQr.map(value -> value.data().url()).orElse(null);
+        String qrImage = resolvedQr.map(ResolvedFiscalQr::dataUrl).orElse(null);
+        java.util.Optional<byte[]> rendered;
+        if (jasperRenderer == null) {
+            rendered = java.util.Optional.empty();
+        } else if (fiscalSnapshot != null) {
+            rendered = jasperRenderer.renderWithFiscalSnapshot(
+                    document, organization.currentStore(), company, customer, presentation,
+                    fiscalSnapshot, logoDataUri, DocumentTemplateFormat.A4);
+        } else {
+            rendered = logoDataUri == null
+                    ? jasperRenderer.render(document, organization.currentStore(), company,
+                            customer, presentation, qrUrl)
+                    : jasperRenderer.render(document, organization.currentStore(), company,
+                            customer, presentation, qrUrl, logoDataUri);
+        }
         var renderedPdf = rendered
                 .map(bytes -> new RenderedPdf(
                         "application/pdf",
@@ -135,9 +143,14 @@ public class CustomerReceivablePrintService {
                     && document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
                     && document.getTipo() != CommercialDocumentType.RECTIFICATIVA_VENTA)
                 ? java.util.Optional.<InvoiceJasperRenderer.RenderedDocument>empty()
-                : jasperRenderer.renderDocument(document, organization.currentStore(), company,
-                        customer, presentation, qrUrl, logoDataUri,
-                        DocumentTemplateFormat.TICKET_80);
+                : fiscalSnapshot == null
+                        ? jasperRenderer.renderDocument(
+                                document, organization.currentStore(), company, customer,
+                                presentation, qrUrl, logoDataUri, DocumentTemplateFormat.TICKET_80)
+                        : jasperRenderer.renderDocumentWithFiscalSnapshot(
+                                document, organization.currentStore(), company, customer,
+                                presentation, fiscalSnapshot, logoDataUri,
+                                DocumentTemplateFormat.TICKET_80);
         var ticketRenderedPdf = ticketRendered
                 .map(renderedDocument -> new RenderedPdf(
                         "application/pdf",
@@ -152,7 +165,9 @@ public class CustomerReceivablePrintService {
                 .orElse(null);
         return new CommercialDocumentPrint(document.getId(), document.getTipo(),
                 document.getNumero(), document.getFecha(), document.getConfirmadoEn(),
-                document.getClienteId(), FiscalParty.from(company, logoDataUri),
+                document.getClienteId(), fiscalSnapshot == null
+                        ? FiscalParty.from(company, logoDataUri)
+                        : FiscalParty.from(fiscalSnapshot, logoDataUri),
                 customer == null ? null : FiscalParty.from(customer),
                 document.getLineas().stream().map(Line::from).toList(),
                 document.getPagos().stream()
@@ -160,7 +175,7 @@ public class CustomerReceivablePrintService {
                         .map(Payment::from).toList(),
                 document.getBaseTotal(), document.getImpuestoTotal(), document.getTotal(),
                 presentation.fiscalProfile(), presentation.observations(),
-                presentation.bankAccounts(), qrUrl, qrImage(qrUrl), renderedPdf,
+                presentation.bankAccounts(), qrUrl, qrImage, fiscalSnapshot, renderedPdf,
                 ticketRenderedPdf, ticketRenderedImage);
     }
 
@@ -249,12 +264,59 @@ public class CustomerReceivablePrintService {
         };
     }
 
-    private String qrImage(String qrUrl) {
-        if (qrUrl == null || fiscalQrImages == null) return null;
-        var image = fiscalQrImages.png(qrUrl, 240);
-        return "data:" + image.contentType() + ";base64,"
-                + Base64.getEncoder().encodeToString(image.bytes());
+    private java.util.Optional<ResolvedFiscalQr> resolveFiscalQr(
+            CommercialDocument document) {
+        if (document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
+                || fiscalQr == null) {
+            return java.util.Optional.empty();
+        }
+        var fiscalData = fiscalQr.resolveForPrint(document.getId());
+        if (fiscalData.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        try {
+            if (fiscalQrImages == null) {
+                throw new IllegalStateException("fiscal_qr_image_service_unavailable");
+            }
+            var data = fiscalData.orElseThrow();
+            var image = fiscalQrImages.png(data.url(), 240);
+            var bytes = image.bytes();
+            if (!"image/png".equals(image.contentType()) || !isPng(bytes)) {
+                throw new IllegalStateException("fiscal_qr_png_invalid");
+            }
+            return java.util.Optional.of(new ResolvedFiscalQr(
+                    data,
+                    data.hasFrozenMetadata() ? data.toView() : null,
+                    "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes)));
+        } catch (RuntimeException exception) {
+            if (exception instanceof FiscalQrUnavailableException unavailable) {
+                throw unavailable;
+            }
+            throw new FiscalQrUnavailableException(
+                    document.getId(),
+                    FiscalQrUnavailableException.Reason.IMAGE_GENERATION_FAILED,
+                    exception);
+        }
     }
+
+    private static boolean isPng(byte[] value) {
+        byte[] signature = new byte[] {
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        if (value == null || value.length < signature.length) {
+            return false;
+        }
+        for (int index = 0; index < signature.length; index++) {
+            if (value[index] != signature[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private record ResolvedFiscalQr(
+            DocumentFiscalQrService.FiscalQrPrintData data,
+            FiscalPrintView fiscal,
+            String dataUrl) {}
 
     public record Line(String code, String name, BigDecimal quantity, BigDecimal unitPrice,
             boolean taxesIncluded, String taxRegime, BigDecimal taxPercentage,
@@ -287,7 +349,8 @@ public class CustomerReceivablePrintService {
             BigDecimal baseTotal, BigDecimal taxTotal, BigDecimal total,
             InvoiceFiscalProfile fiscalProfile, String observations,
             List<InvoicePresentationSnapshot.BankAccount> bankAccounts,
-            String qrUrl, String qrImage, RenderedPdf renderedPdf,
+            String qrUrl, String qrImage, FiscalPrintView fiscal,
+            RenderedPdf renderedPdf,
             RenderedPdf ticketRenderedPdf, RenderedImage ticketRenderedImage) {
         public CommercialDocumentPrint(
                 UUID documentId,
@@ -311,7 +374,7 @@ public class CustomerReceivablePrintService {
             this(documentId, documentType, documentNumber, issueDate, issuedAt,
                     customerId, issuer, customer, lines, payments, baseTotal,
                     taxTotal, total, fiscalProfile, observations, bankAccounts,
-                    qrUrl, qrImage, null, null, null);
+                    qrUrl, qrImage, null, null, null, null);
         }
     }
     public record RenderedPdf(String contentType, String base64) {
@@ -345,6 +408,17 @@ public class CustomerReceivablePrintService {
                     new PartyAddress(identity.address().line1(), identity.address().postalCode(),
                             identity.address().city(), identity.address().province(),
                             identity.address().country()), null, logo);
+        }
+
+        static FiscalParty from(FiscalPrintView fiscal, String logo) {
+            if (fiscal == null || !fiscal.hasFrozenIssuerIdentity()) {
+                throw new IllegalStateException("fiscal_print_issuer_identity_missing");
+            }
+            var address = fiscal.issuerAddress();
+            return new FiscalParty(fiscal.issuerName(), fiscal.issuerTaxId(),
+                    new PartyAddress(address.get("linea1"), address.get("codigoPostal"),
+                            address.get("ciudad"), address.get("provincia"),
+                            address.get("pais")), address.get("telefono"), logo);
         }
 
         static FiscalParty from(Customer customer) {

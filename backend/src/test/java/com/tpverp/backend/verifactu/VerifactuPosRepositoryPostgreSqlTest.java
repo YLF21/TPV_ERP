@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Instant;
@@ -31,7 +32,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({
+@Import({FlywayPostgreSqlConfiguration.class,
         VerifactuAdminReadRepository.class,
         VerifactuAdminReviewReadRepository.class,
         FiscalSubmissionQueueService.class,

@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -98,7 +99,7 @@ public class SalesInvoiceRectificationService {
         var user = organization.currentUser(authentication);
         var draft = new CommercialDocument(
                 original.getTiendaId(), original.getAlmacenId(),
-                CommercialDocumentType.RECTIFICATIVA_VENTA, LocalDate.now(clock),
+                CommercialDocumentType.RECTIFICATIVA_VENTA, currentBusinessDate(),
                 user.getId(), request.reason().affectsStock()
                         ? original.getDescuentoGlobal() : BigDecimal.ZERO);
         var metadata = new SalesInvoiceRectification(
@@ -109,6 +110,11 @@ public class SalesInvoiceRectificationService {
         buildLines(draft, original, metadata, request.lines()).forEach(draft::addLine);
         validateEconomicResult(draft, metadata);
         return new Details(draft, original, metadata);
+    }
+
+    private LocalDate currentBusinessDate() {
+        return LocalDate.now(clock.withZone(
+                ZoneId.of(organization.currentStore().getTimezone())));
     }
 
     @Transactional

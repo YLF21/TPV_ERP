@@ -14,5 +14,10 @@ public record InstallationSummaryResponse(
         String appVersion,
         String operatingSystem,
         String terminalName,
-        String lastIp) {
+        String lastIp,
+        boolean active,
+        Instant revokedAt,
+        String revokedBy,
+        String revocationReason,
+        long version) {
 }

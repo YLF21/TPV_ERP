@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
@@ -16,6 +18,8 @@ public class FiscalSubmissionAttemptService {
     private final FiscalRecordRepository records;
     private final CurrentOrganization organization;
     private final Clock clock;
+    private final InstallationRepository installations;
+    private final LicenseRepository licenses;
 
     public FiscalSubmissionAttemptService(
             FiscalSubmissionAttemptRepository attempts,
@@ -23,11 +27,25 @@ public class FiscalSubmissionAttemptService {
             FiscalRecordRepository records,
             CurrentOrganization organization,
             Clock clock) {
+        this(attempts, states, records, organization, clock, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FiscalSubmissionAttemptService(
+            FiscalSubmissionAttemptRepository attempts,
+            FiscalSubmissionStateService states,
+            FiscalRecordRepository records,
+            CurrentOrganization organization,
+            Clock clock,
+            InstallationRepository installations,
+            LicenseRepository licenses) {
         this.attempts = attempts;
         this.states = states;
         this.records = records;
         this.organization = organization;
         this.clock = clock;
+        this.installations = installations;
+        this.licenses = licenses;
     }
 
     // Guarda el XML enviado y marca el registro como enviado para reintento.
@@ -79,12 +97,19 @@ public class FiscalSubmissionAttemptService {
 
     @Transactional(readOnly = true)
     public List<FiscalSubmissionAttempt> history(UUID recordId) {
-        records.findByIdAndCompanyIdAndStoreId(
-                        recordId,
-                        organization.currentCompany().getId(),
-                        organization.currentStore().getId())
+        var store = organization.currentStore();
+        var companyId = organization.currentCompany().getId();
+        var record = records.findByIdAndCompanyIdAndStoreId(
+                        recordId, companyId, store.getId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "registro fiscal no encontrado"));
+        if (installations != null && licenses != null) {
+            var installation = FiscalInstallationResolver.resolveCurrent(
+                    organization, installations, licenses);
+            if (!installation.getId().equals(record.getInstallationId())) {
+                throw new IllegalArgumentException("registro fiscal no encontrado");
+            }
+        }
         return attempts.findAllByRecordIdOrderByAttemptedAtDesc(recordId);
     }
 

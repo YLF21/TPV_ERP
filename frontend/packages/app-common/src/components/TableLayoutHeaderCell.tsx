@@ -5,6 +5,7 @@ import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode } fr
 import type { TableColumnLayout, TableColumnMoveDirection } from "./tableLayoutPreferences";
 import type { TableSortDirection } from "./tableSorting";
 import { TableSortButton } from "./TableSortButton";
+import "./TableLayoutHeaderCell.css";
 
 const tableColumnDragType = "application/x-tpverp-table-column";
 

@@ -81,7 +81,7 @@ public class MemberWalletBootstrapWorker {
             states.save(state);
             return;
         }
-        states.save(state);
+        state = states.save(state);
         try {
             process(context, state, now);
         } catch (RuntimeException exception) {
@@ -112,7 +112,7 @@ public class MemberWalletBootstrapWorker {
         MemberWalletBootstrapStatus remote = remoteStatus.get();
         validateRemote(remote, context);
         state.trackBootstrap(remote.bootstrapId(), now);
-        states.save(state);
+        state = states.save(state);
 
         var snapshot = snapshots.findByBootstrapIdAndStoreId(
                 remote.bootstrapId(), context.storeId()).orElse(null);
@@ -282,6 +282,7 @@ public class MemberWalletBootstrapWorker {
             MemberWalletBootstrapWorkerState state,
             RuntimeException exception,
             Instant now) {
+        state = states.findById(context.localStoreId()).orElse(state);
         String message = exception.getMessage() == null
                 ? exception.getClass().getSimpleName()
                 : exception.getMessage();

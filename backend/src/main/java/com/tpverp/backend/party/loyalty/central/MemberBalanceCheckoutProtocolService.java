@@ -79,6 +79,13 @@ public class MemberBalanceCheckoutProtocolService {
     public void markTicketCommitted(UUID reservationId, UUID ticketId) {
         LocalMemberBalanceReservation reservation = reservations.findForUpdate(reservationId)
                 .orElseThrow(() -> new NoSuchElementException("Reserva de saldo socio no encontrada"));
+        if (reservation.getStatus() != LocalMemberBalanceReservationStatus.PREPARED
+                && reservation.getStatus() != LocalMemberBalanceReservationStatus.TICKET_COMMITTED
+                && reservation.getStatus() != LocalMemberBalanceReservationStatus.FINALIZE_PENDING
+                && reservation.getStatus() != LocalMemberBalanceReservationStatus.CONSUMED) {
+            throw new MemberBalanceManualReconciliationRequiredException(
+                    reservationId, reservation.getStatus());
+        }
         reservation.markTicketCommitted(ticketId, clock.instant());
     }
 

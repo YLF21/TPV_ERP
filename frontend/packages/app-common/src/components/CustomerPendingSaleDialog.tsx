@@ -56,6 +56,7 @@ type PendingSaleMutationResult = { receivable: PendingSaleResult; printDocument:
 type SalesDocumentMutationResult = {
   document: { id: string; numero?: string | null };
   printDocument: PendingCommercialDocumentPrintSnapshot | null;
+  printPreparationError?: string | null;
 };
 type CustomerCreditQuote = {
   enabled: boolean;
@@ -576,6 +577,18 @@ export function CustomerPendingSaleDialog({
             ? printFailure.message
             : String(printFailure);
         }
+      } else if (terminalContext && "printPreparationError" in result && result.printPreparationError) {
+        const effectivePrintMode = draft.printMode ?? printMode;
+        const printPath = draft.type === "FACTURA_VENTA"
+          ? `/invoices/${completed.documentId}/print-document`
+          : `/delivery-notes/${completed.documentId}/print-document`;
+        retryPrint = async () => {
+          const recoveredSnapshot = await request<PendingCommercialDocumentPrintSnapshot>(printPath, { token });
+          return effectivePrintMode === "DEFAULT"
+            ? printDocument(recoveredSnapshot, terminalContext, undefined, locale)
+            : printDocument(recoveredSnapshot, terminalContext, undefined, locale, effectivePrintMode);
+        };
+        printFailureMessage = t("payment.result.printFailed");
       }
       if (retryPrint) onSuccess(completed, retryPrint, printFailureMessage);
       else onSuccess(completed);

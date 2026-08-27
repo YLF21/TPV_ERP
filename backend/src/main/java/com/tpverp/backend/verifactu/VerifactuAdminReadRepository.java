@@ -14,6 +14,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class VerifactuAdminReadRepository {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     private static final String BASE_FROM = """
             from estado_envio_fiscal state
             join registro_fiscal record on record.id = state.registro_id
@@ -38,7 +40,18 @@ public class VerifactuAdminReadRepository {
             String documentNumber,
             int page,
             int size) {
-        return findSubmissions(companyId, storeId, updatedFrom, updatedToExclusive, status, documentType, operation, documentNumber, page, size, null, null);
+        return findSubmissions(companyId, storeId, null, updatedFrom, updatedToExclusive,
+                status, documentType, operation, documentNumber, page, size, null, null);
+    }
+
+    public VerifactuAdminSubmissionPage findSubmissions(
+            UUID companyId, UUID storeId, UUID installationId,
+            Instant updatedFrom, Instant updatedToExclusive,
+            FiscalSubmissionStatus status, FiscalDocumentType documentType,
+            FiscalRecordOperation operation, String documentNumber, int page, int size) {
+        return findSubmissions(companyId, storeId, installationId, updatedFrom,
+                updatedToExclusive, status, documentType, operation, documentNumber,
+                page, size, null, null);
     }
 
     public VerifactuAdminSubmissionPage findSubmissions(
@@ -54,15 +67,35 @@ public class VerifactuAdminReadRepository {
             int size,
             String sortBy,
             String sortDirection) {
+        return findSubmissions(companyId, storeId, null, updatedFrom, updatedToExclusive,
+                status, documentType, operation, documentNumber, page, size, sortBy,
+                sortDirection);
+    }
+
+    public VerifactuAdminSubmissionPage findSubmissions(
+            UUID companyId,
+            UUID storeId,
+            UUID installationId,
+            Instant updatedFrom,
+            Instant updatedToExclusive,
+            FiscalSubmissionStatus status,
+            FiscalDocumentType documentType,
+            FiscalRecordOperation operation,
+            String documentNumber,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection) {
+        validatePage(page, size);
         var query = filteredQuery(
-                companyId, storeId, updatedFrom, updatedToExclusive,
+                companyId, storeId, installationId, updatedFrom, updatedToExclusive,
                 status, documentType, operation, documentNumber);
         var total = jdbc.queryForObject(
                 "select count(*) " + query.sql(), query.parameters(), Long.class);
         var totalElements = total == null ? 0L : total;
         var totalPages = totalElements == 0
                 ? 0
-                : (int) Math.min(Integer.MAX_VALUE, (totalElements + size - 1) / size);
+                : (int) Math.min(Integer.MAX_VALUE, 1 + ((totalElements - 1) / size));
         if (totalElements == 0 || (long) page * size >= totalElements) {
             return new VerifactuAdminSubmissionPage(List.of(), page, size, totalElements, totalPages);
         }
@@ -115,11 +148,17 @@ public class VerifactuAdminReadRepository {
     }
 
     public Map<FiscalSubmissionStatus, Long> countByStatus(UUID companyId, UUID storeId) {
-        var parameters = scope(companyId, storeId);
+        return countByStatus(companyId, storeId, null);
+    }
+
+    public Map<FiscalSubmissionStatus, Long> countByStatus(
+            UUID companyId, UUID storeId, UUID installationId) {
+        var parameters = scope(companyId, storeId, installationId);
         var counts = new EnumMap<FiscalSubmissionStatus, Long>(FiscalSubmissionStatus.class);
+        var scopedFrom = installationFilter(installationId);
         var rows = jdbc.query("""
                         select state.estado, count(*) as total
-                        """ + BASE_FROM + " group by state.estado",
+                        """ + BASE_FROM + scopedFrom + " group by state.estado",
                 parameters,
                 (result, rowNumber) -> Map.entry(
                         FiscalSubmissionStatus.valueOf(result.getString("estado")),
@@ -129,11 +168,16 @@ public class VerifactuAdminReadRepository {
     }
 
     public Instant findOldestPendingAt(UUID companyId, UUID storeId) {
-        var parameters = scope(companyId, storeId)
+        return findOldestPendingAt(companyId, storeId, null);
+    }
+
+    public Instant findOldestPendingAt(UUID companyId, UUID storeId, UUID installationId) {
+        var parameters = scope(companyId, storeId, installationId)
                 .addValue("pendingStatus", FiscalSubmissionStatus.PENDIENTE.name());
+        var scopedFrom = installationFilter(installationId);
         return jdbc.queryForObject("""
                         select min(state.actualizado_en) as oldest_pending_at
-                        """ + BASE_FROM + " and state.estado = :pendingStatus",
+                        """ + BASE_FROM + scopedFrom + " and state.estado = :pendingStatus",
                 parameters,
                 (result, rowNumber) -> {
                     Timestamp timestamp = result.getTimestamp("oldest_pending_at");
@@ -144,14 +188,15 @@ public class VerifactuAdminReadRepository {
     private FilteredQuery filteredQuery(
             UUID companyId,
             UUID storeId,
+            UUID installationId,
             Instant updatedFrom,
             Instant updatedToExclusive,
             FiscalSubmissionStatus status,
             FiscalDocumentType documentType,
             FiscalRecordOperation operation,
             String documentNumber) {
-        var sql = new StringBuilder(BASE_FROM);
-        var parameters = scope(companyId, storeId);
+        var sql = new StringBuilder(BASE_FROM).append(installationFilter(installationId));
+        var parameters = scope(companyId, storeId, installationId);
         var filters = new ArrayList<String>();
         if (updatedFrom != null) {
             filters.add("state.actualizado_en >= :updatedFrom");
@@ -183,16 +228,36 @@ public class VerifactuAdminReadRepository {
         return new FilteredQuery(sql.toString(), parameters);
     }
 
-    private static MapSqlParameterSource scope(UUID companyId, UUID storeId) {
-        return new MapSqlParameterSource()
+    private static MapSqlParameterSource scope(
+            UUID companyId, UUID storeId, UUID installationId) {
+        var parameters = new MapSqlParameterSource()
                 .addValue("companyId", companyId)
                 .addValue("storeId", storeId);
+        if (installationId != null) {
+            parameters.addValue("installationId", installationId);
+        }
+        return parameters;
+    }
+
+    private static String installationFilter(UUID installationId) {
+        return installationId == null
+                ? ""
+                : " and record.instalacion_id = :installationId\n";
     }
 
     private static String escapeLike(String value) {
         return value.replace("\\", "\\\\")
                 .replace("%", "\\%")
                 .replace("_", "\\_");
+    }
+
+    private static void validatePage(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("page no puede ser negativo");
+        }
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("size debe estar entre 1 y " + MAX_PAGE_SIZE);
+        }
     }
 
     private record FilteredQuery(String sql, MapSqlParameterSource parameters) {

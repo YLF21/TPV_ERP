@@ -2,6 +2,7 @@ import { getHardwareBridge } from "../hardware/hardware";
 import type {
   A4DocumentPrintRequest,
   DocumentPrintRoute,
+  FiscalPrintSnapshot,
   HardwareBridge,
   HardwareConfig,
   TicketPrintRequest,
@@ -43,6 +44,10 @@ export type ConfirmedTicketPrintSnapshot = {
   memberBalanceTotal?: NumericValue;
   observations?: string;
   logo?: string;
+  qrUrl?: string;
+  qrImage?: string;
+  fiscal?: FiscalPrintSnapshot;
+  nonFiscalSummary?: boolean;
   ticketRenderedPdf?: { contentType: "application/pdf"; base64: string };
   ticketRenderedImage?: { contentType: "image/png"; base64: string };
 };
@@ -50,6 +55,20 @@ export type ConfirmedTicketPrintSnapshot = {
 export type TicketPrintOutcome = {
   status: "PRINTED" | "FAILED" | "SKIPPED";
   technicalMessage?: string;
+  failedDocuments?: Array<{
+    documentId: string;
+    documentNumber: string;
+    technicalMessage?: string;
+  }>;
+};
+
+export type ConfirmedTicketPrintSet = {
+  /** Replacement sale, or the only ticket for non-exchange operations. */
+  printTicket: ConfirmedTicketPrintSnapshot;
+  /** Ordered related fiscal documents; rectification precedes replacement sale. */
+  additionalPrintTickets: ConfirmedTicketPrintSnapshot[];
+  /** Optional customer summary. It is never part of automatic fiscal printing. */
+  nonFiscalSummary?: ConfirmedTicketPrintSnapshot | null;
 };
 
 export type SalePrintMode =
@@ -77,6 +96,7 @@ export type PendingCommercialDocumentPrintSnapshot = {
   bankAccounts?: Array<{ bankName: string; iban: string }>;
   qrUrl?: string;
   qrImage?: string;
+  fiscal?: FiscalPrintSnapshot;
   renderedPdf?: { contentType: "application/pdf"; base64: string };
   ticketRenderedPdf?: { contentType: "application/pdf"; base64: string };
   ticketRenderedImage?: { contentType: "image/png"; base64: string };
@@ -87,6 +107,39 @@ function printableAddress(address: FiscalPartySnapshot["address"] | undefined) {
   return [address.line1, [address.postalCode, address.city].filter(Boolean).join(" "), address.province, address.country]
     .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
     .join(", ");
+}
+
+function frozenTicketIssuer(fiscal: FiscalPrintSnapshot | undefined, logo?: string) {
+  if (!fiscal?.issuerName || !fiscal.issuerTaxId || !fiscal.issuerAddress) return undefined;
+  const address = fiscal.issuerAddress;
+  return {
+    name: fiscal.issuerName,
+    taxId: fiscal.issuerTaxId,
+    address: [
+      address.linea1,
+      [address.codigoPostal, address.ciudad].filter(Boolean).join(" "),
+      address.provincia,
+      address.pais,
+    ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index).join(", "),
+    ...(logo ? { logo } : {}),
+  };
+}
+
+function frozenA4Issuer(fiscal: FiscalPrintSnapshot | undefined, logo?: string) {
+  if (!fiscal?.issuerName || !fiscal.issuerTaxId || !fiscal.issuerAddress) return undefined;
+  return {
+    name: fiscal.issuerName,
+    taxId: fiscal.issuerTaxId,
+    phone: fiscal.issuerAddress.telefono,
+    logo,
+    address: {
+      line1: fiscal.issuerAddress.linea1,
+      postalCode: fiscal.issuerAddress.codigoPostal,
+      city: fiscal.issuerAddress.ciudad,
+      province: fiscal.issuerAddress.provincia,
+      country: fiscal.issuerAddress.pais,
+    },
+  };
 }
 
 function partyLabels(locale: LocaleCode) {
@@ -141,8 +194,9 @@ export function ticketPrintRequest(
     tax: t("print.a4.tax"),
     total: t("print.a4.total"),
   };
+  const fiscalDocument = !snapshot.nonFiscalSummary;
   return {
-    requireRenderedDocument: true,
+    requireRenderedDocument: fiscalDocument,
     documentNumber: snapshot.documentNumber,
     storeName: terminal.storeName,
     terminalCode: terminal.terminalCode,
@@ -172,8 +226,16 @@ export function ticketPrintRequest(
     labels: { ...labels, memberBalance: t("print.ticket.memberBalance") },
     escposLabels: { ...labels, memberBalance: t("print.ticket.memberBalance") },
     ...(snapshot.logo ? { logo: snapshot.logo } : {}),
-    ...(snapshot.ticketRenderedPdf ? { renderedPdf: snapshot.ticketRenderedPdf } : {}),
-    ...(snapshot.ticketRenderedImage
+    ...(fiscalDocument && snapshot.qrUrl ? { qrUrl: snapshot.qrUrl } : {}),
+    ...(fiscalDocument && snapshot.qrImage ? { qrImage: snapshot.qrImage } : {}),
+    ...(fiscalDocument && snapshot.fiscal ? { fiscal: snapshot.fiscal } : {}),
+    ...(fiscalDocument && frozenTicketIssuer(snapshot.fiscal, snapshot.logo)
+      ? { issuer: frozenTicketIssuer(snapshot.fiscal, snapshot.logo) }
+      : {}),
+    ...(fiscalDocument && snapshot.ticketRenderedPdf
+      ? { renderedPdf: snapshot.ticketRenderedPdf }
+      : {}),
+    ...(fiscalDocument && snapshot.ticketRenderedImage
       ? { documentRaster: `data:${snapshot.ticketRenderedImage.contentType};base64,${snapshot.ticketRenderedImage.base64}` }
       : {}),
     ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
@@ -211,15 +273,24 @@ export function ticketAsA4Document(
   locale: LocaleCode,
 ): A4DocumentPrintRequest {
   const t = createTranslator(locale);
+  const fiscalDocument = !snapshot.nonFiscalSummary;
   return {
-    requireRenderedDocument: true,
+    requireRenderedDocument: fiscalDocument,
     documentType: "REPORT",
     locale,
     title: `${t("salesReport.tickets")} ${snapshot.documentNumber}`,
     storeName: terminal.storeName,
     terminalCode: terminal.terminalCode,
     issuedAt: snapshot.issuedAt,
-    renderedPdf: snapshot.ticketRenderedPdf,
+    ...(fiscalDocument && snapshot.ticketRenderedPdf
+      ? { renderedPdf: snapshot.ticketRenderedPdf }
+      : {}),
+    ...(fiscalDocument && snapshot.qrUrl ? { qrUrl: snapshot.qrUrl } : {}),
+    ...(fiscalDocument && snapshot.qrImage ? { qrImage: snapshot.qrImage } : {}),
+    ...(fiscalDocument && snapshot.fiscal ? { fiscal: snapshot.fiscal } : {}),
+    ...(fiscalDocument && frozenA4Issuer(snapshot.fiscal, snapshot.logo)
+      ? { issuer: frozenA4Issuer(snapshot.fiscal, snapshot.logo) }
+      : {}),
     lines: snapshot.lines.map((line) => ({
       name: line.name,
       quantity: Number(line.quantity),
@@ -316,6 +387,42 @@ export async function outputConfirmedTicket(
   }
 }
 
+/**
+ * Prints a related fiscal set in the supplied order and keeps the exact failed
+ * document references so a retry can target only those snapshots.
+ */
+export async function outputConfirmedTicketsSequentially(
+  snapshots: readonly ConfirmedTicketPrintSnapshot[],
+  terminal: TerminalContext,
+  mode: SalePrintMode,
+  locale: LocaleCode = "es",
+  hardware: HardwareBridge = getHardwareBridge(),
+): Promise<TicketPrintOutcome> {
+  const failedDocuments: NonNullable<TicketPrintOutcome["failedDocuments"]> = [];
+  let printed = false;
+  for (const snapshot of snapshots) {
+    const outcome = await outputConfirmedTicket(snapshot, terminal, mode, locale, hardware);
+    if (outcome.status === "PRINTED") printed = true;
+    if (outcome.status === "FAILED") {
+      failedDocuments.push({
+        documentId: snapshot.documentId,
+        documentNumber: snapshot.documentNumber,
+        technicalMessage: outcome.technicalMessage,
+      });
+    }
+  }
+  if (failedDocuments.length > 0) {
+    return {
+      status: "FAILED",
+      failedDocuments,
+      technicalMessage: failedDocuments
+        .map((failure) => `${failure.documentNumber}: ${failure.technicalMessage ?? "print_failed"}`)
+        .join("; "),
+    };
+  }
+  return { status: printed ? "PRINTED" : "SKIPPED" };
+}
+
 async function sendConfirmedTicket(
   snapshot: ConfirmedTicketPrintSnapshot,
   terminal: TerminalContext,
@@ -409,6 +516,7 @@ export function commercialDocumentAsA4Document(
     bankAccounts: snapshot.bankAccounts,
     qrUrl: snapshot.qrUrl,
     qrImage: snapshot.qrImage,
+    fiscal: snapshot.fiscal,
     renderedPdf: format === "TICKET_80" ? snapshot.ticketRenderedPdf : snapshot.renderedPdf,
     lines: snapshot.lines.map((line) => ({
       code: line.code,
@@ -530,6 +638,9 @@ export async function printPendingCommercialDocument(
         })),
         payments: [], total: Number(snapshot.total),
         ...(snapshot.issuer?.logo ? { logo: snapshot.issuer.logo } : {}),
+        ...(snapshot.qrUrl ? { qrUrl: snapshot.qrUrl } : {}),
+        ...(snapshot.qrImage ? { qrImage: snapshot.qrImage } : {}),
+        ...(snapshot.fiscal ? { fiscal: snapshot.fiscal } : {}),
         ...(snapshot.ticketRenderedImage
           ? { documentRaster: `data:${snapshot.ticketRenderedImage.contentType};base64,${snapshot.ticketRenderedImage.base64}` }
           : {}),

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.licensing.ImportResult;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.licensing.LicenseSaasCacheAuthenticator;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Company;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class InstallationStatusServiceTest {
@@ -24,6 +26,8 @@ class InstallationStatusServiceTest {
     private final InstallationRepository installations = org.mockito.Mockito.mock(InstallationRepository.class);
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
     private final CompanyRepository companies = org.mockito.Mockito.mock(CompanyRepository.class);
+    private final LicenseSaasCacheAuthenticator cacheAuthenticator =
+            org.mockito.Mockito.mock(LicenseSaasCacheAuthenticator.class);
 
     @Test
     void reportsUnlinkedWhenThereIsNoActiveLicense() {
@@ -35,6 +39,20 @@ class InstallationStatusServiceTest {
 
         assertThat(status.mode()).isEqualTo(OperationalMode.UNLINKED);
         assertThat(status.activeLicenseReference()).isNull();
+        assertThat(status.organizationProvisioned()).isFalse();
+    }
+
+    @Test
+    void reportsThatAnExistingOrganizationIsAlreadyProvisionedWithoutALicense() {
+        var service = serviceAt("2026-06-20T00:00:00Z", false);
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of());
+        when(companies.count()).thenReturn(1L);
+
+        var status = service.status();
+
+        assertThat(status.mode()).isEqualTo(OperationalMode.UNLINKED);
+        assertThat(status.organizationProvisioned()).isTrue();
     }
 
     @Test
@@ -69,6 +87,7 @@ class InstallationStatusServiceTest {
         when(licenses.findAll()).thenReturn(List.of(license));
 
         assertThat(service.status().mode()).isEqualTo(OperationalMode.RESTRICTED);
+        assertThat(service.status().organizationProvisioned()).isTrue();
     }
 
     @Test
@@ -104,6 +123,54 @@ class InstallationStatusServiceTest {
         assertThat(service.status().mode()).isEqualTo(OperationalMode.LICENSED);
     }
 
+    @Test
+    void resuelveLaLicenciaDeLaTiendaIndicadaSinUsarOtraLicenciaGlobal() {
+        var service = serviceAt("2026-08-20T00:00:00Z");
+        var installation = installation();
+        var storeId = UUID.randomUUID();
+        var blocked = license("2027-07-31T23:59:59Z", "2026-08-01T00:00:00Z");
+        blocked.markSaasBlocked(Instant.parse("2026-08-20T00:00:00Z"));
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(licenses.findAll()).thenReturn(List.of(
+                license("2027-07-31T23:59:59Z", "2026-08-01T00:00:00Z")));
+        when(licenses.findFirstByTienda_IdAndActivaTrueOrderByValidaDesdeDesc(storeId))
+                .thenReturn(java.util.Optional.of(blocked));
+
+        assertThat(service.status().mode()).isEqualTo(OperationalMode.LICENSED);
+        assertThat(service.statusForStore(storeId).mode()).isEqualTo(OperationalMode.RESTRICTED);
+    }
+
+    @Test
+    void restringeUnaLicenciaSaasFormatoSeisSiSuMacNoEsValida() {
+        var service = serviceAt("2026-08-20T00:00:00Z");
+        var license = org.mockito.Mockito.mock(License.class);
+        when(license.isActiva()).thenReturn(true);
+        when(license.isSaasLinked()).thenReturn(true);
+        when(license.getFormatVersion()).thenReturn(6);
+        when(license.getReferencia()).thenReturn("LIC-SAAS-TAMPERED");
+        when(license.isOperationalAt(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(cacheAuthenticator.isAuthentic(license)).thenReturn(false);
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of(license));
+
+        assertThat(service.status().mode()).isEqualTo(OperationalMode.RESTRICTED);
+    }
+
+    @Test
+    void restringeUnaCacheSaasLegacyHastaQueSaasLaActualice() {
+        var service = serviceAt("2026-08-20T00:00:00Z");
+        var license = org.mockito.Mockito.mock(License.class);
+        when(license.isActiva()).thenReturn(true);
+        when(license.isSaasLinked()).thenReturn(true);
+        when(license.getFormatVersion()).thenReturn(4);
+        when(license.getReferencia()).thenReturn("LIC-SAAS-LEGACY");
+        when(license.isOperationalAt(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of(license));
+
+        assertThat(service.status().mode()).isEqualTo(OperationalMode.RESTRICTED);
+    }
+
     private InstallationStatusService serviceAt(String now) {
         return serviceAt(now, false);
     }
@@ -116,7 +183,8 @@ class InstallationStatusServiceTest {
                 licenses,
                 companies,
                 Clock.fixed(Instant.parse(now), ZoneOffset.UTC),
-                unlicensedDevelopmentAccessEnabled);
+                unlicensedDevelopmentAccessEnabled,
+                cacheAuthenticator);
     }
 
     private static Installation installation() {

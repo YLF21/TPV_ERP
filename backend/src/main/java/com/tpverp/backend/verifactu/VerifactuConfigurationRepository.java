@@ -25,6 +25,14 @@ public interface VerifactuConfigurationRepository
     Optional<VerifactuConfiguration> findForUpdateByCompanyId(
             @Param("companyId") UUID companyId);
 
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select configuration from VerifactuConfiguration configuration
+            where configuration.companyId = :companyId
+            """)
+    Optional<VerifactuConfiguration> findForEmissionByCompanyId(
+            @Param("companyId") UUID companyId);
+
     @Modifying
     @Query(value = """
             insert into configuracion_verifactu (

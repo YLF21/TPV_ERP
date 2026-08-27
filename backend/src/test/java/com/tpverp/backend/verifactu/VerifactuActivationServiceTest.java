@@ -24,13 +24,13 @@ class VerifactuActivationServiceTest {
         "AUTONOMO,2027-06-30T22:00:00Z,Europe/Madrid,true",
         "AUTONOMO,2027-07-01T00:00:00Z,Atlantic/Canary,true"
     })
-    void aplicaLaFechaLegalEnLaZonaFiscal(
+    void exponeLaFechaDeAdaptacionSifEnLaZonaFiscal(
             TaxpayerType type, Instant now, ZoneId zoneId, boolean expected) {
-        assertThat(service.isLegallyRequired(type, now, zoneId)).isEqualTo(expected);
+        assertThat(service.isSifAdaptationRequired(type, now, zoneId)).isEqualTo(expected);
     }
 
     @Test
-    void usaLaFechaDistribuidaPorLaLicenciaEnLugarDelFallbackLegal() {
+    void unaPoliticaExplicitaPosteriorSeRespetaSinForzarLaFechaLegalSif() {
         var zone = ZoneId.of("Atlantic/Canary");
 
         assertThat(service.isAutomaticallyRequired(
@@ -43,6 +43,40 @@ class VerifactuActivationServiceTest {
                 java.time.LocalDate.of(2027, 3, 1),
                 Instant.parse("2027-03-01T00:00:00Z"),
                 zone)).isTrue();
+    }
+
+    @Test
+    void unaLicenciaSinFechaNoFuerzaVerifactuTrasLaAdaptacionSif() {
+        assertThat(service.isAutomaticallyRequired(
+                TaxpayerType.SOCIEDAD,
+                null,
+                Instant.parse("2027-01-15T00:00:00Z"),
+                ZoneId.of("Atlantic/Canary"))).isFalse();
+    }
+
+    @Test
+    void unaPoliticaAnteriorPuedeAdelantarLaObligacion() {
+        assertThat(service.isAutomaticallyRequired(
+                TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2026, 12, 1),
+                Instant.parse("2026-12-01T00:00:00Z"),
+                ZoneId.of("Atlantic/Canary"))).isTrue();
+    }
+
+    @Test
+    void unaPoliticaEnCanariasRespetaElHorarioDeVerano() {
+        var zone = ZoneId.of("Atlantic/Canary");
+        var activationDate = java.time.LocalDate.of(2026, 6, 14);
+
+        assertThat(service.activationInstant(
+                TaxpayerType.SOCIEDAD, activationDate, zone))
+                .isEqualTo(Instant.parse("2026-06-13T23:00:00Z"));
+        assertThat(service.isAutomaticallyRequired(
+                TaxpayerType.SOCIEDAD, activationDate,
+                Instant.parse("2026-06-13T22:59:59Z"), zone)).isFalse();
+        assertThat(service.isAutomaticallyRequired(
+                TaxpayerType.SOCIEDAD, activationDate,
+                Instant.parse("2026-06-13T23:00:00Z"), zone)).isTrue();
     }
 
     @Test
@@ -113,26 +147,28 @@ class VerifactuActivationServiceTest {
     }
 
     @Test
-    void impideDesactivarCuandoLaActivacionYaEsLegalmenteObligatoria() {
+    void impideDesactivarCuandoLaPoliticaDeLicenciaYaEsEfectiva() {
         var configuration = new VerifactuConfiguration(UUID.randomUUID());
         configuration.activateVoluntarily(Instant.parse("2026-12-01T10:00:00Z"));
 
         assertThatThrownBy(() -> service.deactivateVoluntarily(
                 configuration,
                 TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2027, 1, 1),
                 Instant.parse("2027-01-01T00:00:00Z"),
                 ZoneId.of("Atlantic/Canary")))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
-    void registraPrimeraRemisionCuandoLaObligacionLegalEstaActiva() {
+    void registraPrimeraRemisionCuandoLaPoliticaDeLicenciaEstaActiva() {
         var configuration = new VerifactuConfiguration(UUID.randomUUID());
         var submittedAt = Instant.parse("2027-01-01T00:00:00Z");
 
         service.markFirstSubmission(
                 configuration,
                 TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2027, 1, 1),
                 submittedAt,
                 ZoneId.of("Atlantic/Canary"));
 
@@ -142,12 +178,13 @@ class VerifactuActivationServiceTest {
     }
 
     @Test
-    void conservaComoActivacionElInicioLegalDeMadrid() {
+    void conservaComoActivacionElInicioDeLaPoliticaDeLicenciaEnMadrid() {
         var configuration = new VerifactuConfiguration(UUID.randomUUID());
 
         service.markFirstSubmission(
                 configuration,
                 TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2027, 1, 1),
                 Instant.parse("2027-01-01T10:00:00Z"),
                 ZoneId.of("Europe/Madrid"));
 

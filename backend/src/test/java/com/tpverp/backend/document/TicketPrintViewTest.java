@@ -9,6 +9,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Base64;
 import java.util.UUID;
+import com.tpverp.backend.verifactu.FiscalEndpointEnvironment;
+import com.tpverp.backend.verifactu.FiscalMode;
 import org.junit.jupiter.api.Test;
 
 class TicketPrintViewTest {
@@ -65,6 +67,14 @@ class TicketPrintViewTest {
         assertThat(branded.observations()).isEqualTo("Gracias por su compra");
         assertThat(branded.logo()).isEqualTo("data:image/png;base64,AA==");
 
+        var fiscal = new FiscalPrintView(
+                "AEAT_QR_0.5.0", "TPV-ERP-2026.08.25", FiscalMode.NO_VERIFACTU,
+                FiscalEndpointEnvironment.TEST, "https://prewww2.aeat.es/frozen",
+                "A".repeat(64), "Prefijo congelado:", null, "Aviso congelado");
+        branded = branded.withFiscalQr(
+                fiscal.qrUrl(), "data:image/png;base64,QR==", fiscal);
+        assertThat(branded.fiscal()).isSameAs(fiscal);
+
         var rendered = branded.withRenderedDocument(
                 "%PDF-ticket".getBytes(StandardCharsets.UTF_8),
                 "PNG-ticket".getBytes(StandardCharsets.UTF_8));
@@ -74,6 +84,7 @@ class TicketPrintViewTest {
         assertThat(rendered.ticketRenderedImage().contentType()).isEqualTo("image/png");
         assertThat(Base64.getDecoder().decode(rendered.ticketRenderedImage().base64()))
                 .isEqualTo("PNG-ticket".getBytes(StandardCharsets.UTF_8));
+        assertThat(rendered.fiscal()).isSameAs(fiscal);
     }
 
     @Test
@@ -181,5 +192,16 @@ class TicketPrintViewTest {
             assertThat(payment.amount()).isEqualByComparingTo("1.10");
         });
         assertThat(view.total()).isEqualByComparingTo("1.10");
+        assertThat(view.nonFiscalSummary()).isTrue();
+        assertThat(view.qrUrl()).isNull();
+        assertThat(view.qrImage()).isNull();
+        assertThat(view.fiscal()).isNull();
+        assertThat(view.ticketRenderedPdf()).isNull();
+        assertThat(view.ticketRenderedImage()).isNull();
+        assertThatThrownBy(() -> view.withFiscalQr(
+                "https://prewww2.aeat.es/frozen",
+                "data:image/png;base64,QR=="))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("non_fiscal_summary_cannot_contain_fiscal_qr");
     }
 }

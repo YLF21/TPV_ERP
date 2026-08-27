@@ -20,8 +20,59 @@ public record TicketPrintView(
         BigDecimal memberBalanceTotal,
         String observations,
         String logo,
+        String qrUrl,
+        String qrImage,
+        FiscalPrintView fiscal,
         RenderedPdf ticketRenderedPdf,
-        RenderedImage ticketRenderedImage) {
+        RenderedImage ticketRenderedImage,
+        boolean nonFiscalSummary) {
+
+    public TicketPrintView(
+            UUID documentId,
+            String documentNumber,
+            Instant issuedAt,
+            List<Line> lines,
+            List<Payment> payments,
+            BigDecimal total,
+            BigDecimal baseTotal,
+            BigDecimal taxTotal,
+            BigDecimal checkoutDiscountTotal,
+            BigDecimal memberBalanceTotal,
+            String observations,
+            String logo,
+            String qrUrl,
+            String qrImage,
+            FiscalPrintView fiscal,
+            RenderedPdf ticketRenderedPdf,
+            RenderedImage ticketRenderedImage) {
+        this(documentId, documentNumber, issuedAt, lines, payments, total,
+                baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
+                observations, logo, qrUrl, qrImage, fiscal,
+                ticketRenderedPdf, ticketRenderedImage, false);
+    }
+
+    public TicketPrintView(
+            UUID documentId,
+            String documentNumber,
+            Instant issuedAt,
+            List<Line> lines,
+            List<Payment> payments,
+            BigDecimal total,
+            BigDecimal baseTotal,
+            BigDecimal taxTotal,
+            BigDecimal checkoutDiscountTotal,
+            BigDecimal memberBalanceTotal,
+            String observations,
+            String logo,
+            String qrUrl,
+            String qrImage,
+            RenderedPdf ticketRenderedPdf,
+            RenderedImage ticketRenderedImage) {
+        this(documentId, documentNumber, issuedAt, lines, payments, total,
+                baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
+                observations, logo, qrUrl, qrImage, null,
+                ticketRenderedPdf, ticketRenderedImage, false);
+    }
 
     public TicketPrintView(
             UUID documentId,
@@ -31,7 +82,8 @@ public record TicketPrintView(
             List<Payment> payments,
             BigDecimal total) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null);
+                null, null, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, null, null, null);
     }
 
     public TicketPrintView(
@@ -45,7 +97,7 @@ public record TicketPrintView(
             BigDecimal taxTotal) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
                 baseTotal, taxTotal, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     public static TicketPrintView from(CommercialDocument document) {
@@ -88,7 +140,11 @@ public record TicketPrintView(
                 null,
                 null,
                 null,
-                null);
+                null,
+                null,
+                null,
+                null,
+                false);
     }
 
     /**
@@ -125,7 +181,11 @@ public record TicketPrintView(
                 null,
                 null,
                 null,
-                null);
+                null,
+                null,
+                null,
+                null,
+                true);
     }
 
     public TicketPrintView withPresentation(String observations, String logo) {
@@ -133,7 +193,24 @@ public record TicketPrintView(
                 documentId, documentNumber, issuedAt, lines, payments, total,
                 baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
                 observations, logo,
-                ticketRenderedPdf, ticketRenderedImage);
+                qrUrl, qrImage, fiscal,
+                ticketRenderedPdf, ticketRenderedImage, nonFiscalSummary);
+    }
+
+    public TicketPrintView withFiscalQr(String qrUrl, String qrImage) {
+        return withFiscalQr(qrUrl, qrImage, fiscal);
+    }
+
+    public TicketPrintView withFiscalQr(
+            String qrUrl, String qrImage, FiscalPrintView fiscal) {
+        if (nonFiscalSummary && (qrUrl != null || qrImage != null || fiscal != null)) {
+            throw new IllegalStateException("non_fiscal_summary_cannot_contain_fiscal_qr");
+        }
+        return new TicketPrintView(
+                documentId, documentNumber, issuedAt, lines, payments, total,
+                baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
+                observations, logo, qrUrl, qrImage, fiscal,
+                ticketRenderedPdf, ticketRenderedImage, nonFiscalSummary);
     }
 
     public TicketPrintView withRenderedDocument(byte[] pdf, byte[] png) {
@@ -141,8 +218,10 @@ public record TicketPrintView(
                 documentId, documentNumber, issuedAt, lines, payments, total,
                 baseTotal, taxTotal, checkoutDiscountTotal, memberBalanceTotal,
                 observations, logo,
+                qrUrl, qrImage, fiscal,
                 new RenderedPdf("application/pdf", Base64.getEncoder().encodeToString(pdf)),
-                new RenderedImage("image/png", Base64.getEncoder().encodeToString(png)));
+                new RenderedImage("image/png", Base64.getEncoder().encodeToString(png)),
+                nonFiscalSummary);
     }
 
     private static BigDecimal checkoutDiscountTotal(List<DocumentLine> lines) {

@@ -1,0 +1,12 @@
+.git
+.worktrees
+**/node_modules
+**/dist
+**/target
+**/.env
+**/.env.*
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.pem
+**/*.key
