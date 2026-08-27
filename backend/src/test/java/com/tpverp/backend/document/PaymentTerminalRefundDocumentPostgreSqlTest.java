@@ -22,6 +22,7 @@ import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.verifactu.FiscalDocumentPolicy;
+import com.tpverp.backend.verifactu.FiscalQrImageService;
 import com.tpverp.backend.verifactu.FiscalRecordService;
 import com.tpverp.backend.verifactu.FiscalSnapshotFactory;
 import com.tpverp.backend.verifactu.VerifactuActivationService;
@@ -93,6 +94,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
     @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private DocumentFiscalQrService fiscalQr;
+    @MockitoBean private FiscalQrImageService fiscalQrImages;
     @MockitoBean private com.tpverp.backend.audit.AuditService audit;
     @MockitoBean private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
     @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
