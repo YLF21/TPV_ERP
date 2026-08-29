@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest, type LocaleCode } from "@tpverp/app-common";
 import { pdaPriceLookupPath } from "./PdaProductLookup";
+import { PhysicalScannerStatus, usePhysicalScanner } from "./usePhysicalScanner";
 
 type WarehouseOption = { id: string; name?: string | null; nombre?: string | null; defaultWarehouse?: boolean; active?: boolean };
 type StockCountStatus = "DRAFT" | "CONFIRMED" | "CANCELLED";
@@ -136,35 +137,41 @@ export function PdaStockCount({ token, locale, warehouses, t }: {
     setCount(updated);
   }
 
-  async function scan(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token || !count || !identifier.trim()) return;
+  async function registerScannedIdentifier(scannedIdentifier: string, manualSignal = false) {
+    if (!token || !count || !scannedIdentifier.trim()) return false;
     const addition = Number(increment);
     if (!Number.isFinite(addition) || addition <= 0 || Math.abs(addition * 1000 - Math.round(addition * 1000)) > 1e-7) {
       setError(t("pda.count.quantityInvalid"));
-      return;
+      return false;
     }
     setBusy(true);
     setError("");
     setStatus("");
     try {
-      const product = await apiRequest<ProductLookup>(pdaPriceLookupPath(identifier.trim()), { token });
+      const product = await apiRequest<ProductLookup>(pdaPriceLookupPath(scannedIdentifier.trim()), { token });
       const existing = count.lines.find((line) => line.productId === product.productId);
       const next = nextCountedQuantity(existing?.countedQuantity, addition);
       if (next == null) throw new Error("invalid_quantity");
       await saveLine(product.productId, next);
       setIdentifier("");
       setStatus(t("pda.count.registered").replace("{product}", product.name));
-      navigator.vibrate?.(60);
+      if (manualSignal) navigator.vibrate?.(60);
+      return true;
     } catch {
       setError(t("pda.count.scanError"));
-      navigator.vibrate?.([100, 60, 100]);
+      if (manualSignal) navigator.vibrate?.([100, 60, 100]);
+      return false;
     } finally {
       setBusy(false);
       window.setTimeout(() => scanRef.current?.focus(), 0);
     }
   }
 
+  async function scan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!identifier.trim()) return;
+    await registerScannedIdentifier(identifier, true);
+  }
   async function updateLine(productId: string) {
     const value = Number(lineValues[productId]);
     if (!Number.isFinite(value) || value < 0 || Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-7) {
@@ -201,6 +208,12 @@ export function PdaStockCount({ token, locale, warehouses, t }: {
   }
 
   const differenceLines = count?.lines.filter((line) => Number(line.difference ?? 0) !== 0).length ?? 0;
+  const physicalScanner = usePhysicalScanner({
+    enabled: Boolean(token && count && !busy),
+    locale,
+    onScan: (value) => registerScannedIdentifier(value),
+    duplicateWindowMs: 1200
+  });
 
   return <section className="pda-count">
     <header><span>{t("pda.count.eyebrow")}</span><h2>{t("pda.count.title")}</h2><p>{t("pda.count.subtitle")}</p></header>
@@ -215,10 +228,11 @@ export function PdaStockCount({ token, locale, warehouses, t }: {
     {!count && !loading && <div className="pda-count-empty">{t("pda.count.empty")}</div>}
     {count && <>
       <form className="pda-count-scan" onSubmit={scan}>
-        <label><span>{t("pda.count.scan")}</span><input ref={scanRef} value={identifier} disabled={busy} onChange={(event) => setIdentifier(event.target.value)} /></label>
+        <label><span>{t("pda.count.scan")}</span><input ref={scanRef} data-physical-scanner-input value={identifier} disabled={busy} onChange={(event) => setIdentifier(event.target.value)} /></label>
         <label><span>{t("pda.count.addQuantity")}</span><input type="number" min="0.001" step="0.001" inputMode="decimal" value={increment} disabled={busy} onChange={(event) => setIncrement(event.target.value)} /></label>
         <button type="submit" disabled={busy || !identifier.trim()}>{t("pda.count.register")}</button>
       </form>
+      <PhysicalScannerStatus {...physicalScanner} />
       <section className="pda-count-summary"><div><span>{t("pda.count.lines")}</span><strong>{count.lines.length}</strong></div><div><span>{t("pda.count.differences")}</span><strong>{differenceLines}</strong></div></section>
       <section className="pda-count-lines">
         {count.lines.length === 0 && <p>{t("pda.count.noLines")}</p>}

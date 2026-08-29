@@ -1,0 +1,3 @@
+package com.tpverp.backend.pdawork;
+import static org.assertj.core.api.Assertions.*;import java.time.Instant;import java.util.UUID;import org.junit.jupiter.api.Test;
+class PdaWorkEvidenceTest{@Test void keepsBinaryEvidenceOutsideWorkEntityAndDefensivelyCopiesIt(){byte[] data={1,2,3};var evidence=new PdaWorkEvidence(UUID.randomUUID(),"rotura.jpg","image/jpeg",data,null,UUID.randomUUID(),Instant.now());data[0]=9;assertThat(evidence.getContent()).containsExactly(1,2,3);assertThat(evidence.getSize()).isEqualTo(3);}@Test void requiresContentOrExternalStorageReference(){assertThatThrownBy(()->new PdaWorkEvidence(UUID.randomUUID(),"x","image/jpeg",null,null,UUID.randomUUID(),Instant.now())).isInstanceOf(IllegalArgumentException.class);}}

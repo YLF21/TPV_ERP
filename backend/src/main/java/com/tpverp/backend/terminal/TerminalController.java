@@ -38,6 +38,12 @@ public class TerminalController {
         return service.requestPda(request.name());
     }
 
+    @PostMapping("/pda/link")
+    public TerminalRegistrationService.PdaRegistrationResult linkPda(
+            @Valid @RequestBody PdaLinkRequest request) {
+        return service.linkPda(request.code());
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
     public List<TerminalRegistrationService.TerminalItem> list() {
@@ -60,6 +66,13 @@ public class TerminalController {
         return service.approve(terminalId);
     }
 
+    @PostMapping("/{terminalId}/pairing-code")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
+    public TerminalRegistrationService.PairingCodeResult createPairingCode(
+            @PathVariable UUID terminalId) {
+        return service.createPdaPairingCode(terminalId);
+    }
+
     @PostMapping("/{terminalId}/deactivate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
     public ResponseEntity<Void> deactivate(@PathVariable UUID terminalId) {
@@ -74,5 +87,8 @@ public class TerminalController {
     }
 
     public record PdaRequest(@NotBlank String name) {
+    }
+
+    public record PdaLinkRequest(@NotBlank String code) {
     }
 }

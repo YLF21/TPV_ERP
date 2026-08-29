@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest, type LocaleCode } from "@tpverp/app-common";
 import { pdaPriceLookupPath, pdaStockLookupPath } from "./PdaProductLookup";
+import { PhysicalScannerStatus, usePhysicalScanner } from "./usePhysicalScanner";
 
 type WarehouseOption = { id: string; name?: string | null; nombre?: string | null; defaultWarehouse?: boolean; active?: boolean };
 export type StockItem = { productId: string; warehouseId: string; quantity: number | string };
@@ -198,15 +199,13 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
     });
   }
 
-  async function search(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const scannedIdentifier = identifier.trim();
-    if (!token || !scannedIdentifier) return;
+  async function searchIdentifier(scannedIdentifier: string, manualSignal = false) {
+    if (!token || !scannedIdentifier.trim()) return false;
     setBusy(true);
     setError("");
     setStatus("");
     try {
-      const found = await apiRequest<ProductResult>(pdaPriceLookupPath(scannedIdentifier), { token });
+      const found = await apiRequest<ProductResult>(pdaPriceLookupPath(scannedIdentifier.trim()), { token });
       const stockValues = await apiRequest<StockItem[]>(pdaStockLookupPath(found.productId), { token });
       const suggestion = suggestedReplenishmentWarehouses(stockValues, activeWarehouses, targetWarehouseId);
       setProduct(found);
@@ -215,18 +214,25 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
       setTargetWarehouseId(suggestion.targetId);
       setIdentifier("");
       setQuantity("1");
-      navigator.vibrate?.(60);
+      if (manualSignal) navigator.vibrate?.(60);
+      return true;
     } catch {
       setProduct(null);
       setStock([]);
       setError(t("pda.replenishment.notFound"));
-      navigator.vibrate?.([100, 60, 100]);
+      if (manualSignal) navigator.vibrate?.([100, 60, 100]);
+      return false;
     } finally {
       setBusy(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
     }
   }
 
+  async function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!identifier.trim()) return;
+    await searchIdentifier(identifier, true);
+  }
   async function createTransfer(productId: string, sourceId: string, targetId: string, transferQuantity: number) {
     if (!token) throw new Error("missing_token");
     return apiRequest<TransferResult>("/stock/transfers", {
@@ -290,6 +296,13 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
     setBulkSaving(false);
   }
 
+  const physicalScanner = usePhysicalScanner({
+    enabled: Boolean(token && !busy && !saving && !bulkSaving),
+    locale,
+    onScan: (value) => searchIdentifier(value),
+    duplicateWindowMs: 1200
+  });
+
   return <section className="pda-replenishment">
     <header><span>{t("pda.replenishment.eyebrow")}</span><h2>{t("pda.replenishment.title")}</h2><p>{t("pda.replenishment.subtitle")}</p></header>
     <section className="pda-replenishment-suggestions">
@@ -320,9 +333,10 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
       </>}
     </section>
     <form className="pda-replenishment-search" onSubmit={search}>
-      <label><span>{t("pda.replenishment.manualScan")}</span><input ref={inputRef} value={identifier} disabled={busy} onChange={(event) => setIdentifier(event.target.value)} /></label>
+      <label><span>{t("pda.replenishment.manualScan")}</span><input ref={inputRef} data-physical-scanner-input value={identifier} disabled={busy} onChange={(event) => setIdentifier(event.target.value)} /></label>
       <button type="submit" disabled={busy || !identifier.trim()}>{busy ? t("common.loading") : t("pda.replenishment.scan")}</button>
     </form>
+    <PhysicalScannerStatus {...physicalScanner} />
     {error && <p className="pda-replenishment-error" role="alert">{error}</p>}
     {status && <p className="pda-replenishment-status" role="status">{status}</p>}
     {product && <article className="pda-replenishment-card">

@@ -49,6 +49,12 @@ export type GoodsCheckView = {
 
 export type GoodsCheckLineFilter = "all" | "missing" | "registered";
 
+export function goodsCheckProgress(check: GoodsCheckView | null) {
+  const total = check?.todos.length ?? 0;
+  const balanced = check?.todos.filter((item) => Number(item.registeredQuantity) === Number(item.expectedQuantity)).length ?? 0;
+  return { total, balanced, percent: total ? Math.round((balanced / total) * 100) : 0 };
+}
+
 export function filterGoodsCheckItems(check: GoodsCheckView, filter: GoodsCheckLineFilter) {
   if (filter === "missing") {
     return check.todos.filter((item) => Number(item.missingQuantity) > 0 || Number(item.extraQuantity) > 0);
@@ -199,6 +205,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
   const [lineFilter, setLineFilter] = useState<GoodsCheckLineFilter>("all");
   const [check, setCheck] = useState<GoodsCheckView | null>(null);
   const [lastProductId, setLastProductId] = useState<string | null>(null);
+  const [lastScan, setLastScan] = useState<{ code: string; quantity: number } | null>(null);
   const [code, setCode] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [loading, setLoading] = useState(false);
@@ -239,6 +246,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
     () => check ? filterGoodsCheckItems(check, lineFilter) : [],
     [check, lineFilter]);
   const activeDocument = displayDocuments.find((document) => document.id === check?.documentId) ?? selectedDocument;
+  const { balanced: balancedLines, percent: progressPercent } = goodsCheckProgress(check);
 
   function openWorkflowView(nextView: "documents" | "check") {
     setWorkflowView(nextView);
@@ -320,6 +328,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
         return String(previous?.registeredQuantity ?? "0") !== String(item.registeredQuantity);
       });
       setLastProductId(changed?.productId ?? null);
+      setLastScan({ code: code.trim(), quantity: normalizedQuantity });
       setLineFilter("all");
       navigator.vibrate?.(60);
       setCode("");
@@ -334,6 +343,27 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
     }
   }
 
+  async function undoLastScan() {
+    if (!token || !check || check.status !== "ABIERTA" || !lastScan || busy) return;
+    setBusy(true);
+    setStatus("");
+    try {
+      const value = await apiRequest<GoodsCheckView>(goodsCheckScanPath(check.id), {
+        token,
+        method: "POST",
+        body: { code: lastScan.code, quantity: -lastScan.quantity }
+      });
+      setCheck(value);
+      setLastScan(null);
+      setLastProductId(null);
+      setStatus(t("goodsCheck.undoComplete"));
+      window.setTimeout(() => codeRef.current?.focus(), 0);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("goodsCheck.undoError"));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function closeCheck() {
     if (!token || !check || check.status !== "ABIERTA") return;
     const extraLines = check.todos.filter((item) => Number(item.extraQuantity) > 0).length;
@@ -519,7 +549,12 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
                 <button type="submit" disabled={!code.trim() || check.status !== "ABIERTA" || busy}>{t("goodsCheck.register")}</button>
               </div>
               <button type="button" className="secondary" disabled={check.status !== "ABIERTA" || busy} onClick={() => void closeCheck()}>{t("goodsCheck.close")}</button>
+              <button type="button" className="secondary goods-check-undo" disabled={check.status !== "ABIERTA" || busy || !lastScan} onClick={() => void undoLastScan()}>{t("goodsCheck.undoLast")}</button>
             </form>
+            <section className="goods-check-guided-progress" aria-label={t("goodsCheck.progress")}>
+              <div><strong>{progressPercent}%</strong><span>{t("goodsCheck.balancedProgress").replace("{balanced}", String(balancedLines)).replace("{total}", String(check.todos.length))}</span></div>
+              <progress max="100" value={progressPercent}>{progressPercent}%</progress>
+            </section>
             <div className="goods-check-progress" role="group" aria-label={t("goodsCheck.progress")}>
               <button type="button" className={lineFilter === "all" ? "selected" : ""} onClick={() => setLineFilter("all")}>
                 <span>{t("goodsCheck.filter.linesAll")}</span><strong>{check.todos.length}</strong>

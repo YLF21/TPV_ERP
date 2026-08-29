@@ -17,6 +17,7 @@ class TerminalConfiguration {
     @Bean
     TerminalRegistrationService terminalRegistrationService(
             TerminalRepository terminalRepository,
+            PdaPairingGrantRepository pairingRepository,
             StoreRepository tiendaRepository,
             CurrentOrganization organization,
             LicenseRepository licenciaRepository,
@@ -27,6 +28,7 @@ class TerminalConfiguration {
             AuditService auditService) {
         return new TerminalRegistrationService(
                 terminalRepository,
+                pairingRepository,
                 tiendaRepository,
                 organization,
                 licenciaRepository,

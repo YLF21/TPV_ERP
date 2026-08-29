@@ -10,11 +10,15 @@ import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.audit.AuditResult;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TerminalRegistrationService {
 
     private final TerminalRepository terminalRepository;
+    private final PdaPairingGrantRepository pairingRepository;
     private final StoreRepository tiendaRepository;
     private final CurrentOrganization organization;
     private final LicenseRepository licenciaRepository;
@@ -36,6 +41,7 @@ public class TerminalRegistrationService {
 
     public TerminalRegistrationService(
             TerminalRepository terminalRepository,
+            PdaPairingGrantRepository pairingRepository,
             StoreRepository tiendaRepository,
             CurrentOrganization organization,
             LicenseRepository licenciaRepository,
@@ -45,6 +51,7 @@ public class TerminalRegistrationService {
             Clock clock,
             AuditService auditService) {
         this.terminalRepository = terminalRepository;
+        this.pairingRepository = pairingRepository;
         this.tiendaRepository = tiendaRepository;
         this.organization = organization;
         this.licenciaRepository = licenciaRepository;
@@ -87,6 +94,45 @@ public class TerminalRegistrationService {
         return new PdaRegistrationResult(
                 registration.terminalId(), terminalName, store.getNombreEfectivo(),
                 registration.credential(), registration.status());
+    }
+
+    @Transactional
+    public PairingCodeResult createPdaPairingCode(UUID terminalId) {
+        var terminal = currentTerminal(terminalId);
+        if (terminal.getTipo() != TerminalType.PDA || !terminal.isAprobada() || !terminal.isActiva()) {
+            throw new IllegalStateException("message.terminal.pda_pairing_requires_active_pda");
+        }
+        var now = Instant.now(clock);
+        pairingRepository.findActiveForUpdate(terminalId).forEach(grant -> grant.cancel(now));
+        var rawCode = newPairingCode();
+        var expiresAt = now.plus(Duration.ofMinutes(10));
+        pairingRepository.save(new PdaPairingGrant(terminal, hashPairingCode(rawCode), now, expiresAt));
+        auditService.record(
+                "PDA_PAIRING_CODE_CREATED", AuditResult.EXITO,
+                Map.of("terminalId", terminal.getId(), "expiresAt", expiresAt));
+        return new PairingCodeResult(displayPairingCode(rawCode), expiresAt);
+    }
+
+    @Transactional
+    public PdaRegistrationResult linkPda(String code) {
+        var normalizedCode = normalizePairingCode(code);
+        var grant = pairingRepository.findForUpdateByCodeHash(hashPairingCode(normalizedCode))
+                .orElseThrow(() -> new IllegalArgumentException("message.terminal.pda_pairing_invalid"));
+        var now = Instant.now(clock);
+        var terminal = grant.consume(now);
+        if (terminal.getTipo() != TerminalType.PDA || !terminal.isAprobada() || !terminal.isActiva()) {
+            throw new IllegalStateException("message.terminal.pda_pairing_requires_active_pda");
+        }
+        var credential = newCredential();
+        terminal.rotateCredential(passwordEncoder.encode(credential));
+        sesionRepository.findByTerminalIdAndRevocadaEnIsNull(terminal.getId())
+                .forEach(session -> session.revocar(session.getUsuario(), "PDA_RELINKED", now));
+        auditService.recordForStore(
+                terminal.getTienda(), "PDA_RELINKED", AuditResult.EXITO,
+                Map.of("terminalId", terminal.getId()));
+        return new PdaRegistrationResult(
+                terminal.getId(), terminal.getNombre(), terminal.getTienda().getNombreEfectivo(),
+                credential, "APPROVED");
     }
 
     @Transactional
@@ -197,6 +243,36 @@ public class TerminalRegistrationService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
     }
 
+    private String newPairingCode() {
+        final String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var code = new StringBuilder(8);
+        for (int index = 0; index < 8; index++) {
+            code.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        }
+        return code.toString();
+    }
+
+    private String normalizePairingCode(String code) {
+        var normalized = code == null ? "" : code.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+        if (normalized.length() != 8) {
+            throw new IllegalArgumentException("message.terminal.pda_pairing_invalid");
+        }
+        return normalized;
+    }
+
+    private String hashPairingCode(String code) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(code.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private String displayPairingCode(String code) {
+        return code.substring(0, 4) + "-" + code.substring(4);
+    }
+
     private Terminal currentTerminal(UUID terminalId) {
         return terminalRepository.findByIdAndTiendaId(terminalId, currentStore().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.terminal.not_found"));
@@ -211,6 +287,9 @@ public class TerminalRegistrationService {
             String storeName,
             String terminalCredential,
             String status) {
+    }
+
+    public record PairingCodeResult(String code, Instant expiresAt) {
     }
 
     public record ServerProvisioningResult(

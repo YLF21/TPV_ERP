@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  pdaExpandLabelJobs,
   pdaPriceLookupPath,
   pdaPrintableBarcode,
   pdaProductPath,
@@ -20,5 +21,13 @@ describe("PdaProductLookup", () => {
       .toBe("12345670");
     expect(pdaPrintableBarcode({ barcode: "INTERNAL" }, "DEV-CAFE"))
       .toBe("");
+  });
+
+  it("expands every queued label copy for batch printing", () => {
+    const labels = pdaExpandLabelJobs([
+      { id: "a", productId: "p1", code: "A", name: "One", price: 1, barcode: "12345670", copies: 2 },
+      { id: "b", productId: "p2", code: "B", name: "Two", price: 2, barcode: "8412345678901", copies: 1 }
+    ]);
+    expect(labels.map((label) => `${label.id}-${label.copyIndex}`)).toEqual(["a-0", "a-1", "b-0"]);
   });
 });

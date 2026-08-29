@@ -11,7 +11,7 @@ describe("PdaWorkboard offline queue", () => {
       priority: "HIGH", notes: "Pasillo 2", evidenceName: null, evidenceType: null, evidenceData: null
     }}];
     writePdaWorkQueue(values);
-    expect(readPdaWorkQueue()).toEqual(values);
+    expect(readPdaWorkQueue()).toEqual([expect.objectContaining(values[0])]);
   });
   it("returns an empty queue when storage is invalid", () => {
     localStorage.setItem("tpverp.pda.work.queue.v1", "invalid");

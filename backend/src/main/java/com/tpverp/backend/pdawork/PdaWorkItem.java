@@ -31,6 +31,21 @@ public class PdaWorkItem {
     @Column(name = "creado_en", nullable = false) private Instant createdAt;
     @Column(name = "completado_por") private UUID completedBy;
     @Column(name = "completado_en") private Instant completedAt;
+    @Column(name = "asignado_a") private UUID assignedTo;
+    @Column(name = "vence_en") private Instant dueAt;
+    @Column(name = "ubicacion_origen", length = 120) private String sourceLocation;
+    @Column(name = "ubicacion_destino", length = 120) private String destinationLocation;
+    @Column(name = "ubicacion_validada_en") private Instant locationValidatedAt;
+    @Column(name = "ubicacion_validada_por") private UUID locationValidatedBy;
+    @Column(name = "ubicacion_origen_validada_en") private Instant sourceLocationValidatedAt;
+    @Column(name = "ubicacion_origen_validada_por") private UUID sourceLocationValidatedBy;
+    @Column(name = "ubicacion_destino_validada_en") private Instant destinationLocationValidatedAt;
+    @Column(name = "ubicacion_destino_validada_por") private UUID destinationLocationValidatedBy;
+    @Column(name = "comprobacion_id") private UUID goodsCheckId;
+    @Column(name = "documento_id") private UUID documentId;
+    @Column(name = "producto_id") private UUID productId;
+    @Column(name = "iniciado_en") private Instant startedAt;
+    @Column(name = "iniciado_por") private UUID startedBy;
     @Version private long version;
 
     protected PdaWorkItem() {}
@@ -61,9 +76,40 @@ public class PdaWorkItem {
         status = PdaWorkStatus.OPEN;
     }
 
-    public void finish(UUID userId, Instant when) { requireOpen(); status=PdaWorkStatus.DONE; completedBy=userId; completedAt=when; }
-    public void cancel(UUID userId, Instant when) { requireOpen(); status=PdaWorkStatus.CANCELLED; completedBy=userId; completedAt=when; }
-    private void requireOpen() { if(status!=PdaWorkStatus.OPEN) throw new IllegalStateException("La operación ya está cerrada"); }
+    public void configure(UUID assignedTo, Instant dueAt, String sourceLocation, String destinationLocation,
+            UUID goodsCheckId, UUID documentId, UUID productId) {
+        requireActive();
+        this.assignedTo=assignedTo; this.dueAt=dueAt;
+        this.sourceLocation=optional(sourceLocation); this.destinationLocation=optional(destinationLocation);
+        this.goodsCheckId=goodsCheckId; this.documentId=documentId; this.productId=productId;
+        if (assignedTo!=null && status==PdaWorkStatus.OPEN) status=PdaWorkStatus.PENDING;
+    }
+    public void assign(UUID userId) { requireActive(); assignedTo=Objects.requireNonNull(userId); if(status==PdaWorkStatus.OPEN)status=PdaWorkStatus.PENDING; }
+    public void start(UUID userId, Instant when) {
+        requireActive();
+        if(assignedTo!=null&&!assignedTo.equals(userId)) throw new PdaWorkConflictException("La operación está asignada a otro usuario");
+        assignedTo=userId; status=PdaWorkStatus.IN_PROGRESS; startedBy=userId; startedAt=when;
+    }
+    public void validateLocation(String scannedCode, PdaLocationRole role, UUID userId, Instant when) {
+        requireActive();
+        var expected=role==PdaLocationRole.SOURCE?sourceLocation:destinationLocation;
+        if(expected==null||!expected.equalsIgnoreCase(required(scannedCode,"locationCode")))
+            throw new IllegalArgumentException("La ubicación escaneada no coincide con la operación");
+        locationValidatedBy=userId; locationValidatedAt=when;
+        if(role==PdaLocationRole.SOURCE){sourceLocationValidatedBy=userId;sourceLocationValidatedAt=when;}
+        else{destinationLocationValidatedBy=userId;destinationLocationValidatedAt=when;}
+    }
+    public void finish(UUID userId, Instant when) {
+        requireActive();
+        if(sourceLocation!=null&&sourceLocationValidatedAt==null) throw new IllegalStateException("Debe validar la ubicación de origen");
+        if(destinationLocation!=null&&destinationLocationValidatedAt==null) throw new IllegalStateException("Debe validar la ubicación de destino");
+        status=PdaWorkStatus.DONE; completedBy=userId; completedAt=when;
+    }
+    public void cancel(UUID userId, Instant when) { requireActive(); status=PdaWorkStatus.CANCELLED; completedBy=userId; completedAt=when; }
+    public void requireVersion(Long expectedVersion) {
+        if(expectedVersion!=null&&expectedVersion!=version) throw new PdaWorkConflictException("La operación fue modificada por otro dispositivo");
+    }
+    private void requireActive() { if(status==PdaWorkStatus.DONE||status==PdaWorkStatus.CANCELLED) throw new IllegalStateException("La operación ya está cerrada"); }
     private static String optional(String value){return value==null||value.isBlank()?null:value.trim();}
     private static String required(String value,String name){var result=optional(value);if(result==null)throw new IllegalArgumentException(name+" es obligatorio");return result;}
 
@@ -74,4 +120,9 @@ public class PdaWorkItem {
     public String getPriority(){return priority;} public String getNotes(){return notes;} public String getEvidenceName(){return evidenceName;}
     public String getEvidenceType(){return evidenceType;} public String getEvidenceData(){return evidenceData;} public UUID getCreatedBy(){return createdBy;}
     public Instant getCreatedAt(){return createdAt;} public UUID getCompletedBy(){return completedBy;} public Instant getCompletedAt(){return completedAt;}
+    public UUID getAssignedTo(){return assignedTo;} public Instant getDueAt(){return dueAt;} public String getSourceLocation(){return sourceLocation;}
+    public String getDestinationLocation(){return destinationLocation;} public Instant getLocationValidatedAt(){return locationValidatedAt;}
+    public UUID getLocationValidatedBy(){return locationValidatedBy;} public UUID getGoodsCheckId(){return goodsCheckId;} public UUID getDocumentId(){return documentId;}
+    public UUID getProductId(){return productId;} public Instant getStartedAt(){return startedAt;} public UUID getStartedBy(){return startedBy;} public long getVersion(){return version;}
+    public Instant getSourceLocationValidatedAt(){return sourceLocationValidatedAt;} public Instant getDestinationLocationValidatedAt(){return destinationLocationValidatedAt;}
 }

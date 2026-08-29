@@ -7,6 +7,7 @@ import {
   goodsCheckClosePath,
   goodsCheckDocumentIsAvailable,
   goodsCheckDocumentPath,
+  goodsCheckProgress,
   goodsCheckSupplierLabel,
   goodsCheckWarehouseLabel,
   goodsCheckScanPath,
@@ -57,6 +58,21 @@ describe("GoodsCheckPanel", () => {
     expect(filterGoodsCheckItems(check, "all")).toHaveLength(2);
     expect(filterGoodsCheckItems(check, "missing").map((item) => item.productId)).toEqual(["missing", "extra"]);
     expect(filterGoodsCheckItems(check, "registered")).toHaveLength(2);
+  });
+
+  it("calculates guided progress from fully balanced lines", () => {
+    const progress = goodsCheckProgress({
+      id: "check-1",
+      documentId: "document-1",
+      status: "ABIERTA",
+      todos: [
+        { productId: "a", code: "A", name: "A", expectedQuantity: 2, registeredQuantity: 2, missingQuantity: 0, extraQuantity: 0 },
+        { productId: "b", code: "B", name: "B", expectedQuantity: 3, registeredQuantity: 1, missingQuantity: 2, extraQuantity: 0 }
+      ],
+      faltantes: [],
+      registrados: []
+    });
+    expect(progress).toEqual({ total: 2, balanced: 1, percent: 50 });
   });
 
   it("keeps search, document summary and import action in a separated header", () => {

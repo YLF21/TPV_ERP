@@ -9,12 +9,18 @@ export type RegisteredTerminal = {
   active: boolean;
 };
 
+export type PdaPairingCode = { code: string; expiresAt: string };
+
 export function terminalApprovePath(id: string) {
   return `/terminals/${encodeURIComponent(id)}/approve`;
 }
 
 export function terminalDeactivatePath(id: string) {
   return `/terminals/${encodeURIComponent(id)}/deactivate`;
+}
+
+export function terminalPairingPath(id: string) {
+  return `/terminals/${encodeURIComponent(id)}/pairing-code`;
 }
 
 export function terminalDisplayStatus(terminal: Pick<RegisteredTerminal, "approved" | "active">) {
@@ -31,6 +37,7 @@ export function TerminalManagementScreen({ session, t }: {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pairing, setPairing] = useState<PdaPairingCode | null>(null);
   const token = session.accessToken;
   const selected = terminals.find((terminal) => terminal.id === selectedId) ?? null;
   const pendingCount = useMemo(() => terminals.filter((terminal) => !terminal.approved).length, [terminals]);
@@ -71,9 +78,24 @@ export function TerminalManagementScreen({ session, t }: {
     setError("");
     try {
       await apiRequest(terminalDeactivatePath(selected.id), { token, method: "POST" });
+      setPairing(null);
       await refresh(selected.id);
     } catch {
       setError(t("gestion.terminals.deactivateError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createPairingCode() {
+    if (!selected || selected.type !== "PDA") return;
+    setBusy(true);
+    setError("");
+    setPairing(null);
+    try {
+      setPairing(await apiRequest<PdaPairingCode>(terminalPairingPath(selected.id), { token, method: "POST" }));
+    } catch {
+      setError(t("gestion.terminals.pairingError"));
     } finally {
       setBusy(false);
     }
@@ -100,12 +122,8 @@ export function TerminalManagementScreen({ session, t }: {
           {terminals.map((terminal) => {
             const status = terminalDisplayStatus(terminal);
             return (
-              <button
-                type="button"
-                key={terminal.id}
-                className={terminal.id === selectedId ? "selected" : ""}
-                onClick={() => setSelectedId(terminal.id)}
-              >
+              <button type="button" key={terminal.id} className={terminal.id === selectedId ? "selected" : ""}
+                onClick={() => { setSelectedId(terminal.id); setPairing(null); }}>
                 <span><strong>{terminal.name}</strong><small>{t(`gestion.terminals.type.${terminal.type}`)}</small></span>
                 <em className={status}>{t(`gestion.terminals.status.${status}`)}</em>
               </button>
@@ -125,8 +143,15 @@ export function TerminalManagementScreen({ session, t }: {
               </dl>
               <div className="gestion-terminal-actions">
                 {!selected.approved && <button className="primary" type="button" disabled={busy} onClick={() => void approve()}>{t("gestion.terminals.approve")}</button>}
+                {selected.approved && selected.active && selected.type === "PDA" && <button className="primary" type="button" disabled={busy} onClick={() => void createPairingCode()}>{t("gestion.terminals.pairingCreate")}</button>}
                 {selected.approved && selected.active && selected.type !== "SERVIDOR" && <button className="danger" type="button" disabled={busy} onClick={() => void deactivate()}>{t("gestion.terminals.deactivate")}</button>}
               </div>
+              {pairing && <section className="gestion-terminal-pairing" aria-live="polite">
+                <span>{t("gestion.terminals.pairingCode")}</span>
+                <strong>{pairing.code}</strong>
+                <p>{t("gestion.terminals.pairingWarning")}</p>
+                <small>{t("gestion.terminals.pairingExpires")}: {new Date(pairing.expiresAt).toLocaleTimeString()}</small>
+              </section>}
             </>
           )}
           {error && <p className="gestion-inline-error" role="alert">{error}</p>}

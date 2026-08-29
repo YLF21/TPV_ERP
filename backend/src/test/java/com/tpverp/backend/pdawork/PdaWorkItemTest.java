@@ -1,19 +1,7 @@
 package com.tpverp.backend.pdawork;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import java.time.Instant;
-import java.util.UUID;
-import org.junit.jupiter.api.Test;
-
-class PdaWorkItemTest {
-    @Test
-    void completesAnOpenTaskOnlyOnce() {
-        var item=new PdaWorkItem(UUID.randomUUID(),PdaWorkType.TASK,"Reponer lineal",null,null,null,null,null,null,null,
-                "HIGH","Pasillo 2",null,null,null,UUID.randomUUID(),Instant.parse("2026-08-25T10:00:00Z"));
-        item.finish(UUID.randomUUID(),Instant.parse("2026-08-25T11:00:00Z"));
-        assertThat(item.getStatus()).isEqualTo(PdaWorkStatus.DONE);
-        assertThatThrownBy(()->item.cancel(UUID.randomUUID(),Instant.now())).isInstanceOf(IllegalStateException.class);
-    }
+import static org.assertj.core.api.Assertions.*;import java.time.Instant;import java.util.UUID;import org.junit.jupiter.api.Test;
+class PdaWorkItemTest{
+ @Test void completesAnOpenTaskOnlyOnce(){var item=new PdaWorkItem(UUID.randomUUID(),PdaWorkType.TASK,"Reponer lineal",null,null,null,null,null,null,null,"HIGH","Pasillo 2",null,null,null,UUID.randomUUID(),Instant.parse("2026-08-25T10:00:00Z"));item.finish(UUID.randomUUID(),Instant.parse("2026-08-25T11:00:00Z"));assertThat(item.getStatus()).isEqualTo(PdaWorkStatus.DONE);assertThatThrownBy(()->item.cancel(UUID.randomUUID(),Instant.now())).isInstanceOf(IllegalStateException.class);}
+ @Test void assignedReplenishmentRequiresOwnerAndBothValidatedLocations(){var owner=UUID.randomUUID();var item=new PdaWorkItem(UUID.randomUUID(),PdaWorkType.REPLENISHMENT,"Reponer café",null,"CAFE",UUID.randomUUID(),null,null,null,null,"HIGH",null,null,null,null,UUID.randomUUID(),Instant.parse("2026-08-25T10:00:00Z"));item.configure(owner,Instant.parse("2026-08-25T12:00:00Z"),"A-01","B-02",null,null,null);assertThat(item.getStatus()).isEqualTo(PdaWorkStatus.PENDING);assertThatThrownBy(()->item.start(UUID.randomUUID(),Instant.now())).isInstanceOf(PdaWorkConflictException.class);item.start(owner,Instant.parse("2026-08-25T10:30:00Z"));assertThatThrownBy(()->item.finish(owner,Instant.now())).hasMessageContaining("origen");item.validateLocation("a-01",PdaLocationRole.SOURCE,owner,Instant.parse("2026-08-25T10:35:00Z"));assertThatThrownBy(()->item.finish(owner,Instant.now())).hasMessageContaining("destino");item.validateLocation("b-02",PdaLocationRole.DESTINATION,owner,Instant.parse("2026-08-25T10:40:00Z"));item.finish(owner,Instant.parse("2026-08-25T10:45:00Z"));assertThat(item.getStatus()).isEqualTo(PdaWorkStatus.DONE);}
+ @Test void detectsStaleClientVersion(){var item=new PdaWorkItem(UUID.randomUUID(),PdaWorkType.TASK,"Tarea",null,null,null,null,null,null,null,null,null,null,null,null,UUID.randomUUID(),Instant.now());assertThatThrownBy(()->item.requireVersion(1L)).isInstanceOf(PdaWorkConflictException.class);}
 }

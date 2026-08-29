@@ -5147,3 +5147,9 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
   .gestion-verifactu-sandbox button,
   .gestion-verifactu-sandbox select { min-height: 40px; }
 }
+
+.gestion-terminal-pairing { display: grid; gap: 8px; margin-top: 18px; padding: 16px; border: 1px solid #8fb6d5; background: #edf7ff; }
+.gestion-terminal-pairing > span { color: var(--gestion-muted); font-size: var(--gestion-font-label); font-weight: 900; text-transform: uppercase; }
+.gestion-terminal-pairing > strong { color: var(--gestion-navy); font-size: 32px; letter-spacing: .14em; }
+.gestion-terminal-pairing > p { margin: 0; color: #71480d; font-weight: 750; }
+.gestion-terminal-pairing > small { color: var(--gestion-muted); font-weight: 750; }

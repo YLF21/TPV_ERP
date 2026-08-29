@@ -49,8 +49,8 @@ describe("PdaProductLookup label printing", () => {
 
     const printButton = await screen.findByRole("button", { name: "Imprimir etiqueta" });
     expect((printButton as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByText("TIENDA PRUEBAS")).toBeTruthy();
-    expect(screen.getByLabelText("8412345678901")).toBeTruthy();
+    expect(screen.getAllByText("TIENDA PRUEBAS")).toHaveLength(2);
+    expect(screen.getAllByLabelText("8412345678901")).toHaveLength(2);
 
     fireEvent.click(printButton);
     await waitFor(() => expect(window.print).toHaveBeenCalledOnce());
