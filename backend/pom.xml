@@ -36,7 +36,7 @@
 		<tpv.release.id>tpv-erp-dev-v233</tpv.release.id>
 		<tpv.release.version>DEV</tpv.release.version>
 		<tpv.release.capability>DUAL</tpv.release.capability>
-		<tpv.release.sequence>1</tpv.release.sequence>
+		<tpv.release.sequence>2</tpv.release.sequence>
 		<tpv.release.build.sequence>0</tpv.release.build.sequence>
 		<tpv.release.commit.hash></tpv.release.commit.hash>
 		<tpv.release.declaration.hash></tpv.release.declaration.hash>
