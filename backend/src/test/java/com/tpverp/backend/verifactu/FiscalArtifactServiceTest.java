@@ -128,7 +128,7 @@ class FiscalArtifactServiceTest {
         var artifactHash = "A".repeat(64);
         var manifest = new FiscalReleaseManifest(
                 "tpv-erp-4.2.0", "4.2.0", FiscalProductCapability.VERIFACTU_ONLY,
-                "V229", "abcdef1", null, null);
+                "V231", "abcdef1", null, null);
         var existing = new FiscalSystemVersion(record.getCompanyId(), record.getInstallationId(),
                 "B12345674", "Fabricante ERP", "SIF ERP", "SIF-01", "4.2.0",
                 "INST-DEV-001", "E".repeat(64), false,
@@ -164,10 +164,10 @@ class FiscalArtifactServiceTest {
     void createsDistinctIdentitiesForTheSamePublicVersionAcrossReleases() {
         var first = new FiscalReleaseManifest(
                 "release-4.2.0-a", "4.2.0", FiscalProductCapability.DUAL,
-                "V229", 1, 10, "abcdef1", null, null);
+                "V231", 1, 10, "abcdef1", null, null);
         var second = new FiscalReleaseManifest(
                 "release-4.2.0-b", "4.2.0", FiscalProductCapability.DUAL,
-                "V229", 2, 1, "abcdef2", null, null);
+                "V231", 2, 1, "abcdef2", null, null);
         when(runtime.releaseManifest()).thenReturn(first);
         when(runtime.productCapability()).thenReturn(FiscalProductCapability.DUAL);
         when(systemVersions

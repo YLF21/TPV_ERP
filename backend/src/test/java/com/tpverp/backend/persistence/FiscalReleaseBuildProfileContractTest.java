@@ -15,10 +15,10 @@ class FiscalReleaseBuildProfileContractTest {
                 StandardCharsets.UTF_8);
         var pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
         assertThat(manifest).contains("@tpv.release.id@", "@tpv.release.version@",
-                "@tpv.release.capability@").contains("schema.version=V231")
+                "@tpv.release.capability@").contains("schema.version=V233")
                 .contains("release.sequence=@tpv.release.sequence@")
                 .contains("build.sequence=@tpv.release.build.sequence@");
-        assertThat(pom).contains("<tpv.release.id>tpv-erp-dev-v231</tpv.release.id>")
+        assertThat(pom).contains("<tpv.release.id>tpv-erp-dev-v233</tpv.release.id>")
                 .contains("<tpv.release.version>DEV</tpv.release.version>")
                 .contains("<tpv.release.capability>DUAL</tpv.release.capability>")
                 .contains("<id>production-release</id>")

@@ -54,7 +54,7 @@ recogida falló o la caché está obsoleta. La antigüedad máxima configurable 
 ser mayor que el intervalo normal del scheduler para tolerar una ejecución
 puntualmente lenta. Una siguiente recogida correcta recupera el estado `UP`.
 
-La consulta de `lastAeatSuccessAt` usa la migración V223: un índice parcial
+La consulta de `lastAeatSuccessAt` usa la migración V225: un índice parcial
 solo sobre resultados `ACEPTADO` y `ACEPTADO_CON_ERRORES`, ordenado por
 `intentado_en DESC` y con `registro_id` para el `JOIN`. Así puede resolver el
 `ORDER BY ... LIMIT 1` desde el intento más reciente sin recorrer intentos de

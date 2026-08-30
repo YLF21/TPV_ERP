@@ -25840,6 +25840,19 @@ textarea:focus,
 .goods-check-progress span,
 .goods-check-progress small { font-size: 11px; font-weight: 850; }
 .goods-check-progress strong { font-size: 18px; }
+.goods-check-guided-progress {
+  display: grid;
+  gap: 7px;
+  padding: 11px 14px;
+  border: 1px solid #b8c9d8;
+  border-radius: 9px;
+  background: #f7fafc;
+}
+.goods-check-guided-progress > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: #35516a; }
+.goods-check-guided-progress strong { color: #09659f; font-size: 20px; }
+.goods-check-guided-progress span { font-size: 12px; font-weight: 800; }
+.goods-check-guided-progress progress { width: 100%; height: 11px; accent-color: #0a73b7; }
+.goods-check-undo:disabled { opacity: .45; }
 .goods-check-extra-summary { border-color: #d1a056; background: #fff6e7; color: #7a4d13; }
 .goods-check-last-scan td { animation: goods-check-scan-feedback 1.4s ease-out; }
 

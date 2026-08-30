@@ -53,7 +53,7 @@ class FiscalAeatTestDispatchServiceTest {
         service = new FiscalAeatTestDispatchService(
                 runtime, organization, installations, licenses, worker, audit, declarations);
         lenient().when(runtime.releaseManifest()).thenReturn(new FiscalReleaseManifest(
-                RELEASE_ID, "4.2.0", FiscalProductCapability.VERIFACTU_ONLY, "V229",
+                RELEASE_ID, "4.2.0", FiscalProductCapability.VERIFACTU_ONLY, "V231",
                 "abcdef1", HASH, HASH));
         lenient().when(runtime.runtimeClass()).thenReturn(FiscalRuntimeClass.SANDBOX);
         lenient().when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);

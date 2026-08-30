@@ -21,7 +21,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void restartWithTheSameReleaseAndArtifactIsAllowedWithoutWriting() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V231", null, null,
                 null, 1, 1));
         new FiscalRuntimeGuardInitializer(jdbc,
                 sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1))
@@ -33,7 +33,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void sameReleaseIdWithDifferentArtifactHashIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V229", null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V231", null,
                 "A".repeat(64), null, 1, 1));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
@@ -45,11 +45,11 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void sameReleaseIdWithDifferentSchemaIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V228", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V230", null, null,
                 null, 1, 1));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
-                sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1, "V229"))
+                sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1, "V231"))
                 .run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("reutiliza releaseId");
@@ -57,7 +57,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void higherReleaseSequenceIsAllowedForANewReleaseId() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 4, 9));
         var initializer = new FiscalRuntimeGuardInitializer(jdbc,
                 sandbox("release-new", "4.2.0", FiscalProductCapability.DUAL, 5, 1));
@@ -69,7 +69,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void newReleaseWithTheSameSequenceIsRejectedEvenWithAHigherBuildSequence() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 5, 99));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
@@ -81,7 +81,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void newReleaseWithALowerSequenceIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 5, 1));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
@@ -93,7 +93,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void sameReleaseIdRejectsAReplacementBuildEvenWithAHigherBuildSequence() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-current", "V229", null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-current", "V231", null,
                 "A".repeat(64), null, 5, 1));
         var initializer = new FiscalRuntimeGuardInitializer(jdbc,
                 sandbox("release-current", "4.2.0", FiscalProductCapability.DUAL, 5, 2));
@@ -105,7 +105,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void downgradeReleaseSequenceIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-new", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-new", "V231", null, null,
                 null, 5, 1));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
@@ -117,7 +117,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void dualToOnlyRequiresNoNoVerifactuEvidence() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 1, 1));
         when(jdbc.queryForObject(anyString(), eq(Boolean.class))).thenReturn(false);
 
@@ -130,7 +130,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void dualToOnlyWithNoVerifactuEvidenceIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 1, 1));
         when(jdbc.queryForObject(anyString(), eq(Boolean.class))).thenReturn(true);
 
@@ -143,7 +143,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void dualToOnlyWithOnlyFiscalEventEvidenceIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 1, 1));
         when(jdbc.queryForObject(contains("configuracion_verifactu"), eq(Boolean.class)))
                 .thenReturn(false);
@@ -161,38 +161,38 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void rejectsManifestSchemaOlderThanLatestSuccessfulFlywayMigration() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V231", null, null,
                 null, 1, 1));
         when(jdbc.queryForList(anyString(), eq(String.class)))
-                .thenReturn(List.of("216", "228", "229"));
+                .thenReturn(List.of("216", "230", "231"));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
-                sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1, "V228"))
+                sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1, "V230"))
                 .run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("V228")
-                .hasMessageContaining("V229");
+                .hasMessageContaining("V230")
+                .hasMessageContaining("V231");
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
     @Test
     void rejectsManifestSchemaNewerThanLatestSuccessfulFlywayMigration() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V231", null, null,
                 null, 1, 1));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
                 sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1,
-                        "V230"))
+                        "V232"))
                 .run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("V230")
-                .hasMessageContaining("V229");
+                .hasMessageContaining("V232")
+                .hasMessageContaining("V231");
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
     @Test
     void onlyToDualIsRejected() {
-        var jdbc = jdbc(marker("SANDBOX", "VERIFACTU_ONLY", "release-new", "V229", null,
+        var jdbc = jdbc(marker("SANDBOX", "VERIFACTU_ONLY", "release-new", "V231", null,
                 null, null, 2, 1));
 
         assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
@@ -205,7 +205,7 @@ class FiscalRuntimeGuardInitializerTest {
     @Test
     void colonInReleaseIdDoesNotBreakTypedMarkerReading() {
         var release = "release:with:colon";
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", release, "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", release, "V231", null, null,
                 null, 1, 1));
 
         new FiscalRuntimeGuardInitializer(jdbc,
@@ -217,7 +217,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     @Test
     void markerQueryLocksTheSingleGuardRowForHaStartupSerialization() {
-        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V229", null, null,
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V231", null, null,
                 null, 1, 1));
         new FiscalRuntimeGuardInitializer(jdbc,
                 sandbox("tpv-erp-dev", "DEV", FiscalProductCapability.DUAL, 1, 1))
@@ -231,7 +231,7 @@ class FiscalRuntimeGuardInitializerTest {
     private static JdbcTemplate jdbc(FiscalRuntimeGuardInitializer.RuntimeMarker marker) {
         var jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
         when(jdbc.queryForObject(anyString(), any(RowMapper.class))).thenReturn(marker);
-        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("229"));
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("231"));
         return jdbc;
     }
 
@@ -250,7 +250,7 @@ class FiscalRuntimeGuardInitializerTest {
 
     private static FiscalRuntimeProperties sandbox(String releaseId, String version,
             FiscalProductCapability capability, long releaseSequence, long buildSequence) {
-        return sandbox(releaseId, version, capability, releaseSequence, buildSequence, "V229");
+        return sandbox(releaseId, version, capability, releaseSequence, buildSequence, "V231");
     }
 
     private static FiscalRuntimeProperties sandbox(String releaseId, String version,

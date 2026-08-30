@@ -10,6 +10,6 @@ describe("PdaHomeDashboard", () => {
       [{ id: "shop" }, { id: "reserve" }],
       "shop"
     );
-    expect(result).toEqual({ pending: 1, low: 1, assigned: 1, incidents: 1 });
+    expect(result).toEqual({ pending: 1, low: 1, assigned: 1, incidents: 1, urgent: 0 });
   });
 });

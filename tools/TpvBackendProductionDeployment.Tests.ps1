@@ -13,7 +13,7 @@ function New-ContractBundle {
     $commit = 'abcdef1'
     $canonical = "release.id=$ReleaseId`n" +
         "system.version=4.2.0`ncapability=VERIFACTU_ONLY`n" +
-        "schema.version=V229`nrelease.sequence=1`nbuild.sequence=1`n" +
+        "schema.version=V233`nrelease.sequence=1`nbuild.sequence=1`n" +
         "commit.hash=$commit`ndeclaration.hash=$declarationHash`n"
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $manifestHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-', '').ToUpperInvariant() }
@@ -22,7 +22,7 @@ function New-ContractBundle {
 release.id=$ReleaseId
 system.version=4.2.0
 capability=VERIFACTU_ONLY
-schema.version=V229
+schema.version=V233
 release.sequence=1
 build.sequence=1
 commit.hash=$commit
@@ -98,7 +98,7 @@ Describe 'Despliegue productivo backend Windows' {
         try {
             $verifier = Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1'
             $result = & $verifier -BundleDirectory $directory -ExpectedReleaseId $releaseId `
-                -ExpectedVersion '4.2.0' -ExpectedSchemaVersion V229 `
+                -ExpectedVersion '4.2.0' -ExpectedSchemaVersion V233 `
                 -ExpectedReleaseSequence 1 -ExpectedBuildSequence 1 -AsObject
             $result.Status | Should Be 'PROMOTABLE'
             $result.ReleaseId | Should Be $releaseId
@@ -111,13 +111,13 @@ Describe 'Despliegue productivo backend Windows' {
         $directory = New-ContractBundle
         try {
             $verifier = Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1'
-            $result = & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V229 `
+            $result = & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V233 `
                 -ExpectedReleaseSequence 1 -ExpectedBuildSequence 1 -AsObject
             $result.Status | Should Be 'PROMOTABLE'
             $result.ReleaseSequence | Should Be 1
             $threw = $false
             try {
-                & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V229 `
+                & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V233 `
                     -ExpectedReleaseSequence 2 -ExpectedBuildSequence 1 -AsObject | Out-Null
             } catch { $threw = $true }
             $threw | Should Be $true
@@ -202,7 +202,7 @@ Describe 'Despliegue productivo backend Windows' {
             $verifier = Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1'
             $threw = $false
             try {
-                & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V229 `
+                & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V233 `
                     -ExpectedReleaseSequence 1 -ExpectedBuildSequence 1 -AsObject | Out-Null
             } catch { $threw = $true }
             $threw | Should Be $true
@@ -217,12 +217,12 @@ Describe 'Despliegue productivo backend Windows' {
             $traversalThrew = $false
             try {
                 & $verifier -BundleDirectory $directory -ExpectedReleaseId '..\escape' `
-                    -ExpectedSchemaVersion V229 -ExpectedReleaseSequence 1 -ExpectedBuildSequence 1 -AsObject | Out-Null
+                    -ExpectedSchemaVersion V233 -ExpectedReleaseSequence 1 -ExpectedBuildSequence 1 -AsObject | Out-Null
             } catch { $traversalThrew = $true }
             $traversalThrew | Should Be $true
             $negativeThrew = $false
             try {
-                & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V229 `
+                & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V233 `
                     -ExpectedReleaseSequence -1 -ExpectedBuildSequence 1 -AsObject | Out-Null
             } catch { $negativeThrew = $true }
             $negativeThrew | Should Be $true

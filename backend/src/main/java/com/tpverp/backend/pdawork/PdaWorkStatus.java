@@ -1,5 +1,5 @@
 package com.tpverp.backend.pdawork;
 
 public enum PdaWorkStatus {
-    OPEN, DONE, CANCELLED
+    OPEN, PENDING, IN_PROGRESS, DONE, CANCELLED
 }

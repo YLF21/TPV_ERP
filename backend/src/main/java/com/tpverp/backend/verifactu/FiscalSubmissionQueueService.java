@@ -367,7 +367,7 @@ public class FiscalSubmissionQueueService {
         if (atomic != null && !atomic.isEmpty()) {
             return claimSelected(atomic.getFirst(), now);
         }
-        // Compatibility fallback for pre-V218 focused unit doubles. Production
+        // Compatibility fallback for pre-V220 focused unit doubles. Production
         // candidates are selected by the atomic PostgreSQL query above.
         if (!legacyFallback) {
             return Optional.empty();

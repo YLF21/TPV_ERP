@@ -6,10 +6,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class MigrationV231RetentionContractTest {
+class MigrationV233RetentionContractTest {
     @Test
     void addsDurableRevisionFingerprintAndRecoveryMetrics() throws Exception {
-        Path migration = Path.of("src/main/resources/db/migration/V231__retencion_saldo_devoluciones_local.sql");
+        Path migration = Path.of("src/main/resources/db/migration/V233__retencion_saldo_devoluciones_local.sql");
         String sql = Files.readString(migration);
 
         assertThat(sql).contains(

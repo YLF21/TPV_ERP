@@ -98,7 +98,7 @@ describe("VeriFactu management API", () => {
   });
 
   it("descarga el ZIP reglamentario desde el endpoint binario", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["zip"]), {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([0x7a, 0x69, 0x70]), {
       status: 200, headers: { "Content-Type": "application/zip" }
     }));
     vi.stubGlobal("fetch", fetchMock);

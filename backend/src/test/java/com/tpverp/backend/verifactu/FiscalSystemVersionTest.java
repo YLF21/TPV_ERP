@@ -29,7 +29,7 @@ class FiscalSystemVersionTest {
         var artifactHash = "A".repeat(64);
         var manifest = new FiscalReleaseManifest(
                 "tpv-erp-4.2.0", "4.2.0", FiscalProductCapability.VERIFACTU_ONLY,
-                "V229", "abcdef1", null, null);
+                "V231", "abcdef1", null, null);
         var version = new FiscalSystemVersion(
                 UUID.randomUUID(), UUID.randomUUID(), "B12345674", "TPV ERP SL",
                 "TPV ERP", "TPVERP", "4.2.0", "INST-1", null,

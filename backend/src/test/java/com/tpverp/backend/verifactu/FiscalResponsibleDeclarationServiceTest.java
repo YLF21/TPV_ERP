@@ -107,7 +107,7 @@ class FiscalResponsibleDeclarationServiceTest {
         properties.setProperty("release.id", "release-test");
         properties.setProperty("system.version", version);
         properties.setProperty("capability", "DUAL");
-        properties.setProperty("schema.version", "V229");
+        properties.setProperty("schema.version", "V231");
         properties.setProperty("declaration.hash", declarationHash);
         var manifest = FiscalReleaseManifest.from(properties);
         return new FiscalRuntimeProperties(new MockEnvironment()

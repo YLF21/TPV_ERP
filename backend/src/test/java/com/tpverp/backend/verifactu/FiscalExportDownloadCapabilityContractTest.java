@@ -37,7 +37,7 @@ class FiscalExportDownloadCapabilityContractTest {
 
     @Test
     void migrationStoresOnlyHashAndHasExpiryAndSingleUseColumns() throws Exception {
-        var sql = Files.readString(Path.of("src/main/resources/db/migration/V225__fiscal_export_download_capability.sql"));
+        var sql = Files.readString(Path.of("src/main/resources/db/migration/V227__fiscal_export_download_capability.sql"));
         assertThat(sql).contains("token_hash varchar(64) primary key")
                 .contains("expira_en timestamptz not null")
                 .contains("consumido_en timestamptz")

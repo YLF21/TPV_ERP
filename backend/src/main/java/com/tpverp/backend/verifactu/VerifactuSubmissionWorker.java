@@ -23,7 +23,7 @@ public class VerifactuSubmissionWorker {
         if (queue.batchCoordinatorAvailable()) {
             return VerifactuWorkerResult.empty();
         }
-        // Compatibility path for focused legacy embedders without V224 scope control.
+        // Compatibility path for focused legacy embedders without V226 scope control.
         return queue.claimNext()
                 .map(claimed -> VerifactuWorkerResult.from(submit(claimed)))
                 .orElseGet(VerifactuWorkerResult::empty);

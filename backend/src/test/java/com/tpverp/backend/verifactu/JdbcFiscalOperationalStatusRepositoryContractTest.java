@@ -52,7 +52,7 @@ class JdbcFiscalOperationalStatusRepositoryContractTest {
     @Test
     void migrationCreaElIndiceDeAlcanceQueUsaLaProyeccion() throws Exception {
         var migration = Files.readString(Path.of(
-                "src/main/resources/db/migration/V220__fiscal_operational_observability.sql"),
+                "src/main/resources/db/migration/V222__fiscal_operational_observability.sql"),
                 StandardCharsets.UTF_8);
         assertThat(migration).contains("ix_registro_fiscal_operational_scope")
                 .contains("empresa_id, instalacion_id, id");
@@ -75,10 +75,10 @@ class JdbcFiscalOperationalStatusRepositoryContractTest {
                 "src/main/java/com/tpverp/backend/verifactu/JdbcFiscalOperationalStatusRepository.java"),
                 StandardCharsets.UTF_8);
         var migration = Files.readString(Path.of(
-                "src/main/resources/db/migration/V223__fiscal_accepted_attempt_read_index.sql"),
+                "src/main/resources/db/migration/V225__fiscal_accepted_attempt_read_index.sql"),
                 StandardCharsets.UTF_8);
         var config = Files.readString(Path.of(
-                "src/main/resources/db/migration/V223__fiscal_accepted_attempt_read_index.sql.conf"),
+                "src/main/resources/db/migration/V225__fiscal_accepted_attempt_read_index.sql.conf"),
                 StandardCharsets.UTF_8);
 
         assertThat(source).contains("order by attempt.intentado_en desc")

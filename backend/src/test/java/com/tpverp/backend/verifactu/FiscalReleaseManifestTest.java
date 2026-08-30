@@ -114,7 +114,7 @@ class FiscalReleaseManifestTest {
         values.setProperty("release.id", releaseId);
         values.setProperty("system.version", version);
         values.setProperty("capability", capability.name());
-        values.setProperty("schema.version", "V229");
+        values.setProperty("schema.version", "V231");
         return values;
     }
 }

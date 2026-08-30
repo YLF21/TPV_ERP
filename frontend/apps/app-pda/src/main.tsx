@@ -24,7 +24,7 @@ type PdaRegistrationResult = {
   terminalCode: string;
   storeName: string;
   terminalCredential: string;
-  status: "PENDING";
+  status: "PENDING" | "APPROVED";
 };
 
 type WarehouseOption = { id: string; name?: string | null; nombre?: string | null; defaultWarehouse?: boolean; active?: boolean };
@@ -43,6 +43,13 @@ const copy = {
     deviceName: "Nombre del dispositivo",
     devicePlaceholder: "PDA ALMACÉN 1",
     request: "Solicitar acceso",
+    registerNew: "Registrar nuevo",
+    linkExisting: "Vincular existente",
+    pairingCode: "Código temporal",
+    pairingPlaceholder: "ABCD-EFGH",
+    pairingHelp: "Genera el código desde APP GESTIÓN → Seguridad → Terminales y PDA.",
+    link: "Vincular PDA",
+    linkError: "El código no es válido, ha caducado o ya fue utilizado.",
     pending: "Solicitud enviada. Aprueba el PDA desde APP GESTIÓN y después inicia sesión.",
     requestError: "No se pudo registrar el PDA",
     reset: "Registrar otro dispositivo",
@@ -59,6 +66,13 @@ const copy = {
     deviceName: "Device name",
     devicePlaceholder: "WAREHOUSE PDA 1",
     request: "Request access",
+    registerNew: "Register new",
+    linkExisting: "Link existing",
+    pairingCode: "Temporary code",
+    pairingPlaceholder: "ABCD-EFGH",
+    pairingHelp: "Generate the code in APP MANAGEMENT → Security → Terminals and PDA.",
+    link: "Link PDA",
+    linkError: "The code is invalid, expired, or has already been used.",
     pending: "Request sent. Approve the PDA in APP MANAGEMENT and then sign in.",
     requestError: "The PDA could not be registered",
     reset: "Register another device",
@@ -75,6 +89,13 @@ const copy = {
     deviceName: "设备名称",
     devicePlaceholder: "仓库 PDA 1",
     request: "申请访问",
+    registerNew: "注册新设备",
+    linkExisting: "绑定已有 PDA",
+    pairingCode: "临时绑定码",
+    pairingPlaceholder: "ABCD-EFGH",
+    pairingHelp: "请在管理应用 → 安全 → 终端和 PDA 中生成绑定码。",
+    link: "绑定 PDA",
+    linkError: "绑定码无效、已过期或已使用。",
     pending: "申请已发送。请先在管理应用中批准 PDA，然后登录。",
     requestError: "无法注册 PDA",
     reset: "注册其他设备",
@@ -146,7 +167,9 @@ function PdaEnrollment({
   onLocaleChange: (locale: LocaleCode) => void;
   onRegistered: (identity: PdaIdentity) => void;
 }) {
+  const [mode, setMode] = useState<"register" | "link">("register");
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const text = copy[locale];
@@ -177,13 +200,44 @@ function PdaEnrollment({
     }
   }
 
+  async function linkExisting(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (code.replace(/[^A-Za-z0-9]/g, "").length !== 8) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await apiRequest<PdaRegistrationResult>("/terminals/pda/link", {
+        method: "POST",
+        body: { code: code.trim() }
+      });
+      const identity: PdaIdentity = {
+        storeName: result.storeName,
+        terminalCode: result.terminalCode,
+        terminalId: result.terminalId,
+        terminalCredential: result.terminalCredential,
+        pendingApproval: false
+      };
+      writePdaIdentity(window.localStorage, identity);
+      onRegistered(identity);
+    } catch {
+      setError(text.linkError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function changeMode(next: "register" | "link") {
+    setMode(next);
+    setError("");
+  }
+
   return (
     <main className="pda-enrollment">
       <section className="pda-enrollment-card">
         <header>
           <span>TPV ERP</span>
           <strong>{text.setupTitle}</strong>
-          <p>{text.setupHelp}</p>
+          <p>{mode === "register" ? text.setupHelp : text.pairingHelp}</p>
         </header>
         <label className="pda-language">
           <span>Idioma / Language / 语言</span>
@@ -193,19 +247,30 @@ function PdaEnrollment({
             <option value="zh">中文</option>
           </select>
         </label>
-        <form onSubmit={submit}>
+        <nav className="pda-enrollment-modes" aria-label={text.setupTitle}>
+          <button type="button" className={mode === "register" ? "active" : ""} onClick={() => changeMode("register")}>{text.registerNew}</button>
+          <button type="button" className={mode === "link" ? "active" : ""} onClick={() => changeMode("link")}>{text.linkExisting}</button>
+        </nav>
+        {mode === "register" ? <form onSubmit={submit}>
           <label>
             <span>{text.deviceName}</span>
             <input autoFocus maxLength={80} value={name} placeholder={text.devicePlaceholder} disabled={busy} onChange={(event) => setName(event.target.value)} />
           </label>
           {error && <strong className="pda-error" role="alert">{error}</strong>}
           <button type="submit" disabled={busy || !name.trim()}>{busy ? "…" : text.request}</button>
-        </form>
+        </form> : <form onSubmit={linkExisting}>
+          <label>
+            <span>{text.pairingCode}</span>
+            <input autoFocus inputMode="text" autoCapitalize="characters" maxLength={9} value={code} placeholder={text.pairingPlaceholder} disabled={busy}
+              onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))} />
+          </label>
+          {error && <strong className="pda-error" role="alert">{error}</strong>}
+          <button type="submit" disabled={busy || code.replace(/[^A-Za-z0-9]/g, "").length !== 8}>{busy ? "…" : text.link}</button>
+        </form>}
       </section>
     </main>
   );
 }
-
 function PdaWorkspace({
   identity,
   locale,

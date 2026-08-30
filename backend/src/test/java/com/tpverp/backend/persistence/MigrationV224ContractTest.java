@@ -7,12 +7,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class MigrationV222ContractTest {
+class MigrationV224ContractTest {
 
     @Test
     void fiscalMarkerAndAuditCarryMonotonicReleaseSequence() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V222__fiscal_release_sequence_order.sql"),
+                "src/main/resources/db/migration/V224__fiscal_release_sequence_order.sql"),
                 StandardCharsets.UTF_8);
         assertThat(sql).contains("alter table fiscal_runtime_guard")
                 .contains("add column release_sequence bigint not null default 0")

@@ -156,6 +156,7 @@ class TerminalRegistrationServiceTest {
         }
         return new TerminalRegistrationService(
                 terminals,
+                mock(PdaPairingGrantRepository.class),
                 stores,
                 organization,
                 mock(LicenseRepository.class),

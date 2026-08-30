@@ -46,13 +46,15 @@ class VerifactuBatchPersistenceServiceTest {
         var companyId = UUID.randomUUID();
         var installationId = UUID.randomUUID();
         var evidenceId = UUID.randomUUID();
+        var recordId = UUID.randomUUID();
+        when(record.getId()).thenReturn(recordId);
         var batch = new ClaimedFiscalBatch(scope,
                 List.of(new ClaimedFiscalSubmission(record, state)), evidenceId);
         var evidence = Mockito.mock(FiscalSubmissionEvidence.class);
         var response = new VerifactuBatchResponse(
                 FiscalSubmissionStatus.ACEPTADO, 30,
-                Map.of(record.getId(), new VerifactuBatchResponse.Line(
-                        record.getId(), FiscalSubmissionStatus.ACEPTADO, null, null)),
+                Map.of(recordId, new VerifactuBatchResponse.Line(
+                        recordId, FiscalSubmissionStatus.ACEPTADO, null, null)),
                 null, null, "ack", false);
 
         when(scope.getCompanyId()).thenReturn(companyId);
@@ -63,10 +65,9 @@ class VerifactuBatchPersistenceServiceTest {
         when(state.getClaimToken()).thenReturn(token);
         when(state.getLeaseOwner()).thenReturn(owner);
         when(state.isOwnedBy(any(), any())).thenReturn(true);
-        when(record.getId()).thenReturn(UUID.randomUUID());
         when(flows.findForUpdate(companyId, installationId, FiscalEndpointEnvironment.TEST))
                 .thenReturn(Optional.of(scope));
-        when(states.findForUpdate(record.getId())).thenReturn(Optional.of(state));
+        when(states.findForUpdate(recordId)).thenReturn(Optional.of(state));
         when(evidences.findById(evidenceId)).thenReturn(Optional.of(evidence));
         when(responses.findByEvidenceId(evidenceId)).thenReturn(Optional.empty());
         doThrow(new IllegalStateException("marker roto")).when(marker).mark(record);

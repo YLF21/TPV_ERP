@@ -1,0 +1,15 @@
+package com.tpverp.backend.pdawork;
+import jakarta.persistence.*;import java.math.BigDecimal;import java.time.*;import java.util.*;
+@Entity @Table(name="pda_lote_stock")
+public class PdaStockLot{
+ @Id private UUID id;@Column(name="tienda_id",nullable=false)private UUID storeId;@Column(name="almacen_id",nullable=false)private UUID warehouseId;
+ @Column(name="producto_id")private UUID productId;@Column(name="producto_codigo",nullable=false,length=120)private String productCode;
+ @Column(name="numero_lote",nullable=false,length=120)private String lotNumber;@Column(name="caduca_el")private LocalDate expiryDate;
+ @Column(name="proveedor_id")private UUID supplierId;@Column(name="referencia_proveedor",length=120)private String supplierReference;
+ @Column(name="cantidad",nullable=false,precision=19,scale=3)private BigDecimal quantity;@Column(name="recibido_en",nullable=false)private Instant receivedAt;
+ @Column(name="agotado_en")private Instant exhaustedAt;@Version private long version;
+ protected PdaStockLot(){} public PdaStockLot(UUID storeId,UUID warehouseId,UUID productId,String productCode,String lotNumber,LocalDate expiryDate,UUID supplierId,String supplierReference,BigDecimal quantity,Instant receivedAt){id=UUID.randomUUID();this.storeId=Objects.requireNonNull(storeId);this.warehouseId=Objects.requireNonNull(warehouseId);this.productId=productId;this.productCode=required(productCode);this.lotNumber=required(lotNumber);this.expiryDate=expiryDate;this.supplierId=supplierId;this.supplierReference=optional(supplierReference);this.quantity=positiveOrZero(quantity);this.receivedAt=Objects.requireNonNull(receivedAt);}
+ public void consume(BigDecimal amount,long expectedVersion,Instant when){if(version!=expectedVersion)throw new PdaWorkConflictException("El lote fue modificado por otro dispositivo");var value=positive(amount);if(quantity.compareTo(value)<0)throw new IllegalArgumentException("Stock insuficiente en el lote");quantity=quantity.subtract(value);if(quantity.signum()==0)exhaustedAt=when;}
+ private static BigDecimal positiveOrZero(BigDecimal v){if(v==null||v.signum()<0)throw new IllegalArgumentException("Cantidad inválida");return v;}private static BigDecimal positive(BigDecimal v){if(v==null||v.signum()<=0)throw new IllegalArgumentException("Cantidad debe ser positiva");return v;}private static String optional(String v){return v==null||v.isBlank()?null:v.trim();}private static String required(String v){var r=optional(v);if(r==null)throw new IllegalArgumentException("Campo obligatorio");return r;}
+ public UUID getId(){return id;}public UUID getWarehouseId(){return warehouseId;}public UUID getProductId(){return productId;}public String getProductCode(){return productCode;}public String getLotNumber(){return lotNumber;}public LocalDate getExpiryDate(){return expiryDate;}public UUID getSupplierId(){return supplierId;}public String getSupplierReference(){return supplierReference;}public BigDecimal getQuantity(){return quantity;}public Instant getReceivedAt(){return receivedAt;}public Instant getExhaustedAt(){return exhaustedAt;}public long getVersion(){return version;}public UUID getStoreId(){return storeId;}
+}

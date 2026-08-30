@@ -98,7 +98,7 @@ class FiscalRuntimePropertiesTest {
 
         assertThatThrownBy(() -> new FiscalRuntimeProperties(environment,
                 new FiscalReleaseManifest("dev", "DEV", FiscalProductCapability.VERIFACTU_ONLY,
-                        "V229", null, null, null)))
+                        "V231", null, null, null)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("identidad provisional");
     }
@@ -120,7 +120,7 @@ class FiscalRuntimePropertiesTest {
 
         assertThatThrownBy(() -> new FiscalRuntimeProperties(environment,
                 new FiscalReleaseManifest("release-4.2.0", "4.2.0",
-                        FiscalProductCapability.VERIFACTU_ONLY, "V229", null, null, null)))
+                        FiscalProductCapability.VERIFACTU_ONLY, "V231", null, null, null)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("manifiesto");
     }
@@ -169,7 +169,7 @@ class FiscalRuntimePropertiesTest {
 
         assertThatThrownBy(() -> new FiscalRuntimeProperties(environment,
                 new FiscalReleaseManifest("release-4.2.0", "4.2.0",
-                        FiscalProductCapability.VERIFACTU_ONLY, "V229", null, null, null)))
+                        FiscalProductCapability.VERIFACTU_ONLY, "V231", null, null, null)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("manifiesto");
     }
@@ -192,10 +192,10 @@ class FiscalRuntimePropertiesTest {
         var declarationHash = "AB".repeat(32);
         var unsigned = new FiscalReleaseManifest(
                 "release-4.2.0", "4.2.0", FiscalProductCapability.VERIFACTU_ONLY,
-                "V229", "abcdef1", declarationHash, null);
+                "V231", "abcdef1", declarationHash, null);
         var manifest = new FiscalReleaseManifest(
                 "release-4.2.0", "4.2.0", FiscalProductCapability.VERIFACTU_ONLY,
-                "V229", "abcdef1", declarationHash, unsigned.computedManifestHash());
+                "V231", "abcdef1", declarationHash, unsigned.computedManifestHash());
         var environment = new MockEnvironment()
                 .withProperty("tpv.verifactu.runtime-class", "SANDBOX")
                 .withProperty("tpv.verifactu.dev-sandbox.enabled", "true")
@@ -275,7 +275,7 @@ class FiscalRuntimePropertiesTest {
         values.setProperty("release.id", "tpv-erp-dev");
         values.setProperty("system.version", "DEV");
         values.setProperty("capability", "DUAL");
-        values.setProperty("schema.version", "V229");
+        values.setProperty("schema.version", "V231");
         return new FiscalRuntimeProperties(new MockEnvironment()
                 .withProperty("tpv.verifactu.runtime-class", "SANDBOX")
                 .withProperty("tpv.verifactu.dev-sandbox.enabled", "true")

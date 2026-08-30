@@ -25,11 +25,11 @@
 			<element name="TiempoEsperaEnvio" type="sf:Tipo6Type"/>
 			<element name="EstadoEnvio" type="sfR:EstadoEnvioType">
 				<annotation>
-					<documentation xml:lang="es">
-						Estado del envío en conjunto.
-						Si los datos de cabecera y todos los registros son correctos,el estado es correcto.
+					<documentation xml:lang="es"> 
+						Estado del envío en conjunto. 
+						Si los datos de cabecera y todos los registros son correctos,el estado es correcto. 
 						En caso de estructura y cabecera correctos donde todos los registros son incorrectos, el estado es incorrecto
-						En caso de estructura y cabecera correctos con al menos un registro incorrecto, el estado global es parcialmente correcto.
+						En caso de estructura y cabecera correctos con al menos un registro incorrecto, el estado global es parcialmente correcto.						
 					</documentation>
 				</annotation>
 			</element>
@@ -44,7 +44,7 @@
 				<sequence>
 					<element name="RespuestaLinea" type="sfR:RespuestaExpedidaType" minOccurs="0" maxOccurs="1000">
 						<annotation>
-							<documentation xml:lang="es">
+							<documentation xml:lang="es"> 
 						Estado detallado de cada línea del suministro.
 					</documentation>
 						</annotation>
@@ -67,28 +67,28 @@
 			<element name="RefExterna" type="sf:TextMax60Type" minOccurs="0"/>
 			<element name="EstadoRegistro" type="sfR:EstadoRegistroType">
 				<annotation>
-					<documentation xml:lang="es">
+					<documentation xml:lang="es"> 
 						Estado del registro. Correcto o Incorrecto
 					</documentation>
 				</annotation>
 			</element>
 			<element name="CodigoErrorRegistro" type="sfR:ErrorDetalleType" minOccurs="0">
 				<annotation>
-					<documentation xml:lang="es">
+					<documentation xml:lang="es"> 
 						Código del error de registro, en su caso.
 					</documentation>
 				</annotation>
 			</element>
 			<element name="DescripcionErrorRegistro" type="sf:TextMax1500Type" minOccurs="0">
 				<annotation>
-					<documentation xml:lang="es">
+					<documentation xml:lang="es"> 
 						Descripción detallada del error de registro, en su caso.
 					</documentation>
 				</annotation>
 			</element>
 			<element name="RegistroDuplicado" type="sf:RegistroDuplicadoType" minOccurs="0">
 				<annotation>
-					<documentation xml:lang="es">
+					<documentation xml:lang="es"> 
 						Solo en el caso de que se rechace el registro por duplicado se devuelve este nodo con la informacion registrada en el sistema para este registro
 					</documentation>
 				</annotation>

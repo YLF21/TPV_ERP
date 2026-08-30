@@ -7,7 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class MigrationV229FiscalSystemVersionReleaseIdentityContractTest {
+class MigrationV231FiscalSystemVersionReleaseIdentityContractTest {
 
     @Test
     /**
@@ -16,7 +16,7 @@ class MigrationV229FiscalSystemVersionReleaseIdentityContractTest {
      */
     void replacesHistoricalPublicVersionUniqueKeyWithoutRewritingRowsOrTrigger() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V229__fiscal_system_version_release_identity.sql"),
+                "src/main/resources/db/migration/V231__fiscal_system_version_release_identity.sql"),
                 StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
 
         assertThat(sql).contains("drop constraint")

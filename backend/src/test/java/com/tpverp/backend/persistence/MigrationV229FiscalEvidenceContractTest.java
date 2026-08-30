@@ -9,12 +9,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class MigrationV227FiscalEvidenceContractTest {
+class MigrationV229FiscalEvidenceContractTest {
 
     @Test
     void creaEvidenciaSeparadaAppendOnlyYNoMigraPayloadHistorico() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V227__evidencia_inmutable_envio_fiscal.sql"),
+                "src/main/resources/db/migration/V229__evidencia_inmutable_envio_fiscal.sql"),
                 StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
 
         assertThat(sql).contains("create table evidencia_envio_fiscal")

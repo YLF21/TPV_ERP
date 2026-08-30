@@ -4,7 +4,7 @@ param(
     [string] $BundleDirectory,
     [string] $ExpectedVersion = '4.2.0',
     [string] $ExpectedReleaseId = 'tpv-erp-4.2.0',
-    [string] $ExpectedSchemaVersion = 'V229',
+    [string] $ExpectedSchemaVersion = 'V233',
     [long] $ExpectedReleaseSequence = 1,
     [long] $ExpectedBuildSequence = 1,
     [switch] $AsObject

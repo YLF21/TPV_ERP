@@ -4,6 +4,7 @@ import {
   TerminalManagementScreen,
   terminalApprovePath,
   terminalDeactivatePath,
+  terminalPairingPath,
   terminalDisplayStatus
 } from "./TerminalManagementScreen";
 
@@ -11,6 +12,7 @@ describe("TerminalManagementScreen", () => {
   it("encodes terminal identifiers in mutation paths", () => {
     expect(terminalApprovePath("pda/1")).toBe("/terminals/pda%2F1/approve");
     expect(terminalDeactivatePath("pda/1")).toBe("/terminals/pda%2F1/deactivate");
+    expect(terminalPairingPath("pda/1")).toBe("/terminals/pda%2F1/pairing-code");
   });
 
   it("shows an inactive unapproved registration as pending", () => {
