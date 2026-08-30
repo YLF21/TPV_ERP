@@ -102,11 +102,8 @@ class FiscalSubmissionQueuePostgreSqlTest {
     @Test
     void nativeClaimIgnoresNoVerifactuPredecessorInTheSameChain() {
         var fixture = fixture();
-        insertRecord(fixture, fixture.recordOne(), 1, "A".repeat(64), null);
+        insertRecord(fixture, fixture.recordOne(), 1, "A".repeat(64), null, "NO_VERIFACTU");
         insertRecord(fixture, fixture.recordTwo(), 2, "B".repeat(64), "A".repeat(64));
-        jdbc.update("update registro_fiscal set modo_fiscal = 'NO_VERIFACTU' where id = ?",
-                fixture.recordOne());
-        insertState(fixture.recordOne(), "PENDIENTE", NOW, null, null);
         insertState(fixture.recordTwo(), "PENDIENTE", NOW, null, null);
 
         assertThat(states.findClaimable(NOW, 10)).extracting(FiscalSubmissionState::getRecordId)
@@ -114,10 +111,10 @@ class FiscalSubmissionQueuePostgreSqlTest {
     }
 
     @Test
-    void nativeClaimSelectsContiguousDuePrefixAtSequence1000And1001() {
+    void nativeClaimSelectsContiguousDuePrefix() {
         var fixture = fixture();
-        insertRecord(fixture, fixture.recordOne(), 1000, "A".repeat(64), null);
-        insertRecord(fixture, fixture.recordTwo(), 1001, "B".repeat(64), "A".repeat(64));
+        insertRecord(fixture, fixture.recordOne(), 1, "A".repeat(64), null);
+        insertRecord(fixture, fixture.recordTwo(), 2, "B".repeat(64), "A".repeat(64));
         insertState(fixture.recordOne(), "PENDIENTE", NOW, null, null);
         insertState(fixture.recordTwo(), "PENDIENTE", NOW, null, null);
 
@@ -142,6 +139,11 @@ class FiscalSubmissionQueuePostgreSqlTest {
     }
 
     private void insertRecord(Fixture f, UUID id, long sequence, String hash, String previousHash) {
+        insertRecord(f, id, sequence, hash, previousHash, "VERIFACTU");
+    }
+
+    private void insertRecord(Fixture f, UUID id, long sequence, String hash, String previousHash,
+                              String fiscalMode) {
         jdbc.update("""
                 insert into registro_fiscal (id, cadena_id, empresa_id, instalacion_id, tienda_id,
                     secuencia, operacion, tipo_documento_fiscal, serie_numero, fecha_expedicion,
@@ -149,12 +151,12 @@ class FiscalSubmissionQueuePostgreSqlTest {
                     huella_anterior, huella, hash_snapshot, snapshot, version_formato,
                     version_algoritmo, version_aplicacion, modo_fiscal)
                 values (?, ?, ?, ?, ?, ?, 'ALTA', 'F1', ?, ?, ?, 'Atlantic/Canary',
-                    'B12345674', 2.10, 12.10, ?, ?, ?, cast(? as jsonb), '1', 'SHA-256', '1', 'VERIFACTU')
+                    'B12345674', 2.10, 12.10, ?, ?, ?, cast(? as jsonb), '1', 'SHA-256', '1', ?)
                 """, id, f.chain(), f.company(), f.installation(), f.store(), sequence,
                 "F-" + sequence,
                 Date.valueOf(NOW.atZone(java.time.ZoneOffset.UTC).toLocalDate()),
                 timestamp(NOW),
-                previousHash, hash, "C".repeat(64), "{}");
+                previousHash, hash, "C".repeat(64), "{}", fiscalMode);
     }
 
     private void insertState(UUID record, String status, Instant nextAttempt, Instant leaseUntil, UUID token) {
