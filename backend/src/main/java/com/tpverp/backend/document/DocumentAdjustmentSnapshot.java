@@ -27,6 +27,9 @@ public record DocumentAdjustmentSnapshot(
         Objects.requireNonNull(appliedAmount, "appliedAmount");
         Objects.requireNonNull(createdAt, "createdAt");
         lines = List.copyOf(Objects.requireNonNull(lines, "lines"));
+        if (Money.euros(appliedAmount).signum() != 0 && lines.isEmpty()) {
+            throw new IllegalArgumentException("document_adjustment_without_lines");
+        }
     }
 
     static DocumentAdjustmentSnapshot from(
@@ -43,7 +46,7 @@ public record DocumentAdjustmentSnapshot(
                                 .orElseThrow(() -> new IllegalStateException(
                                         "document_discount_source_line_missing"))))
                 .toList();
-        if (links.isEmpty()) {
+        if (links.isEmpty() && adjustment.getImporteAplicado().signum() != 0) {
             throw new IllegalStateException("document_adjustment_without_lines");
         }
         return new DocumentAdjustmentSnapshot(
@@ -72,6 +75,9 @@ public record DocumentAdjustmentSnapshot(
     }
 
     DocumentAdjustmentSnapshot remapPositions(Map<Integer, Integer> positions) {
+        if (lines.isEmpty()) {
+            return this;
+        }
         var remapped = lines.stream()
                 .filter(link -> positions.containsKey(link.adjustmentLinePosition())
                         && positions.containsKey(link.sourceLinePosition()))
@@ -82,6 +88,12 @@ public record DocumentAdjustmentSnapshot(
         return remapped.isEmpty() ? null : new DocumentAdjustmentSnapshot(
                 type, order, percent, eligibleBase, appliedAmount, userId, createdAt,
                 memberId, memberCategoryId, memberCategoryName, remapped);
+    }
+
+    DocumentAdjustmentSnapshot withOrder(int newOrder) {
+        return new DocumentAdjustmentSnapshot(
+                type, newOrder, percent, eligibleBase, appliedAmount, userId, createdAt,
+                memberId, memberCategoryId, memberCategoryName, lines);
     }
 
     private static DocumentLine lineAt(List<DocumentLine> lines, int position) {

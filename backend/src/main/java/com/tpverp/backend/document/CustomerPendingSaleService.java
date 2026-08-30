@@ -125,6 +125,7 @@ public class CustomerPendingSaleService {
             Authentication authentication) {
         Objects.requireNonNull(request, "request");
         var sale = Objects.requireNonNull(request.sale(), "sale");
+        requireDirectPaymentMethodsAllowed(sale);
         var amount = positive(request.amount(), "amount");
         var terminalId = currentTerminal.terminalId(authentication);
         var quoted = effectiveQuote(sourceDraftId, sale, authentication);
@@ -231,9 +232,15 @@ public class CustomerPendingSaleService {
             var replay = replayIfCompleted(
                     current, replayHash, storeId, userId, request);
             if (replay.isPresent()) return replay.orElseThrow();
+            // Preserve the completed-replay fast path, then reject wallet
+            // tenders before claiming an in-progress checkout.
+            requireDirectPaymentMethodsAllowed(request);
             checkout = reservations.claim(terminalId, request.checkoutId(), storeId, userId,
                     replayHash, owner, Instant.now(clock).plus(CHECKOUT_LEASE),
                     Instant.now(clock));
+        } else {
+            // No reservation has been written yet; reject wallet tenders first.
+            requireDirectPaymentMethodsAllowed(request);
         }
 
         var quoted = effectiveQuote(sourceDraftId, request, authentication);
@@ -282,6 +289,9 @@ public class CustomerPendingSaleService {
 
         try {
             reservations.lockOwned(checkout.getId(), owner);
+            // Validate every direct payment method before consulting or consuming
+            // any terminal operation. Wallet tenders are session-only.
+            authorizeStandardPayments(request, authentication);
             var declaredCard = integratedCardPayment(request);
             if (completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
                     && declaredCard.isPresent()) {
@@ -305,7 +315,6 @@ public class CustomerPendingSaleService {
                 requireCardIdentity(cardOperation, configuration, hash,
                         declaredCard.orElseThrow().amount(), terminalId, storeId);
             }
-            authorizeStandardPayments(request, authentication);
             var commands = paymentCommands(request, cardOperation, terminalId);
             CommercialDocument document;
             if (sourceDraftId == null) {
@@ -855,6 +864,15 @@ public class CustomerPendingSaleService {
         return List.copyOf(request.payments() == null ? List.of() : request.payments());
     }
 
+    private void requireDirectPaymentMethodsAllowed(
+            CustomerPendingSaleController.CreateRequest request) {
+        for (var payment : payments(request)) {
+            paymentMethods.findByIdAndEmpresaId(
+                            payment.methodId(), organization.currentCompany().getId())
+                    .ifPresent(DirectDocumentPaymentGuard::requireAllowed);
+        }
+    }
+
     private List<PaymentCommand> paymentCommands(
             CustomerPendingSaleController.CreateRequest request,
             PaymentTerminalOperation operation,
@@ -943,11 +961,13 @@ public class CustomerPendingSaleService {
 
     private PaymentMethod requireActivePaymentMethod(
             CustomerPendingSaleController.PaymentItem payment) {
-        return paymentMethods.findByIdAndEmpresaId(
+        var method = paymentMethods.findByIdAndEmpresaId(
                         payment.methodId(), organization.currentCompany().getId())
                 .filter(PaymentMethod::isActivo)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "message.payment_method.active_not_found"));
+        DirectDocumentPaymentGuard.requireAllowed(method);
+        return method;
     }
 
     private static boolean isCardMethod(PaymentMethod method) {

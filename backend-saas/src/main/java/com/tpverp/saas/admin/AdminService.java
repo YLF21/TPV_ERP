@@ -235,7 +235,7 @@ public class AdminService {
         return new SaasStatusResponse(
                 clock.instant(),
                 "saas-api-v1",
-                "V36__global_username_uniqueness",
+                "V37__saas_admin_query_indexes",
                 List.of(
                         "licenses",
                         "installations",

@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class CommercialDocumentTest {
@@ -109,7 +110,7 @@ class CommercialDocumentTest {
         var newCustomerId = UUID.randomUUID();
         var replacement = new CommercialDocument(
                 storeId, UUID.randomUUID(), CommercialDocumentType.ALBARAN_VENTA,
-                LocalDate.of(2026, 8, 12), USER_ID, new BigDecimal("5.00"));
+                LocalDate.of(2026, 8, 12), USER_ID, new BigDecimal("5.00"), true);
         replacement.setParties(newCustomerId, null, null);
         replacement.setDueDate(LocalDate.of(2026, 9, 11));
         replacement.setInternalComment("Comentario conservado");
@@ -128,6 +129,7 @@ class CommercialDocumentTest {
         assertThat(original.getFecha()).isEqualTo(LocalDate.of(2026, 8, 12));
         assertThat(original.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 11));
         assertThat(original.getClienteId()).isEqualTo(newCustomerId);
+        assertThat(original.isWholesaleMode()).isTrue();
         assertThat(original.getComentarioInterno()).isEqualTo("Comentario conservado");
         assertThat(original.getTotal()).isEqualByComparingTo("38.00");
         assertThat(original.getLineas()).singleElement().satisfies(line -> {
@@ -135,6 +137,73 @@ class CommercialDocumentTest {
             assertThat(line.isTemporaryNameOverride()).isTrue();
             assertThat(line.isTemporaryPriceOverride()).isTrue();
         });
+    }
+
+    @Test
+    void replacesDraftAndRemapsDocumentAdjustmentLinksToCopiedLines() {
+        var storeId = UUID.randomUUID();
+        var original = new CommercialDocument(storeId, UUID.randomUUID(),
+                CommercialDocumentType.FACTURA_VENTA, LocalDate.of(2026, 8, 10),
+                USER_ID, BigDecimal.ZERO);
+        var replacement = new CommercialDocument(storeId, UUID.randomUUID(),
+                CommercialDocumentType.FACTURA_VENTA, LocalDate.of(2026, 8, 11),
+                USER_ID, BigDecimal.ZERO);
+        var product = new DocumentLine(replacement, UUID.randomUUID(), 1, BigDecimal.ONE,
+                "P-1", "Producto", "VENTA", new BigDecimal("10.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        replacement.addLine(product);
+        DocumentPercentDiscountAllocator.apply(replacement, new BigDecimal("10.00"),
+                Set.of(product.getProductoId()));
+        var discount = replacement.getLineas().getLast();
+        var adjustment = new DocumentAdjustment(replacement, "MANUAL_PERCENT", 1,
+                new BigDecimal("10.00"), new BigDecimal("10.00"),
+                discount.getTotal().abs(), null, NOW, null, null, null);
+        replacement.addAdjustment(adjustment);
+        discount.linkDocumentAdjustment(adjustment.getId(), product.getId());
+
+        original.replacePendingSaleDraft(replacement);
+
+        assertThat(original.getAjustes()).singleElement().satisfies(restored -> {
+            assertThat(restored.getId()).isNotEqualTo(adjustment.getId());
+        });
+        var copiedDiscount = original.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                .findFirst().orElseThrow();
+        assertThat(copiedDiscount.getDocumentAdjustmentId())
+                .isEqualTo(original.getAjustes().getFirst().getId())
+                .isNotEqualTo(adjustment.getId());
+        assertThat(copiedDiscount.getSourceLineId())
+                .isEqualTo(original.getLineas().getFirst().getId())
+                .isNotEqualTo(product.getId());
+    }
+
+    @Test
+    void replacesDraftAndPreservesZeroRoundedDocumentAdjustment() {
+        var storeId = UUID.randomUUID();
+        var original = new CommercialDocument(storeId, UUID.randomUUID(),
+                CommercialDocumentType.ALBARAN_VENTA, LocalDate.of(2026, 8, 10),
+                USER_ID, BigDecimal.ZERO);
+        var replacement = new CommercialDocument(storeId, UUID.randomUUID(),
+                CommercialDocumentType.ALBARAN_VENTA, LocalDate.of(2026, 8, 11),
+                USER_ID, BigDecimal.ZERO);
+        replacement.addLine(new DocumentLine(
+                replacement, UUID.randomUUID(), 1, BigDecimal.ONE,
+                "P-1", "Producto", "VENTA", new BigDecimal("0.01"),
+                BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
+        replacement.addAdjustment(new DocumentAdjustment(
+                replacement, "MANUAL_PERCENT", 1, BigDecimal.ONE,
+                new BigDecimal("0.01"), BigDecimal.ZERO, USER_ID, NOW,
+                null, null, null));
+
+        original.replacePendingSaleDraft(replacement);
+
+        assertThat(original.getAjustes()).singleElement().satisfies(adjustment -> {
+            assertThat(adjustment.getPorcentaje()).isEqualByComparingTo("1.00");
+            assertThat(adjustment.getBaseElegible()).isEqualByComparingTo("0.01");
+            assertThat(adjustment.getImporteAplicado()).isZero();
+        });
+        assertThat(original.getLineas()).singleElement().satisfies(line ->
+                assertThat(line.getTotal()).isEqualByComparingTo("0.01"));
     }
 
     private static CommercialDocument saleInvoice(BigDecimal total) {

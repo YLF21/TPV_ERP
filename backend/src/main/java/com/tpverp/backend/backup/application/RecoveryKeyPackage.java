@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.Base64;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
@@ -18,6 +19,7 @@ public final class RecoveryKeyPackage {
 
     private static final byte[] MAGIC = {'T', 'P', 'V', 'R'};
     private static final int VERSION = 1;
+    private static final int VERSION_V2 = 2;
     private static final int MIN_ITERATIONS = 100_000;
     private static final int MAX_ITERATIONS = 10_000_000;
     private static final int SALT_LENGTH = 16;
@@ -40,10 +42,37 @@ public final class RecoveryKeyPackage {
         validateIterations(iterations);
         byte[] brk = randomBytes(BRK_LENGTH);
         try {
-            return protect(brk, adminPassword, iterations);
+            return protect(brk, adminPassword, iterations, VERSION);
         } finally {
             Arrays.fill(brk, (byte) 0);
         }
+    }
+
+    /** Creates the current recovery format, deliberately independent of ADMIN. */
+    public byte[] createV2(char[] recoverySecret, int iterations) throws GeneralSecurityException {
+        validateIterations(iterations);
+        validateStrongSecret(recoverySecret);
+        byte[] brk = randomBytes(BRK_LENGTH);
+        try {
+            return protect(brk, recoverySecret, iterations, VERSION_V2);
+        } finally {
+            Arrays.fill(brk, (byte) 0);
+        }
+    }
+
+    public byte[] createV2ForKey(byte[] brk, char[] recoverySecret, int iterations)
+            throws GeneralSecurityException {
+        validateIterations(iterations);
+        validateStrongSecret(recoverySecret);
+        if (brk == null || brk.length != BRK_LENGTH) {
+            throw new IllegalArgumentException("La clave de backup no tiene un tamaño válido");
+        }
+        return protect(brk, recoverySecret, iterations, VERSION_V2);
+    }
+
+    /** Generates a one-time 256-bit recovery code; callers must not log it. */
+    public char[] generateRecoveryCode() {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes(32)).toCharArray();
     }
 
     public byte[] open(byte[] recoveryPackage, char[] adminPassword)
@@ -61,6 +90,12 @@ public final class RecoveryKeyPackage {
         return brk;
     }
 
+    /** Reads v2 and legacy v1 packages. New packages must always be v2. */
+    public byte[] openAny(byte[] recoveryPackage, char[] recoverySecret)
+        throws GeneralSecurityException {
+        return openParsed(recoveryPackage, recoverySecret);
+    }
+
     public byte[] rewrap(
         byte[] recoveryPackage,
         char[] currentAdminPassword,
@@ -68,9 +103,12 @@ public final class RecoveryKeyPackage {
         int newIterations
     ) throws GeneralSecurityException {
         validateIterations(newIterations);
+        if (inspect(recoveryPackage).version() != VERSION) {
+            throw new GeneralSecurityException("Los paquetes de recuperación v2 no se reenvuelven con ADMIN");
+        }
         byte[] brk = open(recoveryPackage, currentAdminPassword);
         try {
-            return protect(brk, newAdminPassword, newIterations);
+            return protect(brk, newAdminPassword, newIterations, VERSION);
         } finally {
             Arrays.fill(brk, (byte) 0);
         }
@@ -80,11 +118,11 @@ public final class RecoveryKeyPackage {
         return parse(recoveryPackage).info();
     }
 
-    private byte[] protect(byte[] brk, char[] password, int iterations)
+    private byte[] protect(byte[] brk, char[] password, int iterations, int version)
         throws GeneralSecurityException {
         byte[] salt = randomBytes(SALT_LENGTH);
         byte[] nonce = randomBytes(NONCE_LENGTH);
-        byte[] header = header(iterations, salt, nonce, ENCRYPTED_BRK_LENGTH);
+        byte[] header = header(iterations, salt, nonce, ENCRYPTED_BRK_LENGTH, version);
         SecretKeySpec passwordKey = deriveKey(password, salt, iterations);
 
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -95,6 +133,21 @@ public final class RecoveryKeyPackage {
         byte[] result = Arrays.copyOf(header, header.length + encryptedBrk.length);
         System.arraycopy(encryptedBrk, 0, result, header.length, encryptedBrk.length);
         return result;
+    }
+
+    private byte[] openParsed(byte[] recoveryPackage, char[] secret)
+        throws GeneralSecurityException {
+        Parsed parsed = parse(recoveryPackage);
+        SecretKeySpec passwordKey = deriveKey(secret, parsed.salt(), parsed.info().iterations());
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, passwordKey, new GCMParameterSpec(GCM_TAG_BITS, parsed.nonce()));
+        cipher.updateAAD(parsed.header());
+        byte[] brk = cipher.doFinal(parsed.encryptedBrk());
+        if (brk.length != BRK_LENGTH) {
+            Arrays.fill(brk, (byte) 0);
+            throw new GeneralSecurityException("Invalid recovery key length");
+        }
+        return brk;
     }
 
     private static SecretKeySpec deriveKey(char[] password, byte[] salt, int iterations)
@@ -156,13 +209,13 @@ public final class RecoveryKeyPackage {
         int iterations,
         byte[] salt,
         byte[] nonce,
-        int encryptedLength
+        int encryptedLength, int version
     ) throws GeneralSecurityException {
         try {
             var bytes = new ByteArrayOutputStream();
             try (var output = new DataOutputStream(bytes)) {
                 output.write(MAGIC);
-                output.writeByte(VERSION);
+                output.writeByte(version);
                 output.writeInt(iterations);
                 output.writeByte(salt.length);
                 output.writeByte(nonce.length);
@@ -184,7 +237,7 @@ public final class RecoveryKeyPackage {
         int nonceLength,
         int encryptedLength
     ) throws GeneralSecurityException {
-        if (!Arrays.equals(magic, MAGIC) || version != VERSION) {
+        if (!Arrays.equals(magic, MAGIC) || (version != VERSION && version != VERSION_V2)) {
             throw new GeneralSecurityException("Unsupported recovery package");
         }
         try {
@@ -203,6 +256,12 @@ public final class RecoveryKeyPackage {
         if (iterations < MIN_ITERATIONS || iterations > MAX_ITERATIONS) {
             throw new IllegalArgumentException(
                 "PBKDF2 iterations must be between 100000 and 10000000");
+        }
+    }
+
+    private static void validateStrongSecret(char[] secret) {
+        if (secret == null || secret.length < 16) {
+            throw new IllegalArgumentException("La clave de recuperación debe tener al menos 16 caracteres");
         }
     }
 

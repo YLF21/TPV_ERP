@@ -77,6 +77,15 @@ public class SaasMemberBalanceReservationLot {
         return balanceType;
     }
 
+    /** Extends a late-known reservation link without ever shrinking it. */
+    public void incorporate(BigDecimal amount) {
+        BigDecimal normalized = amount.setScale(2, java.math.RoundingMode.UNNECESSARY);
+        if (normalized.signum() < 0) {
+            throw new IllegalArgumentException("La ampliacion del lote no puede ser negativa");
+        }
+        reservedAmount = reservedAmount.add(normalized);
+    }
+
     public void consume(BigDecimal amount) {
         BigDecimal result = consumedAmount.add(amount);
         if (result.compareTo(reservedAmount) > 0) {

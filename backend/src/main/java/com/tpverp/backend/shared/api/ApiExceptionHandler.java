@@ -19,7 +19,10 @@ import com.tpverp.backend.security.sales.SaleOperationAuthorizationThrottledExce
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralException;
+import com.tpverp.backend.party.loyalty.central.MemberBalanceReservationConflictException;
+import com.tpverp.backend.party.MemberBalanceOfficialSyncRequiredException;
 import com.tpverp.backend.verifactu.VerifactuCertificateApiException;
+import com.tpverp.backend.verifactu.FiscalProductCapabilityViolationException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
@@ -285,6 +288,42 @@ public class ApiExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(MemberBalanceReservationConflictException.class)
+    ProblemDetail memberBalanceReservationConflictProblem(
+            MemberBalanceReservationConflictException exception,
+            HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "MEMBER_BALANCE_RESERVED_ELSEWHERE",
+                exception.getMessage(), language(request), request);
+    }
+
+    @ExceptionHandler(MemberBalanceOfficialSyncRequiredException.class)
+    ProblemDetail memberBalanceOfficialSyncRequired(
+            MemberBalanceOfficialSyncRequiredException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var problem = problem(
+                HttpStatus.CONFLICT,
+                SystemErrorCode.STATE_CONFLICT.name(),
+                localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language,
+                request);
+        // Keep the established HTTP code while preserving the precise audit cause.
+        ApiExceptionContext.record(
+                request,
+                MemberBalanceOfficialSyncRequiredException.CODE,
+                ApiExceptionContext.API_EXCEPTION_HANDLER_STAGE);
+        return problem;
+    }
+
+    @ExceptionHandler(FiscalProductCapabilityViolationException.class)
+    ProblemDetail fiscalProductCapabilityViolation(
+            FiscalProductCapabilityViolationException exception,
+            HttpServletRequest request) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT,
+                FiscalProductCapabilityViolationException.CODE,
+                exception.getMessage(), language(request), request);
+    }
+
     @ExceptionHandler(FiscalQrUnavailableException.class)
     ProblemDetail fiscalQrUnavailable(
             FiscalQrUnavailableException exception,
@@ -476,9 +515,11 @@ public class ApiExceptionHandler {
 
     private ProblemDetail problem(HttpStatus status, String code, String detail, SupportedLanguage language,
             HttpServletRequest request) {
+        var stableCode = ApiExceptionContext.normalizeCode(code);
+        ApiExceptionContext.record(request, stableCode, ApiExceptionContext.API_EXCEPTION_HANDLER_STAGE);
         var problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setType(URI.create("urn:tpv-erp:error:" + code));
-        problem.setProperty("code", code);
+        problem.setType(URI.create("urn:tpv-erp:error:" + stableCode));
+        problem.setProperty("code", stableCode);
         problem.setProperty("locale", language.localeCode());
         problem.setProperty("traceId", CorrelationIdFilter.getOrCreate(request));
         return problem;

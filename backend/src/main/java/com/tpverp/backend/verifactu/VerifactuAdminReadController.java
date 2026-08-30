@@ -45,7 +45,13 @@ public class VerifactuAdminReadController {
             @RequestParam(required = false) FiscalRecordOperation operation,
             @RequestParam(required = false) String documentNumber,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "25") int size) {
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String sortDirection) {
+        if (sortDirection != null) {
+            return service.submissions(
+                    dateFrom, dateTo, status, documentType, operation,
+                    documentNumber, page, size, null, sortDirection);
+        }
         return service.submissions(
                 dateFrom, dateTo, status, documentType, operation,
                 documentNumber, page, size);

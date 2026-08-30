@@ -11,6 +11,7 @@ import com.tpverp.backend.organization.TicketTemplateOrigin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -85,6 +86,25 @@ class TicketJasperRendererTest {
         assertThatThrownBy(() -> TicketJasperRenderer.Template.parse("otro"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("ticket_jasper_template_invalid");
+    }
+
+    @Test
+    void builtInPaymentSubreportsFormatMethodIdentifiersConsistently() throws IOException {
+        for (String filename : new String[] {
+                "ticket_pago.jrxml",
+                "ticket_pago_compacta.jrxml",
+                "ticket_pago_minimalista.jrxml"}) {
+            var resource = new ClassPathResource(
+                    TicketJrxmlBundleCompiler.builtInResourceName(filename));
+            String source;
+            try (var input = resource.getInputStream()) {
+                source = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            assertThat(source).as(filename)
+                    .contains("UPPER(REPLACE(COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO'), '_', ' '))")
+                    .doesNotContain("Tarjeta bancaria")
+                    .doesNotContain("<![CDATA[Efectivo]]>");
+        }
     }
 
     @Test

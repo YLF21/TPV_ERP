@@ -4,6 +4,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,6 +37,14 @@ public class MemberWalletReservationV2Controller {
             @RequestHeader(INSTALLATION_TOKEN_HEADER) String token,
             @RequestBody LoyaltyApiModels.ReservationOwnerRequest request) {
         return service.heartbeatWallet(reservationId, request, token);
+    }
+
+    @PutMapping({"/reservations/{reservationId}/retention", "/reservations/{reservationId}/retention-claims"})
+    public LoyaltyApiModels.WalletReservationResponse configureRetention(
+            @PathVariable UUID reservationId,
+            @RequestHeader(INSTALLATION_TOKEN_HEADER) String token,
+            @RequestBody LoyaltyApiModels.RetentionConfigureRequest request) {
+        return service.configureRetention(reservationId, request, token);
     }
 
     @PostMapping("/reservations/{reservationId}/release")

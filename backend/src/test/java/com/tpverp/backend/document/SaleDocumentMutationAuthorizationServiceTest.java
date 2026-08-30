@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.Product;
@@ -135,7 +136,7 @@ class SaleDocumentMutationAuthorizationServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("legacy_integrated_card_payment_not_supported");
 
-        verify(paymentMethods, never()).findByIdAndEmpresaId(any(), any());
+        verify(paymentMethods).findByIdAndEmpresaId(any(), eq(companyId));
     }
 
     @Test
@@ -166,10 +167,35 @@ class SaleDocumentMutationAuthorizationServiceTest {
                 "CUSTOMER_RECEIVABLE_PAYMENT",
                 UUID.randomUUID());
 
-        verify(paymentMethods, never()).findByIdAndEmpresaId(any(), any());
+        verify(paymentMethods).findByIdAndEmpresaId(any(), eq(companyId));
         verify(operationSecurity, never()).authorize(
                 eq(SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT),
                 any(), any(), eq(authentication));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"SALDO_MIEMBRO", "CREDITO_DEVOLUCION"})
+    void rejectsWalletPaymentEvenWhenClientSuppliesTerminalOperationId(String methodName) {
+        var method = new PaymentMethod(companyId, methodName, true);
+        var operationId = UUID.randomUUID();
+        when(paymentMethods.findByIdAndEmpresaId(method.getId(), companyId))
+                .thenReturn(Optional.of(method));
+        var request = new PaymentRequest(List.of(new PaymentRequest.Item(
+                method.getId(), new BigDecimal("10.00"), true,
+                null, null, null, null, PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.REDSYS_TPV_PC,
+                PaymentTerminalOperationStatus.APPROVED, "AUTH-1", UUID.randomUUID(),
+                operationId, operationId)));
+
+        assertThatThrownBy(() -> service.authorizePayments(
+                request, Map.of(),
+                SaleDocumentMutationAuthorizationService.IntegratedPaymentPolicy
+                        .REQUIRE_PERSISTED_OPERATION,
+                authentication, "DIRECT_DOCUMENT_PAYMENT", UUID.randomUUID()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("direct_document_payment_method_not_allowed");
+
+        verifyNoInteractions(operationSecurity, audit);
     }
 
     @Test

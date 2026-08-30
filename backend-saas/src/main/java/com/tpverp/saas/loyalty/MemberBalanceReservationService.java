@@ -17,9 +17,13 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import com.tpverp.saas.sync.MemberReturnBalanceRecoveryCommand;
+import com.tpverp.saas.sync.MemberReturnBalanceRecoveryProjector;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -41,6 +45,10 @@ public class MemberBalanceReservationService {
     private final SaasMemberBalanceLotRepository lots;
     private final SaasMemberBalanceReservationRepository reservations;
     private final SaasMemberBalanceReservationLotRepository reservationLots;
+    private SaasMemberBalanceRetentionClaimRepository retentionClaims;
+    private SaasMemberBalanceRetentionReceiptRepository retentionReceipts;
+    private SaasMemberBalanceRetentionReceiptAliasRepository retentionReceiptAliases;
+    private MemberReturnBalanceRecoveryProjector retentionReconciler;
     private final EntityManager entityManager;
     private final Clock clock;
     private SaasMemberPointsBootstrapRepository pointsBootstraps;
@@ -52,6 +60,27 @@ public class MemberBalanceReservationService {
             SaasMemberPointsAuthorityRepository pointsAuthorities) {
         this.pointsBootstraps = pointsBootstraps;
         this.pointsAuthorities = pointsAuthorities;
+    }
+
+    @Autowired
+    void setRetentionClaims(SaasMemberBalanceRetentionClaimRepository retentionClaims) {
+        this.retentionClaims = retentionClaims;
+    }
+
+    @Autowired
+    void setRetentionReceipts(SaasMemberBalanceRetentionReceiptRepository retentionReceipts) {
+        this.retentionReceipts = retentionReceipts;
+    }
+
+    @Autowired(required = false)
+    void setRetentionReceiptAliases(
+            SaasMemberBalanceRetentionReceiptAliasRepository retentionReceiptAliases) {
+        this.retentionReceiptAliases = retentionReceiptAliases;
+    }
+
+    @Autowired(required = false)
+    void setRetentionReconciler(MemberReturnBalanceRecoveryProjector retentionReconciler) {
+        this.retentionReconciler = retentionReconciler;
     }
 
     @Autowired
@@ -78,7 +107,7 @@ public class MemberBalanceReservationService {
                 Clock.systemUTC());
     }
 
-    MemberBalanceReservationService(
+    public MemberBalanceReservationService(
             SaasInstallationRepository installations,
             InstallationAuthenticator installationAuthenticator,
             SaasMemberLoyaltyBootstrapRepository bootstraps,
@@ -99,6 +128,23 @@ public class MemberBalanceReservationService {
         this.reservationLots = reservationLots;
         this.entityManager = entityManager;
         this.clock = clock;
+    }
+
+    public MemberBalanceReservationService(
+            SaasInstallationRepository installations,
+            InstallationAuthenticator installationAuthenticator,
+            SaasMemberLoyaltyBootstrapRepository bootstraps,
+            SaasMemberWalletBootstrapRepository walletBootstraps,
+            SaasMemberBalanceAccountRepository accounts,
+            SaasMemberBalanceLotRepository lots,
+            SaasMemberBalanceReservationRepository reservations,
+            SaasMemberBalanceReservationLotRepository reservationLots,
+            SaasMemberBalanceRetentionClaimRepository retentionClaims,
+            EntityManager entityManager,
+            Clock clock) {
+        this(installations, installationAuthenticator, bootstraps, walletBootstraps, accounts,
+                lots, reservations, reservationLots, entityManager, clock);
+        this.retentionClaims = retentionClaims;
     }
 
     @Transactional
@@ -178,11 +224,12 @@ public class MemberBalanceReservationService {
         SaasMemberBalanceReservation active = activeReservation(account.getId());
         if (active != null && active.isExpiredAt(now)) {
             active.expire(now);
+            cancelClaimsForReservation(active.getId(), now);
             active = null;
         }
         if (active != null) {
             if (!active.belongsTo(installation.getId(), request.terminalId().trim(), request.saleId().trim())) {
-                throw conflict("El saldo del socio esta reservado temporalmente en otra caja");
+                throw reservationConflict("El saldo del socio esta reservado temporalmente en otra caja");
             }
             active.renew(now, LEASE_DURATION);
             return response(active, account);
@@ -367,13 +414,19 @@ public class MemberBalanceReservationService {
         SaasMemberBalanceReservation active = activeReservation(account.getId());
         if (active != null && active.isExpiredAt(now)) {
             active.expire(now);
+            cancelClaimsForReservation(active.getId(), now);
             active = null;
         }
         if (active != null) {
             if (!active.belongsTo(installation.getId(), request.terminalId().trim(), request.saleId().trim())) {
-                throw conflict("El monedero del socio esta reservado temporalmente en otra caja");
+                throw reservationConflict("El monedero del socio esta reservado temporalmente en otra caja");
             }
             active.renew(now, LEASE_DURATION);
+            if (!request.retentionClaims().isEmpty()) {
+                configureRetention(active.getId(), new LoyaltyApiModels.RetentionConfigureRequest(
+                        request.companyId(), request.storeId(), request.terminalId(), request.saleId(),
+                        request.attributedAmount(), request.retentionClaims()), token);
+            }
             return walletResponse(active, account);
         }
 
@@ -386,12 +439,11 @@ public class MemberBalanceReservationService {
                 .toList();
         BigDecimal availableLoyalty = availableAmount(availableLots, MemberBalanceType.LOYALTY);
         BigDecimal availableReturnCredit = availableAmount(availableLots, MemberBalanceType.RETURN_CREDIT);
-        if (availableLoyalty.add(availableReturnCredit).signum() <= 0) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "El socio no dispone de saldo utilizable en su monedero");
-        }
-
+        // Selecting a member owns the wallet for the lifetime of this POS
+        // operation, even when both typed buckets are empty. A pure return
+        // can create MEMBER_CREDIT without spending a previous balance, but
+        // still needs this central ownership lock to prevent another till
+        // from operating on the same member concurrently.
         SaasMemberBalanceReservation reservation = reservations.save(new SaasMemberBalanceReservation(
                 UUID.randomUUID(),
                 account,
@@ -410,6 +462,112 @@ public class MemberBalanceReservationService {
                     lot,
                     lot.getRemainingAmount()));
         }
+        if (!request.retentionClaims().isEmpty()) {
+            configureRetention(reservation.getId(), new LoyaltyApiModels.RetentionConfigureRequest(
+                    request.companyId(), request.storeId(), request.terminalId(), request.saleId(),
+                    request.attributedAmount(), request.retentionClaims()), token);
+        }
+        return walletResponse(reservation, account);
+    }
+
+    @Transactional
+    public LoyaltyApiModels.WalletReservationResponse configureRetention(
+            UUID reservationId,
+            LoyaltyApiModels.RetentionConfigureRequest request,
+            String token) {
+        requireRetentionConfigureRequest(request);
+        SaasInstallation installation = authenticate(request.companyId(), request.storeId(), token);
+        SaasMemberBalanceReservation reservation = reservation(reservationId);
+        SaasMemberBalanceAccount account = accountForUpdate(
+                request.companyId(), reservation.getAccount().getMemberId());
+        requireOwner(reservation, installation, new LoyaltyApiModels.ReservationOwnerRequest(
+                request.companyId(), request.storeId(), request.terminalId(), request.saleId()));
+        Instant now = clock.instant();
+        requireLive(reservation, now);
+        if (!reservation.isActive()) {
+            throw conflict("La retencion solo puede configurarse mientras la reserva esta ACTIVE");
+        }
+        List<LoyaltyApiModels.RetentionClaim> requested = normalizeRetentionClaims(request.retentionClaims());
+        String fingerprint = retentionFingerprint(request.attributedAmount(), requested);
+        List<SaasMemberBalanceRetentionClaim> current = retentionClaims == null
+                ? List.of() : retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId);
+        if (reservation.getRetentionRevision() > 0
+                && reservation.getRetentionFingerprint().equals(fingerprint)) {
+            return walletResponse(reservation, account);
+        }
+        if (!current.isEmpty() && reservation.getRetentionRevision() > 0 && reservation.isPrepared()) {
+            throw conflict("La retencion no puede reconfigurarse despues de PREPARED");
+        }
+        if (current.stream().anyMatch(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.COMMITTED_PENDING
+                || claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.APPLIED)) {
+            throw conflict("La retencion ya fue comprometida");
+        }
+        cancelClaims(current, now);
+        Map<UUID, SaasMemberBalanceLot> byLot = lots.findByAccount_IdOrderByCreatedAtAscIdAsc(account.getId()).stream()
+                .collect(java.util.stream.Collectors.toMap(SaasMemberBalanceLot::getId, value -> value));
+        java.util.Map<UUID, SaasMemberBalanceReservationLot> linkedLots = reservationLots == null
+                ? new java.util.HashMap<>()
+                : reservationLots.findByReservation_IdOrderByLot_CreatedAtAscLot_IdAsc(reservationId)
+                        .stream().collect(java.util.stream.Collectors.toMap(
+                                value -> value.getLot().getId(), value -> value));
+        long revision = reservation.getRetentionRevision() + 1;
+        for (LoyaltyApiModels.RetentionClaim claim : requested) {
+            SaasMemberBalanceLot lot = byLot.get(claim.lotId());
+            BigDecimal amount = money(claim.amount());
+            BigDecimal original = claim.amountOriginal() == null ? amount : money(claim.amountOriginal());
+            if (amount.signum() <= 0 || original.signum() <= 0 || amount.compareTo(original) > 0) {
+                throw invalid("Cada claim de retencion debe tener un importe positivo valido");
+            }
+            if (lot != null && (lot.getBalanceType() != MemberBalanceType.LOYALTY
+                    || !account.getCompanyId().equals(lot.getCompanyId())
+                    || !account.getMemberId().equals(lot.getMemberId())
+                    || !claim.sourceMovementId().equals(lot.getSourceMovementId())
+                    || !Objects.equals(claim.sourceDocumentId(), lot.getDocumentId()))) {
+                throw conflict("El lote no coincide con el movimiento/documento de origen");
+            }
+            if (lot != null && original.compareTo(lot.getOriginalAmount()) != 0) {
+                throw conflict("amountOriginal no coincide con el importe original del lote");
+            }
+            SaasMemberBalanceRetentionClaimStatus status = lot == null
+                    ? SaasMemberBalanceRetentionClaimStatus.HELD_MISSING
+                    : SaasMemberBalanceRetentionClaimStatus.HELD_KNOWN;
+            BigDecimal held = lot == null ? amount
+                    : amount.min(lot.getRemainingAmount());
+            if (lot != null && held.signum() > 0) {
+                SaasMemberBalanceReservationLot linked = linkedLots.get(lot.getId());
+                BigDecimal linkedRemaining = linked == null ? BigDecimal.ZERO.setScale(2)
+                        : linked.getRemainingAmount();
+                BigDecimal delta = held.subtract(linkedRemaining).max(BigDecimal.ZERO.setScale(2));
+                if (delta.signum() > 0) {
+                    // A lot can be synchronized between reserve and configure.
+                    // Incorporate only the additional retained portion; a
+                    // later lower configure never shrinks reserved capacity.
+                    reservation.incorporateWalletLot(MemberBalanceType.LOYALTY, delta);
+                    if (linked == null) {
+                        linked = new SaasMemberBalanceReservationLot(
+                                UUID.randomUUID(), reservation, lot, held);
+                        linkedLots.put(lot.getId(), linked);
+                    } else {
+                        linked.incorporate(delta);
+                    }
+                    reservationLots.save(linked);
+                }
+            }
+            SaasMemberBalanceRetentionClaim persisted = current.stream()
+                    .filter(existing -> existing.getLotId().equals(claim.lotId()))
+                    .findFirst()
+                    .orElseGet(() -> new SaasMemberBalanceRetentionClaim(
+                            UUID.randomUUID(), reservation, claim.lotId(), claim.sourceMovementId(),
+                            claim.sourceDocumentId(), original, amount, status, now));
+            persisted.replace(claim.sourceMovementId(), claim.sourceDocumentId(), original, amount,
+                    held, status, now);
+            retentionClaims.save(persisted);
+        }
+        reservation.configureRetention(revision, fingerprint,
+                request.attributedAmount() == null
+                        ? requested.stream().map(LoyaltyApiModels.RetentionClaim::amount)
+                                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add)
+                        : money(request.attributedAmount()));
         return walletResponse(reservation, account);
     }
 
@@ -441,7 +599,15 @@ public class MemberBalanceReservationService {
         SaasMemberBalanceAccount account = accountForUpdate(
                 request.companyId(), reservation.getAccount().getMemberId());
         requireOwner(reservation, installation, request);
-        reservation.release(clock.instant());
+        if (!reservation.isActive()) {
+            if (SaasMemberBalanceReservation.RELEASED.equals(reservation.getStatus())) {
+                return walletResponse(reservation, account);
+            }
+            throw conflict("La reserva de monedero solo puede liberarse mientras esta ACTIVE");
+        }
+        Instant now = clock.instant();
+        reservation.release(now);
+        cancelClaimsForReservation(reservationId, now);
         return walletResponse(reservation, account);
     }
 
@@ -462,6 +628,10 @@ public class MemberBalanceReservationService {
         BigDecimal returnCreditAmount = money(request.returnCreditAmount());
         requireWalletAmounts(reservation, loyaltyAmount, returnCreditAmount);
         Instant now = clock.instant();
+        if (request.expectedRetentionRevision() != reservation.getRetentionRevision()
+                || !request.expectedRetentionFingerprint().equals(reservation.getRetentionFingerprint())) {
+            throw conflict("La revision de retencion de la reserva ha cambiado");
+        }
         if (reservation.isPrepared()) {
             if (!reservation.preparedBy(request.operationId())) {
                 throw conflict("La reserva ya fue preparada por otra operacion");
@@ -494,13 +664,35 @@ public class MemberBalanceReservationService {
         requirePreparedOwnerRequest(request);
         SaasInstallation installation = authenticate(request.companyId(), request.storeId(), token);
         SaasMemberBalanceReservation reservation = reservation(reservationId);
-        SaasMemberBalanceAccount account = accountForUpdate(
-                request.companyId(), reservation.getAccount().getMemberId());
         requireOwner(reservation, installation, new LoyaltyApiModels.ReservationOwnerRequest(
                 request.companyId(), request.storeId(), request.terminalId(), request.saleId()));
+        // Reject a stale owner/state before inspecting or validating a new
+        // retention snapshot. A CONSUMED replay is only valid for its own
+        // prepare operation; another operation must not get as far as any
+        // snapshot/projector work.
+        boolean consumed = SaasMemberBalanceReservation.CONSUMED.equals(reservation.getStatus());
+        if ((!consumed && (!reservation.isPrepared() || !reservation.preparedBy(request.operationId())))
+                || (consumed && !reservation.preparedBy(request.operationId()))) {
+            throw conflict(consumed
+                    ? "La reserva de monedero ya fue finalizada por otra operacion"
+                    : "La reserva de monedero no esta preparada para esta operacion");
+        }
+        requirePositiveRetentionSnapshot(reservation, request);
+        if (request.retentionSnapshot() != null) {
+            validateRetentionSnapshot(reservation, request, request.retentionSnapshot());
+        }
+        // The projector and this online finalize path must acquire the
+        // operation plus retention projection locks before the pessimistic
+        // account row lock. Otherwise two different operations can deadlock
+        // while one holds ACCOUNT and the other holds projection ACCOUNT.
+        lockOperation(request.operationId());
+        lockRetentionProjectionBeforeAccount(reservation, request);
+        SaasMemberBalanceAccount account = accountForUpdate(
+                request.companyId(), reservation.getAccount().getMemberId());
         if (SaasMemberBalanceReservation.CONSUMED.equals(reservation.getStatus())) {
             if (reservation.preparedBy(request.operationId())) {
-                return walletResponse(reservation, account);
+                validateConsumedRetentionReplay(reservation, request);
+                return walletResponse(reservation, account, request.operationId());
             }
             throw conflict("La reserva de monedero ya fue finalizada por otra operacion");
         }
@@ -508,17 +700,31 @@ public class MemberBalanceReservationService {
             throw conflict("La reserva de monedero no esta preparada para esta operacion");
         }
 
+        // Reconcile the final durable photo before consuming F10. The same
+        // command is used by the outbox projector, so a shifted lot cannot be
+        // consumed by the wallet while its retention claim still points at it.
+        Instant now = clock.instant();
+        boolean reconciled = reconcileRetention(reservation, request, now);
+        validateRetentionBeforeFinalize(reservation, request, reconciled);
         List<SaasMemberBalanceReservationLot> preparedLots = walletReservationLots(reservationId);
-        consumeReservedType(
+        consumeSpendableType(
                 preparedLots,
                 MemberBalanceType.LOYALTY,
-                reservation.getPreparedLoyaltyAmount());
-        consumeReservedType(
+                reservation.getPreparedLoyaltyAmount(), reservationId);
+        consumeSpendableType(
                 preparedLots,
                 MemberBalanceType.RETURN_CREDIT,
-                reservation.getPreparedReturnCreditAmount());
+                reservation.getPreparedReturnCreditAmount(), reservationId);
 
-        Instant now = clock.instant();
+        BigDecimal heldKnown = heldKnownAmount(reservationId);
+        if (!reconciled) {
+            consumeKnownClaims(reservationId, now);
+            if (retentionClaims != null) {
+                retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId).stream()
+                        .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.HELD_MISSING)
+                        .forEach(claim -> claim.commitPending(now));
+            }
+        }
         if (reservation.getPreparedLoyaltyAmount().signum() > 0) {
             account.debit(MemberBalanceType.LOYALTY, reservation.getPreparedLoyaltyAmount(), now);
         }
@@ -528,8 +734,173 @@ public class MemberBalanceReservationService {
                     reservation.getPreparedReturnCreditAmount(),
                     now);
         }
-        reservation.finalizePreparedTyped(request.operationId(), now);
-        return walletResponse(reservation, account);
+        if (!reconciled && heldKnown.signum() > 0) {
+            account.debit(MemberBalanceType.LOYALTY, heldKnown, now);
+        }
+        BigDecimal retainedForMetrics = reconciled
+                ? recoveredKnownForOperation(request.operationId()) : heldKnown;
+        boolean hasUsage = reservation.getPreparedLoyaltyAmount().signum() > 0
+                || reservation.getPreparedReturnCreditAmount().signum() > 0
+                || reservation.getRetentionAttributedAmount().signum() > 0
+                || heldKnown.signum() > 0
+                || retainedForMetrics.signum() > 0;
+        if (hasUsage) {
+            reservation.finalizePreparedTyped(request.operationId(), now, retainedForMetrics);
+        } else {
+            // Finalizing an empty wallet reservation only closes ownership; it
+            // must not create a fake CONSUMED movement.
+            reservation.abortPrepared(request.operationId(), now);
+        }
+        if (!reconciled) ensureRetentionReceipt(reservation, request, now);
+        return walletResponse(reservation, account, request.operationId());
+    }
+
+    private void validateConsumedRetentionReplay(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request) {
+        if (request.retentionSnapshot() == null) return;
+        if (retentionReceipts == null) {
+            throw conflict("No existe receipt de retencion para validar el replay");
+        }
+        validateRetentionSnapshot(reservation, request, request.retentionSnapshot());
+        SaasMemberBalanceRetentionReceipt receipt = receiptForOperation(request.operationId());
+        LoyaltyApiModels.RetentionSnapshot snapshot = request.retentionSnapshot();
+        if (snapshot.returnDocumentId() == null) {
+            throw conflict("El replay de retencion requiere returnDocumentId");
+        }
+        if (receipt == null || !receipt.matchesImmutable(
+                reservation.getAccount().getCompanyId(), reservation.getStoreId(),
+                reservation.getAccount().getMemberId(), snapshot.sourceDocumentId(),
+                snapshot.returnDocumentId(), snapshot.attributedAmount(), snapshot.fingerprint())) {
+            throw conflict("El replay de retencion no coincide con el receipt comprometido");
+        }
+    }
+
+    private void validateRetentionSnapshot(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request,
+            LoyaltyApiModels.RetentionSnapshot snapshot) {
+        if (snapshot == null || snapshot.claims() == null) {
+            throw conflict("El snapshot de retencion es invalido");
+        }
+        if (!reservation.getAccount().getMemberId().equals(snapshot.memberId())) {
+            throw conflict("El snapshot de retencion no pertenece al socio de la reserva");
+        }
+        if (snapshot.returnDocumentId() == null) {
+            throw conflict("El snapshot de retencion requiere returnDocumentId");
+        }
+        if (snapshot.claims().stream().anyMatch(Objects::isNull)) {
+            throw conflict("El snapshot de retencion es invalido");
+        }
+        List<MemberReturnBalanceRecoveryCommand.Claim> commandClaims = snapshot.claims().stream()
+                .map(value -> value == null ? null : new MemberReturnBalanceRecoveryCommand.Claim(
+                        value.lotId(), value.sourceMovementId(), value.sourceDocumentId(),
+                        value.amountOriginal(), value.amount()))
+                .toList();
+        List<LoyaltyApiModels.RetentionClaim> normalized = normalizeRetentionClaims(snapshot.claims());
+        try {
+            if (!retentionFingerprint(snapshot.attributedAmount(), normalized)
+                    .equals(snapshot.fingerprint())) {
+                throw conflict("El fingerprint del snapshot de retencion no coincide");
+            }
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw conflict("El snapshot de retencion es invalido");
+        }
+        if (retentionReconciler != null) {
+            retentionReconciler.validate(new MemberReturnBalanceRecoveryCommand(
+                    request.operationId(), reservation.getAccount().getCompanyId(), reservation.getStoreId(),
+                    reservation.getAccount().getMemberId(), reservation.getId(), reservation.getSaleId(),
+                    snapshot.sourceDocumentId(), snapshot.returnDocumentId(), snapshot.attributedAmount(),
+                    snapshot.fingerprint(), commandClaims));
+        }
+    }
+
+    private boolean reconcileRetention(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request,
+            Instant now) {
+        if (retentionReconciler == null || retentionClaims == null
+                || reservation.getRetentionRevision() <= 0) return false;
+        List<SaasMemberBalanceRetentionClaim> values = retentionClaims
+                .findByReservation_IdOrderByLotIdAsc(reservation.getId()).stream()
+                .filter(value -> value.getStatus() != SaasMemberBalanceRetentionClaimStatus.CANCELLED)
+                .toList();
+        if (values.isEmpty() && request.retentionSnapshot() == null) return false;
+        retentionReconciler.reconcile(retentionRecoveryCommand(reservation, request, values), now);
+        return true;
+    }
+
+    private void lockRetentionProjectionBeforeAccount(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request) {
+        if (retentionReconciler == null || retentionClaims == null
+                || reservation.getRetentionRevision() <= 0) {
+            return;
+        }
+        List<SaasMemberBalanceRetentionClaim> values = retentionClaims
+                .findByReservation_IdOrderByLotIdAsc(reservation.getId()).stream()
+                .filter(value -> value.getStatus() != SaasMemberBalanceRetentionClaimStatus.CANCELLED)
+                .toList();
+        if (values.isEmpty() && request.retentionSnapshot() == null) return;
+        retentionReconciler.lockForRecovery(retentionRecoveryCommand(reservation, request, values));
+    }
+
+    private MemberReturnBalanceRecoveryCommand retentionRecoveryCommand(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request,
+            List<SaasMemberBalanceRetentionClaim> values) {
+        LoyaltyApiModels.RetentionSnapshot snapshot = request.retentionSnapshot();
+        UUID sourceDocumentId = snapshot == null
+                ? values.get(0).getSourceDocumentId() : snapshot.sourceDocumentId();
+        List<MemberReturnBalanceRecoveryCommand.Claim> commandClaims = snapshot == null
+                ? values.stream().map(value -> new MemberReturnBalanceRecoveryCommand.Claim(
+                        value.getLotId(), value.getSourceMovementId(), value.getSourceDocumentId(),
+                        value.getAmountOriginal(), value.getAmount())).toList()
+                : snapshot.claims().stream().map(value -> new MemberReturnBalanceRecoveryCommand.Claim(
+                        value.lotId(), value.sourceMovementId(), value.sourceDocumentId(),
+                        value.amountOriginal(), value.amount())).toList();
+        return new MemberReturnBalanceRecoveryCommand(
+                request.operationId(), reservation.getAccount().getCompanyId(), reservation.getStoreId(),
+                reservation.getAccount().getMemberId(), reservation.getId(), reservation.getSaleId(),
+                sourceDocumentId, snapshot == null ? null : snapshot.returnDocumentId(),
+                snapshot == null ? reservation.getRetentionAttributedAmount() : snapshot.attributedAmount(),
+                snapshot == null ? reservation.getRetentionFingerprint() : snapshot.fingerprint(),
+                commandClaims);
+    }
+
+    private void requirePositiveRetentionSnapshot(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request) {
+        if (reservation.getRetentionRevision() <= 0
+                || reservation.getRetentionAttributedAmount().signum() <= 0) {
+            return;
+        }
+        LoyaltyApiModels.RetentionSnapshot snapshot = request.retentionSnapshot();
+        if (snapshot == null || snapshot.returnDocumentId() == null) {
+            throw conflict("La retencion positiva requiere snapshot con returnDocumentId");
+        }
+    }
+
+    private BigDecimal recoveredKnownForOperation(UUID operationId) {
+        if (retentionReceipts == null) return BigDecimal.ZERO.setScale(2);
+        SaasMemberBalanceRetentionReceipt receipt = receiptForOperation(operationId);
+        return receipt == null ? BigDecimal.ZERO.setScale(2) : receipt.getRecoveredKnown();
+    }
+
+    private SaasMemberBalanceRetentionReceipt receiptForOperation(UUID operationId) {
+        if (operationId == null || retentionReceipts == null) return null;
+        SaasMemberBalanceRetentionReceipt direct = retentionReceipts.findById(operationId)
+                .orElse(null);
+        if (retentionReceiptAliases == null) return direct;
+        SaasMemberBalanceRetentionReceiptAlias alias = retentionReceiptAliases.findById(operationId)
+                .orElse(null);
+        if (direct != null && alias != null) {
+            throw conflict("El operationId no puede tener receipt y alias simultaneamente");
+        }
+        if (direct != null) return direct;
+        return alias == null ? null : alias.getReceipt();
     }
 
     @Transactional
@@ -551,7 +922,9 @@ public class MemberBalanceReservationService {
         if (!reservation.isPrepared() || !reservation.preparedBy(request.operationId())) {
             throw conflict("La reserva de monedero no esta preparada para abortar esta operacion");
         }
-        reservation.abortPrepared(request.operationId(), clock.instant());
+        Instant now = clock.instant();
+        reservation.abortPrepared(request.operationId(), now);
+        cancelClaimsForReservation(reservationId, now);
         return walletResponse(reservation, account);
     }
 
@@ -584,7 +957,8 @@ public class MemberBalanceReservationService {
         if (walletBootstraps.findFirstByCompany_IdOrderByCreatedAtDesc(companyId)
                 .filter(SaasMemberWalletBootstrap::isCompleted)
                 .isEmpty()) {
-            throw conflict("El bootstrap historico multi-tienda del monedero aun no esta completado");
+            throw new MemberWalletBootstrapRequiredException(
+                    "El bootstrap historico multi-tienda del monedero aun no esta completado");
         }
     }
 
@@ -636,6 +1010,7 @@ public class MemberBalanceReservationService {
     private void requireLive(SaasMemberBalanceReservation reservation, Instant now) {
         if (reservation.isExpiredAt(now)) {
             reservation.expire(now);
+            cancelClaimsForReservation(reservation.getId(), now);
             throw conflict("La reserva de saldo ha caducado por falta de conexion");
         }
         if (!reservation.isActive()) {
@@ -661,9 +1036,66 @@ public class MemberBalanceReservationService {
                 LEASE_SECONDS);
     }
 
+    private List<LoyaltyApiModels.RetentionClaim> retentionClaimsForResponse(UUID reservationId) {
+        if (retentionClaims == null) {
+            return List.of();
+        }
+        return retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId).stream()
+                .filter(claim -> claim.getStatus() != SaasMemberBalanceRetentionClaimStatus.CANCELLED)
+                .map(claim -> new LoyaltyApiModels.RetentionClaim(
+                        claim.getLotId(), claim.getSourceMovementId(), claim.getSourceDocumentId(),
+                        claim.getAmountOriginal(), claim.getAmount(), claim.getHeldAmount()))
+                .toList();
+    }
+
+    private BigDecimal heldKnownAmount(UUID reservationId) {
+        return sumClaims(reservationId, SaasMemberBalanceRetentionClaimStatus.HELD_KNOWN);
+    }
+
+    private BigDecimal recoveredKnownAmount(UUID reservationId) {
+        return sumClaims(reservationId, SaasMemberBalanceRetentionClaimStatus.APPLIED);
+    }
+
+    private BigDecimal pendingMissingAmount(UUID reservationId) {
+        return sumClaims(reservationId, SaasMemberBalanceRetentionClaimStatus.HELD_MISSING,
+                SaasMemberBalanceRetentionClaimStatus.COMMITTED_PENDING);
+    }
+
+    private BigDecimal spentShortfallAmount(UUID reservationId) {
+        if (retentionClaims == null) return BigDecimal.ZERO.setScale(2);
+        return retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId).stream()
+                .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.HELD_KNOWN
+                        || claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.APPLIED)
+                .map(claim -> claim.getAmount().subtract(claim.getHeldAmount()))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    private BigDecimal spendableAmount(SaasMemberBalanceReservation reservation) {
+        return reservation.getReservedLoyaltyAmount()
+                .add(reservation.getReservedReturnCreditAmount())
+                .subtract(heldKnownAmount(reservation.getId()))
+                .max(BigDecimal.ZERO.setScale(2));
+    }
+
+    private BigDecimal sumClaims(UUID reservationId, SaasMemberBalanceRetentionClaimStatus... statuses) {
+        if (retentionClaims == null) return BigDecimal.ZERO.setScale(2);
+        Set<SaasMemberBalanceRetentionClaimStatus> wanted = Set.of(statuses);
+        return retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId).stream()
+                .filter(claim -> wanted.contains(claim.getStatus()))
+                .map(SaasMemberBalanceRetentionClaim::getHeldAmount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
     private LoyaltyApiModels.WalletReservationResponse walletResponse(
             SaasMemberBalanceReservation reservation,
             SaasMemberBalanceAccount account) {
+        return walletResponse(reservation, account, null);
+    }
+
+    private LoyaltyApiModels.WalletReservationResponse walletResponse(
+            SaasMemberBalanceReservation reservation,
+            SaasMemberBalanceAccount account,
+            UUID retentionOperationId) {
         List<LoyaltyApiModels.WalletReservedLot> reservedLotViews = walletReservationLots(reservation.getId()).stream()
                 .map(reservationLot -> new LoyaltyApiModels.WalletReservedLot(
                         reservationLot.getBalanceType(),
@@ -674,6 +1106,31 @@ public class MemberBalanceReservationService {
                         reservationLot.getLot().getSourceMovementId(),
                         reservationLot.getLot().getDocumentId()))
                 .toList();
+        SaasMemberBalanceRetentionReceipt receipt = receiptForOperation(retentionOperationId);
+        if (receipt != null && !receiptBelongsToReservation(receipt, reservation, account)) {
+            // Operation ids are shared by the local return and the wallet
+            // reservation. A standalone recovery for another member must not
+            // leak its metrics into this reservation replay.
+            receipt = null;
+        }
+        BigDecimal heldKnown = receipt == null ? heldKnownAmount(reservation.getId())
+                : BigDecimal.ZERO.setScale(2);
+        BigDecimal pendingMissing = receipt == null ? pendingMissingAmount(reservation.getId())
+                : receipt.getPendingMissing();
+        BigDecimal spentShortfall = receipt == null ? spentShortfallAmount(reservation.getId())
+                : receipt.getSpentShortfall();
+        BigDecimal recoveredKnown = receipt == null ? recoveredKnownAmount(reservation.getId())
+                : receipt.getRecoveredKnown();
+        List<LoyaltyApiModels.RetentionClaim> responseClaims = receipt == null
+                ? retentionClaimsForResponse(reservation.getId())
+                : retentionClaims == null ? List.of()
+                        : retentionClaims.findByReceipt_OperationIdOrderByLotIdAsc(
+                                receipt.getOperationId()).stream()
+                                .map(claim -> new LoyaltyApiModels.RetentionClaim(
+                                        claim.getLotId(), claim.getSourceMovementId(),
+                                        claim.getSourceDocumentId(), claim.getAmountOriginal(),
+                                        claim.getAmount(), claim.getHeldAmount()))
+                                .toList();
         return new LoyaltyApiModels.WalletReservationResponse(
                 reservation.getId(),
                 account.getMemberId(),
@@ -691,7 +1148,29 @@ public class MemberBalanceReservationService {
                 reservation.getHeartbeatAt(),
                 reservation.getLeaseExpiresAt(),
                 HEARTBEAT_INTERVAL_SECONDS,
-                LEASE_SECONDS);
+                LEASE_SECONDS,
+                reservation.getRetentionRevision(),
+                reservation.getRetentionFingerprint(),
+                responseClaims,
+                heldKnown,
+                pendingMissing,
+                spentShortfall,
+                spendableAmount(reservation),
+                recoveredKnown);
+    }
+
+    private boolean receiptBelongsToReservation(
+            SaasMemberBalanceRetentionReceipt receipt,
+            SaasMemberBalanceReservation reservation,
+            SaasMemberBalanceAccount account) {
+        if (!account.getCompanyId().equals(receipt.getCompanyId())
+                || !reservation.getStoreId().equals(receipt.getStoreId())
+                || !account.getMemberId().equals(receipt.getMemberId())) {
+            return false;
+        }
+        return reservation.getRetentionRevision() > 0
+                && reservation.getRetentionAttributedAmount().compareTo(receipt.getAttributedAmount()) == 0
+                && Objects.equals(reservation.getRetentionFingerprint(), receipt.getFingerprint());
     }
 
     private List<SaasMemberBalanceReservationLot> walletReservationLots(UUID reservationId) {
@@ -745,6 +1224,265 @@ public class MemberBalanceReservationService {
         }
         if (pending.signum() != 0) {
             throw conflict("Los lotes reservados de " + balanceType + " no cubren el importe solicitado");
+        }
+    }
+
+    private void consumeSpendableType(
+            List<SaasMemberBalanceReservationLot> preparedLots,
+            MemberBalanceType balanceType,
+            BigDecimal amount,
+            UUID reservationId) {
+        BigDecimal pending = amount;
+        for (SaasMemberBalanceReservationLot reservationLot : preparedLots) {
+            if (reservationLot.getBalanceType() != balanceType || pending.signum() == 0) continue;
+            BigDecimal held = retentionClaims == null ? BigDecimal.ZERO.setScale(2)
+                    : retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId).stream()
+                    .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.HELD_KNOWN)
+                    .filter(claim -> claim.getLotId().equals(reservationLot.getLot().getId()))
+                    .map(SaasMemberBalanceRetentionClaim::getHeldAmount)
+                    .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            BigDecimal spendable = reservationLot.getRemainingAmount().subtract(held).max(BigDecimal.ZERO.setScale(2));
+            BigDecimal consumed = pending.min(spendable);
+            if (consumed.signum() > 0) {
+                reservationLot.getLot().consume(consumed);
+                reservationLot.consume(consumed);
+                pending = pending.subtract(consumed);
+            }
+        }
+        if (pending.signum() != 0) {
+            throw conflict("El saldo utilizable no cubre el importe solicitado");
+        }
+    }
+
+    private void consumeKnownClaims(UUID reservationId, Instant now) {
+        if (retentionClaims == null) return;
+        List<SaasMemberBalanceReservationLot> links = walletReservationLots(reservationId);
+        retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId).stream()
+                .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.HELD_KNOWN)
+                .forEach(claim -> {
+                    BigDecimal pending = claim.getHeldAmount();
+                    for (SaasMemberBalanceReservationLot link : links) {
+                        if (pending.signum() == 0 || !link.getLot().getId().equals(claim.getLotId())) continue;
+                        BigDecimal consumed = pending.min(link.getRemainingAmount());
+                        if (consumed.signum() > 0) {
+                            link.getLot().consume(consumed);
+                            link.consume(consumed);
+                            pending = pending.subtract(consumed);
+                        }
+                    }
+                    if (pending.signum() != 0) throw conflict("El lote retenido ya no dispone de saldo");
+                    claim.apply(now);
+                });
+    }
+
+    private void ensureRetentionReceipt(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request,
+            Instant now) {
+        if (retentionClaims == null || retentionReceipts == null
+                || reservation.getRetentionRevision() <= 0) {
+            return;
+        }
+        List<SaasMemberBalanceRetentionClaim> claims =
+                retentionClaims.findByReservation_IdOrderByLotIdAsc(reservation.getId()).stream()
+                        .filter(claim -> claim.getStatus() != SaasMemberBalanceRetentionClaimStatus.CANCELLED)
+                        .toList();
+        if (claims.isEmpty()) return;
+        UUID sourceDocumentId = claims.get(0).getSourceDocumentId();
+        if (sourceDocumentId == null || claims.stream()
+                .anyMatch(claim -> !sourceDocumentId.equals(claim.getSourceDocumentId()))) {
+            throw conflict("Todos los claims de retencion deben compartir documento origen");
+        }
+        List<LoyaltyApiModels.RetentionClaim> receiptClaims = claims.stream()
+                .map(claim -> new LoyaltyApiModels.RetentionClaim(
+                        claim.getLotId(), claim.getSourceMovementId(), claim.getSourceDocumentId(),
+                        claim.getAmountOriginal(), claim.getAmount(), claim.getHeldAmount()))
+                .toList();
+        String calculatedFingerprint = retentionFingerprint(
+                reservation.getRetentionAttributedAmount(), receiptClaims);
+        if (!calculatedFingerprint.equals(reservation.getRetentionFingerprint())) {
+            throw conflict("El fingerprint de claims de retencion no coincide con la reserva");
+        }
+        BigDecimal recovered = claims.stream()
+                .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.APPLIED)
+                .map(SaasMemberBalanceRetentionClaim::getHeldAmount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal pending = claims.stream()
+                .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.COMMITTED_PENDING
+                        || claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.HELD_MISSING)
+                .map(SaasMemberBalanceRetentionClaim::getHeldAmount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal shortfall = claims.stream()
+                .filter(claim -> claim.getStatus() == SaasMemberBalanceRetentionClaimStatus.APPLIED)
+                .map(claim -> claim.getAmount().subtract(claim.getHeldAmount()))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        LoyaltyApiModels.RetentionSnapshot snapshot = request.retentionSnapshot();
+        UUID returnDocumentId = snapshot == null ? null : snapshot.returnDocumentId();
+        if (reservation.getRetentionAttributedAmount().signum() > 0 && returnDocumentId == null) {
+            throw conflict("La retencion positiva requiere snapshot con returnDocumentId");
+        }
+        UUID operationId = request.operationId();
+        lockOperation(operationId);
+        SaasMemberBalanceRetentionReceipt existing = receiptForOperation(operationId);
+        if (existing != null) {
+            if (!existing.matchesImmutable(
+                    reservation.getAccount().getCompanyId(), reservation.getStoreId(),
+                    reservation.getAccount().getMemberId(), sourceDocumentId,
+                    returnDocumentId, reservation.getRetentionAttributedAmount(),
+                    reservation.getRetentionFingerprint())) {
+                throw conflict("El receipt de retencion ya existe con datos diferentes");
+            }
+            if (existing.getReturnDocumentId() == null && returnDocumentId != null) {
+                existing.attachReturnDocument(returnDocumentId, now);
+                retentionReceipts.save(existing);
+            }
+            return;
+        }
+        SaasMemberBalanceRetentionReceipt receipt = retentionReceipts.save(
+                new SaasMemberBalanceRetentionReceipt(
+                        operationId,
+                        reservation.getAccount().getCompanyId(),
+                        reservation.getStoreId(),
+                        reservation.getAccount().getMemberId(),
+                        sourceDocumentId,
+                        returnDocumentId,
+                        reservation.getRetentionAttributedAmount(),
+                        reservation.getRetentionFingerprint(),
+                        recovered,
+                        pending,
+                        shortfall,
+                        now));
+        for (SaasMemberBalanceRetentionClaim claim : claims) {
+            if (claim.getReceipt() != null && !claim.getReceipt().getOperationId().equals(operationId)) {
+                throw conflict("El claim de retencion ya pertenece a otro receipt");
+            }
+            claim.attachReceipt(receipt);
+            retentionClaims.save(claim);
+        }
+    }
+
+    private void lockOperation(UUID operationId) {
+        if (operationId == null) {
+            throw conflict("operationId es obligatorio para el receipt de retencion");
+        }
+        String lockKey = "OPERATION:" + operationId;
+        accounts.ensureProjectionLock(lockKey);
+        accounts.lockProjectionKey(lockKey);
+    }
+
+    /**
+     * Checks the durable final snapshot without changing any entity. This is
+     * intentionally called before F10 consumption in finalizePreparedWallet;
+     * all subsequent operations only transition already validated state.
+     */
+    private void validateRetentionBeforeFinalize(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request,
+            boolean reconciled) {
+        if (retentionClaims == null || reservation.getRetentionRevision() <= 0) return;
+        List<SaasMemberBalanceRetentionClaim> values =
+                retentionClaims.findByReservation_IdOrderByLotIdAsc(reservation.getId());
+        if (values.isEmpty()) {
+            if (reservation.getRetentionAttributedAmount().signum() == 0) return;
+            if (reconciled && hasCommittedRetentionReceipt(reservation, request)) return;
+            throw conflict("La reserva tiene retencion sin claims persistidos");
+        }
+        UUID sourceDocumentId = values.get(0).getSourceDocumentId();
+        if (sourceDocumentId == null || values.stream()
+                .anyMatch(value -> !sourceDocumentId.equals(value.getSourceDocumentId()))) {
+            throw conflict("Todos los claims de retencion deben compartir documento origen");
+        }
+        List<LoyaltyApiModels.RetentionClaim> input = values.stream()
+                .filter(value -> value.getStatus() != SaasMemberBalanceRetentionClaimStatus.CANCELLED)
+                .map(value -> new LoyaltyApiModels.RetentionClaim(
+                        value.getLotId(), value.getSourceMovementId(), value.getSourceDocumentId(),
+                        value.getAmountOriginal(), value.getAmount(), value.getHeldAmount()))
+                .toList();
+        if (input.isEmpty()) {
+            if (reservation.getRetentionAttributedAmount().signum() == 0) return;
+            throw conflict("La retencion de la reserva ya esta cancelada");
+        }
+        BigDecimal total = input.stream()
+                .map(LoyaltyApiModels.RetentionClaim::amount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        if (total.compareTo(reservation.getRetentionAttributedAmount()) != 0) {
+            throw conflict("Los claims de retencion no coinciden con el saldo atribuido");
+        }
+        String calculated = retentionFingerprint(reservation.getRetentionAttributedAmount(), input);
+        if (!calculated.equals(reservation.getRetentionFingerprint())) {
+            throw conflict("El fingerprint de claims de retencion no coincide con la reserva");
+        }
+        BigDecimal knownHeld = values.stream()
+                .filter(value -> value.getStatus() == SaasMemberBalanceRetentionClaimStatus.HELD_KNOWN)
+                .map(SaasMemberBalanceRetentionClaim::getHeldAmount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal preparedPlusRetention = reservation.getPreparedLoyaltyAmount().add(knownHeld);
+        if (preparedPlusRetention.compareTo(reservation.getReservedLoyaltyAmount()) > 0) {
+            throw conflict("El F10 preparado mas la retencion supera la capacidad reservada");
+        }
+    }
+
+    private boolean hasCommittedRetentionReceipt(
+            SaasMemberBalanceReservation reservation,
+            LoyaltyApiModels.PreparedOwnerRequest request) {
+        if (retentionReceipts == null) return false;
+        SaasMemberBalanceRetentionReceipt receipt = receiptForOperation(request.operationId());
+        if (receipt == null
+                || receipt.getStatus() != SaasMemberBalanceRetentionReceiptStatus.COMMITTED) {
+            return false;
+        }
+        LoyaltyApiModels.RetentionSnapshot snapshot = request.retentionSnapshot();
+        if (snapshot == null) return false;
+        return receipt.matchesImmutable(
+                reservation.getAccount().getCompanyId(), reservation.getStoreId(),
+                reservation.getAccount().getMemberId(), snapshot.sourceDocumentId(),
+                snapshot.returnDocumentId(), snapshot.attributedAmount(), snapshot.fingerprint());
+    }
+
+    private void cancelClaimsForReservation(UUID reservationId, Instant now) {
+        if (retentionClaims != null) {
+            cancelClaims(retentionClaims.findByReservation_IdOrderByLotIdAsc(reservationId), now);
+        }
+    }
+
+    private void cancelClaims(List<SaasMemberBalanceRetentionClaim> claims, Instant now) {
+        claims.forEach(claim -> claim.release(now));
+    }
+
+    private List<LoyaltyApiModels.RetentionClaim> normalizeRetentionClaims(
+            List<LoyaltyApiModels.RetentionClaim> values) {
+        Set<String> unique = new HashSet<>();
+        return values.stream().map(claim -> {
+            if (claim == null || claim.lotId() == null || claim.sourceMovementId() == null) {
+                throw invalid("Cada claim debe identificar lote y movimiento origen");
+            }
+            if (!unique.add(claim.lotId().toString())) {
+                throw invalid("No puede repetirse el mismo lote en la retencion");
+            }
+            return claim;
+        }).sorted(Comparator.comparing(value -> value.lotId().toString())).toList();
+    }
+
+    private String retentionFingerprint(BigDecimal attributedAmount,
+            List<LoyaltyApiModels.RetentionClaim> claims) {
+        BigDecimal total = claims.stream().map(LoyaltyApiModels.RetentionClaim::amount)
+                .map(this::money).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal attributed = attributedAmount == null ? total : money(attributedAmount);
+        if (total.compareTo(attributed) != 0) {
+            throw invalid("Los claims de retencion deben coincidir exactamente con el saldo atribuido");
+        }
+        String canonical = attributed.toPlainString() + "\n" + claims.stream()
+                .map(claim -> claim.lotId() + "|" + claim.sourceMovementId() + "|"
+                        + claim.sourceDocumentId() + "|" + (claim.amountOriginal() == null
+                            ? money(claim.amount()).toPlainString()
+                            : money(claim.amountOriginal()).toPlainString())
+                        + "|" + money(claim.amount()).toPlainString())
+                .collect(Collectors.joining("\n"));
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception exception) {
+            throw new IllegalStateException("No se pudo calcular la huella de retencion", exception);
         }
     }
 
@@ -859,10 +1597,24 @@ public class MemberBalanceReservationService {
         if (loyaltyAmount.signum() < 0 || returnCreditAmount.signum() < 0) {
             throw invalid("Los importes del monedero no pueden ser negativos");
         }
+        // Retention-only returns are committed through the recovery outbox.
+        // PREPARED/CONSUMED is reserved for an actual wallet spend and must
+        // satisfy the V17 positive-amount contract.
         if (loyaltyAmount.add(returnCreditAmount).signum() <= 0) {
             throw invalid("Debe prepararse un importe positivo del monedero");
         }
-        if (loyaltyAmount.compareTo(reservation.getReservedLoyaltyAmount()) > 0) {
+        BigDecimal heldKnown = heldKnownAmount(reservation.getId());
+        BigDecimal attributed = reservation.getRetentionAttributedAmount();
+        if (loyaltyAmount.add(returnCreditAmount).signum() > 0
+                && (pendingMissingAmount(reservation.getId()).signum() > 0
+                || spentShortfallAmount(reservation.getId()).signum() > 0
+                || recoveredKnownAmount(reservation.getId()).signum() > 0
+                || attributed.compareTo(heldKnown) != 0)) {
+            throw conflict("La retencion de devolucion aun no esta confirmada");
+        }
+        BigDecimal spendableLoyalty = reservation.getReservedLoyaltyAmount()
+                .subtract(heldKnownAmount(reservation.getId())).max(BigDecimal.ZERO.setScale(2));
+        if (loyaltyAmount.compareTo(spendableLoyalty) > 0) {
             throw invalid("loyaltyAmount supera el saldo LOYALTY reservado");
         }
         if (returnCreditAmount.compareTo(reservation.getReservedReturnCreditAmount()) > 0) {
@@ -876,6 +1628,21 @@ public class MemberBalanceReservationService {
         }
         requireText(request.terminalId(), "terminalId");
         requireText(request.saleId(), "saleId");
+    }
+
+    private void requireRetentionConfigureRequest(LoyaltyApiModels.RetentionConfigureRequest request) {
+        if (request == null) throw invalid("Datos de retencion obligatorios");
+        requireOwnerRequest(new LoyaltyApiModels.ReservationOwnerRequest(
+                request.companyId(), request.storeId(), request.terminalId(), request.saleId()));
+        if (request.attributedAmount() != null) money(request.attributedAmount());
+        if (request.retentionClaims() == null) throw invalid("retentionClaims es obligatorio");
+        if (!request.retentionClaims().isEmpty()
+                && (request.sourceDocumentId() == null
+                || request.retentionClaims().stream().anyMatch(claim -> claim == null
+                        || claim.sourceDocumentId() == null
+                        || !request.sourceDocumentId().equals(claim.sourceDocumentId())))) {
+            throw invalid("Todos los claims deben pertenecer al sourceDocumentId indicado");
+        }
     }
 
     private void requireText(String value, String field) {
@@ -943,5 +1710,9 @@ public class MemberBalanceReservationService {
 
     private ResponseStatusException conflict(String message) {
         return new ResponseStatusException(HttpStatus.CONFLICT, message);
+    }
+
+    private MemberBalanceReservationConflictException reservationConflict(String message) {
+        return new MemberBalanceReservationConflictException(message);
     }
 }

@@ -40,6 +40,10 @@ public class FiscalSubmissionAttempt {
     @Column(name = "respuesta")
     private String responsePayload;
 
+    /** New batches keep large request/response payloads in immutable evidence. */
+    @Column(name = "evidencia_id")
+    private UUID evidenceId;
+
     @Version
     private long version;
 
@@ -54,6 +58,18 @@ public class FiscalSubmissionAttempt {
             String error,
             String requestXml,
             String responsePayload) {
+        this(recordId, attemptedAt, status, errorCode, error, requestXml, responsePayload, null);
+    }
+
+    public FiscalSubmissionAttempt(
+            UUID recordId,
+            Instant attemptedAt,
+            FiscalSubmissionStatus status,
+            String errorCode,
+            String error,
+            String requestXml,
+            String responsePayload,
+            UUID evidenceId) {
         this.id = UUID.randomUUID();
         this.recordId = Objects.requireNonNull(recordId, "recordId");
         this.attemptedAt = Objects.requireNonNull(attemptedAt, "attemptedAt");
@@ -62,6 +78,10 @@ public class FiscalSubmissionAttempt {
         this.error = optional(error);
         this.requestXml = optional(requestXml);
         this.responsePayload = optional(responsePayload);
+        if (evidenceId != null && (this.requestXml != null || this.responsePayload != null)) {
+            throw new IllegalArgumentException("Una tentativa con evidencia no duplica payloads");
+        }
+        this.evidenceId = evidenceId;
     }
 
     public UUID getId() {
@@ -94,6 +114,10 @@ public class FiscalSubmissionAttempt {
 
     public String getResponsePayload() {
         return responsePayload;
+    }
+
+    public UUID getEvidenceId() {
+        return evidenceId;
     }
 
     private static String optional(String value) {

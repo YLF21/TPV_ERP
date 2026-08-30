@@ -46,7 +46,7 @@ management:
         liveness:
           include: ping
         readiness:
-          include: db,tpvBusiness
+          include: db,tpvBusiness,tpvFiscal
 
 springdoc:
   api-docs:
@@ -69,6 +69,14 @@ tpv:
     default-directory: ${TPV_BACKUP_DIRECTORY:${user.home}/TPV-ERP-Backups}
     pg-dump-command: ${TPV_PG_DUMP_COMMAND:pg_dump}
     pg-restore-command: ${TPV_PG_RESTORE_COMMAND:pg_restore}
+    # DB + filesystem cannot be atomic while the application is serving traffic.
+    # Enable only under an explicitly coordinated maintenance procedure.
+    restore-online-enabled: ${TPV_BACKUP_RESTORE_ONLINE_ENABLED:false}
+    restore-journal-path: ${TPV_BACKUP_RESTORE_JOURNAL_PATH:}
+    archive:
+      max-entries: ${TPV_BACKUP_ARCHIVE_MAX_ENTRIES:100000}
+      max-entry-bytes: ${TPV_BACKUP_ARCHIVE_MAX_ENTRY_BYTES:268435456}
+      max-total-bytes: ${TPV_BACKUP_ARCHIVE_MAX_TOTAL_BYTES:2147483648}
   product-images:
     directory: ${TPV_PRODUCT_IMAGE_DIRECTORY:${user.home}/.tpv-erp/product-images}
   document-templates:
@@ -87,12 +95,19 @@ tpv:
     secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'
     system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
     system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
-    system-version: ${TPV_VERIFACTU_SYSTEM_VERSION:4.1.0}
+    # Maven binds this property to the same release manifest used by runtime.
+    system-version: @tpv.release.version@
     producer-name: ${TPV_VERIFACTU_PRODUCER_NAME:TPV ERP DEV}
     producer-tax-id: ${TPV_VERIFACTU_PRODUCER_TAX_ID:B00000000}
     declaration-hash: ${TPV_VERIFACTU_DECLARATION_HASH:}
     worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:false}
-    worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}
+    worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:60000}
+    observability:
+      initial-delay-ms: ${TPV_VERIFACTU_OBSERVABILITY_INITIAL_DELAY_MS:5000}
+      interval-ms: ${TPV_VERIFACTU_OBSERVABILITY_INTERVAL_MS:60000}
+      # Readiness uses the scheduler's cached projection and marks it stale
+      # after this interval; probes never query the fiscal tables directly.
+      stale-after-ms: ${TPV_VERIFACTU_OBSERVABILITY_STALE_AFTER_MS:180000}
     # Observes the persisted operating clock every minute; six operating hours
     # are accumulated before a type 10 summary is emitted.
     event-summary-interval-ms: ${TPV_VERIFACTU_EVENT_SUMMARY_INTERVAL_MS:60000}

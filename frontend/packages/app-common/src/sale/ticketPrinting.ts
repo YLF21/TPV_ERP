@@ -154,15 +154,9 @@ function invoiceLabels(locale: LocaleCode) {
   return { phone: "Teléfono", paymentMethod: "Forma de pago", code: "Código" };
 }
 
-function paymentMethodLabel(method: string, locale: LocaleCode) {
-  const normalized = method.trim().toUpperCase();
-  if (normalized === "CREDITO_DEVOLUCION" || normalized === "MEMBER_CREDIT") {
-    return locale === "es" ? "Saldo a favor" : locale === "en" ? "Return credit" : "退货余额";
-  }
-  if (normalized === "SALDO_MIEMBRO" || normalized === "MEMBER_BALANCE") {
-    return locale === "es" ? "Saldo socio" : locale === "en" ? "Member balance" : "会员余额";
-  }
-  return method;
+export function printablePaymentMethodLabel(method: string) {
+  const normalized = method.trim().toUpperCase().replace(/_/g, " ");
+  return normalized || "PAGO";
 }
 
 export type CustomerReceivablePaymentReceiptSnapshot = {
@@ -211,7 +205,7 @@ export function ticketPrintRequest(
       ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {})
     })),
     payments: snapshot.payments.map((payment) => ({
-      method: paymentMethodLabel(payment.method, locale),
+      method: printablePaymentMethodLabel(payment.method),
       amount: Number(payment.amount)
     })),
     total: Number(snapshot.total),
@@ -308,7 +302,7 @@ export function ticketAsA4Document(
     ...(snapshot.logo ? { logo: snapshot.logo } : {}),
     ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
     metadata: snapshot.payments.map((payment) => ({
-      label: paymentMethodLabel(payment.method, locale),
+      label: printablePaymentMethodLabel(payment.method),
       value: Number(payment.amount).toFixed(2),
     })),
     labels: {
@@ -508,7 +502,7 @@ export function commercialDocumentAsA4Document(
     issuer: snapshot.issuer,
     customer: snapshot.customer,
     payments: (snapshot.payments ?? []).map((payment) => ({
-      method: paymentMethodLabel(payment.method, locale),
+      method: printablePaymentMethodLabel(payment.method),
       amount: Number(payment.amount),
       reference: payment.reference,
     })),
@@ -675,6 +669,9 @@ export async function printCustomerReceivablePaymentReceipt(
     const t = createTranslator(locale);
     const config = await hardware.getHardwareConfig();
     const amount = Number(snapshot.amount);
+    const methodLabel = printablePaymentMethodLabel(snapshot.method);
+    const escposMethodLabel = methodLabel.normalize("NFKD")
+      .replace(/[^\x20-\x7e]/g, "").trim() || "CARD";
     const result = await hardware.printTicket({
       documentNumber: `${t("receivables.print.collection")} ${snapshot.documentNumber} / ${snapshot.paymentId}`,
       storeName: terminal.storeName,
@@ -686,7 +683,7 @@ export async function printCustomerReceivablePaymentReceipt(
         price: amount,
         total: amount
       }],
-      payments: [{ method: snapshot.method, amount }],
+      payments: [{ method: methodLabel, amount }],
       details: snapshot.transferDate
         ? [{ label: t("receivables.column.transferDate"), value: snapshot.transferDate }]
         : undefined,
@@ -700,7 +697,7 @@ export async function printCustomerReceivablePaymentReceipt(
         storeName: "Dianpu", terminalCode: `terminal-${terminal.terminalCode.replace(/[^A-Za-z0-9_-]/g, "").replace(/^-+/, "") || "local"}`,
         documentNumber: `Shoukuan ${snapshot.paymentId}`,
         lineNames: [`Kehu ${snapshot.documentNumber.replace(/[^\x20-\x7e]/g, "") || snapshot.paymentId}`],
-        paymentMethods: ["Fangshi CARD"]
+        paymentMethods: [`Fangshi ${escposMethodLabel}`]
       } : undefined,
       ...(snapshot.renderedPdf ? { renderedPdf: snapshot.renderedPdf } : {}),
       ...(snapshot.ticketRenderedImage ? {

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class SyncOutboxServiceTest {
@@ -60,5 +63,35 @@ class SyncOutboxServiceTest {
                 .thenReturn(pending);
 
         assertThat(service.pending()).isEqualTo(pending);
+    }
+
+    @Test
+    void reclamaPorIdSinAfectarOtrosEventos() {
+        UUID eventId = UUID.randomUUID();
+        var event = new SyncOutboxEvent(UUID.randomUUID(), null, null, "DOCUMENTO",
+                UUID.randomUUID(), SyncOperation.CONFIRMAR, Map.of(), NOW);
+        when(repository.findClaimableByEventIdForUpdate(eventId, NOW, NOW.minusSeconds(120)))
+                .thenReturn(java.util.Optional.of(event));
+
+        var claimed = new SyncOutboxService(repository, clock).claimEvent(
+                eventId, java.time.Duration.ofSeconds(120));
+
+        assertThat(claimed).containsSame(event);
+        assertThat(event.getStatus()).isEqualTo(SyncOutboxStatus.ENVIANDO);
+        verify(repository).findClaimableByEventIdForUpdate(eventId, NOW, NOW.minusSeconds(120));
+    }
+
+    @Test
+    void lasTransicionesDelEventoDirigidoAbrenTransaccionNuevaTrasElCommit() {
+        assertThat(Arrays.stream(SyncOutboxService.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals("claimEvent")
+                        || method.getName().equals("markSent")
+                        || method.getName().equals("markFailed")))
+                .hasSize(3)
+                .allSatisfy(method -> {
+                    var transactional = method.getAnnotation(Transactional.class);
+                    assertThat(transactional).isNotNull();
+                    assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+                });
     }
 }

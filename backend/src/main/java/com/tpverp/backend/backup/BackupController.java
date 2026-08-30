@@ -43,7 +43,8 @@ public class BackupController {
                 request.monthlyRetention(),
                 Path.of(request.directory()),
                 request.active(),
-                request.adminPassword());
+                request.adminPassword(),
+                request.recoverySecret());
     }
 
     @PostMapping("/run")
@@ -58,7 +59,7 @@ public class BackupController {
         backupService.restore(
                 Path.of(request.backupFile()),
                 Path.of(request.recoveryFile()),
-                request.adminPassword());
+                request.recoverySecret());
         return ResponseEntity.noContent().build();
     }
 
@@ -73,12 +74,13 @@ public class BackupController {
             @Min(72) int monthlyRetention,
             @NotBlank String directory,
             boolean active,
-            @NotBlank String adminPassword) {
+            @NotBlank String adminPassword,
+            @NotBlank String recoverySecret) {
     }
 
     public record RestoreBackupRequest(
             @NotBlank String backupFile,
             @NotBlank String recoveryFile,
-            @NotBlank String adminPassword) {
+            @NotBlank String recoverySecret) {
     }
 }

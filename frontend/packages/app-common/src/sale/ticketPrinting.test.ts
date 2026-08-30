@@ -43,6 +43,28 @@ function hardwareConfig(printAutomatically: boolean) {
 }
 
 describe("confirmed ticket printing", () => {
+  it("normalizes payment method labels across ticket and A4 fallback routes", () => {
+    const paymentSnapshot = {
+      ...snapshot,
+      payments: [
+        { method: "credito_devolucion", amount: "4.39" },
+        { method: "tarjeta", amount: "2.00" },
+        { method: "pago_personalizado", amount: "1.00" },
+      ],
+    };
+
+    expect(ticketPrintRequest(paymentSnapshot, terminal, "zh").payments).toEqual([
+      { method: "CREDITO DEVOLUCION", amount: 4.39 },
+      { method: "TARJETA", amount: 2 },
+      { method: "PAGO PERSONALIZADO", amount: 1 },
+    ]);
+    expect(ticketAsA4Document(paymentSnapshot, terminal, "en").metadata).toEqual([
+      { label: "CREDITO DEVOLUCION", value: "4.39" },
+      { label: "TARJETA", value: "2.00" },
+      { label: "PAGO PERSONALIZADO", value: "1.00" },
+    ]);
+  });
+
   it("forwards the complete frozen fiscal snapshot to every desktop renderer", () => {
     const fiscal = {
       formatVersion: "AEAT_QR_0.5.0",
@@ -532,7 +554,7 @@ describe("confirmed ticket printing", () => {
       paymentId: "pay-1",
       documentNumber: "FV-1",
       collectedAt: "2026-07-20T09:00:00Z",
-      method: "TRANSFERENCIA",
+      method: "credito_devolucion",
       amount: "20.00",
       remaining: "50.00",
       renderedPdf: { contentType: "application/pdf", base64: "JVBERi0=" },
@@ -542,7 +564,7 @@ describe("confirmed ticket printing", () => {
     expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
       documentNumber: "COBRO FV-1 / pay-1",
       issuedAt: "2026-07-20T09:00:00Z",
-      payments: [{ method: "TRANSFERENCIA", amount: 20 }],
+      payments: [{ method: "CREDITO DEVOLUCION", amount: 20 }],
       total: 20,
       renderedPdf: { contentType: "application/pdf", base64: "JVBERi0=" },
       documentRaster: "data:image/png;base64,iVBORw0KGgo="

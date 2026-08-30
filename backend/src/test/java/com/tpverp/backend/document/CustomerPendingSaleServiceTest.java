@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -290,6 +291,40 @@ class CustomerPendingSaleServiceTest {
 
         verifyNoInteractions(terminalOperations);
         verify(configurations, never()).required(any());
+    }
+
+    @Test
+    void directWalletPaymentIsRejectedBeforeTerminalLookupOrDocumentSave() {
+        var base = request(List.of(standardPayment(new BigDecimal("100.00"))),
+                new BigDecimal("100.00"));
+        var wallet = new PaymentMethod(companyId, "SALDO_MIEMBRO", true);
+        var payment = base.payments().getFirst();
+        var request = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        CustomerPendingSaleController.PaymentKind.STANDARD,
+                        wallet.getId(), payment.amount(), payment.principal(),
+                        payment.delivered(), payment.change(), payment.voucherCode(),
+                        payment.reference(), payment.requestId(), UUID.randomUUID())),
+                base.quotedTotal(), null,
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY,
+                null, null, null, Map.of());
+        when(paymentMethods.findByIdAndEmpresaId(wallet.getId(), companyId))
+                .thenReturn(Optional.of(wallet));
+        when(reservations.find(terminalId, request.checkoutId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createDocument(request, authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("direct_document_payment_method_not_allowed");
+
+        verify(terminalOperations, never()).find(any());
+        verify(terminalOperations, never()).requireFinalizableApprovedCharge(any());
+        verify(terminalOperations, never()).charge(any(), any(), any(), any());
+        verify(documents, never()).quotePendingSale(any(), any(), any());
+        verify(reservations, never()).insert(any());
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
     }
 
     @Test
@@ -754,6 +789,31 @@ class CustomerPendingSaleServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idempotency_conflict");
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
+    void completedWalletCheckoutReplayReturnsBeforeWalletGuardOrMutation() {
+        var request = request(List.of(standardPayment(new BigDecimal("100.00"))),
+                new BigDecimal("100.00"));
+        var winnerDocument = document(new BigDecimal("100.00"));
+        var checkout = CustomerPendingSaleCheckout.reserve(
+                UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
+                CustomerPendingSaleRequestHasher.hash(request, request.quotedTotal()), NOW);
+        checkout.complete(winnerDocument.getId(), NOW);
+        when(reservations.find(terminalId, request.checkoutId()))
+                .thenReturn(Optional.of(checkout));
+        when(documents.find(winnerDocument.getId())).thenReturn(winnerDocument);
+
+        assertThat(service.createDocument(request, authentication))
+                .isSameAs(winnerDocument);
+
+        verify(paymentMethods, never()).findByIdAndEmpresaId(any(), any());
+        verify(documents, never()).quotePendingSale(any(), any(), any());
+        verify(documentMutationAuthorization, never()).authorize(
+                any(), any(), any(), any(), any(), any());
+        verify(reservations, never()).insert(any());
+        verify(reservations, never()).claim(
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

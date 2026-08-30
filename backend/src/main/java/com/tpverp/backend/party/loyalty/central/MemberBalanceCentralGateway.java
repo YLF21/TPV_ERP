@@ -107,6 +107,15 @@ public interface MemberBalanceCentralGateway {
 
     ReservationResponse release(UUID reservationId, ReservationOwnerRequest request);
 
+    /** Replaces the active retention snapshot for this reservation. */
+    default ReservationResponse configureRetention(
+            UUID reservationId,
+            ConfigureRetentionRequest request) {
+        throw new MemberBalanceCentralException(
+                MemberBalanceCentralException.Kind.UNAVAILABLE,
+                "La retencion central de saldo no esta disponible");
+    }
+
     ReservationResponse prepare(UUID reservationId, PrepareRequest request);
 
     ReservationResponse finalizePrepared(UUID reservationId, PreparedOwnerRequest request);
@@ -451,7 +460,21 @@ public interface MemberBalanceCentralGateway {
             String saleId,
             UUID operationId,
             BigDecimal loyaltyAmount,
-            BigDecimal returnCreditAmount) {
+            BigDecimal returnCreditAmount,
+            long expectedRetentionRevision,
+            String expectedRetentionFingerprint) {
+
+        public PrepareRequest(
+                UUID companyId,
+                UUID storeId,
+                String terminalId,
+                String saleId,
+                UUID operationId,
+                BigDecimal loyaltyAmount,
+                BigDecimal returnCreditAmount) {
+            this(companyId, storeId, terminalId, saleId, operationId,
+                    loyaltyAmount, returnCreditAmount, 0L, "");
+        }
 
         public PrepareRequest {
             Objects.requireNonNull(loyaltyAmount, "loyaltyAmount");
@@ -459,8 +482,76 @@ public interface MemberBalanceCentralGateway {
             if (loyaltyAmount.signum() < 0 || returnCreditAmount.signum() < 0) {
                 throw new IllegalArgumentException("Los importes del monedero no pueden ser negativos");
             }
-            if (loyaltyAmount.signum() == 0 && returnCreditAmount.signum() == 0) {
-                throw new IllegalArgumentException("Debe prepararse al menos un importe del monedero");
+            if (expectedRetentionRevision < 0) {
+                throw new IllegalArgumentException("La revision de retencion no puede ser negativa");
+            }
+            expectedRetentionFingerprint = expectedRetentionFingerprint == null
+                    ? "" : expectedRetentionFingerprint.trim();
+        }
+    }
+
+    record RetentionClaim(
+            UUID lotId,
+            UUID sourceMovementId,
+            UUID sourceDocumentId,
+            BigDecimal amountOriginal,
+            BigDecimal amount,
+            BigDecimal heldAmount) {
+        public RetentionClaim(
+                UUID lotId,
+                UUID sourceMovementId,
+                UUID sourceDocumentId,
+                BigDecimal amountOriginal,
+                BigDecimal amount) {
+            this(lotId, sourceMovementId, sourceDocumentId, amountOriginal, amount, null);
+        }
+
+        public RetentionClaim {
+            Objects.requireNonNull(lotId, "lotId");
+            Objects.requireNonNull(sourceMovementId, "sourceMovementId");
+            Objects.requireNonNull(sourceDocumentId, "sourceDocumentId");
+            amountOriginal = exactMoney(amountOriginal, "amountOriginal");
+            amount = exactMoney(amount, "amount");
+            if (amountOriginal.signum() <= 0 || amount.signum() <= 0
+                    || amount.compareTo(amountOriginal) > 0) {
+                throw new IllegalArgumentException("Claim de retencion invalido");
+            }
+            if (heldAmount != null) {
+                heldAmount = exactMoney(heldAmount, "heldAmount");
+                if (heldAmount.signum() < 0 || heldAmount.compareTo(amount) > 0) {
+                    throw new IllegalArgumentException("heldAmount de retencion invalido");
+                }
+            }
+        }
+    }
+
+    record ConfigureRetentionRequest(
+            UUID companyId,
+            UUID storeId,
+            String terminalId,
+            String saleId,
+            UUID operationId,
+            UUID sourceDocumentId,
+            BigDecimal attributedAmount,
+            List<RetentionClaim> claims) {
+        public ConfigureRetentionRequest {
+            Objects.requireNonNull(companyId, "companyId");
+            Objects.requireNonNull(storeId, "storeId");
+            Objects.requireNonNull(operationId, "operationId");
+            Objects.requireNonNull(sourceDocumentId, "sourceDocumentId");
+            attributedAmount = exactMoney(attributedAmount, "attributedAmount");
+            if (attributedAmount.signum() < 0) {
+                throw new IllegalArgumentException("El saldo atribuido no puede ser negativo");
+            }
+            claims = List.copyOf(Objects.requireNonNull(claims, "claims"));
+            if (claims.stream().anyMatch(claim -> !sourceDocumentId.equals(claim.sourceDocumentId()))) {
+                throw new IllegalArgumentException(
+                        "Todos los claims deben pertenecer al documento origen");
+            }
+            if (claims.stream().map(RetentionClaim::amount)
+                    .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add)
+                    .compareTo(attributedAmount) != 0) {
+                throw new IllegalArgumentException("Los claims deben sumar exactamente el saldo atribuido");
             }
         }
     }
@@ -470,7 +561,21 @@ public interface MemberBalanceCentralGateway {
             UUID storeId,
             String terminalId,
             String saleId,
-            UUID operationId) {
+            UUID operationId,
+            RetentionSnapshot retentionSnapshot) {
+        public PreparedOwnerRequest(
+                UUID companyId, UUID storeId, String terminalId, String saleId, UUID operationId) {
+            this(companyId, storeId, terminalId, saleId, operationId, null);
+        }
+    }
+
+    record RetentionSnapshot(
+            UUID memberId,
+            UUID sourceDocumentId,
+            UUID returnDocumentId,
+            BigDecimal attributedAmount,
+            String fingerprint,
+            List<RetentionClaim> claims) {
     }
 
     record ReservedLot(
@@ -483,6 +588,7 @@ public interface MemberBalanceCentralGateway {
             UUID documentId) {
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     record ReservationResponse(
             UUID reservationId,
             UUID memberId,
@@ -497,10 +603,74 @@ public interface MemberBalanceCentralGateway {
             BigDecimal accountLoyaltyBalance,
             BigDecimal accountReturnCreditBalance,
             List<ReservedLot> reservedLots,
+            List<RetentionClaim> retentionClaims,
             Instant heartbeatAt,
             Instant leaseExpiresAt,
             int heartbeatIntervalSeconds,
-            int leaseSeconds) {
+            int leaseSeconds,
+            long retentionRevision,
+            String retentionFingerprint,
+            BigDecimal retentionAttributedAmount,
+            BigDecimal heldKnown,
+            BigDecimal pendingMissing,
+            BigDecimal spentShortfall,
+        BigDecimal spendable,
+        BigDecimal recoveredKnown) {
+
+        /** Backwards-compatible full constructor for pre-claims callers. */
+        public ReservationResponse(
+                UUID reservationId, UUID memberId, String status,
+                BigDecimal reservedLoyaltyAmount, BigDecimal reservedReturnCreditAmount,
+                BigDecimal preparedLoyaltyAmount, BigDecimal preparedReturnCreditAmount,
+                UUID prepareOperationId, BigDecimal consumedLoyaltyAmount,
+                BigDecimal consumedReturnCreditAmount, BigDecimal accountLoyaltyBalance,
+                BigDecimal accountReturnCreditBalance, List<ReservedLot> reservedLots,
+                Instant heartbeatAt, Instant leaseExpiresAt, int heartbeatIntervalSeconds,
+                int leaseSeconds, long retentionRevision, String retentionFingerprint,
+                BigDecimal retentionAttributedAmount, BigDecimal heldKnown,
+                BigDecimal pendingMissing, BigDecimal spentShortfall, BigDecimal spendable,
+                BigDecimal recoveredKnown) {
+            this(reservationId, memberId, status, reservedLoyaltyAmount,
+                    reservedReturnCreditAmount, preparedLoyaltyAmount,
+                    preparedReturnCreditAmount, prepareOperationId,
+                    consumedLoyaltyAmount, consumedReturnCreditAmount,
+                    accountLoyaltyBalance, accountReturnCreditBalance,
+                    reservedLots, List.of(), heartbeatAt, leaseExpiresAt,
+                    heartbeatIntervalSeconds, leaseSeconds, retentionRevision,
+                    retentionFingerprint, retentionAttributedAmount, heldKnown,
+                    pendingMissing, spentShortfall, spendable, recoveredKnown);
+        }
+
+        public ReservationResponse(
+                UUID reservationId,
+                UUID memberId,
+                String status,
+                BigDecimal reservedLoyaltyAmount,
+                BigDecimal reservedReturnCreditAmount,
+                BigDecimal preparedLoyaltyAmount,
+                BigDecimal preparedReturnCreditAmount,
+                UUID prepareOperationId,
+                BigDecimal consumedLoyaltyAmount,
+                BigDecimal consumedReturnCreditAmount,
+                BigDecimal accountLoyaltyBalance,
+                BigDecimal accountReturnCreditBalance,
+                List<ReservedLot> reservedLots,
+                Instant heartbeatAt,
+                Instant leaseExpiresAt,
+                int heartbeatIntervalSeconds,
+                int leaseSeconds) {
+            this(reservationId, memberId, status, reservedLoyaltyAmount,
+                    reservedReturnCreditAmount, preparedLoyaltyAmount,
+                    preparedReturnCreditAmount, prepareOperationId,
+                    consumedLoyaltyAmount, consumedReturnCreditAmount,
+                    accountLoyaltyBalance, accountReturnCreditBalance,
+                    reservedLots, List.of(), heartbeatAt, leaseExpiresAt,
+                    heartbeatIntervalSeconds, leaseSeconds, 0L, "",
+                    BigDecimal.ZERO.setScale(2),
+                    BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                    BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                    BigDecimal.ZERO.setScale(2));
+        }
 
         public ReservationResponse {
             Objects.requireNonNull(reservedLoyaltyAmount, "reservedLoyaltyAmount");
@@ -511,7 +681,19 @@ public interface MemberBalanceCentralGateway {
             Objects.requireNonNull(consumedReturnCreditAmount, "consumedReturnCreditAmount");
             Objects.requireNonNull(accountLoyaltyBalance, "accountLoyaltyBalance");
             Objects.requireNonNull(accountReturnCreditBalance, "accountReturnCreditBalance");
+            retentionFingerprint = retentionFingerprint == null ? "" : retentionFingerprint;
+            heldKnown = optionalMoney(heldKnown, "heldKnown");
+            pendingMissing = optionalMoney(pendingMissing, "pendingMissing");
+            spentShortfall = optionalMoney(spentShortfall, "spentShortfall");
+            spendable = spendable == null
+                    ? reservedLoyaltyAmount.add(reservedReturnCreditAmount)
+                    : exactMoney(spendable, "spendable");
+            recoveredKnown = optionalMoney(recoveredKnown, "recoveredKnown");
+            retentionAttributedAmount = retentionAttributedAmount == null
+                    ? heldKnown.add(pendingMissing).add(spentShortfall).add(recoveredKnown)
+                    : exactMoney(retentionAttributedAmount, "retentionAttributedAmount");
             reservedLots = List.copyOf(Objects.requireNonNull(reservedLots, "reservedLots"));
+            retentionClaims = retentionClaims == null ? List.of() : List.copyOf(retentionClaims);
         }
 
         public BigDecimal reservedTotal() {
@@ -527,7 +709,7 @@ public interface MemberBalanceCentralGateway {
         }
 
         public BigDecimal accountBalance() {
-            return accountLoyaltyBalance;
+            return accountLoyaltyBalance.add(accountReturnCreditBalance);
         }
     }
 
@@ -538,6 +720,10 @@ public interface MemberBalanceCentralGateway {
         } catch (ArithmeticException exception) {
             throw new IllegalArgumentException(field + " debe tener escala exacta 2", exception);
         }
+    }
+
+    private static BigDecimal optionalMoney(BigDecimal value, String field) {
+        return value == null ? BigDecimal.ZERO.setScale(2) : exactMoney(value, field);
     }
 
     private static void requireCounts(

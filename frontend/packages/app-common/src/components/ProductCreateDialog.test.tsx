@@ -1,4 +1,8 @@
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
 import {
@@ -75,6 +79,7 @@ describe("ProductCreateDialog", () => {
       packageQuantity: "1",
       stockMin: null,
       stockMax: null,
+      requiresSerialNumber: false,
       offerActive: false,
       offerFrom: "2026-07-01",
       offerUntil: "2026-07-31"
@@ -208,6 +213,7 @@ describe("ProductCreateDialog", () => {
       "packageQuantity",
       "stockMin",
       "stockMax",
+      "requiresSerialNumber",
       "offerActive",
       "offerFrom",
       "offerUntil"
@@ -219,6 +225,45 @@ describe("ProductCreateDialog", () => {
     expect(request.packageQuantity).toBe("1");
     expect(request.stockMin).toBeNull();
     expect(request.stockMax).toBeNull();
+  });
+
+  it("sends serial tracking only for unit products and normalizes no discount", () => {
+    const base = { ...createDefaultProductForm(), familyId: "f", taxId: "t", name: "A", code: "A", purchasePrice: "1", salePrice: "2" };
+    expect(buildCreateProductRequest({ ...base, requiresSerialNumber: true })).toMatchObject({
+      productType: "UNIT", requiresSerialNumber: true, priceUseMode: "NORMAL"
+    });
+    expect(buildCreateProductRequest({ ...base, productType: "WEIGHT", requiresSerialNumber: true })).toMatchObject({
+      productType: "WEIGHT", requiresSerialNumber: false
+    });
+    expect(buildCreateProductRequest({ ...base, discountType: "NONE", priceUseMode: "OFFER_PRICE" })).toMatchObject({
+      discountType: "NONE", priceUseMode: "NORMAL", offerPrice: null
+    });
+  });
+
+  it("uses edited form values as authoritative when clearing persisted fields", () => {
+    const form = {
+      ...createDefaultProductForm(), familyId: "f", taxId: "t", name: "A", code: "A",
+      purchasePrice: "1", salePrice: "2", purchaseDiscountPercent: "", packageQuantity: "",
+      stockMin: "", stockMax: ""
+    };
+    expect(buildCreateProductRequest(form, {
+      purchaseDiscountPercent: "12", packageQuantity: "6", stockMin: "2", stockMax: "10"
+    })).toMatchObject({
+      purchaseDiscountPercent: null, packageQuantity: "1", stockMin: null, stockMax: null
+    });
+  });
+
+  it("validates stock bounds and non-negative package quantities", () => {
+    const base = {
+      ...createDefaultProductForm(), familyId: "f", taxId: "t", name: "A", code: "A",
+      purchasePrice: "1", salePrice: "2",
+    };
+    expect(productCreateValidationErrors({ ...base, packageQuantity: "-1" })).toContain("packageQuantity");
+    expect(productCreateValidationErrors({ ...base, packageQuantity: "abc" })).toContain("packageQuantity");
+    expect(productCreateValidationErrors({ ...base, stockMin: "8", stockMax: "3" })).toContain("stockMax");
+    expect(productCreateValidationErrors({ ...base, stockMin: "-1" })).toContain("stockMin");
+    expect(productCreateValidationErrors({ ...base, packageQuantity: "0", stockMin: "0", stockMax: "0" }))
+      .not.toEqual(expect.arrayContaining(["packageQuantity", "stockMin", "stockMax"]));
   });
 
   it("detects duplicated product identifiers before saving", () => {
@@ -355,7 +400,8 @@ describe("ProductCreateDialog", () => {
     })).toMatchObject({
       priceUseMode: "NORMAL",
       discountType: "NONE",
-      offerActive: false
+      offerActive: false,
+      offerPrice: "8.50"
     });
   });
 
@@ -386,7 +432,7 @@ describe("ProductCreateDialog", () => {
       discountType: "NONE",
       purchaseDiscountPercent: "12.50",
       offerActive: false,
-      offerPrice: null,
+      offerPrice: "8.50",
       offerDiscountPercent: null
     });
   });
@@ -432,6 +478,8 @@ describe("ProductCreateDialog", () => {
     );
 
     expect(html).toContain('class="product-create-body"');
+    expect(html).toContain('class="filter-overlay product-create-overlay"');
+    expect(html).toContain('class="filter-dialog product-create-dialog"');
     expect(html).toContain('class="product-create-form"');
     expect(html).toContain('class="product-create-media"');
     expect(html).toContain("Código");
@@ -444,7 +492,11 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Usar precio");
     expect(html).toContain("Precio venta");
     expect(html).toContain("No aplicar descuento");
-    expect(html).toContain("No aplicar descuento activado: no se aplicará ningún tipo de descuento y el vendedor tampoco podrá aplicarlo manualmente");
+    expect(html).toContain("bloquea precio socio");
+    expect(html).toContain("el precio mayorista sí está permitido");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain('aria-describedby="product-no-discount-description"');
+    expect(html).toContain('id="product-no-discount-description"');
     expect(html).toContain("Precio socio");
     expect(html).toContain("Precio oferta");
     expect(html).toContain("Descuento oferta");
@@ -481,7 +533,7 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Use price");
     expect(html).toContain("Sale price");
     expect(html).toContain("Do not apply discount");
-    expect(html).toContain("Do not apply discount enabled, no discount of any kind will be applied, and the seller will not be able to apply it manually");
+    expect(html).toContain("member prices, offers, category/member discounts, coupons, promotions, member balance and manual discounts are blocked; wholesale pricing is allowed");
     expect(html).toContain("Offer discount%");
     expect(html).toContain("Save F9");
     expect(html).not.toContain("Register product and continue F8");
@@ -531,6 +583,28 @@ describe("ProductCreateDialog", () => {
     expect(productDiscountTypeOptions).toEqual(["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"]);
     expect(productDiscountTypeOptions).not.toContain("NONE");
     expect(productDiscountTypeOptions).not.toContain("MEMBER_DISCOUNT");
+  });
+
+  it("locks every use-price option while no discount is active and unlocks them from the lock control", () => {
+    const { container } = render(
+      <ProductCreateDialog
+        open
+        locale="es"
+        token="token"
+        editProduct={{ id: "product-1", form: { discountType: "NONE" } }}
+        onClose={() => undefined}
+      />
+    );
+
+    const priceOptions = within(container).getAllByRole("radio");
+    expect(priceOptions).not.toHaveLength(0);
+    priceOptions.forEach((option) => expect(option).toBeDisabled());
+
+    fireEvent.click(container.querySelector<HTMLButtonElement>(
+      'button[data-product-field-name="discountType"]',
+    )!);
+
+    priceOptions.forEach((option) => expect(option).not.toBeDisabled());
   });
 
   it("builds the product image upload path", () => {

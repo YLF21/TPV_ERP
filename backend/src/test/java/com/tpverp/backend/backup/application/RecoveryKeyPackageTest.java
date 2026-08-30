@@ -65,4 +65,33 @@ class RecoveryKeyPackageTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("100000");
     }
+
+    @Test
+    void v2IsIndependentFromAdminAndLegacyRemainsReadable() throws Exception {
+        char[] recovery = "a-strong-recovery-passphrase".toCharArray();
+        byte[] packageV2 = recoveryPackages.createV2(recovery, ITERATIONS);
+        assertThat(recoveryPackages.inspect(packageV2).version()).isEqualTo(2);
+        assertThat(recoveryPackages.openAny(packageV2, recovery)).hasSize(32);
+        assertThatThrownBy(() -> recoveryPackages.openAny(packageV2, "admin-pin".toCharArray()))
+                .isInstanceOf(GeneralSecurityException.class);
+        byte[] legacy = recoveryPackages.create("legacy-admin".toCharArray(), ITERATIONS);
+        assertThat(recoveryPackages.openAny(legacy, "legacy-admin".toCharArray())).hasSize(32);
+    }
+
+    @Test
+    void generatedRecoveryCodeHasHighEntropyAndNoShortSecretIsAccepted() throws Exception {
+        char[] code = recoveryPackages.generateRecoveryCode();
+        assertThat(code).hasSizeGreaterThanOrEqualTo(40);
+        assertThatThrownBy(() -> recoveryPackages.createV2("short".toCharArray(), ITERATIONS))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void refusesAdminRewrapOfV2() throws Exception {
+        byte[] packageV2 = recoveryPackages.createV2("independent-recovery".toCharArray(), ITERATIONS);
+        assertThatThrownBy(() -> recoveryPackages.rewrap(packageV2,
+                "admin".toCharArray(), "new-admin".toCharArray(), ITERATIONS))
+                .isInstanceOf(GeneralSecurityException.class)
+                .hasMessageContaining("v2");
+    }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@tpverp/app-pda",
-  "version": "0.0.1",
+  "version": "4.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"
   },
   "dependencies": {
-    "@tpverp/app-common": "0.0.1"
+    "@tpverp/app-common": "4.2.0"
   },
   "devDependencies": {}
 }

@@ -34,6 +34,11 @@ describe("saleCommandFromKeyboard", () => {
     expect(saleCommandFromKeyboard(key("p", { ctrlKey: true }))).toBe("print-method");
   });
 
+  it("maps Ctrl+M to the wholesale mode command", () => {
+    expect(saleCommandFromKeyboard(key("m", { ctrlKey: true }))).toBe("wholesale-mode");
+    expect(saleCommandFromKeyboard(key("m"))).toBeNull();
+  });
+
   it("opens product search with Delete without modifying the other shortcuts", () => {
     expect(saleCommandFromKeyboard(key("Delete"))).toBe("product-search");
     expect(saleCommandFromKeyboard(key("Backspace"))).toBeNull();

@@ -120,4 +120,17 @@ class FiscalSubmissionAttemptServiceTest {
         assertThat(saved.getValue().getError()).isEqualTo("Dato invalido");
         verify(states).markDefective(recordId, "CAMPO", "Dato invalido");
     }
+
+    @Test
+    void lasNuevasTentativasReferencianEvidenciaSinDuplicarPayload() {
+        var token = UUID.randomUUID();
+        var evidenceId = UUID.randomUUID();
+
+        var attempt = service.recordAccepted(recordId, "respuesta grande", token, evidenceId);
+
+        assertThat(attempt.getEvidenceId()).isEqualTo(evidenceId);
+        assertThat(attempt.getRequestXml()).isNull();
+        assertThat(attempt.getResponsePayload()).isNull();
+        verify(states).markAccepted(recordId, token);
+    }
 }

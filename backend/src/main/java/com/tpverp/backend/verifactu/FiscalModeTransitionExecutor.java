@@ -20,6 +20,7 @@ public class FiscalModeTransitionExecutor {
     private LicenseRepository licenses;
     private StoreRepository stores;
     private VerifactuActivationService activation;
+    private FiscalRuntimeProperties runtime;
 
     @Autowired
     public FiscalModeTransitionExecutor(
@@ -28,13 +29,15 @@ public class FiscalModeTransitionExecutor {
             FiscalEventService events,
             LicenseRepository licenses,
             StoreRepository stores,
-            VerifactuActivationService activation) {
+            VerifactuActivationService activation,
+            FiscalRuntimeProperties runtime) {
         this.transitions = transitions;
         this.configurations = configurations;
         this.events = events;
         this.licenses = licenses;
         this.stores = stores;
         this.activation = activation;
+        this.runtime = runtime;
     }
 
     FiscalModeTransitionExecutor(
@@ -55,10 +58,19 @@ public class FiscalModeTransitionExecutor {
         this.activation = activation;
     }
 
+    void setRuntimeProperties(FiscalRuntimeProperties runtime) {
+        this.runtime = runtime;
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean apply(UUID transitionId, Instant now) {
         var scheduled = transitions.findById(transitionId)
                 .orElseThrow(() -> new IllegalStateException("Transicion fiscal programada no encontrada"));
+        if (scheduled.getNewMode() == FiscalMode.NO_VERIFACTU
+                && runtimeCapability() == FiscalProductCapability.VERIFACTU_ONLY) {
+            throw new FiscalProductCapabilityViolationException(
+                    "La release VERIFACTU_ONLY no permite aplicar NO_VERIFACTU");
+        }
         if (scheduled.getStatus() != FiscalModeTransitionStatus.PROGRAMADA
                 || scheduled.getEffectiveAt().isAfter(now)) {
             return false;
@@ -93,6 +105,13 @@ public class FiscalModeTransitionExecutor {
                 FiscalMode.NO_VERIFACTU, FiscalEventType.START_NO_VERIFACTU,
                 "Salida VERI*FACTU; ACK " + scheduled.getAeatAckReference());
         return true;
+    }
+
+    private FiscalProductCapability runtimeCapability() {
+        // Scheduled execution has no CurrentOrganization; the persisted
+        // release capability is still the authority for the worker.
+        return runtime == null || runtime.productCapability() == null
+                ? FiscalProductCapability.DUAL : runtime.productCapability();
     }
 
     private void requireLicenseAllowsNoVerifactu(

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -196,6 +197,7 @@ export function SalesDocumentScreen({
   const [importedDueDate, setImportedDueDate] = useState<string | null>(null);
   const [importedGlobalDiscount, setImportedGlobalDiscount] = useState("0.00");
   const [importedInternalComment, setImportedInternalComment] = useState<string | null>(null);
+  const [wholesaleMode, setWholesaleMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
@@ -238,9 +240,14 @@ export function SalesDocumentScreen({
   const [cardPaymentMode, setCardPaymentMode] =
     useState<PendingCardPaymentMode | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const linesRef = useRef(lines);
   const customerDialogRef = useRef<HTMLElement>(null);
   const lineEditDialogRef = useRef<HTMLElement>(null);
   const lineEditInputRef = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
   const lineTableLayout = useTableLayoutPreference({
     app: "venta",
     username: session.username,
@@ -272,14 +279,14 @@ export function SalesDocumentScreen({
       if (column === "code") return line.product.code ?? line.product.barcode;
       if (column === "name") return line.temporaryName ?? line.product.name;
       if (column === "quantity") return line.quantity;
-      if (column === "price") return saleLineUnitPrice(line, activeMember);
+      if (column === "price") return saleLineUnitPrice(line, activeMember, wholesaleMode);
       if (column === "discount") return effectiveSaleLineDiscount(line);
-      return saleLineSubtotal(line, activeMember);
+      return saleLineSubtotal(line, activeMember, wholesaleMode);
     },
     locale,
-  ), [activeMember, lineTableSorting.sort, lines, locale]);
+  ), [activeMember, lineTableSorting.sort, lines, locale, wholesaleMode]);
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
-  const fallbackTotal = saleTotal(lines, activeMember);
+  const fallbackTotal = saleTotal(lines, activeMember, wholesaleMode);
   const total = quotedTotal ?? fallbackTotal;
   const canWrite = hasPermission(session, "ADMIN")
     || hasPermission(session, "VENTA")
@@ -483,6 +490,7 @@ export function SalesDocumentScreen({
     setImportedDueDate(null);
     setImportedGlobalDiscount("0.00");
     setImportedInternalComment(null);
+    setWholesaleMode(false);
     setQuery("");
     setSearchOpen(false);
     setProductSearchQuery("");
@@ -525,7 +533,12 @@ export function SalesDocumentScreen({
       date: issueDate,
       customerId: customer.id,
       dueDate,
-      globalDiscount: importedGlobalDiscount,
+      ...(wholesaleMode ? { wholesaleMode: true } : {}),
+      // Sales-document percentages use the same backend allocator as Ctrl+/.
+      // Keep the legacy field at zero so protected products are never reduced
+      // by CommercialDocument's historical all-lines factor.
+      globalDiscount: "0.00",
+      documentDiscountPercent: importedGlobalDiscount,
       ...(importedInternalComment ? { internalComment: importedInternalComment } : {}),
       ...(editingDraft ? { draftVersion: editingDraft.version } : {}),
       completionMode: mode,
@@ -536,7 +549,7 @@ export function SalesDocumentScreen({
         name: line.temporaryName
           ?? line.product.name ?? line.product.code ?? t("sale.main.unnamedProduct"),
         rate: line.product.rate ?? null,
-        price: saleLineUnitPrice(line, activeMember).toFixed(2),
+        price: saleLineUnitPrice(line, activeMember, wholesaleMode).toFixed(2),
         discount: line.discountPercent.toFixed(2),
         ...saleProductFiscalSnapshot(line.product),
         serialNumbers: line.serialNumbers ?? [],
@@ -648,6 +661,7 @@ export function SalesDocumentScreen({
     issueDate,
     lines,
     warehouseId,
+    wholesaleMode,
   ]);
 
   function addProduct(product: SaleProduct, openUnitPrice?: number, quantity = 1) {
@@ -776,8 +790,11 @@ export function SalesDocumentScreen({
     setDocumentType(detail.type);
     setIssueDate(detail.date);
     setImportedDueDate(detail.dueDate);
-    setImportedGlobalDiscount(Number(detail.globalDiscount).toFixed(2));
+    setImportedGlobalDiscount(Number(
+      detail.documentDiscountPercent ?? detail.globalDiscount,
+    ).toFixed(2));
     setImportedInternalComment(detail.internalComment ?? null);
+    setWholesaleMode(detail.wholesaleMode === true);
     setWarehouseId(detail.warehouseId);
     setCustomer(importedCustomer);
     setSelectedCustomerResultId(detail.customerId);
@@ -943,7 +960,7 @@ export function SalesDocumentScreen({
       return;
     }
     const desiredPrice = wholeOperand();
-    const currentPrice = saleLineUnitPrice(line, activeMember);
+    const currentPrice = saleLineUnitPrice(line, activeMember, wholesaleMode);
     if (desiredPrice == null || desiredPrice < 0 || desiredPrice > currentPrice
         || currentPrice <= 0) {
       reportShortcutError(t("salesDocument.shortcut.desiredPriceInvalid"));
@@ -1076,6 +1093,17 @@ export function SalesDocumentScreen({
   function executeDocumentCommand(command: SaleCommandId) {
     if (saving || checkoutMode || recovery) return;
     switch (command) {
+      case "wholesale-mode":
+        if (linesRef.current.length > 0) {
+          setShortcutError(t("sale.wholesale.blocked"));
+          return;
+        }
+        setWholesaleMode((current) => {
+          const next = !current;
+          setShortcutMessage(t(next ? "sale.wholesale.enabled" : "sale.wholesale.disabled"));
+          return next;
+        });
+        break;
       case "product-search":
         openProductSearch();
         break;
@@ -1126,6 +1154,7 @@ export function SalesDocumentScreen({
       const command = saleCommandFromKeyboard(event);
       const supported = command && [
         "product-search",
+        "wholesale-mode",
         "quantity",
         "add-quantity",
         "subtract-quantity",
@@ -1180,6 +1209,7 @@ export function SalesDocumentScreen({
     selectedLineId,
     sortedLines,
     temporaryPriceChangeAuthorization,
+    wholesaleMode,
   ]);
 
   function lineColumnLabel(column: SalesDocumentLineColumnKey) {
@@ -1229,11 +1259,11 @@ export function SalesDocumentScreen({
         </div>
       ) : formatQuantityValue(line.quantity, locale);
     } else if (column === "price") {
-      content = formatMoney(saleLineUnitPrice(line, activeMember), locale);
+      content = formatMoney(saleLineUnitPrice(line, activeMember, wholesaleMode), locale);
     } else if (column === "discount") {
       content = formatPercentage(effectiveSaleLineDiscount(line), locale);
     } else {
-      content = formatMoney(saleLineSubtotal(line, activeMember), locale);
+      content = formatMoney(saleLineSubtotal(line, activeMember, wholesaleMode), locale);
     }
     return <td className={className} data-column-key={column} key={column}>{content}</td>;
   }

@@ -120,6 +120,9 @@ public class CatalogService {
         if (active) {
             tax.activate();
         } else {
+            if (productRepository.existsByTaxId(taxId)) {
+                throw new IllegalStateException("No se puede desactivar un impuesto utilizado por productos");
+            }
             tax.deactivate();
         }
         return tax;
@@ -362,6 +365,11 @@ public class CatalogService {
         product.configurePurchaseDiscount(request.purchaseDiscountPercent());
         product.configureStockLimits(request.stockMin(), request.stockMax());
         product.configurePackageQuantity(request.packageQuantity());
+        if (request.requiresSerialNumber() != null || request.productType() != ProductType.UNIT) {
+            product.configureSerialNumberTracking(
+                    request.productType() == ProductType.UNIT
+                            && Boolean.TRUE.equals(request.requiresSerialNumber()));
+        }
         if (request.active() != null) {
             product.setActive(request.active());
         }
@@ -373,6 +381,10 @@ public class CatalogService {
         validateReferences(request, storeId);
         validateRequiredProductIdentifier(request);
         validateIdentifiers(storeId, productId, request.code(), request.barcode(), request.barcode2());
+        if (request.productType() != ProductType.UNIT
+                && Boolean.TRUE.equals(request.requiresSerialNumber())) {
+            throw new IllegalArgumentException("message.product.serial_number_requires_unit");
+        }
         Product candidate = new Product(
                 storeId,
                 request.familyId(),
@@ -693,11 +705,17 @@ public class CatalogService {
             BigDecimal stockMin,
             BigDecimal stockMax,
             BigDecimal packageQuantity,
-            Boolean active) {
+            Boolean active,
+            Boolean requiresSerialNumber) {
 
         public ProductRequest {
-            priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
-            discountType = discountTypeFromPriceUseMode(priceUseMode, discountType);
+            if (discountType == DiscountType.NONE) {
+                priceUseMode = PriceUseMode.NORMAL;
+                offerActive = false;
+            } else {
+                priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
+                discountType = discountTypeFromPriceUseMode(priceUseMode, discountType);
+            }
         }
 
         public ProductRequest withPrimaryBarcode(String forcedBarcode) {
@@ -708,7 +726,7 @@ public class CatalogService {
                     memberPrice, wholesalePrice, offerPrice,
                     offerDiscountPercent, purchaseDiscountPercent, offerActive,
                     offerFrom, offerUntil, stockMin, stockMax, packageQuantity,
-                    active);
+                    active, requiresSerialNumber);
         }
 
         public ProductRequest(
@@ -738,7 +756,7 @@ public class CatalogService {
             this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
                     comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
                     wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
-                    offerFrom, offerUntil, null, null, null, null);
+                    offerFrom, offerUntil, null, null, null, null, null);
         }
 
         public ProductRequest(
@@ -770,7 +788,7 @@ public class CatalogService {
             this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
                     comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
                     wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
-                    offerFrom, offerUntil, stockMin, stockMax, null, null);
+                    offerFrom, offerUntil, stockMin, stockMax, null, null, null);
         }
 
         public ProductRequest(
@@ -803,7 +821,41 @@ public class CatalogService {
             this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
                     comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
                     wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
-                    offerFrom, offerUntil, stockMin, stockMax, packageQuantity, null);
+                    offerFrom, offerUntil, stockMin, stockMax, packageQuantity, null, null);
+        }
+
+        public ProductRequest(
+                UUID familyId, UUID subfamilyId, UUID taxId, ProductType productType,
+                DiscountType discountType, PriceUseMode priceUseMode, String name,
+                String description, String comments, BigDecimal purchasePrice,
+                boolean taxesIncluded, String code, String barcode, String barcode2,
+                BigDecimal salePrice, BigDecimal memberPrice, BigDecimal wholesalePrice,
+                BigDecimal offerPrice, BigDecimal offerDiscountPercent,
+                BigDecimal purchaseDiscountPercent, boolean offerActive, LocalDate offerFrom,
+                LocalDate offerUntil, BigDecimal stockMin, BigDecimal stockMax,
+                BigDecimal packageQuantity, Boolean active) {
+            this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name,
+                    description, comments, purchasePrice, taxesIncluded, code, barcode, barcode2,
+                    salePrice, memberPrice, wholesalePrice, offerPrice, offerDiscountPercent,
+                    purchaseDiscountPercent, offerActive, offerFrom, offerUntil, stockMin,
+                    stockMax, packageQuantity, active, null);
+        }
+
+        public ProductRequest(
+                UUID familyId, UUID subfamilyId, UUID taxId, ProductType productType,
+                DiscountType discountType, PriceUseMode priceUseMode, String name,
+                String description, String comments, BigDecimal purchasePrice,
+                boolean taxesIncluded, String code, String barcode, String barcode2,
+                BigDecimal salePrice, BigDecimal memberPrice, BigDecimal wholesalePrice,
+                BigDecimal offerPrice, BigDecimal offerDiscountPercent,
+                BigDecimal purchaseDiscountPercent, boolean offerActive, LocalDate offerFrom,
+                LocalDate offerUntil, BigDecimal stockMin, BigDecimal stockMax,
+                BigDecimal packageQuantity, boolean active) {
+            this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name,
+                    description, comments, purchasePrice, taxesIncluded, code, barcode, barcode2,
+                    salePrice, memberPrice, wholesalePrice, offerPrice, offerDiscountPercent,
+                    purchaseDiscountPercent, offerActive, offerFrom, offerUntil, stockMin,
+                    stockMax, packageQuantity, active, null);
         }
     }
 

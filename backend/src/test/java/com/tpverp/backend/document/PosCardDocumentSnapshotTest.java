@@ -1,19 +1,43 @@
 package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.*;import com.fasterxml.jackson.databind.ObjectMapper;import java.math.BigDecimal;import java.time.LocalDate;import java.util.*;import org.junit.jupiter.api.Test;
 class PosCardDocumentSnapshotTest {
- @Test void roundTripsVersionedPostQuoteFiscalSnapshot(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.of(2026,7,11),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("10.00"),new BigDecimal("2.10"),new BigDecimal("12.10"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P1","Producto","SOCIO",new BigDecimal("12.10"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))));var json=snapshots.serialize(frozen);assertThat(json).contains("\"schemaVersion\":2","\"baseTotal\":10.00","\"taxTotal\":2.10","\"total\":12.10","\"tarifa\":\"SOCIO\"");assertThat(snapshots.deserialize(json)).isEqualTo(frozen);}
- @Test void rejectsCorruptOrUnknownSnapshotsWithTypedException(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());assertThatThrownBy(()->snapshots.deserialize("{bad")).isInstanceOf(ApprovedCardSnapshotException.class);assertThatThrownBy(()->snapshots.deserialize("{\"schemaVersion\":3,\"ticket\":null}")).isInstanceOf(ApprovedCardSnapshotException.class);}
- @Test void rejectsSemanticFiscalMismatchWithTypedException(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.now(),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("99"),BigDecimal.ZERO,new BigDecimal("99"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P","P",null,BigDecimal.ONE,BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))));assertThatThrownBy(()->snapshots.deserialize(snapshots.serialize(frozen))).isInstanceOf(ApprovedCardSnapshotException.class).hasMessageContaining("no cuadran");}
+ @Test void roundTripsVersionedPostQuoteFiscalSnapshot(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.of(2026,7,11),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("10.00"),new BigDecimal("2.10"),new BigDecimal("12.10"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P1","Producto","SOCIO",new BigDecimal("12.10"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21")).withRequiresSerialNumber(false).withDiscountEligible(true)));var json=snapshots.serialize(frozen);assertThat(json).contains("\"schemaVersion\":4","\"baseTotal\":10.00","\"taxTotal\":2.10","\"total\":12.10","\"tarifa\":\"SOCIO\"","\"discountEligible\":true");assertThat(snapshots.deserialize(json)).isEqualTo(frozen);}
+ @Test void rejectsCorruptOrUnknownSnapshotsWithTypedException(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());assertThatThrownBy(()->snapshots.deserialize("{bad")).isInstanceOf(ApprovedCardSnapshotException.class);assertThatThrownBy(()->snapshots.deserialize("{\"schemaVersion\":5,\"ticket\":null}")).isInstanceOf(ApprovedCardSnapshotException.class);assertThatThrownBy(()->snapshots.deserialize("{\"schemaVersion\":3,\"ticket\":{\"lines\":null}}")).isInstanceOf(ApprovedCardSnapshotException.class);}
+ @Test void rejectsSemanticFiscalMismatchWithTypedException(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.now(),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("99"),BigDecimal.ZERO,new BigDecimal("99"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P","P",null,BigDecimal.ONE,BigDecimal.ZERO,true,"IVA",new BigDecimal("21")).withRequiresSerialNumber(false).withDiscountEligible(true)));assertThatThrownBy(()->snapshots.deserialize(snapshots.serialize(frozen))).isInstanceOf(ApprovedCardSnapshotException.class).hasMessageContaining("no cuadran");}
 
- @Test void readsLegacyVersionOneJsonWithoutHistoricalReplayMetadata(){
+ @Test void rejectsCurrentSnapshotWithoutFrozenDiscountEligibility(){var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.now(),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("0.83"),new BigDecimal("0.17"),BigDecimal.ONE,List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P","P",null,BigDecimal.ONE,BigDecimal.ZERO,true,"IVA",new BigDecimal("21")).withRequiresSerialNumber(false)));assertThatThrownBy(()->snapshots.serialize(frozen)).isInstanceOf(ApprovedCardSnapshotException.class).hasMessageContaining("elegibilidad");}
+
+ @Test void readsLegacyVersionsWithoutSerialPolicyAsNotRetroactive(){
   var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());
-  var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.of(2026,7,11),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("10.00"),new BigDecimal("2.10"),new BigDecimal("12.10"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P1","Producto","VENTA",new BigDecimal("12.10"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))));
-  var legacyJson=snapshots.serialize(frozen)
+  var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.of(2026,7,11),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("10.00"),new BigDecimal("2.10"),new BigDecimal("12.10"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P1","Producto","VENTA",new BigDecimal("12.10"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21")).withRequiresSerialNumber(false).withDiscountEligible(false)));
+  var legacyV3=snapshots.serialize(frozen)
+          .replace("\"schemaVersion\":4","\"schemaVersion\":3")
+          .replace(",\"discountEligible\":false","");
+  var legacyV2=legacyV3
+          .replace("\"schemaVersion\":3","\"schemaVersion\":2")
+          .replace(",\"requiresSerialNumber\":false","");
+  var legacyV1=legacyV2
           .replace("\"schemaVersion\":2","\"schemaVersion\":1")
           .replace(",\"historicalReplay\":null","")
           .replace(",\"adjustments\":[]","");
 
-  assertThat(snapshots.deserialize(legacyJson)).isEqualTo(frozen);
+  assertThat(snapshots.deserialize(legacyV3).lines()).singleElement()
+          .extracting(DocumentLineCommand::discountEligible).isNull();
+  assertThat(snapshots.deserialize(legacyV2).lines()).singleElement()
+          .extracting(DocumentLineCommand::discountEligible).isNull();
+  assertThat(snapshots.deserialize(legacyV1).lines()).singleElement()
+          .extracting(DocumentLineCommand::discountEligible).isNull();
+ }
+
+ @Test void negativeReturnLineDoesNotRequireAFrozenSerialPolicy(){
+  var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());
+  var line=new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE.negate(),"P1","Devolucion","VENTA",
+          new BigDecimal("10.00"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"));
+  var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.of(2026,8,27),
+          null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("-8.26"),new BigDecimal("-1.74"),
+          new BigDecimal("-10.00"),List.of(line));
+
+  assertThat(snapshots.deserialize(snapshots.serialize(frozen))).isEqualTo(frozen);
  }
 
  @Test void preservesAndRestoresDocumentAdjustmentLinks(){
@@ -32,7 +56,7 @@ class PosCardDocumentSnapshotTest {
   var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());
 
   var restoredSnapshot=snapshots.deserialize(snapshots.serialize(
-          ApprovedCardTicketSnapshot.from(document,UUID.randomUUID())));
+          withSerialPolicyFalse(ApprovedCardTicketSnapshot.from(document,UUID.randomUUID()))));
   var restoredDocument=new CommercialDocument(document.getTiendaId(),document.getAlmacenId(),
           CommercialDocumentType.TICKET,document.getFecha(),UUID.randomUUID(),BigDecimal.ZERO);
   restoredSnapshot.lines().forEach(line->restoredDocument.addLine(line.toEntity(restoredDocument)));
@@ -50,7 +74,7 @@ class PosCardDocumentSnapshotTest {
 
  @Test void preservesFrozenHistoricalProductAmountsAcrossSerialization(){
   var snapshots=new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());
-  var line=new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P1","Producto","VENTA",new BigDecimal("0.03"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"),DocumentLineType.PRODUCT,null,null,null,List.of(),false,false,null,null,null,null,null,new BigDecimal("0.03"),new BigDecimal("0.01"),new BigDecimal("0.03"));
+  var line=new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P1","Producto","VENTA",new BigDecimal("0.03"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"),DocumentLineType.PRODUCT,null,null,null,List.of(),false,false,null,null,null,null,null,new BigDecimal("0.03"),new BigDecimal("0.01"),new BigDecimal("0.03")).withRequiresSerialNumber(false).withDiscountEligible(true);
   var frozen=new ApprovedCardTicketSnapshot(UUID.randomUUID(),UUID.randomUUID(),LocalDate.of(2026,8,7),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("0.03"),new BigDecimal("0.01"),new BigDecimal("0.03"),List.of(line));
 
   var restored=snapshots.deserialize(snapshots.serialize(frozen));
@@ -107,5 +131,14 @@ class PosCardDocumentSnapshotTest {
    assertThat(line.returnSourceTicketId()).isNull();
    assertThat(line.returnSourceType()).isNull();
   });
+ }
+
+ private static ApprovedCardTicketSnapshot withSerialPolicyFalse(ApprovedCardTicketSnapshot value){
+  return new ApprovedCardTicketSnapshot(value.storeId(),value.warehouseId(),value.date(),value.customerId(),
+          value.paymentMethodId(),value.globalDiscount(),value.baseTotal(),value.taxTotal(),value.total(),
+          value.lines().stream().map(line->line.cantidad().signum()>0
+                  && (line.lineType()==null||line.lineType()==DocumentLineType.PRODUCT)
+                  ? line.withRequiresSerialNumber(false).withDiscountEligible(false):line).toList(),value.internalComment(),
+          value.historicalReplay(),value.adjustments());
  }
 }

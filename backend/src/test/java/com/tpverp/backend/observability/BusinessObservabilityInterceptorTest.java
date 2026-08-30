@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.shared.api.ApiExceptionContext;
+import com.tpverp.backend.shared.api.CorrelationIdFilter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,8 @@ class BusinessObservabilityInterceptorTest {
         var interceptor = new BusinessObservabilityInterceptor(registry, audit);
         var request = new MockHttpServletRequest(
                 "POST", "/api/v1/tickets/11111111-1111-1111-1111-111111111111/returns");
-        request.addHeader("X-Request-ID", "checkout-2026.07.21:01");
+        request.addHeader("X-Request-ID", "checkout-2026.07.21-01");
+        request.setAttribute(CorrelationIdFilter.ATTRIBUTE, "checkout-2026.07.21-01");
         var response = new MockHttpServletResponse();
         response.setStatus(201);
 
@@ -45,8 +48,10 @@ class BusinessObservabilityInterceptorTest {
                 .containsEntry("operation", "ticket.return")
                 .containsEntry("method", "POST")
                 .containsEntry("status", 201)
-                .containsEntry("requestId", "checkout-2026.07.21:01")
-                .doesNotContainKey("path");
+                .containsEntry("requestId", "checkout-2026.07.21-01")
+                .containsEntry("path", "/api/v1/tickets/11111111-1111-1111-1111-111111111111/returns")
+                .doesNotContainKey("causeCode")
+                .doesNotContainKey("stage");
     }
 
     @Test
@@ -69,7 +74,63 @@ class BusinessObservabilityInterceptorTest {
         var details = detailsCaptor();
         verify(audit).record(
                 eq("CUSTOMER_RECEIVABLE_PAYMENT_RECORDED"), eq(AuditResult.FALLO), details.capture());
-        assertThat(details.getValue()).containsEntry("status", 409).doesNotContainKey("requestId");
+        assertThat(details.getValue())
+                .containsEntry("status", 409)
+                .containsEntry("path", "/api/v1/customer-receivables/id/payments")
+                .containsKey("requestId")
+                .containsEntry("causeCode", "HTTP_409")
+                .containsEntry("stage", "response")
+                .doesNotContainValue("invalid request id with spaces");
+    }
+
+    @Test
+    void recordsHandlerFailureCauseAndStablePathWithoutSensitiveDetails() throws Exception {
+        var registry = new SimpleMeterRegistry();
+        var audit = mock(AuditService.class);
+        var interceptor = new BusinessObservabilityInterceptor(registry, audit);
+        var request = new MockHttpServletRequest(
+                "POST", "/api/v1/pos/payment-sessions\r\n/internal?token=secret&password=also-secret");
+        var response = new MockHttpServletResponse();
+        response.setStatus(409);
+        ApiExceptionContext.record(
+                request, "PAYMENT_SESSION_RESERVED", ApiExceptionContext.API_EXCEPTION_HANDLER_STAGE);
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        var details = detailsCaptor();
+        verify(audit).record(
+                eq("PAYMENT_SESSION_RESERVED"), eq(AuditResult.FALLO), details.capture());
+        assertThat(details.getValue())
+                .containsEntry("causeCode", "PAYMENT_SESSION_RESERVED")
+                .containsEntry("stage", "api.exception_handler")
+                .containsEntry("path", "/api/v1/pos/payment-sessions/internal")
+                .containsKey("requestId")
+                .doesNotContainKeys("message", "detail", "reason", "exception", "stack", "payload", "token")
+                .doesNotContainValue("secret")
+                .doesNotContainValue("also-secret");
+    }
+
+    @Test
+    void usesStableUnhandledExceptionFallbackWithoutPersistingExceptionData() throws Exception {
+        var registry = new SimpleMeterRegistry();
+        var audit = mock(AuditService.class);
+        var interceptor = new BusinessObservabilityInterceptor(registry, audit);
+        var request = new MockHttpServletRequest("POST", "/api/v1/tickets");
+        var response = new MockHttpServletResponse();
+        response.setStatus(500);
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(
+                request, response, new Object(), new IllegalStateException("secret exception detail"));
+
+        var details = detailsCaptor();
+        verify(audit).record(eq("TICKET_CREATED"), eq(AuditResult.FALLO), details.capture());
+        assertThat(details.getValue())
+                .containsEntry("causeCode", "UNHANDLED_EXCEPTION")
+                .containsEntry("stage", "completion")
+                .doesNotContainKeys("message", "detail", "reason", "exception", "stack", "payload", "token")
+                .doesNotContainValue("secret exception detail");
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

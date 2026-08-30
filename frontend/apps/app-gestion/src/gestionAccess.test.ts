@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { UserSession } from "@tpverp/app-common";
-import { canOpenGestionModule, visibleGestionModules } from "./gestionAccess";
+import { canManageTaxes, canOpenGestionModule, visibleGestionModules } from "./gestionAccess";
 
 function session(permissions: UserSession["permissions"]): UserSession {
   return { username: "user", displayName: "USER", permissions };
 }
+
+it("allows tax management independently of ADMIN", () => {
+  expect(canManageTaxes(session(["TAXES_MANAGE"]))).toBe(false);
+  expect(canManageTaxes(session(["APP_GESTION_ACCESS", "TAXES_MANAGE"]))).toBe(true);
+});
 
 describe("APP GESTION module access", () => {
   it("does not turn app access into module access", () => {

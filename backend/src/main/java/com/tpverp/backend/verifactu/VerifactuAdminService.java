@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class VerifactuAdminService {
 
+    private static final int MAX_LEGACY_RESPONSE_SIZE = 200;
+
     private final VerifactuSubmissionPropertiesFactory properties;
     private final VerifactuPkcs12KeyStoreLoader keyStores;
     private final VerifactuCertificateValidator certificates;
@@ -133,7 +135,7 @@ public class VerifactuAdminService {
     // Resume el estado operativo sin exponer password ni contenido del certificado.
 
     public List<FiscalSubmissionQueueItem> queue() {
-        return queue.pending();
+        return queue.pending().stream().limit(MAX_LEGACY_RESPONSE_SIZE).toList();
     }
 
     public VerifactuWorkerResult retryNext() {
@@ -153,6 +155,7 @@ public class VerifactuAdminService {
         }
         return attempts.history(recordId).stream()
                 .map(FiscalSubmissionAttemptView::from)
+                .limit(MAX_LEGACY_RESPONSE_SIZE)
                 .toList();
     }
 

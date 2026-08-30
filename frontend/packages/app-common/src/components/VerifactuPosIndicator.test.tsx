@@ -84,7 +84,7 @@ describe("VerifactuPosIndicator", () => {
     render(<VerifactuPosIndicator token="token" locale="es" t={t} />);
 
     await waitFor(() => expect(apiMocks.getStatus).toHaveBeenCalledWith("token"));
-    const trigger = screen.getByRole("button", { name: /VERI\*FACTUPendientes/ });
+    const trigger = screen.getByRole("button", { name: /NO VERI\*FACTU · Pendientes/ });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(trigger);
@@ -101,7 +101,7 @@ describe("VerifactuPosIndicator", () => {
   it("shows the effective fiscal mode and isolated runtime without admin controls", async () => {
     render(<VerifactuPosIndicator token="token" locale="es" t={t} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /VERI\*FACTUPendientes/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /NO VERI\*FACTU · Pendientes/ }));
 
     expect(await screen.findByText("Modo fiscal: NO_VERIFACTU · SANDBOX · SIMULATED"))
       .toBeInTheDocument();
@@ -241,13 +241,24 @@ describe("VerifactuPosIndicator", () => {
     expect(screen.queryByText("T-2026-0042")).not.toBeInTheDocument();
     resolveNewQueue([]);
     await act(async () => Promise.resolve());
-    expect(screen.getByRole("button", { name: /VERI\*FACTUverifactu.pos.presentation.reviewRequired/ }))
+    expect(screen.getByRole("button", { name: /VERI\*FACTU · verifactu.pos.presentation.reviewRequired/ }))
       .toBeInTheDocument();
 
     resolveOldStatus({ ...status, presentationStatus: "OPERATIVO", pendingCount: 0 });
     await act(async () => Promise.resolve());
-    expect(screen.getByRole("button", { name: /VERI\*FACTUverifactu.pos.presentation.reviewRequired/ }))
+    expect(screen.getByRole("button", { name: /VERI\*FACTU · verifactu.pos.presentation.reviewRequired/ }))
       .toBeInTheDocument();
     expect(screen.queryByText("Operativo")).not.toBeInTheDocument();
+  });
+
+  it("shows each fiscal mode in the compact indicator without repeating the brand", async () => {
+    for (const mode of ["PRE_SIF", "NO_VERIFACTU", "VERIFACTU"] as const) {
+      vi.mocked(apiMocks.getStatus).mockResolvedValueOnce({ ...status, fiscalMode: mode, presentationStatus: "OPERATIVO" });
+      render(<VerifactuPosIndicator token={`token-${mode}`} locale="es" t={t} />);
+      const expected = mode === "PRE_SIF" ? "PRE-SIF" : mode === "NO_VERIFACTU" ? "NO VERI*FACTU" : "VERI*FACTU";
+      const trigger = await screen.findByRole("button", { name: `${expected} · Operativo` });
+      expect(trigger).toHaveAccessibleName(`${expected} · Operativo`);
+      cleanup();
+    }
   });
 });

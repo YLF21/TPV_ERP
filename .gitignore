@@ -10,7 +10,7 @@ frontend-saas/vite-cache/
 frontend/**/target/
 output/
 payment-terminal-bridge/**/target/
-/target/verifactu-dev-proof/
+/target/
 
 # Local developer and tool artifacts
 *.log

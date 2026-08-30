@@ -20,6 +20,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 
 @Configuration
 class BackupConfiguration {
@@ -39,8 +40,11 @@ class BackupConfiguration {
     }
 
     @Bean
-    BackupArchiveService backupArchiveService() {
-        return new BackupArchiveService();
+    BackupArchiveService backupArchiveService(
+            @Value("${tpv.backup.archive.max-entries:100000}") int maxEntries,
+            @Value("${tpv.backup.archive.max-entry-bytes:268435456}") long maxEntryBytes,
+            @Value("${tpv.backup.archive.max-total-bytes:2147483648}") long maxTotalBytes) {
+        return new BackupArchiveService(maxEntries, maxEntryBytes, maxTotalBytes);
     }
 
     @Bean
@@ -76,7 +80,9 @@ class BackupConfiguration {
             Clock clock,
             @Value("${tpv.backup.default-directory}") Path defaultDirectory,
             @Value("${tpv.product-images.directory:${tpv.backup.default-directory}/product-images}") Path productImagesDirectory,
-            @Value("${tpv.document-templates.directory:${tpv.backup.default-directory}/document-templates}") Path documentTemplatesDirectory) {
+            @Value("${tpv.document-templates.directory:${tpv.backup.default-directory}/document-templates}") Path documentTemplatesDirectory,
+            @Value("${tpv.backup.restore-online-enabled:false}") boolean restoreOnlineEnabled,
+            BackupExecutionLeaseService leaseService) {
         return new BackupService(
                 configurationRepository,
                 executionRepository,
@@ -94,7 +100,9 @@ class BackupConfiguration {
                 clock,
                 defaultDirectory,
                 productImagesDirectory,
-                documentTemplatesDirectory);
+                documentTemplatesDirectory,
+                restoreOnlineEnabled,
+                leaseService);
     }
 
     @Bean
@@ -106,6 +114,34 @@ class BackupConfiguration {
     @Order(20)
     ApplicationRunner defaultBackupConfigurationRunner(BackupService backupService) {
         return arguments -> backupService.initializeDefaultIfMissing();
+    }
+
+    @Bean
+    @Order(1)
+    ApplicationRunner restoreJournalGuard(
+            BackupRestoreFinalizeService finalizer,
+            @Value("${tpv.backup.restore-journal-path:}") String configuredJournal,
+            Environment environment) {
+        return arguments -> {
+            var values = arguments.getOptionValues("tpv.restore-finalize");
+            if (values != null && !values.isEmpty()) {
+                finalizer.finalizeRestore(BackupRestoreJournalReader.normalize(Path.of(values.getLast())));
+                return;
+            }
+            if (!java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod")) return;
+            Path journal = BackupRestoreJournalReader.normalize(Path.of(
+                    configuredJournal == null || configuredJournal.isBlank()
+                            ? BackupRestoreJournalReader.DEFAULT_PRODUCTION_PATH : configuredJournal));
+            if (!java.nio.file.Files.exists(journal, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
+            java.util.Properties state = BackupRestoreJournalReader.read(journal);
+            if ("FINALIZED".equals(BackupRestoreJournalReader.phase(state))) {
+                // This also verifies the DB marker; a stale FINALIZED file is not sufficient.
+                finalizer.finalizeRestore(journal);
+            } else {
+                throw new IllegalStateException(
+                        "Existe un journal de restauración pendiente; ejecute el finalize offline antes de arrancar en producción");
+            }
+        };
     }
 
     @Bean

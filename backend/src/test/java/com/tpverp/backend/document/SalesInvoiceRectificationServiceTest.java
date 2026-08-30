@@ -81,6 +81,7 @@ class SalesInvoiceRectificationServiceTest {
                 authentication());
 
         assertThat(result.document().getTipo()).isEqualTo(CommercialDocumentType.RECTIFICATIVA_VENTA);
+        assertThat(result.document().isWholesaleMode()).isTrue();
         assertThat(result.document().getEstado()).isEqualTo(DocumentStatus.BORRADOR);
         assertThat(result.document().getNumero()).isNull();
         assertThat(result.document().getTotal()).isNegative();
@@ -112,6 +113,7 @@ class SalesInvoiceRectificationServiceTest {
                 authentication());
 
         assertThat(result.metadata().getFiscalType()).isEqualTo(SalesInvoiceRectificationFiscalType.R4);
+        assertThat(result.document().isWholesaleMode()).isTrue();
         assertThat(result.metadata().isAffectsStock()).isFalse();
         assertThat(result.document().isOrigenStock()).isFalse();
         assertThat(result.document().getTotal()).isNegative();
@@ -139,7 +141,7 @@ class SalesInvoiceRectificationServiceTest {
     private CommercialDocument confirmedInvoice() {
         var document = new CommercialDocument(
                 store.getId(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
-                LocalDate.of(2026, 7, 21), user.getId(), BigDecimal.ZERO);
+                LocalDate.of(2026, 7, 21), user.getId(), BigDecimal.ZERO, true);
         document.setParties(UUID.randomUUID(), null, null);
         document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, new BigDecimal("2.000"),

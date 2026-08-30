@@ -90,6 +90,8 @@ public class CommercialDocument {
     private boolean origenStock;
     @Column(name = "cuenta_cobrar", nullable = false)
     private boolean cuentaCobrar;
+    @Column(name = "wholesale_mode", nullable = false)
+    private boolean wholesaleMode;
 
     @Column(name = "liquidado_por_origen", nullable = false)
     private boolean settledByOrigin;
@@ -121,6 +123,17 @@ public class CommercialDocument {
             LocalDate fecha,
             UUID creadoPor,
             BigDecimal descuentoGlobal) {
+        this(tiendaId, almacenId, tipo, fecha, creadoPor, descuentoGlobal, false);
+    }
+
+    public CommercialDocument(
+            UUID tiendaId,
+            UUID almacenId,
+            CommercialDocumentType tipo,
+            LocalDate fecha,
+            UUID creadoPor,
+            BigDecimal descuentoGlobal,
+            boolean wholesaleMode) {
         this.id = UUID.randomUUID();
         this.tiendaId = Objects.requireNonNull(tiendaId, "tiendaId");
         this.almacenId = Objects.requireNonNull(almacenId, "almacenId");
@@ -129,6 +142,7 @@ public class CommercialDocument {
         this.creadoPor = Objects.requireNonNull(creadoPor, "creadoPor");
         this.creadoEn = Instant.now();
         this.descuentoGlobal = Money.validPercentage(descuentoGlobal);
+        this.wholesaleMode = wholesaleMode;
     }
 
     public UUID getId() {
@@ -249,6 +263,18 @@ public class CommercialDocument {
         return descuentoGlobal;
     }
 
+    /** Converts a legacy draft percentage into explicit fiscal adjustment lines. */
+    BigDecimal detachGlobalDiscountForMaterialization() {
+        if (estado != DocumentStatus.BORRADOR) {
+            throw new IllegalStateException(
+                    "document_global_discount_only_materializes_in_draft");
+        }
+        var requested = descuentoGlobal;
+        descuentoGlobal = BigDecimal.ZERO.setScale(Money.SCALE);
+        recalculate();
+        return requested;
+    }
+
     // Returns the calculated total tax amount.
     public BigDecimal getImpuestoTotal() {
         return impuestoTotal;
@@ -268,6 +294,10 @@ public class CommercialDocument {
 
     public boolean isOrigenStock() {
         return origenStock;
+    }
+
+    public boolean isWholesaleMode() {
+        return wholesaleMode;
     }
 
     public String getMotivoAnulacion() {
@@ -378,10 +408,22 @@ public class CommercialDocument {
         fechaVencimiento = replacement.fechaVencimiento;
         origenStock = replacement.origenStock;
         cuentaCobrar = replacement.cuentaCobrar;
+        wholesaleMode = replacement.wholesaleMode;
+        var adjustmentSnapshots = replacement.ajustes.stream()
+                .map(adjustment -> DocumentAdjustmentSnapshot.from(
+                        adjustment, replacement.lineas))
+                .toList();
+        ajustes.clear();
         lineas.clear();
-        replacement.lineas.stream()
-                .map(DocumentLineCommand::from)
-                .forEach(line -> addLine(line.toEntity(this)));
+        replacement.lineas.forEach(source -> {
+            var copy = DocumentLineCommand.from(source).toEntity(this);
+            if (source.getLineType() == DocumentLineType.PROMOTION) {
+                copy.assignPromotionAffectedPositions(
+                        source.getPromotionAffectedPositions());
+            }
+            addLine(copy);
+        });
+        adjustmentSnapshots.forEach(snapshot -> snapshot.restore(this));
     }
 
     // Confirma una vez el documento conservando fecha e identidad fiscal.
@@ -461,6 +503,15 @@ public class CommercialDocument {
             UUID customerId,
             UUID supplierId,
             List<DocumentLineCommand> newLines) {
+        adminReplace(globalDiscount, customerId, supplierId, newLines, List.of());
+    }
+
+    void adminReplace(
+            BigDecimal globalDiscount,
+            UUID customerId,
+            UUID supplierId,
+            List<DocumentLineCommand> newLines,
+            List<DocumentAdjustmentSnapshot> adjustmentSnapshots) {
         if (!isEditableConfirmedDocument()
                 || (tipo != CommercialDocumentType.TICKET
                 && tipo != CommercialDocumentType.ALBARAN_VENTA)) {
@@ -469,10 +520,12 @@ public class CommercialDocument {
         descuentoGlobal = Money.validPercentage(globalDiscount);
         clienteId = customerId;
         proveedorId = supplierId;
+        ajustes.clear();
         lineas.clear();
         for (var line : newLines) {
             addLine(line.toEntity(this));
         }
+        adjustmentSnapshots.forEach(snapshot -> snapshot.restore(this));
         if (tipo == CommercialDocumentType.TICKET && !pagos.isEmpty()) {
             var nonPrincipal = pagos.stream()
                     .filter(payment -> !payment.isPrincipal())

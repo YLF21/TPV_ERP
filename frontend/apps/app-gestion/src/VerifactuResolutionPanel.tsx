@@ -12,6 +12,7 @@ import {
   verifactuStatusLabel,
   type VerifactuTranslator
 } from "./verifactuPresentation";
+import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 
 export type VerifactuResolutionTarget = {
   recordId: string;
@@ -37,7 +38,7 @@ const emptyCorrection: CorrectionDraft = {
 export function VerifactuResolutionPanel({
   target,
   token,
-  locale: _locale,
+  locale,
   timezone: _timezone,
   t,
   onClose,
@@ -154,7 +155,7 @@ export function VerifactuResolutionPanel({
             <dl className="gestion-verifactu-resolution-summary">
               <div><dt>{t("verifactu.management.status")}</dt><dd>{verifactuStatusLabel(resolution.status, t)}</dd></div>
               <div><dt>{t("verifactu.management.fiscalOperation")}</dt><dd>{verifactuOperationLabel(resolution.operation, t)}</dd></div>
-              <div><dt>{t("verifactu.management.errorCode")}</dt><dd>{resolution.errorCode || "—"}</dd></div>
+              <div><dt>{t("verifactu.management.errorCode")}</dt><dd>{fiscalErrorMessage(resolution.errorCode, t, locale) || "—"}</dd></div>
             </dl>
 
             <section className={`gestion-verifactu-decision decision-${decisionTone(resolution.recommendedAction)}`}>

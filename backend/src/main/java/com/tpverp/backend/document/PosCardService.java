@@ -43,20 +43,23 @@ public class PosCardService {
         String requestHash=hash(request.sale(),quoted); UUID owner=UUID.randomUUID();
         var existing=coordinator.existing(request.checkoutId(),terminalId,requestHash);
         if(existing.isPresent())return replay(existing.orElseThrow(),owner,authentication,terminalId);
-
+        if (hasMemberBalance(request.sale())) {
+            throw new IllegalArgumentException("member_balance_requires_payment_session");
+        }
         var prepared=sales.prepareSale(request.sale(),authentication);
         var quotedTicket=sales.quotePreparedSale(prepared,request.sale(),authentication);
         sales.validateQuoteFingerprint(request.sale(),quotedTicket);
         BigDecimal total=quotedTicket.getTotal();
         if(quoted.compareTo(total)!=0)throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
+        var cardMethod=paymentMethods.findByEmpresaIdAndNombreAndActivoTrue(organization.currentCompany().getId(),"TARJETA")
+                .orElseThrow(()->new IllegalStateException("El metodo TARJETA no esta activo"));
+        var frozen=sales.snapshot(quotedTicket,cardMethod.getId(),prepared);
+        documents.validateSerialNumbersBeforePayment(quotedTicket, frozen.lines());
         var configuration=configurations.required(terminalId);
         validateConfiguration(configuration);
         var gateway=gateways.stream().filter(g->g.supports(configuration.provider(),configuration.testMode())).findFirst()
                 .orElseThrow(()->new IllegalStateException("No hay un conector disponible para el datafono"));
-
-        var cardMethod=paymentMethods.findByEmpresaIdAndNombreAndActivoTrue(organization.currentCompany().getId(),"TARJETA")
-                .orElseThrow(()->new IllegalStateException("El metodo TARJETA no esta activo"));
-        var frozen=sales.snapshot(quotedTicket,cardMethod.getId(),prepared); String snapshot=snapshots.serialize(frozen);
+        String snapshot=snapshots.serialize(frozen);
         if(!(authentication.getPrincipal() instanceof com.tpverp.backend.security.domain.UserAccount user))
             throw new IllegalStateException("No se puede identificar de forma segura al usuario del cobro");
         var store=organization.currentStore();var company=organization.currentCompany();
@@ -66,7 +69,9 @@ public class PosCardService {
                 prepared,request.sale(),total,authentication,"POS_CARD",request.checkoutId());
         var reservation=coordinator.reserve(request.checkoutId(),terminalId,requestHash,snapshot,total,owner,identity);
         var checkout=reservation.checkout();
-        if(!reservation.acquired())return replay(checkout,owner,authentication,terminalId);
+        if(!reservation.acquired()) {
+            return replay(checkout,owner,authentication,terminalId);
+        }
 
         CardTerminalResult terminalResult;
         if(terminalOperations!=null){
@@ -107,12 +112,15 @@ public class PosCardService {
         if(c.provider()==PaymentTerminalProvider.NONE)throw new IllegalStateException("No hay proveedor de datafono configurado");
     }
     static String hash(PosCashController.SaleRequest sale,BigDecimal total){
+        var documentDiscount = sale.documentDiscountPercent() == null
+                ? BigDecimal.ZERO : Money.euros(sale.documentDiscountPercent());
+        if (!sale.wholesaleMode() && documentDiscount.signum() == 0) return legacyHash(sale, total);
         var coupon=sale.promotionalCouponCode()==null?"":sale.promotionalCouponCode().trim();
         var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();
         var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
         var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
         var hasTemporaryNames=sale.lines().stream().anyMatch(l->l.temporaryName()!=null&&!l.temporaryName().isBlank());
-        var c=new StringBuilder(sale.previousTicketImport()!=null?"v8-previous-ticket-import|":hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
+        var c=new StringBuilder(sale.previousTicketImport()!=null?"v9-previous-ticket-import|":hasTemporaryNames?"v8-temporary-name|":!internalComment.isEmpty()?"v7-internal-comment|":hasSerialNumbers?"v6-checkout-serials|":"v5-checkout-discount|").append(sale.customerId()).append('|').append(sale.wholesaleMode()).append('|').append(documentDiscount).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
         if(!internalComment.isEmpty())c.append(internalComment.length()).append(':').append(internalComment).append('|');
         if(!coupon.isEmpty())c.append(coupon).append('|');
         c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');
@@ -126,6 +134,26 @@ public class PosCardService {
         try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(c.toString().getBytes(StandardCharsets.UTF_8)));}
         catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
     }
+    private static String legacyHash(PosCashController.SaleRequest sale,BigDecimal total){
+        var coupon=sale.promotionalCouponCode()==null?"":sale.promotionalCouponCode().trim();
+        var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();
+        var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
+        var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
+        var hasTemporaryNames=sale.lines().stream().anyMatch(l->l.temporaryName()!=null&&!l.temporaryName().isBlank());
+        var c=new StringBuilder(sale.previousTicketImport()!=null?"v8-previous-ticket-import|":hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
+        if(!internalComment.isEmpty())c.append(internalComment.length()).append(':').append(internalComment).append('|');
+        if(!coupon.isEmpty())c.append(coupon).append('|');
+        c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');
+        c.append(sale.quoteFingerprint()==null?"":sale.quoteFingerprint().trim()).append('|');
+        c.append(Money.euros(total));
+        sale.lines().forEach(l->{c.append('|').append(l.productId()).append(':').append(l.quantity().stripTrailingZeros().toPlainString()).append(':').append(l.discount().stripTrailingZeros().toPlainString()).append(hasOpenPrice?":"+openPrice(l.openUnitPrice()):"");if(hasSerialNumbers)c.append(':').append(PosCashService.canonicalSerialNumbers(l.serialNumbers()));if(hasTemporaryNames)c.append(':').append(PosCashService.canonicalText(l.temporaryName()));});
+        try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(c.toString().getBytes(StandardCharsets.UTF_8)));}catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
+    }
     private static String openPrice(BigDecimal value){return value==null?"-":Money.euros(value).toPlainString();}
+    private static boolean hasMemberBalance(PosCashController.SaleRequest sale) {
+        return sale.memberBalanceAmount() != null
+                && Money.euros(sale.memberBalanceAmount()).signum() > 0;
+    }
+
     public record Result(PaymentTerminalOperationStatus status,UUID ticketId,String ticketNumber,BigDecimal total,String reference,String authorization,String message){}
 }

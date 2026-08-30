@@ -200,16 +200,18 @@ public class SecurityAdministrationService {
             throw new IllegalArgumentException("La contrasena ADMIN actual no es valida");
         }
         requireNumericPassword(newPassword);
-        var installation = installationRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("La instalacion no esta inicializada"));
-        var backupConfiguration = backupConfigurationRepository
-                .findByInstalacionId(installation.getId())
-                .orElseThrow(() -> new IllegalStateException("El backup no esta configurado"));
-        Path backupDirectory = Path.of(backupConfiguration.getDestino().get("path").toString());
-        backupKeyStore.rewrap(
-                currentPassword.toCharArray(),
-                newPassword.toCharArray(),
-                backupDirectory);
+        var installation = installationRepository.findAll().stream().findFirst();
+        if (installation.isPresent()) {
+            var backupConfiguration = backupConfigurationRepository
+                    .findByInstalacionId(installation.get().getId());
+            if (backupConfiguration.isPresent()) {
+                Path backupDirectory = Path.of(backupConfiguration.get().getDestino().get("path").toString());
+                backupKeyStore.rewrapIfConfigured(
+                        currentPassword.toCharArray(),
+                        newPassword.toCharArray(),
+                        backupDirectory);
+            }
+        }
         admin.cambiarPassword(passwordEncoder.encode(newPassword));
         Instant now = Instant.now(clock);
         sesionRepository.findByUsuarioIdAndRevocadaEnIsNull(admin.getId())

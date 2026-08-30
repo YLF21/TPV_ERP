@@ -53,7 +53,7 @@ public class FiscalEventService {
             @Value("${tpv.verifactu.producer-tax-id:B00000000}") String producerTaxId,
             @Value("${tpv.verifactu.system-name:TPV ERP}") String systemName,
             @Value("${tpv.verifactu.system-id:TPVERP}") String systemId,
-            @Value("${tpv.verifactu.system-version:4.1.0}") String systemVersion) {
+            @Value("${tpv.verifactu.system-version:4.2.0}") String systemVersion) {
         this.companies = companies;
         this.stores = stores;
         this.licenses = licenses;
@@ -71,7 +71,9 @@ public class FiscalEventService {
         this.producerTaxId = producerTaxId;
         this.systemName = systemName;
         this.systemId = systemId;
-        this.systemVersion = systemVersion;
+        var runtimeVersion = runtime.systemVersion();
+        this.systemVersion = runtimeVersion == null || runtimeVersion.isBlank()
+                ? systemVersion : runtimeVersion;
     }
 
     /** Creates and signs one official RegistroEvento in the append-only event chain. */
@@ -171,10 +173,10 @@ public class FiscalEventService {
                 .orElseThrow(() -> new IllegalStateException("Instalacion fiscal no encontrada"));
         var offset = generatedAt.atZone(fiscalZone(companyId, installationId)).toOffsetDateTime();
         var system = new VerifactuSystemInfo(producerName, producerTaxId, systemName, systemId,
-                systemVersion, installation.getReferencia(), false, false, false);
+                systemVersion, installation.getReferencia(), onlyVerifactu(), false, false);
         var frozenSystemVersion = systemVersions
-                .findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
-                        companyId, installationId, systemVersion, installation.getReferencia())
+                .findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumberAndReleaseId(
+                        companyId, installationId, systemVersion, installation.getReferencia(), releaseId())
                 .map(existing -> {
                     if (!existing.matches(producerTaxId, producerName, systemName, systemId,
                             systemVersion, installation.getReferencia(),
@@ -182,13 +184,15 @@ public class FiscalEventService {
                         throw new IllegalStateException(
                                 "La identidad fiscal no coincide con la version SIF congelada");
                     }
+                    requireReleaseMatch(existing);
                     return existing;
                 })
                 .orElseGet(() -> systemVersions.save(new FiscalSystemVersion(
                         companyId, installationId, producerTaxId, producerName, systemName,
                         systemId, systemVersion, installation.getReferencia(),
                         runtime.declarationHash(),
-                        runtime.isSandbox(), generatedAt)));
+                        runtime.isSandbox(), generatedAt, releaseId(), artifactHash(), commitHash(),
+                        capability(), schemaVersion(), manifestHash())));
         chains.insertIfMissing(UUID.randomUUID(), companyId, installationId, generatedAt);
         var chain = chains.findForUpdate(companyId, installationId)
                 .orElseThrow(() -> new IllegalStateException("Cadena de eventos no encontrada"));
@@ -215,6 +219,32 @@ public class FiscalEventService {
         chains.save(chain);
         return event;
     }
+
+    private boolean onlyVerifactu() {
+        return capability() == FiscalProductCapability.VERIFACTU_ONLY;
+    }
+
+    private FiscalProductCapability capability() {
+        var value = runtime.productCapability();
+        return value == null ? FiscalProductCapability.DUAL : value;
+    }
+
+    private FiscalReleaseManifest manifest() {
+        return runtime.releaseManifest();
+    }
+
+    private void requireReleaseMatch(FiscalSystemVersion existing) {
+        if (manifest() != null
+                && !existing.matchesRelease(manifest(), artifactHash())) {
+            throw new IllegalStateException("La identidad de release no coincide con la version SIF congelada");
+        }
+    }
+
+    private String releaseId() { return manifest() == null ? "LEGACY-RUNTIME" : manifest().releaseId(); }
+    private String artifactHash() { return runtime.resolvedArtifactHash(); }
+    private String commitHash() { return manifest() == null ? null : manifest().commitHash(); }
+    private String schemaVersion() { return manifest() == null ? "V216" : manifest().schemaVersion(); }
+    private String manifestHash() { return manifest() == null ? null : manifest().manifestHash(); }
 
     @Transactional(readOnly = true)
     public List<FiscalEvent> findTop50(UUID companyId) {

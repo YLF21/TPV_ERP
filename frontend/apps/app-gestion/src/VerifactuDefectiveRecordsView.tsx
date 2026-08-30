@@ -24,6 +24,7 @@ import {
   verifactuStatusLabel,
   type VerifactuTranslator
 } from "./verifactuPresentation";
+import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 
 const defectiveStatuses = ["RECHAZADO", "DEFECTUOSO", "ACEPTADO_CON_ERRORES"] as const;
 const defectiveSortColumns = ["sequence", "document", "documentType", "fiscalOperation", "issueDate", "status", "updatedAt", "errorCode"] as const;
@@ -324,5 +325,5 @@ function renderDefectiveCell(
   if (column === "issueDate") return formatVerifactuDate(item.issueDate, locale);
   if (column === "status") return <span className={`gestion-verifactu-state state-${item.status.toLowerCase()}`}>{verifactuStatusLabel(item.status, t)}</span>;
   if (column === "updatedAt") return formatVerifactuDateTime(item.updatedAt, locale, timezone);
-  return item.errorCode || "—";
+  return fiscalErrorMessage(item.errorCode, t, locale) || "—";
 }

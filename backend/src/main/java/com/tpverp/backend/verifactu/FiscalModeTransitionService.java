@@ -24,6 +24,8 @@ public class FiscalModeTransitionService {
     private final VerifactuActivationService activation;
     private FiscalIntegrityService integrity;
     private FiscalIntegrityJobRepository integrityJobs;
+    private FiscalResponsibleDeclarationService responsibleDeclarations;
+    private FiscalOperationalStatusRepository operationalStatus;
 
     @Autowired
     public FiscalModeTransitionService(CurrentOrganization organization,
@@ -80,6 +82,16 @@ public class FiscalModeTransitionService {
         this.integrityJobs = integrityJobs;
     }
 
+    @Autowired(required = false)
+    void setResponsibleDeclarationService(FiscalResponsibleDeclarationService declarations) {
+        this.responsibleDeclarations = declarations;
+    }
+
+    @Autowired(required = false)
+    void setOperationalStatusRepository(FiscalOperationalStatusRepository operationalStatus) {
+        this.operationalStatus = operationalStatus;
+    }
+
     @Transactional(readOnly = true)
     public FiscalStatusView status() {
         var company = organization.currentCompany();
@@ -95,6 +107,10 @@ public class FiscalModeTransitionService {
                                 || candidate.getEffectiveAt().isAfter(Instant.now()))
                         .map(this::scheduledView).orElse(null)
                 : null;
+        var declaration = responsibleDeclarations == null ? null : responsibleDeclarations.status();
+        var operations = operationalStatus == null || installation == null
+                ? new FiscalOperationalStatusSnapshot(java.util.Map.of(), null, null, 0L)
+                : operationalStatus.findForScope(company.getId(), installation.getId());
         return new FiscalStatusView(company.getId(),
                 configuration == null ? (runtime.isSandbox() ? runtime.sandboxInitialMode()
                         : FiscalMode.PRE_SIF) : configuration.getCurrentMode(),
@@ -103,7 +119,13 @@ public class FiscalModeTransitionService {
                 runtime.runtimeClass(), runtime.endpointEnvironment(), runtime.transportMode(),
                 runtime.productionEnabled(),
                 configuration == null ? null : configuration.getVerifactuBlockedUntil(),
-                scheduled, currentStore == null ? null : currentStore.getTimezone());
+                scheduled, currentStore == null ? null : currentStore.getTimezone(),
+                runtime.releaseManifest().releaseId(), runtime.systemVersion(),
+                runtime.productCapability(),
+                declaration == null ? null : declaration.sha256(),
+                declaration != null && "AVAILABLE".equals(declaration.status()),
+                operations.pendingCount(), operations.oldestPendingAt(),
+                operations.lastAeatSuccessAt());
     }
 
     @Transactional
@@ -121,6 +143,11 @@ public class FiscalModeTransitionService {
         }
         if (target == null || target == FiscalMode.PRE_SIF) {
             throw new IllegalArgumentException("PRE_SIF solo se obtiene al iniciar un laboratorio nuevo");
+        }
+        if (target == FiscalMode.NO_VERIFACTU
+                && runtime.productCapability() == FiscalProductCapability.VERIFACTU_ONLY) {
+            throw new FiscalProductCapabilityViolationException(
+                    "La release VERIFACTU_ONLY no permite transiciones a NO_VERIFACTU");
         }
         var company = organization.currentCompany();
         var installation = resolveInstallation(company.getId());

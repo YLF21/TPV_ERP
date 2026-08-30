@@ -118,19 +118,20 @@ public record TicketPrintView(
                 refundPayouts == null || refundPayouts.isEmpty()
                         ? document.getPagos().stream()
                                 .map(payment -> new Payment(
-                                        printablePaymentMethod(payment.getMetodoPago().getNombre()),
+                                        PaymentMethodPrintLabel.format(
+                                                payment.getMetodoPago().getNombre()),
                                         payment.getImporte()))
                                 .toList()
                         : refundPayouts.stream()
                                 .map(payout -> new Payment(
-                                        switch (payout.getType()) {
+                                        PaymentMethodPrintLabel.format(switch (payout.getType()) {
                                             case CASH -> "EFECTIVO";
                                             case CARD -> "TARJETA";
                                             case VOUCHER -> "VALE";
                                             case TRANSFER -> "TRANSFERENCIA";
-                                            case EXCHANGE -> "COMPENSACION DE CAMBIO";
-                                            case MEMBER_CREDIT -> "SALDO A FAVOR";
-                                        }, payout.getAmount().negate()))
+                                            case EXCHANGE -> PaymentMethodService.EXCHANGE_COMPENSATION_METHOD;
+                                            case MEMBER_CREDIT -> "CREDITO_DEVOLUCION";
+                                        }), payout.getAmount().negate()))
                                 .toList(),
                 document.getTotal(),
                 document.getBaseTotal(),
@@ -166,7 +167,7 @@ public record TicketPrintView(
                 .filter(payment -> !PaymentMethodService.EXCHANGE_COMPENSATION_METHOD
                         .equals(payment.getMetodoPago().getNombre()))
                 .map(payment -> new Payment(
-                        printablePaymentMethod(payment.getMetodoPago().getNombre()),
+                        PaymentMethodPrintLabel.format(payment.getMetodoPago().getNombre()),
                         payment.getImporte()))
                 .toList();
         return new TicketPrintView(
@@ -265,16 +266,6 @@ public record TicketPrintView(
         public Line(String name, BigDecimal quantity, BigDecimal price, BigDecimal total) {
             this(name, quantity, price, total, List.of(), null, null);
         }
-    }
-
-    private static String printablePaymentMethod(String method) {
-        if ("CREDITO_DEVOLUCION".equals(method)) {
-            return "SALDO A FAVOR";
-        }
-        if ("SALDO_MIEMBRO".equals(method)) {
-            return "SALDO SOCIO";
-        }
-        return method;
     }
 
     public record Payment(String method, BigDecimal amount) {}

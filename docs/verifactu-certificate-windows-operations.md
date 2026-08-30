@@ -17,7 +17,8 @@ unidad de red o una ruta situada dentro de imagenes de producto o backups.
 ## Orden de instalacion
 
 1. Instale el backend como servicio de Windows con el nombre exacto
-   `TPVERPBackend` y la cuenta virtual `NT SERVICE\TPVERPBackend`.
+   `TPVERPBackend`; el instalador conserva la cuenta integrada efectiva (por
+   defecto `NT AUTHORITY\LocalService`).
 2. Mantenga el servicio detenido. El script rechaza la operacion si el servicio
    no existe, usa otra identidad o esta iniciado.
 3. Abra Windows PowerShell como administrador desde la raiz del repositorio y
@@ -86,6 +87,26 @@ unidad de red o una ruta situada dentro de imagenes de producto o backups.
    TPV_VERIFACTU_WORKER_ENABLED=true
    ```
 
+   Para ejecutar el verificador manual use siempre un prompt seguro o una
+   variable de entorno con nombre explicito. El script no acepta
+   `AccessToken` ni `CertificatePassword` como argumentos de texto, y nunca
+   escribe esos secretos en la evidencia ni en los mensajes de error:
+
+   ```powershell
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-verifactu-aeat-test.ps1 `
+      -Preflight -CertificatePath .\aeat-test.p12 -PromptForCertificatePassword
+
+    # Para la ejecucion, omitir el token de la linea de comandos:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-verifactu-aeat-test.ps1 `
+      -AllowAeatTest -PromptForAccessToken -BackendBaseUrl https://127.0.0.1:8080 `
+      -CompanyId <empresa> -InstallationId <instalacion> -ExpectedReleaseId <release>
+    ```
+
+   En automatizaciones no interactivas, el secreto puede inyectarse mediante
+   `TPV_VERIFACTU_AEAT_TEST_ACCESS_TOKEN` y, solo para `-Preflight`,
+   `TPV_VERIFACTU_AEAT_TEST_CERTIFICATE_PASSWORD`. No se deben guardar esas
+   variables en el repositorio ni incluirlas en logs.
+
    Mantenga sin cambios las seis variables de identidad configuradas para TEST.
    Si el build cambia, debe usar su nueva version real y repetir AEAT TEST antes
    de promoverla. Reinicie el servicio despues de modificar sus variables. El backend aborta
@@ -98,7 +119,9 @@ ACL. Antes de cualquier cambio valida la ruta fija, los ancestros existentes,
 la ausencia de enlaces o junctions y la identidad del servicio. Deshabilita la
 herencia y reemplaza las reglas de acceso de todo el arbol por tres identidades:
 
-- `NT SERVICE\TPVERPBackend`: control total.
+- La cuenta que figure en `Win32_Service.StartName` para `TPVERPBackend`:
+  el script de aprovisionamiento la lee y valida; no se debe asumir una cuenta
+  virtual distinta a la configurada en WinSW.
 - `SYSTEM`: control total.
 - `BUILTIN\Administrators`: control total.
 

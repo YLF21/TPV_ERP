@@ -1,7 +1,7 @@
 .member-wallet-overlay {
   box-sizing: border-box;
   position: fixed;
-  z-index: 190;
+  z-index: var(--tpv-layer-nested-modal, 1510);
   inset: 0;
   display: grid;
   place-items: center;
@@ -51,7 +51,8 @@
   margin: 0;
 }
 
-.member-wallet-header h2 {
+.member-wallet-dialog .member-wallet-header h2 {
+  color: #ffffff;
   font-size: 19px;
   line-height: 1.2;
   letter-spacing: 0.01em;
@@ -101,7 +102,13 @@
   line-height: 1.2;
 }
 
-.member-wallet-section-heading > strong {
+.member-wallet-balance-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.member-wallet-balance-summary > strong {
   color: #123e70;
   font-size: 13px;
   white-space: nowrap;
@@ -161,6 +168,10 @@
 
 .member-wallet-table tbody tr:nth-child(even) {
   background: #f6f8fa;
+}
+
+.member-wallet-table tbody tr.member-wallet-lot-partial-hold {
+  background: rgba(214, 158, 46, 0.16);
 }
 
 .member-wallet-type {
@@ -279,6 +290,11 @@
   grid-column: 1 / -1;
   color: #53677d;
   font-size: 11px;
+}
+
+.member-wallet-amount-panel > .member-wallet-retention-held {
+  color: #8a4b12;
+  font-weight: 800;
 }
 
 .member-wallet-message-area {

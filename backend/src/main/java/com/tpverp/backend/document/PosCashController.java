@@ -55,7 +55,8 @@ public class PosCashController {
             @Valid PreviousTicketImportRequest previousTicketImport,
             @Size(max = 64) String quoteFingerprint,
             @DecimalMin("0.00") BigDecimal memberBalanceAmount,
-            @DecimalMin("0.00") BigDecimal documentDiscountPercent) {
+            @DecimalMin("0.00") BigDecimal documentDiscountPercent,
+            boolean wholesaleMode) {
 
         public SaleRequest {
             lines = List.copyOf(lines == null ? List.of() : lines);
@@ -77,7 +78,7 @@ public class PosCashController {
                 BigDecimal memberBalanceAmount) {
             this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
                     checkoutDiscountAmount, internalComment, operationAuthorizations,
-                    previousTicketImport, quoteFingerprint, memberBalanceAmount, null);
+                    previousTicketImport, quoteFingerprint, memberBalanceAmount, null, false);
         }
 
         public SaleRequest(UUID customerId, List<LineRequest> lines) {

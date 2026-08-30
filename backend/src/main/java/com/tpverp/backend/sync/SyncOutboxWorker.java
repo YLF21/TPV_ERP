@@ -3,6 +3,8 @@ package com.tpverp.backend.sync;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,16 +94,34 @@ public class SyncOutboxWorker {
 
         int sent = 0;
         for (var event : claimed) {
-            try {
-                sender.send(event);
-                if (outbox.markSent(event.getEventId(), event.getClaimToken())) {
-                    sent++;
-                }
-            } catch (RuntimeException exception) {
-                safelyMarkFailed(event, exception);
-            }
+            sent += deliver(event);
         }
         return sent;
+    }
+
+    /** Procesa solo el evento solicitado por un wake post-commit. */
+    public int runEvent(UUID eventId) {
+        if (eventId == null) {
+            return 0;
+        }
+        Optional<SyncOutboxEvent> claimed;
+        try {
+            claimed = outbox.claimEvent(eventId, claimTimeout);
+        } catch (RuntimeException exception) {
+            log.warn("No se pudo reclamar el evento {} del outbox", eventId, exception);
+            return 0;
+        }
+        return claimed.map(this::deliver).orElse(0);
+    }
+
+    private int deliver(SyncOutboxEvent event) {
+        try {
+            sender.send(event);
+            return outbox.markSent(event.getEventId(), event.getClaimToken()) ? 1 : 0;
+        } catch (RuntimeException exception) {
+            safelyMarkFailed(event, exception);
+            return 0;
+        }
     }
 
     private void safelyMarkFailed(SyncOutboxEvent event, RuntimeException failure) {

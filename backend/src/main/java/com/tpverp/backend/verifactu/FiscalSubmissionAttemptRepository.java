@@ -8,4 +8,7 @@ public interface FiscalSubmissionAttemptRepository
         extends JpaRepository<FiscalSubmissionAttempt, UUID> {
 
     List<FiscalSubmissionAttempt> findAllByRecordIdOrderByAttemptedAtDesc(UUID recordId);
+
+    /** DB-level cap for the compatibility endpoint that still returns a list. */
+    List<FiscalSubmissionAttempt> findTop200ByRecordIdOrderByAttemptedAtDesc(UUID recordId);
 }

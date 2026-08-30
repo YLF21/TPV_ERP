@@ -64,7 +64,8 @@ const queuePage: api.VerifactuAdminSubmissionPage = {
   page: 0,
   size: 25,
   totalElements: 1,
-  totalPages: 1
+  totalPages: 1,
+  truncated: false
 };
 
 const defectivePage: api.VerifactuAdminDefectiveRecordPage = {
@@ -334,6 +335,21 @@ describe("VerifactuManagementScreen", () => {
     }), "fiscal-token");
     expect(document.body.textContent).not.toContain("responsePayload");
     expect(document.body.textContent).not.toContain("requestXml");
+  });
+
+  it("explains when the operational queue is limited to its accessible window", async () => {
+    vi.mocked(api.loadVerifactuAdminSubmissions).mockResolvedValueOnce({
+      ...queuePage,
+      totalElements: 200,
+      totalPages: 8,
+      truncated: true
+    });
+
+    render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
+    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.queue" }));
+
+    expect(await screen.findByText("verifactu.management.queueTruncated")).toBeInTheDocument();
+    expect(screen.getByText("200 verifactu.management.records")).toBeInTheDocument();
   });
 
   it("validates dates locally and sends document filters through backend pagination", async () => {

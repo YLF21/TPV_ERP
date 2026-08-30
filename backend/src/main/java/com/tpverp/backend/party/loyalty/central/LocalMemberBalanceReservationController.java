@@ -3,6 +3,7 @@ package com.tpverp.backend.party.loyalty.central;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.MemberRepository;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -16,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -51,6 +53,18 @@ public class LocalMemberBalanceReservationController {
                 store.getId(), currentTerminal.terminalId(authentication), member.getId(), request.saleId()));
     }
 
+    @PostMapping("/retry")
+    public RetryResolutionView retry(
+            @Valid @RequestBody RetryRequest request,
+            Authentication authentication) {
+        var store = organization.currentStore();
+        var member = members.findByCustomerIdAndCompanyId(request.customerId(), store.getEmpresa().getId())
+                .filter(candidate -> candidate.isActive())
+                .orElseThrow(() -> new IllegalArgumentException("message.member.not_found"));
+        return RetryResolutionView.from(service.resolveRetry(
+                store.getId(), currentTerminal.terminalId(authentication), member.getId(), request.saleId()));
+    }
+
     @PostMapping("/{reservationId}/heartbeat")
     public ReservationView heartbeat(
             @PathVariable UUID reservationId,
@@ -79,13 +93,51 @@ public class LocalMemberBalanceReservationController {
         return ResponseEntity.status(status).body(ReservationView.from(reservation));
     }
 
+    @PutMapping("/{reservationId}/retention")
+    public ReservationView configureRetention(
+            @PathVariable UUID reservationId,
+            @Valid @RequestBody RetentionConfigureRequest request,
+            Authentication authentication) {
+        return ReservationView.from(service.configureRetention(
+                reservationId,
+                organization.currentStore().getId(),
+                currentTerminal.terminalId(authentication),
+                request.saleId(),
+                request.sourceDocumentId(),
+                request.selections()));
+    }
+
     public record ReserveRequest(
             @NotNull UUID customerId,
             @NotBlank @Size(max = 120) String saleId) {
     }
 
+    public record RetryRequest(
+            @NotNull UUID customerId,
+            @NotBlank @Size(max = 120) String saleId) {
+    }
+
+    public record RetryResolutionView(
+            String outcome,
+            UUID reservationId,
+            String saleId,
+            UUID blockingReservationId,
+            String blockingSaleId,
+            String message) {
+        static RetryResolutionView from(LocalMemberBalanceReservationService.RetryResolution value) {
+            return new RetryResolutionView(value.outcome().name(), value.reservationId(), value.saleId(),
+                    value.blockingReservationId(), value.blockingSaleId(), value.message());
+        }
+    }
+
     public record OwnerRequest(
             @NotBlank @Size(max = 120) String saleId) {
+    }
+
+    public record RetentionConfigureRequest(
+            @NotBlank @Size(max = 120) String saleId,
+            @NotNull UUID sourceDocumentId,
+            @NotNull java.util.List<PaymentTerminalRefundLineSelection> selections) {
     }
 
     public record ReservationView(
@@ -111,7 +163,16 @@ public class LocalMemberBalanceReservationController {
             BigDecimal accountReturnCreditBalance,
             BigDecimal accountBalance,
             Instant heartbeatAt,
-            Instant leaseExpiresAt) {
+            Instant leaseExpiresAt,
+            long retentionRevision,
+            String retentionFingerprint,
+            BigDecimal retentionAttributedAmount,
+            BigDecimal retentionHeldKnown,
+            BigDecimal retentionPendingMissing,
+            BigDecimal retentionSpentShortfall,
+            BigDecimal retentionSpendable,
+            BigDecimal retentionRecoveredKnown,
+            java.util.List<ReservedLotView> reservedLots) {
 
         static ReservationView from(LocalMemberBalanceReservation value) {
             return new ReservationView(
@@ -137,7 +198,25 @@ public class LocalMemberBalanceReservationController {
                     value.getAccountReturnCreditBalance(),
                     value.getAccountBalance(),
                     value.getHeartbeatAt(),
-                    value.getLeaseExpiresAt());
+                    value.getLeaseExpiresAt(),
+                    value.getRetentionRevision(), value.getRetentionFingerprint(),
+                    value.getRetentionAttributedAmount(), value.getRetentionHeldKnown(),
+                    value.getRetentionPendingMissing(), value.getRetentionSpentShortfall(),
+                    value.getRetentionSpendable(), value.getRetentionRecoveredKnown(),
+                    value.getRetentionReservedLots().stream().map(ReservedLotView::from).toList());
+        }
+    }
+
+    public record ReservedLotView(
+            UUID lotId,
+            String balanceType,
+            BigDecimal remainingAmount,
+            BigDecimal heldAmount,
+            UUID sourceMovementId,
+            UUID documentId) {
+        static ReservedLotView from(LocalMemberBalanceReservation.RetentionReservedLotSnapshot value) {
+            return new ReservedLotView(value.lotId(), value.balanceType(), value.remainingAmount(),
+                    value.heldAmount(), value.sourceMovementId(), value.documentId());
         }
     }
 }

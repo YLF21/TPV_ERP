@@ -15,6 +15,17 @@ import org.springframework.stereotype.Repository;
 public class VerifactuAdminReadRepository {
 
     private static final int MAX_PAGE_SIZE = 100;
+    /**
+     * The operational queue is intentionally a bounded work set. Historical
+     * outcomes remain available through the fiscal-record history view and
+     * must not turn this endpoint into an unbounded archive scan.
+     */
+    private static final int MAX_OPERATIONAL_QUEUE_ROWS = 200;
+    private static final List<String> ACTIVE_QUEUE_STATUSES = List.of(
+            FiscalSubmissionStatus.PENDIENTE.name(),
+            FiscalSubmissionStatus.ENVIANDO.name(),
+            FiscalSubmissionStatus.ENVIADO.name(),
+            FiscalSubmissionStatus.RECHAZADO.name());
 
     private static final String BASE_FROM = """
             from estado_envio_fiscal state
@@ -90,14 +101,22 @@ public class VerifactuAdminReadRepository {
         var query = filteredQuery(
                 companyId, storeId, installationId, updatedFrom, updatedToExclusive,
                 status, documentType, operation, documentNumber);
-        var total = jdbc.queryForObject(
-                "select count(*) " + query.sql(), query.parameters(), Long.class);
-        var totalElements = total == null ? 0L : total;
+        var countParameters = query.parameters().addValue(
+                "queueProbeLimit", MAX_OPERATIONAL_QUEUE_ROWS + 1);
+        var probedTotal = jdbc.queryForObject(
+                "select count(*) from (select 1 " + query.sql()
+                        + " limit :queueProbeLimit) bounded_queue",
+                countParameters, Long.class);
+        var totalRows = probedTotal == null ? 0L : probedTotal;
+        var truncated = totalRows > MAX_OPERATIONAL_QUEUE_ROWS;
+        var totalElements = Math.min(totalRows, MAX_OPERATIONAL_QUEUE_ROWS);
         var totalPages = totalElements == 0
                 ? 0
                 : (int) Math.min(Integer.MAX_VALUE, 1 + ((totalElements - 1) / size));
-        if (totalElements == 0 || (long) page * size >= totalElements) {
-            return new VerifactuAdminSubmissionPage(List.of(), page, size, totalElements, totalPages);
+        if (totalElements == 0 || (long) page * size >= totalElements
+                || (long) page * size >= MAX_OPERATIONAL_QUEUE_ROWS) {
+            return new VerifactuAdminSubmissionPage(
+                    List.of(), page, size, totalElements, totalPages, truncated);
         }
 
         var parameters = query.parameters()
@@ -127,7 +146,8 @@ public class VerifactuAdminReadRepository {
                         FiscalSubmissionStatus.valueOf(result.getString("estado")),
                         result.getTimestamp("actualizado_en").toInstant(),
                         result.getString("ultimo_error_codigo")));
-        return new VerifactuAdminSubmissionPage(items, page, size, totalElements, totalPages);
+        return new VerifactuAdminSubmissionPage(
+                items, page, size, totalElements, totalPages, truncated);
     }
 
     private static String submissionOrderBy(String sortBy, String sortDirection) {
@@ -206,9 +226,16 @@ public class VerifactuAdminReadRepository {
             filters.add("state.actualizado_en < :updatedToExclusive");
             parameters.addValue("updatedToExclusive", Timestamp.from(updatedToExclusive));
         }
-        if (status != null) {
+        if (status == null) {
+            filters.add("state.estado in (:activeQueueStatuses)");
+            parameters.addValue("activeQueueStatuses", ACTIVE_QUEUE_STATUSES);
+        } else if (ACTIVE_QUEUE_STATUSES.contains(status.name())) {
             filters.add("state.estado = :status");
             parameters.addValue("status", status.name());
+        } else {
+            // Keep old clients compatible while ensuring historical states
+            // cannot be used to turn the operational queue into an archive.
+            filters.add("1 = 0");
         }
         if (documentType != null) {
             filters.add("record.tipo_documento_fiscal = :documentType");

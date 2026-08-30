@@ -35,6 +35,7 @@ public class FiscalModeTransitionScheduler {
         this.transitions = transitions;
         this.runtime = runtime;
         this.executor = new FiscalModeTransitionExecutor(transitions, configurations, events);
+        this.executor.setRuntimeProperties(runtime);
         this.failures = new FiscalModeTransitionFailureRecorder(transitions);
     }
 

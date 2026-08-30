@@ -1,4 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildStockInventoryRows,
@@ -56,6 +58,8 @@ import {
 } from "./StockScreen";
 import type { TerminalContext, UserSession } from "../types";
 
+const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
+
 const session: UserSession = {
   username: "admin",
   displayName: "ADMIN",
@@ -68,6 +72,17 @@ const terminalContext: TerminalContext = {
 };
 
 describe("StockScreen", () => {
+  it("keeps sticky stock content below chrome and stock/product modals above it", () => {
+    expect(tpvCss).toContain("--tpv-layer-content: 2;");
+    expect(tpvCss).toContain("--tpv-layer-chrome: 35;");
+    expect(tpvCss).toContain("--tpv-layer-overlay: 120;");
+    expect(tpvCss).toContain("--tpv-layer-modal: 1500;");
+    expect(tpvCss).toMatch(/\.stock-table > \.stock-row-head \{[\s\S]*?z-index: var\(--tpv-layer-content\) !important;/);
+    expect(tpvCss).toMatch(/\.stock-detail-overlay \{[\s\S]*?z-index: var\(--tpv-layer-overlay\);/);
+    expect(tpvCss).toMatch(/\.stock-screen \.filter-overlay \{[\s\S]*?z-index: var\(--tpv-layer-overlay\);/);
+    expect(tpvCss).toMatch(/\.product-create-overlay \{[\s\S]*?z-index: var\(--tpv-layer-modal\) !important;/);
+  });
+
   it("serializes server sorting and warehouse scope for paged inventory", () => {
     const path = stockPagePath(
       "cursor-2",
@@ -834,7 +849,8 @@ describe("StockScreen", () => {
         purchaseDiscountPercent: "12.50",
         packageQuantity: "1",
         stockMin: null,
-        stockMax: null
+        stockMax: null,
+        requiresSerialNumber: false
       },
       form: expect.objectContaining({ discountType: "NONE" })
     }));

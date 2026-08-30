@@ -1503,7 +1503,7 @@ describe("CustomerPendingSaleDialog", () => {
         document: { id: "invoice-1", numero: "FV-1" },
         printDocument: {},
       });
-    const view = render(<CustomerPendingSaleDialog
+    render(<CustomerPendingSaleDialog
       customerName="Cliente"
       draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
       endpointBase="/pos/sales-document-checkouts"
@@ -1520,7 +1520,9 @@ describe("CustomerPendingSaleDialog", () => {
     const checkout = await screen.findByRole("dialog", { name: "COBRO" });
     expect(screen.queryByRole("heading", { name: /confirmar y cobrar documento/i })).not.toBeInTheDocument();
     expect(within(checkout).queryByRole("button", { name: /Vale/ })).not.toBeInTheDocument();
-    const amount = view.container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    const amount = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "IMPORTE / RECIBIDO",
+    });
     await waitFor(() => {
       expect(amount.disabled).toBe(false);
       expect(amount.value).toBe("10,00");
@@ -1553,7 +1555,7 @@ describe("CustomerPendingSaleDialog", () => {
         document: { id: "draft-2", numero: "FV-2" },
         printDocument: {},
       });
-    const view = render(<CustomerPendingSaleDialog
+    render(<CustomerPendingSaleDialog
       customerName="Cliente"
       draft={{
         ...draft,
@@ -1574,9 +1576,9 @@ describe("CustomerPendingSaleDialog", () => {
     />);
 
     await screen.findByRole("dialog", { name: "COBRO" });
-    const amount = view.container.querySelector<HTMLInputElement>(
-      ".sale-checkout-entry > label input",
-    )!;
+    const amount = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "IMPORTE / RECIBIDO",
+    });
     await waitFor(() => {
       expect(amount.disabled).toBe(false);
       expect(amount.value).toBe("10,00");
@@ -1614,7 +1616,7 @@ describe("CustomerPendingSaleDialog", () => {
         document: { id: "invoice-split", numero: "FV-SPLIT" },
         printDocument: {},
       });
-    const view = render(<CustomerPendingSaleDialog
+    render(<CustomerPendingSaleDialog
       customerName="Cliente"
       draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
       endpointBase="/pos/sales-document-checkouts"
@@ -1629,7 +1631,9 @@ describe("CustomerPendingSaleDialog", () => {
     />);
 
     await screen.findByRole("dialog", { name: "COBRO" });
-    const amount = view.container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    const amount = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "IMPORTE / RECIBIDO",
+    });
     await waitFor(() => expect(amount.value).toBe("20,00"));
     fireEvent.change(amount, { target: { value: "10,00" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
@@ -1658,7 +1662,7 @@ describe("CustomerPendingSaleDialog", () => {
         document: { id: "invoice-pending", numero: "FV-PENDING" },
         printDocument: {},
       });
-    const view = render(<CustomerPendingSaleDialog
+    render(<CustomerPendingSaleDialog
       customerName="Cliente"
       draft={{ ...draft, type: "FACTURA_VENTA", completionMode: "CONFIRM_AND_PAY" }}
       endpointBase="/pos/sales-document-checkouts"
@@ -1677,12 +1681,14 @@ describe("CustomerPendingSaleDialog", () => {
     />);
 
     await screen.findByRole("dialog", { name: "COBRO" });
+    const amount = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "IMPORTE / RECIBIDO",
+    });
+    await waitFor(() => expect(amount.value).toBe("20,00"));
     expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Transferencia/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Pendiente/ })).toBeEnabled();
-    const amount = view.container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
-    await waitFor(() => expect(amount.value).toBe("20,00"));
     fireEvent.click(screen.getByRole("button", { name: /Efectivo/ }));
     fireEvent.change(amount, { target: { value: "10,00" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
@@ -1730,10 +1736,12 @@ describe("CustomerPendingSaleDialog", () => {
     />);
 
     await screen.findByRole("dialog", { name: "COBRO" });
-    fireEvent.click(screen.getByRole("button", { name: /Pendiente/ }));
+    const pending = screen.getByRole("button", { name: /Pendiente/ });
+    await waitFor(() => expect(pending).toBeEnabled());
+    fireEvent.click(pending);
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
-    const authorization = screen.getByRole("dialog", { name: /autorizaci.*cobro/i });
+    const authorization = await screen.findByRole("dialog", { name: /autorizaci.*cobro/i });
     fireEvent.change(within(authorization).getByRole("textbox", {
       name: /usuario autorizador/i,
     }), { target: { value: "supervisor" } });

@@ -60,6 +60,21 @@ public interface SyncOutboxEventRepository extends JpaRepository<SyncOutboxEvent
             @Param("staleBefore") Instant staleBefore,
             @Param("batchSize") int batchSize);
 
+    @Query(value = """
+            select event.*
+              from sync_outbox event
+             where event.event_id = :eventId
+               and ((event.estado in ('PENDIENTE', 'ERROR')
+                     and event.proximo_intento_en <= :now)
+                or (event.estado = 'ENVIANDO'
+                    and (event.reclamado_en is null or event.reclamado_en <= :staleBefore)))
+             for update skip locked
+            """, nativeQuery = true)
+    Optional<SyncOutboxEvent> findClaimableByEventIdForUpdate(
+            @Param("eventId") UUID eventId,
+            @Param("now") Instant now,
+            @Param("staleBefore") Instant staleBefore);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select event from SyncOutboxEvent event where event.eventId = :eventId")
     Optional<SyncOutboxEvent> findLockedByEventId(@Param("eventId") UUID eventId);

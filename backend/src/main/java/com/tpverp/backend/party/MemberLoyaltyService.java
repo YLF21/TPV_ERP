@@ -6,16 +6,21 @@ import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.party.loyalty.central.LocalMemberBalanceReservationRepository;
+import com.tpverp.backend.party.loyalty.central.LocalMemberBalanceReservation;
 import com.tpverp.backend.party.loyalty.central.LocalMemberBalanceReservationStatus;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralContextResolver;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralGateway;
+import com.tpverp.backend.party.loyalty.central.MemberReturnBalanceRetentionPlanner;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralGateway.ManualPointsAdjustmentRequest;
 import com.tpverp.backend.party.loyalty.sync.MemberPointsSyncPublisher;
 import com.tpverp.backend.party.loyalty.sync.MemberWalletSyncPublisher;
+import com.tpverp.backend.party.loyalty.sync.MemberReturnBalanceRecoveryCommand;
+import com.tpverp.backend.party.loyalty.sync.MemberReturnBalanceRecoveryOutboxPublisher;
 import com.tpverp.backend.party.loyalty.points.MemberPointsProjectionCoordinator;
 import com.tpverp.backend.party.loyalty.points.MemberPointsProjectionCoordinator.ProjectionDecision;
 import com.tpverp.backend.party.loyalty.points.MemberPointsProjectionStatus;
@@ -27,6 +32,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -62,9 +68,11 @@ public class MemberLoyaltyService {
     private final MemberCardDeliveryRepository cardDeliveries;
     private final MemberSmtpSettingsRepository smtpSettings;
     private final CommercialContactChannelRepository channels;
+    private final CommercialDocumentRepository documents;
     private final SyncOutboxService syncOutbox;
     private final MemberWalletSyncPublisher walletSyncPublisher;
     private final MemberPointsSyncPublisher pointsSyncPublisher;
+    private final MemberReturnBalanceRecoveryOutboxPublisher returnBalanceRecoveryPublisher;
     private final MemberPointsProjectionCoordinator pointsProjectionCoordinator;
     private final MemberBalanceCentralGateway pointsCentralGateway;
     private final MemberBalanceCentralContextResolver centralContextResolver;
@@ -72,6 +80,7 @@ public class MemberLoyaltyService {
     private final Clock clock;
     private com.tpverp.backend.audit.AuditService audit;
     private LocalMemberBalanceReservationRepository localBalanceReservations;
+    private MemberReturnBalanceRetentionPlanner retentionPlanner;
 
     @org.springframework.beans.factory.annotation.Autowired
     public MemberLoyaltyService(
@@ -86,9 +95,11 @@ public class MemberLoyaltyService {
             MemberCardDeliveryRepository cardDeliveries,
             MemberSmtpSettingsRepository smtpSettings,
             CommercialContactChannelRepository channels,
+            CommercialDocumentRepository documents,
             SyncOutboxService syncOutbox,
             MemberWalletSyncPublisher walletSyncPublisher,
             MemberPointsSyncPublisher pointsSyncPublisher,
+            MemberReturnBalanceRecoveryOutboxPublisher returnBalanceRecoveryPublisher,
             MemberPointsProjectionCoordinator pointsProjectionCoordinator,
             MemberBalanceCentralGateway pointsCentralGateway,
             MemberBalanceCentralContextResolver centralContextResolver,
@@ -105,9 +116,11 @@ public class MemberLoyaltyService {
         this.cardDeliveries = cardDeliveries;
         this.smtpSettings = smtpSettings;
         this.channels = channels;
+        this.documents = documents;
         this.syncOutbox = syncOutbox;
         this.walletSyncPublisher = walletSyncPublisher;
         this.pointsSyncPublisher = pointsSyncPublisher;
+        this.returnBalanceRecoveryPublisher = returnBalanceRecoveryPublisher;
         this.pointsProjectionCoordinator = pointsProjectionCoordinator;
         this.pointsCentralGateway = pointsCentralGateway;
         this.centralContextResolver = centralContextResolver;
@@ -127,6 +140,7 @@ public class MemberLoyaltyService {
             MemberCardDeliveryRepository cardDeliveries,
             MemberSmtpSettingsRepository smtpSettings,
             CommercialContactChannelRepository channels,
+            CommercialDocumentRepository documents,
             SyncOutboxService syncOutbox,
             PartyContext context,
             Clock clock) {
@@ -142,9 +156,11 @@ public class MemberLoyaltyService {
                 cardDeliveries,
                 smtpSettings,
                 channels,
+                documents,
                 syncOutbox,
                 new MemberWalletSyncPublisher(syncOutbox, context),
                 null,
+                new MemberReturnBalanceRecoveryOutboxPublisher(syncOutbox),
                 null,
                 null,
                 null,
@@ -161,6 +177,11 @@ public class MemberLoyaltyService {
     void setLocalBalanceReservations(
             LocalMemberBalanceReservationRepository localBalanceReservations) {
         this.localBalanceReservations = localBalanceReservations;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRetentionPlanner(MemberReturnBalanceRetentionPlanner retentionPlanner) {
+        this.retentionPlanner = retentionPlanner;
     }
 
     @Transactional(readOnly = true)
@@ -208,9 +229,41 @@ public class MemberLoyaltyService {
         var returnCredit = availableForType(
                 availableLots, MemberBalanceLotType.RETURN_CREDIT,
                 member.getReturnCreditBalance());
+        var documentIds = availableLots.stream()
+                .map(MemberBalanceLot::getDocumentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        var documentNumbers = documentIds.isEmpty()
+                ? Map.<UUID, String>of()
+                : documents.findDocumentNumbersByIdsAndCompanyId(
+                                documentIds, context.currentCompany().getId()).stream()
+                        .filter(document -> document.getDocumentId() != null
+                                && normalizeDocumentNumber(document.getDocumentNumber()) != null)
+                        .collect(Collectors.toMap(
+                                CommercialDocumentRepository.DocumentNumberProjection::getDocumentId,
+                                document -> normalizeDocumentNumber(document.getDocumentNumber()),
+                                (first, ignored) -> first,
+                                LinkedHashMap::new));
         return new MemberWalletView(
                 loyalty, returnCredit, PartyValues.money(loyalty.add(returnCredit)),
-                availableLots.stream().map(MemberBalanceLotView::from).toList());
+                availableLots.stream()
+                        .map(lot -> MemberBalanceLotView.from(
+                                lot, documentNumbers.get(lot.getDocumentId())))
+                        .toList());
+    }
+
+    /**
+     * Checks membership status without reading or requiring any wallet balance.
+     * Return-credit creation is only valid for an active member, including when
+     * the member has no existing balance or lots.
+     */
+    @Transactional(readOnly = true)
+    public boolean isActiveMember(UUID customerId) {
+        return customerId != null
+                && members.findByCustomerIdAndCompanyId(
+                                customerId, context.currentCompany().getId())
+                        .map(Member::isActive)
+                        .orElse(false);
     }
 
     @Transactional
@@ -677,20 +730,48 @@ public class MemberLoyaltyService {
             CommercialDocument returnDocument,
             BigDecimal cumulativeRefund,
             BigDecimal cumulativeEligibleRefund) {
+        reverseConfirmedReturn(original, returnDocument, cumulativeRefund,
+                cumulativeEligibleRefund,
+                returnDocument.getReturnRequestId() == null
+                        ? returnDocument.getId() : returnDocument.getReturnRequestId());
+    }
+
+    @Transactional
+    public void reverseConfirmedReturn(
+            CommercialDocument original,
+            CommercialDocument returnDocument,
+            BigDecimal cumulativeRefund,
+            BigDecimal cumulativeEligibleRefund,
+            UUID operationId) {
         Objects.requireNonNull(original, "original");
         Objects.requireNonNull(returnDocument, "returnDocument");
         if (original.getId().equals(returnDocument.getId())) {
             throw new IllegalArgumentException(
                     "La devolucion no puede ser su propio documento de origen");
         }
+        var recoveryReservation = retentionReservation(returnDocument, operationId);
         var settlement = loyaltySettlements.findById(original.getId()).orElse(null);
         if (settlement == null) {
+            if (recoveryReservation != null) {
+                var member = members.findById(recoveryReservation.getMemberId())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "La reserva de retencion referencia un socio inexistente"));
+                if (!member.getCompany().getId().equals(context.currentCompany().getId())) {
+                    throw new IllegalStateException("La reserva de retencion no pertenece a la empresa");
+                }
+                enqueueReturnBalanceRecovery(operationId, original, returnDocument,
+                        member, MemberReturnBalanceRetentionPlanner.Plan.none(original.getId()));
+            }
             return;
         }
         var now = Instant.now(clock);
         var plan = settlement.planReversal(
                 cumulativeRefund, cumulativeEligibleRefund);
+        MemberReturnBalanceRetentionPlanner.Plan retention = retentionPlanner == null
+                ? MemberReturnBalanceRetentionPlanner.Plan.none(original.getId())
+                : retentionPlanner.plan(original, cumulativeRefund, cumulativeEligibleRefund);
         var member = settlement.getMember();
+        validatePreparedRetentionSnapshot(returnDocument, operationId, member.getId(), retention);
         var pointsBefore = member.getMemberPoints();
         var debtBefore = member.getLoyaltyPointsDebt();
         long pointsDebtCreated = 0;
@@ -798,6 +879,101 @@ public class MemberLoyaltyService {
                     null,
                     pointsProjection);
         }
+        if (retention != null && (retention.attributedAmount().signum() > 0
+                && !retention.claims().isEmpty()
+                || recoveryReservation != null)) {
+            enqueueReturnBalanceRecovery(operationId, original, returnDocument,
+                    settlement.getMember(), retention);
+        }
+    }
+
+    private LocalMemberBalanceReservation retentionReservation(
+            CommercialDocument returnDocument, UUID operationId) {
+        if (localBalanceReservations == null || returnDocument.getTerminalOrigenId() == null) {
+            return null;
+        }
+        return localBalanceReservations
+                .findFirstByStoreIdAndTerminalIdAndSaleIdOrderByCreatedAtDesc(
+                        returnDocument.getTiendaId(), returnDocument.getTerminalOrigenId(),
+                        operationId.toString())
+                .orElse(null);
+    }
+
+    /**
+     * DocumentService locks the source document before invoking the loyalty
+     * reversal. Compare the final server-side amount with the durable
+     * checkout capacity before creating reversal movements or the recovery
+     * outbox. Lot/fingerprint shifts are reconciled by the central projector;
+     * only an amount that no longer fits the prepared F10 is rejected.
+     */
+    private void validatePreparedRetentionSnapshot(
+            CommercialDocument returnDocument,
+            UUID operationId,
+            UUID expectedMemberId,
+            MemberReturnBalanceRetentionPlanner.Plan retention) {
+        if (retention == null || localBalanceReservations == null
+                || returnDocument.getTerminalOrigenId() == null) {
+            return;
+        }
+        var reservation = localBalanceReservations
+                .findFirstByStoreIdAndTerminalIdAndSaleIdOrderByCreatedAtDesc(
+                        returnDocument.getTiendaId(), returnDocument.getTerminalOrigenId(),
+                        operationId.toString())
+                .orElse(null);
+        if (reservation == null || !expectedMemberId.equals(reservation.getMemberId())
+                || reservation.getPreparedLoyaltyAmount().signum() <= 0) {
+            return;
+        }
+        BigDecimal knownHeld = retention.claims().stream()
+                .map(claim -> reservation.retentionSnapshotKnownAmount(
+                        claim.lotId(), claim.amount()))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        if (reservation.getPreparedLoyaltyAmount().add(knownHeld)
+                .compareTo(reservation.getReservedLoyaltyAmount()) > 0) {
+            throw new IllegalStateException("member_wallet_retention_capacity_conflict");
+        }
+    }
+
+    private void enqueueReturnBalanceRecovery(
+            UUID operationId,
+            CommercialDocument original,
+            CommercialDocument returnDocument,
+            Member member,
+            MemberReturnBalanceRetentionPlanner.Plan plan) {
+        if (localBalanceReservations != null && returnDocument.getTerminalOrigenId() != null) {
+            var reservation = localBalanceReservations.findFirstByStoreIdAndTerminalIdAndSaleIdOrderByCreatedAtDesc(
+                            returnDocument.getTiendaId(), returnDocument.getTerminalOrigenId(), operationId.toString())
+                    .filter(value -> value.getMemberId().equals(member.getId()))
+                    .orElse(null);
+            if (reservation != null) {
+                publishReturnBalanceRecovery(operationId, original, returnDocument, member, plan,
+                        new MemberReturnBalanceRecoveryCommand.ReservationIdentity(
+                                reservation.getCentralReservationId(), reservation.getSaleId()));
+                return;
+            }
+        }
+        publishReturnBalanceRecovery(operationId, original, returnDocument, member, plan, null);
+    }
+
+    private void publishReturnBalanceRecovery(
+            UUID operationId,
+            CommercialDocument original,
+            CommercialDocument returnDocument,
+            Member member,
+            MemberReturnBalanceRetentionPlanner.Plan plan,
+            MemberReturnBalanceRecoveryCommand.ReservationIdentity reservation) {
+        returnBalanceRecoveryPublisher.publish(new MemberReturnBalanceRecoveryCommand(
+                operationId,
+                member.getCompany().getId(),
+                returnDocument.getTiendaId(),
+                returnDocument.getTerminalOrigenId(),
+                member.getId(),
+                original.getId(),
+                returnDocument.getId(),
+                plan.attributedAmount(),
+                plan.fingerprint(),
+                plan.claims(),
+                reservation));
     }
 
     private List<MemberBalanceLot> originalAccrualLots(UUID documentId) {
@@ -1401,14 +1577,19 @@ public class MemberLoyaltyService {
         var saved = movements.save(new MemberMovement(
                 member, context.currentStore(), context.currentUser(), documentId, type, balance, points,
                 previousCategoryId, newCategoryId, reason, Instant.now(clock)));
-        syncOutbox.enqueue(new SyncOutboundEventCommand(
-                context.currentCompany().getId(),
-                context.currentStore().getId(),
-                null,
-                "MEMBER_MOVEMENT",
-                saved.getId(),
-                SyncOperation.CREAR,
-                Map.of("memberId", member.getId().toString(), "type", type.name())));
+        // Return balance recovery has its own typed, idempotent contract.
+        // Do not publish a second generic movement event for that operation;
+        // all other member movements retain the legacy sync publication.
+        if (type != MemberMovementType.DEVOLUCION_ACUMULACION_SALDO) {
+            syncOutbox.enqueue(new SyncOutboundEventCommand(
+                    context.currentCompany().getId(),
+                    context.currentStore().getId(),
+                    null,
+                    "MEMBER_MOVEMENT",
+                    saved.getId(),
+                    SyncOperation.CREAR,
+                    Map.of("memberId", member.getId().toString(), "type", type.name())));
+        }
         return saved;
     }
 
@@ -1502,7 +1683,7 @@ public class MemberLoyaltyService {
         var syncedAt = member.getOfficialSyncedAt();
         var limit = Instant.now(clock).minus(5, ChronoUnit.MINUTES);
         if (syncedAt == null || syncedAt.isBefore(limit)) {
-            throw new IllegalStateException("message.member.official_sync_required");
+            throw new MemberBalanceOfficialSyncRequiredException();
         }
     }
 
@@ -1752,6 +1933,10 @@ public class MemberLoyaltyService {
         }
     }
 
+    private static String normalizeDocumentNumber(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     public record MemberWalletView(
             BigDecimal loyaltyAvailable,
             BigDecimal returnCreditAvailable,
@@ -1763,15 +1948,16 @@ public class MemberLoyaltyService {
             UUID id,
             MemberBalanceLotType type,
             UUID documentId,
+            String documentNumber,
             MemberMovementType sourceMovementType,
             BigDecimal originalAmount,
             BigDecimal availableAmount,
             Instant obtainedAt,
             Instant expiresAt) {
 
-        static MemberBalanceLotView from(MemberBalanceLot lot) {
+        static MemberBalanceLotView from(MemberBalanceLot lot, String documentNumber) {
             return new MemberBalanceLotView(
-                    lot.getId(), lot.getBalanceType(), lot.getDocumentId(),
+                    lot.getId(), lot.getBalanceType(), lot.getDocumentId(), documentNumber,
                     lot.getSourceMovement() == null
                             ? null : lot.getSourceMovement().getType(),
                     lot.getAmountOriginal(), lot.getAmountRemaining(),

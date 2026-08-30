@@ -3,6 +3,7 @@ package com.tpverp.backend.catalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.TAXES_MANAGE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
@@ -33,6 +34,7 @@ class CatalogControllerContractTest {
         assertAllows(FamilyController.class, "listSubfamilies", GetMapping.class, VENTA, java.util.UUID.class);
         assertAllows(TaxController.class, "selectable", GetMapping.class, VENTA);
         assertAllows(TaxController.class, "selectable", GetMapping.class, GESTION_ALMACEN);
+        assertAllows(TaxController.class, "list", GetMapping.class, TAXES_MANAGE);
         assertAllows(ProductController.class, "warehouseOptions", GetMapping.class, GESTION_ALMACEN);
         assertAllows(ProductController.class, "create", PostMapping.class, GESTION_PRODUCTO, CatalogService.ProductRequest.class);
         assertAllows(ProductController.class, "uploadImage", PutMapping.class, GESTION_PRODUCTO,

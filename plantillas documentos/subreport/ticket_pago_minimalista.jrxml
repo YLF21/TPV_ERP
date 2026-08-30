@@ -6,7 +6,7 @@
 	<parameter name="DOCUMENTO_ID" class="java.lang.String"/>
 	<query language="sql"><![CDATA[SELECT
     dp.posicion,
-    COALESCE(mp.nombre, 'PAGO') AS metodo_pago,
+    UPPER(REPLACE(COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO'), '_', ' ')) AS metodo_pago,
     dp.importe,
     mp.abre_caja_registradora AS es_metalico,
     dp.entregado,
@@ -65,12 +65,12 @@ ORDER BY dp.posicion, dp.creado_en]]></query>
 		</band>
 		<band height="13" splitType="Stretch">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{es_tarjeta})]]></printWhenExpression>
-			<element kind="staticText" uuid="b2b59f21-4a71-44c9-b29b-b26f15be2a21" x="5" y="0" width="120" height="12" fontSize="8.0"><text><![CDATA[Tarjeta bancaria]]></text></element>
+			<element kind="textField" uuid="b2b59f21-4a71-44c9-b29b-b26f15be2a21" x="5" y="0" width="120" height="12" fontSize="8.0"><expression><![CDATA[$F{metodo_pago}]]></expression></element>
 			<element kind="textField" uuid="ff02e2bb-d799-498c-b7df-290cc7db6e56" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[$F{importe} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{importe}) + " \u20AC"]]></expression></element>
 		</band>
 		<band height="13">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{es_metalico}) && $F{entregado} != null]]></printWhenExpression>
-			<element kind="staticText" uuid="eb94f502-b5b7-45bd-85c7-aa0f12396560" x="5" y="0" width="120" height="12" fontSize="8.0"><text><![CDATA[Efectivo]]></text></element>
+			<element kind="textField" uuid="eb94f502-b5b7-45bd-85c7-aa0f12396560" x="5" y="0" width="120" height="12" fontSize="8.0"><expression><![CDATA[$F{metodo_pago}]]></expression></element>
 			<element kind="textField" uuid="33448077-7a1b-45bd-9b66-1dc044ea8e73" x="130" y="0" width="70" height="12" fontSize="8.0" hTextAlign="Right"><expression><![CDATA[new java.text.DecimalFormat("#,##0.00").format($F{entregado}) + " €"]]></expression></element>
 		</band>
 		<band height="13">

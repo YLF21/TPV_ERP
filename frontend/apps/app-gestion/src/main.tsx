@@ -20,12 +20,13 @@ import {
 } from "@tpverp/app-common";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
-import { visibleGestionModules } from "./gestionAccess";
+import { canManageTaxes, visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import { PaymentMethodSettingsScreen } from "./PaymentMethodSettingsScreen";
+import { TaxSettingsScreen } from "./TaxSettingsScreen";
 import { SalesOperationSecurityScreen } from "./SalesOperationSecurityScreen";
 import { MemberLoyaltySettingsScreen } from "./MemberLoyaltySettingsScreen";
 import { MemberCategoriesScreen } from "./MemberCategoriesScreen";
@@ -111,7 +112,7 @@ const LicenseSaasManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -193,6 +194,7 @@ function App() {
         onOpenTerminals={() => setModule("terminals")}
         onOpenRoles={() => setModule("roles")}
         onOpenPaymentMethods={() => setModule("paymentMethods")}
+        onOpenTaxes={() => setModule("taxes")}
         onOpenSalesOperationSecurity={() => setModule("salesOperationSecurity")}
         onOpenMemberLoyaltySettings={() => setModule("memberLoyaltySettings")}
         onOpenMemberCategories={() => setModule("memberCategories")}
@@ -231,6 +233,7 @@ function GestionScreen({
   onOpenTerminals,
   onOpenRoles,
   onOpenPaymentMethods,
+  onOpenTaxes,
   onOpenSalesOperationSecurity,
   onOpenMemberLoyaltySettings,
   onOpenMemberCategories,
@@ -261,6 +264,7 @@ function GestionScreen({
   onOpenTerminals: () => void;
   onOpenRoles: () => void;
   onOpenPaymentMethods: () => void;
+  onOpenTaxes: () => void;
   onOpenSalesOperationSecurity: () => void;
   onOpenMemberLoyaltySettings: () => void;
   onOpenMemberCategories: () => void;
@@ -277,11 +281,13 @@ function GestionScreen({
   const modules = visibleGestionModules(session);
   const verifactuAllowed = modules.includes("gestion.verifactu");
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
+  const canManageTaxesForSession = canManageTaxes(session);
   const canReadLicenses = canConfigurePaymentMethods || session.permissions.includes("LICENSES_MANAGE");
   const canManageDocumentTemplates = modules.includes("gestion.documentTemplates");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
     || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "memberLoyaltySettings" || module === "memberCategories" || module === "internalEan" || module === "documentPrintSettings" || module === "voucherSettings")
       && !canConfigurePaymentMethods)
+    || (module === "taxes" && !canManageTaxesForSession)
     || (module === "licenses" && !canReadLicenses)
     || (module === "documentTemplates" && !canManageDocumentTemplates)
     || (module === "vouchers" && !modules.includes("gestion.sales"))
@@ -308,7 +314,7 @@ function GestionScreen({
     ...(userCanManageWarehouses(session) ? [{
       key: "stock.settings.configuration",
       label: t("stock.settings.configuration"),
-      onOpen: () => onOpenStock({ key: "stock.settings.configuration", settingsMode: "configuration" as const })
+            onOpen: () => onOpenStock({ key: "stock.settings.configuration", settingsMode: "configuration" as const })
     }] : [])
   ];
   const warehouseChildren: GestionNavigationItem[] = [
@@ -453,7 +459,7 @@ function GestionScreen({
     ...(securityChildren.length > 0
       ? [{ key: "security", label: t("gestion.security.navigation"), children: securityChildren }]
       : []),
-    ...(canConfigurePaymentMethods || canManageDocumentTemplates || canReadLicenses
+    ...(canConfigurePaymentMethods || canManageTaxesForSession || canManageDocumentTemplates || canReadLicenses
       ? [{
           key: "configuration",
           label: t("gestion.configuration.navigation"),
@@ -465,6 +471,10 @@ function GestionScreen({
             key: "licenses",
             label: t("gestion.licenses.navigation"),
             onOpen: onOpenLicenses
+          }] : []), ...(canManageTaxesForSession ? [{
+            key: "taxes",
+            label: t("gestion.taxes.navigation"),
+            onOpen: onOpenTaxes
           }] : []), ...(canConfigurePaymentMethods ? [{
             key: "documentPrintSettings",
             label: t("gestion.documentPrint.navigation"),
@@ -488,8 +498,8 @@ function GestionScreen({
           }, {
             key: "internalEan",
             label: t("gestion.internalEan.navigation"),
-            onOpen: onOpenInternalEan
-          }] : [])]
+             onOpen: onOpenInternalEan
+           }] : [])]
         }]
       : [])
   ];
@@ -592,6 +602,8 @@ function GestionScreen({
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
   } else if (effectiveModule === "paymentMethods" && canConfigurePaymentMethods) {
     content = <PaymentMethodSettingsScreen session={session} t={t} />;
+  } else if (effectiveModule === "taxes" && canManageTaxesForSession) {
+    content = <TaxSettingsScreen session={session} t={t} />;
   } else if (effectiveModule === "salesOperationSecurity" && canConfigurePaymentMethods) {
     content = <SalesOperationSecurityScreen session={session} t={t} />;
   } else if (effectiveModule === "memberLoyaltySettings" && canConfigurePaymentMethods) {

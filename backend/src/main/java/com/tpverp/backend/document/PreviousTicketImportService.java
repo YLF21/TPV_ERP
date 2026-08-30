@@ -176,7 +176,13 @@ public class PreviousTicketImportService {
                 (int) ticket.getLineas().stream()
                         .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                         .count(),
-                preservedManualDiscount, historicalLoyaltyLines);
+                preservedManualDiscount, historicalLoyaltyLines,
+                pricingMode == PreviousTicketImportPricingMode.FROZEN_EXACT
+                        ? ticket.getAjustes().stream()
+                                .map(adjustment -> DocumentAdjustmentSnapshot.from(
+                                        adjustment, ticket.getLineas()))
+                                .toList()
+                        : List.of());
     }
 
     private static PreviousTicketImportPricingMode pricingMode(
@@ -846,7 +852,28 @@ public class PreviousTicketImportService {
             int productLineCount,
             BigDecimal preservedManualDiscountAmount,
             List<HistoricalTicketReplayMetadata.HistoricalLoyaltyLine>
-                    historicalLoyaltyLines) {
+                    historicalLoyaltyLines,
+            List<DocumentAdjustmentSnapshot> adjustments) {
+
+        public ResolvedImport(
+                UUID ticketId,
+                String ticketNumber,
+                DocumentStatus status,
+                PreviousTicketImportPricingMode pricingMode,
+                UUID customerId,
+                String fingerprint,
+                BigDecimal baseTotal,
+                BigDecimal taxTotal,
+                BigDecimal total,
+                List<DocumentLineCommand> commands,
+                int productLineCount,
+                BigDecimal preservedManualDiscountAmount,
+                List<HistoricalTicketReplayMetadata.HistoricalLoyaltyLine>
+                        historicalLoyaltyLines) {
+            this(ticketId, ticketNumber, status, pricingMode, customerId, fingerprint,
+                    baseTotal, taxTotal, total, commands, productLineCount,
+                    preservedManualDiscountAmount, historicalLoyaltyLines, List.of());
+        }
 
         public ResolvedImport {
             commands = List.copyOf(commands);
@@ -854,6 +881,7 @@ public class PreviousTicketImportService {
                     preservedManualDiscountAmount == null
                             ? BigDecimal.ZERO : preservedManualDiscountAmount);
             historicalLoyaltyLines = List.copyOf(historicalLoyaltyLines);
+            adjustments = List.copyOf(adjustments);
         }
 
         boolean frozenExact() {

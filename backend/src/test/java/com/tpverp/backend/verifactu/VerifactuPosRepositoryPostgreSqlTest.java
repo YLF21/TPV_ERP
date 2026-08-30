@@ -175,8 +175,15 @@ class VerifactuPosRepositoryPostgreSqlTest {
                 .containsExactly(
                         fixture.otherTerminalDocumentNumber(),
                         fixture.nullTerminalDocumentNumber());
-        assertThat(firstPage.totalElements()).isEqualTo(7);
-        assertThat(firstPage.totalPages()).isEqualTo(4);
+        assertThat(firstPage.totalElements()).isEqualTo(5);
+        assertThat(firstPage.totalPages()).isEqualTo(3);
+        assertThat(adminReads.findSubmissions(
+                fixture.firstCompanyId(), fixture.targetStoreId(),
+                null, null, null, null, null, null, 0, 25).items())
+                .extracting(VerifactuAdminSubmissionView::documentNumber)
+                .doesNotContain(
+                        fixture.acceptedDocumentNumber(),
+                        fixture.correctedDocumentNumber());
 
         var secondPage = adminReads.findSubmissions(
                 fixture.firstCompanyId(), fixture.targetStoreId(),
@@ -184,8 +191,8 @@ class VerifactuPosRepositoryPostgreSqlTest {
         assertThat(secondPage.items())
                 .extracting(VerifactuAdminSubmissionView::documentNumber)
                 .containsExactly(
-                        fixture.acceptedDocumentNumber(),
-                        fixture.correctedDocumentNumber())
+                        fixture.expectedTargetOrder().getFirst(),
+                        fixture.expectedTargetOrder().get(1))
                 .doesNotContainAnyElementsOf(firstPage.items().stream()
                         .map(VerifactuAdminSubmissionView::documentNumber)
                         .toList());
@@ -303,7 +310,15 @@ class VerifactuPosRepositoryPostgreSqlTest {
     void manualRetryUsesPostgreSqlLockVersionAndOrganizationScope() {
         var fixture = insertFixture();
         jdbc.update(
-                "update estado_envio_fiscal set estado = 'ENVIADO' where registro_id = ?",
+                """
+                update estado_envio_fiscal
+                   set estado = 'ENVIADO',
+                       proximo_intento_en = actualizado_en,
+                       lease_owner = null,
+                       lease_hasta = null,
+                       claim_token = null
+                 where registro_id = ?
+                """,
                 fixture.rejectedRecordId());
         var company = org.mockito.Mockito.mock(Company.class);
         var store = org.mockito.Mockito.mock(Store.class);
@@ -561,15 +576,46 @@ class VerifactuPosRepositoryPostgreSqlTest {
                 hash(sequence),
                 hash(10_000 + sequence));
         jdbc.update("""
+                insert into artefacto_registro_fiscal (
+                    registro_id, modo_fiscal, entorno, sandbox,
+                    obligado_nombre, obligado_nif, obligado_direccion,
+                    xml_sin_firmar, xml_hash, qr_url, qr_hash, qr_prefijo,
+                    qr_leyenda, aviso_pruebas, creado_en)
+                values (?, 'VERIFACTU', 'TEST', true,
+                    'Empresa fiscal de prueba', 'B12345674', cast(? as jsonb),
+                    '<RegistroAlta/>', ?, ?, ?, 'QR tributario:',
+                    'Factura verificable en la sede electrónica de la AEAT',
+                    'ENTORNO DE PRUEBAS - SIN VALIDEZ FISCAL', ?)
+                """,
+                recordId,
+                address(),
+                hash(20_000 + sequence),
+                "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie="
+                        + number,
+                hash(30_000 + sequence),
+                java.sql.Timestamp.from(updatedAt.minusSeconds(4)));
+        var sending = status == FiscalSubmissionStatus.ENVIANDO;
+        var retryable = status == FiscalSubmissionStatus.PENDIENTE
+                || status == FiscalSubmissionStatus.ENVIADO;
+        var leaseOwner = sending ? UUID.randomUUID() : null;
+        var leaseUntil = sending ? java.sql.Timestamp.from(updatedAt.plusSeconds(60)) : null;
+        var claimToken = sending ? UUID.randomUUID() : null;
+        jdbc.update("""
                 insert into estado_envio_fiscal (
-                    registro_id, estado, ultimo_error_codigo, ultimo_error, actualizado_en)
-                values (?, ?, ?, ?, ?)
+                    registro_id, estado, ultimo_error_codigo, ultimo_error,
+                    actualizado_en, proximo_intento_en,
+                    lease_owner, lease_hasta, claim_token)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 recordId,
                 status.name(),
                 requiresError(status) ? "VF-TEST" : null,
                 requiresError(status) ? "Detalle interno que no forma parte de la proyeccion" : null,
-                java.sql.Timestamp.from(updatedAt));
+                java.sql.Timestamp.from(updatedAt),
+                retryable ? java.sql.Timestamp.from(updatedAt) : null,
+                leaseOwner,
+                leaseUntil,
+                claimToken);
         return recordId;
     }
 

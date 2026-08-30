@@ -11,6 +11,15 @@ export const verifactuSubmissionStatuses = [
   "SUBSANADO"
 ] as const;
 
+/** Statuses shown by the bounded operational queue. Historical outcomes are
+ * available from the fiscal-record history and defective-record views. */
+export const verifactuActiveSubmissionStatuses = [
+  "PENDIENTE",
+  "ENVIANDO",
+  "ENVIADO",
+  "RECHAZADO"
+] as const;
+
 export const verifactuDocumentTypes = ["F1", "F2", "F3", "R1", "R2", "R3", "R4", "R5"] as const;
 export const verifactuOperations = ["ALTA", "ANULACION"] as const;
 
@@ -99,6 +108,7 @@ export type VerifactuAdminSubmissionPage = {
   size: number;
   totalElements: number;
   totalPages: number;
+  truncated: boolean;
 };
 
 export type VerifactuAdminSubmissionFilters = {
@@ -401,8 +411,25 @@ export type FiscalRequiredSubmissionHistory = FiscalRequiredSubmission & {
   installationId: string;
 };
 
+export type FiscalResponsibleDeclaration = {
+  status: "AVAILABLE" | "NOT_CONFIGURED" | "UNAVAILABLE" | "PENDING" | string;
+  fileName?: string | null;
+  contentType?: string | null;
+  size?: number | null;
+  sha256?: string | null;
+  issuedAt?: string | null;
+  /** Optional one-use URL/token contract for large declarations. */
+  downloadUrl?: string | null;
+  downloadToken?: string | null;
+  contentBase64?: string | null;
+};
+
 export function loadFiscalStatus(token?: string) {
   return apiRequest<FiscalStatus>("/fiscal/status", { token });
+}
+
+export function loadFiscalResponsibleDeclaration(token?: string, signal?: AbortSignal) {
+  return apiRequest<FiscalResponsibleDeclaration>("/fiscal/responsible-declaration", { token, signal });
 }
 
 export function transitionFiscalMode(
@@ -519,14 +546,19 @@ export function retryFiscalExportJob(id: string, token?: string, signal?: AbortS
   });
 }
 
+export type FiscalExportDownloadToken = { token: string };
+
+export function issueFiscalExportDownloadToken(id: string, token?: string, signal?: AbortSignal) {
+  return apiRequest<FiscalExportDownloadToken>(
+    `/fiscal/export-jobs/${encodeURIComponent(id)}/download-token`,
+    { method: "POST", token, signal });
+}
+
+/** Emits the authenticated capability; the caller submits it through a form. */
 export async function downloadFiscalExportJob(id: string, token?: string, signal?: AbortSignal) {
-  const response = await fetch(`${apiBaseUrl}/fiscal/export-jobs/${encodeURIComponent(id)}/download`, {
-    method: "GET",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    signal
-  });
-  if (!response.ok) throw new Error(`fiscal_export_job_${response.status}`);
-  return response.blob();
+  const issued = await issueFiscalExportDownloadToken(id, token, signal);
+  if (!issued?.token) throw new Error("fiscal_export_download_token_missing");
+  return issued.token;
 }
 
 export async function downloadFiscalExportZip(
@@ -545,7 +577,9 @@ export async function downloadFiscalExportZip(
     body: JSON.stringify(fiscalExportBody(kind, periodStart, periodEnd, scope))
   });
   if (!response.ok) throw new Error(`fiscal_export_${response.status}`);
-  return response.blob();
+  // This legacy endpoint is retained for callers that need the raw response;
+  // durable export jobs use downloadFiscalExportJob plus the form stream.
+  return response;
 }
 
 function fiscalExportBody(

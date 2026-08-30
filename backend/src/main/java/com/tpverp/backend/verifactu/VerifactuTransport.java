@@ -12,6 +12,7 @@ public interface VerifactuTransport {
         if (companyId == null || installationId == null) {
             throw new IllegalArgumentException("companyId e installationId son obligatorios");
         }
-        return send(endpoint, soapEnvelope);
+        throw new UnsupportedOperationException(
+                "El transporte VERI*FACTU exige identidad fiscal explicita");
     }
 }

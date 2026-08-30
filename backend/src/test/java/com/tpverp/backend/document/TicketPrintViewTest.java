@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import com.tpverp.backend.verifactu.FiscalEndpointEnvironment;
 import com.tpverp.backend.verifactu.FiscalMode;
@@ -85,6 +86,44 @@ class TicketPrintViewTest {
         assertThat(Base64.getDecoder().decode(rendered.ticketRenderedImage().base64()))
                 .isEqualTo("PNG-ticket".getBytes(StandardCharsets.UTF_8));
         assertThat(rendered.fiscal()).isSameAs(fiscal);
+    }
+
+    @Test
+    void formatsPaymentMethodIdentifiersOnlyInThePrintableSnapshot() {
+        var companyId = UUID.randomUUID();
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 30), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE, "P-1", "Articulo",
+                null, BigDecimal.TEN, BigDecimal.ZERO, true,
+                "IVA", new BigDecimal("21.00")));
+        document.confirm("001-260830-000001", UUID.randomUUID(),
+                Instant.parse("2026-08-30T12:00:00Z"), false);
+        var returnCredit = new PaymentMethod(companyId, "credito_devolucion", true);
+        var custom = new PaymentMethod(companyId, "pago_personalizado", false);
+        document.addPayment(new DocumentPayment(
+                document, returnCredit, 1, new BigDecimal("4.00"), true,
+                null, null, Instant.parse("2026-08-30T12:00:01Z")));
+        document.addPayment(new DocumentPayment(
+                document, custom, 2, new BigDecimal("6.00"), false,
+                null, null, Instant.parse("2026-08-30T12:00:02Z")));
+
+        assertThat(returnCredit.getNombre()).isEqualTo("CREDITO_DEVOLUCION");
+        assertThat(custom.getNombre()).isEqualTo("PAGO_PERSONALIZADO");
+        assertThat(TicketPrintView.from(document).payments())
+                .extracting(TicketPrintView.Payment::method)
+                .containsExactly("CREDITO DEVOLUCION", "PAGO PERSONALIZADO");
+
+        var memberCreditPayout = new RefundTender(
+                document, RefundTenderType.MEMBER_CREDIT, new BigDecimal("4.00"),
+                null, null, null, Instant.parse("2026-08-30T12:00:03Z"));
+        assertThat(TicketPrintView.from(document, List.of(memberCreditPayout)).payments())
+                .singleElement()
+                .satisfies(payment -> {
+                    assertThat(payment.method()).isEqualTo("CREDITO DEVOLUCION");
+                    assertThat(payment.amount()).isEqualByComparingTo("-4.00");
+                });
     }
 
     @Test

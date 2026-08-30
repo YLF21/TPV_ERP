@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -234,6 +236,19 @@ class FiscalExportJobServiceTest {
 
         verify(repository).findTop100ByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(
                 org.mockito.ArgumentMatchers.eq(FiscalExportJobStatus.RUNNING), any(Instant.class));
+    }
+
+    @Test
+    void tokenCleanupBindsInstantAsTimestampJdbc() {
+        var repository = mock(FiscalExportJobRepository.class);
+        var jdbc = mock(NamedParameterJdbcTemplate.class);
+        var now = Instant.parse("2026-08-28T19:00:00Z");
+        var parameters = ArgumentCaptor.forClass(MapSqlParameterSource.class);
+
+        service(repository, jdbc).expireJobs(now);
+
+        verify(jdbc).update(anyString(), parameters.capture());
+        assertThat(parameters.getValue().getValue("now")).isEqualTo(Timestamp.from(now));
     }
 
     @Test

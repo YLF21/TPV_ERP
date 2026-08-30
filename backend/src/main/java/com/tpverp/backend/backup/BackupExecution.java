@@ -46,6 +46,16 @@ public class BackupExecution {
     @Column(name = "error_reason", columnDefinition = "text")
     private String motivoError;
 
+    /** Opaque worker fencing token. It is never returned by an API. */
+    @Column(name = "worker_token")
+    private UUID workerToken;
+
+    @Column(name = "heartbeat_at")
+    private Instant heartbeatAt;
+
+    @Column(name = "lease_until")
+    private Instant leaseUntil;
+
     @Version
     private long version;
 
@@ -56,6 +66,14 @@ public class BackupExecution {
         this.id = UUID.randomUUID();
         this.configuracion = Objects.requireNonNull(configuracion, "configuracion");
         this.iniciadaEn = Objects.requireNonNull(iniciadaEn, "iniciadaEn");
+    }
+
+    public BackupExecution(BackupSettings configuracion, Instant iniciadaEn,
+            UUID workerToken, Instant heartbeatAt, Instant leaseUntil) {
+        this(configuracion, iniciadaEn);
+        this.workerToken = Objects.requireNonNull(workerToken, "workerToken");
+        this.heartbeatAt = Objects.requireNonNull(heartbeatAt, "heartbeatAt");
+        this.leaseUntil = Objects.requireNonNull(leaseUntil, "leaseUntil");
     }
 
     public void completar(BackupResult resultado, Instant finalizadaEn, Map<String, Object> metadata, String motivoError) {
@@ -69,6 +87,7 @@ public class BackupExecution {
         this.finalizadaEn = Objects.requireNonNull(finalizadaEn, "finalizadaEn");
         this.metadata = metadata == null ? null : new LinkedHashMap<>(metadata);
         this.motivoError = resultado == BackupResult.FALLO ? motivoError.trim() : null;
+        this.leaseUntil = finalizadaEn;
     }
 
     public UUID getId() {
@@ -94,4 +113,8 @@ public class BackupExecution {
     public String getMotivoError() {
         return motivoError;
     }
+
+    UUID getWorkerToken() { return workerToken; }
+    Instant getHeartbeatAt() { return heartbeatAt; }
+    Instant getLeaseUntil() { return leaseUntil; }
 }

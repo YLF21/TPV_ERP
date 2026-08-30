@@ -3,6 +3,7 @@ package com.tpverp.saas.fiscal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.tpverp.saas.license.CommercialProfile;
 import com.tpverp.saas.license.SaasCompany;
@@ -36,10 +37,12 @@ class FiscalStatusAdminServiceTest {
                 reported.installation().getInstallationId(), UUID.randomUUID(), "VERIFACTU", "ACTIVE", 4,
                 NOW.minusSeconds(3600), LocalDate.of(2026, 8, 1), 3L, "REAL", "TEST", "AEAT",
                 NOW.minusSeconds(72 * 3600), NOW.minusSeconds(3600), "a".repeat(64));
-        when(installations.findAllByOrderByLinkedAtDesc())
-                .thenReturn(List.of(unknown.installation(), reported.installation()));
-        when(stores.findAll()).thenReturn(List.of(unknown.store(), reported.store()));
-        when(statuses.findAllByOrderByCompany_NameAscStore_NameAsc()).thenReturn(List.of(current));
+        var firstRows = List.of(statusRow(reported, current, true, true), statusRow(unknown, null, true, true));
+        var firstCompanyRows = List.of(companyRow(reported.company(), 2, 2, 0, 2, 2, "MIXED", 0, null));
+        when(statuses.findAdminPage(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(firstRows);
+        when(statuses.findAdminCompanyPage(any(), any(), any(), any(), any(), any()))
+                .thenReturn(firstCompanyRows);
 
         FiscalStatusAdminService service = new FiscalStatusAdminService(
                 statuses, installations, stores, Clock.fixed(NOW, ZoneOffset.UTC));
@@ -74,9 +77,12 @@ class FiscalStatusAdminServiceTest {
         SaasInstallationRepository installations = mock(SaasInstallationRepository.class);
         SaasStoreRepository stores = mock(SaasStoreRepository.class);
         Fixture unlinked = fixture("Empresa A", "Tienda 1", "INST-NO-USADA");
-        when(stores.findAll()).thenReturn(List.of(unlinked.store()));
-        when(installations.findAllByOrderByLinkedAtDesc()).thenReturn(List.of());
-        when(statuses.findAllByOrderByCompany_NameAscStore_NameAsc()).thenReturn(List.of());
+        var secondRows = List.of(statusRow(unlinked, null, true, false));
+        var secondCompanyRows = List.of(companyRow(unlinked.company(), 1, 0, 1, 0, 1, "UNKNOWN", 0, null));
+        when(statuses.findAdminPage(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(secondRows);
+        when(statuses.findAdminCompanyPage(any(), any(), any(), any(), any(), any()))
+                .thenReturn(secondCompanyRows);
         FiscalStatusAdminService service = new FiscalStatusAdminService(
                 statuses, installations, stores, Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -111,6 +117,53 @@ class FiscalStatusAdminServiceTest {
                 UUID.randomUUID(), company, store, license, UUID.randomUUID(), installationReference,
                 "public-key", "token-hash", createdAt);
         return new Fixture(company, store, installation);
+    }
+
+    private static SaasFiscalStatusRepository.AdminStatusRow statusRow(
+            Fixture fixture, SaasFiscalStatus status, boolean stale, boolean linked) {
+        var row = mock(SaasFiscalStatusRepository.AdminStatusRow.class);
+        when(row.getCompanyId()).thenReturn(fixture.company().getId());
+        when(row.getCompanyName()).thenReturn(fixture.company().getName());
+        when(row.getTaxId()).thenReturn(fixture.company().getTaxId());
+        when(row.getStoreId()).thenReturn(fixture.store().getId());
+        when(row.getStoreName()).thenReturn(fixture.store().getName());
+        when(row.getInstallationId()).thenReturn(linked ? fixture.installation().getInstallationId() : null);
+        when(row.getInstallationReference()).thenReturn(linked ? fixture.installation().getInstallationReference() : null);
+        when(row.getEffectiveMode()).thenReturn(status == null ? "UNKNOWN" : status.getEffectiveMode());
+        when(row.getActivationState()).thenReturn(status == null ? "UNKNOWN" : status.getActivationState());
+        when(row.getModeVersion()).thenReturn(status == null ? 0 : status.getModeVersion());
+        when(row.getModeSince()).thenReturn(status == null ? null : status.getModeSince());
+        when(row.getActivationDate()).thenReturn(status == null ? null : status.getActivationDate());
+        when(row.getPolicyVersion()).thenReturn(status == null ? null : status.getPolicyVersion());
+        when(row.getRuntimeClass()).thenReturn(status == null ? null : status.getRuntimeClass());
+        when(row.getEndpointEnvironment()).thenReturn(status == null ? null : status.getEndpointEnvironment());
+        when(row.getTransportMode()).thenReturn(status == null ? null : status.getTransportMode());
+        when(row.getReportedAt()).thenReturn(status == null ? null : status.getReportedAt());
+        when(row.getReceivedAt()).thenReturn(status == null ? null : status.getReceivedAt());
+        when(row.isStale()).thenReturn(stale);
+        when(row.getCompanySort()).thenReturn(fixture.company().getName().toLowerCase());
+        when(row.getStoreSort()).thenReturn(fixture.store().getName().toLowerCase());
+        when(row.getCodeSort()).thenReturn(fixture.store().getCode().toLowerCase());
+        return row;
+    }
+
+    private static SaasFiscalStatusRepository.AdminCompanyRow companyRow(
+            SaasCompany company, long stores, long installations, long unlinked, long stale,
+            long modeCount, String mode, long stateCount, String state) {
+        var row = mock(SaasFiscalStatusRepository.AdminCompanyRow.class);
+        when(row.getCompanyId()).thenReturn(company.getId());
+        when(row.getCompanyName()).thenReturn(company.getName());
+        when(row.getTaxId()).thenReturn(company.getTaxId());
+        when(row.getStores()).thenReturn(stores);
+        when(row.getInstallations()).thenReturn(installations);
+        when(row.getUnlinkedStores()).thenReturn(unlinked);
+        when(row.getStaleInstallations()).thenReturn(stale);
+        when(row.getModeCount()).thenReturn(modeCount);
+        when(row.getSingleMode()).thenReturn(mode);
+        when(row.getStateCount()).thenReturn(stateCount);
+        when(row.getSingleState()).thenReturn(state);
+        when(row.getCompanySort()).thenReturn(company.getName().toLowerCase());
+        return row;
     }
 
     private record Fixture(SaasCompany company, SaasStore store, SaasInstallation installation) {

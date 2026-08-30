@@ -72,7 +72,7 @@ class SalesDocumentDraftQueryServiceTest {
     @Test
     void loadsEditableLineMetadataAndRejectsAnUnauthorizedDocumentType() {
         var customerId = UUID.randomUUID();
-        var document = saleDraft(CommercialDocumentType.ALBARAN_VENTA, customerId);
+        var document = saleDraft(CommercialDocumentType.ALBARAN_VENTA, customerId, true);
         var line = document.getLineas().getFirst();
         line.assignTemporaryOverrides(true, true);
         when(documents.findByIdAndTiendaId(document.getId(), storeId))
@@ -83,6 +83,7 @@ class SalesDocumentDraftQueryServiceTest {
 
         assertThat(detail.id()).isEqualTo(document.getId());
         assertThat(detail.version()).isEqualTo(document.getVersion());
+        assertThat(detail.wholesaleMode()).isTrue();
         assertThat(detail.lines()).singleElement().satisfies(value -> {
             assertThat(value.id()).isEqualTo(line.getId());
             assertThat(value.temporaryNameOverride()).isTrue();
@@ -96,9 +97,14 @@ class SalesDocumentDraftQueryServiceTest {
 
     private CommercialDocument saleDraft(
             CommercialDocumentType type, UUID customerId) {
+        return saleDraft(type, customerId, false);
+    }
+
+    private CommercialDocument saleDraft(
+            CommercialDocumentType type, UUID customerId, boolean wholesaleMode) {
         var document = new CommercialDocument(
                 storeId, UUID.randomUUID(), type, LocalDate.of(2026, 8, 12),
-                UUID.randomUUID(), BigDecimal.ZERO);
+                UUID.randomUUID(), BigDecimal.ZERO, wholesaleMode);
         document.setParties(customerId, null, null);
         document.setDueDate(LocalDate.of(2026, 9, 11));
         document.addLine(new DocumentLine(

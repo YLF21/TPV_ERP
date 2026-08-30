@@ -103,7 +103,8 @@ public class CustomerPendingSaleController {
             @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
                     operationAuthorizations,
             @jakarta.validation.constraints.Min(0) Long draftVersion,
-            @DecimalMin("0.00") BigDecimal documentDiscountPercent) {
+            @DecimalMin("0.00") BigDecimal documentDiscountPercent,
+            boolean wholesaleMode) {
 
         public CreateRequest {
             operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
@@ -131,7 +132,7 @@ public class CustomerPendingSaleController {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
                     completionMode, internalComment, authorizerUsername,
-                    authorizerPassword, operationAuthorizations, draftVersion, null);
+                    authorizerPassword, operationAuthorizations, draftVersion, null, false);
         }
 
         @Override
@@ -166,7 +167,7 @@ public class CustomerPendingSaleController {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
                     completionMode, internalComment, authorizerUsername,
-                    authorizerPassword, operationAuthorizations, null);
+                    authorizerPassword, operationAuthorizations, null, null, false);
         }
 
         public CreateRequest(
@@ -188,7 +189,7 @@ public class CustomerPendingSaleController {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
                     completionMode, internalComment, authorizerUsername,
-                    authorizerPassword, Map.of(), null);
+                    authorizerPassword, Map.of(), null, null, false);
         }
 
         public CreateRequest(
@@ -207,7 +208,7 @@ public class CustomerPendingSaleController {
                 String internalComment) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
-                    completionMode, internalComment, null, null, Map.of(), null);
+                    completionMode, internalComment, null, null, Map.of(), null, null, false);
         }
 
         public CreateRequest(
@@ -225,7 +226,7 @@ public class CustomerPendingSaleController {
                 SalesDocumentCompletionMode completionMode) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
-                    completionMode, null, null, null, Map.of(), null);
+                    completionMode, null, null, null, Map.of(), null, null, false);
         }
 
         public CreateRequest(
@@ -242,7 +243,7 @@ public class CustomerPendingSaleController {
                 CreditOverride creditOverride) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, creditOverride,
-                    null, null, null, null, Map.of(), null);
+                    null, null, null, null, Map.of(), null, null, false);
         }
 
         public CreateRequest(
@@ -258,7 +259,7 @@ public class CustomerPendingSaleController {
                 BigDecimal quotedTotal) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
                     globalDiscount, lines, payments, quotedTotal, null,
-                    null, null, null, null, Map.of(), null);
+                    null, null, null, null, Map.of(), null, null, false);
         }
 
         DocumentCommand toCommand() {
@@ -266,7 +267,7 @@ public class CustomerPendingSaleController {
                     warehouseId, type, date, customerId, null, null,
                     globalDiscount, true,
                     lines.stream().map(DocumentRequest.LineRequest::toCommand).toList(),
-                    internalComment, documentDiscountPercent);
+                    internalComment, documentDiscountPercent, wholesaleMode);
         }
     }
 

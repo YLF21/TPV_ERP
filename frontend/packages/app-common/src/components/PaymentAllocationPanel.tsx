@@ -64,6 +64,8 @@ type Props = {
   interfaceMode?: "KEYBOARD" | "TOUCH";
   initialMethod?: CheckoutMethod;
   customerSelected?: boolean;
+  memberCreditEligible?: boolean;
+  memberBalanceBlockedByReturn?: boolean;
   pendingEnabled?: boolean;
   pendingVisible?: boolean;
   discountVisible?: boolean;
@@ -78,6 +80,13 @@ type Props = {
   checkoutDiscountCents?: number;
   memberBalanceCents?: number;
   memberBalanceAvailableCents?: number;
+  memberBalanceEligibleTotalCents?: number;
+  memberBalanceReservedLoyaltyCents?: number;
+  memberBalanceReservedReturnCreditCents?: number;
+  memberBalanceRetentionHeldCents?: number;
+  memberBalanceRetentionHeldReturnCreditCents?: number;
+  pricingReady?: boolean;
+  memberBalanceReady?: boolean;
   memberWallet?: MemberWalletView | null;
   voucherOnlyRefund?: boolean;
   onResolveVoucher?: (code: string) => Promise<VoucherLookup | null>;
@@ -108,7 +117,7 @@ const labels = {
   es: {
     title: "COBRO", amount: "IMPORTE / RECIBIDO", document: "Nº DOCUMENTO", comment: "COMENTARIO",
     cash: "Efectivo", card: "Tarjeta", voucher: "Vale", pending: "Pendiente",
-    transfer: "Transferencia", memberBalance: "Saldo socio", memberBalanceAvailable: "Disponible", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
+    transfer: "Transferencia", memberBalance: "Saldo socio", memberBalanceAvailable: "Disponible", memberBalanceTotal: "Total", partialHold: "Bloqueo parcial de saldo", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
     tableAmount: "IMPORTE", change: "Cambio", total: "TOTAL A COBRAR", paid: "COBRADO",
     remaining: "FALTA", accept: "ACEPTAR", cancel: "CANCELAR", exact: "Exacto",
     clear: "Eliminar pagos", customerRequired: "Selecciona un cliente para dejar el ticket pendiente",
@@ -119,12 +128,13 @@ const labels = {
     voucherInvalidated: "Este vale está invalidado", voucherNoBalance: "Este vale no tiene saldo disponible",
     voucherLookupFailed: "No se pudo consultar el vale. Inténtalo de nuevo",
     voucherOnlyRefund: "Este ticket regalo solo puede devolverse mediante un vale.",
+    voucherOnlyRefundWithMember: "Este ticket regalo admite un vale o un abono al saldo del socio comprador del ticket original.",
     voucherOnlyRemainder: "La parte que no procede de un pago real solo puede devolverse mediante un vale.",
   },
   en: {
     title: "CHECKOUT", amount: "AMOUNT / RECEIVED", document: "DOCUMENT No.", comment: "COMMENT",
     cash: "Cash", card: "Card", voucher: "Voucher", pending: "Pending",
-    transfer: "Transfer", memberBalance: "Member balance", memberBalanceAvailable: "Available", returnCredit: "Return credit", discount: "Discount", method: "PAYMENT METHOD",
+    transfer: "Transfer", memberBalance: "Member balance", memberBalanceAvailable: "Available", memberBalanceTotal: "Total", partialHold: "Partial balance hold", returnCredit: "Return credit", discount: "Discount", method: "PAYMENT METHOD",
     tableAmount: "AMOUNT", change: "Change", total: "TOTAL DUE", paid: "PAID",
     remaining: "REMAINING", accept: "ACCEPT", cancel: "CANCEL", exact: "Exact",
     clear: "Clear payments", customerRequired: "Select a customer before leaving the ticket pending",
@@ -135,12 +145,13 @@ const labels = {
     voucherInvalidated: "This voucher is invalidated", voucherNoBalance: "This voucher has no available balance",
     voucherLookupFailed: "The voucher could not be checked. Try again",
     voucherOnlyRefund: "This gift receipt can only be refunded as a voucher.",
+    voucherOnlyRefundWithMember: "This gift receipt accepts a voucher or a credit to the original buyer's member balance.",
     voucherOnlyRemainder: "The part not backed by a real payment can only be refunded as a voucher.",
   },
   zh: {
     title: "收款", amount: "金额 / 实收", document: "单据号", comment: "备注",
     cash: "现金", card: "银行卡", voucher: "代金券", pending: "挂账",
-    transfer: "转账", memberBalance: "会员余额", memberBalanceAvailable: "可用", returnCredit: "退货余额", discount: "折扣", method: "付款方式",
+    transfer: "转账", memberBalance: "会员余额", memberBalanceAvailable: "可用", memberBalanceTotal: "总额", partialHold: "余额部分锁定", returnCredit: "退货余额", discount: "折扣", method: "付款方式",
     tableAmount: "金额", change: "找零", total: "应收合计", paid: "已收",
     remaining: "未收", accept: "确认", cancel: "取消", exact: "正好",
     clear: "清除付款", customerRequired: "挂账前请选择客户",
@@ -151,6 +162,7 @@ const labels = {
     voucherInvalidated: "该代金券已作废", voucherNoBalance: "该代金券无可用余额",
     voucherLookupFailed: "无法查询代金券，请重试",
     voucherOnlyRefund: "礼品小票退货只能退还为代金券。",
+    voucherOnlyRefundWithMember: "礼品小票可以退还代金券，或记入原购买会员的余额。",
     voucherOnlyRemainder: "非实际付款的部分只能退还为代金券。",
   },
 } satisfies Record<LocaleCode, Record<string, string>>;
@@ -209,6 +221,8 @@ export function PaymentAllocationPanel({
   interfaceMode = "KEYBOARD",
   initialMethod = "CASH",
   customerSelected = false,
+  memberCreditEligible = false,
+  memberBalanceBlockedByReturn = false,
   pendingEnabled = true,
   pendingVisible = true,
   discountVisible = true,
@@ -223,6 +237,13 @@ export function PaymentAllocationPanel({
   checkoutDiscountCents = 0,
   memberBalanceCents = 0,
   memberBalanceAvailableCents = 0,
+  memberBalanceEligibleTotalCents,
+  memberBalanceReservedLoyaltyCents,
+  memberBalanceReservedReturnCreditCents,
+  memberBalanceRetentionHeldCents = 0,
+  memberBalanceRetentionHeldReturnCreditCents = 0,
+  pricingReady = true,
+  memberBalanceReady = true,
   memberWallet = null,
   voucherOnlyRefund = false,
   onResolveVoucher,
@@ -254,20 +275,76 @@ export function PaymentAllocationPanel({
   const hasVoucherOnlyRemainder = refund && !voucherOnlyRefund
     && monetaryRefundAvailable < session.totalCents;
   const approved = session.totalCents - remaining;
-  const walletLoyaltyAvailableCents = memberWallet
-    ? decimalCents(memberWallet.loyaltyAvailable)
-    : memberBalanceAvailableCents;
-  const walletReturnCreditAvailableCents = memberWallet
-    ? decimalCents(memberWallet.returnCreditAvailable)
+  // A sale session reports the post-loyalty total (S), while the applied
+  // loyalty reduction (L) is carried separately by the session. Keep the
+  // MEMBER_CREDIT allocation (C) in the request/ledger, but present the two
+  // approved balance buckets as one customer-facing row.
+  const memberBalanceAppliedCents = Math.max(0, Math.trunc(memberBalanceCents));
+  // A ZERO session can still represent a sale fully covered by loyalty. Keep
+  // that reduction visible as a sale, while a genuinely free ZERO session
+  // remains the compact zero-total presentation.
+  const sale = !refund && (session.direction === "SALE" || memberBalanceAppliedCents > 0);
+  const approvedSaleMemberCreditCents = sale
+    ? session.allocations
+      .filter((allocation) => allocation.kind === "MEMBER_CREDIT" && allocation.status === "APPROVED")
+      .reduce((sum, allocation) => sum + allocation.amountCents, 0)
+    : 0;
+  const saleMemberBalanceDisplayCents = sale
+    ? memberBalanceAppliedCents + approvedSaleMemberCreditCents
+    : 0;
+  const displayTotalCents = sale
+    ? session.totalCents + memberBalanceAppliedCents
+    : session.totalCents;
+  const displayApprovedCents = sale
+    ? approved + memberBalanceAppliedCents
+    : approved;
+  const displayRemainingCents = sale
+    ? remaining
+    : remaining;
+  const retentionHeldCents = Math.max(0, Math.trunc(memberBalanceRetentionHeldCents));
+  const retentionHeldReturnCreditCents = Math.max(0, Math.trunc(memberBalanceRetentionHeldReturnCreditCents));
+  const retentionHeldTotalCents = retentionHeldCents + retentionHeldReturnCreditCents;
+  const walletReady = pricingReady && memberBalanceReady;
+  // Typed amounts returned by the central reservation are authoritative. The
+  // member-wallet request is only a fallback for older/local snapshots; it
+  // must not overwrite a valid central reservation with zero while loading.
+  const reservedLoyaltyCents = memberBalanceReservedLoyaltyCents
+    ?? (memberWallet ? decimalCents(memberWallet.loyaltyAvailable) : memberBalanceAvailableCents);
+  const reservedReturnCreditCents = memberBalanceReservedReturnCreditCents
+    ?? (memberWallet ? decimalCents(memberWallet.returnCreditAvailable) : 0);
+  const walletLoyaltyAvailableCents = walletReady
+    ? Math.max(0, reservedLoyaltyCents - retentionHeldCents)
+    : 0;
+  const walletReturnCreditAvailableCents = walletReady
+    ? Math.max(0, reservedReturnCreditCents - retentionHeldReturnCreditCents)
+    : 0;
+  // The wallet button and dialog report the same net amount that F10 can
+  // actually apply. This deliberately excludes the known return hold while
+  // retaining any separately spendable return credit.
+  const walletNetAvailableCents = walletReady
+    ? walletLoyaltyAvailableCents + walletReturnCreditAvailableCents
+    : 0;
+  const walletTotalCents = walletReady
+    ? Math.max(0, reservedLoyaltyCents) + Math.max(0, reservedReturnCreditCents)
     : 0;
   const preWalletTotalCents = session.totalCents + memberBalanceCents;
   const memberBalanceLimit = Math.min(
     walletLoyaltyAvailableCents,
     preWalletTotalCents,
+    memberBalanceEligibleTotalCents ?? Number.POSITIVE_INFINITY,
   );
+  const walletLoyaltyLimit = memberBalanceLimit;
   const memberWalletLimit = Math.min(
-    walletLoyaltyAvailableCents + walletReturnCreditAvailableCents,
+    walletLoyaltyLimit + walletReturnCreditAvailableCents,
     preWalletTotalCents,
+  );
+  const checkoutDiscountEligibleLimit = memberBalanceEligibleTotalCents == null
+    ? session.totalCents + checkoutDiscountCents
+    : Math.max(0, memberBalanceEligibleTotalCents + checkoutDiscountCents - memberBalanceCents);
+  const checkoutDiscountInputLimit = Math.min(
+    remaining,
+    checkoutDiscountEligibleLimit,
+    Math.max(0, session.totalCents + checkoutDiscountCents - 1),
   );
   const [method, setMethod] = useState<CheckoutMethod>(initialMethod);
   const [amount, setAmount] = useState(centsInput(remaining));
@@ -317,6 +394,8 @@ export function PaymentAllocationPanel({
       ? ["CASH"]
       : value === "CARD"
         ? ["MANUAL_CARD", "INTEGRATED_CARD"]
+        : value === "TRANSFER"
+          ? ["TRANSFER"]
         : [];
     if (kinds.length === 0) return undefined;
     return (session.refundPaymentAvailability ?? [])
@@ -331,6 +410,8 @@ export function PaymentAllocationPanel({
       .reduce((sum, availability) => sum + availability.availableAmountCents, 0);
   }
 
+  const transferRefundAvailabilityCents = refundAvailabilityForKind("TRANSFER");
+
   const cardAllocationKind: "MANUAL_CARD" | "INTEGRATED_CARD" = refund
     && refundAvailabilityForKind("MANUAL_CARD") > 0
     && refundAvailabilityForKind("INTEGRATED_CARD") <= 0
@@ -340,25 +421,37 @@ export function PaymentAllocationPanel({
         : "MANUAL_CARD";
 
   useEffect(() => {
-    setAmount(centsInput(method === "MEMBER_BALANCE" ? memberBalanceLimit : remaining));
-  }, [memberBalanceLimit, method, remaining]);
+    setAmount(centsInput(method === "MEMBER_BALANCE"
+      ? memberBalanceLimit
+      : method === "DISCOUNT" ? checkoutDiscountInputLimit : remaining));
+  }, [checkoutDiscountInputLimit, memberBalanceLimit, method, remaining]);
 
   function methodAvailable(next: CheckoutMethod) {
     if (refund && voucherOnlyRefund) {
       return (next === "VOUCHER" && voucherEnabled)
-        || (next === "MEMBER_CREDIT" && customerSelected && Boolean(memberWallet));
+        || (next === "MEMBER_CREDIT" && customerSelected && memberCreditEligible);
     }
     if (next === "CASH") return cashEnabled;
     if (next === "CARD") return cardEnabled && (manualCardEnabled || providers.length > 0);
     if (next === "VOUCHER") return voucherEnabled;
-    if (next === "TRANSFER") return !refund && transferEnabled;
+    if (next === "TRANSFER") return transferEnabled
+      && (!refund || (!voucherOnlyRefund && transferRefundAvailabilityCents > 0));
     if (next === "PENDING") return !refund && pendingVisible && pendingEnabled;
     if (next === "MEMBER_BALANCE") return !refund && customerSelected
       && Boolean(onMemberWallet || onMemberBalance)
       && (!onMemberWallet || Boolean(memberWallet))
-      && memberBalanceLimit > 0 && effectiveRows.length === 0;
-    if (next === "MEMBER_CREDIT") return refund && customerSelected && Boolean(memberWallet);
-    if (next === "DISCOUNT") return !refund && discountVisible;
+      && memberBalanceReady
+      && (onMemberWallet ? memberWalletLimit : memberBalanceLimit) > 0
+      && effectiveRows.length === 0
+      && !memberBalanceBlockedByReturn;
+    // MEMBER_CREDIT creates a return-credit lot; it is deliberately
+    // independent from the wallet snapshot and from spendable balance.
+    if (next === "MEMBER_CREDIT") {
+      return customerSelected && memberCreditEligible
+        && (refund || !memberBalanceBlockedByReturn);
+    }
+    if (next === "DISCOUNT") return !refund && discountVisible && pricingReady
+      && checkoutDiscountInputLimit > 0 && effectiveRows.length === 0;
     return effectiveRows.length === 0;
   }
 
@@ -381,9 +474,9 @@ export function PaymentAllocationPanel({
       target?.select();
     });
   }, [
-    cardEnabled, cashEnabled, customerSelected, discountVisible, initialMethod, manualCardEnabled,
+    cardEnabled, cashEnabled, checkoutDiscountEligibleLimit, checkoutDiscountInputLimit, customerSelected, memberCreditEligible, discountVisible, initialMethod, manualCardEnabled,
     memberWallet, memberWalletLimit, onMemberWallet, pendingEnabled, pendingVisible, providers.length,
-    transferEnabled, voucherEnabled, voucherOnlyRefund,
+    memberBalanceBlockedByReturn, memberBalanceReady, pricingReady, transferEnabled, transferRefundAvailabilityCents, voucherEnabled, voucherOnlyRefund,
   ]);
 
   useEffect(() => {
@@ -451,7 +544,9 @@ export function PaymentAllocationPanel({
     }
     setMethod(next);
     setValidation("");
-    setAmount(centsInput(next === "MEMBER_BALANCE" ? memberBalanceLimit : remaining));
+    setAmount(centsInput(next === "MEMBER_BALANCE"
+      ? memberBalanceLimit
+      : next === "DISCOUNT" ? checkoutDiscountInputLimit : remaining));
     queueMicrotask(() => {
       const target = next === "VOUCHER" && !refund
         ? voucherCodeRef.current
@@ -542,7 +637,8 @@ export function PaymentAllocationPanel({
       return;
     }
     if (method === "DISCOUNT") {
-      if (!onDiscount || effectiveRows.length > 0 || amountCents >= session.totalCents + checkoutDiscountCents) {
+      if (!onDiscount || effectiveRows.length > 0 || amountCents > checkoutDiscountInputLimit
+          || amountCents >= session.totalCents + checkoutDiscountCents) {
         setValidation(copy.invalid);
         return;
       }
@@ -594,7 +690,7 @@ export function PaymentAllocationPanel({
       onAdd({
         kind: "TRANSFER",
         ...common,
-        ...(transferDateEnabled && transferDate ? { transferDate } : {}),
+        ...(transferDateEnabled && !refund && transferDate ? { transferDate } : {}),
       }, { finalizeWhenCovered });
     } else if (method === "MEMBER_CREDIT") {
       onAdd({ kind: "MEMBER_CREDIT", ...common }, { finalizeWhenCovered });
@@ -665,10 +761,11 @@ export function PaymentAllocationPanel({
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [
     allowAdd, amountCents, busy, cashAppliedCents, cashChangeCents, checkoutDiscountCents,
-    closeDisabled, comment, compensationRequired, customerSelected, effectiveRows.length, integratedPaymentLocked, interfaceMode,
+    closeDisabled, comment, compensationRequired, customerSelected, memberCreditEligible, effectiveRows.length, integratedPaymentLocked, interfaceMode,
     cardEnabled, cashEnabled, commentEnabled, manualCardEnabled, manualCardRequiresReference, method,
-    memberBalanceAvailableCents, memberBalanceCents, memberWallet, memberWalletLimit, onClear, onClose, onDiscount,
-    onMemberBalance, onMemberWallet, pendingEnabled, providers, reference, refund, remaining,
+    checkoutDiscountEligibleLimit, checkoutDiscountInputLimit, memberBalanceAvailableCents, memberBalanceBlockedByReturn, memberBalanceCents, memberBalanceEligibleTotalCents, memberWallet, memberWalletLimit,
+    walletNetAvailableCents,
+    onClear, onClose, onDiscount, onMemberBalance, onMemberWallet, pendingEnabled, pricingReady, providers, reference, refund, remaining,
     session.totalCents, transferDate, transferDateEnabled, transferEnabled, transferRequiresReference, voucherCode,
     voucherEnabled, voucherOnlyRefund, voucherResolving, onResolveVoucher, walletOpen,
   ]);
@@ -678,10 +775,11 @@ export function PaymentAllocationPanel({
     { value: "CARD", shortcut: "+", visible: cardEnabled && !voucherOnlyRefund, disabled: !manualCardEnabled && providers.length === 0 },
     { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
     { value: "PENDING", shortcut: "F8", visible: !refund && pendingVisible, disabled: !pendingEnabled },
-    { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
-    { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: effectiveRows.length > 0 },
-    { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet || onMemberBalance), disabled: !customerSelected || (Boolean(onMemberWallet) && !memberWallet) || memberBalanceLimit <= 0 || effectiveRows.length > 0 },
-    { value: "MEMBER_CREDIT", shortcut: "F10", visible: refund, disabled: !customerSelected || !memberWallet },
+    { value: "TRANSFER", shortcut: "F7", visible: transferEnabled
+      && (!refund || (!voucherOnlyRefund && refundAvailabilityForKind("TRANSFER") > 0)) },
+    { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: !pricingReady || checkoutDiscountInputLimit <= 0 || effectiveRows.length > 0 },
+    { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet || onMemberBalance), disabled: memberBalanceBlockedByReturn || !customerSelected || (Boolean(onMemberWallet) && !memberWallet) || !memberBalanceReady || (onMemberWallet ? memberWalletLimit : memberBalanceLimit) <= 0 || effectiveRows.length > 0 },
+    { value: "MEMBER_CREDIT", shortcut: "F10", visible: refund, disabled: !customerSelected || !memberCreditEligible },
   ];
   const methods = allMethods.filter((item) => item.visible !== false);
   const buttonLabel = (value: CheckoutMethod) => ({
@@ -693,7 +791,8 @@ export function PaymentAllocationPanel({
 
   return <><div className="sale-checkout-overlay" role="presentation">
     <section className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}`}
-      role="dialog" aria-modal="true" aria-labelledby="sale-checkout-title" aria-busy={busy}>
+      role="dialog" aria-modal="true" aria-hidden={walletOpen ? true : undefined}
+      aria-labelledby="sale-checkout-title" aria-busy={busy}>
       <header className="sale-checkout-header">
         <h2 id="sale-checkout-title">{refund ? (locale === "es" ? "DEVOLUCIÓN" : locale === "en" ? "REFUND" : "退款") : copy.title}</h2>
         <button type="button" aria-label={copy.cancel}
@@ -712,7 +811,7 @@ export function PaymentAllocationPanel({
                 disabled={entryLocked || (selectedMethod === "VOUCHER" && !refund)}
                 onChange={(event) => setAmount(event.currentTarget.value)} />
             </label>
-            <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
+            <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled && !refund ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
               {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
                 <input ref={voucherCodeRef} id="checkout-voucher-code" autoComplete="off"
                   value={voucherCode}
@@ -724,7 +823,7 @@ export function PaymentAllocationPanel({
                   disabled={entryLocked}
                   onChange={(event) => setReference(event.currentTarget.value)} />
               </label>
-              {selectedMethod === "TRANSFER" && transferDateEnabled && <label>
+              {selectedMethod === "TRANSFER" && transferDateEnabled && !refund && <label>
                 <span>{locale === "es" ? "FECHA DE TRANSFERENCIA" : locale === "en" ? "TRANSFER DATE" : "转账日期"}</span>
                 <input ref={transferDateRef} id="checkout-transfer-date" type="date"
                   max={localDateInput()} value={transferDate} disabled={entryLocked}
@@ -746,7 +845,11 @@ export function PaymentAllocationPanel({
             className="sale-checkout-policy-notice"
             role="note"
           >
-            {voucherOnlyRefund ? copy.voucherOnlyRefund : copy.voucherOnlyRemainder}
+            {voucherOnlyRefund
+              ? customerSelected && memberCreditEligible
+                ? copy.voucherOnlyRefundWithMember
+                : copy.voucherOnlyRefund
+              : copy.voucherOnlyRemainder}
           </p>}
 
           {!zero && <div className="sale-checkout-methods" aria-label={copy.method}>
@@ -759,7 +862,7 @@ export function PaymentAllocationPanel({
               onClick={() => selectMethod(item.value)}>
               <span>{buttonLabel(item.value)}
                 {item.value === "MEMBER_BALANCE" && <small>
-                  {copy.memberBalanceAvailable}: {money(memberBalanceAvailableCents)} €
+                  {copy.memberBalanceAvailable}: {money(walletNetAvailableCents)} €
                 </small>}
                 {refund && refundAvailabilityForMethod(item.value) !== undefined && <small>
                   {t("payment.refund.originalAvailable")}: {money(refundAvailabilityForMethod(item.value) ?? 0)} €
@@ -776,13 +879,15 @@ export function PaymentAllocationPanel({
                 <th>{copy.document}</th><th>{copy.comment}</th>
               </tr></thead>
               <tbody>
-                {memberBalanceCents > 0 && <tr className="discount-row">
-                  <td>{copy.memberBalance}</td><td>-{money(memberBalanceCents)} €</td><td>—</td><td>—</td>
+                {saleMemberBalanceDisplayCents > 0 && <tr className="discount-row">
+                  <td>{copy.memberBalance}</td><td>-{money(saleMemberBalanceDisplayCents)} €</td><td>—</td><td>—</td>
                 </tr>}
                 {checkoutDiscountCents > 0 && <tr className="discount-row">
                   <td>{copy.discount}</td><td>-{money(checkoutDiscountCents)} €</td><td>—</td><td>—</td>
                 </tr>}
-                {session.allocations.map((allocation) => <tr key={allocation.idempotencyKey}>
+                {session.allocations
+                  .filter((allocation) => !(sale && allocation.kind === "MEMBER_CREDIT" && allocation.status === "APPROVED"))
+                  .map((allocation) => <tr key={allocation.idempotencyKey}>
                   <td>{methodLabels(locale)[allocation.kind]}
                     {allocation.voucherCode && <small className="sale-checkout-voucher-code">
                       {copy.voucherCode}: {allocation.voucherCode}
@@ -790,7 +895,7 @@ export function PaymentAllocationPanel({
                   </td>
                   <td>{money(allocation.amountCents)} €</td>
                   <td>{allocation.reference || "—"}
-                    {allocation.transferDate && <small>
+                    {allocation.transferDate && !refund && <small>
                       {locale === "es" ? "Fecha" : locale === "en" ? "Date" : "日期"}: {allocation.transferDate}
                     </small>}
                   </td>
@@ -802,16 +907,16 @@ export function PaymentAllocationPanel({
                     {allocation.message && <small>{localizePaymentDiagnostic(t, allocation.message, allocation.status)}</small>}
                   </td>
                 </tr>)}
-                {session.allocations.length === 0 && memberBalanceCents === 0 && checkoutDiscountCents === 0 &&
+                {session.allocations.filter((allocation) => !(sale && allocation.kind === "MEMBER_CREDIT" && allocation.status === "APPROVED")).length === 0 && saleMemberBalanceDisplayCents === 0 && checkoutDiscountCents === 0 &&
                   <tr className="empty-row"><td colSpan={4}>—</td></tr>}
               </tbody>
             </table>
           </div>
 
           <div className="sale-checkout-totals">
-            <span>{refund ? (locale === "es" ? "TOTAL A DEVOLVER" : locale === "en" ? "TOTAL REFUND" : "退款总额") : copy.total}<strong>{money(session.totalCents)} €</strong></span>
-            <span>{refund ? (locale === "es" ? "DEVUELTO" : locale === "en" ? "REFUNDED" : "已退款") : copy.paid}<strong>{money(approved)} €</strong></span>
-            <span className="remaining">{refund ? (locale === "es" ? "PENDIENTE" : locale === "en" ? "REMAINING" : "待退款") : copy.remaining}<strong>{money(remaining)} €</strong></span>
+            <span>{refund ? (locale === "es" ? "TOTAL A DEVOLVER" : locale === "en" ? "TOTAL REFUND" : "退款总额") : copy.total}<strong>{money(displayTotalCents)} €</strong></span>
+            <span>{refund ? (locale === "es" ? "DEVUELTO" : locale === "en" ? "REFUNDED" : "已退款") : copy.paid}<strong>{money(displayApprovedCents)} €</strong></span>
+            <span className="remaining">{refund ? (locale === "es" ? "PENDIENTE" : locale === "en" ? "REMAINING" : "待退款") : copy.remaining}<strong>{money(displayRemainingCents)} €</strong></span>
           </div>
 
           {(validation || error) && <p className="sale-checkout-error" role="alert">{validation || error}</p>}
@@ -857,11 +962,14 @@ export function PaymentAllocationPanel({
       locale={locale}
       lots={memberWallet.lots}
       maxAmountCents={memberWalletLimit}
+      totalAvailableCents={walletTotalCents}
+      availableAmountCents={walletNetAvailableCents}
+      retentionHeldCents={retentionHeldTotalCents}
       busy={busy}
       error={error || undefined}
       onCancel={() => setWalletOpen(false)}
       onConfirm={(requestedCents) => {
-        const loyaltyCents = Math.min(requestedCents, walletLoyaltyAvailableCents, preWalletTotalCents);
+        const loyaltyCents = Math.min(requestedCents, walletLoyaltyLimit);
         const returnCreditCents = Math.min(
           requestedCents - loyaltyCents,
           walletReturnCreditAvailableCents,

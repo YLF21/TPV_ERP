@@ -144,6 +144,7 @@ public class VerifactuAdminReadService {
             String sortDirection) {
         validatePage(page, size);
         validateRange(dateFrom, dateTo);
+        validateSort(sortBy, sortDirection);
         var normalizedNumber = normalizeDocumentNumber(documentNumber);
         var store = organization.currentStore();
         var zone = ZoneId.of(store.getTimezone());
@@ -312,6 +313,19 @@ public class VerifactuAdminReadService {
             String mode,
             Instant effectiveActivationAt,
             Instant firstSubmissionAt) {
+    }
+
+    private static void validateSort(String sortBy, String sortDirection) {
+        if (sortBy != null && !sortBy.isBlank()
+                && !java.util.Set.of("sequence", "document", "fiscalOperation",
+                        "status", "updatedAt", "errorCode").contains(sortBy)) {
+            throw new IllegalArgumentException("sortBy no es valido");
+        }
+        if (sortDirection != null && !sortDirection.isBlank()
+                && !"asc".equalsIgnoreCase(sortDirection)
+                && !"desc".equalsIgnoreCase(sortDirection)) {
+            throw new IllegalArgumentException("sortDirection debe ser asc o desc");
+        }
     }
 
     private record Scope(java.util.UUID companyId, java.util.UUID storeId,

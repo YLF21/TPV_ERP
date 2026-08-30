@@ -3,7 +3,9 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,6 +17,7 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,11 +37,13 @@ class VerifactuSubmissionServiceTest {
     @Mock private VerifactuTransport transport;
     @Mock private FiscalSubmissionAttemptService attempts;
     @Mock private VerifactuOfficialXsdValidator validator;
+    @org.mockito.Spy private VerifactuResponseParser responses = new VerifactuResponseParser();
     @Mock private VerifactuFirstSubmissionMarker firstSubmissions;
     @Mock private FiscalCorrectionCompletionService corrections;
     @Mock private FrozenFiscalIdentityResolver identities;
     @Mock private FiscalRecordArtifactRepository artifacts;
     @Mock private FiscalRuntimeProperties runtime;
+    @Mock private VerifactuBatchPersistenceService batchPersistence;
 
     private FiscalRecord record;
     private VerifactuSubmissionService service;
@@ -67,7 +72,7 @@ class VerifactuSubmissionServiceTest {
                         "Empresa congelada", "B12345674"));
         service = new VerifactuSubmissionService(
                 xml, soap, endpoints, properties, transport, attempts,
-                new VerifactuResponseParser(), validator, firstSubmissions, corrections,
+                responses, validator, firstSubmissions, corrections,
                 identities);
         service.setFrozenArtifacts(artifacts);
         service.setFiscalRuntimeProperties(runtime);
@@ -132,6 +137,23 @@ class VerifactuSubmissionServiceTest {
     }
 
     @Test
+    void conservaElClaimTokenAlMarcarDefectuosoLegacy() {
+        var claimToken = UUID.randomUUID();
+        when(identities.resolve(any(), any()))
+                .thenThrow(new UnresolvedLegacyFiscalIdentityException("identidad ausente"));
+
+        var result = service.submit(record, claimToken);
+
+        assertThat(result.networkRequestIssued()).isFalse();
+        verify(attempts).recordDefective(
+                record.getId(), "LEGACY_IDENTITY_UNRESOLVED",
+                "IDENTIDAD_FISCAL_LEGACY_NO_RESUELTA: identidad ausente", null, claimToken);
+        verify(attempts, never()).recordDefective(
+                record.getId(), "LEGACY_IDENTITY_UNRESOLVED",
+                "IDENTIDAD_FISCAL_LEGACY_NO_RESUELTA: identidad ausente", null);
+    }
+
+    @Test
     void rechazaXmlCongeladoAlteradoAntesDelReintento() {
         when(artifacts.findByRecordId(record.getId()))
                 .thenReturn(java.util.Optional.of(artifact(FROZEN_XML + "alterado",
@@ -162,6 +184,7 @@ class VerifactuSubmissionServiceTest {
         var result = service.submit(record);
 
         assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.ACEPTADO);
+        assertThat(result.networkRequestIssued()).isTrue();
         verify(attempts).recordSent(record.getId(), "<soap/>");
         verify(attempts).recordAccepted(record.getId(), accepted());
         verify(firstSubmissions).mark(record);
@@ -205,10 +228,90 @@ class VerifactuSubmissionServiceTest {
         var result = service.submit(record);
 
         assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.ENVIADO);
+        assertThat(result.networkRequestIssued()).isTrue();
         assertThat(result.errorCode()).isEqualTo("NETWORK_ERROR");
         verify(attempts).recordSent(record.getId(), "<soap/>");
         verify(attempts, never()).recordRejected(any(), any(), any(), any());
         verify(attempts, never()).recordDefective(any(), any(), any(), any());
+    }
+
+    @Test
+    void noMarcaDefectuosoSiFallaLaPersistenciaDelAckDespuesDeEnviar() {
+        var owner = UUID.randomUUID();
+        var token = UUID.randomUUID();
+        var now = Instant.parse("2026-06-16T10:00:00Z");
+        var scope = new FiscalSubmissionScopeFlow(
+                record.getCompanyId(), record.getInstallationId(), FiscalEndpointEnvironment.TEST);
+        scope.claim(owner, now, now.plusSeconds(120));
+        var state = new FiscalSubmissionState(record.getId(), FiscalSubmissionStatus.PENDIENTE, now);
+        state.claim(owner, token, now, now.plusSeconds(120));
+        var batch = new ClaimedFiscalBatch(scope, List.of(new ClaimedFiscalSubmission(record, state)));
+        var parsed = new VerifactuBatchResponse(FiscalSubmissionStatus.ACEPTADO, 60,
+                Map.of(record.getId(), new VerifactuBatchResponse.Line(
+                        record.getId(), FiscalSubmissionStatus.ACEPTADO, null, null)),
+                null, null, "respuesta", false);
+        when(artifacts.findAllByRecordIdIn(anyList()))
+                .thenReturn(List.of(artifact(FROZEN_XML, sha256(FROZEN_XML))));
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
+                .thenReturn(new VerifactuTransportResponse(200, "respuesta"));
+        doReturn(parsed).when(responses).parseBatch(any(), anyList());
+        doThrow(new IllegalStateException("commit ACK fallido"))
+                .when(batchPersistence).recordResponse(batch, parsed);
+        service.setBatchPersistence(batchPersistence);
+
+        var result = service.submitBatch(batch);
+
+        assertThat(result.processed()).isFalse();
+        assertThat(result.networkRequestIssued()).isTrue();
+        assertThat(result.errorCode()).isEqualTo("ACK_PERSISTENCE_FAILED");
+        assertThat(state.getStatus()).isEqualTo(FiscalSubmissionStatus.ENVIANDO);
+        verify(batchPersistence, never()).recordInvalid(any(), any(), any(), any());
+    }
+
+    @Test
+    void respuestaPostRedInvalidaQuedaReintentable() {
+        var batch = claimedBatchForTest();
+        when(artifacts.findAllByRecordIdIn(anyList()))
+                .thenReturn(List.of(artifact(FROZEN_XML, sha256(FROZEN_XML))));
+        var invalid = new VerifactuBatchResponse(FiscalSubmissionStatus.DEFECTUOSO, null,
+                Map.of(), "INVALID_AEAT_RESPONSE", "respuesta incompleta", "payload", false);
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
+                .thenReturn(new VerifactuTransportResponse(200, "payload"));
+        doReturn(invalid).when(responses).parseBatch(any(), anyList());
+        service.setBatchPersistence(batchPersistence);
+
+        var result = service.submitBatch(batch);
+
+        assertThat(result.processed()).as(result.toString()).isTrue();
+        assertThat(result.networkRequestIssued()).isTrue();
+        assertThat(result.globalStatus()).isEqualTo(FiscalSubmissionStatus.ENVIADO);
+        verify(batchPersistence).recordUnknownResponse(
+                batch, "INVALID_AEAT_RESPONSE", "respuesta incompleta", "<soap/>", "payload", null);
+        verify(batchPersistence, never()).recordInvalid(any(), any(), any(), any());
+    }
+
+    @Test
+    void excepcionDelParserPostRedTambienQuedaReintentable() {
+        var batch = claimedBatchForTest();
+        when(artifacts.findAllByRecordIdIn(anyList()))
+                .thenReturn(List.of(artifact(FROZEN_XML, sha256(FROZEN_XML))));
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
+                .thenReturn(new VerifactuTransportResponse(200, "payload"));
+        doThrow(new IllegalStateException("parser roto"))
+                .when(responses).parseBatch(any(), anyList());
+        service.setBatchPersistence(batchPersistence);
+
+        var result = service.submitBatch(batch);
+
+        assertThat(result.processed()).as(result.toString()).isTrue();
+        assertThat(result.networkRequestIssued()).isTrue();
+        assertThat(result.errorCode()).isEqualTo("INVALID_AEAT_RESPONSE");
+        verify(batchPersistence).recordUnknownResponse(
+                batch, "INVALID_AEAT_RESPONSE", "parser roto", "<soap/>", "payload", null);
+        verify(batchPersistence, never()).recordInvalid(any(), any(), any(), any());
     }
 
     @Test
@@ -219,11 +322,43 @@ class VerifactuSubmissionServiceTest {
         var result = service.submit(record);
 
         assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
+        assertThat(result.networkRequestIssued()).isFalse();
         assertThat(result.errorCode()).isEqualTo("INVALID_XSD");
         verify(attempts).recordDefective(
                 record.getId(), "INVALID_XSD", "XSD invalido",
                 "<sfLR:RegFactuSistemaFacturacion/>");
         verify(transport, never()).send(any(), any());
+    }
+
+    @Test
+    void normalizaExcepcionSinMensajeAntesDePersistirDefecto() {
+        doThrow(new IllegalArgumentException((String) null))
+                .when(validator).validate("<sfLR:RegFactuSistemaFacturacion/>");
+
+        var result = service.submit(record);
+
+        assertThat(result.error()).isEqualTo("IllegalArgumentException");
+        verify(attempts).recordDefective(
+                record.getId(), "INVALID_XSD", "IllegalArgumentException",
+                "<sfLR:RegFactuSistemaFacturacion/>");
+    }
+
+    @Test
+    void conservaElClaimTokenAlMarcarDefectuosoXsd() {
+        var claimToken = UUID.randomUUID();
+        doThrow(new IllegalArgumentException("XSD invalido"))
+                .when(validator).validate("<sfLR:RegFactuSistemaFacturacion/>");
+
+        var result = service.submit(record, claimToken);
+
+        assertThat(result.errorCode()).isEqualTo("INVALID_XSD");
+        assertThat(result.networkRequestIssued()).isFalse();
+        verify(attempts).recordDefective(
+                record.getId(), "INVALID_XSD", "XSD invalido",
+                "<sfLR:RegFactuSistemaFacturacion/>", claimToken);
+        verify(attempts, never()).recordDefective(
+                record.getId(), "INVALID_XSD", "XSD invalido",
+                "<sfLR:RegFactuSistemaFacturacion/>");
     }
 
     private void assertXmlRequest() {
@@ -276,6 +411,18 @@ class VerifactuSubmissionServiceTest {
         snapshot.put("impuestoTotal", new BigDecimal("2.10"));
         snapshot.put("total", new BigDecimal("12.10"));
         return snapshot;
+    }
+
+    private ClaimedFiscalBatch claimedBatchForTest() {
+        var owner = UUID.randomUUID();
+        var now = Instant.parse("2026-06-16T10:00:00Z");
+        var scope = new FiscalSubmissionScopeFlow(
+                record.getCompanyId(), record.getInstallationId(), FiscalEndpointEnvironment.TEST);
+        scope.claim(owner, now, now.plusSeconds(120));
+        var state = new FiscalSubmissionState(record.getId(), FiscalSubmissionStatus.PENDIENTE, now);
+        state.claim(owner, UUID.randomUUID(), now, now.plusSeconds(120));
+        return new ClaimedFiscalBatch(scope,
+                List.of(new ClaimedFiscalSubmission(record, state)));
     }
 
     private FiscalRecordArtifact artifact(String frozenXml, String hash) {

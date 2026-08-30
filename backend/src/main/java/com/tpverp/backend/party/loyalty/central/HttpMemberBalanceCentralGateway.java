@@ -187,7 +187,7 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
 
     @Override
     public ReservationResponse reserve(ReserveRequest request) {
-        return post("/reservations", request, ReservationResponse.class);
+        return postInitialReservation(request);
     }
 
     @Override
@@ -198,6 +198,28 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
     @Override
     public ReservationResponse release(UUID reservationId, ReservationOwnerRequest request) {
         return post("/reservations/" + reservationId + "/release", request, ReservationResponse.class);
+    }
+
+    @Override
+    public ReservationResponse configureRetention(
+            UUID reservationId,
+            ConfigureRetentionRequest request) {
+        return exchange("PUT", "/reservations/" + reservationId + "/retention",
+                new RetentionConfigureTransport(
+                        request.companyId(), request.storeId(), request.terminalId(),
+                        request.saleId(), request.sourceDocumentId(), request.attributedAmount(), request.claims()),
+                ReservationResponse.class);
+    }
+
+    private record RetentionConfigureTransport(
+            UUID companyId,
+            UUID storeId,
+            String terminalId,
+            String saleId,
+            UUID sourceDocumentId,
+            java.math.BigDecimal attributedAmount,
+            @com.fasterxml.jackson.annotation.JsonProperty("retentionClaims")
+            java.util.List<RetentionClaim> retentionClaims) {
     }
 
     @Override
@@ -217,6 +239,21 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
 
     private <T> T post(String path, Object payload, Class<T> responseType) {
         return post(endpoint, path, payload, responseType);
+    }
+
+    private ReservationResponse postInitialReservation(ReserveRequest request) {
+        HttpResponse<String> response = send(endpoint, "/reservations", request);
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            try {
+                return mapper.readValue(response.body(), ReservationResponse.class);
+            } catch (Exception exception) {
+                throw new MemberBalanceCentralException(
+                        MemberBalanceCentralException.Kind.INVALID_RESPONSE,
+                        "SaaS devolvio una respuesta de reserva invalida",
+                        exception);
+            }
+        }
+        throw responseException(response, true);
     }
 
     private <T> T postPoints(String path, Object payload, Class<T> responseType) {
@@ -249,6 +286,24 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
                         MemberBalanceCentralException.Kind.INVALID_RESPONSE,
                         "SaaS devolvio una respuesta de saldo socio invalida",
                         exception);
+            }
+        }
+        throw responseException(response);
+    }
+
+    private <T> T exchange(
+            String method,
+            String path,
+            Object payload,
+            Class<T> responseType) {
+        HttpResponse<String> response = send(endpoint, path, payload, method);
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            try {
+                return mapper.readValue(response.body(), responseType);
+            } catch (Exception exception) {
+                throw new MemberBalanceCentralException(
+                        MemberBalanceCentralException.Kind.INVALID_RESPONSE,
+                        "SaaS devolvio una respuesta de retencion invalida", exception);
             }
         }
         throw responseException(response);
@@ -300,16 +355,21 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
     }
 
     private HttpResponse<String> send(URI target, String path, Object payload) {
+        return send(target, path, payload, "POST");
+    }
+
+    private HttpResponse<String> send(
+            URI target, String path, Object payload, String method) {
         String token = credentials.readToken().orElseThrow(() -> new MemberBalanceCentralException(
                 MemberBalanceCentralException.Kind.UNAVAILABLE,
                 "No existe token de instalacion SaaS"));
         try {
-            HttpRequest request = HttpRequest.newBuilder(target.resolve(target.getPath() + path))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(target.resolve(target.getPath() + path))
                     .timeout(REQUEST_TIMEOUT)
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                    .header(INSTALLATION_TOKEN_HEADER, token)
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)))
-                    .build();
+                    .header(INSTALLATION_TOKEN_HEADER, token);
+            var body = HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload));
+            HttpRequest request = "PUT".equals(method) ? builder.PUT(body).build() : builder.POST(body).build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             return response;
         } catch (InterruptedException exception) {
@@ -329,11 +389,27 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
     }
 
     private MemberBalanceCentralException responseException(HttpResponse<String> response) {
+        return responseException(response, false);
+    }
+
+    private MemberBalanceCentralException responseException(
+            HttpResponse<String> response,
+            boolean initialReservation) {
         int status = response.statusCode();
         String detail = responseDetail(response.body());
+        String code = responseCode(response.body());
+        if (initialReservation && status == 409
+                && "MEMBER_BALANCE_RESERVED_ELSEWHERE".equals(code)) {
+            return new MemberBalanceReservationConflictException(
+                    detail == null ? "El saldo del socio esta reservado en otra caja" : detail,
+                    status,
+                    null);
+        }
         MemberBalanceCentralException.Kind kind = switch (status) {
             case 401, 403 -> MemberBalanceCentralException.Kind.UNAUTHORIZED;
-            case 409 -> MemberBalanceCentralException.Kind.CONFLICT;
+            case 409 -> initialReservation
+                    ? MemberBalanceCentralException.Kind.UNAVAILABLE
+                    : MemberBalanceCentralException.Kind.CONFLICT;
             case 400, 404, 422 -> MemberBalanceCentralException.Kind.REJECTED;
             default -> status >= 500
                     ? MemberBalanceCentralException.Kind.UNAVAILABLE
@@ -361,5 +437,17 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
             // An unknown remote body must not leak HTML or infrastructure details to APP VENTA.
         }
         return null;
+    }
+
+    private String responseCode(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode error = mapper.readTree(body);
+            return error.hasNonNull("code") ? error.get("code").asText() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

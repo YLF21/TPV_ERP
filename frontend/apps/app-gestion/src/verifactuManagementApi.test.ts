@@ -68,7 +68,7 @@ describe("VeriFactu management API", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 20 }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "RUNNING", processed: 2 }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-2", status: "QUEUED", processed: 0 }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(new Blob(["zip"]), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: "download-capability" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const signal = new AbortController().signal;
     await loadFiscalExportJobs("token", 0, 20, signal);
@@ -98,12 +98,12 @@ describe("VeriFactu management API", () => {
   });
 
   it("descarga el ZIP reglamentario desde el endpoint binario", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["zip"]), {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([0x7a, 0x69, 0x70]), {
       status: 200, headers: { "Content-Type": "application/zip" }
     }));
     vi.stubGlobal("fetch", fetchMock);
     const result = await downloadFiscalExportZip("BILLING", "2026-01-01T00:00:00.000Z", "2026-12-31T23:59:59.000Z", "token", {});
-    expect(result).toBeInstanceOf(Blob);
+    expect(result).toBeInstanceOf(Response);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/fiscal/exports/download");
     expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer token" });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({ kind: "BILLING", periodStart: "2026-01-01T00:00:00.000Z" });

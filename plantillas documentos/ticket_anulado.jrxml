@@ -73,7 +73,7 @@ LEFT JOIN usuario uau ON uau.id = COALESCE(op.autorizador_usuario_id, d.anulado_
 LEFT JOIN terminal term ON term.id = COALESCE(op.terminal_id, d.terminal_origen_id)
 LEFT JOIN LATERAL (
     SELECT string_agg(
-        COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO')
+        UPPER(REPLACE(COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO'), '_', ' '))
         || ': ' || TO_CHAR(dp.importe, 'FM999999990.00') || ' €'
         || CASE
             WHEN COALESCE(

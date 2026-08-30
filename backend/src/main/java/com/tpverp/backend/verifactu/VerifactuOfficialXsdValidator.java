@@ -17,10 +17,13 @@ import org.xml.sax.SAXException;
 public class VerifactuOfficialXsdValidator {
 
     private static final String XSD_ROOT = "verifactu/xsd/";
+    private static final String RESPONSE_XSD = "RespuestaSuministro.xsd";
     private final Schema schema;
+    private final Schema responseSchema;
 
     public VerifactuOfficialXsdValidator() {
         this.schema = schema();
+        this.responseSchema = responseSchema();
     }
 
     public void validate(String xml) {
@@ -38,6 +41,15 @@ public class VerifactuOfficialXsdValidator {
             throw new IllegalArgumentException("XML VERI*FACTU no cumple XSD oficial", exception);
         }
     }
+
+    /** Validates the AEAT response element against the official response XSD. */
+    public void validateResponse(String xml) {
+        try {
+            responseSchema.newValidator().validate(new StreamSource(new StringReader(xml)));
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Respuesta VERI*FACTU no cumple XSD oficial", exception);
+        }
+    }
     // Valida el lote contra los XSD oficiales empaquetados con la aplicacion.
 
     private static Schema schema() {
@@ -48,6 +60,17 @@ public class VerifactuOfficialXsdValidator {
             return factory.newSchema(source("SuministroLR.xsd"));
         } catch (SAXException exception) {
             throw new IllegalStateException("No se pudo cargar el XSD oficial VERI*FACTU", exception);
+        }
+    }
+
+    private static Schema responseSchema() {
+        try {
+            var factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+            factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+            factory.setResourceResolver(new ClasspathXsdResolver());
+            return factory.newSchema(source(RESPONSE_XSD));
+        } catch (SAXException exception) {
+            throw new IllegalStateException("No se pudo cargar el XSD de respuesta VERI*FACTU", exception);
         }
     }
 

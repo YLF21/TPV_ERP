@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.tpverp.saas.admin.CreateCompanyRequest;
 import com.tpverp.saas.admin.CreateCompanyResponse;
 import com.tpverp.saas.fiscal.SaasFiscalStatusRepository;
@@ -435,6 +436,57 @@ class SyncEventApiTest {
 
         assertThat(summary.documentCount()).isEqualTo(2);
         assertThat(summary.total()).isEqualTo("20");
+    }
+
+    @Test
+    void paginaEventosConCursorEstableYLimiteSeguro() throws Exception {
+        CreateCompanyResponse company = createCompany("B12121212");
+        LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
+        for (int index = 0; index < 205; index++) {
+            sendEvent(link, documentEvent(company, "TICKET", "1.00", SyncOperation.CONFIRMAR));
+        }
+
+        JsonNode first = mapper.readTree(mvc.perform(get("/api/v1/admin/sync/sales/page")
+                        .queryParam("companyId", company.companyId().toString())
+                        .queryParam("size", "100")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode second = mapper.readTree(mvc.perform(get("/api/v1/admin/sync/sales/page")
+                        .queryParam("companyId", company.companyId().toString())
+                        .queryParam("size", "100")
+                        .queryParam("cursor", first.get("nextCursor").asText())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+        assertThat(first.get("items")).hasSize(100);
+        assertThat(second.get("items")).hasSize(100);
+        assertThat(first.get("nextCursor").asText()).isNotEqualTo(second.get("nextCursor").asText());
+        mvc.perform(get("/api/v1/admin/sync/sales/page")
+                        .queryParam("size", "201")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void paginaEstadoFiscalIncluyeTiendaSinReporteYAplicaFiltro() throws Exception {
+        CreateCompanyResponse company = createCompany("B13131313");
+        UUID installationId = UUID.randomUUID();
+        LicenseSaasLinkResponse link = link(company, installationId);
+        sendEvent(link, new SyncEventRequest(
+                UUID.randomUUID(), company.companyId(), company.storeId(), 1L, null,
+                "FISCAL_STATUS", UUID.randomUUID(), SyncOperation.ACTUALIZAR,
+                Map.of("installationId", installationId.toString(), "companyId", company.companyId().toString(),
+                        "storeId", company.storeId().toString(), "effectiveMode", "VERIFACTU",
+                        "activationState", "ACTIVE", "modeVersion", 1, "runtimeClass", "SANDBOX",
+                        "endpointEnvironment", "TEST", "transportMode", "SIMULATED",
+                        "reportedAt", Instant.now().minusSeconds(60).toString())));
+
+        mvc.perform(get("/api/v1/admin/fiscal-status/page")
+                        .queryParam("companyId", company.companyId().toString())
+                        .queryParam("effectiveMode", "VERIFACTU")
+                        .queryParam("size", "1")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
     }
 
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {

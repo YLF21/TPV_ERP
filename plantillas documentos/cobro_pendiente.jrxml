@@ -52,7 +52,7 @@ SELECT
     COALESCE(NULLIF(TRIM(c.nombre_fiscal), ''), '—') AS cliente,
     c.client_id AS codigo_cliente,
     c.numero_documento AS documento_cliente,
-    COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO') AS metodo_pago,
+    UPPER(REPLACE(COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO'), '_', ' ')) AS metodo_pago,
     po.importe AS importe_cobrado,
     COALESCE(NULLIF(TRIM(po.referencia), ''), NULLIF(TRIM(po.autorizacion_tarjeta), ''),
              NULLIF(TRIM(po.codigo_vale), '')) AS referencia,

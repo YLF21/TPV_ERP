@@ -36,7 +36,7 @@ public class TaxController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_READ','" + STOCK_READ + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_READ','" + STOCK_READ + "','" + TAXES_MANAGE + "')")
     public List<StoreTax> list() {
         return service.taxes();
     }

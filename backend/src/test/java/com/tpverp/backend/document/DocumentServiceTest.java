@@ -3,7 +3,9 @@ package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,9 +14,11 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
@@ -36,6 +40,7 @@ import com.tpverp.backend.promotion.PromotionCustomerSegment;
 import com.tpverp.backend.promotion.PromotionScope;
 import com.tpverp.backend.promotion.PromotionStatus;
 import com.tpverp.backend.promotion.PromotionType;
+import com.tpverp.backend.promotion.CouponRejectReason;
 import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
 import com.tpverp.backend.promotion.PromotionalCouponService;
@@ -138,6 +143,8 @@ class DocumentServiceTest {
     @Mock
     private SaleOperationSecurityService saleOperationSecurity;
     @Mock
+    private AuditService audit;
+    @Mock
     private SalesInvoiceRectificationRepository salesInvoiceRectificationRepository;
 
     private DocumentService service;
@@ -230,13 +237,14 @@ class DocumentServiceTest {
                 saleOperationSecurity,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         service.setSalesInvoiceRectifications(salesInvoiceRectificationRepository);
+        service.setAuditService(audit);
     }
 
     @Test
     void fullSalesInvoiceReturnCreatesOperationalCancellationRectification() {
         var original = new CommercialDocument(
                 store.getId(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
-                LocalDate.now(), user.getId(), BigDecimal.ZERO);
+                LocalDate.now(), user.getId(), BigDecimal.ZERO, true);
         original.setParties(UUID.randomUUID(), null, null);
         var sourceLine = new DocumentLine(
                 original, UUID.randomUUID(), 1, BigDecimal.ONE,
@@ -271,6 +279,7 @@ class DocumentServiceTest {
 
         assertThat(rectification.getTipo())
                 .isEqualTo(CommercialDocumentType.RECTIFICATIVA_VENTA);
+        assertThat(rectification.isWholesaleMode()).isTrue();
         assertThat(rectification.getTotal()).isEqualByComparingTo("-100.00");
         verify(relationRepository).save(any(DocumentRelation.class));
         verify(salesInvoiceRectificationRepository).save(argThat(metadata ->
@@ -303,6 +312,229 @@ class DocumentServiceTest {
                 terminalId,
                 created.getCreadoEn());
     }
+
+    @Test
+    void salesGlobalDiscountIsMaterializedOnlyOverEligibleLines() {
+        var eligibleId = UUID.randomUUID();
+        var protectedId = UUID.randomUUID();
+        var eligible = product(eligibleId, DiscountType.NORMAL);
+        var protectedProduct = product(protectedId, DiscountType.NONE);
+        doReturn(Map.of(
+                eligibleId, productSnapshot(eligible),
+                protectedId, productSnapshot(protectedProduct)))
+                .when(promotionCatalog).products(any(), any());
+        doReturn(List.of(eligible, protectedProduct))
+                .when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var base = command(CommercialDocumentType.ALBARAN_VENTA, List.of(
+                line(eligibleId, "P-1", "Elegible", new BigDecimal("10.00")),
+                line(protectedId, "P-2", "Protegido", new BigDecimal("100.00"))));
+        var command = new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), base.clienteId(),
+                base.proveedorId(), base.numeroExterno(), new BigDecimal("10.00"),
+                base.directo(), base.lineas());
+
+        var created = service.createDeliveryNote(command, authentication());
+
+        assertThat(created.getDescuentoGlobal()).isEqualByComparingTo("0.00");
+        assertThat(created.getTotal()).isEqualByComparingTo("109.00");
+        assertThat(created.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .map(DocumentLine::getTotal))
+                .containsExactly(new BigDecimal("10.00"), new BigDecimal("100.00"));
+        var eligibleLine = created.getLineas().getFirst();
+        assertThat(created.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT))
+                .singleElement()
+                .satisfies(discount -> {
+                    assertThat(discount.getTotal()).isEqualByComparingTo("-1.00");
+                    assertThat(discount.getSourceLineId()).isEqualTo(eligibleLine.getId());
+                });
+        assertThat(created.getAjustes()).singleElement().satisfies(adjustment -> {
+            assertThat(adjustment.getTipo()).isEqualTo("MANUAL_PERCENT");
+            assertThat(adjustment.getPorcentaje()).isEqualByComparingTo("10.00");
+            assertThat(adjustment.getBaseElegible()).isEqualByComparingTo("10.00");
+            assertThat(adjustment.getImporteAplicado()).isEqualByComparingTo("1.00");
+        });
+    }
+
+    @Test
+    void salesInvoiceGlobalDiscountIsMaterializedOnlyOverEligibleLines() {
+        var eligibleId = UUID.randomUUID();
+        var protectedId = UUID.randomUUID();
+        var eligible = product(eligibleId, DiscountType.NORMAL);
+        var protectedProduct = product(protectedId, DiscountType.NONE);
+        doReturn(Map.of(
+                eligibleId, productSnapshot(eligible),
+                protectedId, productSnapshot(protectedProduct)))
+                .when(promotionCatalog).products(any(), any());
+        doReturn(List.of(eligible, protectedProduct))
+                .when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var base = command(CommercialDocumentType.FACTURA_VENTA, List.of(
+                line(eligibleId, "P-1", "Elegible", new BigDecimal("10.00")),
+                line(protectedId, "P-2", "Protegido", new BigDecimal("100.00"))));
+        var command = new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), base.clienteId(),
+                base.proveedorId(), base.numeroExterno(), new BigDecimal("10.00"),
+                base.directo(), base.lineas());
+
+        var created = service.createInvoice(command, authentication());
+
+        assertThat(created.getDescuentoGlobal()).isEqualByComparingTo("0.00");
+        assertThat(created.getTotal()).isEqualByComparingTo("109.00");
+        assertThat(created.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .map(DocumentLine::getTotal))
+                .containsExactly(new BigDecimal("10.00"), new BigDecimal("100.00"));
+        var eligibleLine = created.getLineas().getFirst();
+        assertThat(created.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT))
+                .singleElement()
+                .satisfies(discount -> {
+                    assertThat(discount.getTotal()).isEqualByComparingTo("-1.00");
+                    assertThat(discount.getSourceLineId()).isEqualTo(eligibleLine.getId());
+                });
+        assertThat(created.getAjustes()).singleElement().satisfies(adjustment -> {
+            assertThat(adjustment.getTipo()).isEqualTo("MANUAL_PERCENT");
+            assertThat(adjustment.getPorcentaje()).isEqualByComparingTo("10.00");
+            assertThat(adjustment.getBaseElegible()).isEqualByComparingTo("10.00");
+            assertThat(adjustment.getImporteAplicado()).isEqualByComparingTo("1.00");
+        });
+    }
+
+    @Test
+    void fullDocumentDiscountCannotSilentlyIgnoreMemberBalanceOrCheckoutDiscount() {
+        var eligibleId = UUID.randomUUID();
+        var protectedId = UUID.randomUUID();
+        var eligible = product(eligibleId, DiscountType.NORMAL);
+        var protectedProduct = product(protectedId, DiscountType.NONE);
+        doReturn(Map.of(
+                eligibleId, productSnapshot(eligible),
+                protectedId, productSnapshot(protectedProduct)))
+                .when(promotionCatalog).products(any(), any());
+        doReturn(List.of(eligible, protectedProduct))
+                .when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+        var command = command(CommercialDocumentType.TICKET, List.of(
+                line(eligibleId, "P-1", "Elegible", new BigDecimal("10.00")),
+                line(protectedId, "P-2", "Protegido", new BigDecimal("100.00"))));
+
+        assertThatThrownBy(() -> service.quoteTicket(
+                command, null, null, new BigDecimal("1.00"),
+                new BigDecimal("100.00"), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("member_balance_without_eligible_lines");
+        assertThatThrownBy(() -> service.quoteTicket(
+                command, null, new BigDecimal("1.00"), null,
+                new BigDecimal("100.00"), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("checkout_discount_without_eligible_lines");
+    }
+
+    @Test
+    void memberCategoryDiscountIsSkippedForPureReturnQuote() {
+        var customerId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var sourceTicketId = UUID.randomUUID();
+        var sourceLineId = UUID.randomUUID();
+        when(promotionPricing.customerContext(store.getEmpresa().getId(), customerId))
+                .thenReturn(new AuthoritativePromotionPricing.CustomerContext(
+                        customerId, UUID.randomUUID(), UUID.randomUUID(),
+                        "Socio", new BigDecimal("10.00")));
+        var command = command(CommercialDocumentType.TICKET, List.of(
+                new DocumentLineCommand(
+                        productId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
+                        new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21"), DocumentLineType.PRODUCT, null, null, null,
+                        List.of(), false, false, TicketReturnService.ReturnSourceType.TICKET,
+                        "001-260804-00001", sourceTicketId, sourceLineId, null)), customerId);
+
+        var quote = service.quoteTicket(command, null, null, authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("-10.00");
+        assertThat(quote.getAjustes()).noneMatch(adjustment ->
+                "MEMBER_PERCENT".equals(adjustment.getTipo()));
+        assertThat(quote.getLineas())
+                .noneMatch(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT);
+    }
+
+    @Test
+    void memberCategoryDiscountAppliesOnlyToPositiveLinesInMixedReturnQuote() {
+        var customerId = UUID.randomUUID();
+        var returnedProductId = UUID.randomUUID();
+        var soldProductId = UUID.randomUUID();
+        when(promotionPricing.customerContext(store.getEmpresa().getId(), customerId))
+                .thenReturn(new AuthoritativePromotionPricing.CustomerContext(
+                        customerId, UUID.randomUUID(), UUID.randomUUID(),
+                        "Socio", new BigDecimal("10.00")));
+        var command = command(CommercialDocumentType.TICKET, List.of(
+                new DocumentLineCommand(
+                        returnedProductId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
+                        new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21")),
+                new DocumentLineCommand(
+                        soldProductId, BigDecimal.ONE, "SALE", "Vendido", "VENTA",
+                        new BigDecimal("20.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21"))), customerId);
+
+        var quote = service.quoteTicket(command, null, null, authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("8.00");
+        assertThat(quote.getAjustes()).singleElement().satisfies(adjustment -> {
+            assertThat(adjustment.getTipo()).isEqualTo("MEMBER_PERCENT");
+            assertThat(adjustment.getBaseElegible()).isEqualByComparingTo("20.00");
+            assertThat(adjustment.getImporteAplicado()).isEqualByComparingTo("2.00");
+        });
+        assertThat(quote.getLineas())
+                .filteredOn(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                .singleElement()
+                .satisfies(discount -> {
+                    assertThat(discount.getTotal()).isEqualByComparingTo("-2.00");
+                    assertThat(discount.getSourceLineId()).isEqualTo(
+                            quote.getLineas().stream()
+                                    .filter(line -> line.getProductoId().equals(soldProductId))
+                                    .findFirst().orElseThrow().getId());
+                });
+    }
+
+    @Test
+    void manualDocumentPercentStillRejectsPureReturnQuote() {
+        var productId = UUID.randomUUID();
+        var command = command(CommercialDocumentType.TICKET, List.of(
+                new DocumentLineCommand(
+                        productId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
+                        new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21"))));
+
+        assertThatThrownBy(() -> service.quoteTicket(
+                command, null, null, null, new BigDecimal("10.00"), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("document_discount_without_eligible_lines");
+    }
+
+    @Test
+    void salesDocumentCurrentPercentFieldIsMaterialized() {
+        var productId = UUID.randomUUID();
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var base = command(CommercialDocumentType.ALBARAN_VENTA, List.of(
+                line(productId, "P-1", "Producto", new BigDecimal("0.01"))));
+        var command = new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), base.clienteId(),
+                base.proveedorId(), base.numeroExterno(), BigDecimal.ZERO,
+                base.directo(), base.lineas(), null, new BigDecimal("1.00"), false);
+
+        var created = service.createDeliveryNote(command, authentication());
+
+        assertThat(created.getDescuentoGlobal()).isEqualByComparingTo("0.00");
+        assertThat(created.getTotal()).isEqualByComparingTo("0.01");
+        assertThat(created.getAjustes()).singleElement().satisfies(adjustment -> {
+            assertThat(adjustment.getTipo()).isEqualTo("MANUAL_PERCENT");
+            assertThat(adjustment.getPorcentaje()).isEqualByComparingTo("1.00");
+            assertThat(adjustment.getBaseElegible()).isEqualByComparingTo("0.01");
+            assertThat(adjustment.getImporteAplicado()).isEqualByComparingTo("0.00");
+        });
+    }
+
     @Test
     void salesInvoiceCannotBeConfirmedWithoutCustomer() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
@@ -469,6 +701,42 @@ class DocumentServiceTest {
                 .containsEntry("total", sale.getTotal());
         assertThat(TicketPrintView.from(sale).checkoutDiscountTotal())
                 .isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void quoteAppliesMemberBalanceWithoutRequiringRecentOfficialSync() {
+        var productId = UUID.randomUUID();
+        var customerId = UUID.randomUUID();
+        var quote = service.quoteTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(productId, "P-MEMBER", "Producto socio", new BigDecimal("20.00"))), customerId),
+                null, null, new BigDecimal("16.67"), authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("3.33");
+        assertThat(quote.getLineas())
+                .filteredOn(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .singleElement()
+                .extracting(DocumentLine::getTotal)
+                .isEqualTo(new BigDecimal("-16.67"));
+        verify(memberLoyaltyService, never())
+                .validateBalanceForCheckout(customerId, new BigDecimal("16.67"));
+    }
+
+    @Test
+    void createTicketStillValidatesMemberBalanceBeforeMaterializingIt() {
+        var productId = UUID.randomUUID();
+        var customerId = UUID.randomUUID();
+        var balance = new BigDecimal("16.67");
+        when(memberLoyaltyService.validateBalanceForCheckout(customerId, balance))
+                .thenThrow(new IllegalStateException("official_sync_required"));
+
+        assertThatThrownBy(() -> service.createTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(productId, "P-MEMBER", "Producto socio", new BigDecimal("20.00"))), customerId),
+                List.of(), null, null, balance, authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("official_sync_required");
+        verify(memberLoyaltyService).validateBalanceForCheckout(customerId, balance);
     }
 
     @Test
@@ -771,12 +1039,15 @@ class DocumentServiceTest {
         when(stockGateway.confirm(any())).thenReturn(false);
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var frozen = new ApprovedCardTicketSnapshot(
-                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, UUID.randomUUID(),
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, true,
+                UUID.randomUUID(),
                 BigDecimal.ZERO, new BigDecimal("8.26"), new BigDecimal("1.74"),
                 new BigDecimal("10.00"), List.of(new DocumentLineCommand(
                         UUID.randomUUID(), BigDecimal.ONE, "P-OLD", "Precio autorizado",
                         "SOCIO", new BigDecimal("10.00"), BigDecimal.ZERO,
-                        true, "IVA", new BigDecimal("21"))));
+                        true, "IVA", new BigDecimal("21"))
+                        .withRequiresSerialNumber(false)
+                        .withDiscountEligible(true)), null, null);
 
         var ticket = service.createApprovedCardTicketFromSnapshot(
                 frozen, List.of(new PaymentCommand(
@@ -787,6 +1058,7 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(ticket.getTotal()).isEqualByComparingTo("10.00");
+        assertThat(ticket.isWholesaleMode()).isTrue();
         assertThat(ticket.getBaseTotal()).isEqualByComparingTo("8.26");
         assertThat(ticket.getImpuestoTotal()).isEqualByComparingTo("1.74");
         assertThat(ticket.getLineas().getFirst().getPrecioUnitario()).isEqualByComparingTo("10.00");
@@ -794,10 +1066,65 @@ class DocumentServiceTest {
         assertThat(ticket.getPagos().getFirst().getPaymentTerminalProvider())
                 .isEqualTo(PaymentTerminalProvider.GLOBAL_PAYMENTS);
         verify(productRepository, never()).findById(any());
+        verify(productRepository, never()).findAllByStoreIdAndIdIn(any(), any());
         verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
         verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
         verifyNoInteractions(promotionRepository);
         verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
+    void approvedSnapshotKeepsProtectedLineExcludedFromLoyaltyWithoutCatalogReinterpretation() {
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        var terminalConfiguration = org.mockito.Mockito.mock(TerminalPaymentConfiguration.class);
+        when(terminalConfiguration.getCardMode()).thenReturn(PaymentCardMode.INTEGRATED);
+        when(terminalConfiguration.isEnabled()).thenReturn(true);
+        when(terminalConfiguration.getProvider()).thenReturn(PaymentTerminalProvider.GLOBAL_PAYMENTS);
+        when(terminalPaymentConfigurations.findByTerminalId(terminalId))
+                .thenReturn(Optional.of(terminalConfiguration));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var frozen = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null,
+                card.getId(), BigDecimal.ZERO, new BigDecimal("8.26"),
+                new BigDecimal("1.74"), new BigDecimal("10.00"),
+                List.of(new DocumentLineCommand(
+                        UUID.randomUUID(), BigDecimal.ONE, "P-NONE", "Protegido",
+                        "VENTA", new BigDecimal("10.00"), BigDecimal.ZERO,
+                        true, "IVA", new BigDecimal("21"))
+                        .withRequiresSerialNumber(false)
+                        .withDiscountEligible(false)));
+
+        var ticket = service.createApprovedCardTicketFromSnapshot(
+                frozen, List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "REF", PaymentCardMode.INTEGRATED,
+                        PaymentTerminalProvider.GLOBAL_PAYMENTS,
+                        PaymentTerminalOperationStatus.APPROVED, "AUTH", terminalId)),
+                authentication());
+
+        verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("0.00"));
+        verify(productRepository, never()).findAllByStoreIdAndIdIn(any(), any());
+    }
+
+    @Test
+    void approvedSnapshotCompletesWhenCouponWasUsedAfterAuthorization() {
+        var ticket = createAuthorizedCouponTicket(CouponRejectReason.USED);
+
+        assertThat(ticket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        assertThat(ticket.getTotal()).isEqualByComparingTo("8.00");
+        assertThat(ticket.getLineas()).anyMatch(line ->
+                line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON);
+    }
+
+    @Test
+    void approvedSnapshotStillRejectsNonConcurrentCouponFailures() {
+        assertThatThrownBy(() -> createAuthorizedCouponTicket(CouponRejectReason.EXPIRED))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("coupon_expired");
     }
 
     @Test
@@ -840,8 +1167,8 @@ class DocumentServiceTest {
                 new BigDecimal("21"));
         var mixed = new ApprovedCardTicketSnapshot(
                 store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 5), null,
-                cash.getId(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                new BigDecimal("1.10"), List.of(returnLine, saleLine));
+                true, cash.getId(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("1.10"), List.of(returnLine, saleLine), null, null);
 
         var sale = service.createApprovedExchangeSaleFromSnapshot(
                 mixed,
@@ -854,6 +1181,7 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(sale.getTotal()).isEqualByComparingTo("101.10");
+        assertThat(sale.isWholesaleMode()).isTrue();
         assertThat(sale.getLineas()).singleElement()
                 .satisfies(line -> assertThat(line.getProductoId()).isEqualTo(soldProductId));
         assertThat(sale.getPagos()).hasSize(2);
@@ -942,6 +1270,74 @@ class DocumentServiceTest {
     }
 
     @Test
+    void ticketFlushesConfirmedParentBeforeReturnCreditMovement() {
+        var returnCredit = new PaymentMethod(
+                store.getEmpresa().getId(), "CREDITO_DEVOLUCION", true);
+        when(paymentMethodRepository.findById(returnCredit.getId()))
+                .thenReturn(Optional.of(returnCredit));
+        when(memberLoyaltyService.consumeReturnCreditForPayment(
+                any(), eq(new BigDecimal("10.00"))))
+                .thenReturn(new BigDecimal("10.00"));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.saveAndFlush(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(documentRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET),
+                List.of(new PaymentCommand(
+                        returnCredit.getId(), new BigDecimal("10.00"), true, null, null)),
+                authentication());
+
+        var order = inOrder(documentRepository, memberLoyaltyService);
+        order.verify(documentRepository).saveAndFlush(same(ticket));
+        order.verify(memberLoyaltyService)
+                .consumeReturnCreditForPayment(same(ticket), eq(new BigDecimal("10.00")));
+        order.verify(documentRepository).saveAndFlush(same(ticket));
+        verify(documentRepository, times(2)).saveAndFlush(same(ticket));
+    }
+
+    @Test
+    void approvedSnapshotFlushesConfirmedParentBeforeReturnCreditMovement() {
+        var returnCredit = new PaymentMethod(
+                store.getEmpresa().getId(), "CREDITO_DEVOLUCION", true);
+        when(paymentMethodRepository.findById(returnCredit.getId()))
+                .thenReturn(Optional.of(returnCredit));
+        when(memberLoyaltyService.consumeReturnCreditForPayment(
+                any(), eq(new BigDecimal("10.00"))))
+                .thenReturn(new BigDecimal("10.00"));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.saveAndFlush(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(documentRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        var snapshot = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 30), null,
+                returnCredit.getId(), BigDecimal.ZERO, new BigDecimal("8.26"),
+                new BigDecimal("1.74"), new BigDecimal("10.00"),
+                List.of(line(UUID.randomUUID(), "P-RETURN-CREDIT", "Producto",
+                        new BigDecimal("10.00"))));
+
+        var ticket = service.createApprovedCardTicketFromSnapshot(
+                snapshot,
+                List.of(new PaymentCommand(
+                        returnCredit.getId(), new BigDecimal("10.00"), true, null, null)),
+                authentication());
+
+        var order = inOrder(documentRepository, memberLoyaltyService);
+        order.verify(documentRepository).saveAndFlush(same(ticket));
+        order.verify(memberLoyaltyService)
+                .consumeReturnCreditForPayment(same(ticket), eq(new BigDecimal("10.00")));
+        order.verify(documentRepository).saveAndFlush(same(ticket));
+        verify(documentRepository, times(2)).saveAndFlush(same(ticket));
+    }
+
+    @Test
     void loyaltyAccruesOnlyEligibleProductLines() {
         var paidMethod = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
         var eligibleId = UUID.randomUUID();
@@ -976,6 +1372,65 @@ class DocumentServiceTest {
                 authentication());
 
         verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
+    }
+
+    @Test
+    void legacySnapshotEligibilityResolvesCatalogBestEffortAndCompletesTicket() {
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var normalId = UUID.randomUUID();
+        var noneId = UUID.randomUUID();
+        var missingId = UUID.randomUUID();
+        var failedId = UUID.randomUUID();
+        var normal = product(normalId, DiscountType.NORMAL);
+        var none = product(noneId, DiscountType.NONE);
+        doAnswer(invocation -> {
+            var ids = (java.util.Collection<UUID>) invocation.getArgument(1);
+            var id = ids.iterator().next();
+            if (id.equals(normalId)) return List.of(normal);
+            if (id.equals(noneId)) return List.of(none);
+            if (id.equals(missingId)) return List.of();
+            throw new IllegalStateException("catalog_unavailable");
+        }).when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+
+        var normalTicket = createLegacyEligibilityTicket(normalId, card);
+        var noneTicket = createLegacyEligibilityTicket(noneId, card);
+        var missingTicket = createLegacyEligibilityTicket(missingId, card);
+        var failedTicket = createLegacyEligibilityTicket(failedId, card);
+
+        assertThat(normalTicket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        assertThat(noneTicket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        assertThat(missingTicket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        assertThat(failedTicket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        verify(memberLoyaltyService).recordPaidSale(same(normalTicket), accrualOf("10.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(noneTicket), accrualOf("0.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(missingTicket), accrualOf("0.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(failedTicket), accrualOf("0.00"));
+        verify(audit, times(2)).record(
+                eq("LEGACY_LOYALTY_ELIGIBILITY_FALLBACK"),
+                eq(com.tpverp.backend.audit.AuditResult.FALLO), anyMap());
+    }
+
+    private CommercialDocument createLegacyEligibilityTicket(
+            UUID productId, PaymentMethod card) {
+        var snapshot = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 28), null,
+                card.getId(), BigDecimal.ZERO, new BigDecimal("8.26"),
+                new BigDecimal("1.74"), new BigDecimal("10.00"),
+                List.of(line(productId, "P-LEGACY", "Producto legacy", new BigDecimal("10.00"))
+                        .withRequiresSerialNumber(false)),
+                null, null);
+        return service.createApprovedCardTicketFromSnapshot(
+                snapshot,
+                List.of(new PaymentCommand(card.getId(), new BigDecimal("10.00"), true,
+                        null, null)),
+                authentication());
     }
 
     @Test
@@ -1279,7 +1734,68 @@ class DocumentServiceTest {
                         user.getId().toString().equals(data.get("operatorUserId"))
                                 && user.getId().toString().equals(
                                         data.get("authorizerUserId"))
-                                && !data.containsValue("secret")));
+                && !data.containsValue("secret")));
+    }
+
+    @Test
+    void invoiceConversionRestoresDocumentDiscountLinksAndWholesaleMode() {
+        var eligibleId = UUID.randomUUID();
+        var protectedId = UUID.randomUUID();
+        var ticket = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 6, 8), user.getId(), BigDecimal.ZERO, true);
+        var eligibleLine = new DocumentLine(
+                ticket, eligibleId, 1, BigDecimal.ONE, "P-ELIGIBLE", "Elegible", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00"));
+        ticket.addLine(eligibleLine);
+        ticket.addLine(new DocumentLine(
+                ticket, protectedId, 2, BigDecimal.ONE, "P-PROTECTED", "Protegido", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        var eligibleBase = DocumentPercentDiscountAllocator.apply(
+                ticket, new BigDecimal("10.00"), java.util.Set.of(eligibleId));
+        var discountLine = ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                .findFirst().orElseThrow();
+        var adjustment = new DocumentAdjustment(
+                ticket, "MANUAL_PERCENT", 1, new BigDecimal("10.00"), eligibleBase,
+                new BigDecimal("1.00"), user.getId(), NOW, null, null, null);
+        ticket.addAdjustment(adjustment);
+        discountLine.linkDocumentAdjustment(adjustment.getId(), eligibleLine.getId());
+        addFullCashPayment(ticket);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, true);
+        var customer = completeCustomer();
+        when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(relationRepository.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(Optional.empty());
+        when(customerRepository.findByIdAndCompanyId(
+                customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
+                store.getId(), "FV", "2026")).thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var invoice = service.convertTicketToInvoice(
+                ticket.getId(), customer.getId(), null, null, authentication());
+
+        assertThat(invoice.isWholesaleMode()).isTrue();
+        assertThat(invoice.getTotal()).isEqualByComparingTo(ticket.getTotal());
+        assertThat(invoice.getAjustes()).singleElement().satisfies(restored -> {
+            assertThat(restored.getImporteAplicado()).isEqualByComparingTo("1.00");
+            var invoiceDiscount = invoice.getLineas().stream()
+                    .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                    .findFirst().orElseThrow();
+            assertThat(invoiceDiscount.getDocumentAdjustmentId()).isEqualTo(restored.getId());
+            assertThat(invoiceDiscount.getSourceLineId())
+                    .isEqualTo(invoice.getLineas().stream()
+                            .filter(line -> line.getProductoId().equals(eligibleId))
+                            .findFirst().orElseThrow().getId());
+            assertThat(invoice.getLineas()).contains(invoiceDiscount);
+        });
+        assertThat(invoice.getLineas())
+                .filteredOn(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                .singleElement()
+                .extracting(DocumentLine::getTotal)
+                .isEqualTo(new BigDecimal("-1.00"));
     }
 
     @Test
@@ -2239,6 +2755,48 @@ class DocumentServiceTest {
     }
 
     @Test
+    void adminEditMaterializesEligibleDocumentDiscountAndRemovesOldAdjustments() {
+        var productId = UUID.randomUUID();
+        var ticket = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 6, 8), user.getId(), BigDecimal.ZERO, true);
+        ticket.addLine(new DocumentLine(
+                ticket, productId, 1, BigDecimal.ONE, "P-1", "Producto", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        ticket.addAdjustment(new DocumentAdjustment(
+                ticket, "MANUAL_PERCENT", 1, new BigDecimal("5.00"),
+                new BigDecimal("10.00"), new BigDecimal("0.50"), user.getId(), NOW,
+                null, null, null));
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+        doReturn(Map.of(productId, productSnapshot(product(productId, DiscountType.NORMAL))))
+                .when(promotionCatalog).products(any(), any());
+        lenient().when(promotionPricing.priceLine(any(), any(), any(), any(), eq(true)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(documentRepository.save(ticket)).thenReturn(ticket);
+
+        var edited = service.adminEditConfirmed(
+                ticket.getId(), new BigDecimal("10.00"), null, null,
+                List.of(line(productId, "P-1", "Producto", new BigDecimal("10.00"))),
+                authentication());
+
+        assertThat(edited.isWholesaleMode()).isTrue();
+        assertThat(edited.getDescuentoGlobal()).isZero();
+        assertThat(edited.getTotal()).isEqualByComparingTo("9.00");
+        assertThat(edited.getAjustes()).singleElement().satisfies(adjustment -> {
+            assertThat(adjustment.getPorcentaje()).isEqualByComparingTo("10.00");
+            var discount = edited.getLineas().stream()
+                    .filter(line -> line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT)
+                    .findFirst().orElseThrow();
+            assertThat(discount.getDocumentAdjustmentId()).isEqualTo(adjustment.getId());
+            assertThat(discount.getSourceLineId())
+                    .isEqualTo(edited.getLineas().stream()
+                            .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                            .findFirst().orElseThrow().getId());
+        });
+    }
+
+    @Test
     void onlyInvoicesCanBeRelatedToOriginDocuments() {
         var note = draft(CommercialDocumentType.ALBARAN_VENTA);
         var origin = draft(CommercialDocumentType.TICKET);
@@ -2779,8 +3337,49 @@ class DocumentServiceTest {
         var frozen=new ApprovedCardTicketSnapshot(store.getId(),UUID.randomUUID(),LocalDate.of(2026,6,8),null,
                 payments.getFirst().metodoPagoId(),BigDecimal.ZERO,new BigDecimal("8.26"),new BigDecimal("1.74"),
                 new BigDecimal("10.00"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P","Producto",
-                "VENTA",new BigDecimal("10.00"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))));
+                "VENTA",new BigDecimal("10.00"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))
+                .withRequiresSerialNumber(false).withDiscountEligible(true)));
         return service.createApprovedCardTicketFromSnapshot(frozen,payments,authentication());
+    }
+
+    private CommercialDocument createAuthorizedCouponTicket(CouponRejectReason rejectionReason) {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var couponId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        if (rejectionReason == CouponRejectReason.USED) {
+            when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+            when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                    .thenReturn(Optional.empty());
+            when(stockGateway.confirm(any())).thenReturn(false);
+            when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        }
+        when(promotionalCoupons.redeemAuthorized(any())).thenAnswer(invocation -> {
+            PromotionalCouponService.AuthorizedRedemptionCommand command =
+                    invocation.getArgument(0);
+            return new PromotionalCouponService.RedemptionResult(
+                    command.documentId(), null, null, null, BigDecimal.ZERO,
+                    rejectionReason, Optional.empty());
+        });
+        var productLine = new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "P", "Producto", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO)
+                .withRequiresSerialNumber(false)
+                .withDiscountEligible(true);
+        var couponLine = new DocumentLineCommand(
+                null, BigDecimal.ONE, "CUPON", "Cupón promocional", null,
+                new BigDecimal("-2.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO,
+                DocumentLineType.PROMOTIONAL_COUPON, promotionId, null, couponId);
+        var frozen = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 27), null,
+                cash.getId(), BigDecimal.ZERO, new BigDecimal("8.00"), BigDecimal.ZERO,
+                new BigDecimal("8.00"), List.of(productLine, couponLine));
+
+        return service.createApprovedCardTicketFromSnapshot(
+                frozen,
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("8.00"), true,
+                        new BigDecimal("8.00"), BigDecimal.ZERO)),
+                authentication());
     }
 
     private static MemberLoyaltyService.LoyaltyAccrual accrualOf(String amount) {

@@ -19,6 +19,8 @@ export type SalesDocumentDraftDetail = SalesDocumentDraftSummary & {
   dueDate: string;
   warehouseId: string;
   globalDiscount: number | string;
+  documentDiscountPercent?: number | string | null;
+  wholesaleMode?: boolean | null;
   internalComment?: string | null;
   lines: Array<{
     id: string;

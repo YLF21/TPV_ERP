@@ -15,9 +15,11 @@ import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.DocumentLineType;
+import com.tpverp.backend.document.DocumentPayment;
 import com.tpverp.backend.document.FiscalPrintView;
 import com.tpverp.backend.document.InvoiceFiscalProfile;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
+import com.tpverp.backend.document.PaymentMethod;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
@@ -51,6 +53,28 @@ import org.junit.jupiter.api.io.TempDir;
 class InvoiceJasperRendererTest {
 
     @TempDir Path temporaryDirectory;
+
+    @Test
+    void formatsPaymentMethodIdentifiersInStructuredInvoiceData() {
+        var fixture = fixture();
+        var method = new PaymentMethod(
+                fixture.company().getId(), "credito_devolucion", true);
+        fixture.document().addPayment(new DocumentPayment(
+                fixture.document(), method, 1, new BigDecimal("12.10"), true,
+                null, null, Instant.parse("2026-08-10T09:01:00Z")));
+        var compiler = new SafeJrxmlCompiler();
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                compiler, new ObjectMapper(), new BuiltInDocumentJrxmlCatalog(compiler));
+
+        var json = renderer.data(
+                fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
+                snapshot(fixture.template(), "a".repeat(64)), null);
+
+        assertThat(method.getNombre()).isEqualTo("CREDITO_DEVOLUCION");
+        assertThat(json.at("/payment/method").asText()).isEqualTo("CREDITO DEVOLUCION");
+    }
 
     @Test
     void rendersFrozenLineBarcodeFromJsonqlIntoPdf() throws Exception {

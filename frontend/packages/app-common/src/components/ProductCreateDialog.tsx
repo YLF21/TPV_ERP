@@ -57,6 +57,11 @@ export type ProductCreateFormState = {
   offerActive: boolean;
   offerFrom: string;
   offerUntil: string;
+  purchaseDiscountPercent: string;
+  packageQuantity: string;
+  stockMin: string;
+  stockMax: string;
+  requiresSerialNumber: boolean;
 };
 
 export type ProductCreateEditProduct = {
@@ -72,6 +77,7 @@ export type ProductCreateInitialData = {
   packageQuantity?: string | number | null;
   stockMin?: string | number | null;
   stockMax?: string | number | null;
+  requiresSerialNumber?: boolean | null;
 };
 
 export type ProductCreateFieldName =
@@ -95,6 +101,11 @@ export type ProductCreateFieldName =
   | "wholesalePrice"
   | "offerPrice"
   | "offerDiscountPercent"
+  | "purchaseDiscountPercent"
+  | "packageQuantity"
+  | "stockMin"
+  | "stockMax"
+  | "requiresSerialNumber"
   | "offerActive"
   | "offerRange";
 
@@ -219,7 +230,12 @@ export function createDefaultProductForm(): ProductCreateFormState {
     offerDiscountPercent: "",
     offerActive: false,
     offerFrom: "",
-    offerUntil: ""
+    offerUntil: "",
+    purchaseDiscountPercent: "",
+    packageQuantity: "1",
+    stockMin: "",
+    stockMax: "",
+    requiresSerialNumber: false
   };
 }
 
@@ -227,7 +243,12 @@ export function createProductFormFromEditProduct(product?: ProductCreateEditProd
   const form = {
     ...createDefaultProductForm(),
     ...(product?.form ?? {}),
-    ...(product?.initialData?.discountType ? { discountType: product.initialData.discountType } : {})
+    ...(product?.initialData?.discountType ? { discountType: product.initialData.discountType } : {}),
+    ...(product?.initialData?.purchaseDiscountPercent !== undefined ? { purchaseDiscountPercent: decimalText(product.initialData.purchaseDiscountPercent) } : {}),
+    ...(product?.initialData?.packageQuantity !== undefined ? { packageQuantity: decimalText(product.initialData.packageQuantity) || "1" } : {}),
+    ...(product?.initialData?.stockMin !== undefined ? { stockMin: decimalText(product.initialData.stockMin) } : {}),
+    ...(product?.initialData?.stockMax !== undefined ? { stockMax: decimalText(product.initialData.stockMax) } : {}),
+    ...(product?.initialData?.requiresSerialNumber !== undefined ? { requiresSerialNumber: Boolean(product.initialData.requiresSerialNumber) } : {})
   };
   if (form.discountType === "NONE") {
     return {
@@ -237,6 +258,10 @@ export function createProductFormFromEditProduct(product?: ProductCreateEditProd
     };
   }
   return form;
+}
+
+function decimalText(value: string | number | null | undefined) {
+  return value === null || value === undefined ? "" : String(value);
 }
 
 export function createProductFormFromInitial(
@@ -293,12 +318,15 @@ export function buildCreateProductRequest(
     salePrice: decimalOrZero(form.salePrice),
     memberPrice: emptyToNull(form.memberPrice),
     wholesalePrice: emptyToNull(form.wholesalePrice),
-    offerPrice: noDiscountLocked ? null : emptyToNull(offerPrice),
-    offerDiscountPercent: noDiscountLocked ? null : emptyToNull(form.offerDiscountPercent),
-    purchaseDiscountPercent: preservedNullableDecimal(initialData?.purchaseDiscountPercent),
-    packageQuantity: preservedNullableDecimal(initialData?.packageQuantity) ?? "1",
-    stockMin: preservedNullableDecimal(initialData?.stockMin),
-    stockMax: preservedNullableDecimal(initialData?.stockMax),
+    // The lock controls price application; it must not destroy configuration
+    // that may be reused if the product is unlocked later.
+    offerPrice: emptyToNull(offerPrice),
+    offerDiscountPercent: emptyToNull(form.offerDiscountPercent),
+    purchaseDiscountPercent: preservedNullableDecimal(form.purchaseDiscountPercent),
+    packageQuantity: preservedNullableDecimal(form.packageQuantity) ?? "1",
+    stockMin: preservedNullableDecimal(form.stockMin),
+    stockMax: preservedNullableDecimal(form.stockMax),
+    requiresSerialNumber: form.productType === "UNIT" && form.requiresSerialNumber,
     offerActive,
     offerFrom: emptyToNull(form.offerFrom),
     offerUntil: emptyToNull(form.offerUntil)
@@ -396,10 +424,31 @@ export function productCreateValidationErrors(
   if (!form.salePrice.trim()) {
     errors.push("salePrice");
   }
+  const packageQuantity = parseOptionalNonNegativeDecimal(form.packageQuantity);
+  if (packageQuantity === "INVALID") {
+    errors.push("packageQuantity");
+  }
+  const stockMin = parseOptionalNonNegativeDecimal(form.stockMin);
+  if (stockMin === "INVALID") {
+    errors.push("stockMin");
+  }
+  const stockMax = parseOptionalNonNegativeDecimal(form.stockMax);
+  if (stockMax === "INVALID") {
+    errors.push("stockMax");
+  }
+  if (typeof stockMin === "number" && typeof stockMax === "number" && stockMax < stockMin) {
+    errors.push("stockMax");
+  }
   if (offerActive && !offerPrice.trim()) {
     errors.push("offerPrice");
   }
   return errors;
+}
+
+function parseOptionalNonNegativeDecimal(value: string | number | null | undefined): number | null | "INVALID" {
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return null;
+  const parsed = typeof value === "number" ? value : Number(value.trim().replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : "INVALID";
 }
 
 export function canLeaveProductField(form: ProductCreateFormState, fieldName: string | null | undefined) {
@@ -1003,12 +1052,15 @@ export function ProductCreateDialog({
   }
 
   function updatePriceUseMode(mode: PriceUseModeCode) {
-    setForm((current) => ({
+    setForm((current) => {
+      if (isNoDiscountLocked(current)) return current;
+      return {
       ...current,
       priceUseMode: mode,
       discountType: discountTypeFromPriceUseMode(mode),
       offerActive: isOfferPriceUseMode(mode)
-    }));
+      };
+    });
   }
 
   function toggleNoDiscountLock() {
@@ -1339,6 +1391,7 @@ export function ProductCreateDialog({
                 className={selected ? "selected" : ""}
                 role="radio"
                 aria-checked={selected}
+                disabled={isNoDiscountLocked(form)}
                 key={mode}
                 onClick={() => updatePriceUseMode(mode)}
                 onKeyDown={(event) => {
@@ -1524,7 +1577,11 @@ export function ProductCreateDialog({
                 requiredLabel("stock.column.type", true),
                 form.productType,
                 productTypeOptions.map((type) => ({ value: type, label: t(productTypeLabel(type)) })),
-                (value) => updateField("productType", value as ProductTypeCode)
+                (value) => setForm((current) => ({
+                  ...current,
+                  productType: value as ProductTypeCode,
+                  requiresSerialNumber: value === "UNIT" ? current.requiresSerialNumber : false
+                }))
               )}
             </div>
             <label className="product-create-full">
@@ -1574,10 +1631,16 @@ export function ProductCreateDialog({
                 </label>
               )}
             </div>
+            <fieldset className="product-create-fieldset product-pricing-fieldset">
+              <legend>{t("product.fieldset.prices")}</legend>
             <div className="product-create-row product-create-row-prices">
               <label className={fieldClass("purchasePrice")}>
                 <span>{requiredLabel("stock.column.purchasePrice", true)}</span>
                 <input data-product-field data-product-field-name="purchasePrice" required inputMode="decimal" value={form.purchasePrice} onChange={(event) => updateField("purchasePrice", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("stock.column.purchaseDiscount")}</span>
+                <input data-product-field data-product-field-name="purchaseDiscountPercent" inputMode="decimal" value={form.purchaseDiscountPercent} onChange={(event) => updateField("purchaseDiscountPercent", event.target.value)} />
               </label>
               <label className={fieldClass("salePrice")}>
                 <span>{requiredLabel("stock.column.salePrice", true)}</span>
@@ -1585,7 +1648,7 @@ export function ProductCreateDialog({
               </label>
               <label>
                 <span>{t("stock.column.memberPrice")}</span>
-                <input data-product-field data-product-field-name="memberPrice" inputMode="decimal" value={form.memberPrice} onChange={(event) => updateField("memberPrice", event.target.value)} />
+                <input data-product-field data-product-field-name="memberPrice" inputMode="decimal" disabled={isNoDiscountLocked(form)} value={form.memberPrice} onChange={(event) => updateField("memberPrice", event.target.value)} />
               </label>
               <label>
                 <span>{t("stock.column.wholesalePrice")}</span>
@@ -1596,11 +1659,11 @@ export function ProductCreateDialog({
               {renderPriceUseOptions()}
               <label className={fieldClass("offerPrice")}>
                 <span>{t("stock.column.offerPrice")}</span>
-                <input data-product-field data-product-field-name="offerPrice" inputMode="decimal" value={form.offerPrice} onChange={(event) => updateField("offerPrice", event.target.value)} />
+                <input data-product-field data-product-field-name="offerPrice" inputMode="decimal" disabled={isNoDiscountLocked(form)} value={form.offerPrice} onChange={(event) => updateField("offerPrice", event.target.value)} />
               </label>
               <label>
                 <span>{t("product.field.offerDiscountPercent")}</span>
-                <input data-product-field data-product-field-name="offerDiscountPercent" inputMode="decimal" value={form.offerDiscountPercent} onChange={(event) => updateOfferDiscountPercent(event.target.value)} />
+                <input data-product-field data-product-field-name="offerDiscountPercent" inputMode="decimal" disabled={isNoDiscountLocked(form)} value={form.offerDiscountPercent} onChange={(event) => updateOfferDiscountPercent(event.target.value)} />
               </label>
               <div className={`filter-field product-offer-range ${offerPickerOpen ? "open" : ""}`}>
                 <span>{requiredLabel("product.field.offerRange", offerActive)}</span>
@@ -1610,6 +1673,7 @@ export function ProductCreateDialog({
                     type="button"
                     data-product-field
                     data-product-field-name="offerRange"
+                    disabled={isNoDiscountLocked(form)}
                     aria-expanded={offerPickerOpen}
                     aria-haspopup="dialog"
                     aria-label={t("salesReport.filter.openCalendar")}
@@ -1741,6 +1805,8 @@ export function ProductCreateDialog({
               <button
                 type="button"
                 className={isNoDiscountLocked(form) ? "active" : ""}
+                aria-pressed={isNoDiscountLocked(form)}
+                aria-describedby="product-no-discount-description"
                 data-product-field
                 data-product-field-name="discountType"
                 onClick={toggleNoDiscountLock}
@@ -1760,8 +1826,30 @@ export function ProductCreateDialog({
               >
                 {t("product.noDiscountLock.button")}
               </button>
-              <span>{t("product.noDiscountLock.message")}</span>
+              <span id="product-no-discount-description">{t("product.noDiscountLock.message")}</span>
             </div>
+            </fieldset>
+            <fieldset className="product-create-fieldset product-stock-fieldset">
+              <legend>{t("product.fieldset.stock")}</legend>
+              <div className="product-create-row product-create-row-stock">
+                <label>
+                  <span>{t("stock.column.packageQuantity")}</span>
+                  <input data-product-field data-product-field-name="packageQuantity" inputMode="decimal" value={form.packageQuantity} onChange={(event) => updateField("packageQuantity", event.target.value)} />
+                </label>
+                <label>
+                  <span>{t("stock.column.stockMin")}</span>
+                  <input data-product-field data-product-field-name="stockMin" inputMode="decimal" value={form.stockMin} onChange={(event) => updateField("stockMin", event.target.value)} />
+                </label>
+                <label>
+                  <span>{t("stock.column.stockMax")}</span>
+                  <input data-product-field data-product-field-name="stockMax" inputMode="decimal" value={form.stockMax} onChange={(event) => updateField("stockMax", event.target.value)} />
+                </label>
+                <label className="product-create-check">
+                  <input data-product-field data-product-field-name="requiresSerialNumber" type="checkbox" checked={form.requiresSerialNumber} disabled={form.productType !== "UNIT"} onChange={(event) => updateField("requiresSerialNumber", event.target.checked)} />
+                  <span>{t("product.field.requiresSerialNumber")}</span>
+                </label>
+              </div>
+            </fieldset>
             <label className="product-create-full">
               <span>{t("product.field.comments")}</span>
               <textarea data-product-field data-product-field-name="comments" value={form.comments} onChange={(event) => updateField("comments", event.target.value)} />

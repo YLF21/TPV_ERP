@@ -98,10 +98,11 @@ public class SalesInvoiceRectificationService {
         Objects.requireNonNull(request, "request");
         var user = organization.currentUser(authentication);
         var draft = new CommercialDocument(
-                original.getTiendaId(), original.getAlmacenId(),
-                CommercialDocumentType.RECTIFICATIVA_VENTA, currentBusinessDate(),
-                user.getId(), request.reason().affectsStock()
-                        ? original.getDescuentoGlobal() : BigDecimal.ZERO);
+                 original.getTiendaId(), original.getAlmacenId(),
+                 CommercialDocumentType.RECTIFICATIVA_VENTA, currentBusinessDate(),
+                 user.getId(), request.reason().affectsStock()
+                         ? original.getDescuentoGlobal() : BigDecimal.ZERO,
+                 original.isWholesaleMode());
         var metadata = new SalesInvoiceRectification(
                 draft.getId(), original.getId(), request.reason(), request.detail(), Instant.now(clock));
         draft.assignOriginTerminal(currentTerminalOrNull(authentication));

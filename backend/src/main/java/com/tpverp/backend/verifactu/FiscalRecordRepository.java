@@ -86,4 +86,7 @@ public interface FiscalRecordRepository extends JpaRepository<FiscalRecord, UUID
 
     Optional<FiscalRecord> findByIdAndCompanyIdAndStoreId(
             UUID id, UUID companyId, UUID storeId);
+
+    Optional<FiscalRecord> findByIdAndCompanyIdAndInstallationId(
+            UUID id, UUID companyId, UUID installationId);
 }

@@ -31,8 +31,17 @@ public class VerifactuManualRetryService {
         }
         var reason = normalizeReason(request.reason());
         final ClaimedFiscalSubmission claimed;
+        final ClaimedFiscalBatch claimedBatch;
         try {
-            claimed = queue.claimForManualRetry(recordId, request.expectedVersion());
+            if (queue.batchCoordinatorAvailable()) {
+                claimedBatch = queue.claimManualRetryBatch(recordId, request.expectedVersion(), 1000)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "El scope fiscal esta ocupado o la cadena no esta disponible"));
+                claimed = claimedBatch.submissions().getFirst();
+            } else {
+                claimedBatch = null;
+                claimed = queue.claimForManualRetry(recordId, request.expectedVersion());
+            }
         } catch (RuntimeException exception) {
             audit.record(
                     "VERIFACTU_MANUAL_RETRY_REJECTED",
@@ -45,7 +54,11 @@ public class VerifactuManualRetryService {
         }
 
         try {
-            var result = submissions.submit(claimed.record());
+            var result = claimedBatch == null
+                    ? claimed.state().getClaimToken() == null
+                            ? submissions.submit(claimed.record())
+                            : submissions.submit(claimed.record(), claimed.state().getClaimToken())
+                    : submissions.submitBatch(claimedBatch).results().getFirst();
             audit.record(
                     "VERIFACTU_MANUAL_RETRY_EXECUTED",
                     AuditResult.EXITO,

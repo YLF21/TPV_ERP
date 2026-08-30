@@ -10,7 +10,6 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
 @RequestMapping("/api/v1/fiscal/export-jobs")
@@ -72,16 +72,38 @@ public class FiscalExportJobController {
         return jobs.status(id, user.getId().toString(), PermissionChecks.hasRole(authentication, "ADMIN"));
     }
 
-    @GetMapping(value = "/{id}/download", produces = "application/zip")
-    public ResponseEntity<FileSystemResource> download(@PathVariable UUID id,
+    @PostMapping("/{id}/download-token")
+    public FiscalExportDownloadTokenView issueDownloadToken(@PathVariable UUID id,
             Authentication authentication) {
         var user = organization.currentUser(authentication);
-        var file = jobs.download(id, user.getId().toString(), PermissionChecks.hasRole(authentication, "ADMIN"));
+        var token = jobs.issueDownloadToken(id, user.getId().toString(),
+                PermissionChecks.hasRole(authentication, "ADMIN"));
+        return new FiscalExportDownloadTokenView(token);
+    }
+
+    @GetMapping(value = "/{id}/download", produces = "application/zip")
+    public ResponseEntity<StreamingResponseBody> download(@PathVariable UUID id,
+            Authentication authentication) {
+        var user = organization.currentUser(authentication);
+        var handle = jobs.openAuthorizedDownload(id, user.getId().toString(),
+                PermissionChecks.hasRole(authentication, "ADMIN"));
+        var file = handle.download();
+        StreamingResponseBody body = output -> {
+            try (var input = handle.openStream()) {
+                input.transferTo(output);
+            } finally {
+                try {
+                    handle.close();
+                } catch (java.io.IOException ignored) {
+                    // The response already owns the primary streaming result.
+                }
+            }
+        };
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/zip"))
                 .contentLength(file.size())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + file.fileName() + "\"")
-                .body(new FileSystemResource(file.path()));
+                .body(body);
     }
 }

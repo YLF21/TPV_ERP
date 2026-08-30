@@ -9,6 +9,7 @@ import { formatEuroAmount, localeTag, parseMoneyValue } from "../money";
 import {
   commercialDocumentAsA4Document,
   outputConfirmedTicketsSequentially,
+  printablePaymentMethodLabel,
   printPendingCommercialDocument,
   type ConfirmedTicketPrintSet,
   type ConfirmedTicketPrintSnapshot,
@@ -2491,7 +2492,7 @@ export function SalesReportScreen({
             ],
             lines: [],
             payments: receipt.payments.map((payment) => ({
-              method: payment.method,
+              method: printablePaymentMethodLabel(payment.method),
               amount: Number(payment.amount),
               reference: payment.reference ?? undefined
             })),
