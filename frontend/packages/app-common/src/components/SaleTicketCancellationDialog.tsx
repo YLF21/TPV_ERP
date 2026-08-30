@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { formatEuroAmount } from "../money";
+import { printablePaymentMethodLabel } from "../sale/ticketPrinting";
 import {
   outputIssuedVoucher,
   type IssuedVoucherPrintSnapshot,
@@ -292,7 +293,7 @@ export function SaleTicketCancellationDialog({
       ],
       lines: [],
       payments: receipt.payments.map((payment) => ({
-        method: payment.method,
+        method: printablePaymentMethodLabel(payment.method),
         amount: Number(payment.amount),
         reference: payment.reference ?? undefined,
       })),

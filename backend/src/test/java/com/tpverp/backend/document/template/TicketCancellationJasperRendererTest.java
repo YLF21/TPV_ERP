@@ -40,7 +40,7 @@ class TicketCancellationJasperRendererTest {
                 "ADMIN",
                 true,
                 List.of(new TicketCancellationService.CancellationReceiptPayment(
-                        "TARJETA", new BigDecimal("25.50"), "DEV-123")));
+                        "credito_devolucion", new BigDecimal("25.50"), "DEV-123")));
 
         var rendered = new TicketCancellationJasperRenderer(
                 new SafeJrxmlCompiler()).render(receipt, store);
@@ -61,7 +61,7 @@ class TicketCancellationJasperRendererTest {
                             "Error de cobro",
                             "CAJERO",
                             "ADMIN",
-                            "TARJETA",
+                            "CREDITO DEVOLUCION",
                             "DEV-123",
                             "TOTAL ANULADO",
                             "25.50 EUR");

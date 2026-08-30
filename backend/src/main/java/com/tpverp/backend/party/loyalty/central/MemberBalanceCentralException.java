@@ -25,7 +25,7 @@ public class MemberBalanceCentralException extends RuntimeException {
         this(kind, null, message, cause);
     }
 
-    private MemberBalanceCentralException(
+    protected MemberBalanceCentralException(
             Kind kind,
             Integer statusCode,
             String message,
@@ -43,4 +43,3 @@ public class MemberBalanceCentralException extends RuntimeException {
         return statusCode;
     }
 }
-

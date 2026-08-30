@@ -17,6 +17,8 @@ public record SalesDocumentDraftView(
         UUID customerId,
         String customerName,
         BigDecimal globalDiscount,
+        BigDecimal documentDiscountPercent,
+        boolean wholesaleMode,
         BigDecimal total,
         String internalComment,
         Instant createdAt,
@@ -28,7 +30,13 @@ public record SalesDocumentDraftView(
                 document.getId(), document.getVersion(), document.getTipo(),
                 document.getFecha(), document.getDueDate(), document.getAlmacenId(),
                 document.getClienteId(), customerName, document.getDescuentoGlobal(),
-                document.getTotal(), document.getComentarioInterno(), document.getCreadoEn(),
+                document.getAjustes().stream()
+                        .filter(adjustment -> "MANUAL_PERCENT".equals(adjustment.getTipo()))
+                        .map(DocumentAdjustment::getPorcentaje)
+                        .findFirst()
+                        .orElse(BigDecimal.ZERO),
+                document.isWholesaleMode(), document.getTotal(), document.getComentarioInterno(),
+                document.getCreadoEn(),
                 document.getLineas().stream()
                         .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                         .sorted(Comparator.comparingInt(DocumentLine::getPosicion))

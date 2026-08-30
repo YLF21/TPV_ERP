@@ -37,6 +37,12 @@ export function canOpenGestionModule(session: UserSession, module: GestionModule
     && modulePermissions[module].some((permission) => session.permissions.includes(permission));
 }
 
+export function canManageTaxes(session: UserSession): boolean {
+  return session.permissions.includes("ADMIN")
+    || (session.permissions.includes("APP_GESTION_ACCESS")
+      && session.permissions.includes("TAXES_MANAGE"));
+}
+
 export function visibleGestionModules(session: UserSession): GestionModuleKey[] {
   return (Object.keys(modulePermissions) as GestionModuleKey[])
     .filter((module) => canOpenGestionModule(session, module));

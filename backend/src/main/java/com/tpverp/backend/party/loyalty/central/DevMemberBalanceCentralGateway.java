@@ -7,6 +7,7 @@ import com.tpverp.backend.party.MemberRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -124,7 +125,7 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                         current.memberId, current.accountLoyaltyBalance, now);
                 return current.response();
             }
-            throw conflict("El saldo del socio ya esta reservado en otra caja o venta");
+            throw reservationConflict("El saldo del socio ya esta reservado en otra caja o venta");
         }
 
         AvailableWallet wallet = availableWallet(request.memberId(), now);
@@ -169,6 +170,16 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
 
     @Override
     @Transactional
+    public synchronized ReservationResponse configureRetention(
+            UUID reservationId,
+            ConfigureRetentionRequest request) {
+        DevReservation reservation = owned(reservationId, request);
+        reservation.configureRetention(request);
+        return reservation.response();
+    }
+
+    @Override
+    @Transactional
     public synchronized ReservationResponse prepare(UUID reservationId, PrepareRequest request) {
         Instant now = clock.instant();
         DevReservation reservation = owned(reservationId, request);
@@ -176,6 +187,13 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
         BigDecimal loyaltyAmount = money(request.loyaltyAmount());
         BigDecimal returnCreditAmount = money(request.returnCreditAmount());
         reservation.validatePreparedAmounts(loyaltyAmount, returnCreditAmount);
+        if (request.expectedRetentionRevision() != reservation.retentionRevision
+                || (!request.expectedRetentionFingerprint().isBlank()
+                    && !request.expectedRetentionFingerprint().equals(reservation.retentionFingerprint))) {
+            throw new MemberBalanceCentralException(
+                    MemberBalanceCentralException.Kind.CONFLICT,
+                    "La retencion central ha cambiado; debe recalcularse");
+        }
         if ("PREPARED".equals(reservation.status)
                 && request.operationId().equals(reservation.prepareOperationId)) {
             reservation.preparedLoyaltyAmount = loyaltyAmount;
@@ -225,12 +243,15 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
         if ("ACTIVE".equals(reservation.status)) {
             return reservation.response();
         }
+        if ("RELEASED".equals(reservation.status)
+                && request.operationId().equals(reservation.prepareOperationId)) {
+            return reservation.response();
+        }
         reservation.requirePrepared(request.operationId());
         Instant now = clock.instant();
-        reservation.status = "ACTIVE";
+        reservation.status = "RELEASED";
         reservation.preparedLoyaltyAmount = ZERO;
         reservation.preparedReturnCreditAmount = ZERO;
-        reservation.prepareOperationId = null;
         reservation.heartbeatAt = now;
         reservation.leaseExpiresAt = now.plusSeconds(LEASE_SECONDS);
         return reservation.response();
@@ -297,6 +318,14 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
         return reservation;
     }
 
+    private DevReservation owned(UUID reservationId, ConfigureRetentionRequest request) {
+        DevReservation reservation = required(reservationId);
+        if (!reservation.matches(request.companyId(), request.storeId(), request.terminalId(), request.saleId())) {
+            throw conflict("La reserva pertenece a otra caja o venta");
+        }
+        return reservation;
+    }
+
     private DevReservation owned(UUID reservationId, PreparedOwnerRequest request) {
         DevReservation reservation = required(reservationId);
         if (!reservation.matches(
@@ -338,6 +367,10 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                 message);
     }
 
+    private MemberBalanceReservationConflictException reservationConflict(String message) {
+        return new MemberBalanceReservationConflictException(message, null);
+    }
+
     private MemberBalanceCentralException rejected(String message) {
         return new MemberBalanceCentralException(
                 MemberBalanceCentralException.Kind.REJECTED,
@@ -370,6 +403,9 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
         private final List<DevReservedLot> reservedLots;
         private Instant heartbeatAt;
         private Instant leaseExpiresAt;
+        private long retentionRevision;
+        private String retentionFingerprint = "";
+        private List<RetentionClaim> retentionClaims = List.of();
 
         private DevReservation(
                 UUID id,
@@ -396,6 +432,7 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                     .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
             heartbeatAt = now;
             leaseExpiresAt = now.plusSeconds(LEASE_SECONDS);
+            retentionRevision = 0L;
         }
 
         private DevReservation(
@@ -426,6 +463,8 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
             reservedLots = new ArrayList<>();
             heartbeatAt = local.getHeartbeatAt();
             leaseExpiresAt = local.getLeaseExpiresAt();
+            retentionRevision = local.getRetentionRevision();
+            retentionFingerprint = local.getRetentionFingerprint();
         }
 
         private static DevReservation active(
@@ -483,10 +522,22 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                         MemberBalanceCentralException.Kind.REJECTED,
                         "Los importes del monedero no pueden ser negativos");
             }
-            if (loyaltyAmount.signum() == 0 && returnCreditAmount.signum() == 0) {
+            if (loyaltyAmount.signum() == 0 && returnCreditAmount.signum() == 0
+                    && retentionClaims.isEmpty()) {
                 throw new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED,
                         "Debe prepararse al menos un importe del monedero");
+            }
+            BigDecimal attributedAmount = retentionClaims.stream()
+                    .map(RetentionClaim::amount)
+                    .reduce(ZERO, BigDecimal::add);
+            if (loyaltyAmount.add(returnCreditAmount).signum() > 0
+                    && (pendingMissing().signum() > 0
+                    || spentShortfall().signum() > 0
+                    || attributedAmount.compareTo(heldKnown()) != 0)) {
+                throw new MemberBalanceCentralException(
+                        MemberBalanceCentralException.Kind.CONFLICT,
+                        "La retencion de devolucion aun no esta confirmada");
             }
             if (loyaltyAmount.compareTo(reservedLoyaltyAmount) > 0
                     || returnCreditAmount.compareTo(reservedReturnCreditAmount) > 0) {
@@ -494,6 +545,46 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                         MemberBalanceCentralException.Kind.REJECTED,
                         "El importe supera el saldo reservado de su tipo");
             }
+        }
+
+        private void configureRetention(ConfigureRetentionRequest request) {
+            if (!"ACTIVE".equals(status)) {
+                throw new MemberBalanceCentralException(
+                        MemberBalanceCentralException.Kind.REJECTED,
+                        "La reserva de saldo no admite reconfiguracion");
+            }
+            String fingerprint = fingerprint(request);
+            if (fingerprint.equals(retentionFingerprint)) {
+                return;
+            }
+            retentionClaims = List.copyOf(request.claims());
+            retentionFingerprint = fingerprint;
+            retentionRevision++;
+        }
+
+        private BigDecimal heldKnown() {
+            return retentionClaims.stream()
+                    .filter(claim -> reservedLots.stream().anyMatch(lot -> lot.lotId.equals(claim.lotId())))
+                    .map(RetentionClaim::amount).reduce(ZERO, BigDecimal::add);
+        }
+
+        private BigDecimal pendingMissing() {
+            return retentionClaims.stream()
+                    .filter(claim -> reservedLots.stream().noneMatch(lot -> lot.lotId.equals(claim.lotId())))
+                    .map(RetentionClaim::amount).reduce(ZERO, BigDecimal::add);
+        }
+
+        private BigDecimal spentShortfall() {
+            return retentionClaims.stream()
+                    .filter(claim -> reservedLots.stream().anyMatch(lot -> lot.lotId.equals(claim.lotId())))
+                    .map(claim -> {
+                        BigDecimal held = reservedLots.stream()
+                                .filter(lot -> lot.lotId.equals(claim.lotId()))
+                                .map(lot -> lot.remainingAmount)
+                                .findFirst().orElse(ZERO);
+                        return claim.amount().subtract(held).max(ZERO);
+                    })
+                    .reduce(ZERO, BigDecimal::add);
         }
 
         private void consumePreparedLots() {
@@ -542,10 +633,47 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                     accountLoyaltyBalance,
                     accountReturnCreditBalance,
                     reservedLots.stream().map(DevReservedLot::response).toList(),
+                    retentionClaims.stream().map(claim -> new RetentionClaim(
+                            claim.lotId(), claim.sourceMovementId(), claim.sourceDocumentId(),
+                            claim.amountOriginal(), claim.amount(), heldAmount(claim.lotId(), claim.amount())))
+                            .toList(),
                     heartbeatAt,
                     leaseExpiresAt,
                     HEARTBEAT_INTERVAL_SECONDS,
-                    LEASE_SECONDS);
+                    LEASE_SECONDS,
+                    retentionRevision,
+                    retentionFingerprint,
+                    retentionClaims.stream().map(RetentionClaim::amount)
+                            .reduce(ZERO, BigDecimal::add),
+                    heldKnown(),
+                    pendingMissing(),
+                    spentShortfall(),
+                    accountLoyaltyBalance.subtract(heldKnown()).max(ZERO),
+                    ZERO);
+        }
+
+        private BigDecimal heldAmount(UUID lotId, BigDecimal claimed) {
+            return reservedLots.stream()
+                    .filter(lot -> lot.lotId.equals(lotId))
+                    .map(lot -> claimed.min(lot.remainingAmount))
+                    .findFirst()
+                    .orElse(ZERO);
+        }
+    }
+
+    private static String fingerprint(ConfigureRetentionRequest request) {
+        try {
+            var input = request.sourceDocumentId() + "|" + request.attributedAmount()
+                    + "|" + request.claims().stream()
+                    .sorted(Comparator.comparing(RetentionClaim::lotId))
+                    .map(c -> c.lotId() + ":" + c.sourceMovementId() + ":"
+                            + c.sourceDocumentId() + ":" + c.amountOriginal() + ":" + c.amount())
+                    .reduce("", (a, b) -> a + b);
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(input.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (Exception exception) {
+            throw new IllegalStateException("No se pudo calcular fingerprint de retencion", exception);
         }
     }
 

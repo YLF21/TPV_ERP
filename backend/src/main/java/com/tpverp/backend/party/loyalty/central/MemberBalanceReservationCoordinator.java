@@ -61,15 +61,26 @@ public class MemberBalanceReservationCoordinator {
             UUID operationId,
             BigDecimal loyaltyAmount,
             BigDecimal returnCreditAmount) {
+        return prepare(reservationId, localStoreId, terminalId, saleId, operationId,
+                loyaltyAmount, returnCreditAmount, 0L, "");
+    }
+
+    public MemberBalanceCentralGateway.ReservationResponse prepare(
+            UUID reservationId,
+            UUID localStoreId,
+            UUID terminalId,
+            String saleId,
+            UUID operationId,
+            BigDecimal loyaltyAmount,
+            BigDecimal returnCreditAmount,
+            long expectedRetentionRevision,
+            String expectedRetentionFingerprint) {
         MemberBalanceCentralContextResolver.CentralContext context = contexts.resolve(localStoreId);
         if (loyaltyAmount == null || returnCreditAmount == null) {
             throw new IllegalArgumentException("Los importes del monedero son obligatorios");
         }
         if (loyaltyAmount.signum() < 0 || returnCreditAmount.signum() < 0) {
             throw new IllegalArgumentException("Los importes del monedero no pueden ser negativos");
-        }
-        if (loyaltyAmount.signum() == 0 && returnCreditAmount.signum() == 0) {
-            throw new IllegalArgumentException("Debe prepararse al menos un importe del monedero");
         }
         if (operationId == null) {
             throw new IllegalArgumentException("operationId es obligatorio");
@@ -83,7 +94,27 @@ public class MemberBalanceReservationCoordinator {
                         requireSale(saleId),
                         operationId,
                         loyaltyAmount,
-                        returnCreditAmount));
+                        returnCreditAmount,
+                        expectedRetentionRevision,
+                        expectedRetentionFingerprint));
+    }
+
+    public MemberBalanceCentralGateway.ReservationResponse configureRetention(
+            UUID reservationId,
+            UUID localStoreId,
+            UUID terminalId,
+            String saleId,
+            UUID operationId,
+            UUID sourceDocumentId,
+            BigDecimal attributedAmount,
+            java.util.List<MemberBalanceCentralGateway.RetentionClaim> claims) {
+        var context = contexts.resolve(localStoreId);
+        return gateway.configureRetention(
+                requireReservation(reservationId),
+                new MemberBalanceCentralGateway.ConfigureRetentionRequest(
+                        context.companyId(), context.storeId(), requireTerminal(terminalId),
+                        requireSale(saleId), operationId, sourceDocumentId,
+                        attributedAmount, claims));
     }
 
     public MemberBalanceCentralGateway.ReservationResponse finalizePrepared(
@@ -92,8 +123,18 @@ public class MemberBalanceReservationCoordinator {
             UUID terminalId,
             String saleId,
             UUID operationId) {
+        return finalizePrepared(reservationId, localStoreId, terminalId, saleId, operationId, null);
+    }
+
+    public MemberBalanceCentralGateway.ReservationResponse finalizePrepared(
+            UUID reservationId,
+            UUID localStoreId,
+            UUID terminalId,
+            String saleId,
+            UUID operationId,
+            MemberBalanceCentralGateway.RetentionSnapshot retentionSnapshot) {
         return preparedOperation(
-                reservationId, localStoreId, terminalId, saleId, operationId, true);
+                reservationId, localStoreId, terminalId, saleId, operationId, retentionSnapshot, true);
     }
 
     public MemberBalanceCentralGateway.ReservationResponse abortPrepared(
@@ -103,7 +144,7 @@ public class MemberBalanceReservationCoordinator {
             String saleId,
             UUID operationId) {
         return preparedOperation(
-                reservationId, localStoreId, terminalId, saleId, operationId, false);
+                reservationId, localStoreId, terminalId, saleId, operationId, null, false);
     }
 
     private MemberBalanceCentralGateway.ReservationResponse preparedOperation(
@@ -112,6 +153,7 @@ public class MemberBalanceReservationCoordinator {
             UUID terminalId,
             String saleId,
             UUID operationId,
+            MemberBalanceCentralGateway.RetentionSnapshot retentionSnapshot,
             boolean finalize) {
         MemberBalanceCentralContextResolver.CentralContext context = contexts.resolve(localStoreId);
         if (operationId == null) {
@@ -122,7 +164,8 @@ public class MemberBalanceReservationCoordinator {
                 context.storeId(),
                 requireTerminal(terminalId),
                 requireSale(saleId),
-                operationId);
+                operationId,
+                retentionSnapshot);
         return finalize
                 ? gateway.finalizePrepared(requireReservation(reservationId), request)
                 : gateway.abortPrepared(requireReservation(reservationId), request);

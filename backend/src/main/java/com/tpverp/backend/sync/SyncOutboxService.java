@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -68,13 +69,29 @@ public class SyncOutboxService {
         return List.copyOf(events);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<SyncOutboxEvent> claimEvent(UUID eventId, Duration claimTimeout) {
+        if (eventId == null) {
+            throw new IllegalArgumentException("eventId es obligatorio");
+        }
+        if (claimTimeout == null || claimTimeout.isZero() || claimTimeout.isNegative()) {
+            throw new IllegalArgumentException("claimTimeout debe ser positivo");
+        }
+
+        InstantWindow window = InstantWindow.from(clock, claimTimeout);
+        var event = repository.findClaimableByEventIdForUpdate(
+                eventId, window.now(), window.staleBefore());
+        event.ifPresent(value -> value.claim(UUID.randomUUID(), window.now()));
+        return event;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean markSent(UUID eventId, UUID claimToken) {
         var event = repository.findLockedByEventId(eventId).orElse(null);
         return event != null && event.markSent(claimToken, clock.instant());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean markFailed(
             UUID eventId,
             UUID claimToken,

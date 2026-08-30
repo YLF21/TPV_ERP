@@ -7590,7 +7590,7 @@ textarea {
 }
 
 .stock-screen .filter-overlay {
-  z-index: 6;
+  z-index: var(--tpv-layer-overlay);
   background: rgba(9, 20, 38, 0.34);
   backdrop-filter: none;
 }
@@ -7813,8 +7813,12 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.product-create-row-prices {
+.product-create-row-stock {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.product-create-row-prices {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .product-create-offer-area {
@@ -7845,7 +7849,7 @@ textarea {
 .product-offer-active-indicator {
   min-height: 42px;
   border: 1px solid #d7e0ea;
-  border-radius: 12px;
+  border-radius: 5px;
   background: #ffffff;
   color: #17233b;
   padding: 0 12px;
@@ -7885,7 +7889,7 @@ textarea {
   gap: 12px;
   align-items: center;
   border: 1px solid #d7e0ea;
-  border-radius: 12px;
+  border-radius: 5px;
   background: #ffffff;
   padding: 10px 12px;
 }
@@ -7893,7 +7897,7 @@ textarea {
 .product-no-discount-lock button {
   min-height: 42px;
   border: 1px solid #d7e0ea;
-  border-radius: 12px;
+  border-radius: 5px;
   background: #ffffff;
   color: #17233b;
   padding: 0 12px;
@@ -8232,6 +8236,7 @@ textarea {
   .product-create-row-name-type,
   .product-create-row-family-tax,
   .product-create-row-three,
+  .product-create-row-stock,
   .product-create-row-prices,
   .product-create-offer-area {
     grid-template-columns: 1fr;
@@ -8247,7 +8252,7 @@ textarea {
 }
 
 .stock-screen .stock-family-overlay {
-  z-index: 7;
+  z-index: var(--tpv-layer-overlay);
 }
 
 .stock-screen .stock-family-dialog {
@@ -9780,7 +9785,7 @@ textarea {
 .stock-detail-overlay {
   position: fixed;
   inset: 0;
-  z-index: 8;
+  z-index: var(--tpv-layer-overlay);
   display: grid;
   place-items: center;
   background: rgba(9, 19, 34, 0.42);
@@ -10902,6 +10907,11 @@ textarea {
   --tpv-business-radius: 4px;
   --tpv-business-radius-lg: 6px;
   --tpv-business-shadow: 0 2px 7px rgba(35, 52, 77, 0.12);
+  --tpv-layer-content: 2;
+  --tpv-layer-chrome: 35;
+  --tpv-layer-overlay: 120;
+  --tpv-layer-modal: 1500;
+  --tpv-layer-nested-modal: 1510;
 }
 
 body,
@@ -13995,6 +14005,22 @@ body,
   white-space: nowrap;
 }
 
+.sale-customer-summary-values strong.sale-customer-member-balance-value {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.sale-customer-summary-values strong.sale-customer-member-balance-value > span,
+.sale-customer-summary-values .sale-member-balance-retention-held {
+  display: block;
+  min-width: 0;
+  white-space: normal;
+}
+
 .sale-customer-summary-values .debt strong,
 .sale-customer-summary-values .overdue strong {
   color: #b42318;
@@ -16123,7 +16149,7 @@ textarea:focus,
   position: fixed !important;
   top: 4px !important;
   left: 6px !important;
-  z-index: 35 !important;
+  z-index: var(--tpv-layer-chrome) !important;
   min-width: 86px !important;
   height: 25px !important;
   min-height: 25px !important;
@@ -16635,7 +16661,7 @@ textarea:focus,
 .stock-table > .stock-row-head {
   position: sticky !important;
   top: 0 !important;
-  z-index: 12 !important;
+  z-index: var(--tpv-layer-content) !important;
   box-shadow: 0 2px 5px rgba(8, 45, 91, 0.24) !important;
 }
 
@@ -16658,6 +16684,12 @@ textarea:focus,
 .filter-overlay {
   background: rgba(16, 32, 51, 0.36) !important;
   backdrop-filter: none !important;
+}
+
+/* Product editor is a global modal. Reuse the established checkout-modal tier
+   so it stays above app chrome and every sticky table/header layer. */
+.product-create-overlay {
+  z-index: var(--tpv-layer-modal) !important;
 }
 
 .stock-detail-dialog,
@@ -17506,6 +17538,27 @@ textarea:focus,
 .hardware-section input,
 .hardware-section textarea {
   color: #000000 !important;
+}
+
+/* Compact product groups keep the classic ERP form scannable. */
+.product-create-fieldset {
+  min-width: 0;
+  margin: 4px 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.product-create-fieldset legend {
+  padding: 0 6px;
+  color: var(--tpv-v3-navy);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.product-create-fieldset .product-create-row {
+  margin: 0;
 }
 
 /* Calendar trigger keeps the navy dropdown standard in every screen. */
@@ -22192,7 +22245,7 @@ textarea:focus,
 /* Authorization can be requested from inside checkout. It must remain above
    the checkout overlay so the recoverable payment attempt is actionable. */
 .sale-mutation-authorization-overlay {
-  z-index: 1510;
+  z-index: var(--tpv-layer-nested-modal);
 }
 
 .sale-action-dialog.sale-mutation-authorization-dialog {
@@ -23228,6 +23281,16 @@ textarea:focus,
 .sale-cart-sale-price {
   font-size: 15px;
   font-weight: 900;
+}
+
+.sale-cart-tax-excluded {
+  display: block;
+  color: #6a7888;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.025em;
+  line-height: 11px;
+  text-transform: uppercase;
 }
 
 .sale-cart-discount {

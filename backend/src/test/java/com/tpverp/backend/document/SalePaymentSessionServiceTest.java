@@ -3,8 +3,11 @@ import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.*;
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.organization.*;
+import com.tpverp.backend.party.MemberLoyaltyService;
+import com.tpverp.backend.party.loyalty.central.MemberBalanceCheckoutProtocolService;
 import com.tpverp.backend.terminal.*;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
@@ -131,18 +134,70 @@ class SalePaymentSessionServiceTest {
           .isNotEqualTo(SalePaymentSessionService.hash(legacy,BigDecimal.TEN));
  }
 
+ @Test void reserveRejectsMissingRequiredSerialNumberBeforeCreatingSession(){
+  var fixture=reservationFixture();
+  doThrow(new IllegalArgumentException("message.document.serial_number_required"))
+          .when(fixture.documents).validateSerialNumbersBeforePayment(any(), anyList());
+  assertThatThrownBy(() -> fixture.service.reserve(UUID.randomUUID(), fixture.sale, fixture.auth))
+          .hasMessage("message.document.serial_number_required");
+  verify(fixture.repo, never()).save(any(SalePaymentSession.class));
+ }
+
+ @Test void paymentSessionHashIncludesWholesaleModeAndIsStable(){
+  var lines=List.of(new PosCashController.LineRequest(UUID.randomUUID(),BigDecimal.ONE,BigDecimal.ZERO));
+  var normal=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,"quote",null,null,false);
+  var wholesale=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,"quote",null,null,true);
+  assertThat(SalePaymentSessionService.hash(normal,BigDecimal.TEN))
+          .isEqualTo(SalePaymentSessionService.hash(normal,BigDecimal.TEN))
+          .isNotEqualTo(SalePaymentSessionService.hash(wholesale,BigDecimal.TEN));
+ }
+
+ @Test void wholesaleSessionHashIncludesDocumentDiscountButZeroKeepsBaseline(){
+  var lines=List.of(new PosCashController.LineRequest(UUID.randomUUID(),BigDecimal.ONE,BigDecimal.ZERO));
+  var noDiscount=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,"quote",null,null,true);
+  var zeroDiscount=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,"quote",null,BigDecimal.ZERO,true);
+  var fivePercent=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,"quote",null,new BigDecimal("5.00"),true);
+  assertThat(SalePaymentSessionService.hash(noDiscount,BigDecimal.TEN))
+          .isEqualTo(SalePaymentSessionService.hash(zeroDiscount,BigDecimal.TEN));
+  assertThat(SalePaymentSessionService.hash(noDiscount,BigDecimal.TEN))
+          .isNotEqualTo(SalePaymentSessionService.hash(fivePercent,BigDecimal.TEN));
+ }
+
+ @Test void nonWholesaleDocumentDiscountUsesNewHashOnlyWhenPositive(){
+  var lines=List.of(new PosCashController.LineRequest(UUID.randomUUID(),BigDecimal.ONE,BigDecimal.ZERO));
+  var base=new PosCashController.SaleRequest(null,lines);
+  var five=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,null,null,new BigDecimal("5.00"),false);
+  var ten=new PosCashController.SaleRequest(null,lines,null,null,null,null,Map.of(),null,null,null,new BigDecimal("10.00"),false);
+  assertThat(SalePaymentSessionService.hash(base,BigDecimal.TEN))
+          .isNotEqualTo(SalePaymentSessionService.hash(five,BigDecimal.TEN));
+  assertThat(SalePaymentSessionService.hash(five,BigDecimal.TEN))
+          .isNotEqualTo(SalePaymentSessionService.hash(ten,BigDecimal.TEN));
+ }
+
+ @Test void normalSessionWithMemberReservationKeepsThePreWholesaleGoldenHash(){
+  var productId=UUID.fromString("00000000-0000-0000-0000-000000000001");
+  var reservationId=UUID.fromString("00000000-0000-0000-0000-000000000002");
+  var sale=new PosCashController.SaleRequest(
+          null,List.of(new PosCashController.LineRequest(productId,BigDecimal.ONE,BigDecimal.ZERO)),
+          null,null,null,null,Map.of(),null,"quote",new BigDecimal("4.00"),null,false);
+
+  assertThat(SalePaymentSessionService.hash(sale,BigDecimal.TEN,reservationId))
+          .isEqualTo("c64e431c9d68ff2d9039b554a8f2f7a1fbd985774e17c38901b2e48ac18aa36b");
+ }
+
  private static ReservationFixture reservationFixture(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
   var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var warehouseId=UUID.randomUUID();var productId=UUID.randomUUID();var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
   var sale=new PosCashController.SaleRequest(null,List.of(new PosCashController.LineRequest(productId,BigDecimal.ONE,BigDecimal.ZERO)));var command=mock(DocumentCommand.class);when(command.lineas()).thenReturn(List.of());when(sales.prepareSale(sale,auth)).thenReturn(new PosCashService.PreparedSale(command,Set.of()));var quote=mock(CommercialDocument.class);when(quote.getTiendaId()).thenReturn(storeId);when(quote.getAlmacenId()).thenReturn(warehouseId);when(quote.getFecha()).thenReturn(java.time.LocalDate.of(2026,8,4));when(quote.getDescuentoGlobal()).thenReturn(BigDecimal.ZERO);when(quote.getBaseTotal()).thenReturn(new BigDecimal("100.00"));when(quote.getImpuestoTotal()).thenReturn(BigDecimal.ZERO);when(quote.getTotal()).thenReturn(new BigDecimal("100.00"));when(quote.getLineas()).thenReturn(List.of());when(sales.quotePreparedSale(any(),any(),eq(auth))).thenReturn(quote);
-  var method=new PaymentMethod(companyId,"EFECTIVO",true);when(methods.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(List.of(method));when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"EFECTIVO")).thenReturn(Optional.of(method));when(snapshots.serialize(any())).thenReturn("{}");var active=new java.util.concurrent.atomic.AtomicReference<SalePaymentSession>();when(repo.findState(any())).thenReturn(Optional.empty());when(repo.findActive(storeId,terminalId,userId)).thenAnswer(invocation->Optional.ofNullable(active.get()));when(repo.save(any(SalePaymentSession.class))).thenAnswer(invocation->{var session=invocation.getArgument(0,SalePaymentSession.class);active.set(session);return session;});var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
+  var method=new PaymentMethod(companyId,"EFECTIVO",true);when(methods.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(List.of(method));when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"EFECTIVO")).thenReturn(Optional.of(method));var snapshot=mock(ApprovedCardTicketSnapshot.class);when(snapshot.lines()).thenReturn(List.of());when(sales.snapshot(eq(quote),any(),any(PosCashService.PreparedSale.class))).thenReturn(snapshot);when(snapshots.serialize(any())).thenReturn("{}");var active=new java.util.concurrent.atomic.AtomicReference<SalePaymentSession>();when(repo.findState(any())).thenReturn(Optional.empty());when(repo.findActive(storeId,terminalId,userId)).thenAnswer(invocation->Optional.ofNullable(active.get()));when(repo.save(any(SalePaymentSession.class))).thenAnswer(invocation->{var session=invocation.getArgument(0,SalePaymentSession.class);active.set(session);return session;});var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
   return new ReservationFixture(
-          repo,sales,auth,sale,command,service,storeId,terminalId,userId);
+          repo,sales,docs,auth,sale,command,service,storeId,terminalId,userId);
  }
 
  private record ReservationFixture(
          SalePaymentSessionRepository repo,
          PosCashService sales,
+         DocumentService documents,
          Authentication auth,
          PosCashController.SaleRequest sale,
          DocumentCommand command,
@@ -238,6 +293,22 @@ class SalePaymentSessionServiceTest {
   verifyNoInteractions(cash);
  }
 
+ @Test void giftReceiptRefundCanCreditTheOriginalBuyersMemberBalance(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var memberLoyalty=mock(MemberLoyaltyService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var customerId=UUID.randomUUID();var sourceTicketId=UUID.randomUUID();var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"gift-credit-hash","gift-credit-snapshot",new BigDecimal("-10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));
+  var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);var store=mock(Store.class);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var line=mock(DocumentLineCommand.class);when(line.originalDocumentLineId()).thenReturn(UUID.randomUUID());when(line.cantidad()).thenReturn(BigDecimal.ONE.negate());when(line.returnSourceType()).thenReturn(TicketReturnService.ReturnSourceType.GIFT_RECEIPT);when(line.returnSourceTicketId()).thenReturn(sourceTicketId);var snapshot=mock(ApprovedCardTicketSnapshot.class);when(snapshot.customerId()).thenReturn(customerId);when(snapshot.lines()).thenReturn(List.of(line));when(snapshots.deserialize("gift-credit-snapshot")).thenReturn(snapshot);
+  var original=mock(CommercialDocument.class);when(original.getClienteId()).thenReturn(customerId);when(docs.find(sourceTicketId)).thenReturn(original);when(memberLoyalty.isActiveMember(customerId)).thenReturn(true);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cash);service.setMemberLoyaltyService(memberLoyalty);
+
+  service.add(sessionId,UUID.randomUUID(),"gift-member-credit",SalePaymentAllocationKind.MEMBER_CREDIT,new BigDecimal("10.00"),null,null,null,null,null,null,null,null,null,auth);
+
+  assertThat(session.getDirection()).isEqualTo(SalePaymentSessionDirection.REFUND);
+  assertThat(session.getAllocations()).singleElement().satisfies(allocation->{assertThat(allocation.getKind()).isEqualTo(SalePaymentAllocationKind.MEMBER_CREDIT);assertThat(allocation.getAmount()).isEqualByComparingTo("10.00");assertThat(allocation.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);});
+  verify(memberLoyalty).isActiveMember(customerId);
+  verify(memberLoyalty,never()).wallet(any());
+ }
+
  @Test void finalizingANegativeCheckoutCreatesAFiscalRectificationInsteadOfAGenericTicket(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var settlements=mock(RefundSettlementRecorder.class);var valuations=mock(TicketReturnValuationService.class);var auth=mock(Authentication.class);
   var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var sourceTicketId=UUID.randomUUID();var sourceLineId=UUID.randomUUID();var productId=UUID.randomUUID();var originalPaymentId=UUID.randomUUID();
@@ -254,6 +325,25 @@ class SalePaymentSessionServiceTest {
   verify(docs).createApprovedReturn(eq(sessionId),eq(sourceTicketId),eq(new BigDecimal("10.00")),argThat(values->values.size()==1&&values.getFirst().lineId().equals(sourceLineId)&&values.getFirst().quantity().compareTo(BigDecimal.ONE)==0),isNull(),eq(valuation),eq(auth));
   verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),anyList(),any());
   verify(settlements).recordExistingNegativeTicket(eq(ticket),argThat(values->values.size()==1&&values.getFirst().type()==RefundTenderType.CASH&&values.getFirst().originalPaymentId().equals(originalPaymentId)),eq(auth));
+ }
+
+ @Test void preparedMemberCreditFinalizesAndASecondFinalizeIsIdempotent(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=cashPayments();var memberLoyalty=mock(MemberLoyaltyService.class);var memberBalance=mock(MemberBalanceCheckoutProtocolService.class);var auth=mock(Authentication.class);
+  var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var reservationId=UUID.randomUUID();var customerId=UUID.randomUUID();var ticketId=UUID.randomUUID();
+  var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","snapshot",new BigDecimal("10.00"));session.memberWalletPrepared(reservationId,BigDecimal.ZERO,new BigDecimal("10.00"));var allocation=session.addAllocation(UUID.randomUUID(),"member-credit",SalePaymentAllocationKind.MEMBER_CREDIT,new BigDecimal("10.00"),null,null);allocation.approve(null,null,null);
+  when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));
+  var snapshot=mock(ApprovedCardTicketSnapshot.class);when(snapshot.customerId()).thenReturn(customerId);when(snapshot.lines()).thenReturn(List.of());when(snapshots.deserialize("snapshot")).thenReturn(snapshot);
+  when(memberLoyalty.isActiveMember(customerId)).thenReturn(true);when(memberLoyalty.wallet(customerId)).thenReturn(new MemberLoyaltyService.MemberWalletView(BigDecimal.ZERO,new BigDecimal("10.00"),new BigDecimal("10.00"),List.of()));
+  var method=new PaymentMethod(companyId,"CREDITO_DEVOLUCION",true);when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"CREDITO_DEVOLUCION")).thenReturn(Optional.of(method));
+  var ticket=mock(CommercialDocument.class);when(ticket.getId()).thenReturn(ticketId);when(ticket.getNumero()).thenReturn("T-MEMBER-1");var print=new TicketPrintView(ticketId,"T-MEMBER-1",Instant.now(),List.of(),List.of(),new BigDecimal("10.00"));when(docs.createApprovedCardTicketFromSnapshot(eq(snapshot),anyList(),eq(auth))).thenReturn(ticket);when(docs.ticketPrintView(ticket)).thenReturn(print);when(docs.renderTicketPrintView(ticket,print)).thenReturn(print);when(docs.loadForPrint(ticketId)).thenReturn(ticket);when(docs.loadTicketPrintView(ticketId)).thenReturn(print);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cash);service.setMemberBalanceCheckoutProtocolService(memberBalance);service.setMemberLoyaltyService(memberLoyalty);
+
+  var first=service.finalizeSession(sessionId,auth);
+  var second=service.finalizeSession(sessionId,auth);
+
+  assertThat(first.session()).isSameAs(second.session());assertThat(first.session().getStatus()).isEqualTo(SalePaymentSessionStatus.FINALIZED);assertThat(second.printTicket()).isSameAs(print);
+  verify(docs,times(1)).createApprovedCardTicketFromSnapshot(eq(snapshot),anyList(),eq(auth));verify(memberBalance,times(1)).authorizePreparedLocalConsumption(reservationId,customerId,new BigDecimal("0.00"),new BigDecimal("10.00"));verify(memberBalance,times(2)).markTicketCommitted(reservationId,ticketId);
  }
 
  @Test void finalizingAVoucherRefundReturnsTheExactIssuedVoucher(){
@@ -435,6 +525,17 @@ class SalePaymentSessionServiceTest {
   var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));session.addAllocation(allocationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,new BigDecimal("10.00"),"PAYTEF","INTEGRATED").approve(allocationId,"ref","auth");when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));doThrow(new IllegalStateException("payment_operation_not_finalizable")).when(ops).requireFinalizableApprovedCharge(allocationId);
   var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
   assertThatThrownBy(()->service.finalizeSession(sessionId,auth)).hasMessage("payment_operation_not_finalizable");
+  verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),any(),eq(auth));
+ }
+
+ @Test void finalizeRejectsAnInvalidSnapshotAfterPaymentOperationGuards(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));session.addAllocation(UUID.randomUUID(),"cash",SalePaymentAllocationKind.CASH,new BigDecimal("10.00"),null,null).approve(null,null,null);when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(snapshots.deserialize("{}")).thenReturn(null);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
+
+  assertThatThrownBy(()->service.finalizeSession(sessionId,auth))
+          .hasMessage("payment_session_snapshot_invalid");
   verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),any(),eq(auth));
  }
 

@@ -67,6 +67,11 @@ public class FiscalArtifactService {
                 || printSnapshots.existsById(record.getId())) {
             return;
         }
+        if (runtime.systemVersion() == null
+                || !runtime.systemVersion().equals(record.getApplicationVersion())) {
+            throw new IllegalStateException(
+                    "La version de aplicacion del registro no coincide con la version SIF activa");
+        }
         var company = companies.findById(record.getCompanyId())
                 .orElseThrow(() -> new IllegalStateException("Empresa fiscal no encontrada"));
         var installation = installations.findById(record.getInstallationId())
@@ -74,10 +79,11 @@ public class FiscalArtifactService {
         var system = new VerifactuSystemInfo(
                 producerName, producerTaxId, systemName, systemId,
                 record.getApplicationVersion(), installation.getReferencia(),
-                false, false, false);
-        var systemVersion = systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
+                onlyVerifactu(), false, false);
+        var systemVersion = systemVersions
+                .findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumberAndReleaseId(
                         record.getCompanyId(), record.getInstallationId(),
-                        record.getApplicationVersion(), installation.getReferencia())
+                        record.getApplicationVersion(), installation.getReferencia(), releaseId())
                 .map(existing -> {
                     if (!existing.matches(producerTaxId, producerName, systemName, systemId,
                             record.getApplicationVersion(), installation.getReferencia(),
@@ -86,13 +92,15 @@ public class FiscalArtifactService {
                         throw new IllegalStateException(
                                 "La identidad fiscal no coincide con la version SIF congelada");
                     }
+                    requireReleaseMatch(existing);
                     return existing;
                 })
                 .orElseGet(() -> systemVersions.save(new FiscalSystemVersion(
                         record.getCompanyId(), record.getInstallationId(), producerTaxId,
                         producerName, systemName, systemId, record.getApplicationVersion(),
                         installation.getReferencia(), runtime.declarationHash(),
-                        runtime.isSandbox(), Instant.now())));
+                        runtime.isSandbox(), Instant.now(), releaseId(), artifactHash(), commitHash(),
+                        capability(), schemaVersion(), manifestHash())));
         var unsignedXml = xml.recordXml(new VerifactuXmlBatchRequest(
                 company.getRazonSocial(), record.getIssuerTaxId(), List.of(record), system), record);
         var environment = runtime.endpointEnvironment();
@@ -120,6 +128,32 @@ public class FiscalArtifactService {
                 company.getDomicilioFiscal(),
                 unsignedXml, signedXml, certificateFingerprint, sha256(persistedXml), print, Instant.now()));
     }
+
+    private boolean onlyVerifactu() {
+        return capability() == FiscalProductCapability.VERIFACTU_ONLY;
+    }
+
+    private FiscalProductCapability capability() {
+        var value = runtime.productCapability();
+        return value == null ? FiscalProductCapability.DUAL : value;
+    }
+
+    private FiscalReleaseManifest manifest() {
+        return runtime.releaseManifest();
+    }
+
+    private void requireReleaseMatch(FiscalSystemVersion existing) {
+        if (manifest() != null
+                && !existing.matchesRelease(manifest(), artifactHash())) {
+            throw new IllegalStateException("La identidad de release no coincide con la version SIF congelada");
+        }
+    }
+
+    private String releaseId() { return manifest() == null ? "LEGACY-RUNTIME" : manifest().releaseId(); }
+    private String artifactHash() { return runtime.resolvedArtifactHash(); }
+    private String commitHash() { return manifest() == null ? null : manifest().commitHash(); }
+    private String schemaVersion() { return manifest() == null ? "V216" : manifest().schemaVersion(); }
+    private String manifestHash() { return manifest() == null ? null : manifest().manifestHash(); }
 
     private static String sha256(String value) {
         try {

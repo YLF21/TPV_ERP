@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+desktop-staging/
 *.tsbuildinfo
 .env.local
 .env.*.local

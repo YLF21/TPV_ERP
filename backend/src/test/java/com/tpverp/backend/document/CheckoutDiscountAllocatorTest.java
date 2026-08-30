@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class CheckoutDiscountAllocatorTest {
@@ -160,6 +161,40 @@ class CheckoutDiscountAllocatorTest {
     }
 
     @Test
+    void mixedEligibleLinesAllocateOnlyToEligibleTaxGroups() {
+        var document = document();
+        addProduct(document, 1, "10.00", true, "IVA", "21.00");
+        addProduct(document, 2, "10.00", true, "IGIC", "7.00");
+        var protectedLine = addProduct(document, 3, "30.00", true, "IVA", "21.00");
+        var eligible = document.getLineas().stream().filter(line -> line.getPosicion() < 3)
+                .map(DocumentLine::getProductoId).collect(java.util.stream.Collectors.toSet());
+
+        CheckoutDiscountAllocator.apply(document, new BigDecimal("5.00"), eligible);
+
+        assertThat(document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MANUAL_DISCOUNT)
+                .map(DocumentLine::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("-5.00");
+        assertThat(protectedLine.getTotal()).isEqualByComparingTo("30.00");
+    }
+
+    @Test
+    void rejectsFixedDiscountAboveEligibleSubtotalAndAllProtectedCart() {
+        var document = document();
+        var line = addProduct(document, 1, "2.00", true, "IVA", "21.00");
+        addProduct(document, 2, "10.00", true, "IVA", "21.00");
+        var eligible = Set.of(line.getProductoId());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                CheckoutDiscountAllocator.apply(document, new BigDecimal("2.01"), eligible))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("checkout_discount_exceeds_eligible_total");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                CheckoutDiscountAllocator.apply(document, new BigDecimal("1.00"), Set.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("checkout_discount_without_eligible_lines");
+    }
+
+    @Test
     void memberBalanceCanReduceTheEligibleTicketToZeroAndKeepsTaxesBalanced() {
         var document = document();
         var productId = UUID.randomUUID();
@@ -224,18 +259,20 @@ class CheckoutDiscountAllocatorTest {
                 LocalDate.of(2026, 8, 17), UUID.randomUUID(), BigDecimal.ZERO);
     }
 
-    private static void addProduct(
+    private static DocumentLine addProduct(
             CommercialDocument document,
             int position,
             String price,
             boolean taxesIncluded,
             String regime,
             String taxPercentage) {
-        document.addLine(new DocumentLine(
+        var line = new DocumentLine(
                 document, UUID.randomUUID(), position, BigDecimal.ONE,
                 "P-" + position, "Producto " + position, "VENTA",
                 new BigDecimal(price), BigDecimal.ZERO, taxesIncluded,
-                regime, new BigDecimal(taxPercentage)));
+                regime, new BigDecimal(taxPercentage));
+        document.addLine(line);
+        return line;
     }
 
     private static DocumentLine manualDiscount(CommercialDocument document) {

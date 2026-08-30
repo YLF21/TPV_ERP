@@ -117,6 +117,10 @@ public class MemberMovement {
         return member;
     }
 
+    public Store getStore() {
+        return store;
+    }
+
     public UUID getDocumentId() {
         return documentId;
     }

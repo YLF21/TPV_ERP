@@ -2,6 +2,8 @@ package com.tpverp.backend.observability;
 
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.shared.api.ApiExceptionContext;
+import com.tpverp.backend.shared.api.CorrelationIdFilter;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -93,9 +95,19 @@ final class BusinessObservabilityInterceptor implements HandlerInterceptor {
         details.put("method", request.getMethod().toUpperCase(Locale.ROOT));
         details.put("status", response.getStatus());
         details.put("durationMs", TimeUnit.NANOSECONDS.toMillis(durationNanos));
-        var requestId = safeRequestId(request.getHeader("X-Request-ID"));
-        if (requestId != null) {
-            details.put("requestId", requestId);
+        details.put("path", safePath(request));
+        details.put("requestId", CorrelationIdFilter.getOrCreate(request));
+        if (exception != null || response.getStatus() >= 400) {
+            var causeCode = ApiExceptionContext.causeCode(request);
+            var stage = ApiExceptionContext.stage(request);
+            if (causeCode == null || stage == null) {
+                causeCode = exception != null
+                        ? "UNHANDLED_EXCEPTION"
+                        : "HTTP_" + response.getStatus();
+                stage = exception != null ? "completion" : "response";
+            }
+            details.put("causeCode", causeCode);
+            details.put("stage", stage);
         }
         try {
             audit.record(
@@ -108,15 +120,27 @@ final class BusinessObservabilityInterceptor implements HandlerInterceptor {
         }
     }
 
-    private static String safeRequestId(String requestId) {
-        if (requestId == null || requestId.isBlank()) {
-            return null;
+    private static String safePath(HttpServletRequest request) {
+        var raw = request == null ? null : request.getRequestURI();
+        if (raw == null || raw.isBlank()) {
+            return "/";
         }
-        var normalized = requestId.trim();
-        if (normalized.length() > 128 || !normalized.matches("[A-Za-z0-9._:-]+")) {
-            return null;
+        var queryStart = raw.indexOf('?');
+        var path = queryStart < 0 ? raw : raw.substring(0, queryStart);
+        var clean = new StringBuilder(Math.min(path.length(), 512));
+        for (int index = 0; index < path.length() && clean.length() < 512; index++) {
+            var character = path.charAt(index);
+            if (!Character.isISOControl(character)) {
+                clean.append(character);
+            }
         }
-        return normalized;
+        if (clean.length() == 0) {
+            return "/";
+        }
+        if (clean.length() > 1 && clean.charAt(clean.length() - 1) == '/') {
+            clean.setLength(clean.length() - 1);
+        }
+        return clean.toString();
     }
 
     private static String outcome(int status, Exception exception) {

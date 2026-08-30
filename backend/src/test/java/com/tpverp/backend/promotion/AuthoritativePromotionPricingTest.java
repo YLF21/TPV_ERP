@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.PriceUseMode;
@@ -94,6 +95,73 @@ class AuthoritativePromotionPricingTest {
     }
 
     @Test
+    void wholesaleUsesWholesalePriceOnlyForNormalMode() {
+        when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(product.getPriceUseMode()).thenReturn(PriceUseMode.NORMAL);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        when(product.getWholesalePrice()).thenReturn(new BigDecimal("8.00"));
+
+        assertThat(service().basePrice(product, DATE,
+                AuthoritativePromotionPricing.CustomerContext.anonymous(), true))
+                .isEqualByComparingTo("8.00");
+    }
+
+    @Test
+    void wholesaleDoesNotReplaceMemberOrOfferPrices() {
+        when(product.getDiscountType()).thenReturn(DiscountType.DISCOUNT_PRICE);
+        when(product.getPriceUseMode()).thenReturn(PriceUseMode.OFFER_DISCOUNT);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        when(product.isOfferActive()).thenReturn(true);
+        when(product.getOfferFrom()).thenReturn(DATE.minusDays(1));
+        when(product.getOfferUntil()).thenReturn(DATE.plusDays(1));
+        when(product.getOfferDiscountPercent()).thenReturn(new BigDecimal("20.00"));
+
+        assertThat(service().basePrice(product, DATE,
+                AuthoritativePromotionPricing.CustomerContext.anonymous(), true))
+                .isEqualByComparingTo("8.00");
+    }
+
+    @Test
+    void noneCanUseWholesaleButStillRemovesLineDiscount() {
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        when(product.getWholesalePrice()).thenReturn(new BigDecimal("8.00"));
+        var line = new DocumentLineCommand(UUID.randomUUID(), BigDecimal.ONE, "P-1", "Producto",
+                "VENTA", BigDecimal.TEN, new BigDecimal("25.00"), true, "IVA",
+                new BigDecimal("21.00"));
+
+        var priced = service().priceLine(product, DATE,
+                AuthoritativePromotionPricing.CustomerContext.anonymous(), line, true);
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("8.00");
+        assertThat(priced.descuento()).isZero();
+        assertThat(priced.tarifa()).isEqualTo("MAYORISTA");
+        verify(product, never()).getMemberPrice();
+    }
+
+    @Test
+    void legacyNoneModeStillUsesWholesaleAndNeverMemberPrice() {
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        org.mockito.Mockito.lenient().when(product.getPriceUseMode())
+                .thenReturn(PriceUseMode.MEMBER_PRICE);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        org.mockito.Mockito.lenient().when(product.getMemberPrice())
+                .thenReturn(new BigDecimal("7.00"));
+        when(product.getWholesalePrice()).thenReturn(new BigDecimal("8.00"));
+        var memberContext = new AuthoritativePromotionPricing.CustomerContext(
+                CUSTOMER_ID, UUID.randomUUID(), null);
+
+        var priced = service().priceLine(product, DATE, memberContext,
+                line(new BigDecimal("25.00")), true);
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("8.00");
+        assertThat(priced.descuento()).isZero();
+        assertThat(priced.tarifa()).isEqualTo("MAYORISTA");
+        verify(product, never()).getPriceUseMode();
+        verify(product, never()).getMemberPrice();
+    }
+
+    @Test
     void zeroCatalogPricePreservesValidatedOpenPrice() {
         when(product.getDiscountType()).thenReturn(DiscountType.NONE);
         when(product.getSalePrice()).thenReturn(BigDecimal.ZERO);
@@ -110,7 +178,7 @@ class AuthoritativePromotionPricingTest {
     }
 
     @Test
-    void authorizedTemporaryPriceOverridesCatalogPrice() {
+    void protectedProductRejectsTemporaryPriceOverride() {
         when(product.getDiscountType()).thenReturn(DiscountType.NONE);
         when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
         var line = new DocumentLineCommand(
@@ -122,8 +190,8 @@ class AuthoritativePromotionPricingTest {
         var priced = service().priceLine(
                 product, DATE, AuthoritativePromotionPricing.CustomerContext.anonymous(), line);
 
-        assertThat(priced.precioUnitario()).isEqualByComparingTo("7.25");
-        assertThat(priced.tarifa()).isEqualTo("TEMPORAL");
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("10.00");
+        assertThat(priced.tarifa()).isEqualTo("VENTA");
     }
 
     @Test
@@ -196,6 +264,24 @@ class AuthoritativePromotionPricingTest {
 
         assertThat(priced.precioUnitario()).isEqualByComparingTo("80.00");
         assertThat(priced.tarifa()).isEqualTo("MEMBER");
+    }
+
+    @Test
+    void memberPriceModeFallsBackToSalePriceWithoutMember() {
+        when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(product.getPriceUseMode()).thenReturn(PriceUseMode.MEMBER_PRICE);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("100.00"));
+        when(product.getMemberPrice()).thenReturn(new BigDecimal("80.00"));
+
+        var pricing = service();
+        var member = new AuthoritativePromotionPricing.CustomerContext(
+                CUSTOMER_ID, UUID.randomUUID(), null);
+
+        assertThat(pricing.basePrice(product, DATE,
+                AuthoritativePromotionPricing.CustomerContext.anonymous()))
+                .isEqualByComparingTo("100.00");
+        assertThat(pricing.basePrice(product, DATE, member))
+                .isEqualByComparingTo("80.00");
     }
 
     @Test

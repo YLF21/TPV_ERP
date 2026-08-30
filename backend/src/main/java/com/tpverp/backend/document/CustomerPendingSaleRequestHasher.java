@@ -27,6 +27,9 @@ final class CustomerPendingSaleRequestHasher {
         var hasInternalComment = request.internalComment() != null
                 && !request.internalComment().isBlank();
         var canonical = new Canonical();
+        if (request.wholesaleMode()) {
+            canonical.add("v6-wholesale");
+        }
         if (sourceDraftId != null) {
             canonical.add("v1-existing-sales-document-draft")
                     .add(sourceDraftId)

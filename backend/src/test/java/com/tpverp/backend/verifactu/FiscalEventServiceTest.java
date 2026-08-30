@@ -60,8 +60,9 @@ class FiscalEventServiceTest {
         when(installations.findById(installation.getId())).thenReturn(Optional.of(installation));
         when(records.findTopByCompanyIdAndInstallationIdOrderBySequenceDesc(
                 company.getId(), installation.getId())).thenReturn(Optional.empty());
-        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
-                company.getId(), installation.getId(), "4.1.0", installation.getReferencia()))
+        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumberAndReleaseId(
+                company.getId(), installation.getId(), "4.1.0", installation.getReferencia(),
+                "LEGACY-RUNTIME"))
                 .thenReturn(Optional.of(systemVersion));
         when(runtime.isSandbox()).thenReturn(true);
         when(runtime.declarationHash()).thenReturn("E".repeat(64));
@@ -131,8 +132,9 @@ class FiscalEventServiceTest {
                 company.getId(), installation.getId())).thenReturn(Optional.empty());
         when(licenses.findActiveStoreTimezonesByCompanyIdAndInstallationId(
                 company.getId(), installation.getId())).thenReturn(List.of("Atlantic/Canary"));
-        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumber(
-                company.getId(), installation.getId(), "4.1.0", installation.getReferencia()))
+        when(systemVersions.findByCompanyIdAndInstallationIdAndSystemVersionAndInstallationNumberAndReleaseId(
+                company.getId(), installation.getId(), "4.1.0", installation.getReferencia(),
+                "LEGACY-RUNTIME"))
                 .thenReturn(Optional.of(systemVersion));
         when(runtime.isSandbox()).thenReturn(true);
         when(runtime.declarationHash()).thenReturn("E".repeat(64));

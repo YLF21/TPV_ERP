@@ -1,10 +1,14 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -100,6 +104,21 @@ class VerifactuOfficialXsdValidatorTest {
         } finally {
             Files.deleteIfExists(path);
         }
+    }
+
+    @Test
+    void conservaLaCopiaExactaDelXsdDeRespuestaAeat() throws Exception {
+        var resource = getClass().getClassLoader()
+                .getResourceAsStream("verifactu/xsd/RespuestaSuministro.xsd");
+        var content = new String(resource.readAllBytes(), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+        var hash = HexFormat.of().withUpperCase().formatHex(
+                MessageDigest.getInstance("SHA-256")
+                        .digest(content.getBytes(StandardCharsets.UTF_8)));
+
+        // SHA-256 of the AEAT preproduction resource, with line endings
+        // canonicalized so Git/checkout EOL settings cannot alter the contract.
+        assertThat(hash).isEqualTo("82ACF80F785643CAAC13087AAE66808ED721A13F08CA5218CF8AE81B695549EF");
     }
 
     private static VerifactuOfficialXsdValidator validator() {

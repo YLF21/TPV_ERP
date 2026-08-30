@@ -1927,6 +1927,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-pagination > div { display: flex; gap: 6px; }
 .gestion-verifactu-message { min-height: 130px; display: grid; place-items: center; padding: 20px; border: 1px solid #b9c3cc; background: #fff; color: var(--gestion-muted); font-size: var(--gestion-font-control); font-weight: 800; text-align: center; }
 .gestion-verifactu-message.error { border-color: #d7aaaa; background: #fff5f5; color: var(--gestion-negative); }
+.gestion-verifactu-message.warning { min-height: 0; justify-content: start; border-color: #e4c979; background: #fff9e8; color: #654f00; text-align: left; }
 
 .gestion-verifactu-review-layout {
   flex: 1 1 auto;
@@ -5109,6 +5110,44 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-terminal-actions button { min-height: 38px; padding: 0 14px; border: 1px solid var(--gestion-border-dark); background: #fff; color: var(--gestion-navy); font-weight: 900; }
 .gestion-terminal-actions button.primary { border-color: var(--gestion-navy); background: var(--gestion-navy); color: #fff; }
 .gestion-terminal-actions button.danger { border-color: #a54a4a; color: #982d2d; }
+
+.gestion-taxes-workspace { min-height: 0; display: grid; align-content: start; gap: 12px; }
+.gestion-taxes-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 15px 17px; border: 1px solid var(--gestion-border-dark); background: #fff; }
+.gestion-taxes-header > div { display: grid; gap: 3px; }
+.gestion-taxes-header span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.gestion-taxes-header h2 { margin: 0; color: var(--gestion-navy); font-size: 22px; }
+.gestion-taxes-header p { margin: 0; color: var(--gestion-muted); }
+.gestion-taxes-header button,
+.gestion-taxes-editor button,
+.gestion-taxes-actions button { min-height: 36px; border: 1px solid var(--gestion-border-dark); border-radius: 0; padding: 0 13px; background: #fff; color: var(--gestion-navy); font: inherit; font-weight: 850; cursor: pointer; }
+.gestion-taxes-header button.primary,
+.gestion-taxes-editor button.primary { border-color: var(--gestion-navy); background: var(--gestion-navy); color: #fff; }
+.gestion-taxes-message { margin: 0; padding: 9px 12px; border: 1px solid; }
+.gestion-taxes-message.error { border-color: #b66b6b; background: #fff1f1; color: #7b2020; }
+.gestion-taxes-message.success { border-color: #6d9878; background: #edf6ef; color: #224d2c; }
+.gestion-taxes-editor { display: flex; align-items: end; gap: 12px; padding: 13px; border: 1px solid var(--gestion-border); background: #f7f9fb; }
+.gestion-taxes-editor h3 { margin: 0 auto 0 0; color: var(--gestion-navy); }
+.gestion-taxes-editor label { display: grid; gap: 5px; font-weight: 800; }
+.gestion-taxes-editor input { width: 150px; min-height: 36px; box-sizing: border-box; border: 1px solid #657a90; border-radius: 0; padding: 6px 8px; font: inherit; }
+.gestion-taxes-editor-actions { display: flex; gap: 7px; }
+.gestion-taxes-table { border: 1px solid var(--gestion-border-dark); background: #fff; }
+.gestion-taxes-table > header,
+.gestion-taxes-table > article { display: grid; grid-template-columns: 180px 180px minmax(300px, 1fr); gap: 16px; align-items: center; padding: 10px 13px; }
+.gestion-taxes-table > header { min-height: 38px; background: #e9eef3; color: #263c55; font-size: 12px; font-weight: 850; text-transform: uppercase; }
+.gestion-taxes-table > article { min-height: 48px; border-top: 1px solid var(--gestion-border); }
+.gestion-taxes-table article strong { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.gestion-taxes-table article strong small { padding: 3px 6px; border: 1px solid #8095aa; color: #435f79; font-size: 10px; text-transform: uppercase; }
+.gestion-taxes-switch { display: flex; align-items: center; gap: 8px; font-weight: 750; }
+.gestion-taxes-switch input { width: 18px; height: 18px; accent-color: var(--gestion-navy); }
+.gestion-taxes-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.gestion-taxes-actions button.danger { border-color: #a54a4a; color: #982d2d; }
+.gestion-taxes-state { margin: 0; padding: 22px 13px; color: var(--gestion-muted); text-align: center; }
+@media (max-width: 760px) {
+  .gestion-taxes-header, .gestion-taxes-editor { align-items: stretch; flex-direction: column; }
+  .gestion-taxes-editor h3 { margin: 0; }
+  .gestion-taxes-table { overflow-x: auto; }
+  .gestion-taxes-table > header, .gestion-taxes-table > article { min-width: 700px; }
+}
 
 @media (max-width: 900px) {
   .gestion-terminal-layout { grid-template-columns: 1fr; overflow: auto; }

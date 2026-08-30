@@ -296,6 +296,7 @@ public class FiscalRecordService {
         // Re-evaluate all time-sensitive license/configuration/mode rules after the lock.
         // This keeps a request waiting at a fiscal boundary from persisting the old mode.
         context = fiscalContextAt(context, generatedAt);
+        requireCapabilityAllows(context.mode());
         policy.validate(context.document(), command.operation(), command.documentType());
         ensureNoActiveIntegrityAlarm(command.companyId(), command.installationId(), context.mode());
         if (records.findByDocumentIdAndOperation(
@@ -353,6 +354,15 @@ public class FiscalRecordService {
                 && alarms.existsByCompanyIdAndInstallationIdAndActiveTrue(companyId, installationId)) {
             throw new IllegalStateException(
                     "No se pueden emitir registros NO VERI*FACTU mientras exista una alarma de integridad activa");
+        }
+    }
+
+    private void requireCapabilityAllows(FiscalMode mode) {
+        if (mode == FiscalMode.NO_VERIFACTU
+                && runtimeProperties != null
+                && runtimeProperties.productCapability() == FiscalProductCapability.VERIFACTU_ONLY) {
+            throw new FiscalProductCapabilityViolationException(
+                    "La release VERIFACTU_ONLY no admite nuevas emisiones NO_VERIFACTU");
         }
     }
 

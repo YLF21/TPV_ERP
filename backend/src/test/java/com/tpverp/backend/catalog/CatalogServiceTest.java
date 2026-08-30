@@ -120,6 +120,18 @@ class CatalogServiceTest {
     }
 
     @Test
+    void cannotDeactivateTaxUsedByProducts() {
+        var tax = new StoreTax(storeId, new BigDecimal("4"), false);
+        when(taxRepository.findById(tax.getId())).thenReturn(Optional.of(tax));
+        when(productRepository.existsByTaxId(tax.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.setTaxActive(tax.getId(), false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("utilizado por productos");
+        assertThat(tax.isActive()).isTrue();
+    }
+
+    @Test
     void rejectsCrossIdentifierCollisionWhenCreatingProduct() {
         var request = productRequest(" ABC ", "EAN");
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
@@ -201,6 +213,49 @@ class CatalogServiceTest {
         service.updateProduct(product.getId(), request);
 
         assertThat(product.isActive()).isFalse();
+    }
+
+    @Test
+    void updateWithoutSerialFieldPreservesRequiredSerialPolicyForLegacyClients() {
+        var request = productRequest("P-SERIAL", null);
+        var product = new Product(
+                storeId, request.familyId(), null, request.taxId(), ProductType.UNIT,
+                DiscountType.NORMAL, "Producto", null, null, BigDecimal.ZERO, true);
+        product.configureSerialNumberTracking(true);
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+
+        service.updateProduct(product.getId(), request);
+
+        assertThat(product.isRequiresSerialNumber()).isTrue();
+    }
+
+    @Test
+    void legacyUpdateChangingUnitSerialProductToWeightClearsSerialPolicy() {
+        var base = productRequest("P-SERIAL-WEIGHT", null);
+        var request = new CatalogService.ProductRequest(
+                base.familyId(), base.subfamilyId(), base.taxId(), ProductType.WEIGHT,
+                base.discountType(), base.priceUseMode(), base.name(), base.description(),
+                base.comments(), base.purchasePrice(), base.taxesIncluded(), base.code(),
+                base.barcode(), base.barcode2(), base.salePrice(), base.memberPrice(),
+                base.wholesalePrice(), base.offerPrice(), base.offerDiscountPercent(),
+                base.purchaseDiscountPercent(), base.offerActive(), base.offerFrom(),
+                base.offerUntil(), base.stockMin(), base.stockMax(), base.packageQuantity(),
+                base.active(), null);
+        var product = new Product(
+                storeId, request.familyId(), null, request.taxId(), ProductType.UNIT,
+                DiscountType.NORMAL, "Producto", null, null, BigDecimal.ZERO, true);
+        product.configureSerialNumberTracking(true);
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+
+        service.updateProduct(product.getId(), request);
+
+        assertThat(product.isRequiresSerialNumber()).isFalse();
     }
 
     @Test
@@ -297,10 +352,11 @@ class CatalogServiceTest {
         var base = productRequest("NODISC", null);
         var request = new CatalogService.ProductRequest(
                 base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.NONE,
-                PriceUseMode.NORMAL,
+                PriceUseMode.OFFER_PRICE,
                 "Producto", null, null, BigDecimal.ZERO, true, "NODISC", null, null,
-                new BigDecimal("10.00"), null, null, null,
-                null, null, false, null, null);
+                new BigDecimal("10.00"), null, null, new BigDecimal("8.00"),
+                null, null, true, java.time.LocalDate.of(2026, 7, 1),
+                java.time.LocalDate.of(2026, 7, 31));
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
@@ -310,6 +366,24 @@ class CatalogServiceTest {
 
         assertThat(product.getPriceUseMode()).isEqualTo(PriceUseMode.NORMAL);
         assertThat(product.getDiscountType()).isEqualTo(DiscountType.NONE);
+        assertThat(product.isOfferActive()).isFalse();
+    }
+
+    @Test
+    void rejectsSerialNumberTrackingForNonUnitProducts() {
+        var base = productRequest("SERIAL-WEIGHT", null);
+        var request = new CatalogService.ProductRequest(
+                base.familyId(), null, base.taxId(), ProductType.WEIGHT, DiscountType.NORMAL,
+                PriceUseMode.NORMAL, "Producto pesado", null, null, BigDecimal.ZERO, true,
+                "SERIAL-WEIGHT", null, null, new BigDecimal("2.50"), null, null, null,
+                null, null, false, null, null, null, null, null, null, true);
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+
+        assertThatThrownBy(() -> service.createProduct(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.serial_number_requires_unit");
     }
 
     @Test

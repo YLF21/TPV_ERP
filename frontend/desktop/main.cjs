@@ -25,10 +25,16 @@ const {
   ticketPrinterHealthFromPrinters,
   unavailableTicketPrinterHealth
 } = require("./ticket-printer-health.cjs");
+const { getDesktopAppConfig, resolveDesktopDist } = require("./app-config.cjs");
+const { productionBackendConfigPath, resolveBackendConfig } = require("./backend-config.cjs");
+const { createDesktopServer } = require("./loopback-server.cjs");
+const { resolveRendererAppUrl } = require("./renderer-runtime-config.cjs");
+const { createPrivilegedIpcRegistrar } = require("./electron-security.cjs");
 
-const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
-const appUrl = process.env.TPV_DESKTOP_APP_URL;
-const mainWindowMode = process.env.TPV_DESKTOP_WINDOW_MODE === "MAXIMIZED" ? "MAXIMIZED" : "FULLSCREEN";
+const desktopAppConfig = getDesktopAppConfig(process.env.TPV_DESKTOP_APP_KIND);
+const appName = process.env.TPV_DESKTOP_APP_NAME || desktopAppConfig.name;
+let appUrl = process.env.TPV_DESKTOP_APP_URL || "";
+const mainWindowMode = process.env.TPV_DESKTOP_WINDOW_MODE || desktopAppConfig.windowMode;
 const defaultHardwareConfig = {
   scannerMode: "KEYBOARD",
   scannerSubmitKey: "ENTER",
@@ -123,12 +129,17 @@ const salesDocumentBootstraps = new Map();
 let salesUtilityWindow;
 let salesUtilityResult;
 const salesUtilityBootstraps = new Map();
-
-if (!appUrl) {
-  throw new Error("TPV_DESKTOP_APP_URL is required");
-}
-
-const trustedAppOrigin = trustedOrigin(appUrl);
+let trustedAppOrigin;
+let desktopServer;
+const registerPrivilegedHandler = createPrivilegedIpcRegistrar({
+  ipcMain,
+  getTrustedOrigin: () => trustedAppOrigin
+});
+const registerIpc = (channel, handler, expectedWindow = () => mainWindow) =>
+  registerPrivilegedHandler(channel, expectedWindow, handler);
+const mainAndSalesDocument = () => [mainWindow, salesDocumentWindow];
+const mainAndSalesUtility = () => [mainWindow, salesUtilityWindow];
+const mainAndSalesWindows = () => [mainWindow, salesDocumentWindow, salesUtilityWindow];
 
 function createWindow() {
   Menu.setApplicationMenu(null);
@@ -1176,19 +1187,19 @@ async function exportProductLabelPdf(request, defaultFileName) {
   }
 }
 
-ipcMain.handle("tpv:close-application", () => {
+registerIpc("tpv:close-application", () => {
   app.quit();
 });
 
-ipcMain.handle("tpv:terminal-identity:load", () => readTerminalIdentity());
-ipcMain.handle("tpv:terminal-identity:save", (_event, identity) => writeTerminalIdentity(identity));
-ipcMain.handle("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
-ipcMain.handle("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
-ipcMain.handle("tpv:reports:export-table-pdf", (_event, report, defaultFileName) =>
+registerIpc("tpv:terminal-identity:load", () => readTerminalIdentity());
+registerIpc("tpv:terminal-identity:save", (_event, identity) => writeTerminalIdentity(identity));
+registerIpc("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
+registerIpc("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
+registerIpc("tpv:reports:export-table-pdf", (_event, report, defaultFileName) =>
   exportTableReportPdf(report, defaultFileName));
-ipcMain.handle("tpv:reports:print", () => printCurrentPage());
+registerIpc("tpv:reports:print", () => printCurrentPage());
 
-ipcMain.handle("tpv:hardware:list-printers", async () => {
+registerIpc("tpv:hardware:list-printers", async () => {
   if (!mainWindow) {
     return structuredError("HARDWARE_UNAVAILABLE", "Ventana principal no disponible");
   }
@@ -1208,7 +1219,7 @@ ipcMain.handle("tpv:hardware:list-printers", async () => {
   }
 });
 
-ipcMain.handle("tpv:hardware:get-ticket-printer-health", async () => {
+registerIpc("tpv:hardware:get-ticket-printer-health", async () => {
   const config = normalizeHardwareConfig(readHardwareConfig());
   if (!mainWindow) {
     return {
@@ -1230,30 +1241,30 @@ ipcMain.handle("tpv:hardware:get-ticket-printer-health", async () => {
   }
 });
 
-ipcMain.handle("tpv:hardware:list-customer-displays", () => ({
+registerIpc("tpv:hardware:list-customer-displays", () => ({
   ok: true,
   displays: listCustomerDisplays()
 }));
 
-ipcMain.handle("tpv:hardware:get-config", () => readHardwareConfig());
+registerIpc("tpv:hardware:get-config", () => readHardwareConfig(), mainAndSalesWindows);
 
-ipcMain.handle("tpv:hardware:save-config", (_event, config) => {
+registerIpc("tpv:hardware:save-config", (_event, config) => {
   writeHardwareConfig(config);
   return { ok: true };
 });
 
-ipcMain.handle("tpv:hardware:print-ticket", (_event, ticket, config) => printTicket(ticket, config));
-ipcMain.handle("tpv:hardware:export-ticket-pdf", (_event, ticket, defaultFileName) =>
-  exportTicketPdf(ticket, defaultFileName));
-ipcMain.handle("tpv:hardware:export-a4-document-pdf", (_event, document, defaultFileName) =>
-  exportA4DocumentPdf(document, defaultFileName));
+registerIpc("tpv:hardware:print-ticket", (_event, ticket, config) => printTicket(ticket, config), mainAndSalesDocument);
+registerIpc("tpv:hardware:export-ticket-pdf", (_event, ticket, defaultFileName) =>
+  exportTicketPdf(ticket, defaultFileName), mainAndSalesDocument);
+registerIpc("tpv:hardware:export-a4-document-pdf", (_event, document, defaultFileName) =>
+  exportA4DocumentPdf(document, defaultFileName), mainAndSalesDocument);
 
-ipcMain.handle("tpv:hardware:print-a4-document", (_event, document, config) => printA4Document(document, config));
-ipcMain.handle("tpv:hardware:print-product-label", (_event, request, config) => printProductLabel(request, config));
-ipcMain.handle("tpv:hardware:export-product-label-pdf", (_event, request, defaultFileName) =>
-  exportProductLabelPdf(request, defaultFileName));
+registerIpc("tpv:hardware:print-a4-document", (_event, document, config) => printA4Document(document, config), mainAndSalesDocument);
+registerIpc("tpv:hardware:print-product-label", (_event, request, config) => printProductLabel(request, config), mainAndSalesUtility);
+registerIpc("tpv:hardware:export-product-label-pdf", (_event, request, defaultFileName) =>
+  exportProductLabelPdf(request, defaultFileName), mainAndSalesUtility);
 
-ipcMain.handle("tpv:hardware:open-cash-drawer", async (_event, config) => {
+registerIpc("tpv:hardware:open-cash-drawer", async (_event, config) => {
   try {
     await openCashDrawerWithConfig(config);
     return { ok: true };
@@ -1266,13 +1277,13 @@ ipcMain.handle("tpv:hardware:open-cash-drawer", async (_event, config) => {
   }
 });
 
-ipcMain.handle("tpv:hardware:test-scanner-input", (_event, code) => ({
+registerIpc("tpv:hardware:test-scanner-input", (_event, code) => ({
   ok: true,
   code: String(code || ""),
   readAt: new Date().toISOString()
 }));
 
-ipcMain.handle("tpv:hardware:open-customer-display", (_event, config, state) => {
+registerIpc("tpv:hardware:open-customer-display", (_event, config, state) => {
   try {
     return openCustomerDisplay({ ...readHardwareConfig(), ...config }, state);
   } catch (error) {
@@ -1280,7 +1291,7 @@ ipcMain.handle("tpv:hardware:open-customer-display", (_event, config, state) => 
   }
 });
 
-ipcMain.handle("tpv:hardware:close-customer-display", () => {
+registerIpc("tpv:hardware:close-customer-display", () => {
   if (!customerDisplayWindow || customerDisplayWindow.isDestroyed()) {
     return structuredError("CUSTOMER_DISPLAY_NOT_OPEN", "Pantalla cliente no esta abierta");
   }
@@ -1289,34 +1300,34 @@ ipcMain.handle("tpv:hardware:close-customer-display", () => {
   return { ok: true };
 });
 
-ipcMain.handle("tpv:hardware:update-customer-display", (_event, state) => loadCustomerDisplayState(state));
+registerIpc("tpv:hardware:update-customer-display", (_event, state) => loadCustomerDisplayState(state));
 
-ipcMain.handle("tpv:sales-documents:open", (_event, bootstrap) =>
+registerIpc("tpv:sales-documents:open", (_event, bootstrap) =>
   createSalesDocumentWindow(bootstrap));
 
-ipcMain.handle("tpv:sales-documents:consume-bootstrap", (event) => {
+registerIpc("tpv:sales-documents:consume-bootstrap", (event) => {
   const bootstrap = salesDocumentBootstraps.get(event.sender.id) ?? null;
   salesDocumentBootstraps.delete(event.sender.id);
   return bootstrap;
-});
+}, () => salesDocumentWindow);
 
-ipcMain.handle("tpv:sales-documents:close", () => {
+registerIpc("tpv:sales-documents:close", () => {
   if (salesDocumentWindow && !salesDocumentWindow.isDestroyed()) {
     salesDocumentWindow.close();
   }
   return { ok: true };
-});
+}, () => salesDocumentWindow);
 
-ipcMain.handle("tpv:sales-utility:open", (_event, bootstrap) =>
+registerIpc("tpv:sales-utility:open", (_event, bootstrap) =>
   createSalesUtilityWindow(bootstrap));
 
-ipcMain.handle("tpv:sales-utility:consume-bootstrap", (event) => {
+registerIpc("tpv:sales-utility:consume-bootstrap", (event) => {
   const bootstrap = salesUtilityBootstraps.get(event.sender.id) ?? null;
   salesUtilityBootstraps.delete(event.sender.id);
   return bootstrap;
-});
+}, () => salesUtilityWindow);
 
-ipcMain.handle("tpv:sales-utility:complete", (event, result) => {
+registerIpc("tpv:sales-utility:complete", (event, result) => {
   if (!salesUtilityWindow || salesUtilityWindow.isDestroyed()
       || event.sender.id !== salesUtilityWindow.webContents.id) {
     return structuredError(
@@ -1333,17 +1344,58 @@ ipcMain.handle("tpv:sales-utility:complete", (event, result) => {
   };
   salesUtilityWindow.close();
   return { ok: true };
-});
+}, () => salesUtilityWindow);
 
-ipcMain.handle("tpv:sales-utility:close", (event) => {
+registerIpc("tpv:sales-utility:close", (event) => {
   if (salesUtilityWindow && !salesUtilityWindow.isDestroyed()
       && event.sender.id === salesUtilityWindow.webContents.id) {
     salesUtilityWindow.close();
   }
   return { ok: true };
+}, () => salesUtilityWindow);
+
+async function initializeDesktopRuntime() {
+  const isPackaged = app.isPackaged === true;
+  const configuredAppUrl = process.env.TPV_DESKTOP_APP_URL;
+  if (isPackaged || !configuredAppUrl) {
+    const configPath = isPackaged
+      ? productionBackendConfigPath()
+      : path.join(app.getPath("userData"), "backend-config.json");
+    const backendConfig = resolveBackendConfig({
+      envValue: isPackaged ? undefined : process.env.TPV_DESKTOP_BACKEND_URL,
+      envAllowedHosts: isPackaged ? undefined : process.env.TPV_DESKTOP_BACKEND_ALLOWED_HOSTS,
+      useEnvironment: !isPackaged,
+      configPath
+    });
+    desktopServer = createDesktopServer({
+      staticRoot: resolveDesktopDist(desktopAppConfig),
+      backendUrl: backendConfig.backendUrl,
+      backendAllowedHosts: backendConfig.allowedHosts
+    });
+    appUrl = await desktopServer.start();
+  } else {
+    appUrl = resolveRendererAppUrl({
+      isPackaged: false,
+      envValue: configuredAppUrl,
+      allowRemoteDevelopment: process.env.TPV_DESKTOP_ALLOW_REMOTE_DEV_URL === "1"
+    });
+  }
+  trustedAppOrigin = trustedOrigin(appUrl);
+}
+
+app.whenReady().then(async () => {
+  try {
+    await initializeDesktopRuntime();
+    createWindow();
+  } catch (error) {
+    dialog.showErrorBox("No se puede iniciar TPV ERP", error instanceof Error ? error.message : "Error de inicio");
+    app.quit();
+  }
 });
 
-app.whenReady().then(createWindow);
+app.on("will-quit", () => {
+  void desktopServer?.close();
+});
 
 app.on("window-all-closed", () => {
   app.quit();

@@ -9,6 +9,7 @@ import {
   verifactuStatusLabel,
   type VerifactuTranslator
 } from "./verifactuPresentation";
+import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 
 export type VerifactuAttemptTarget = {
   recordId: string;
@@ -102,7 +103,7 @@ export function VerifactuAttemptHistoryPanel({
               <dl>
                 <div>
                   <dt>{t("verifactu.management.errorCode")}</dt>
-                  <dd>{attempt.errorCode || "—"}</dd>
+                  <dd>{fiscalErrorMessage(attempt.errorCode, t, locale) || "—"}</dd>
                 </div>
                 <div>
                   <dt>{t("verifactu.management.technicalContent")}</dt>

@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { apiBaseUrl } from "@tpverp/app-common";
 import type { FiscalExport } from "./verifactuManagementApi";
 
 export function buildFiscalExportArchive(fiscalExport: FiscalExport): Uint8Array {
@@ -51,5 +52,35 @@ export function downloadFiscalExportBlob(blob: Blob, filename: string) {
   } finally {
     anchor.remove();
     URL.revokeObjectURL(url);
+  }
+}
+
+/** Submits the one-use capability as form data so the browser streams the ZIP. */
+export function submitFiscalExportDownload(token: string) {
+  if (!token) throw new Error("fiscal_export_download_token_missing");
+  const frameName = "fiscal-export-download-frame";
+  let frame = document.querySelector<HTMLIFrameElement>(`iframe[name="${frameName}"]`);
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.name = frameName;
+    frame.hidden = true;
+    frame.title = "";
+    document.body.appendChild(frame);
+  }
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = `${apiBaseUrl}/fiscal/export-jobs/download`;
+  form.target = frameName;
+  form.hidden = true;
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "token";
+  input.value = token;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  try {
+    form.submit();
+  } finally {
+    form.remove();
   }
 }

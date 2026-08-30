@@ -1,6 +1,7 @@
 package com.tpverp.saas.loyalty;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,10 @@ public interface SaasMemberBalanceReservationRepository
         extends JpaRepository<SaasMemberBalanceReservation, UUID> {
 
     Optional<SaasMemberBalanceReservation> findFirstByAccount_IdAndStatusInOrderByCreatedAtDesc(
+            UUID accountId,
+            Collection<String> statuses);
+
+    List<SaasMemberBalanceReservation> findByAccount_IdAndStatusIn(
             UUID accountId,
             Collection<String> statuses);
 

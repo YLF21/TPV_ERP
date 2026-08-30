@@ -27,10 +27,12 @@ export function SaleSerialNumberDialog({
     { length: unitCount },
     (_, index) => initialSerialNumbers[index] ?? "",
   ));
+  const [acknowledgeTrim, setAcknowledgeTrim] = useState(false);
+  const hasTrimmedSerials = initialSerialNumbers.length > unitCount;
   const normalized = values.map((value) => value.trim().toLocaleUpperCase());
   const complete = unitCount > 0 && values.every((value) => value.trim().length > 0);
   const unique = new Set(normalized).size === normalized.length;
-  const valid = complete && unique;
+  const valid = complete && unique && (!hasTrimmedSerials || acknowledgeTrim);
   const validation = useMemo(() => {
     if (unitCount === 0) return t("sale.serialNumber.wholeUnits");
     if (!complete) return t("sale.serialNumber.complete");
@@ -89,6 +91,16 @@ export function SaleSerialNumberDialog({
             </label>
           ))}
         </div>
+        {hasTrimmedSerials && (
+          <label>
+            <input
+              type="checkbox"
+              checked={acknowledgeTrim}
+              onChange={(event) => setAcknowledgeTrim(event.currentTarget.checked)}
+            />
+            {t("sale.serialNumber.trimConfirm")}
+          </label>
+        )}
         {validation && <p className="sale-action-error" role="alert">{validation}</p>}
         <footer className="sale-action-buttons">
           <button type="button" onClick={onCancel}>{t("common.cancel")}</button>

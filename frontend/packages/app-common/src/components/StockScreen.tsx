@@ -224,6 +224,7 @@ type ProductView = {
   wholesalePrice?: number | string | null;
   offerPrice?: number | string | null;
   productType?: string | null;
+  requiresSerialNumber?: boolean | null;
   priceUseMode?: string | null;
   discountType?: string | null;
   familyId?: string | null;
@@ -350,6 +351,7 @@ export type StockInventoryRow = {
   offerPrice: string;
   offerDiscountPercent?: string;
   productType: string;
+  requiresSerialNumber?: boolean;
   discountType: string;
   backendDiscountType?: string;
   familyId: string;
@@ -995,7 +997,8 @@ export function stockRowToProductEdit(row: StockInventoryRow): ProductCreateEdit
       purchaseDiscountPercent: row.purchaseDiscountPercent || null,
       packageQuantity: row.packageQuantity || null,
       stockMin: row.stockMin || null,
-      stockMax: row.stockMax || null
+      stockMax: row.stockMax || null,
+      requiresSerialNumber: row.requiresSerialNumber === true
     },
     form: {
       active: row.active !== "common.no",
@@ -1003,6 +1006,7 @@ export function stockRowToProductEdit(row: StockInventoryRow): ProductCreateEdit
       subfamilyId: row.subfamilyId,
       taxId: row.taxId,
       productType: productTypeForForm(row.productType),
+      requiresSerialNumber: row.requiresSerialNumber === true,
       priceUseMode,
       discountType: discountTypeForForm(backendDiscountType),
       name: row.name,
@@ -1288,6 +1292,7 @@ export function buildStockInventoryRows(
       offerPrice: valueText(product.offerPrice),
       offerDiscountPercent: valueText(product.offerDiscountPercent),
       productType: valueText(product.productType),
+      requiresSerialNumber: product.requiresSerialNumber === true,
       discountType: valueText(product.priceUseMode ?? product.discountType),
       backendDiscountType: valueText(product.discountType),
       familyId: valueText(product.familyId ?? defaultFamily?.id),

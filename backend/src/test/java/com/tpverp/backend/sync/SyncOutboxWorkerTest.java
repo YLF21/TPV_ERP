@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -80,6 +81,40 @@ class SyncOutboxWorkerTest {
                 first.getEventId(), firstClaimToken, "saas caido", 10,
                 Duration.ofSeconds(5), Duration.ofMinutes(15));
         verify(outbox).markSent(second.getEventId(), secondClaimToken);
+    }
+
+    @Test
+    void runEventSoloReclamaElEventoSolicitado() {
+        var event = event();
+        var token = UUID.randomUUID();
+        event.claim(token, NOW);
+        when(outbox.claimEvent(event.getEventId(), Duration.ofMinutes(2)))
+                .thenReturn(java.util.Optional.of(event));
+        when(outbox.markSent(event.getEventId(), token))
+                .thenAnswer(ignored -> event.markSent(token, NOW));
+
+        assertThat(worker().runEvent(event.getEventId())).isOne();
+        verify(sender).send(event);
+        verify(outbox, never()).claimBatch(100, Duration.ofMinutes(2));
+    }
+
+    @Test
+    void runEventConFalloConservaBackoffYEstadoDurable() {
+        var event = event();
+        var token = UUID.randomUUID();
+        event.claim(token, NOW);
+        when(outbox.claimEvent(event.getEventId(), Duration.ofMinutes(2)))
+                .thenReturn(java.util.Optional.of(event));
+        doThrow(new IllegalStateException("saas caido")).when(sender).send(event);
+        when(outbox.markFailed(event.getEventId(), token, "saas caido", 10,
+                Duration.ofSeconds(5), Duration.ofMinutes(15)))
+                .thenAnswer(ignored -> event.markRetry(token, "saas caido",
+                        NOW.plusSeconds(5), NOW));
+
+        assertThat(worker().runEvent(event.getEventId())).isZero();
+        verify(outbox).markFailed(event.getEventId(), token, "saas caido", 10,
+                Duration.ofSeconds(5), Duration.ofMinutes(15));
+        assertThat(event.getStatus()).isEqualTo(SyncOutboxStatus.ERROR);
     }
 
     private SyncOutboxWorker worker() {

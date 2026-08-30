@@ -1801,6 +1801,117 @@ describe("SalesReportScreen", () => {
     createObjectUrl.mockRestore();
   });
 
+  it("normalizes payment methods in the cancelled-ticket hardware fallback", async () => {
+    const today = new Date();
+    const todayIso = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
+    ].join("-");
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const previousDesktop = window.tpvDesktop;
+    Object.defineProperty(window, "tpvDesktop", {
+      configurable: true,
+      writable: true,
+      value: { hardware: { printTicket } }
+    });
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/warehouses") return Promise.resolve([]);
+      if (path.startsWith("/document-reports/tickets")) {
+        return Promise.resolve({ items: [{
+          id: "cancelled-ticket-fallback",
+          tipo: "TICKET",
+          estado: "ANULADO",
+          numero: "T-CANCELLED-FALLBACK",
+          numTicket: "T-CANCELLED-FALLBACK",
+          fecha: todayIso,
+          confirmadoEn: `${todayIso}T10:00:00Z`,
+          total: "6.05",
+          effectiveTotal: "0.00",
+          lifecycleStatus: "CANCELLED",
+          payments: []
+        }], nextCursor: null, hasMore: false });
+      }
+      if (path === "/documents/cancelled-ticket-fallback/detail") {
+        return Promise.resolve({
+          id: "cancelled-ticket-fallback",
+          type: "TICKET",
+          status: "ANULADO",
+          number: "T-CANCELLED-FALLBACK",
+          date: todayIso,
+          base: "5.00",
+          tax: "1.05",
+          discount: "0.00",
+          total: "6.05",
+          lines: []
+        });
+      }
+      if (path === "/tickets/cancelled-ticket-fallback/cancellation-receipt") {
+        return Promise.resolve({
+          operationId: "operation-fallback",
+          originalTicketNumber: "T-CANCELLED-FALLBACK",
+          originalIssuedAt: `${todayIso}T10:00:00Z`,
+          cancelledAt: `${todayIso}T10:05:00Z`,
+          total: "6.05",
+          reason: "Error de cobro",
+          operatorUsername: "ADMIN",
+          authorizerUsername: "ADMIN",
+          delegated: false,
+          payments: [
+            { method: "CREDITO_DEVOLUCION", amount: "4.00" },
+            { method: "TARJETA", amount: "2.05" }
+          ]
+        });
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    try {
+      const { container } = render(
+        <SalesReportScreen
+          app="venta"
+          locale="es"
+          session={{ ...session, accessToken: "token" }}
+          terminalContext={terminalContext}
+          request={request}
+          loadVisualizationPreferences={noSavedVisualizationPreferences}
+          initialReport="salesReport.tickets"
+          onBack={vi.fn()}
+          onLocaleChange={vi.fn()}
+        />
+      );
+
+      await waitFor(() => expect(screen.getAllByText("Líneas visibles: 1")).not.toHaveLength(0));
+      const row = container.querySelector<HTMLTableRowElement>(
+        'table[data-report-key="salesReport.tickets"] tbody tr'
+      );
+      expect(row).not.toBeNull();
+      fireEvent.click(row!);
+      const printSelectedButton = screen.getByRole("button", { name: "Imprimir" });
+      await waitFor(() => expect(printSelectedButton).toBeEnabled());
+      fireEvent.click(printSelectedButton);
+
+      await waitFor(() => expect(printTicket).toHaveBeenCalledOnce());
+      expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
+        layout: "CANCELLATION_RECEIPT",
+        payments: [
+          { method: "CREDITO DEVOLUCION", amount: 4, reference: undefined },
+          { method: "TARJETA", amount: 2.05, reference: undefined }
+        ]
+      }));
+    } finally {
+      if (previousDesktop === undefined) {
+        Reflect.deleteProperty(window, "tpvDesktop");
+      } else {
+        Object.defineProperty(window, "tpvDesktop", {
+          configurable: true,
+          writable: true,
+          value: previousDesktop
+        });
+      }
+    }
+  });
+
   it("opens the original ticket from an invoice converted from that ticket", async () => {
     const today = new Date();
     const todayIso = [

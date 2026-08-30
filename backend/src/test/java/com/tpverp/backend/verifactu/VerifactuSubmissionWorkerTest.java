@@ -56,6 +56,24 @@ class VerifactuSubmissionWorkerTest {
         verify(submissions).submit(record);
     }
 
+    @Test
+    void scopedWorkerPropagaElIndicadorDeRedYElRegistro() {
+        var companyId = record.getCompanyId();
+        var installationId = record.getInstallationId();
+        when(queue.claimPendingForScope(companyId, installationId, record.getId()))
+                .thenReturn(Optional.of(new ClaimedFiscalSubmission(
+                        record, new FiscalSubmissionState(
+                                record.getId(), FiscalSubmissionStatus.ENVIANDO, Instant.now()))));
+        when(submissions.submit(record)).thenReturn(new VerifactuSubmissionResult(
+                FiscalSubmissionStatus.DEFECTUOSO, "INVALID_XSD", "schema error", null, false));
+
+        var result = worker.processPendingForScope(companyId, installationId, record.getId());
+
+        assertThat(result.processed()).isTrue();
+        assertThat(result.recordId()).isEqualTo(record.getId());
+        assertThat(result.networkRequestIssued()).isFalse();
+    }
+
     private static FiscalRecord record() {
         return new FiscalRecord(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),

@@ -354,15 +354,10 @@ class DocumentPromotionIntegrationTest {
                         DocumentLineType.PRODUCT,
                         DocumentLineType.PRODUCT,
                         DocumentLineType.PROMOTION,
-                        DocumentLineType.PROMOTIONAL_COUPON,
                         DocumentLineType.PROMOTIONAL_COUPON);
         assertThat(quote.getLineas().get(2).getTotal()).isEqualByComparingTo("-1.00");
-        assertThat(quote.getLineas().subList(3, 5))
-                .allSatisfy(line -> assertThat(line.getPromotionalCouponId())
-                        .isEqualTo(couponId));
-        assertThat(quote.getLineas().subList(3, 5).stream()
-                .map(DocumentLine::getTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add))
+        assertThat(quote.getLineas().get(3).getPromotionalCouponId()).isEqualTo(couponId);
+        assertThat(quote.getLineas().get(3).getTotal())
                 .isEqualByComparingTo("-0.50");
         var couponEvaluation = ArgumentCaptor.forClass(
                 PromotionalCouponService.RedemptionCommand.class);

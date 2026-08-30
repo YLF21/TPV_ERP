@@ -3,12 +3,14 @@ package com.tpverp.backend.catalog;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -20,6 +22,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -56,12 +59,14 @@ class ProductControllerContractTest {
                 imageId,
                 true,
                 ProductType.UNIT,
+                false,
                 "A001",
                 null,
                 null,
                 "Cafe",
                 new BigDecimal("2.40"),
                 null,
+                new BigDecimal("1.90"),
                 null,
                 null,
                 PriceUseMode.NORMAL,
@@ -83,6 +88,7 @@ class ProductControllerContractTest {
                 .andExpect(jsonPath("$[0].productType").value("UNIT"))
                 .andExpect(jsonPath("$[0].taxPercentage").value(21.00))
                 .andExpect(jsonPath("$[0].taxRegime").value("IVA"))
+                .andExpect(jsonPath("$[0].wholesalePrice").value(1.90))
                 .andExpect(jsonPath("$[0].packageQuantity").value(6))
                 .andExpect(jsonPath("$[0].totalStock").value(14.000));
     }
@@ -220,6 +226,41 @@ class ProductControllerContractTest {
                 .andExpect(jsonPath("$.salePrice").value(2.40))
                 .andExpect(jsonPath("$.priceUseMode").value("OFFER_DISCOUNT"))
                 .andExpect(jsonPath("$.offerDiscountPercent").value(10.00));
+    }
+
+    @Test
+    void legacyUpdateWithoutSerialFieldKeepsTheFieldAbsentForServiceMerge() throws Exception {
+        var productId = UUID.randomUUID();
+        var product = productWithPurchasePrice();
+        when(service.updateProduct(
+                org.mockito.ArgumentMatchers.eq(productId),
+                any(CatalogService.ProductRequest.class))).thenReturn(product);
+
+        mvc.perform(put("/api/v1/products/{productId}", productId)
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "familyId": "%s",
+                                  "taxId": "%s",
+                                  "productType": "UNIT",
+                                  "discountType": "NORMAL",
+                                  "priceUseMode": "NORMAL",
+                                  "name": "Cafe",
+                                  "purchasePrice": 1.20,
+                                  "taxesIncluded": true,
+                                  "code": "A001",
+                                  "salePrice": 2.40,
+                                  "offerActive": false
+                                }
+                                """.formatted(FAMILY_ID, TAX_ID)))
+                .andExpect(status().isOk());
+
+        var request = ArgumentCaptor.forClass(CatalogService.ProductRequest.class);
+        verify(service).updateProduct(
+                org.mockito.ArgumentMatchers.eq(productId), request.capture());
+        assertThat(request.getValue().requiresSerialNumber()).isNull();
     }
 
     @Test

@@ -14,6 +14,7 @@ import {
   createFiscalIntegrityJob,
   loadFiscalIntegrityJobStatus,
   retryFiscalIntegrityJob,
+  loadFiscalResponsibleDeclaration as fetchFiscalResponsibleDeclaration,
   type FiscalEvent,
   type FiscalExportKind,
   type FiscalExportHistory,
@@ -30,7 +31,7 @@ import {
   humanizeVerifactuValue,
   type VerifactuTranslator
 } from "./verifactuPresentation";
-import { datetimeLocalToIso, isValidDatetimeLocal } from "./fiscalDateTime";
+import { datetimeLocalCandidates, datetimeLocalToIso, isValidDatetimeLocal } from "./fiscalDateTime";
 import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
 import { FiscalExportJobsList, useFiscalExportJobs } from "./fiscalExportJobs";
 
@@ -111,9 +112,15 @@ export function FiscalComplianceView({
   const [integrityJob, setIntegrityJob] = useState<FiscalIntegrityJob | null>(null);
   const [integrityWorking, setIntegrityWorking] = useState(false);
   const [integrityError, setIntegrityError] = useState(false);
+  const [responsibleDeclaration, setResponsibleDeclaration] = useState<Awaited<ReturnType<typeof fetchFiscalResponsibleDeclaration>> | null>(null);
+  const [responsibleDeclarationLoading, setResponsibleDeclarationLoading] = useState(false);
+  const [responsibleDeclarationError, setResponsibleDeclarationError] = useState(false);
+  const [responsibleDeclarationDownloadError, setResponsibleDeclarationDownloadError] = useState(false);
   const [exportKind, setExportKind] = useState<FiscalExportKind>("BILLING");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
+  const [periodStartOffset, setPeriodStartOffset] = useState<number | undefined>();
+  const [periodEndOffset, setPeriodEndOffset] = useState<number | undefined>();
   const [exportError, setExportError] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -121,6 +128,8 @@ export function FiscalComplianceView({
   const [requirement, setRequirement] = useState<FiscalRequiredSubmission | null>(null);
   const [requirementPeriodStart, setRequirementPeriodStart] = useState("");
   const [requirementPeriodEnd, setRequirementPeriodEnd] = useState("");
+  const [requirementStartOffset, setRequirementStartOffset] = useState<number | undefined>();
+  const [requirementEndOffset, setRequirementEndOffset] = useState<number | undefined>();
   const [requirementWorking, setRequirementWorking] = useState(false);
   const [requirementError, setRequirementError] = useState(false);
   const exportJobs = useFiscalExportJobs(token, canManage);
@@ -128,6 +137,7 @@ export function FiscalComplianceView({
   const requestController = useRef<AbortController | null>(null);
   const integrityController = useRef<AbortController | null>(null);
   const observedRequirementJobs = useRef(new Set<string>());
+  const historyScope = useRef<{ revision: number; token?: string }>({ revision, token });
   const eventsTableLayout = useTableLayoutPreference({
     app: "gestion",
     username,
@@ -158,6 +168,16 @@ export function FiscalComplianceView({
     const controller = new AbortController();
     requestController.current = controller;
     const currentRequest = ++requestId.current;
+    const scopeChanged = historyScope.current.revision !== revision || historyScope.current.token !== token;
+    if (scopeChanged) {
+      historyScope.current = { revision, token };
+      setEventsCursor(null);
+      setExportHistoryCursor(null);
+      setRequirementsCursor(null);
+    }
+    const requestedEventsCursor = scopeChanged ? null : eventsCursor;
+    const requestedExportHistoryCursor = scopeChanged ? null : exportHistoryCursor;
+    const requestedRequirementsCursor = scopeChanged ? null : requirementsCursor;
     setEventsLoading(true);
     setExportHistoryLoading(true);
     setRequirementsLoading(true);
@@ -176,15 +196,15 @@ export function FiscalComplianceView({
       }
     };
 
-    void load(loadFiscalEventsCursor(token, 50, eventsCursor, controller.signal),
+    void load(loadFiscalEventsCursor(token, 50, requestedEventsCursor, controller.signal),
       (page) => { setEventsPage(page); setEvents(page.items); },
       () => { setEventsPage(null); setEvents([]); setEventsError(true); },
       () => setEventsLoading(false));
-    void load(loadFiscalExportHistoryCursor(token, 50, exportHistoryCursor, controller.signal),
+    void load(loadFiscalExportHistoryCursor(token, 50, requestedExportHistoryCursor, controller.signal),
       (page) => { setExportHistoryPage(page); setExportHistory(page.items); },
       () => { setExportHistoryPage(null); setExportHistory([]); setExportHistoryError(true); },
       () => setExportHistoryLoading(false));
-    void load(loadFiscalRequiredSubmissionsCursor(token, 50, requirementsCursor, controller.signal),
+    void load(loadFiscalRequiredSubmissionsCursor(token, 50, requestedRequirementsCursor, controller.signal),
       (page) => { setRequirementsPage(page); setRequirements(page.items); },
       () => { setRequirementsPage(null); setRequirements([]); setRequirementsError(true); },
       () => setRequirementsLoading(false));
@@ -254,6 +274,20 @@ export function FiscalComplianceView({
     }
   }
 
+  async function loadResponsibleDeclaration() {
+    if (!token || responsibleDeclarationLoading) return;
+    setResponsibleDeclarationLoading(true);
+    setResponsibleDeclarationError(false);
+    setResponsibleDeclarationDownloadError(false);
+    try {
+      setResponsibleDeclaration(await fetchFiscalResponsibleDeclaration(token));
+    } catch {
+      setResponsibleDeclarationError(true);
+    } finally {
+      setResponsibleDeclarationLoading(false);
+    }
+  }
+
   function waitForIntegrityPoll(milliseconds: number, signal: AbortSignal) {
     return new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(resolve, milliseconds);
@@ -266,7 +300,7 @@ export function FiscalComplianceView({
 
   async function exportRecords(event: FormEvent) {
     event.preventDefault();
-    if (!validRequiredPeriod(periodStart, periodEnd, fiscalTimezone)) {
+    if (!validRequiredPeriod(periodStart, periodEnd, fiscalTimezone, periodStartOffset, periodEndOffset)) {
       setExportError(true);
       return;
     }
@@ -275,8 +309,8 @@ export function FiscalComplianceView({
     const job = await exportJobs.create({
       kind: exportKind,
       scope: "PERIOD",
-      periodStart: periodStart ? toOffsetDateTime(periodStart, fiscalTimezone) : null,
-      periodEnd: periodEnd ? toOffsetDateTime(periodEnd, fiscalTimezone) : null,
+      periodStart: periodStart ? toOffsetDateTime(periodStart, fiscalTimezone, periodStartOffset) : null,
+      periodEnd: periodEnd ? toOffsetDateTime(periodEnd, fiscalTimezone, periodEndOffset) : null,
       recordIds: []
     });
     if (job) {
@@ -303,7 +337,7 @@ export function FiscalComplianceView({
   }
 
   async function exportRequirement() {
-    if (!requirement || !validRequiredPeriod(requirementPeriodStart, requirementPeriodEnd, fiscalTimezone)) {
+    if (!requirement || !validRequiredPeriod(requirementPeriodStart, requirementPeriodEnd, fiscalTimezone, requirementStartOffset, requirementEndOffset)) {
       setRequirementError(true);
       return;
     }
@@ -312,8 +346,8 @@ export function FiscalComplianceView({
     try {
       const job = await exportJobs.createRequiredSubmissionJob(
         requirement.id,
-        toOffsetDateTime(requirementPeriodStart, fiscalTimezone),
-        toOffsetDateTime(requirementPeriodEnd, fiscalTimezone)
+        toOffsetDateTime(requirementPeriodStart, fiscalTimezone, requirementStartOffset),
+        toOffsetDateTime(requirementPeriodEnd, fiscalTimezone, requirementEndOffset)
       );
       if (!job) {
         setRequirementError(true);
@@ -376,6 +410,21 @@ export function FiscalComplianceView({
           </div>
         )}
       </section>
+
+      {token && <section className="gestion-verifactu-panel gestion-fiscal-responsible-declaration">
+        <header><div><span className="gestion-eyebrow">{t("verifactu.compliance.declarationEyebrow")}</span><h3>{t("verifactu.compliance.declarationTitle")}</h3></div>
+          <button type="button" disabled={responsibleDeclarationLoading} onClick={() => void loadResponsibleDeclaration()}>{responsibleDeclarationLoading ? t("verifactu.compliance.declarationLoading") : t("verifactu.compliance.declarationAction")}</button>
+        </header>
+        {responsibleDeclarationError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.declarationError")}</p>}
+        {responsibleDeclaration && <div className="gestion-fiscal-declaration-status" role="status">
+          <strong>{responsibleDeclarationStatusLabel(responsibleDeclaration.status, t)}</strong>
+          {responsibleDeclaration.fileName && <span>{responsibleDeclaration.fileName}</span>}
+          {responsibleDeclaration.issuedAt && <span>{formatVerifactuDateTime(responsibleDeclaration.issuedAt, locale, fiscalTimezone)}</span>}
+          {responsibleDeclaration.sha256 && <ComplianceHashValue value={responsibleDeclaration.sha256} t={t} />}
+          {responsibleDeclaration.downloadUrl && responsibleDeclaration.status === "AVAILABLE" && <button type="button" onClick={() => void downloadResponsibleDeclaration(responsibleDeclaration.downloadUrl!, responsibleDeclaration.fileName ?? undefined, token).catch(() => setResponsibleDeclarationDownloadError(true))}>{t("verifactu.compliance.declarationDownload")}</button>}
+        </div>}
+        {responsibleDeclarationDownloadError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.declarationDownloadError")}</p>}
+      </section>}
 
       <section className="gestion-verifactu-panel gestion-fiscal-events">
         <header>
@@ -496,16 +545,21 @@ export function FiscalComplianceView({
               onKindChange={setExportKind}
               periodStart={periodStart}
               periodEnd={periodEnd}
-              onPeriodStartChange={setPeriodStart}
-              onPeriodEndChange={setPeriodEnd}
-              disabled={exportJobs.creating || !fiscalTimezone}
+               onPeriodStartChange={setPeriodStart}
+               onPeriodEndChange={setPeriodEnd}
+               periodStartOffset={periodStartOffset}
+               periodEndOffset={periodEndOffset}
+               onPeriodStartOffsetChange={setPeriodStartOffset}
+               onPeriodEndOffsetChange={setPeriodEndOffset}
+               timezone={fiscalTimezone}
+               disabled={exportJobs.creating || !fiscalTimezone}
               t={t}
             />
             <p>{t("verifactu.exportJobs.periodRegulatory")}</p>
             {exportSuccess && <p className="gestion-form-success" role="status">{t("verifactu.exportJobs.created")}</p>}
             {exportError && <p className="gestion-form-error" role="alert">{t("verifactu.compliance.exportError")}</p>}
           </form>
-          <FiscalExportJobsList jobs={exportJobs.jobs} loading={exportJobs.loading} error={exportJobs.error} downloadId={exportJobs.downloadId} downloadError={exportJobs.downloadError} onRefresh={() => void exportJobs.refresh()} onRetry={(id) => void exportJobs.retry(id)} onDownload={(job) => void exportJobs.download(job)} t={t} />
+           <FiscalExportJobsList jobs={exportJobs.jobs} loading={exportJobs.loading} error={exportJobs.error} downloadId={exportJobs.downloadId} downloadError={exportJobs.downloadError} downloadTooLarge={exportJobs.downloadTooLarge} onRefresh={() => void exportJobs.refresh()} onRetry={(id) => void exportJobs.retry(id)} onDownload={(job) => void exportJobs.download(job)} pageIndex={exportJobs.pageIndex} totalPages={exportJobs.totalPages} totalElements={exportJobs.totalElements} onPageChange={(page) => void exportJobs.goToPage(page)} t={t} />
         </FiscalWorkspaceDialog>
       )}
 
@@ -522,8 +576,8 @@ export function FiscalComplianceView({
               <button type="submit" disabled={requirementWorking || !requirementReference.trim()}>{t("verifactu.compliance.registerRequirement")}</button>
             </form>
             <div className="gestion-fiscal-requirement-period">
-              <label><span>{t("verifactu.management.dateFrom")}</span><input disabled={!fiscalTimezone} type="datetime-local" value={requirementPeriodStart} onChange={(event) => setRequirementPeriodStart(event.target.value)} /></label>
-              <label><span>{t("verifactu.management.dateTo")}</span><input disabled={!fiscalTimezone} type="datetime-local" value={requirementPeriodEnd} onChange={(event) => setRequirementPeriodEnd(event.target.value)} /></label>
+              <FiscalDateTimeField label={t("verifactu.management.dateFrom")} value={requirementPeriodStart} offset={requirementStartOffset} timezone={fiscalTimezone} disabled={!fiscalTimezone} onChange={(value) => { setRequirementPeriodStart(value); setRequirementStartOffset(undefined); }} onOffsetChange={setRequirementStartOffset} t={t} />
+              <FiscalDateTimeField label={t("verifactu.management.dateTo")} value={requirementPeriodEnd} offset={requirementEndOffset} timezone={fiscalTimezone} disabled={!fiscalTimezone} onChange={(value) => { setRequirementPeriodEnd(value); setRequirementEndOffset(undefined); }} onOffsetChange={setRequirementEndOffset} t={t} />
             </div>
           </> : <p className="gestion-verifactu-readonly-note">{t("verifactu.compliance.requirementPermission")}</p>}
           {canAttendRequirements && requirement && (
@@ -531,7 +585,7 @@ export function FiscalComplianceView({
               <strong>{requirement.reference}</strong>
               <span>{requirementStatusLabel(requirement.status, t)}</span>
               {requirement.status === "PENDIENTE" && (
-                <button type="button" className="primary" disabled={requirementWorking || !validRequiredPeriod(requirementPeriodStart, requirementPeriodEnd, fiscalTimezone)} onClick={() => void exportRequirement()}>
+                 <button type="button" className="primary" disabled={requirementWorking || !validRequiredPeriod(requirementPeriodStart, requirementPeriodEnd, fiscalTimezone, requirementStartOffset, requirementEndOffset)} onClick={() => void exportRequirement()}>
                   {t("verifactu.compliance.attendRequirement")}
                 </button>
               )}
@@ -603,8 +657,13 @@ function ExportFields({
   onKindChange,
   periodStart,
   periodEnd,
+  periodStartOffset,
+  periodEndOffset,
   onPeriodStartChange,
   onPeriodEndChange,
+  onPeriodStartOffsetChange,
+  onPeriodEndOffsetChange,
+  timezone,
   disabled,
   t
 }: {
@@ -612,8 +671,13 @@ function ExportFields({
   onKindChange: (kind: FiscalExportKind) => void;
   periodStart: string;
   periodEnd: string;
+  periodStartOffset?: number;
+  periodEndOffset?: number;
   onPeriodStartChange: (value: string) => void;
   onPeriodEndChange: (value: string) => void;
+  onPeriodStartOffsetChange: (value: number | undefined) => void;
+  onPeriodEndOffsetChange: (value: number | undefined) => void;
+  timezone: string;
   disabled: boolean;
   t: VerifactuTranslator;
 }) {
@@ -625,22 +689,32 @@ function ExportFields({
         <option value="EVENTS">{t("verifactu.compliance.exportEvents")}</option>
       </select>
     </label>
-    <label><span>{t("verifactu.management.dateFrom")}</span><input disabled={disabled} type="datetime-local" value={periodStart} onChange={(event) => onPeriodStartChange(event.target.value)} /></label>
-    <label><span>{t("verifactu.management.dateTo")}</span><input disabled={disabled} type="datetime-local" value={periodEnd} onChange={(event) => onPeriodEndChange(event.target.value)} /></label>
+    <FiscalDateTimeField label={t("verifactu.management.dateFrom")} value={periodStart} offset={periodStartOffset} timezone={timezone} disabled={disabled} onChange={onPeriodStartChange} onOffsetChange={onPeriodStartOffsetChange} t={t} />
+    <FiscalDateTimeField label={t("verifactu.management.dateTo")} value={periodEnd} offset={periodEndOffset} timezone={timezone} disabled={disabled} onChange={onPeriodEndChange} onOffsetChange={onPeriodEndOffsetChange} t={t} />
   </div>;
 }
 
-function validRequiredPeriod(start: string, end: string, timezone: string) {
-  if (!start || !end || !isValidDatetimeLocal(start, timezone) || !isValidDatetimeLocal(end, timezone)) return false;
+function FiscalDateTimeField({ label, value, offset, timezone, disabled, onChange, onOffsetChange, t }: { label: string; value: string; offset?: number; timezone?: string; disabled?: boolean; onChange: (value: string) => void; onOffsetChange: (value: number | undefined) => void; t: VerifactuTranslator }) {
+  const candidates = timezone ? datetimeLocalCandidates(value, timezone) : [];
+  return <label><span>{label}</span><input aria-label={label} disabled={disabled} type="datetime-local" value={value} onChange={(event) => { onChange(event.target.value); onOffsetChange(undefined); }} />
+    {candidates.length > 1 && <select aria-label={`${label} ${t("verifactu.compliance.offset")}`} value={offset ?? ""} required onChange={(event) => onOffsetChange(event.target.value ? Number(event.target.value) : undefined)}>
+      <option value="">{t("verifactu.compliance.chooseOffset")}</option>
+      {candidates.map((candidate) => <option value={candidate.offsetMinutes} key={candidate.offsetMinutes}>{candidate.offsetLabel}</option>)}
+    </select>}
+  </label>;
+}
+
+function validRequiredPeriod(start: string, end: string, timezone: string, startOffset?: number, endOffset?: number) {
+  if (!start || !end || !isValidDatetimeLocal(start, timezone, startOffset) || !isValidDatetimeLocal(end, timezone, endOffset)) return false;
   try {
-    return new Date(datetimeLocalToIso(end, timezone)).getTime() >= new Date(datetimeLocalToIso(start, timezone)).getTime();
+    return new Date(datetimeLocalToIso(end, timezone, endOffset)).getTime() >= new Date(datetimeLocalToIso(start, timezone, startOffset)).getTime();
   } catch {
     return false;
   }
 }
 
-function toOffsetDateTime(value: string, timezone: string) {
-  return datetimeLocalToIso(value, timezone);
+function toOffsetDateTime(value: string, timezone: string, offset?: number) {
+  return datetimeLocalToIso(value, timezone, offset);
 }
 
 function shortHash(value: string) {
@@ -695,6 +769,29 @@ function requirementStatusLabel(status: string, t: VerifactuTranslator) {
   const key = `verifactu.compliance.requirementStatus.${status}`;
   const translated = t(key);
   return translated === key ? humanizeVerifactuValue(status) : translated;
+}
+
+function responsibleDeclarationStatusLabel(status: string, t: VerifactuTranslator) {
+  const key = `verifactu.compliance.declarationStatus.${status}`;
+  const translated = t(key);
+  return translated === key ? humanizeVerifactuValue(status) : translated;
+}
+
+export async function downloadResponsibleDeclaration(url: string, fileName: string | undefined, token?: string) {
+  const target = new URL(url, window.location.origin);
+  if (target.origin !== window.location.origin) throw new Error("external_declaration_url");
+  const response = await fetch(target.toString(), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) throw new Error(`responsible_declaration_${response.status}`);
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (contentLength > 64 * 1024 * 1024) throw new Error("responsible_declaration_too_large");
+  const blob = await response.blob();
+  if (blob.size > 64 * 1024 * 1024) throw new Error("responsible_declaration_too_large");
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = fileName || "declaracion-responsable.pdf";
+  link.click();
+  URL.revokeObjectURL(href);
 }
 
 function eventColumnLabel(column: FiscalEventColumn, t: VerifactuTranslator) {

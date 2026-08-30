@@ -117,7 +117,8 @@ public class ParkedSale {
                 false,
                 lines(snapshot),
                 clean((String) snapshot.get("comentarioInterno")),
-                decimal(snapshot.getOrDefault("documentDiscountPercent", "0")));
+                decimal(snapshot.getOrDefault("documentDiscountPercent", "0")),
+                Boolean.TRUE.equals(snapshot.get("wholesaleMode")));
     }
     // Reconstruye el ticket borrador que se entrega al terminal al abrir la venta.
 
@@ -172,6 +173,7 @@ public class ParkedSale {
         value.put("descuentoGlobal", command.descuentoGlobal().toPlainString());
         value.put("documentDiscountPercent", (command.documentDiscountPercent() == null
                 ? BigDecimal.ZERO : command.documentDiscountPercent()).toPlainString());
+        value.put("wholesaleMode", command.wholesaleMode());
         value.put("comentarioInterno", clean(command.comentarioInterno()));
         value.put("lineas", command.lineas().stream().map(ParkedSale::snapshot).toList());
         return value;

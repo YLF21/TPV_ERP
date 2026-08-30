@@ -378,6 +378,47 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
+    void recordsStableReservationCauseAndHandlerStageOnTheRequest() {
+        var request = new MockHttpServletRequest("POST", "/api/v1/pos/payment-sessions");
+
+        var problem = handler.memberBalanceReservationConflictProblem(
+                new com.tpverp.backend.party.loyalty.central.MemberBalanceReservationConflictException(
+                        "reservation conflict detail", null),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("MEMBER_BALANCE_RESERVED_ELSEWHERE", problem.getProperties().get("code"));
+        assertEquals(
+                "MEMBER_BALANCE_RESERVED_ELSEWHERE",
+                request.getAttribute(ApiExceptionContext.CAUSE_CODE_ATTRIBUTE));
+        assertEquals(
+                ApiExceptionContext.API_EXCEPTION_HANDLER_STAGE,
+                request.getAttribute(ApiExceptionContext.STAGE_ATTRIBUTE));
+        assertEquals(
+                CorrelationIdFilter.getOrCreate(request),
+                problem.getProperties().get("traceId"));
+    }
+
+    @Test
+    void keepsOfficialSyncResponseCodeCompatibleWhileRecordingSpecificAuditCause() {
+        var request = new MockHttpServletRequest("GET", "/api/v1/pos/member-wallet");
+
+        var problem = handler.memberBalanceOfficialSyncRequired(
+                new com.tpverp.backend.party.MemberBalanceOfficialSyncRequiredException(),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("STATE_CONFLICT", problem.getProperties().get("code"));
+        assertEquals("El saldo de miembro necesita sincronizacion reciente", problem.getDetail());
+        assertEquals(
+                "MEMBER_BALANCE_OFFICIAL_SYNC_REQUIRED",
+                request.getAttribute(ApiExceptionContext.CAUSE_CODE_ATTRIBUTE));
+        assertEquals(
+                ApiExceptionContext.API_EXCEPTION_HANDLER_STAGE,
+                request.getAttribute(ApiExceptionContext.STAGE_ATTRIBUTE));
+    }
+
+    @Test
     void reportsFinalizedPaymentSessionsAsClosedButNotRetryable() {
         var request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en");

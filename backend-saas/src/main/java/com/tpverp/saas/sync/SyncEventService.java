@@ -26,6 +26,7 @@ public class SyncEventService {
 
     private MemberPointsSyncProjector memberPointsSyncProjector;
     private FiscalStatusSyncProjector fiscalStatusSyncProjector;
+    private MemberReturnBalanceRecoveryProjector retentionRecoveryProjector;
 
     @org.springframework.beans.factory.annotation.Autowired
     void setMemberPointsSyncProjector(MemberPointsSyncProjector memberPointsSyncProjector) {
@@ -35,6 +36,11 @@ public class SyncEventService {
     @org.springframework.beans.factory.annotation.Autowired
     void setFiscalStatusSyncProjector(FiscalStatusSyncProjector fiscalStatusSyncProjector) {
         this.fiscalStatusSyncProjector = fiscalStatusSyncProjector;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setRetentionRecoveryProjector(MemberReturnBalanceRecoveryProjector projector) {
+        this.retentionRecoveryProjector = projector;
     }
 
     private final SaasInstallationRepository installations;
@@ -66,7 +72,8 @@ public class SyncEventService {
     @Transactional(noRollbackFor = {
             MemberWalletSyncProjector.ProjectionException.class,
             MemberPointsSyncProjector.ProjectionException.class,
-            FiscalStatusSyncProjector.ProjectionException.class
+            FiscalStatusSyncProjector.ProjectionException.class,
+            MemberReturnBalanceRecoveryProjector.ProjectionException.class
     })
     public SyncEventReceipt receive(SyncEventRequest request, String token) {
         SaasInstallation installation = authenticate(request, token);
@@ -116,7 +123,8 @@ public class SyncEventService {
     private void project(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
         if (!(memberPointsSyncProjector.supports(request.entityType(), request.operation())
                 || walletProjector.supports(request.entityType(), request.operation())
-                || fiscalStatusSyncProjector.supports(request.entityType(), request.operation()))) {
+                || fiscalStatusSyncProjector.supports(request.entityType(), request.operation())
+                || retentionRecoveryProjector.supports(request.entityType(), request.operation()))) {
             event.markIgnored(projectedAt);
             return;
         }
@@ -126,6 +134,8 @@ public class SyncEventService {
                 memberPointsSyncProjector.project(event, request.payload(), event.getReceivedAt());
             } else if (fiscalStatusSyncProjector.supports(request.entityType(), request.operation())) {
                 fiscalStatusSyncProjector.project(event, request.payload(), event.getReceivedAt());
+            } else if (retentionRecoveryProjector.supports(request.entityType(), request.operation())) {
+                retentionRecoveryProjector.project(event, request.payload(), event.getReceivedAt());
             } else {
                 walletProjector.project(event, request.payload(), event.getReceivedAt());
             }
@@ -139,6 +149,10 @@ public class SyncEventService {
             events.saveAndFlush(event);
             throw exception;
         } catch (FiscalStatusSyncProjector.ProjectionException exception) {
+            event.markFailed(exception.getReason());
+            events.saveAndFlush(event);
+            throw exception;
+        } catch (MemberReturnBalanceRecoveryProjector.ProjectionException exception) {
             event.markFailed(exception.getReason());
             events.saveAndFlush(event);
             throw exception;

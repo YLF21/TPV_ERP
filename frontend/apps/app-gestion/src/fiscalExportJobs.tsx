@@ -11,10 +11,12 @@ import {
   type FiscalExportKind,
   type FiscalExportJobScope
 } from "./verifactuManagementApi";
-import { downloadFiscalExportBlob } from "./fiscalExportDownload";
+import { submitFiscalExportDownload } from "./fiscalExportDownload";
 import type { VerifactuTranslator } from "./verifactuPresentation";
+import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 
 const ACTIVE_JOB_STATUSES: readonly FiscalExportJobStatus[] = ["QUEUED", "RUNNING"];
+export const FISCAL_EXPORT_JOB_PAGE_SIZE = 100;
 
 export type FiscalExportJobEntry = FiscalExportJob & {
   request?: FiscalExportJobRequest;
@@ -77,6 +79,12 @@ export function useFiscalExportJobs(token?: string, canManage = false) {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [downloadId, setDownloadId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState(false);
+  // Large exports are streamed by the browser; there is intentionally no
+  // client-side size gate or Blob allocation.
+  const downloadTooLarge = false;
+  const [pageIndex, setPageIndex] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
   const listController = useRef<AbortController | null>(null);
   const createController = useRef<AbortController | null>(null);
   const downloadController = useRef<AbortController | null>(null);
@@ -84,6 +92,19 @@ export function useFiscalExportJobs(token?: string, canManage = false) {
   const createRequestId = useRef(0);
   const retryRequestId = useRef(0);
   const downloadRequestId = useRef(0);
+  const pageIndexRef = useRef(0);
+
+  const loadPage = useCallback(async (requestedPage: number, signal: AbortSignal) => {
+    const safePage = Math.max(0, requestedPage);
+    const page = await loadFiscalExportJobs(token, safePage, FISCAL_EXPORT_JOB_PAGE_SIZE, signal);
+    if (signal.aborted) return null;
+    pageIndexRef.current = page.number ?? safePage;
+    setPageIndex(page.number ?? safePage);
+    setTotalPages(Math.max(1, page.totalPages ?? 1));
+    setTotalElements(Math.max(0, page.totalElements ?? page.content.length));
+    setJobs(page.content.map((job) => ({ ...job, request: job.request })));
+    return page;
+  }, [token]);
 
   const refresh = useCallback(async () => {
     if (!canManage) return;
@@ -93,15 +114,29 @@ export function useFiscalExportJobs(token?: string, canManage = false) {
     setLoading(true);
     setError(false);
     try {
-      const page = await loadFiscalExportJobs(token, 0, 20, controller.signal);
-      if (controller.signal.aborted) return;
-      setJobs(page.content.map((job) => ({ ...job, request: job.request })));
+      await loadPage(pageIndexRef.current, controller.signal);
     } catch {
       if (!controller.signal.aborted) setError(true);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [canManage, token]);
+  }, [canManage, loadPage]);
+
+  const goToPage = useCallback(async (requestedPage: number) => {
+    if (!canManage || loading) return;
+    listController.current?.abort();
+    const controller = new AbortController();
+    listController.current = controller;
+    setLoading(true);
+    setError(false);
+    try {
+      await loadPage(Math.min(Math.max(0, requestedPage), Math.max(0, totalPages - 1)), controller.signal);
+    } catch {
+      if (!controller.signal.aborted) setError(true);
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [canManage, loadPage, loading, totalPages]);
 
   useEffect(() => {
     if (!canManage) {
@@ -133,8 +168,12 @@ export function useFiscalExportJobs(token?: string, canManage = false) {
       while (!controller.signal.aborted) {
         try {
           await delayWithSignal(wait, controller.signal);
-          const page = await loadFiscalExportJobs(token, 0, 20, controller.signal);
+          const page = await loadFiscalExportJobs(token, pageIndexRef.current, FISCAL_EXPORT_JOB_PAGE_SIZE, controller.signal);
           if (controller.signal.aborted) return;
+          pageIndexRef.current = page.number ?? pageIndexRef.current;
+          setPageIndex(page.number ?? pageIndexRef.current);
+          setTotalPages(Math.max(1, page.totalPages ?? 1));
+          setTotalElements(Math.max(0, page.totalElements ?? page.content.length));
           setJobs((current) => page.content.map((job) => ({ ...job, request: job.request ?? current.find((item) => item.id === job.id)?.request })));
           wait = Math.min(10000, Math.round(wait * 1.5));
         } catch {
@@ -220,10 +259,9 @@ export function useFiscalExportJobs(token?: string, canManage = false) {
     setDownloadId(job.id);
     setDownloadError(false);
     try {
-      const blob = await downloadFiscalExportJob(job.id, token, controller.signal);
+      const downloadToken = await downloadFiscalExportJob(job.id, token, controller.signal);
       if (controller.signal.aborted) return false;
-      const kind = job.kind ?? job.request?.kind ?? "BILLING";
-      downloadFiscalExportBlob(blob, `exportacion-fiscal-${kind.toLowerCase()}-${job.id}.zip`);
+      submitFiscalExportDownload(downloadToken);
       return true;
     } catch {
       if (!controller.signal.aborted) setDownloadError(true);
@@ -233,7 +271,7 @@ export function useFiscalExportJobs(token?: string, canManage = false) {
     }
   }, [canManage, downloadId, token]);
 
-  return { jobs, loading, error, creating, retryingId, downloadId, downloadError, refresh, create, createRequiredSubmissionJob, retry, download };
+  return { jobs, loading, error, creating, retryingId, downloadId, downloadError, downloadTooLarge, pageIndex, totalPages, totalElements, refresh, goToPage, create, createRequiredSubmissionJob, retry, download };
 }
 
 export function FiscalExportJobsList({
@@ -242,34 +280,44 @@ export function FiscalExportJobsList({
   error,
   downloadId,
   downloadError,
+  downloadTooLarge = false,
   onRefresh,
   onRetry,
   onDownload,
-  t
+  t,
+  pageIndex = 0,
+  totalPages = 1,
+  totalElements = jobs.length,
+  onPageChange
 }: {
   jobs: FiscalExportJobEntry[];
   loading: boolean;
   error: boolean;
   downloadId: string | null;
   downloadError: boolean;
+  downloadTooLarge?: boolean;
   onRefresh: () => void;
   onRetry: (id: string) => void;
   onDownload: (job: FiscalExportJobEntry) => void;
   t: VerifactuTranslator;
+  pageIndex?: number;
+  totalPages?: number;
+  totalElements?: number;
+  onPageChange?: (page: number) => void;
 }) {
   const currentJobId = jobs.find(isFiscalExportJobActive)?.id;
   return <section className="gestion-fiscal-export-jobs" aria-label={t("verifactu.exportJobs.recentTitle")}>
     <header><h3>{t("verifactu.exportJobs.recentTitle")}</h3><button type="button" onClick={onRefresh} disabled={loading}>{t("verifactu.exportJobs.refresh")}</button></header>
     {loading && <p className="gestion-verifactu-message" role="status">{t("verifactu.exportJobs.loading")}</p>}
     {error && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.exportJobs.error")} <button type="button" onClick={onRefresh}>{t("verifactu.exportJobs.retry")}</button></p>}
-    {downloadError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.exportJobs.downloadError")}</p>}
+    {downloadError && <p className="gestion-verifactu-message error" role="alert">{downloadTooLarge ? t("verifactu.exportJobs.downloadTooLarge") : t("verifactu.exportJobs.downloadError")}</p>}
     {!loading && !error && jobs.length === 0 && <p className="gestion-verifactu-message">{t("verifactu.exportJobs.empty")}</p>}
     {!loading && !error && jobs.length > 0 && <ul>
       {jobs.map((job) => <li key={job.id}>
         <div><strong>{fiscalExportJobKindLabel(job.kind ?? job.request?.kind, t)}</strong>{fiscalExportJobScopeLabel(job.scope, t) && <span>{fiscalExportJobScopeLabel(job.scope, t)}</span>}{job.id === currentJobId && <span>{t("verifactu.exportJobs.current")}</span>}<span>{fiscalExportJobStatusLabel(job.status, t)}</span></div>
         <span>{job.processed} {t("verifactu.exportJobs.processed")}</span>
         <span>{formatJobDate(job.createdAt)}{job.fileSize > 0 ? ` · ${formatFileSize(job.fileSize)}` : ""}</span>
-        {job.status === "FAILED" && <span>{t("verifactu.exportJobs.failedHint")}</span>}
+        {job.status === "FAILED" && <span>{fiscalErrorMessage(job.error, t) ?? t("verifactu.exportJobs.failedHint")}</span>}
         {job.status === "EXPIRED" && <span>{t("verifactu.exportJobs.expiredHint")}</span>}
         <div>
           {job.status === "COMPLETED" && job.downloadAvailable && <button type="button" disabled={downloadId === job.id || downloadId !== null} onClick={() => onDownload(job)}>{downloadId === job.id ? t("verifactu.exportJobs.downloading") : t("verifactu.exportJobs.download")}</button>}
@@ -277,6 +325,11 @@ export function FiscalExportJobsList({
         </div>
       </li>)}
     </ul>}
+    {!loading && !error && totalPages > 1 && <nav className="gestion-fiscal-export-jobs-pagination" aria-label={t("verifactu.exportJobs.page")}>
+      <button type="button" disabled={pageIndex <= 0} onClick={() => onPageChange?.(pageIndex - 1)}>{t("verifactu.exportJobs.previous")}</button>
+      <span aria-live="polite">{pageIndex + 1} / {totalPages} · {totalElements.toLocaleString()}</span>
+      <button type="button" disabled={pageIndex >= totalPages - 1} onClick={() => onPageChange?.(pageIndex + 1)}>{t("verifactu.exportJobs.next")}</button>
+    </nav>}
   </section>;
 }
 

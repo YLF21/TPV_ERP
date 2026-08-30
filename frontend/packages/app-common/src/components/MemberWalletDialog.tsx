@@ -7,10 +7,12 @@ export type MemberWalletLocale = "es" | "en" | "zh";
 export type MemberWalletLot = {
   id: string;
   type: "LOYALTY" | "RETURN_CREDIT";
-  documentId?: string;
+  documentId?: string | null;
+  documentNumber?: string | null;
   sourceMovementType: string;
   originalAmount: number | string;
   availableAmount: number | string;
+  heldAmount?: number | string;
   obtainedAt: string;
   expiresAt?: string;
 };
@@ -19,6 +21,9 @@ export type MemberWalletDialogProps = {
   locale: MemberWalletLocale;
   lots: MemberWalletLot[];
   maxAmountCents: number;
+  totalAvailableCents: number;
+  availableAmountCents: number;
+  retentionHeldCents?: number;
   busy?: boolean;
   error?: string;
   onCancel: () => void;
@@ -35,15 +40,19 @@ type Copy = {
   originDocument: string;
   obtainedAt: string;
   available: string;
+  held: string;
   expiresAt: string;
   loyalty: string;
   returnCredit: string;
-  document: string;
   noDocument: string;
   noExpiration: string;
   amount: string;
-  maximum: string;
   amountHint: string;
+  totalAvailable: string;
+  maximumForSale: string;
+  retentionHeld: string;
+  documentNumber: string;
+  documentNumberUnavailable: string;
   invalidAmount: string;
   positiveAmount: string;
   exceedsMaximum: string;
@@ -64,15 +73,19 @@ const COPY: Record<MemberWalletLocale, Copy> = {
     type: "Tipo",
     originDocument: "Origen / documento",
     obtainedAt: "Fecha de obtención",
-    available: "Disponible",
+    available: "Disponible neto",
+    held: "Bloqueo parcial",
     expiresAt: "Caducidad",
     loyalty: "Saldo socio",
     returnCredit: "Saldo por devolución",
-    document: "Documento",
     noDocument: "Sin documento asociado",
     noExpiration: "No caduca",
     amount: "Cantidad a consumir",
-    maximum: "Máximo disponible",
+    totalAvailable: "Total bruto",
+    maximumForSale: "Máximo aplicable a esta venta",
+    retentionHeld: "Bloqueo parcial de saldo",
+    documentNumber: "Nº documento",
+    documentNumberUnavailable: "Nº de documento no disponible",
     amountHint: "Introduce un importe mayor que 0 y no superior al máximo disponible.",
     invalidAmount: "Introduce un importe válido con un máximo de dos decimales.",
     positiveAmount: "La cantidad debe ser mayor que 0.",
@@ -101,15 +114,19 @@ const COPY: Record<MemberWalletLocale, Copy> = {
     type: "Type",
     originDocument: "Origin / document",
     obtainedAt: "Obtained on",
-    available: "Available",
+    available: "Net available",
+    held: "Partial hold",
     expiresAt: "Expiry",
     loyalty: "Loyalty balance",
     returnCredit: "Return credit",
-    document: "Document",
     noDocument: "No associated document",
     noExpiration: "Does not expire",
     amount: "Amount to use",
-    maximum: "Maximum available",
+    totalAvailable: "Gross total",
+    maximumForSale: "Maximum applicable to this sale",
+    retentionHeld: "Partial balance hold",
+    documentNumber: "Document No.",
+    documentNumberUnavailable: "Document number unavailable",
     amountHint: "Enter an amount greater than 0 and no higher than the available maximum.",
     invalidAmount: "Enter a valid amount with no more than two decimal places.",
     positiveAmount: "The amount must be greater than 0.",
@@ -138,15 +155,19 @@ const COPY: Record<MemberWalletLocale, Copy> = {
     type: "类型",
     originDocument: "来源 / 单据",
     obtainedAt: "取得日期",
-    available: "可用金额",
+    available: "净可用余额",
+    held: "部分锁定",
     expiresAt: "到期时间",
     loyalty: "会员奖励余额",
     returnCredit: "退货余额",
-    document: "单据",
     noDocument: "无关联单据",
     noExpiration: "永不过期",
     amount: "使用金额",
-    maximum: "最大可用金额",
+    totalAvailable: "总额（毛额）",
+    maximumForSale: "本次销售可用上限",
+    retentionHeld: "余额部分锁定",
+    documentNumber: "单据编号",
+    documentNumberUnavailable: "单据编号不可用",
     amountHint: "请输入大于 0 且不超过最大可用余额的金额。",
     invalidAmount: "请输入有效金额，最多保留两位小数。",
     positiveAmount: "金额必须大于 0。",
@@ -178,6 +199,9 @@ export function MemberWalletDialog({
   locale,
   lots,
   maxAmountCents,
+  totalAvailableCents,
+  availableAmountCents,
+  retentionHeldCents = 0,
   busy = false,
   error,
   onCancel,
@@ -272,7 +296,10 @@ export function MemberWalletDialog({
         >
           <div className="member-wallet-section-heading">
             <h3 id={lotsTitleId}>{copy.lotsTitle}</h3>
-            <strong>{copy.maximum}: {formatMoneyFromCents(safeMaximumCents, locale)}</strong>
+            <span className="member-wallet-balance-summary">
+              <strong>{copy.totalAvailable}: {formatMoneyFromCents(totalAvailableCents, locale)}</strong>
+              <strong>{copy.available}: {formatMoneyFromCents(availableAmountCents, locale)}</strong>
+            </span>
           </div>
 
           <div className="member-wallet-table-region" role="region" aria-labelledby={lotsTitleId} tabIndex={0}>
@@ -283,17 +310,18 @@ export function MemberWalletDialog({
                   <th scope="col">{copy.originDocument}</th>
                   <th scope="col">{copy.obtainedAt}</th>
                   <th scope="col" className="member-wallet-money-column">{copy.available}</th>
+                  <th scope="col" className="member-wallet-money-column">{copy.held}</th>
                   <th scope="col">{copy.expiresAt}</th>
                 </tr>
               </thead>
               <tbody>
                 {lots.length === 0 && (
                   <tr>
-                    <td className="member-wallet-empty" colSpan={5}>{copy.noLots}</td>
+                    <td className="member-wallet-empty" colSpan={6}>{copy.noLots}</td>
                   </tr>
                 )}
                 {lots.map((lot) => (
-                  <tr key={lot.id}>
+                  <tr key={lot.id} className={Number(lot.heldAmount ?? 0) > 0 ? "member-wallet-lot-partial-hold" : undefined}>
                     <td>
                       <span className={`member-wallet-type member-wallet-type-${lot.type.toLowerCase()}`}>
                         {lot.type === "LOYALTY" ? copy.loyalty : copy.returnCredit}
@@ -301,13 +329,23 @@ export function MemberWalletDialog({
                     </td>
                     <td className="member-wallet-origin">
                       <strong>{sourceLabel(lot.sourceMovementType, copy)}</strong>
-                      <span title={lot.documentId}>
-                        {lot.documentId ? `${copy.document}: ${lot.documentId}` : copy.noDocument}
+                      <span>
+                        {lot.documentId == null
+                          ? copy.noDocument
+                          : lot.documentNumber?.trim()
+                            ? `${copy.documentNumber}: ${lot.documentNumber.trim()}`
+                            : copy.documentNumberUnavailable}
                       </span>
                     </td>
                     <td>{formatDate(lot.obtainedAt, locale)}</td>
                     <td className="member-wallet-money-column">
-                      <strong>{formatMoney(lot.availableAmount, locale)}</strong>
+                      <strong>{formatMoney(
+                        Math.max(0, Number(lot.availableAmount) - Number(lot.heldAmount ?? 0)),
+                        locale,
+                      )}</strong>
+                    </td>
+                    <td className="member-wallet-money-column">
+                      {Number(lot.heldAmount ?? 0) > 0 ? formatMoney(lot.heldAmount!, locale) : "—"}
                     </td>
                     <td>{lot.expiresAt ? formatExpiration(lot.expiresAt, locale) : copy.noExpiration}</td>
                   </tr>
@@ -337,7 +375,10 @@ export function MemberWalletDialog({
               />
               <span aria-hidden="true">€</span>
             </div>
-            <strong id={maximumId}>{copy.maximum}: {formatMoneyFromCents(safeMaximumCents, locale)}</strong>
+            <strong id={maximumId}>{copy.maximumForSale}: {formatMoneyFromCents(safeMaximumCents, locale)}</strong>
+            {retentionHeldCents > 0 && <small className="member-wallet-retention-held" role="status">
+              {copy.retentionHeld}: {formatMoneyFromCents(retentionHeldCents, locale)}
+            </small>}
             <small id={amountHintId}>{copy.amountHint}</small>
           </div>
 

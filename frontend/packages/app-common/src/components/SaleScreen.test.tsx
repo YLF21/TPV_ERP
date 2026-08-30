@@ -52,6 +52,9 @@ import {
   saleLineSubtotal,
   saleLineUnitPrice,
   saleDisplayedTotal,
+  memberBalanceReadyForCheckout,
+  effectiveSaleLineTaxIncluded,
+  saleCartTaxLabelVisible,
   saleOfferIsCurrent,
   saleProductBlocksManualDiscount,
   saleProductRequiresOpenPrice,
@@ -66,10 +69,12 @@ import {
   saleDocumentDiscountTotal,
   saleDocumentDiscountOperand,
   saleTotal,
+  saleSerialNumbersReady,
   selectSaleProduct,
   updateSaleLineDiscount,
   updateSaleLineQuantity,
   updateSaleLineSerialNumbers,
+  updateSaleLineTemporaryPrice,
   type SaleCustomer,
   type SaleLine,
   type SaleProduct,
@@ -78,6 +83,7 @@ import {
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { TerminalContext, UserSession } from "../types";
 import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import { memberBalanceRetentionKey } from "../sale/memberBalanceReservation";
 import { defaultHardwareConfig, type HardwareBridge } from "../hardware/hardware";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
@@ -88,7 +94,12 @@ import {
 } from "../sale/cashCloseRecovery";
 
 type CheckoutMockProps = {
+  memberBalanceAvailableCents?: number;
+  memberBalanceEligibleTotalCents?: number;
+  pricingReady?: boolean;
+  onMemberBalance?: (amountCents: number) => void;
   testCashEnabled?: boolean;
+  memberCreditEligible?: boolean;
   disabled?: boolean;
   showIndividualActions?: boolean;
   sale?: {
@@ -109,11 +120,19 @@ type CheckoutMockProps = {
     };
     quoteFingerprint?: string;
   };
+  memberWallet?: {
+    lots?: Array<{
+      id: string;
+      documentNumber?: string;
+      heldAmount?: number;
+    }>;
+  } | null;
   onCash?: () => void;
   onPending?: () => void;
   onDiscount?: (amountCents: number) => void;
   onHydrationChange?: (hydrated: boolean) => void;
   onLockedChange?: (locked: boolean, reservedTotalCents?: number) => void;
+  onReservationFinalized?: (reservationCommitted: boolean) => void | Promise<void>;
   saleMutationAuthorizations?: Array<{
     code: string;
     label: string;
@@ -130,6 +149,18 @@ type CheckoutMockProps = {
     nonFiscalSummary?: ConfirmedTicketPrintSnapshot,
   ) => void;
 };
+
+describe("sale fiscal display contract", () => {
+  it("shows the tax-excluded label only for the effective false flag", () => {
+    expect(saleCartTaxLabelVisible(effectiveSaleLineTaxIncluded(true))).toBe(false);
+    expect(saleCartTaxLabelVisible(effectiveSaleLineTaxIncluded(false))).toBe(true);
+  });
+
+  it("uses the historical/authoritative fiscal snapshot over a changed catalogue flag", () => {
+    expect(effectiveSaleLineTaxIncluded(true, false)).toBe(false);
+    expect(saleCartTaxLabelVisible(effectiveSaleLineTaxIncluded(true, false))).toBe(true);
+  });
+});
 
 const {
   prepareApplicationClose,
@@ -172,11 +203,24 @@ vi.mock("../sale/operationSecurity", async (importOriginal) => {
 });
 
 vi.mock("./SalePaymentCheckout", async () => {
-  const { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } = await import("react");
+  const { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } = await import("react");
   return {
     SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
       const wasDisabled = useRef(true);
+      const [walletOpen, setWalletOpen] = useState(false);
+      const f10FixtureLot = props.memberWallet?.lots?.find((lot) => lot.id === "lot-f10-claim");
+      useEffect(() => {
+        if (!f10FixtureLot) return;
+        const handleF10 = (event: KeyboardEvent) => {
+          if (event.key !== "F10") return;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setWalletOpen(true);
+        };
+        window.addEventListener("keydown", handleF10, true);
+        return () => window.removeEventListener("keydown", handleF10, true);
+      }, [f10FixtureLot]);
       useEffect(() => { props.onHydrationChange?.(true); props.onLockedChange?.(false); }, []);
       useImperativeHandle(checkoutHandle.attached ? ref : null, () => ({
         prepareApplicationClose,
@@ -191,7 +235,16 @@ vi.mock("./SalePaymentCheckout", async () => {
         }
         wasDisabled.current = Boolean(props.disabled);
       }, [props.disabled]);
-      return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>;
+      return <>
+        <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>
+        {walletOpen && f10FixtureLot && <section role="dialog" aria-label="Saldo socio">
+          <table><tbody><tr className={f10FixtureLot.heldAmount && f10FixtureLot.heldAmount > 0
+            ? "member-wallet-lot-partial-hold" : undefined}>
+            <td>{f10FixtureLot.documentNumber}</td>
+            <td>{f10FixtureLot.heldAmount?.toFixed(2)}</td>
+          </tr></tbody></table>
+        </section>}
+      </>;
     })
   };
 });
@@ -218,6 +271,7 @@ afterEach(() => {
   checkoutProps.current = null;
   verifactuIndicatorProps.current = null;
   localStorage.clear();
+  sessionStorage.clear();
   delete window.tpvDesktop;
 });
 
@@ -504,6 +558,7 @@ function authoritativeQuote(product: SaleProduct, total = "10.00", couponDiscoun
   return {
     total,
     productTotal: "10.00",
+    memberBalanceEligibleTotal: "10.00",
     promotionPreview: { appliedPromotions: [] },
     pricingVersion: 2,
     quoteFingerprint: `quote-${total}-${couponDiscount}`,
@@ -598,6 +653,658 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  it("validates required serial numbers exactly, including cross-line duplicates", () => {
+    const product: SaleProduct = { ...products[0], productType: "UNIT", requiresSerialNumber: true };
+    const line = (serialNumbers: string[], quantity = serialNumbers.length): SaleLine => ({ product, quantity, discountPercent: 0, serialNumbers });
+    expect(saleSerialNumbersReady([line(["A", "B"], 2)])).toBe(true);
+    expect(saleSerialNumbersReady([line(["A"], 2)])).toBe(false);
+    expect(saleSerialNumbersReady([line(["A", "A"], 2)])).toBe(false);
+    expect(saleSerialNumbersReady([line(["A"]), line(["a"])] )).toBe(false);
+  });
+
+  it("toggles wholesale mode on an empty cart and sends it with the next quote", async () => {
+    const quoteBodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.includes("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (path.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (path.endsWith("/pos/sales/quote")) {
+        quoteBodies.push(JSON.parse(String(options?.body)));
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
+    expect(screen.getByText("MAYORISTA")).toBeInTheDocument();
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(quoteBodies.length).toBeGreaterThan(0));
+    expect(quoteBodies.at(-1)?.wholesaleMode).toBe(true);
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
+    expect(screen.getByText("MAYORISTA")).toBeInTheDocument();
+    expect(screen.getByText("Ctrl+M solo puede cambiar el modo con el carrito vacío")).toBeInTheDocument();
+  });
+
+  it("keeps checkout available when a member balance reservation is already used", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "25.00" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const parsed = new URL(url, "http://localhost");
+      if (parsed.pathname.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (parsed.pathname.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (parsed.pathname.includes("/customers/sale-options")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (parsed.pathname.endsWith("/member-balance-reservations")) {
+        return new Response(JSON.stringify({ code: "MEMBER_BALANCE_RESERVED_ELSEWHERE", detail: "reserved" }), { status: 409 });
+      }
+      if (parsed.pathname.endsWith("/pos/sales/quote")) {
+        const { memberBalanceEligibleTotal: _missingEligibleTotal, ...quoteWithoutEligibleTotal } = authoritativeQuote(products[0]);
+        return new Response(JSON.stringify(quoteWithoutEligibleTotal), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+    renderSaleScreen();
+    const productSearch = await screen.findByRole("combobox", { name: "Buscar producto" });
+    submitQuickEntry(productSearch, products[0].name ?? "");
+    await confirmProductSearchWithInsert(new RegExp(products[0].name ?? ""));
+    const customerButton = await screen.findByRole("button", { name: /Cliente:/ });
+    fireEvent.click(customerButton);
+    const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByText(member.fiscalName!));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+    await waitFor(() => expect(screen.getByText(/no se ha podido confirmar el estado/i)).toBeInTheDocument());
+    await waitFor(() => expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(0));
+    expect(screen.getByText("No disponible")).toBeInTheDocument();
+    expect(checkoutProps.current?.pricingReady).toBe(false);
+    expect(checkoutProps.current?.disabled).toBe(false);
+    expect(checkoutProps.current?.onMemberBalance).toBeTypeOf("function");
+  });
+
+  it("resolves a duplicate through the central retry endpoint and prevents a double click", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "25.00" };
+    let reserveCalls = 0;
+    let retryCalls = 0;
+    let releaseRetry!: (response: Response) => void;
+    const retryResponse = new Promise<Response>((resolve) => { releaseRetry = resolve; });
+    const retryBodies: Array<{ customerId?: string; saleId?: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const parsed = new URL(url, "http://localhost");
+      if (parsed.pathname.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (parsed.pathname.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (parsed.pathname.includes("/customers/sale-options")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (parsed.pathname.endsWith("/member-balance-reservations")) {
+        reserveCalls += 1;
+        return new Response(JSON.stringify({ code: "MEMBER_BALANCE_RESERVED_ELSEWHERE", detail: "reserved" }), { status: 409 });
+      }
+      if (parsed.pathname.endsWith("/member-balance-reservations/retry")) {
+        retryCalls += 1;
+        retryBodies.push(JSON.parse(String(options?.body ?? "{}")) as { customerId?: string; saleId?: string });
+        return retryResponse;
+      }
+      if (parsed.pathname.endsWith("/member-balance-reservations/reservation-recovered/heartbeat")) {
+        return new Response(JSON.stringify({
+          status: "ACTIVE",
+          reservedLoyaltyAmount: "4.25",
+          reservedReturnCreditAmount: "0.75",
+        }), { status: 200 });
+      }
+      if (parsed.pathname.endsWith("/member-wallet")) {
+        return new Response(JSON.stringify({
+          loyaltyAvailable: "4.25", returnCreditAvailable: "0.75", totalAvailable: "5.00", lots: [],
+        }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente:/ }));
+    const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByText(member.fiscalName!));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+
+    await screen.findByText(/no se ha podido confirmar el estado/i);
+    const retry = screen.getByRole("button", { name: "Reintentar" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(retryCalls).toBe(1));
+    expect(retry).toBeDisabled();
+    expect(retryBodies[0]?.customerId).toBe(member.id);
+    expect(retryBodies[0]?.saleId).toBeTruthy();
+
+    const saleId = retryBodies[0]?.saleId;
+    releaseRetry(new Response(JSON.stringify({
+      outcome: "RECOVERED", reservationId: "reservation-recovered", saleId,
+    }), { status: 200 }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument());
+    await waitFor(() => expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(500));
+    expect(reserveCalls).toBe(1);
+  });
+
+  it.each([
+    ["BLOCKED_LIVE_SALE", /operación activa o recién interrumpida/i],
+    ["BLOCKED_OTHER_TERMINAL", /otra caja/i],
+    ["RECOVERY_PENDING", /pendiente/i],
+  ] as const)("shows the localized message for %s without retrying blindly", async (outcome, message) => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "25.00" };
+    let reserveCalls = 0;
+    let retryCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const parsed = new URL(url, "http://localhost");
+      if (parsed.pathname.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (parsed.pathname.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (parsed.pathname.includes("/customers/sale-options")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (parsed.pathname.endsWith("/member-balance-reservations")) {
+        reserveCalls += 1;
+        return new Response(JSON.stringify({ code: "MEMBER_BALANCE_RESERVED_ELSEWHERE", detail: "reserved" }), { status: 409 });
+      }
+      if (parsed.pathname.endsWith("/member-balance-reservations/retry")) {
+        retryCalls += 1;
+        const body = JSON.parse(String(options?.body ?? "{}")) as { saleId?: string };
+        return new Response(JSON.stringify({ outcome, saleId: body.saleId, blockingSaleId: "blocking-sale" }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente:/ }));
+    const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByText(member.fiscalName!));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+    await screen.findByText(/no se ha podido confirmar el estado/i);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(message));
+    expect(retryCalls).toBe(1);
+    expect(reserveCalls).toBe(1);
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeEnabled();
+  });
+
+  it("keeps a wallet GET failure stable and retries it only from the explicit localized action", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "25.00" };
+    let walletCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const parsed = new URL(url, "http://localhost");
+      if (parsed.pathname.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (parsed.pathname.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (parsed.pathname.includes("/customers/sale-options")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (parsed.pathname.endsWith("/member-balance-reservations")) {
+        return new Response(JSON.stringify({ reservationId: "reservation-wallet-retry", status: "ACTIVE", reservedLoyaltyAmount: "25.00", reservedReturnCreditAmount: "0.00" }), { status: 200 });
+      }
+      if (parsed.pathname.endsWith("/heartbeat")) {
+        return new Response(JSON.stringify({ status: "ACTIVE", reservedLoyaltyAmount: "25.00", reservedReturnCreditAmount: "0.00" }), { status: 200 });
+      }
+      if (parsed.pathname.endsWith("/member-wallet")) {
+        walletCalls += 1;
+        if (walletCalls === 1) return new Response(JSON.stringify({ code: "WALLET_UNAVAILABLE" }), { status: 503 });
+        return new Response(JSON.stringify({
+          loyaltyAvailable: "25.00", returnCreditAvailable: "0.00", totalAvailable: "25.00", lots: [],
+        }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+    try {
+      renderSaleScreen();
+      fireEvent.click(await screen.findByRole("button", { name: /Cliente:/ }));
+      const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+      await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
+      vi.useFakeTimers();
+      fireEvent.click(within(dialog).getByText(member.fiscalName!));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByText("No disponible")).toBeInTheDocument();
+      expect(walletCalls).toBe(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(120_001); });
+      expect(walletCalls).toBe(1);
+      const retry = screen.getByRole("button", { name: "Reintentar" });
+      fireEvent.click(retry);
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(walletCalls).toBe(2);
+      expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(2500);
+      expect(screen.queryByText("No disponible")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens F10 wallet and highlights the held lot by id without mutating wallet data", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "25.00" };
+    const reservationId = "reservation-f10-claim";
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const parsed = new URL(url, "http://localhost");
+      const path = parsed.pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify(products), { status: 200 });
+      if (path.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (path.includes("/customers/sale-options/search")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (path.endsWith("/member-balance-reservations")) return new Response(JSON.stringify({
+        reservationId,
+        status: "ACTIVE",
+        reservedLoyaltyAmount: "25.00",
+        reservedReturnCreditAmount: "0.00",
+        reservedLots: [{
+          lotId: "lot-f10-claim",
+          balanceType: "LOYALTY",
+          remainingAmount: "0.05",
+          heldAmount: "0.04",
+        }],
+      }), { status: 200 });
+      if (path.endsWith("/member-wallet")) return new Response(JSON.stringify({
+        loyaltyAvailable: "25.00",
+        returnCreditAvailable: "0.00",
+        totalAvailable: "25.00",
+        lots: [{
+          id: "lot-f10-claim",
+          type: "LOYALTY",
+          sourceMovementType: "ACUMULACION_SALDO",
+          originalAmount: "0.05",
+          availableAmount: "0.05",
+          documentId: "document-001-260829-00003",
+          documentNumber: "001-260829-00003",
+          obtainedAt: "2026-08-29T10:00:00Z",
+        }],
+      }), { status: 200 });
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente:/ }));
+    const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByText(member.fiscalName!));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+    await waitFor(() => expect(checkoutProps.current?.memberWallet?.lots?.[0]).toMatchObject({
+      id: "lot-f10-claim",
+      documentNumber: "001-260829-00003",
+      heldAmount: 0.04,
+    }));
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const walletDialog = await screen.findByRole("dialog", { name: "Saldo socio" });
+    const row = within(walletDialog).getByText("001-260829-00003").closest("tr");
+    expect(row).toHaveClass("member-wallet-lot-partial-hold");
+    expect(within(row!).getByText("0.04")).toBeInTheDocument();
+  });
+
+  it("passes the authoritative eligible member balance total to checkout in cents", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "20.00" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const parsed = new URL(url, "http://localhost");
+      if (parsed.pathname.endsWith("/products/sale")) return new Response(JSON.stringify([{ ...products[0], salePrice: 12 }]), { status: 200 });
+      if (parsed.pathname.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (parsed.pathname.includes("/customers/sale-options")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (parsed.pathname.endsWith("/member-balance-reservations")) return new Response(JSON.stringify({ reservationId: "reservation-1", status: "ACTIVE", reservedLoyaltyAmount: "20.00", reservedReturnCreditAmount: "0.00" }), { status: 200 });
+      if (parsed.pathname.endsWith("/member-wallet")) return new Response(JSON.stringify({ loyaltyAvailable: "20.00", returnCreditAvailable: "0.00", totalAvailable: "20.00", lots: [] }), { status: 200 });
+      if (parsed.pathname.endsWith("/pos/sales/quote")) {
+        const body = JSON.parse(String(options?.body));
+        expect(body.lines).toHaveLength(1);
+        return new Response(JSON.stringify({
+          ...authoritativeQuote(products[0], "12.00"),
+          memberBalanceEligibleTotal: "2.00",
+        }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    const productSearch = await screen.findByRole("combobox", { name: "Buscar producto" });
+    submitQuickEntry(productSearch, products[0].name!);
+    await confirmProductSearchWithInsert(new RegExp(products[0].name ?? ""));
+    const customerButton = await screen.findByRole("button", { name: /Cliente:/ });
+    fireEvent.click(customerButton);
+    const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByText(member.fiscalName!));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+
+    await waitFor(() => expect(checkoutProps.current?.pricingReady).toBe(true));
+    await waitFor(() => expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(2000));
+    expect(checkoutProps.current?.memberBalanceEligibleTotalCents).toBe(200);
+  });
+
+  it("keeps confirmed return retention and net balance when a positive line is added", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "25.00" };
+    const retentionBodies: Record<string, unknown>[] = [];
+    const reservationId = "reservation-mixed-return";
+    const confirmedRetention = {
+      status: "ACTIVE",
+      retentionRevision: 1,
+      retentionFingerprint: "return-fingerprint-1",
+      retentionAttributedAmount: "2.00",
+      retentionHeldKnown: "2.00",
+      retentionPendingMissing: "0.00",
+      retentionSpentShortfall: "0.00",
+      retentionSpendable: "2.00",
+      retentionRecoveredKnown: "0.00",
+      reservedLoyaltyAmount: "12.00",
+      reservedReturnCreditAmount: "0.00",
+      reservedLots: [{
+        lotId: "lot-return-loyalty",
+        balanceType: "LOYALTY",
+        remainingAmount: "12.00",
+        heldAmount: "2.00",
+      }],
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const parsed = new URL(url, "http://localhost");
+      const path = parsed.pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products.slice(0, 2)), { status: 200 });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      }
+      if (path.includes("/customers/sale-options/search")) {
+        return new Response(JSON.stringify([member]), { status: 200 });
+      }
+      if (path.endsWith("/member-balance-reservations")) {
+        return new Response(JSON.stringify({ reservationId, status: "ACTIVE", reservedLoyaltyAmount: "25.00", reservedReturnCreditAmount: "0.00" }), { status: 200 });
+      }
+      if (path.endsWith("/member-wallet")) return new Response(JSON.stringify({
+        loyaltyAvailable: "25.00",
+        returnCreditAvailable: "0.00",
+        totalAvailable: "25.00",
+        lots: [{
+          id: "lot-return-loyalty",
+          type: "LOYALTY",
+          sourceMovementType: "ACUMULACION_SALDO",
+          originalAmount: "12.00",
+          availableAmount: "12.00",
+          documentId: "document-001-260829-00003",
+          documentNumber: "001-260829-00003",
+          obtainedAt: "2026-08-29T10:00:00Z",
+        }],
+      }), { status: 200 });
+      if (path.endsWith(`/member-balance-reservations/${reservationId}/retention`)) {
+        retentionBodies.push(JSON.parse(String(options?.body)));
+        return new Response(JSON.stringify(confirmedRetention), { status: 200 });
+      }
+      if (path.endsWith("/member-balance-reservations/" + reservationId + "/heartbeat")) {
+        return new Response(JSON.stringify(confirmedRetention), { status: 200 });
+      }
+      if (path.endsWith("/tickets/return-preview")) {
+        return new Response(JSON.stringify({
+          sourceType: "TICKET",
+          sourceCode: "001-260829-00003",
+          ticketId: "ticket-return-1",
+          ticketNumber: "001-260829-00003",
+          date: "2026-08-29",
+          total: "2.00",
+          paymentAvailability: [],
+          lines: [{
+            lineId: "ticket-line-1",
+            productId: "coffee",
+            code: "CAF-001",
+            name: "Cafe molido",
+            lineType: "PRODUCT",
+            productType: "UNIT",
+            refundableQuantity: 1,
+            unitPrice: "2.00",
+            refundableTotal: "2.00",
+            refundableSerialNumbers: [],
+            discount: "0.00",
+            taxesIncluded: true,
+            taxRegime: "IVA",
+            taxPercentage: "21.00",
+          }],
+        }), { status: 200 });
+      }
+      if (path.endsWith("/tickets/return-valuation")) {
+        return new Response(JSON.stringify({
+          selectedGross: "2.00",
+          lostBenefits: "0.00",
+          refundableAmount: "2.00",
+          eligibleRefundableAmount: "2.00",
+          cumulativeEligibleRefundableAmount: "2.00",
+          cumulativeRefundableAmount: "2.00",
+          previouslyRefundedAmount: "0.00",
+          remainingBasketValue: "0.00",
+        }), { status: 200 });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0], "10.00")), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente:/ }));
+    const customerDialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await waitFor(() => expect(within(customerDialog).getByText(member.fiscalName!)).toBeInTheDocument());
+    fireEvent.click(within(customerDialog).getByText(member.fiscalName!));
+    fireEvent.click(within(customerDialog).getByRole("button", { name: "Seleccionar cliente" }));
+    await waitFor(() => expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(2500));
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const returnDialog = await screen.findByRole("dialog", { name: "Devolución por ticket" });
+    fireEvent.change(within(returnDialog).getByLabelText(/ticket o ticket regalo/i), {
+      target: { value: "001-260829-00003" },
+    });
+    fireEvent.click(within(returnDialog).getByRole("button", { name: /Buscar ticket/i }));
+    await within(returnDialog).findByText("Cafe molido");
+    fireEvent.click(within(returnDialog).getByRole("button", { name: /Seleccionar todo el ticket/i }));
+    const addReturn = within(returnDialog).getByRole("button", { name: /carrito en negativo/i });
+    await waitFor(() => expect(addReturn).toBeEnabled());
+    fireEvent.click(addReturn);
+
+    await waitFor(() => expect(retentionBodies).toHaveLength(1));
+    await waitFor(() => expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(1000));
+    const reservationBeforePositive = retentionBodies[0];
+    expect(screen.queryByText("Comprobando…")).not.toBeInTheDocument();
+    expect(document.querySelector(".sale-customer-summary-values")).toHaveTextContent("10,00 €");
+    expect(document.querySelector(".sale-customer-member-balance-value")).toHaveTextContent("10,00 €");
+
+    const positiveSearch = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(positiveSearch).toBeEnabled());
+    submitQuickEntry(positiveSearch, "Pan");
+    await confirmProductSearchWithInsert(/Pan integral/);
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(2));
+    expect(retentionBodies).toHaveLength(1);
+    expect(retentionBodies[0]).toEqual(reservationBeforePositive);
+    expect(checkoutProps.current?.memberBalanceAvailableCents).toBe(1000);
+    expect(screen.queryByText("Comprobando…")).not.toBeInTheDocument();
+    expect(document.querySelector(".sale-customer-summary-values")).toHaveTextContent("10,00 €");
+    expect(document.querySelector(".sale-customer-member-balance-value")).toHaveTextContent("10,00 €");
+  });
+
+  it("returns to sale mode after the unified checkout finalizes", async () => {
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
+    await waitFor(() => expect(screen.getByText("MAYORISTA")).toBeInTheDocument());
+
+    act(() => checkoutProps.current?.onFinalized(
+      printSnapshot("WHOLESALE-FINALIZED"),
+      { kind: "CARD", totalCents: 0 },
+    ));
+
+    expect(screen.getByText("VENTA")).toBeInTheDocument();
+    expect(screen.queryByText("MAYORISTA")).not.toBeInTheDocument();
+  });
+
+  it("recovers a parked wholesale sale, keeps wholesale in quote payloads, and returns to VENTA when cleared", async () => {
+    const quoteBodies: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), { status: 200 });
+      }
+      if (path.endsWith("/parked-sales")) {
+        return new Response(JSON.stringify([{
+          id: "parked-wholesale",
+          createdAt: "2026-08-27T10:00:00Z",
+          total: "10.00",
+        }]), { status: 200 });
+      }
+      if (path.endsWith("/parked-sales/parked-wholesale/recoveries")) {
+        return new Response(JSON.stringify({
+          recoveryId: "recovery-1",
+          parkedSaleId: "parked-wholesale",
+          status: "CLAIMED",
+          sale: {
+            document: {
+              wholesaleMode: true,
+              clienteId: null,
+              comentarioInterno: null,
+              lineas: [{ productoId: products[0].id, cantidad: 1, descuento: 0 }],
+            },
+          },
+        }), { status: 200 });
+      }
+      if (path.endsWith("/parked-sales/parked-wholesale/recoveries/recovery-1/acknowledge")) {
+        return new Response(null, { status: 204 });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        quoteBodies.push(JSON.parse(String(options?.body)));
+        const quote = authoritativeQuote(products[0]);
+        return new Response(JSON.stringify(quote), { status: 200 });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
+    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas aparcadas" });
+    await waitFor(() => expect(within(parkedDialog).getByText("10,00 €")).toBeInTheDocument());
+    fireEvent.keyDown(within(parkedDialog).getByRole("listbox", { name: "Ventas aparcadas" }), { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText("MAYORISTA")).toBeInTheDocument());
+    await waitFor(() => expect(quoteBodies.length).toBeGreaterThan(0));
+    expect(quoteBodies.at(-1)?.wholesaleMode).toBe(true);
+
+    fireEvent.keyDown(window, { key: "F4", ctrlKey: true });
+    const clearDialog = await screen.findByRole("dialog", { name: "Eliminar venta actual" });
+    fireEvent.click(within(clearDialog).getByRole("button", { name: "Eliminar venta" }));
+    await waitFor(() => expect(screen.getByText("VENTA")).toBeInTheDocument());
+    expect(screen.queryByText("MAYORISTA")).not.toBeInTheDocument();
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(quoteBodies.length).toBeGreaterThan(1));
+    expect(quoteBodies.at(-1)?.wholesaleMode).toBe(false);
+  });
+
+  it.each([
+    ["customer request fails", { status: 503, body: { detail: "customer service unavailable" } }],
+    ["customer is missing", { status: 200, body: [] }],
+  ] as const)("keeps parked recovery claim open when %s", async (_caseName, customerResponse) => {
+    const acknowledge = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.includes("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (path.endsWith("/pos/sales/quote")) return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200 });
+      if (path.endsWith("/parked-sales")) return new Response(JSON.stringify([{ id: "parked-customer", createdAt: "2026-08-27T10:00:00Z", total: "10.00" }]), { status: 200 });
+      if (path.endsWith("/parked-sales/parked-customer/recoveries")) return new Response(JSON.stringify({
+        recoveryId: "recovery-customer", parkedSaleId: "parked-customer", status: "CLAIMED",
+        sale: { document: { clienteId: "missing-customer", lineas: [{ productoId: products[0].id, cantidad: 2, descuento: 0 }] } },
+      }), { status: 200 });
+      if (path.endsWith("/parked-sales/parked-customer/recoveries/recovery-customer/acknowledge")) {
+        acknowledge();
+        return new Response(null, { status: 204 });
+      }
+      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify(customerResponse.body), { status: customerResponse.status });
+      throw new Error(`unexpected request ${path} ${String(options?.method ?? "GET")}`);
+    }));
+
+    renderSaleScreen();
+    await screen.findByRole("combobox", { name: "Buscar producto" });
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
+
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
+    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas aparcadas" });
+    await waitFor(() => expect(within(parkedDialog).getByText("10,00 €")).toBeInTheDocument());
+    fireEvent.keyDown(within(parkedDialog).getByRole("listbox", { name: "Ventas aparcadas" }), { key: "Enter" });
+
+    await waitFor(() => expect(within(parkedDialog).getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "Ventas aparcadas" })).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
+    expect(acknowledge).not.toHaveBeenCalled();
+  });
+
+  it("opens serial dialog automatically, quotes while incomplete, and blocks checkout until one serial is entered", async () => {
+    const serialProduct: SaleProduct = { ...products[0], productType: "UNIT", requiresSerialNumber: true };
+    let quoteCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([serialProduct]), { status: 200 });
+      if (path.endsWith("/pos/sales/quote")) {
+        quoteCount += 1;
+        const quote = authoritativeQuote(serialProduct);
+        quote.lineBreakdown[0].productId = serialProduct.id;
+        return new Response(JSON.stringify(quote), { status: 200 });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    const serialDialog = await screen.findByRole("dialog", { name: "N.º de serie del producto" });
+    await waitFor(() => expect(quoteCount).toBeGreaterThan(0));
+    fireEvent.keyDown(window, { key: "PageDown" });
+    expect(triggerCash).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "N.º de serie del producto" })).toBeInTheDocument();
+
+    fireEvent.change(within(serialDialog).getByRole("textbox", { name: /Unidad 1/ }), {
+      target: { value: "SN-001" },
+    });
+    fireEvent.click(within(serialDialog).getByRole("button", { name: "Aceptar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "N.º de serie del producto" })).not.toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "PageDown" });
+    expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires explicit confirmation before removing surplus serials when quantity is reduced", async () => {
+    const serialProduct: SaleProduct = { ...products[0], productType: "UNIT", requiresSerialNumber: true };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([serialProduct]), { status: 200 });
+      if (path.endsWith("/pos/sales/quote")) {
+        const quote = authoritativeQuote(serialProduct);
+        quote.lineBreakdown[0].productId = serialProduct.id;
+        return new Response(JSON.stringify(quote), { status: 200 });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    const serialDialog = await screen.findByRole("dialog", { name: "N.º de serie del producto" });
+    fireEvent.change(within(serialDialog).getByRole("textbox", { name: /Unidad 1/ }), { target: { value: "SN-001" } });
+    fireEvent.click(within(serialDialog).getByRole("button", { name: "Aceptar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "N.º de serie del producto" })).not.toBeInTheDocument());
+
+    fireEvent.change(search, { target: { value: "2" } });
+    fireEvent.keyDown(search, { key: "Pause" });
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "N.º de serie del producto" })).toBeInTheDocument());
+    const increasedDialog = screen.getByRole("dialog", { name: "N.º de serie del producto" });
+    fireEvent.change(within(increasedDialog).getByRole("textbox", { name: /Unidad 2/ }), { target: { value: "SN-002" } });
+    fireEvent.click(within(increasedDialog).getByRole("button", { name: "Aceptar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "N.º de serie del producto" })).not.toBeInTheDocument());
+
+    fireEvent.change(search, { target: { value: "1" } });
+    fireEvent.keyDown(search, { key: "Pause" });
+    const reducedDialog = await screen.findByRole("dialog", { name: "N.º de serie del producto" });
+    expect(within(reducedDialog).getByText("Confirmo eliminar las series sobrantes de esta línea")).toBeInTheDocument();
+    fireEvent.click(within(reducedDialog).getByRole("button", { name: "Cancelar" }));
+    expect(checkoutProps.current?.sale?.lines[0]?.quantity).toBe(2);
+    expect(screen.getByText("S/N: SN-001")).toBeInTheDocument();
+    expect(screen.getByText("S/N: SN-002")).toBeInTheDocument();
+  });
   it("blocks Sales when manual cash opening is required and still allows exiting", async () => {
     prepareCashSessionForSales.mockResolvedValueOnce({
       cashSessionRequired: true,
@@ -791,6 +1498,101 @@ describe("SaleScreen", () => {
     });
   });
 
+  it("shows and totals the wholesale price only for sale-price products", () => {
+    const wholesaleProduct: SaleProduct = {
+      ...products[0],
+      salePrice: 10,
+      wholesalePrice: 7.5,
+      priceUseMode: "NORMAL",
+      discountType: "NORMAL",
+    };
+    const line: SaleLine = {
+      product: wholesaleProduct,
+      quantity: 2,
+      discountPercent: 0,
+    };
+
+    expect(effectiveSaleProductPrice(
+      wholesaleProduct,
+      false,
+      "2026-08-27",
+      true,
+    )).toBe(7.5);
+    expect(saleLineUnitPrice(line, false, true)).toBe(7.5);
+    expect(saleTotal([line], false, true)).toBe(15);
+    expect(saleCartSpecialPrice(wholesaleProduct, false, undefined, true)).toEqual({
+      type: "WHOLESALE",
+      unitPrice: 7.5,
+    });
+    expect(saleCartSpecialPrice(wholesaleProduct, false, {
+      ...authoritativeQuote(wholesaleProduct, "15.00").lineBreakdown[0],
+      baseUnitPrice: "7.50",
+      priceSource: "MAYORISTA",
+    })).toEqual({
+      type: "WHOLESALE",
+      unitPrice: 7.5,
+    });
+    expect(effectiveSaleProductPrice({
+      ...wholesaleProduct,
+      priceUseMode: "OFFER_PRICE",
+      offerActive: true,
+      offerPrice: 8,
+    }, false, "2026-08-27", true)).toBe(8);
+  });
+
+  it.each(["OFFER_PRICE", "OFFER_DISCOUNT"] as const)(
+    "canonicalizes legacy NONE with %s to sale or wholesale pricing",
+    (priceUseMode) => {
+      const legacyProduct: SaleProduct = {
+        ...products[0],
+        salePrice: 10,
+        wholesalePrice: 7.5,
+        priceUseMode,
+        discountType: "NONE",
+        offerActive: true,
+        offerPrice: 8,
+        offerDiscountPercent: 20,
+      };
+
+      expect(effectiveSaleProductPrice(
+        legacyProduct,
+        false,
+        "2026-08-27",
+        false,
+      )).toBe(10);
+      expect(effectiveSaleProductPrice(
+        legacyProduct,
+        false,
+        "2026-08-27",
+        true,
+      )).toBe(7.5);
+      expect(saleCartSpecialPrice(legacyProduct, false)).toBeNull();
+      expect(saleCartSpecialPrice(legacyProduct, false, undefined, true)).toEqual({
+        type: "WHOLESALE",
+        unitPrice: 7.5,
+      });
+    },
+  );
+
+  it("keeps an authoritative price source above legacy NONE canonicalization", () => {
+    const legacyProduct: SaleProduct = {
+      ...products[0],
+      salePrice: 10,
+      priceUseMode: "OFFER_PRICE",
+      discountType: "NONE",
+      offerActive: true,
+      offerPrice: 8,
+    };
+    expect(saleCartSpecialPrice(legacyProduct, false, {
+      ...authoritativeQuote(legacyProduct, "8.00").lineBreakdown[0],
+      baseUnitPrice: "8.00",
+      priceSource: "OFERTA",
+    })).toEqual({
+      type: "OFFER_PRICE",
+      unitPrice: 8,
+    });
+  });
+
   it("renders an offer discount in its column and keeps only the offer label above the special price", async () => {
     const offerProduct: SaleProduct = {
       ...products[0],
@@ -857,6 +1659,8 @@ describe("SaleScreen", () => {
       "Total",
     ]);
     expect(await within(table).findByText("%Oferta")).toBeInTheDocument();
+    expect(table.querySelector(".sale-cart-sale-price .sale-cart-tax-excluded"))
+      .not.toBeInTheDocument();
     expect(table.querySelector(".sale-cart-special strong")?.textContent).toBe("8,00 €/ud");
     expect(table.querySelector(".sale-cart-discount")?.textContent).toBe("20,00%");
     expect(table.querySelector(".sale-cart-special small")?.textContent).toBe("%Oferta");
@@ -2741,6 +3545,13 @@ describe("SaleScreen", () => {
           headers: { "Content-Type": "application/json" },
         });
       }
+      if (path.endsWith("/member-balance-reservations")) {
+        return new Response(JSON.stringify({ reservationId: "reservation-customer", status: "ACTIVE", reservedLoyaltyAmount: "12.50", reservedReturnCreditAmount: "0.00" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/member-wallet")) return new Response(JSON.stringify({ loyaltyAvailable: "12.50", returnCreditAvailable: "0.00", totalAvailable: "12.50", lots: [] }), { status: 200 });
       throw new Error(`unexpected request ${path}`);
     }));
     renderSaleScreen();
@@ -2761,7 +3572,8 @@ describe("SaleScreen", () => {
     const customerSummary = screen.getByRole("button", { name: /Cliente: Maria Lopez/ });
     expect(within(customerSummary).getByText("C-002")).toBeInTheDocument();
     expect(within(customerSummary).getByText("12345678Z")).toBeInTheDocument();
-    expect(within(customerSummary).getByText("12,50 €")).toBeInTheDocument();
+    await waitFor(() => expect(within(customerSummary).getByText(/Disponible:\s*12,50/)).toBeInTheDocument());
+    expect(within(customerSummary).getByText(/Disponible:\s*12,50/)).toBeInTheDocument();
     expect(within(customerSummary).getByText("34,25 €")).toBeInTheDocument();
     expect(within(customerSummary).getByText("5,00 €")).toBeInTheDocument();
 
@@ -2771,6 +3583,9 @@ describe("SaleScreen", () => {
 
   it("parks directly with Ctrl+G and preserves the cart customer and comment", async () => {
     let parkedRequest: Record<string, unknown> | null = null;
+    let parkAttempts = 0;
+    const requestOrder: string[] = [];
+    const member = { ...customers[0], activeMember: true, memberBalance: "12.50" };
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -2780,10 +3595,26 @@ describe("SaleScreen", () => {
         });
       }
       if (path.includes("/customers/sale-options/search")) {
-        return new Response(JSON.stringify([customers[0]]), {
+        return new Response(JSON.stringify([member]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
+      }
+      if (path.endsWith("/member-balance-reservations")) {
+        requestOrder.push("reserve");
+        return new Response(JSON.stringify({
+          reservationId: "reservation-park",
+          status: "ACTIVE",
+          reservedLoyaltyAmount: "0.00",
+          reservedReturnCreditAmount: "0.00",
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/member-balance-reservations/reservation-park/release")) {
+        requestOrder.push("release");
+        return new Response(JSON.stringify({ status: "RELEASED" }), { status: 200 });
+      }
+      if (path.endsWith("/member-wallet")) {
+        return new Response(JSON.stringify({ loyaltyAvailable: "12.50", returnCreditAvailable: "0.00", totalAvailable: "12.50", lots: [] }), { status: 200 });
       }
       if (path.endsWith("/pos/sales/quote")) {
         return new Response(JSON.stringify(authoritativeQuote(products[0])), {
@@ -2792,6 +3623,11 @@ describe("SaleScreen", () => {
         });
       }
       if (path.endsWith("/parked-sales/from-pos")) {
+        parkAttempts += 1;
+        requestOrder.push(parkAttempts === 1 ? "park-failed" : "park");
+        if (parkAttempts === 1) {
+          return new Response(JSON.stringify({ detail: "park service unavailable" }), { status: 503 });
+        }
         parkedRequest = JSON.parse(String(init?.body));
         return new Response(JSON.stringify({ id: "parked-1" }), {
           status: 200,
@@ -2803,6 +3639,7 @@ describe("SaleScreen", () => {
     renderSaleScreen();
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
     submitQuickEntry(search, "CAF-001");
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
 
@@ -2819,10 +3656,19 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
 
+    await waitFor(() => expect(parkAttempts).toBe(1));
+    // A failed park leaves the cart/customer open, so the released lease must
+    // be renewed before the operator retries the same park command.
+    await waitFor(() => expect(requestOrder.filter((entry) => entry === "reserve")).toHaveLength(2));
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
     await waitFor(() => expect(parkedRequest).not.toBeNull());
+    await waitFor(() => expect(requestOrder).toEqual(expect.arrayContaining(["release", "park-failed", "park"])), { timeout: 3000 });
+    expect(requestOrder.indexOf("release")).toBeLessThan(requestOrder.indexOf("park-failed"));
+    expect(requestOrder.lastIndexOf("release")).toBeLessThan(requestOrder.lastIndexOf("park"));
     expect(parkedRequest).toMatchObject({
       comment: "Recoger a las 18:00",
       sale: {
+        wholesaleMode: true,
         customerId: customers[0].id,
         internalComment: "Recoger a las 18:00",
         lines: [expect.objectContaining({ productId: products[0].id })],
@@ -2830,6 +3676,86 @@ describe("SaleScreen", () => {
     });
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(screen.queryByRole("dialog", { name: "Ventas aparcadas" })).not.toBeInTheDocument();
+  });
+
+  it("parks a duplicate member sale without releasing a lease owned elsewhere", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "12.50" };
+    let reserveCalls = 0;
+    let releaseCalls = 0;
+    let parkCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (path.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (path.includes("/customers/sale-options/search")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (path.endsWith("/member-balance-reservations")) {
+        reserveCalls += 1;
+        return new Response(JSON.stringify({ code: "MEMBER_BALANCE_RESERVED_ELSEWHERE" }), { status: 409 });
+      }
+      if (path.endsWith("/release")) {
+        releaseCalls += 1;
+        return new Response(JSON.stringify({ status: "RELEASED" }), { status: 200 });
+      }
+      if (path.endsWith("/pos/sales/quote")) return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200 });
+      if (path.endsWith("/parked-sales/from-pos")) {
+        parkCalls += 1;
+        return new Response(JSON.stringify({ id: "parked-duplicate" }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+    fireEvent.keyDown(window, { key: "End" });
+    const customerDialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    await within(customerDialog).findByRole("button", { name: /Cliente Pruebas/ });
+    fireEvent.keyDown(customerDialog, { key: "Insert" });
+    await screen.findByText(/no se ha podido confirmar el estado/i);
+
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
+    await waitFor(() => expect(parkCalls).toBe(1));
+    expect(reserveCalls).toBe(1);
+    expect(releaseCalls).toBe(0);
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
+  });
+
+  it("finalizes a duplicate member sale without releasing another terminal's lease", async () => {
+    const member = { ...customers[0], activeMember: true, memberBalance: "12.50" };
+    let reserveCalls = 0;
+    let releaseCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (path.endsWith("/stock/settings")) return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      if (path.includes("/customers/sale-options/search")) return new Response(JSON.stringify([member]), { status: 200 });
+      if (path.endsWith("/member-balance-reservations")) {
+        reserveCalls += 1;
+        return new Response(JSON.stringify({ code: "MEMBER_BALANCE_RESERVED_ELSEWHERE" }), { status: 409 });
+      }
+      if (path.endsWith("/release")) {
+        releaseCalls += 1;
+        return new Response(JSON.stringify({ status: "RELEASED" }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente:/ }));
+    const dialog = await screen.findByRole("dialog", { name: /cliente/i });
+    await within(dialog).findByRole("button", { name: /Cliente Pruebas/ });
+    fireEvent.click(within(dialog).getByText(member.fiscalName!));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+    await screen.findByText(/no se ha podido confirmar el estado/i);
+    await waitFor(() => expect(checkoutProps.current?.onReservationFinalized).toBeTypeOf("function"));
+
+    await act(async () => {
+      await checkoutProps.current?.onReservationFinalized?.(false);
+    });
+    expect(reserveCalls).toBe(1);
+    expect(releaseCalls).toBe(0);
   });
 
   it("supports F5 creation, Ctrl+F7 editing and Enter debt collection from the customer list", async () => {
@@ -3609,6 +4535,10 @@ describe("SaleScreen", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);
     expect(saleDisplayedTotal(5, false, 0, 1210)).toBe(5);
   });
+  it("propagates readiness only for an active reservation with a ready wallet", () => {
+    expect(memberBalanceReadyForCheckout("ACTIVE", "READY", false, false)).toBe(true);
+    expect(memberBalanceReadyForCheckout("UNAVAILABLE", "READY", false, false)).toBe(false);
+  });
   it("renders the sales workspace with shared frame controls", () => {
     const openCustomerReceivables = vi.fn();
     const html = renderToStaticMarkup(
@@ -4025,6 +4955,12 @@ describe("SaleScreen", () => {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
+      if (path.endsWith("/member-balance-reservations")) {
+        return new Response(JSON.stringify({ reservationId: "reservation-imported-customer", status: "ACTIVE", reservedLoyaltyAmount: "12.50", reservedReturnCreditAmount: "0.00" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/member-wallet")) return new Response(JSON.stringify({ loyaltyAvailable: "12.50", returnCreditAvailable: "0.00", totalAvailable: "12.50", lots: [] }), { status: 200 });
       if (path.endsWith("/pos/sales/quote")) {
         const request = JSON.parse(String(init?.body ?? "{}")) as CheckoutMockProps["sale"];
         const hasCurrentLine = Boolean(request?.lines.length);
@@ -4051,7 +4987,7 @@ describe("SaleScreen", () => {
     }));
     const customerSummary = screen.getByRole("button", { name: /Cliente: Maria Lopez/ });
     expect(customerSummary).toBeDisabled();
-    expect(within(customerSummary).getByText(/12,50/)).toBeInTheDocument();
+    await waitFor(() => expect(within(customerSummary).getByText(/Disponible:\s*12,50/)).toBeInTheDocument());
     expect(within(customerSummary).getByText(/34,25/)).toBeInTheDocument();
     expect(within(customerSummary).getByText(/5,00/)).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "End" });
@@ -4598,6 +5534,37 @@ describe("SaleScreen", () => {
     expect(result[1].returnOrigin).toBeUndefined();
   });
 
+  it("keeps return retention identity stable when a positive line is added", () => {
+    const returnLine: SaleLine = {
+      cartLineId: "return-line",
+      product: products[0],
+      quantity: -1,
+      returnUnitPrice: 10,
+      discountPercent: 0,
+      returnOrigin: {
+        sourceType: "TICKET",
+        sourceCode: "001-260807-00001",
+        sourceTicketId: "ticket-1",
+        sourceTicketNumber: "001-260807-00001",
+        sourceLineId: "source-line-1",
+      },
+    };
+    const returnSelections = saleReturnCartReservations([returnLine]).map((selection) => ({
+      lineId: selection.lineId,
+      quantity: selection.returnQuantity,
+      serialNumbers: selection.selectedSerialNumbers,
+    }));
+    const withPositiveLine = addSaleLine([returnLine], products[1]);
+    const unchangedSelections = saleReturnCartReservations(withPositiveLine).map((selection) => ({
+      lineId: selection.lineId,
+      quantity: selection.returnQuantity,
+      serialNumbers: selection.selectedSerialNumbers,
+    }));
+
+    expect(memberBalanceRetentionKey("ticket-1", returnSelections))
+      .toBe(memberBalanceRetentionKey("ticket-1", unchangedSelections));
+  });
+
   it("prevalidates a previous-ticket import as one atomic batch", () => {
     const preview = previousTicketPreview({
       lines: [{ ...previousTicketPreview().lines[0], quantity: 0 }],
@@ -4796,6 +5763,7 @@ describe("SaleScreen", () => {
         return new Response(JSON.stringify({
           total: total.toFixed(2),
           productTotal: total.toFixed(2),
+          memberBalanceEligibleTotal: total.toFixed(2),
           promotionPreview: { appliedPromotions: [] },
           pricingVersion: 2,
           quoteFingerprint: `quote-${body.lines.length}-${total}`,
@@ -4876,6 +5844,33 @@ describe("SaleScreen", () => {
       memberPrice: 0,
       discountType: "MEMBER_PRICE"
     }, true)).toBe(10);
+    expect(effectiveSaleProductPrice({
+      ...products[0],
+      id: "legacy-member-mode",
+      salePrice: 10,
+      memberPrice: 8.5,
+      priceUseMode: "MEMBER_PRICE",
+      discountType: "NORMAL",
+    }, true)).toBe(8.5);
+    expect(effectiveSaleProductPrice({
+      ...products[0],
+      id: "legacy-member-mode",
+      salePrice: 10,
+      memberPrice: 8.5,
+      priceUseMode: "MEMBER_PRICE",
+      discountType: "NORMAL",
+    }, false)).toBe(10);
+    const protectedLegacyMember = {
+      ...products[0],
+      id: "protected-legacy-member-mode",
+      salePrice: 10,
+      memberPrice: 8.5,
+      wholesalePrice: 7.5,
+      priceUseMode: "MEMBER_PRICE" as const,
+      discountType: "NONE" as const,
+    };
+    expect(effectiveSaleProductPrice(protectedLegacyMember, true)).toBe(10);
+    expect(effectiveSaleProductPrice(protectedLegacyMember, true, undefined, true)).toBe(7.5);
     expect(effectiveSaleProductPrice({ ...products[0], id: "normal", salePrice: 10 }, true)).toBe(10);
   });
 
@@ -5022,6 +6017,7 @@ describe("SaleScreen", () => {
     expect(saleProductBlocksManualDiscount(blockedProduct)).toBe(true);
     expect(() => updateSaleLineDiscount(lines, lineId, 10)).toThrow("discount_blocked");
     expect(updateSaleLineDiscount(lines, lineId, 0)[0].discountPercent).toBe(0);
+    expect(() => updateSaleLineTemporaryPrice(lines, lineId, 8)).toThrow("price_change_blocked");
   });
 
   it("keeps the next available line selected after removal", () => {
@@ -5315,6 +6311,7 @@ describe("SaleScreen", () => {
         expect(options?.method).toBe("POST");
         const request = JSON.parse(String(options?.body));
         expect(request.sale).toEqual({
+          wholesaleMode: false,
           customerId: "member-customer",
           lines: [{
             productId: "member-coffee",

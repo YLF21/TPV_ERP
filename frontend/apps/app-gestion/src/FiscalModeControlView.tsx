@@ -6,6 +6,7 @@ import {
   type FiscalStatus
 } from "./verifactuManagementApi";
 import { formatVerifactuDate, type VerifactuTranslator } from "./verifactuPresentation";
+import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 
 export function FiscalModeControlView({
   locale,
@@ -33,14 +34,17 @@ export function FiscalModeControlView({
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    setTargetMode(targets[0] ?? "VERIFACTU");
+    const failedTarget = status?.scheduledTransition?.status === "FALLIDA"
+      ? status.scheduledTransition.newMode
+      : null;
+    setTargetMode(failedTarget && targets.includes(failedTarget) ? failedTarget : (targets[0] ?? "VERIFACTU"));
     setReason("");
     setConfirmation("");
     setVerifactuEndDate("");
     setAeatAckReference("");
     setError(false);
     setSuccess(false);
-  }, [status?.modeVersion]);
+  }, [status?.modeVersion, status?.scheduledTransition?.status, status?.scheduledTransition?.newMode]);
 
   if (!status) {
     return <div className="gestion-verifactu-message error" role="alert">{t("verifactu.mode.statusRequired")}</div>;
@@ -93,15 +97,23 @@ export function FiscalModeControlView({
 
     <section className="gestion-verifactu-panel">
       <header><div><span className="gestion-eyebrow">{t("verifactu.mode.changeEyebrow")}</span><h3>{t("verifactu.mode.changeTitle")}</h3></div></header>
-      {status.scheduledTransition ? (
+      {status.scheduledTransition?.status === "FALLIDA" && (
         <div className={`gestion-fiscal-mode-scheduled ${status.scheduledTransition.status === "FALLIDA" ? "has-error" : ""}`}>
-          <strong>{status.scheduledTransition.status === "FALLIDA" ? t("verifactu.management.fiscalTransitionFailed") : t("verifactu.management.fiscalTransitionScheduled")}</strong>
+          <strong>{t("verifactu.management.fiscalTransitionFailed")}</strong>
           <span>{modeLabel(status.scheduledTransition.newMode, t)}</span>
-          {status.scheduledTransition.lastErrorCode && <code>{status.scheduledTransition.lastErrorCode}</code>}
+          {status.scheduledTransition.lastErrorCode && <span role="alert">{fiscalErrorMessage(status.scheduledTransition.lastErrorCode, t)}</span>}
         </div>
-      ) : (
-        <form onSubmit={submit}>
-          <p className="gestion-fiscal-mode-warning">{transitionWarning(status.mode, targetMode, t)}</p>
+      )}
+      {status.scheduledTransition?.status === "PROGRAMADA" && (
+        <div className="gestion-fiscal-mode-scheduled">
+          <strong>{t("verifactu.management.fiscalTransitionScheduled")}</strong>
+          <span>{modeLabel(status.scheduledTransition.newMode, t)}</span>
+          <span>{formatVerifactuDate(status.scheduledTransition.effectiveAt, locale)}</span>
+        </div>
+      )}
+      <form onSubmit={submit}>
+        {status.scheduledTransition?.status === "FALLIDA" && <p className="gestion-fiscal-mode-warning" role="status">{t("verifactu.mode.retryHint")}</p>}
+        {status.scheduledTransition?.status !== "FALLIDA" && <p className="gestion-fiscal-mode-warning">{transitionWarning(status.mode, targetMode, t)}</p>}
           <label htmlFor="fiscal-mode-target">
             <span>{t("verifactu.mode.target")}</span>
             <select id="fiscal-mode-target" value={targetMode} onChange={(event) => setTargetMode(event.target.value as FiscalMode)}>
@@ -122,11 +134,10 @@ export function FiscalModeControlView({
             <input id="fiscal-mode-confirmation" value={confirmation} autoComplete="off" onChange={(event) => setConfirmation(event.target.value)} />
             <small>{t("verifactu.mode.typeConfirmation").replace("{text}", confirmationPhrase)}</small>
           </label>
-          <button type="submit" className="primary" disabled={working || !valid}>{working ? t("verifactu.mode.changing") : t("verifactu.mode.confirmChange")}</button>
+          <button type="submit" className="primary" disabled={working || !valid}>{working ? t("verifactu.mode.changing") : status.scheduledTransition?.status === "FALLIDA" ? t("verifactu.mode.retryChange") : t("verifactu.mode.confirmChange")}</button>
           {success && <p className="gestion-form-success" role="status">{t("verifactu.mode.success")}</p>}
           {error && <p className="gestion-form-error" role="alert">{t("verifactu.mode.error")}</p>}
-        </form>
-      )}
+      </form>
     </section>
   </div>;
 }

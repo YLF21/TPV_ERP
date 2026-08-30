@@ -26,8 +26,8 @@ describe("FiscalRecordsView", () => {
     vi.mocked(exportApi.loadFiscalExportJobs).mockResolvedValue({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 20 });
     vi.mocked(exportApi.createFiscalExportJob).mockResolvedValue({ id: "job-1", status: "QUEUED", processed: 0, hasMore: true, error: null, fileSize: 0, downloadAvailable: false, createdAt: "2026-08-26T10:00:00Z" });
     vi.mocked(exportApi.loadFiscalExportJobStatus).mockResolvedValue({ id: "job-1", status: "QUEUED", processed: 0, hasMore: true, error: null, fileSize: 0, downloadAvailable: false, createdAt: "2026-08-26T10:00:00Z" });
-    vi.mocked(exportApi.downloadFiscalExportJob).mockResolvedValue(new Blob(["zip"]));
-    vi.mocked(exportApi.downloadFiscalExportZip).mockResolvedValue(new Blob(["zip"]));
+    vi.mocked(exportApi.downloadFiscalExportJob).mockResolvedValue("download-capability");
+    vi.mocked(exportApi.downloadFiscalExportZip).mockResolvedValue(new Response(new Blob(["zip"]), { status: 200 }));
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     vi.mocked(api.loadFiscalRecordsCursor).mockResolvedValue({ items: [{ recordId: "record-1", installationId: "i", storeId: "s", sequence: 1, operation: "ALTA", documentType: "F1", number: "T-1", issueDate: "2026-08-26", generatedAt: "2026-08-26T10:00:00Z", fiscalMode: "NO_VERIFACTU", totalAmount: 12.5, hash: "1234567890ABCDEF1234567890ABCDEF", submissionStatus: "ACEPTADO" }], size: 25, nextCursor: "cursor-2", previousCursor: null, hasNext: true, hasPrevious: false, snapshotSequence: 1 });

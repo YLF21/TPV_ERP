@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -72,5 +73,36 @@ class FiscalSubmissionStateServiceTest {
         var sending = service.markSending(state.getRecordId());
 
         assertThat(sending.getStatus()).isEqualTo(FiscalSubmissionStatus.ENVIANDO);
+    }
+
+    @Test
+    void staleClaimCannotRecordDefectOrReleaseNewOwner() {
+        var owner = UUID.randomUUID();
+        var currentToken = UUID.randomUUID();
+        var staleToken = UUID.randomUUID();
+        state.claim(owner, currentToken, NOW.minusSeconds(30), NOW.plusSeconds(60));
+        when(states.findForUpdate(state.getRecordId())).thenReturn(Optional.of(state));
+
+        assertThatThrownBy(() -> service.markDefective(
+                        state.getRecordId(), "INVALID_XSD", "XSD invalido", staleToken))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no posee");
+
+        assertThat(state.getStatus()).isEqualTo(FiscalSubmissionStatus.ENVIANDO);
+        assertThat(state.getClaimToken()).isEqualTo(currentToken);
+        verify(states, never()).save(state);
+    }
+
+    @Test
+    void validatesClaimUsingLockedStateRow() {
+        var owner = UUID.randomUUID();
+        var token = UUID.randomUUID();
+        state.claim(owner, token, NOW.minusSeconds(30), NOW.plusSeconds(60));
+        when(states.findForUpdate(state.getRecordId())).thenReturn(Optional.of(state));
+
+        service.requireClaim(state.getRecordId(), token);
+
+        verify(states).findForUpdate(state.getRecordId());
+        verify(states, never()).findById(state.getRecordId());
     }
 }

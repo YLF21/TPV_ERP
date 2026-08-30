@@ -41,17 +41,8 @@ public class ConfiguredVerifactuTransport implements VerifactuTransport {
 
     @Override
     public VerifactuTransportResponse send(String endpoint, String soapEnvelope) {
-        requireNetworkOptIn();
-        endpoints.requireOfficial(endpoint);
-        try (var managed = keyStores.activeForCurrentCompany()) {
-            var password = managed.password();
-            try {
-                var client = clients.create(managed.keyStore(), password);
-                return new HttpVerifactuTransport(client).send(endpoint, soapEnvelope);
-            } finally {
-                Arrays.fill(password, '\0');
-            }
-        }
+        throw new UnsupportedOperationException(
+                "El transporte productivo requiere companyId e installationId explicitos");
     }
 
     @Override

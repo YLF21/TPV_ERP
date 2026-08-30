@@ -21,6 +21,7 @@ export type ParkedSaleSummary = {
 
 export type OpenedParkedSale = {
   document: {
+    wholesaleMode?: boolean | null;
     clienteId?: string | null;
     comentarioInterno?: string | null;
     documentDiscountPercent?: number | string | null;

@@ -37,7 +37,8 @@ export type SaleCommandId =
   | "temporary-name"
   | "temporary-price"
   | "serial-number"
-  | "line-discount";
+  | "line-discount"
+  | "wholesale-mode";
 
 export type SaleKeyboardCommandEvent = Pick<
   KeyboardEvent,
@@ -76,6 +77,7 @@ export function saleCommandFromKeyboard(
     if (event.key === "+" || event.code === "NumpadAdd") return "add-quantity";
     if (event.key === "-" || event.code === "NumpadSubtract") return "subtract-quantity";
     if (event.key === "/") return "sale-discount";
+    if (key === "m") return "wholesale-mode";
     return null;
   }
 

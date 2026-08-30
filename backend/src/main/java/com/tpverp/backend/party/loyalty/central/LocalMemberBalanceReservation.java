@@ -9,8 +9,11 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "member_balance_reservation_local")
@@ -58,6 +61,35 @@ public class LocalMemberBalanceReservation {
 
     @Column(name = "prepare_operation_id")
     private UUID prepareOperationId;
+
+    @Column(name = "retention_revision", nullable = false)
+    private long retentionRevision;
+
+    @Column(name = "retention_fingerprint", nullable = false, length = 64)
+    private String retentionFingerprint = "";
+
+    @Column(name = "retention_attributed_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionAttributedAmount = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "retention_held_known", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionHeldKnown = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "retention_pending_missing", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionPendingMissing = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "retention_spent_shortfall", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionSpentShortfall = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "retention_spendable", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionSpendable = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "retention_recovered_known", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionRecoveredKnown = BigDecimal.ZERO.setScale(2);
+
+    /** Immutable final-reservation lot photo used by offline capacity checks. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "retention_reserved_lots", nullable = false, columnDefinition = "jsonb")
+    private List<RetentionReservedLotSnapshot> retentionReservedLots = List.of();
 
     @Column(name = "ticket_id")
     private UUID ticketId;
@@ -122,7 +154,9 @@ public class LocalMemberBalanceReservation {
     public void apply(MemberBalanceCentralGateway.ReservationResponse central, Instant now) {
         Objects.requireNonNull(central, "central");
         if (!memberId.equals(central.memberId())) {
-            throw new IllegalStateException("La reserva central pertenece a otro socio");
+            throw new MemberBalanceCentralException(
+                    MemberBalanceCentralException.Kind.CONFLICT,
+                    "member_balance_reservation_member_mismatch");
         }
         if (centralReservationId != null && !centralReservationId.equals(central.reservationId())) {
             throw new IllegalStateException("No se puede sustituir el identificador de una reserva central");
@@ -141,6 +175,48 @@ public class LocalMemberBalanceReservation {
         preparedLoyaltyAmount = central.preparedLoyaltyAmount();
         preparedReturnCreditAmount = central.preparedReturnCreditAmount();
         prepareOperationId = central.prepareOperationId();
+        retentionRevision = central.retentionRevision();
+        retentionFingerprint = central.retentionFingerprint();
+        retentionHeldKnown = central.heldKnown();
+        retentionPendingMissing = central.pendingMissing();
+        retentionSpentShortfall = central.spentShortfall();
+        retentionSpendable = central.spendable();
+        retentionRecoveredKnown = central.recoveredKnown();
+        var retentionClaims = central.retentionClaims() == null
+                ? List.<MemberBalanceCentralGateway.RetentionClaim>of()
+                : central.retentionClaims();
+        // The aggregate retention metrics are not sufficient to authorize a
+        // checkout: F10 must know exactly which source lots are held. A
+        // central response that reports a hold without serialized claims is
+        // an incompatible contract and must remain retryable.
+        if ((retentionAttributedAmount(central).signum() > 0
+                || central.heldKnown().signum() > 0
+                || central.pendingMissing().signum() > 0)
+                && retentionClaims.isEmpty()) {
+            throw new MemberBalanceCentralException(
+                    MemberBalanceCentralException.Kind.INVALID_RESPONSE,
+                    "member_balance_retention_contract_incompatible");
+        }
+        var serializedHeld = retentionClaims.stream()
+                .map(value -> value.heldAmount() == null
+                        ? BigDecimal.ZERO.setScale(2) : value.heldAmount())
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        if (serializedHeld.compareTo(central.heldKnown()) != 0) {
+            throw new MemberBalanceCentralException(
+                    MemberBalanceCentralException.Kind.INVALID_RESPONSE,
+                    "member_balance_retention_contract_incompatible");
+        }
+        retentionReservedLots = central.reservedLots().stream()
+                .map(value -> new RetentionReservedLotSnapshot(
+                        value.lotId(), value.balanceType().name(), value.remainingAmount(),
+                        retentionClaims.stream()
+                                .filter(claim -> claim.lotId().equals(value.lotId()))
+                                .map(claim -> claim.heldAmount() == null
+                                        ? BigDecimal.ZERO.setScale(2) : claim.heldAmount())
+                                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add),
+                        value.sourceMovementId(), value.documentId()))
+                .toList();
+        retentionAttributedAmount = retentionAttributedAmount(central);
         consumedLoyaltyAmount = central.consumedLoyaltyAmount();
         consumedReturnCreditAmount = central.consumedReturnCreditAmount();
         accountLoyaltyBalance = central.accountLoyaltyBalance();
@@ -148,18 +224,47 @@ public class LocalMemberBalanceReservation {
         reservedTotal = central.reservedTotal();
         preparedAmount = central.preparedAmount();
         consumedTotal = central.consumedTotal();
-        accountBalance = central.accountBalance();
+        // V164 keeps the legacy column as the loyalty bucket. The public
+        // getter below exposes the typed total without violating that check.
+        accountBalance = central.accountLoyaltyBalance();
         heartbeatAt = central.heartbeatAt();
         leaseExpiresAt = central.leaseExpiresAt();
         updatedAt = Objects.requireNonNull(now, "now");
         closedAt = isClosed() ? now : null;
     }
 
+    private static BigDecimal retentionAttributedAmount(
+            MemberBalanceCentralGateway.ReservationResponse central) {
+        return central.retentionAttributedAmount() == null
+                ? central.heldKnown().add(central.pendingMissing())
+                        .add(central.spentShortfall()).add(central.recoveredKnown())
+                : central.retentionAttributedAmount();
+    }
+
     public void markReleasePending(Instant now) {
-        if (!isClosed()) {
+        if (status == LocalMemberBalanceReservationStatus.ACTIVE
+                || status == LocalMemberBalanceReservationStatus.RELEASE_PENDING) {
             status = LocalMemberBalanceReservationStatus.RELEASE_PENDING;
             updatedAt = Objects.requireNonNull(now, "now");
         }
+    }
+
+    /**
+     * Closes the local ownership when the central release/abort is already
+     * gone. A central 404 is only idempotent for these release operations;
+     * prepare/finalize callers must never use this shortcut.
+     */
+    public void markReleaseConfirmed(Instant now) {
+        if (isClosed()) {
+            return;
+        }
+        if (status != LocalMemberBalanceReservationStatus.ACTIVE
+                && status != LocalMemberBalanceReservationStatus.RELEASE_PENDING) {
+            throw new IllegalStateException("La reserva no admite cierre idempotente de liberacion");
+        }
+        status = LocalMemberBalanceReservationStatus.RELEASED;
+        updatedAt = Objects.requireNonNull(now, "now");
+        closedAt = now;
     }
 
     public void markTicketCommitted(UUID ticketId, Instant now) {
@@ -298,12 +403,41 @@ public class LocalMemberBalanceReservation {
         return prepareOperationId;
     }
 
+    public long getRetentionRevision() { return retentionRevision; }
+    public String getRetentionFingerprint() { return retentionFingerprint; }
+    public BigDecimal getRetentionAttributedAmount() { return retentionAttributedAmount; }
+    public BigDecimal getRetentionHeldKnown() { return retentionHeldKnown; }
+    public BigDecimal getRetentionPendingMissing() { return retentionPendingMissing; }
+    public BigDecimal getRetentionSpentShortfall() { return retentionSpentShortfall; }
+    public BigDecimal getRetentionSpendable() { return retentionSpendable; }
+    public BigDecimal getRetentionRecoveredKnown() { return retentionRecoveredKnown; }
+    public List<RetentionReservedLotSnapshot> getRetentionReservedLots() {
+        return List.copyOf(retentionReservedLots);
+    }
+
+    public BigDecimal retentionSnapshotRemaining(UUID lotId) {
+        return retentionReservedLots.stream()
+                .filter(value -> value.lotId().equals(lotId))
+                .map(RetentionReservedLotSnapshot::remainingAmount)
+                .findFirst()
+                .orElse(null);
+    }
+
+    public BigDecimal retentionSnapshotKnownAmount(UUID lotId, BigDecimal requested) {
+        return retentionReservedLots.stream()
+                .filter(value -> value.lotId().equals(lotId)
+                        && "LOYALTY".equals(value.balanceType()))
+                .map(value -> value.heldAmount().min(requested))
+                .findFirst()
+                .orElse(BigDecimal.ZERO.setScale(2));
+    }
+
     public UUID getTicketId() {
         return ticketId;
     }
 
     public BigDecimal getAccountBalance() {
-        return accountBalance;
+        return accountLoyaltyBalance.add(accountReturnCreditBalance);
     }
 
     public BigDecimal getAccountLoyaltyBalance() {
@@ -339,5 +473,48 @@ public class LocalMemberBalanceReservation {
             throw new IllegalArgumentException("saleId es obligatorio y admite hasta 120 caracteres");
         }
         return value.trim();
+    }
+
+    public record RetentionReservedLotSnapshot(
+            UUID lotId,
+            String balanceType,
+            BigDecimal remainingAmount,
+            BigDecimal heldAmount,
+            UUID sourceMovementId,
+            UUID documentId) {
+        public RetentionReservedLotSnapshot(
+                UUID lotId,
+                String balanceType,
+                BigDecimal remainingAmount,
+                UUID sourceMovementId,
+                UUID documentId) {
+            this(lotId, balanceType, remainingAmount, BigDecimal.ZERO.setScale(2),
+                    sourceMovementId, documentId);
+        }
+
+        public RetentionReservedLotSnapshot {
+            Objects.requireNonNull(lotId, "lotId");
+            if (!"LOYALTY".equals(balanceType) && !"RETURN_CREDIT".equals(balanceType)) {
+                throw new IllegalArgumentException("balanceType de snapshot desconocido");
+            }
+            try {
+                remainingAmount = Objects.requireNonNull(remainingAmount, "remainingAmount")
+                        .setScale(2, java.math.RoundingMode.UNNECESSARY);
+            } catch (ArithmeticException exception) {
+                throw new IllegalArgumentException("remainingAmount debe tener escala 2", exception);
+            }
+            if (remainingAmount.signum() < 0) {
+                throw new IllegalArgumentException("remainingAmount no puede ser negativo");
+            }
+            try {
+                heldAmount = (heldAmount == null ? BigDecimal.ZERO : heldAmount)
+                        .setScale(2, java.math.RoundingMode.UNNECESSARY);
+            } catch (ArithmeticException exception) {
+                throw new IllegalArgumentException("heldAmount debe tener escala 2", exception);
+            }
+            if (heldAmount.signum() < 0 || heldAmount.compareTo(remainingAmount) > 0) {
+                throw new IllegalArgumentException("heldAmount no puede superar remainingAmount");
+            }
+        }
     }
 }

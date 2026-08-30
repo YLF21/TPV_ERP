@@ -75,6 +75,9 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/v1/sales-reports/export")) {
             return OperationCategory.EXPORT_OR_PRINT;
         }
+        if (path.equals("/api/v1/fiscal/export-jobs/download")) {
+            return OperationCategory.EXPORT_OR_PRINT;
+        }
         if (path.startsWith("/api/v1/stock/products/")
                 && path.endsWith("/sales-history/export")) {
             return OperationCategory.EXPORT_OR_PRINT;

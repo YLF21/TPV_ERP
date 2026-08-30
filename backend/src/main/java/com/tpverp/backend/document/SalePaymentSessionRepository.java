@@ -11,6 +11,20 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
  @Query("select distinct s from SalePaymentSession s left join fetch s.allocations where s.id=:id") java.util.Optional<SalePaymentSession> findState(@Param("id") UUID id);
  @Query("select distinct s from SalePaymentSession s left join fetch s.allocations where s.storeId=:storeId and s.terminalId=:terminalId and s.userId=:userId and s.status in (com.tpverp.backend.document.SalePaymentSessionStatus.COLLECTING,com.tpverp.backend.document.SalePaymentSessionStatus.COVERED,com.tpverp.backend.document.SalePaymentSessionStatus.COMPENSATION_REQUIRED)") java.util.Optional<SalePaymentSession> findActive(@Param("storeId") UUID storeId,@Param("terminalId") UUID terminalId,@Param("userId") UUID userId);
  @Query("""
+         select session from SalePaymentSession session
+          where session.memberBalanceReservationId in :reservationIds
+            and (session.status in (
+                com.tpverp.backend.document.SalePaymentSessionStatus.COLLECTING,
+                com.tpverp.backend.document.SalePaymentSessionStatus.COVERED,
+                com.tpverp.backend.document.SalePaymentSessionStatus.COMPENSATION_REQUIRED)
+                 or (session.status = com.tpverp.backend.document.SalePaymentSessionStatus.FINALIZED
+                     and session.ticketId is not null))
+         """)
+ java.util.List<SalePaymentSession> findBlockingMemberBalanceSessionsByReservationIds(
+         @Param("reservationIds") java.util.Collection<java.util.UUID> reservationIds);
+ java.util.Optional<SalePaymentSession> findFirstByMemberBalanceReservationIdOrderByUpdatedAtDesc(
+         @Param("reservationId") java.util.UUID reservationId);
+ @Query("""
          select allocation
            from SalePaymentAllocation allocation
            join allocation.session session
@@ -31,8 +45,6 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
           where session.ticketId is not null
             and session.memberBalanceReservationId is not null
             and session.memberBalanceSynchronizedAt is null
-            and (coalesce(session.memberBalanceAppliedAmount, 0) > 0
-                 or coalesce(session.memberReturnCreditAppliedAmount, 0) > 0)
             and session.memberBalanceRecoveryManualReview = false
             and (session.memberBalanceRecoveryNextAttemptAt is null
                  or session.memberBalanceRecoveryNextAttemptAt <= :now)
@@ -48,8 +60,6 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
             and session.ticketId is null
             and session.memberBalanceReservationId is not null
             and session.memberBalanceSynchronizedAt is null
-            and (coalesce(session.memberBalanceAppliedAmount, 0) > 0
-                 or coalesce(session.memberReturnCreditAppliedAmount, 0) > 0)
             and session.memberBalanceRecoveryManualReview = false
             and (session.memberBalanceRecoveryNextAttemptAt is null
                  or session.memberBalanceRecoveryNextAttemptAt <= :now)
@@ -64,8 +74,6 @@ public interface SalePaymentSessionRepository extends JpaRepository<SalePaymentS
           where session.storeId = :storeId
             and session.memberBalanceReservationId is not null
             and session.memberBalanceSynchronizedAt is null
-            and (coalesce(session.memberBalanceAppliedAmount, 0) > 0
-                 or coalesce(session.memberReturnCreditAppliedAmount, 0) > 0)
             and (session.ticketId is not null
                  or session.status = com.tpverp.backend.document.SalePaymentSessionStatus.CANCELLED)
           order by session.updatedAt asc

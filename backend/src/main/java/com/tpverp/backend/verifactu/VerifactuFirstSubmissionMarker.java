@@ -46,23 +46,36 @@ public class VerifactuFirstSubmissionMarker {
     @Transactional
     public void mark(FiscalRecord record) {
         var configuration = configuration(record);
+        // The first AEAT ACK is durable evidence. It must remain markable when
+        // a sale's licence was subsequently deactivated, so prefer the active
+        // row but fall back to the immutable historical licence policy.
         var license = licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
                         record.getStoreId(), record.getInstallationId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "No existe una licencia activa para la tienda e instalacion"));
+                .orElseGet(() -> licenses.findByTiendaIdOrderByValidaDesdeDesc(record.getStoreId())
+                        .stream()
+                        .filter(candidate -> record.getInstallationId()
+                                .equals(candidate.getInstalacionId()))
+                        .findFirst()
+                        .orElse(null));
         var acknowledgedAt = clock.instant();
         var fiscalZone = ZoneId.of(record.getTimezone());
         var firstSubmissionWasMissing = configuration.getFirstSubmissionAt() == null;
         if (firstSubmissionWasMissing) {
+            if (license == null && !configuration.isVoluntarilyActive()) {
+                throw new IllegalStateException(
+                        "No existe evidencia de activacion fiscal para marcar el primer ACK");
+            }
             activation.markFirstSubmission(
                     configuration,
-                    license.getTaxpayerType(),
-                    license.getVerifactuActivationDate(),
+                    license == null ? com.tpverp.backend.licensing.application.TaxpayerType.SOCIEDAD
+                            : license.getTaxpayerType(),
+                    license == null ? null : license.getVerifactuActivationDate(),
                     acknowledgedAt,
                     fiscalZone);
         }
         var blockedUntilBefore = configuration.getVerifactuBlockedUntil();
         if (runtime != null && runtime.runtimeClass() == FiscalRuntimeClass.REAL
+                && license != null
                 && activation.isSifAdaptationRequired(
                         license.getTaxpayerType(), acknowledgedAt, fiscalZone)) {
             var localSubmissionDate = acknowledgedAt.atZone(fiscalZone).toLocalDate();

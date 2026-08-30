@@ -65,6 +65,7 @@ async function main() {
     env: {
       ...process.env,
       TPV_DESKTOP_APP_NAME: config.name,
+      TPV_DESKTOP_APP_KIND: appKey,
       TPV_DESKTOP_APP_URL: url,
       TPV_DESKTOP_WINDOW_MODE: config.windowMode
     }

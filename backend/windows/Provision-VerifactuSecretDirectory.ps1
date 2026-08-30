@@ -1,12 +1,19 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-param()
+param(
+    [string] $ExpectedServiceIdentity,
+    [ValidateSet('Secret', 'FiscalExport')]
+    [string] $DirectoryKind = 'Secret'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ExpectedDirectory = 'C:\ProgramData\TPV ERP\secrets\verifactu'
+$ExpectedDirectory = if ($DirectoryKind -eq 'FiscalExport') {
+    'C:\ProgramData\TPV ERP\exports\fiscal'
+} else {
+    'C:\ProgramData\TPV ERP\secrets\verifactu'
+}
 $ExpectedServiceName = 'TPVERPBackend'
-$ExpectedServiceIdentity = 'NT SERVICE\TPVERPBackend'
 $AllowedSystemSid = 'S-1-5-18'
 $AllowedAdministratorsSid = 'S-1-5-32-544'
 
@@ -50,8 +57,15 @@ function Assert-NoReparsePoint([string] $Path) {
 
 function Assert-SafeExistingAncestors([string] $Path) {
     $expected = Get-NormalizedPath $Path
-    $segments = @('C:\ProgramData', 'C:\ProgramData\TPV ERP',
-        'C:\ProgramData\TPV ERP\secrets', $expected)
+    $segments = @()
+    $current = $expected
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        $segments += $current
+        $parent = Split-Path -LiteralPath $current -Parent
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) { break }
+        $current = $parent
+    }
+    [array]::Reverse($segments)
     foreach ($segment in $segments) {
         Assert-NoReparsePoint $segment
     }
@@ -166,14 +180,16 @@ $service = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$ExpectedSe
 if ($null -eq $service) {
     throw "El servicio $ExpectedServiceName no esta registrado. Registrelo antes de aprovisionar los secretos."
 }
-if (-not [StringComparer]::OrdinalIgnoreCase.Equals($service.StartName, $ExpectedServiceIdentity)) {
-    throw "El servicio debe ejecutarse como $ExpectedServiceIdentity y actualmente usa $($service.StartName)."
+$effectiveServiceIdentity = [string]$service.StartName
+if (-not [string]::IsNullOrWhiteSpace($ExpectedServiceIdentity) -and
+    -not [StringComparer]::OrdinalIgnoreCase.Equals($effectiveServiceIdentity, $ExpectedServiceIdentity.Trim())) {
+    throw "El servicio debe ejecutarse como $($ExpectedServiceIdentity.Trim()) y actualmente usa $effectiveServiceIdentity."
 }
 if ($service.State -ne 'Stopped') {
     throw "Detenga el servicio $ExpectedServiceName antes de cambiar las ACL."
 }
 
-$serviceSid = Resolve-Sid $ExpectedServiceIdentity
+$serviceSid = Resolve-Sid $effectiveServiceIdentity
 $systemSid = [Security.Principal.SecurityIdentifier]::new($AllowedSystemSid)
 $administratorsSid = [Security.Principal.SecurityIdentifier]::new($AllowedAdministratorsSid)
 $allowedSids = [Security.Principal.SecurityIdentifier[]] @(
@@ -189,7 +205,7 @@ $allowedSidValues = [string[]] @(
 
 if (-not $PSCmdlet.ShouldProcess(
         $secretDirectory,
-        "Crear el directorio y limitarlo a $ExpectedServiceIdentity, SYSTEM y Administrators")) {
+        "Crear el directorio y limitarlo a $effectiveServiceIdentity, SYSTEM y Administrators")) {
     return
 }
 
@@ -211,5 +227,9 @@ foreach ($item in $validatedItems) {
     Assert-StrictFileSystemAcl $item.FullName $item.PSIsContainer $allowedSidValues
 }
 
-Write-Host "Directorio VeriFactu aprovisionado correctamente: $secretDirectory"
-Write-Host "Identidad autorizada del servicio: $ExpectedServiceIdentity"
+if ($DirectoryKind -eq 'FiscalExport') {
+    Write-Host "Directorio de exportaciones fiscales aprovisionado correctamente: $secretDirectory"
+} else {
+    Write-Host "Directorio VeriFactu aprovisionado correctamente: $secretDirectory"
+}
+Write-Host "Identidad autorizada del servicio: $effectiveServiceIdentity"

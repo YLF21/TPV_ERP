@@ -58,7 +58,98 @@ public final class LoyaltyApiModels {
             UUID storeId,
             UUID memberId,
             String terminalId,
-            String saleId) {
+            String saleId,
+            BigDecimal attributedAmount,
+            List<RetentionClaim> retentionClaims,
+            Long retentionRevision,
+            String retentionFingerprint) {
+
+        public ReserveRequest(
+                UUID companyId,
+                UUID storeId,
+                UUID memberId,
+                String terminalId,
+                String saleId) {
+            this(companyId, storeId, memberId, terminalId, saleId, null, List.of(), 0L, "");
+        }
+
+        public ReserveRequest(
+                UUID companyId, UUID storeId, UUID memberId, String terminalId, String saleId,
+                List<RetentionClaim> retentionClaims, long retentionRevision, String retentionFingerprint) {
+            this(companyId, storeId, memberId, terminalId, saleId, null,
+                    retentionClaims, retentionRevision, retentionFingerprint);
+        }
+
+        public ReserveRequest {
+            retentionRevision = retentionRevision == null ? 0L : retentionRevision;
+            retentionClaims = retentionClaims == null ? List.of() : List.copyOf(retentionClaims);
+            retentionFingerprint = retentionFingerprint == null ? "" : retentionFingerprint.trim();
+            if (retentionRevision < 0 || retentionClaims.stream().anyMatch(claim -> claim == null)) {
+                throw new IllegalArgumentException("Retencion de devolucion invalida");
+            }
+        }
+    }
+
+    public record RetentionClaim(
+            UUID lotId,
+            UUID sourceMovementId,
+            UUID sourceDocumentId,
+            BigDecimal amountOriginal,
+            BigDecimal amount,
+            BigDecimal heldAmount) {
+
+        public RetentionClaim(
+                UUID lotId,
+                UUID sourceMovementId,
+                UUID sourceDocumentId,
+                BigDecimal amountOriginal,
+                BigDecimal amount) {
+            this(lotId, sourceMovementId, sourceDocumentId, amountOriginal, amount, null);
+        }
+
+        public RetentionClaim(
+                UUID lotId,
+                UUID sourceMovementId,
+                BigDecimal amountOriginal,
+                BigDecimal amount) {
+            this(lotId, sourceMovementId, null, amountOriginal, amount);
+        }
+
+        public RetentionClaim(UUID lotId, UUID sourceMovementId, BigDecimal amount) {
+            this(lotId, sourceMovementId, null, amount, amount);
+        }
+    }
+
+    public record RetentionConfigureRequest(
+            UUID companyId,
+            UUID storeId,
+            String terminalId,
+            String saleId,
+            BigDecimal attributedAmount,
+                List<RetentionClaim> retentionClaims,
+            UUID sourceDocumentId) {
+
+        public RetentionConfigureRequest(
+                UUID companyId,
+                UUID storeId,
+                String terminalId,
+                String saleId,
+                BigDecimal attributedAmount,
+                List<RetentionClaim> retentionClaims) {
+            this(companyId, storeId, terminalId, saleId, attributedAmount, retentionClaims,
+                    inferSourceDocumentId(retentionClaims));
+        }
+
+        public RetentionConfigureRequest {
+            retentionClaims = retentionClaims == null ? null : List.copyOf(retentionClaims);
+        }
+
+        private static UUID inferSourceDocumentId(List<RetentionClaim> claims) {
+            if (claims == null || claims.isEmpty()) return null;
+            UUID first = claims.getFirst() == null ? null : claims.getFirst().sourceDocumentId();
+            return claims.stream().allMatch(value -> value != null && first != null
+                    && first.equals(value.sourceDocumentId())) ? first : null;
+        }
     }
 
     public record ReservationOwnerRequest(
@@ -77,12 +168,27 @@ public final class LoyaltyApiModels {
             BigDecimal amount) {
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record PreparedOwnerRequest(
             UUID companyId,
             UUID storeId,
             String terminalId,
             String saleId,
-            UUID operationId) {
+            UUID operationId,
+            RetentionSnapshot retentionSnapshot) {
+        public PreparedOwnerRequest(
+                UUID companyId, UUID storeId, String terminalId, String saleId, UUID operationId) {
+            this(companyId, storeId, terminalId, saleId, operationId, null);
+        }
+    }
+
+    public record RetentionSnapshot(
+            UUID memberId,
+            UUID sourceDocumentId,
+            UUID returnDocumentId,
+            BigDecimal attributedAmount,
+            String fingerprint,
+            List<RetentionClaim> claims) {
     }
 
     public record ReservationResponse(
@@ -107,7 +213,29 @@ public final class LoyaltyApiModels {
             String saleId,
             UUID operationId,
             BigDecimal loyaltyAmount,
-            BigDecimal returnCreditAmount) {
+            BigDecimal returnCreditAmount,
+            long expectedRetentionRevision,
+            String expectedRetentionFingerprint) {
+
+        public WalletPrepareRequest(
+                UUID companyId,
+                UUID storeId,
+                String terminalId,
+                String saleId,
+                UUID operationId,
+                BigDecimal loyaltyAmount,
+                BigDecimal returnCreditAmount) {
+            this(companyId, storeId, terminalId, saleId, operationId,
+                    loyaltyAmount, returnCreditAmount, 0L, "");
+        }
+
+        public WalletPrepareRequest {
+            expectedRetentionFingerprint = expectedRetentionFingerprint == null
+                    ? "" : expectedRetentionFingerprint.trim();
+            if (expectedRetentionRevision < 0) {
+                throw new IllegalArgumentException("retentionRevision no puede ser negativo");
+            }
+        }
     }
 
     public record WalletReservedLot(
@@ -137,7 +265,66 @@ public final class LoyaltyApiModels {
             Instant heartbeatAt,
             Instant leaseExpiresAt,
             int heartbeatIntervalSeconds,
-            int leaseSeconds) {
+            int leaseSeconds,
+            long retentionRevision,
+            String retentionFingerprint,
+            List<RetentionClaim> retentionClaims,
+            BigDecimal heldKnown,
+            BigDecimal pendingMissing,
+            BigDecimal spentShortfall,
+            BigDecimal spendable,
+            BigDecimal recoveredKnown) {
+
+        public WalletReservationResponse(
+                UUID reservationId,
+                UUID memberId,
+                String status,
+                BigDecimal reservedLoyaltyAmount,
+                BigDecimal reservedReturnCreditAmount,
+                BigDecimal preparedLoyaltyAmount,
+                BigDecimal preparedReturnCreditAmount,
+                UUID prepareOperationId,
+                BigDecimal consumedLoyaltyAmount,
+                BigDecimal consumedReturnCreditAmount,
+                BigDecimal accountLoyaltyBalance,
+                BigDecimal accountReturnCreditBalance,
+                List<WalletReservedLot> reservedLots,
+                Instant heartbeatAt,
+                Instant leaseExpiresAt,
+                int heartbeatIntervalSeconds,
+                int leaseSeconds) {
+            this(reservationId, memberId, status, reservedLoyaltyAmount, reservedReturnCreditAmount,
+                    preparedLoyaltyAmount, preparedReturnCreditAmount, prepareOperationId,
+                    consumedLoyaltyAmount, consumedReturnCreditAmount, accountLoyaltyBalance,
+                    accountReturnCreditBalance, reservedLots, heartbeatAt, leaseExpiresAt,
+                    heartbeatIntervalSeconds, leaseSeconds, 0L, "", List.of(),
+                    BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                    BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2));
+        }
+
+        public WalletReservationResponse(
+                UUID reservationId, UUID memberId, String status,
+                BigDecimal reservedLoyaltyAmount, BigDecimal reservedReturnCreditAmount,
+                BigDecimal preparedLoyaltyAmount, BigDecimal preparedReturnCreditAmount,
+                UUID prepareOperationId, BigDecimal consumedLoyaltyAmount,
+                BigDecimal consumedReturnCreditAmount, BigDecimal accountLoyaltyBalance,
+                BigDecimal accountReturnCreditBalance, List<WalletReservedLot> reservedLots,
+                Instant heartbeatAt, Instant leaseExpiresAt, int heartbeatIntervalSeconds,
+                int leaseSeconds, long retentionRevision, String retentionFingerprint,
+                List<RetentionClaim> retentionClaims) {
+            this(reservationId, memberId, status, reservedLoyaltyAmount, reservedReturnCreditAmount,
+                    preparedLoyaltyAmount, preparedReturnCreditAmount, prepareOperationId,
+                    consumedLoyaltyAmount, consumedReturnCreditAmount, accountLoyaltyBalance,
+                    accountReturnCreditBalance, reservedLots, heartbeatAt, leaseExpiresAt,
+                    heartbeatIntervalSeconds, leaseSeconds, retentionRevision, retentionFingerprint,
+                    retentionClaims, BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                    BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2));
+        }
+
+        public WalletReservationResponse {
+            retentionFingerprint = retentionFingerprint == null ? "" : retentionFingerprint;
+            retentionClaims = retentionClaims == null ? List.of() : List.copyOf(retentionClaims);
+        }
     }
 
     public record WalletBootstrapDiscoverRequest(

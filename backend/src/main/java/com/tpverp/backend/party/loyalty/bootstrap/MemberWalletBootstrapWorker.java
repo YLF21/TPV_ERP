@@ -263,7 +263,8 @@ public class MemberWalletBootstrapWorker {
             MemberWalletBootstrapStatus remote,
             BootstrapContext context) {
         if (!remote.companyId().equals(context.companyId())
-                || !remote.expectedStoreIds().contains(context.storeId())) {
+                || !remote.expectedStoreIds().contains(context.storeId())
+                || remote.cutoffAt() == null) {
             throw new MemberBalanceCentralException(
                     MemberBalanceCentralException.Kind.INVALID_RESPONSE,
                     "El bootstrap remoto no pertenece a la empresa y tienda esperadas");

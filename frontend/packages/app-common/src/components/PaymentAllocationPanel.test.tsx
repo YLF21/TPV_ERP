@@ -2,6 +2,8 @@
 
 import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, createEvent, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -43,6 +45,407 @@ const session: PaymentSession = {
 afterEach(cleanup);
 
 describe("PaymentAllocationPanel", () => {
+  it("keeps F10 spendable when the local wallet snapshot is stale but central reservation is valid", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      acceptSubmitsCurrent
+      customerSelected
+      memberBalanceEligibleTotalCents={1200}
+      memberBalanceReservedLoyaltyCents={1200}
+      memberBalanceReady
+      pricingReady
+      memberWallet={{ loyaltyAvailable: 0, returnCreditAvailable: 0, totalAvailable: 0, lots: [] }}
+      onMemberWallet={vi.fn()}
+      onClose={vi.fn()}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByRole("button", { name: /Saldo socio/ })).toBeEnabled();
+  });
+
+  it("uses central typed reservation amounts while the local wallet snapshot is absent", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      acceptSubmitsCurrent
+      customerSelected
+      memberBalanceEligibleTotalCents={1200}
+      memberBalanceReservedLoyaltyCents={800}
+      memberBalanceReservedReturnCreditCents={400}
+      memberBalanceRetentionHeldCents={100}
+      memberBalanceReady
+      pricingReady
+      onMemberBalance={vi.fn()}
+      onClose={vi.fn()}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByRole("button", { name: /Saldo socio/ }))
+      .toHaveTextContent("Disponible: 11,00 €");
+  });
+
+  it("disables F10 when retention holds the full reserved balance", () => {
+    const onMemberBalance = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, totalCents: 500, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      customerSelected
+      memberBalanceEligibleTotalCents={500}
+      memberBalanceReservedLoyaltyCents={500}
+      memberBalanceRetentionHeldCents={500}
+      memberBalanceReady
+      pricingReady
+      onMemberBalance={onMemberBalance}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    expect(memberButton).toBeDisabled();
+    expect(memberButton).toHaveTextContent("Disponible: 0,00 €");
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onMemberBalance).not.toHaveBeenCalled();
+  });
+
+  it("shows and applies only the net balance after a partial retention hold", () => {
+    const onMemberBalance = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, totalCents: 1000, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      customerSelected
+      memberBalanceEligibleTotalCents={1000}
+      memberBalanceReservedLoyaltyCents={800}
+      memberBalanceRetentionHeldCents={250}
+      memberBalanceReady
+      pricingReady
+      onMemberBalance={onMemberBalance}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    expect(memberButton).toBeEnabled();
+    expect(memberButton).toHaveTextContent("Disponible: 5,50 €");
+    fireEvent.click(memberButton);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    expect(amount).toHaveValue("5,50");
+    fireEvent.keyDown(amount, { key: "Enter" });
+
+    expect(onMemberBalance).toHaveBeenCalledWith(550);
+  });
+
+  it("disables F10 in a mixed member return-and-sale checkout", () => {
+    const onMemberBalance = vi.fn();
+    const onDiscount = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, totalCents: 500, direction: "SALE", allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      customerSelected
+      memberBalanceBlockedByReturn
+      memberBalanceEligibleTotalCents={500}
+      memberBalanceReservedLoyaltyCents={400}
+      memberBalanceReservedReturnCreditCents={1000}
+      memberBalanceReady
+      pricingReady
+      discountVisible
+      onMemberBalance={onMemberBalance}
+      onDiscount={onDiscount}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    expect(memberButton).toBeDisabled();
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onMemberBalance).not.toHaveBeenCalled();
+
+    const discountButton = within(container).getByRole("button", { name: /Descuento/ });
+    expect(discountButton).toBeEnabled();
+    fireEvent.click(discountButton);
+    fireEvent.keyDown(within(container).getByRole("textbox", { name: /IMPORTE/ }), { key: "Enter" });
+    expect(onDiscount).toHaveBeenCalledWith(expect.any(Number));
+    expect(onDiscount.mock.calls[0][0]).toBeGreaterThan(0);
+  });
+
+  it("allows a pure return to be credited to a zero-balance member wallet", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        totalCents: 500,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [],
+      }}
+      providers={[]}
+      manualCardEnabled
+      cashEnabled={false}
+      cardEnabled={false}
+      voucherEnabled={false}
+      customerSelected
+      memberCreditEligible
+      memberBalanceBlockedByReturn
+      acceptSubmitsCurrent
+      onClose={vi.fn()}
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    const credit = within(container).getByRole("button", { name: /Saldo a favor/ });
+    expect(credit).toBeEnabled();
+    fireEvent.click(credit);
+    fireEvent.click(within(container).getByRole("button", { name: "ACEPTAR" }));
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "MEMBER_CREDIT",
+      amountCents: 500,
+    }, { finalizeWhenCovered: true });
+  });
+
+  it("allows gift receipt return credit for the selected member and explains the option", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        totalCents: 500,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [],
+      }}
+      providers={[]}
+      manualCardEnabled={false}
+      cashEnabled={false}
+      cardEnabled={false}
+      voucherEnabled
+      voucherOnlyRefund
+      customerSelected
+      memberCreditEligible
+      acceptSubmitsCurrent
+      onClose={vi.fn()}
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByText(/admite un vale o un abono al saldo/)).toBeInTheDocument();
+    const credit = within(container).getByRole("button", { name: /Saldo a favor/ });
+    expect(credit).toBeEnabled();
+    fireEvent.click(credit);
+    fireEvent.click(within(container).getByRole("button", { name: "ACEPTAR" }));
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "MEMBER_CREDIT",
+      amountCents: 500,
+    }, { finalizeWhenCovered: true });
+  });
+
+  it("consolidates approved sale balance and return credit without changing the allocation payload", () => {
+    const mixedSale: PaymentSession = {
+      id: "mixed-sale-balance",
+      totalCents: 3,
+      direction: "SALE",
+      status: "COVERED",
+      allocations: [{
+        kind: "MEMBER_CREDIT",
+        amountCents: 3,
+        idempotencyKey: "return-credit-approved",
+        status: "APPROVED",
+      }],
+    };
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={mixedSale}
+      providers={[]}
+      manualCardEnabled
+      memberBalanceCents={94}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    const table = container.querySelector(".sale-checkout-table")!;
+    expect(table).toHaveTextContent("Saldo socio");
+    expect(table).toHaveTextContent("-0,97 €");
+    expect(table).not.toHaveTextContent("Saldo a favor");
+    const totals = container.querySelector(".sale-checkout-totals")!;
+    expect(totals).toHaveTextContent("0,97 €");
+    expect(totals).toHaveTextContent("COBRADO0,97 €");
+    expect(totals).toHaveTextContent("FALTA0,00 €");
+  });
+
+  it.each(["PENDING", "TIMEOUT", "DECLINED", "ERROR", "CANCELLED"] as const)(
+    "keeps a non-approved sale return-credit allocation visible (%s)",
+    (status) => {
+      const { container } = render(<PaymentAllocationPanel
+        locale="es"
+        session={{
+          id: `sale-credit-${status.toLowerCase()}`,
+          totalCents: 5,
+          direction: "SALE",
+          status: "COLLECTING",
+          allocations: [{
+            kind: "MEMBER_CREDIT",
+            amountCents: 3,
+            idempotencyKey: `return-credit-${status.toLowerCase()}`,
+            operationId: "return-credit-operation",
+            status,
+          }],
+        }}
+        providers={[]}
+        manualCardEnabled
+        memberBalanceCents={94}
+        onAdd={vi.fn()}
+        onQuery={vi.fn()}
+      />);
+
+      const table = container.querySelector(".sale-checkout-table")!;
+      expect(table).toHaveTextContent("Saldo socio");
+      expect(table).toHaveTextContent("Saldo a favor");
+      expect(table).toHaveTextContent("0,03 €");
+    },
+  );
+
+  it("keeps return-credit presentation separate on refunds", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        id: "refund-credit",
+        totalCents: 3,
+        direction: "REFUND",
+        status: "COVERED",
+        allocations: [{
+          kind: "MEMBER_CREDIT",
+          amountCents: 3,
+          idempotencyKey: "refund-credit-approved",
+          status: "APPROVED",
+        }],
+      }}
+      providers={[]}
+      manualCardEnabled
+      memberBalanceCents={94}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    const table = container.querySelector(".sale-checkout-table")!;
+    expect(table).toHaveTextContent("Saldo a favor");
+    expect(table).not.toHaveTextContent("-0,97 €");
+    expect(container.querySelector(".sale-checkout-totals"))
+      .toHaveTextContent("0,03 €");
+  });
+
+  it("keeps member credit available on voucher-only returns without a wallet snapshot", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        totalCents: 500,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [],
+      }}
+      providers={[]}
+      manualCardEnabled
+      voucherOnlyRefund
+      customerSelected
+      memberCreditEligible
+      initialMethod="MEMBER_CREDIT"
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByRole("button", { name: /Saldo a favor/ }))
+      .toBeEnabled();
+  });
+
+  it("disables member credit when the selected customer is not an active member", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        totalCents: 500,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [],
+      }}
+      providers={[]}
+      manualCardEnabled
+      cashEnabled={false}
+      cardEnabled={false}
+      voucherEnabled={false}
+      customerSelected
+      memberCreditEligible={false}
+      initialMethod="MEMBER_CREDIT"
+      acceptSubmitsCurrent
+      onClose={vi.fn()}
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    const credit = within(container).getByRole("button", { name: /Saldo a favor/ });
+    expect(credit).toBeDisabled();
+    fireEvent.click(credit);
+    fireEvent.click(within(container).getByRole("button", { name: "ACEPTAR" }));
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("keeps the nested member wallet above checkout and isolates keyboard focus", () => {
+    const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
+    const walletCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/components/MemberWalletDialog.css"), "utf8");
+    expect(tpvCss).toContain("--tpv-layer-modal: 1500;");
+    expect(tpvCss).toContain("--tpv-layer-nested-modal: 1510;");
+    expect(walletCss).toMatch(/\.member-wallet-overlay\s*\{[\s\S]*?z-index:\s*var\(--tpv-layer-nested-modal, 1510\);/);
+
+    const onClose = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceEligibleTotalCents={1200}
+      memberWallet={{
+        loyaltyAvailable: 12,
+        returnCreditAvailable: 0,
+        totalAvailable: 12,
+        lots: [],
+      }}
+      onMemberWallet={vi.fn()} onClose={onClose} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    memberButton.focus();
+    fireEvent.click(memberButton);
+
+    const checkout = container.querySelector<HTMLElement>(".sale-checkout-dialog");
+    expect(checkout).not.toBeNull();
+    const wallet = within(container).getByRole("dialog", { name: "Consumir saldo de socio" });
+    const amount = within(wallet).getByRole("textbox");
+    expect(checkout).toHaveAttribute("aria-hidden", "true");
+    expect(amount).toHaveFocus();
+
+    const close = within(wallet).getByRole("button", { name: "Cerrar" });
+    const apply = within(wallet).getByRole("button", { name: "Aplicar saldo" });
+    apply.focus();
+    fireEvent.keyDown(apply, { key: "Tab" });
+    expect(close).toHaveFocus();
+
+    fireEvent.keyDown(amount, { key: "Escape" });
+    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de socio" })).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.querySelector(".sale-checkout-dialog")).not.toHaveAttribute("aria-hidden");
+    expect(memberButton).toHaveFocus();
+  });
+
   it("uses Aceptar to submit the current entry in immediate-payment mode", () => {
     const onAdd = vi.fn();
     const { container } = render(<PaymentAllocationPanel
@@ -252,6 +655,26 @@ describe("PaymentAllocationPanel", () => {
     expect(html).not.toContain("IMPORTE / RECIBIDO");
     expect(html).not.toContain("<kbd>*</kbd>");
     expect(html).toMatch(/class="primary"[^>]*>ACEPTAR/);
+  });
+
+  it("presents a ZERO session covered by loyalty as a fully paid sale", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, totalCents: 0, direction: "ZERO", status: "COVERED", allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      memberBalanceCents={94}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(html).toContain("Saldo socio");
+    expect(html).toContain("-0,94 €");
+    expect(html).toContain("TOTAL A COBRAR");
+    expect(html).toContain("0,94 €");
+    expect(html).toContain("COBRADO");
+    expect(html).toContain("FALTA");
+    expect(html).toMatch(/class="remaining">FALTA<strong>0,00 €/);
   });
 
   it("selects the payment method before accepting the entered amount", () => {
@@ -550,6 +973,293 @@ describe("PaymentAllocationPanel", () => {
 
     expect(onMemberBalance).toHaveBeenCalledWith(450);
     expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("does not enable member balance before pricing and caps it by the eligible quote total", () => {
+    const onMemberBalance = vi.fn();
+    const props = {
+      locale: "es" as const,
+      session: { ...session, allocations: [] },
+      providers: [] as string[],
+      manualCardEnabled: true,
+      customerSelected: true,
+      memberBalanceAvailableCents: 2000,
+      memberBalanceEligibleTotalCents: 200,
+      onMemberBalance,
+      onAdd: vi.fn(),
+      onQuery: vi.fn(),
+    };
+    const view = render(<PaymentAllocationPanel {...props} pricingReady={false} />);
+    const memberButton = within(view.container).getByRole("button", { name: /Saldo socio/ });
+    expect(memberButton).toBeDisabled();
+
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onMemberBalance).not.toHaveBeenCalled();
+
+    view.rerender(<PaymentAllocationPanel {...props} pricingReady />);
+    expect(memberButton).toBeEnabled();
+    fireEvent.click(memberButton);
+    const amount = within(view.container).getByRole("textbox", { name: /IMPORTE/ });
+    expect(amount).toHaveValue("2,00");
+
+    fireEvent.change(amount, { target: { value: "2,01" } });
+    fireEvent.keyDown(amount, { key: "Enter" });
+    expect(onMemberBalance).not.toHaveBeenCalled();
+
+    fireEvent.change(amount, { target: { value: "2,00" } });
+    fireEvent.keyDown(amount, { key: "Enter" });
+    expect(onMemberBalance).toHaveBeenCalledWith(200);
+  });
+
+  it("keeps F10 inert and hides gross wallet data while retention is pending", () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected discountVisible pricingReady memberBalanceReady={false}
+      memberBalanceEligibleTotalCents={1200}
+      memberWallet={{ loyaltyAvailable: 25, returnCreditAvailable: 4, totalAvailable: 29, lots: [] }}
+      onMemberWallet={onMemberWallet} onDiscount={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const discountButton = within(container).getByRole("button", { name: /Descuento/ });
+    expect(memberButton).toBeDisabled();
+    expect(discountButton).toBeEnabled();
+    expect(memberButton).toHaveAccessibleName("Saldo socioDisponible: 0,00 €");
+
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onMemberWallet).not.toHaveBeenCalled();
+    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de socio" })).not.toBeInTheDocument();
+  });
+
+  it("does not reactivate F10 after the reservation becomes unavailable", () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected discountVisible pricingReady memberBalanceReady={false}
+      memberBalanceEligibleTotalCents={1200}
+      memberWallet={{ loyaltyAvailable: 25, returnCreditAvailable: 4, totalAvailable: 29, lots: [] }}
+      onMemberWallet={onMemberWallet} onDiscount={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByRole("button", { name: /Saldo socio/ })).toBeDisabled();
+    expect(within(container).getByRole("button", { name: /Descuento/ })).toBeEnabled();
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onMemberWallet).not.toHaveBeenCalled();
+    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de socio" })).not.toBeInTheDocument();
+  });
+
+  it("intersects typed wallet buckets before subtracting a partial loyalty hold", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, totalCents: 3000, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      customerSelected
+      memberBalanceCents={3000}
+      memberBalanceEligibleTotalCents={3000}
+      memberBalanceReservedLoyaltyCents={1321}
+      memberBalanceReservedReturnCreditCents={442}
+      memberBalanceRetentionHeldCents={4}
+      memberBalanceRetentionHeldReturnCreditCents={0}
+      memberWallet={{ loyaltyAvailable: 12.99, returnCreditAvailable: 4.42, totalAvailable: 17.41, lots: [] }}
+      onMemberWallet={vi.fn()}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    expect(memberButton).toHaveTextContent("Disponible: 17,59 €");
+    fireEvent.click(memberButton);
+    expect(within(container).getByRole("dialog", { name: "Consumir saldo de socio" }))
+      .toHaveTextContent("Máximo aplicable a esta venta: 17,59");
+  });
+
+  it("keeps return credit available when no purchase amount is eligible", () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceEligibleTotalCents={0}
+      memberWallet={{
+        loyaltyAvailable: 0,
+        returnCreditAvailable: 10,
+        totalAvailable: 10,
+        lots: [{
+          id: "credit-1", type: "RETURN_CREDIT", sourceMovementType: "ABONO_CREDITO_DEVOLUCION",
+          originalAmount: 10, availableAmount: 10, obtainedAt: "2026-08-28T00:00:00Z",
+        }],
+      }}
+      onMemberWallet={onMemberWallet} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    const amount = within(dialog).getByRole("textbox");
+    expect(amount).toHaveValue("10,00");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar saldo" }));
+
+    expect(onMemberWallet).toHaveBeenCalledWith(expect.objectContaining({
+      requestedCents: 1000,
+      loyaltyCents: 0,
+      returnCreditCents: 1000,
+    }));
+  });
+
+  it("caps loyalty consumption but preserves return credit in a mixed wallet", () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceEligibleTotalCents={200}
+      memberWallet={{
+        loyaltyAvailable: 8,
+        returnCreditAvailable: 10,
+        totalAvailable: 18,
+        lots: [],
+      }}
+      onMemberWallet={onMemberWallet} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    expect(within(dialog).getByRole("textbox")).toHaveValue("12,00");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar saldo" }));
+
+    expect(onMemberWallet).toHaveBeenCalledWith(expect.objectContaining({
+      requestedCents: 1200,
+      loyaltyCents: 200,
+      returnCreditCents: 1000,
+    }));
+  });
+
+  it("caps a gross wallet by the net retained loyalty and keeps return credit separate", () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceEligibleTotalCents={1200}
+      memberBalanceReservedLoyaltyCents={800}
+      memberBalanceReservedReturnCreditCents={1000}
+      memberBalanceRetentionHeldCents={600}
+      memberWallet={{ loyaltyAvailable: 8, returnCreditAvailable: 10, totalAvailable: 18, lots: [] }}
+      onMemberWallet={onMemberWallet} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    expect(within(dialog).getByRole("textbox")).toHaveValue("12,00");
+    expect(within(dialog).getByText(/Total bruto/).textContent).toContain("18,00");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar saldo" }));
+    expect(onMemberWallet).toHaveBeenCalledWith(expect.objectContaining({
+      requestedCents: 1200,
+      loyaltyCents: 200,
+      returnCreditCents: 1000,
+    }));
+  });
+
+  it("highlights the exact held lot in the F10 wallet dialog", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      customerSelected
+      memberBalanceEligibleTotalCents={200}
+      memberBalanceReservedLoyaltyCents={200}
+      memberBalanceRetentionHeldCents={4}
+      memberWallet={{
+        loyaltyAvailable: 2,
+        returnCreditAvailable: 0,
+        totalAvailable: 2,
+        lots: [{
+          id: "lot-001-260829-00003",
+          type: "LOYALTY",
+          documentId: "document-001-260829-00003",
+          documentNumber: "001-260829-00003",
+          sourceMovementType: "ACUMULACION_SALDO",
+          originalAmount: 2,
+          availableAmount: 2,
+          heldAmount: 0.04,
+          obtainedAt: "2026-08-29T10:00:00Z",
+        }],
+      }}
+      onMemberWallet={vi.fn()}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const dialog = within(container).getByRole("dialog", { name: "Consumir saldo de socio" });
+    const row = container.querySelector(".member-wallet-lot-partial-hold");
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent("001-260829-00003");
+    expect(row).toHaveTextContent("0,04");
+    expect(row).toHaveTextContent("1,96");
+    expect(dialog.querySelector(".member-wallet-balance-summary strong:nth-child(2)")).toHaveTextContent("Disponible neto");
+    expect(dialog.querySelector(".member-wallet-balance-summary strong:nth-child(2)")).toHaveTextContent("1,96");
+  });
+
+  it("does not expose gross loyalty when the retention hold consumes it", () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled customerSelected memberBalanceEligibleTotalCents={1200}
+      memberBalanceReservedLoyaltyCents={800}
+      memberBalanceReservedReturnCreditCents={0}
+      memberBalanceRetentionHeldCents={600}
+      memberWallet={{ loyaltyAvailable: 8, returnCreditAvailable: 0, totalAvailable: 8, lots: [] }}
+      onMemberWallet={onMemberWallet} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    expect(within(dialog).getByRole("textbox")).toHaveValue("2,00");
+    expect(within(dialog).getByText(/Bloqueo parcial de saldo/)).toBeInTheDocument();
+  });
+
+  it("limits F11 manual discount to the authoritative eligible total", () => {
+    const onDiscount = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled discountVisible
+      memberBalanceEligibleTotalCents={200} pricingReady
+      onDiscount={onDiscount} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    fireEvent.click(within(container).getByRole("button", { name: /Descuento/ }));
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    expect(amount).toHaveValue("2,00");
+    fireEvent.change(amount, { target: { value: "3,00" } });
+    fireEvent.keyDown(amount, { key: "Enter" });
+    expect(onDiscount).not.toHaveBeenCalled();
+
+    fireEvent.change(amount, { target: { value: "2,00" } });
+    fireEvent.keyDown(amount, { key: "Enter" });
+    expect(onDiscount).toHaveBeenCalledWith(200);
+  });
+
+  it("keeps the F11 cap stable after existing discount and member balance reductions", () => {
+    const onDiscount = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled discountVisible checkoutDiscountCents={400}
+      memberBalanceCents={200} memberBalanceEligibleTotalCents={600} pricingReady
+      onDiscount={onDiscount} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    fireEvent.click(within(container).getByRole("button", { name: /Descuento/ }));
+    expect(within(container).getByRole("textbox", { name: /IMPORTE/ })).toHaveValue("8,00");
+  });
+
+  it("does not select F11 after a payment has already been recorded", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [session.allocations[0]] }} providers={[]}
+      manualCardEnabled discountVisible pricingReady onDiscount={vi.fn()}
+      onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+
+    const discountButton = within(container).getByRole("button", { name: /Descuento/ });
+    expect(discountButton).toBeDisabled();
+    fireEvent.keyDown(window, { key: "F11" });
+    expect(within(container).getByRole("textbox", { name: /IMPORTE/ })).toHaveValue("7,00");
   });
 
   it("shows member balance separately from the F11 discount", () => {

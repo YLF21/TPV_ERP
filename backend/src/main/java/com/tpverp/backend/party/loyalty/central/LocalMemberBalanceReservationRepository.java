@@ -3,6 +3,7 @@ package com.tpverp.backend.party.loyalty.central;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,22 @@ public interface LocalMemberBalanceReservationRepository
             UUID storeId,
             UUID terminalId,
             String saleId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select reservation
+            from LocalMemberBalanceReservation reservation
+            where reservation.storeId = :storeId
+              and reservation.terminalId = :terminalId
+              and reservation.memberId = :memberId
+              and reservation.status in :statuses
+            order by reservation.createdAt asc
+            """)
+    List<LocalMemberBalanceReservation> findForRetry(
+            @Param("storeId") UUID storeId,
+            @Param("terminalId") UUID terminalId,
+            @Param("memberId") UUID memberId,
+            @Param("statuses") Collection<LocalMemberBalanceReservationStatus> statuses);
 
     @Query("""
             select min(reservation.createdAt)

@@ -34,4 +34,15 @@ class CorrelationIdFilterTest {
 
         assertThat(response.getHeader(CorrelationIdFilter.HEADER)).matches("[0-9a-f-]{36}");
     }
+
+    @Test
+    void getOrCreateGeneratesAnIdWhenTheRequestHasNotBeenFiltered() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(CorrelationIdFilter.HEADER, "unsafe id with spaces");
+
+        var correlationId = CorrelationIdFilter.getOrCreate(request);
+
+        assertThat(correlationId).matches("[0-9a-f-]{36}");
+        assertThat(request.getAttribute(CorrelationIdFilter.ATTRIBUTE)).isEqualTo(correlationId);
+    }
 }

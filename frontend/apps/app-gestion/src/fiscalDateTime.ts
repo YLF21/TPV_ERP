@@ -2,7 +2,9 @@
  * Converts a datetime-local wall-clock value to an instant using the store's
  * IANA timezone. It deliberately does not use the browser timezone.
  */
-export function datetimeLocalToIso(value: string, timeZone: string): string {
+export type FiscalDateTimeCandidate = { iso: string; offsetMinutes: number; offsetLabel: string };
+
+export function datetimeLocalToIso(value: string, timeZone: string, explicitOffsetMinutes?: number): string {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
   if (!match || !timeZone) throw new Error("invalid_fiscal_local_datetime");
 
@@ -19,26 +21,46 @@ export function datetimeLocalToIso(value: string, timeZone: string): string {
     throw new Error("invalid_fiscal_local_datetime");
   }
 
-  // Resolve the offset with the timezone itself, then verify the exact wall
-  // clock. Verification rejects nonexistent DST times instead of silently
-  // normalising them (which Date normally does).
   const desired = { year, month, day, hour, minute, second, millisecond };
-  const firstOffset = wallClockAsUtc(formatParts(naive, timeZone)) - naive;
-  const candidate = naive - firstOffset;
-  const secondOffset = wallClockAsUtc(formatParts(candidate, timeZone)) - candidate;
-  const resolved = naive - secondOffset;
-  if (!sameParts(new Date(resolved), desired, timeZone)) {
+  const candidates = candidatesForWallClock(naive, desired, timeZone);
+  if (candidates.length === 0) {
     throw new Error("nonexistent_fiscal_local_datetime");
   }
+  if (explicitOffsetMinutes == null && candidates.length > 1) {
+    throw new Error("ambiguous_fiscal_local_datetime");
+  }
+  const selected = explicitOffsetMinutes == null
+    ? candidates[0]
+    : candidates.find((candidate) => candidate.offsetMinutes === explicitOffsetMinutes);
+  if (!selected) throw new Error("invalid_fiscal_local_offset");
+  const resolved = naive - selected.offsetMinutes * 60_000;
   return new Date(resolved).toISOString();
 }
 
-export function isValidDatetimeLocal(value: string, timeZone: string): boolean {
+export function isValidDatetimeLocal(value: string, timeZone: string, explicitOffsetMinutes?: number): boolean {
   try {
-    datetimeLocalToIso(value, timeZone);
+    datetimeLocalToIso(value, timeZone, explicitOffsetMinutes);
     return true;
   } catch {
     return false;
+  }
+}
+
+export function datetimeLocalCandidates(value: string, timeZone: string): FiscalDateTimeCandidate[] {
+  try {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+    if (!match || !timeZone) return [];
+    const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00", fractionText = ""] = match;
+    const desired = { year: Number(yearText), month: Number(monthText), day: Number(dayText), hour: Number(hourText), minute: Number(minuteText), second: Number(secondText), millisecond: Number(fractionText.padEnd(3, "0") || "0") };
+    const naive = Date.UTC(desired.year, desired.month - 1, desired.day, desired.hour, desired.minute, desired.second, desired.millisecond);
+    if (!sameParts(new Date(naive), desired, "UTC")) return [];
+    return candidatesForWallClock(naive, desired, timeZone).map((candidate) => ({
+      iso: new Date(naive - candidate.offsetMinutes * 60_000).toISOString(),
+      offsetMinutes: candidate.offsetMinutes,
+      offsetLabel: formatOffset(candidate.offsetMinutes)
+    }));
+  } catch {
+    return [];
   }
 }
 
@@ -73,6 +95,24 @@ function formatParts(instant: number, timeZone: string): DateParts {
 
 function wallClockAsUtc(parts: DateParts) {
   return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, parts.millisecond);
+}
+
+function candidatesForWallClock(naive: number, desired: DateParts, timeZone: string) {
+  const offsets = new Set<number>();
+  for (const delta of [-172800000, -86400000, 0, 86400000, 172800000]) {
+    const instant = naive + delta;
+    offsets.add(wallClockAsUtc(formatParts(instant, timeZone)) - instant);
+  }
+  return [...offsets]
+    .map((offset) => ({ offsetMinutes: Math.round(offset / 60000) }))
+    .filter(({ offsetMinutes }) => sameParts(new Date(naive - offsetMinutes * 60000), desired, timeZone))
+    .sort((left, right) => left.offsetMinutes - right.offsetMinutes);
+}
+
+function formatOffset(offsetMinutes: number) {
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absolute = Math.abs(offsetMinutes);
+  return `UTC${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
 }
 
 function sameParts(date: Date, desired: DateParts, timeZone: string) {

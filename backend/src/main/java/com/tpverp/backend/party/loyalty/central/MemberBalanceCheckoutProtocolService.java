@@ -35,7 +35,34 @@ public class MemberBalanceCheckoutProtocolService {
             UUID operationId,
             BigDecimal loyaltyAmount,
             BigDecimal returnCreditAmount) {
+        LocalMemberBalanceReservation reservation = owned(
+                reservationId, storeId, terminalId, saleId);
+        return prepare(reservationId, storeId, terminalId, saleId, operationId,
+                loyaltyAmount, returnCreditAmount,
+                reservation.getRetentionRevision(), reservation.getRetentionFingerprint());
+    }
+
+    public LocalMemberBalanceReservation prepare(
+            UUID reservationId,
+            UUID storeId,
+            UUID terminalId,
+            String saleId,
+            UUID operationId,
+            BigDecimal loyaltyAmount,
+            BigDecimal returnCreditAmount,
+            long expectedRetentionRevision,
+            String expectedRetentionFingerprint) {
         LocalMemberBalanceReservation reservation = owned(reservationId, storeId, terminalId, saleId);
+        BigDecimal requestedLoyalty = loyaltyAmount == null
+                ? BigDecimal.ZERO : loyaltyAmount;
+        BigDecimal requestedReturnCredit = returnCreditAmount == null
+                ? BigDecimal.ZERO : returnCreditAmount;
+        if (requestedLoyalty.add(requestedReturnCredit).signum() > 0
+                && retentionIsNotConfirmed(reservation)) {
+            throw new MemberBalanceCentralException(
+                    MemberBalanceCentralException.Kind.CONFLICT,
+                    "La retencion de devolucion aun no esta confirmada");
+        }
         reservation.apply(coordinator.prepare(
                 reservation.getCentralReservationId(),
                 storeId,
@@ -43,7 +70,47 @@ public class MemberBalanceCheckoutProtocolService {
                 saleId,
                 operationId,
                 loyaltyAmount,
-                returnCreditAmount), clock.instant());
+                returnCreditAmount,
+                expectedRetentionRevision,
+                expectedRetentionFingerprint), clock.instant());
+        return reservations.save(reservation);
+    }
+
+    private static boolean retentionIsNotConfirmed(LocalMemberBalanceReservation reservation) {
+        return reservation.getRetentionPendingMissing().signum() > 0
+                || reservation.getRetentionSpentShortfall().signum() > 0
+                || reservation.getRetentionRecoveredKnown().signum() > 0
+                || reservation.getRetentionAttributedAmount().compareTo(
+                        reservation.getRetentionHeldKnown()) != 0;
+    }
+
+    /** A mixed return cannot consume F10 until its retention snapshot exists. */
+    public void requireRetentionConfiguredForReturn(UUID reservationId) {
+        LocalMemberBalanceReservation reservation = required(reservationId);
+        if (reservation.getRetentionRevision() <= 0
+                || reservation.getRetentionFingerprint() == null
+                || reservation.getRetentionFingerprint().isBlank()) {
+            throw new MemberBalanceCentralException(
+                    MemberBalanceCentralException.Kind.CONFLICT,
+                    "member_balance_retention_requires_return");
+        }
+    }
+
+    @Transactional
+    public LocalMemberBalanceReservation configureRetention(
+            UUID reservationId,
+            UUID storeId,
+            UUID terminalId,
+            String saleId,
+            UUID operationId,
+            UUID sourceDocumentId,
+            BigDecimal attributedAmount,
+            java.util.List<MemberBalanceCentralGateway.RetentionClaim> claims) {
+        LocalMemberBalanceReservation reservation = owned(
+                reservationId, storeId, terminalId, saleId);
+        reservation.apply(coordinator.configureRetention(
+                reservation.getCentralReservationId(), storeId, terminalId, saleId,
+                operationId, sourceDocumentId, attributedAmount, claims), clock.instant());
         return reservations.save(reservation);
     }
 
@@ -90,6 +157,12 @@ public class MemberBalanceCheckoutProtocolService {
     }
 
     public LocalMemberBalanceReservation finalizePrepared(UUID reservationId) {
+        return finalizePrepared(reservationId, null);
+    }
+
+    public LocalMemberBalanceReservation finalizePrepared(
+            UUID reservationId,
+            MemberBalanceCentralGateway.RetentionSnapshot retentionSnapshot) {
         LocalMemberBalanceReservation reservation = required(reservationId);
         if (reservation.getStatus() == LocalMemberBalanceReservationStatus.CONSUMED) {
             return reservation;
@@ -100,7 +173,8 @@ public class MemberBalanceCheckoutProtocolService {
                     reservation.getStoreId(),
                     reservation.getTerminalId(),
                     reservation.getSaleId(),
-                    reservation.getPrepareOperationId()), clock.instant());
+                    reservation.getPrepareOperationId(),
+                    retentionSnapshot), clock.instant());
         } catch (MemberBalanceCentralException exception) {
             if (exception.getKind() == MemberBalanceCentralException.Kind.UNAVAILABLE) {
                 reservation.markFinalizePending(clock.instant());
@@ -116,6 +190,28 @@ public class MemberBalanceCheckoutProtocolService {
         if (reservation.isClosed()) {
             return reservation;
         }
+        // RELEASE_PENDING is a retryable release protocol state.  Retry the
+        // idempotent central release directly; it has no prepare operation
+        // and must never fall through to abortPrepared with a null operation.
+        if (reservation.isActive()
+                || reservation.getStatus() == LocalMemberBalanceReservationStatus.RELEASE_PENDING) {
+            try {
+                reservation.apply(coordinator.release(
+                        reservation.getCentralReservationId(), reservation.getStoreId(),
+                        reservation.getTerminalId(), reservation.getSaleId()), clock.instant());
+            } catch (MemberBalanceCentralException exception) {
+                if (exception.getStatusCode() != null && exception.getStatusCode() == 404) {
+                    reservation.markReleaseConfirmed(clock.instant());
+                    return reservations.save(reservation);
+                }
+                if (exception.getKind() == MemberBalanceCentralException.Kind.UNAVAILABLE) {
+                    reservation.markReleasePending(clock.instant());
+                    return reservations.save(reservation);
+                }
+                throw exception;
+            }
+            return reservations.save(reservation);
+        }
         if (reservation.getTicketId() != null) {
             throw new IllegalStateException("No se puede abortar saldo despues de confirmar el ticket");
         }
@@ -127,6 +223,10 @@ public class MemberBalanceCheckoutProtocolService {
                     reservation.getSaleId(),
                     reservation.getPrepareOperationId()), clock.instant());
         } catch (MemberBalanceCentralException exception) {
+            if (exception.getStatusCode() != null && exception.getStatusCode() == 404) {
+                reservation.markReleaseConfirmed(clock.instant());
+                return reservations.save(reservation);
+            }
             if (exception.getKind() == MemberBalanceCentralException.Kind.UNAVAILABLE) {
                 reservation.markAbortPending(clock.instant());
                 return reservations.save(reservation);
@@ -151,5 +251,51 @@ public class MemberBalanceCheckoutProtocolService {
     private LocalMemberBalanceReservation required(UUID reservationId) {
         return reservations.findById(reservationId)
                 .orElseThrow(() -> new NoSuchElementException("Reserva de saldo socio no encontrada"));
+    }
+
+    public boolean requiresCentralWalletCompletion(UUID reservationId) {
+        return reservations.findById(reservationId)
+                .filter(value -> value.getStatus() == LocalMemberBalanceReservationStatus.ACTIVE
+                        || value.getStatus() == LocalMemberBalanceReservationStatus.PREPARED
+                        || value.getStatus() == LocalMemberBalanceReservationStatus.TICKET_COMMITTED
+                        || value.getStatus() == LocalMemberBalanceReservationStatus.FINALIZE_PENDING
+                        || value.getStatus() == LocalMemberBalanceReservationStatus.ABORT_PENDING)
+                .map(value -> value.getPreparedAmount().signum() > 0
+                        || value.getRetentionRevision() > 0)
+                .orElse(false);
+    }
+
+    /**
+     * Keeps a recovery snapshot from one member/session from being attached to
+     * another prepared reservation. Standalone recovery events are intentionally
+     * not eligible for checkout finalization.
+     */
+    public boolean retentionSnapshotBelongsTo(
+            UUID reservationId, UUID centralReservationId, String saleId, UUID memberId) {
+        if (reservationId == null || centralReservationId == null || saleId == null || memberId == null) {
+            return false;
+        }
+        return reservations.findById(reservationId)
+                .filter(value -> centralReservationId.equals(value.getCentralReservationId()))
+                .filter(value -> saleId.equals(value.getSaleId()))
+                .filter(value -> memberId.equals(value.getMemberId()))
+                .isPresent();
+    }
+
+    public boolean hasEffectiveRetention(UUID reservationId) {
+        return reservations.findById(reservationId)
+                .filter(value -> value.getRetentionRevision() > 0)
+                .map(value -> value.getRetentionAttributedAmount().signum() > 0
+                        || value.getRetentionHeldKnown().signum() > 0
+                        || value.getRetentionPendingMissing().signum() > 0)
+                .orElse(false);
+    }
+
+    public boolean requiresCentralWalletFinalization(UUID reservationId) {
+        return reservations.findById(reservationId)
+                .filter(value -> value.getStatus() != LocalMemberBalanceReservationStatus.ACTIVE)
+                .map(value -> value.getPreparedAmount().signum() > 0
+                        || value.getRetentionRevision() > 0)
+                .orElse(false);
     }
 }

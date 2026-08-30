@@ -20,6 +20,9 @@ const labels: Record<string, string> = {
   "verifactu.mode.confirmChange": "Confirmar transición fiscal",
   "verifactu.mode.endDate": "FechaFinVeriFactu comunicada",
   "verifactu.mode.ack": "Referencia del acuse AEAT"
+  ,"verifactu.mode.retryHint": "La incidencia se conserva",
+  "verifactu.mode.retryChange": "Reprogramar / reintentar transición",
+  "verifactu.management.fiscalTransitionFailed": "Transición fallida:"
 };
 const t = (key: string) => labels[key] ?? key;
 
@@ -81,5 +84,29 @@ describe("FiscalModeControlView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar transición fiscal" }));
 
     await waitFor(() => expect(api.transitionFiscalMode).toHaveBeenCalledWith(expect.objectContaining({ confirmation: true }), "token"));
+  });
+
+  it("conserva la incidencia FALLIDA y permite reprogramar el mismo destino", async () => {
+    const failedStatus: api.FiscalStatus = {
+      ...baseStatus,
+      mode: "VERIFACTU",
+      modeVersion: 8,
+      scheduledTransition: {
+        previousMode: "VERIFACTU",
+        newMode: "NO_VERIFACTU",
+        status: "FALLIDA",
+        requestedAt: "2026-08-26T10:00:00Z",
+        effectiveAt: "2026-08-27T10:00:00Z",
+        lastErrorCode: "NETWORK_ERROR"
+      }
+    };
+    vi.mocked(api.transitionFiscalMode).mockResolvedValue({ ...failedStatus, scheduledTransition: null });
+    render(<FiscalModeControlView locale="es" token="token" status={failedStatus} t={t} onChanged={vi.fn()} />);
+    expect(screen.getByText("Transición fallida:")).toBeTruthy();
+    expect(screen.getByText(/NETWORK_ERROR/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Motivo auditado/), { target: { value: "Reintento tras recuperar conexión" } });
+    fireEvent.change(screen.getByLabelText(/Confirmación reforzada/), { target: { value: "CAMBIAR MODALIDAD FISCAL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reprogramar / reintentar transición" }));
+    await waitFor(() => expect(api.transitionFiscalMode).toHaveBeenCalledWith(expect.objectContaining({ targetMode: "NO_VERIFACTU", expectedVersion: 8 }), "token"));
   });
 });

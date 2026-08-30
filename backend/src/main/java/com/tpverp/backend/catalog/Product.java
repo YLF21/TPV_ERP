@@ -41,6 +41,9 @@ public class Product {
     @Column(name = "product_type", nullable = false, length = 16)
     private ProductType productType = ProductType.UNIT;
 
+    @Column(name = "requires_serial_number", nullable = false)
+    private boolean requiresSerialNumber;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "discount_type", nullable = false, length = 32)
     private DiscountType discountType = DiscountType.NORMAL;
@@ -220,6 +223,10 @@ public class Product {
 
     public ProductType getProductType() {
         return productType;
+    }
+
+    public boolean isRequiresSerialNumber() {
+        return requiresSerialNumber;
     }
 
     public DiscountType getDiscountType() {
@@ -418,6 +425,12 @@ public class Product {
     }
 
     public void configureStockLimits(BigDecimal min, BigDecimal max) {
+        if (min != null && min.signum() < 0) {
+            throw new IllegalArgumentException("stockMin no puede ser negativo");
+        }
+        if (max != null && max.signum() < 0) {
+            throw new IllegalArgumentException("stockMax no puede ser negativo");
+        }
         stockMin = min;
         stockMax = max;
         if (stockMin != null && stockMax != null && stockMax.compareTo(stockMin) < 0) {
@@ -431,6 +444,13 @@ public class Product {
             throw new IllegalArgumentException("packageQuantity no puede ser negativo");
         }
         packageQuantity = quantity;
+    }
+
+    public void configureSerialNumberTracking(boolean requiresSerialNumber) {
+        if (requiresSerialNumber && productType != ProductType.UNIT) {
+            throw new IllegalArgumentException("message.product.serial_number_requires_unit");
+        }
+        this.requiresSerialNumber = requiresSerialNumber;
     }
 
     public void activate() {

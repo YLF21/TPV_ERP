@@ -81,9 +81,11 @@ OpenAPI y Swagger UI solo se habilitan en el perfil `dev`.
 ## Certificado VeriFactu en Windows
 
 En produccion, la clave privada VeriFactu debe almacenarse en el directorio
-protegido `C:\ProgramData\TPV ERP\secrets\verifactu` y el backend debe ejecutarse
-como `NT SERVICE\TPVERPBackend`. El aprovisionamiento de ACL, las variables del
-servicio y el procedimiento de backup, restauracion y reimportacion se describen
+protegido `C:\ProgramData\TPV ERP\secrets\verifactu`. El instalador Windows usa
+`NT AUTHORITY\LocalService` por defecto y publica esa identidad en
+`TPV_VERIFACTU_SERVICE_ACCOUNT`; el aprovisionamiento de ACL lee y valida la
+cuenta efectiva del servicio. Las variables del servicio y el procedimiento de
+backup, restauracion y reimportacion se describen
 en [`../docs/verifactu-certificate-windows-operations.md`](../docs/verifactu-certificate-windows-operations.md).
 
 ## Pruebas

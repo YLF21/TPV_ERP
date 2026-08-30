@@ -188,6 +188,10 @@ export function VerifactuPosIndicator({
   useOutsidePointerDown(open, containerRef, () => setOpen(false));
 
   const presentationStatus = status?.presentationStatus ?? "DESCONOCIDO";
+  // Do not infer PRE-SIF while the status request is unavailable; show the
+  // product name as the neutral fallback and let the error state explain why.
+  const fiscalMode = status?.fiscalMode ?? (status ? (status.active ? "VERIFACTU" : "PRE_SIF") : "VERIFACTU");
+  const fiscalModeLabel = resolveFiscalModeLabel(fiscalMode, t);
   const attentionCount = status
     ? status.pendingCount + status.sendingCount + status.reviewRequiredCount
     : 0;
@@ -219,11 +223,12 @@ export function VerifactuPosIndicator({
         aria-expanded={open}
         aria-controls="verifactu-pos-panel"
         aria-busy={statusLoading}
+        aria-label={`${status ? fiscalModeLabel : "VERI*FACTU"} · ${statusError ? t("verifactu.pos.loadError") : t(statusKeys[presentationStatus])}`}
         onClick={() => setOpen((current) => !current)}
       >
         <span className="verifactu-pos__signal" aria-hidden="true" />
         <span className="verifactu-pos__trigger-copy">
-          <strong>VERI*FACTU</strong>
+          <strong>{fiscalModeLabel}</strong>
           <span>{statusError ? t("verifactu.pos.loadError") : t(statusKeys[presentationStatus])}</span>
         </span>
         {attentionCount > 0 && (
@@ -266,7 +271,7 @@ export function VerifactuPosIndicator({
               <span>{t("verifactu.pos.currentStatus")}</span>
               <strong>{statusError ? t("verifactu.pos.loadError") : t(statusKeys[presentationStatus])}</strong>
               <small>
-                {t("verifactu.pos.fiscalMode")}: {status?.fiscalMode ?? (status?.active ? "VERIFACTU" : "PRE_SIF")}
+                {t("verifactu.pos.fiscalMode")}: {status?.fiscalMode ?? fiscalMode}
                 {status?.runtimeClass ? ` · ${status.runtimeClass}` : ""}
                 {status?.transportMode ? ` · ${status.transportMode}` : ""}
               </small>
@@ -329,4 +334,11 @@ export function VerifactuPosIndicator({
       )}
     </div>
   );
+}
+
+function resolveFiscalModeLabel(mode: "PRE_SIF" | "NO_VERIFACTU" | "VERIFACTU", t: VerifactuPosTranslator) {
+  const key = `verifactu.management.fiscalMode.${mode}`;
+  const translated = t(key);
+  if (translated !== key) return translated;
+  return mode === "PRE_SIF" ? "PRE-SIF" : mode === "NO_VERIFACTU" ? "NO VERI*FACTU" : "VERI*FACTU";
 }

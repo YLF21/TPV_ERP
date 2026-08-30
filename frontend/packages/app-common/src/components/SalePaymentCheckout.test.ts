@@ -9,6 +9,7 @@ import {
  allocationFailureRecovery,
  authorizationPasswordIsEphemeral,
  canManuallyFinalizePayment,
+ checkoutSessionIdForReservation,
  checkoutPresentation,
  compensationGuidanceKey,
  compensationNoteIsEphemeral,
@@ -114,7 +115,194 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.getByRole("alert")).toHaveTextContent(
    "El saldo socio no está disponible. Continúa el cobro sin utilizarlo.",
   );
+  expect(apiRequestMock.mock.calls.some(([path]) => String(path).endsWith("/allocations"))).toBe(false);
   expect(screen.getAllByText("10,00 €")).toHaveLength(2);
+ });
+
+ it("shows a duplicate reservation warning without blocking checkout", async () => {
+  const collecting:ServerSession={
+   id:"member-balance-duplicate",total:"10.00",documentTotal:"10.00",direction:"SALE",
+   status:"COLLECTING",memberBalanceRequestedAmount:"5.00",memberBalanceAppliedAmount:"0.00",
+   memberBalanceFailureCode:"MEMBER_BALANCE_RESERVED_ELSEWHERE",allocations:[],
+  };
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/member-balance-duplicate/allocations")return collecting;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onMemberBalance=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:500,
+   sale:{customerId:"customer-1",memberBalanceAmount:5,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+   customerSelected:true,memberBalanceCents:500,memberBalanceAvailableCents:500,
+   onMemberBalance,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+  fireEvent.click(await screen.findByRole("button",{name:"ACEPTAR"}));
+
+  await waitFor(()=>expect(onMemberBalance).toHaveBeenCalledWith(0));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+   "No se ha podido confirmar el estado del saldo socio. Puedes continuar sin utilizarlo o reintentarlo.",
+  );
+  expect(screen.getByRole("button",{name:"Efectivo"})).toBeEnabled();
+ });
+
+ it("waits for the authoritative quote before creating the wallet session or return-credit allocation", async () => {
+  const collecting:ServerSession={
+   id:"wallet-race-session",total:"0.03",documentTotal:"0.03",direction:"SALE",status:"COLLECTING",
+   memberBalanceRequestedAmount:"0.94",memberBalanceAppliedAmount:"0.94",allocations:[],
+  };
+  const covered:ServerSession={
+   ...collecting,status:"COVERED",allocations:[{
+    id:"wallet-return-credit",idempotencyKey:"wallet-return-credit",kind:"MEMBER_CREDIT",amount:"0.03",status:"APPROVED",
+   }],
+  };
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/payment-methods")return [{id:"cash",companyId:"company-1",name:"EFECTIVO",protectedMethod:true,active:true,requiresReference:false,opensCashDrawer:false}];
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/wallet-race-session/allocations")return covered;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onMemberBalance=vi.fn();
+  const baseSale={customerId:"customer-1",memberBalanceAmount:0,quoteFingerprint:"old-quote",lines:[{productId:"p-1",quantity:1,discount:0}]};
+  const wallet={
+   loyaltyAvailable:"0.94",returnCreditAvailable:"0.03",totalAvailable:"0.97",
+   lots:[
+    {id:"loyalty-lot",type:"LOYALTY" as const,sourceMovementType:"ACUMULACION_SALDO",originalAmount:"0.94",availableAmount:"0.94",obtainedAt:"2026-08-30T10:00:00Z"},
+    {id:"return-lot",type:"RETURN_CREDIT" as const,sourceMovementType:"DEVOLUCION_RESTAURACION_SALDO",originalAmount:"0.03",availableAmount:"0.03",obtainedAt:"2026-08-30T10:01:00Z"},
+   ],
+  };
+  const props={
+   ref,locale:"es" as const,totalCents:97,sale:baseSale,permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,customerSelected:true,memberBalanceCents:0,memberBalanceAvailableCents:94,
+   memberBalanceReady:true,pricingReady:true,memberWallet:wallet,onMemberBalance,onFinalized:vi.fn(),
+  };
+  const view=render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+  fireEvent.click(await screen.findByRole("button",{name:/Saldo socio/}));
+  fireEvent.click(await screen.findByRole("button",{name:"Aplicar saldo"}));
+
+  view.rerender(createElement(SalePaymentCheckout,{
+   ...props,pricingReady:false,memberBalanceCents:94,
+   sale:{...baseSale,memberBalanceAmount:0.94,quoteFingerprint:"new-quote"},
+  }));
+  await waitFor(()=>expect(onMemberBalance).toHaveBeenCalledWith(94));
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(0);
+  expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/allocations")).length).toBe(0);
+
+  view.rerender(createElement(SalePaymentCheckout,{
+   ...props,pricingReady:true,memberBalanceCents:94,
+   sale:{...baseSale,memberBalanceAmount:0.94,quoteFingerprint:"new-quote"},
+  }));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/allocations")).length).toBe(1));
+  const reserveCall=apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions");
+  expect(reserveCall?.[1].body).toMatchObject({sale:{quoteFingerprint:"new-quote"}});
+  const allocationCall=apiRequestMock.mock.calls.find(([path])=>String(path).endsWith("/allocations"));
+  expect(allocationCall?.[1].body).toMatchObject({kind:"MEMBER_CREDIT",amount:"0.03"});
+  expect(screen.getByText("-0,97 €")).toBeInTheDocument();
+ });
+
+ it("does not combine a pending gross total with a stale member balance", async () => {
+  const collecting:ServerSession={
+   id:"authoritative-member-session",total:"7.72",documentTotal:"7.72",direction:"SALE",status:"COLLECTING",
+   memberBalanceRequestedAmount:"12.28",memberBalanceAppliedAmount:"12.28",allocations:[],
+  };
+  const collectingWithReturnCredit:ServerSession={
+   ...collecting,allocations:[{
+    id:"member-return-credit",idempotencyKey:"member-return-credit",kind:"MEMBER_CREDIT",amount:"4.39",status:"APPROVED",
+   }],
+  };
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/payment-methods")return [{id:"cash",companyId:"company-1",name:"EFECTIVO",protectedMethod:true,active:true,requiresReference:false,opensCashDrawer:false}];
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/authoritative-member-session/allocations")return collectingWithReturnCredit;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const baseProps={
+   ref,locale:"es" as const,totalCents:2000,
+   sale:{customerId:"customer-1",memberBalanceAmount:12.28,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+   customerSelected:true,memberBalanceCents:1228,memberBalanceAvailableCents:1228,
+   memberBalanceEligibleTotalCents:2000,memberBalanceReservedLoyaltyCents:1228,
+   memberBalanceReservedReturnCreditCents:439,
+   memberWallet:{
+    loyaltyAvailable:"12.28",returnCreditAvailable:"4.39",totalAvailable:"16.67",
+    lots:[
+     {id:"loyalty-lot",type:"LOYALTY" as const,sourceMovementType:"ACUMULACION_SALDO",originalAmount:"12.28",availableAmount:"12.28",obtainedAt:"2026-08-30T10:00:00Z"},
+     {id:"return-lot",type:"RETURN_CREDIT" as const,sourceMovementType:"DEVOLUCION_RESTAURACION_SALDO",originalAmount:"4.39",availableAmount:"4.39",obtainedAt:"2026-08-30T10:01:00Z"},
+    ],
+   },
+   memberBalanceReady:true,onMemberBalance:vi.fn(),onFinalized:vi.fn(),
+  };
+  const view=render(createElement(SalePaymentCheckout,{...baseProps,pricingReady:false}));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+
+  expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByText("32,28 €")).not.toBeInTheDocument();
+  expect(screen.queryByText("36,67 €")).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Efectivo"})).toBeDisabled();
+
+  view.rerender(createElement(SalePaymentCheckout,{
+   ...baseProps,pricingReady:true,totalCents:772,
+  }));
+  const memberBalanceButton=await screen.findByRole("button",{name:/Saldo socio/});
+  expect(memberBalanceButton).toBeEnabled();
+  fireEvent.click(memberBalanceButton);
+  fireEvent.click(await screen.findByRole("button",{name:"Aplicar saldo"}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/allocations")).length).toBe(1));
+  expect(apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions")?.[1].body)
+   .toMatchObject({sale:{memberBalanceAmount:12.28}});
+  expect(apiRequestMock.mock.calls.find(([path])=>String(path).endsWith("/allocations"))?.[1].body)
+   .toMatchObject({kind:"MEMBER_CREDIT",amount:"4.39"});
+  await waitFor(()=>expect(screen.getByText("-16,67 €")).toBeInTheDocument());
+  expect(screen.getAllByText("20,00 €").length).toBeGreaterThan(0);
+  expect(screen.getByText("3,33 €")).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Efectivo"})).toBeEnabled();
+ });
+
+ it("uses the server-applied loyalty amount instead of a stale prop in checkout presentation", async () => {
+  const active:ServerSession={
+   id:"authoritative-wallet-session",total:"0.03",documentTotal:"0.03",direction:"SALE",status:"COLLECTING",
+   memberBalanceRequestedAmount:"0.94",memberBalanceAppliedAmount:"0.94",allocations:[],
+  };
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/payment-methods")return [{id:"cash",companyId:"company-1",name:"EFECTIVO",protectedMethod:true,active:true,requiresReference:false,opensCashDrawer:false}];
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return active;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:97,memberBalanceCents:0,
+   sale:{customerId:"customer-1",memberBalanceAmount:0,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+   customerSelected:true,memberBalanceReady:true,pricingReady:true,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(screen.getByText("-0,94 €")).toBeInTheDocument());
+  expect(screen.queryByText("-0,00 €")).not.toBeInTheDocument();
  });
 
  it("forwards the authoritative quote fingerprint when reserving an imported ticket", async () => {
@@ -299,7 +487,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   });
   const ref=createRef<SalePaymentCheckoutHandle>();
   const onFinalized=vi.fn();
-  render(createElement(SalePaymentCheckout,{
+   render(createElement(SalePaymentCheckout,{
    ref,locale:"es",currentUsername:"CAJERO",totalCents:-1000,
    sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
    permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
@@ -341,10 +529,10 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/refund-voucher/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-1",printTicket:printTicket("R-1"),issuedVoucher};
    throw new Error(`unexpected request ${path}`);
   });
-  const ref=createRef<SalePaymentCheckoutHandle>();
-  const onFinalized=vi.fn();
-  render(createElement(SalePaymentCheckout,{
-   ref,locale:"es",totalCents:-1000,
+   const ref=createRef<SalePaymentCheckoutHandle>();
+    const onFinalized=vi.fn();
+   render(createElement(SalePaymentCheckout,{
+    ref,locale:"es",totalCents:-1000,
    sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
    permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
    unifiedCheckout:true,onFinalized,
@@ -406,6 +594,27 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByText("La operación entra en conflicto con los datos existentes")).not.toBeInTheDocument();
  });
 
+ it("prefers the member reservation identity over stale payment-session storage", () => {
+  const closed = new Set<string>();
+
+  expect(checkoutSessionIdForReservation(
+   "stale-payment-session",
+   "member-reservation-sale",
+   closed,
+  )).toBe("member-reservation-sale");
+  expect(checkoutSessionIdForReservation(
+   "stale-payment-session",
+   undefined,
+   closed,
+  )).toBe("stale-payment-session");
+  closed.add("member-reservation-sale");
+  expect(checkoutSessionIdForReservation(
+   "stale-payment-session",
+   "member-reservation-sale",
+   closed,
+  )).toBe("stale-payment-session");
+ });
+
  it("renews the member reservation and checkout id after a cancelled-session conflict", async () => {
   const collecting:ServerSession={id:"member-sale-new",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",memberBalanceReservationId:"member-reservation-new",allocations:[]};
   const reserveBodies:Array<{sessionId:string;memberBalanceReservationId?:string}>=[];
@@ -431,14 +640,15 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/member-sale-new/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-NEW",printTicket:printTicket("R-NEW")};
    throw new Error(`unexpected request ${path}`);
   });
-  const ref=createRef<SalePaymentCheckoutHandle>();
-  const onFinalized=vi.fn();
-  render(createElement(SalePaymentCheckout,{
-   ref,locale:"es",totalCents:-1000,
-   sale:{customerId:"customer-1",lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   const ref=createRef<SalePaymentCheckoutHandle>();
+   const onFinalized=vi.fn();
+   const onReservationFinalized=vi.fn();
+   render(createElement(SalePaymentCheckout,{
+    ref,locale:"es",totalCents:-1000,
+    sale:{customerId:"customer-1",lines:[{productId:"p-1",quantity:-1,discount:0}]},
    permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
    unifiedCheckout:true,preferredSessionId:"member-sale-old",
-   memberBalanceReservationId:"member-reservation-old",onSessionClosed,onFinalized,
+    memberBalanceReservationId:"member-reservation-old",onSessionClosed,onReservationFinalized,onFinalized,
   }));
   await waitFor(()=>expect(ref.current).not.toBeNull());
 
@@ -449,6 +659,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
   expect(onSessionClosed).toHaveBeenCalledOnce();
+  expect(onReservationFinalized).toHaveBeenCalledWith(false);
   expect(reserveBodies).toEqual([
    expect.objectContaining({sessionId:"member-sale-old",memberBalanceReservationId:"member-reservation-old"}),
    expect.objectContaining({sessionId:"member-sale-new",memberBalanceReservationId:"member-reservation-new"}),
@@ -518,7 +729,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByText("No se pudo comprobar el estado del cobro")).not.toBeInTheDocument();
  });
 
- it("opens and finalizes a zero-total checkout without registering a payment", async () => {
+  it("opens and finalizes a zero-total checkout without registering a payment", async () => {
   const zeroSession:ServerSession={id:"session-zero",total:"0.00",documentTotal:"0.00",direction:"ZERO",status:"COVERED",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string)=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
@@ -542,10 +753,38 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(accept);
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(printTicket("T-ZERO"),{kind:"ZERO",totalCents:0}));
- expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/allocations"))).toHaveLength(0);
- });
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/allocations"))).toHaveLength(0);
+  });
 
- it("authorizes protected cart mutations before reserving a zero-total checkout", async () => {
+  it("keeps the finalized checkout locally open when ACTIVE reservation release fails", async () => {
+   const zeroSession:ServerSession={id:"session-release-failure",total:"0.00",documentTotal:"0.00",direction:"ZERO",status:"COVERED",allocations:[]};
+   apiRequestMock.mockImplementation(async(path:string)=>{
+    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+    if(path==="/pos/payment-sessions/active")return null;
+    if(path==="/pos/payment-sessions")return zeroSession;
+    if(path==="/pos/payment-sessions/session-release-failure/finalize")return {...zeroSession,status:"FINALIZED",ticketNumber:"T-RELEASE-FAILURE",printTicket:printTicket("T-RELEASE-FAILURE")};
+    throw new Error(`unexpected request ${path}`);
+   });
+   const ref=createRef<SalePaymentCheckoutHandle>();
+   const onFinalized=vi.fn();
+   const onReservationFinalized=vi.fn().mockRejectedValue(new Error("reservation unavailable"));
+   render(createElement(SalePaymentCheckout,{
+    ref,locale:"es",totalCents:0,
+    sale:{customerId:"customer-1",lines:[{productId:"p-1",quantity:-1,discount:0},{productId:"p-2",quantity:1,discount:0}]},
+    permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+    onReservationFinalized,onFinalized,
+   }));
+   await waitFor(()=>expect(ref.current).not.toBeNull());
+
+   act(()=>ref.current!.openCheckout("CASH"));
+   fireEvent.click(await screen.findByRole("button",{name:"ACEPTAR"}));
+
+   await waitFor(()=>expect(onReservationFinalized).toHaveBeenCalledWith(false));
+   expect(onFinalized).not.toHaveBeenCalled();
+   expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/finalize"))).toHaveLength(1);
+  });
+
+  it("authorizes protected cart mutations before reserving a zero-total checkout", async () => {
   const zeroSession:ServerSession={id:"session-zero-protected",total:"0.00",documentTotal:"0.00",direction:"ZERO",status:"COVERED",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string)=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
@@ -581,6 +820,83 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    })}),
   ));
   await waitFor(()=>expect(screen.getByRole("button",{name:"ACEPTAR"})).toBeEnabled());
+ });
+
+ it("reserves and finalizes a full-loyalty checkout after the authoritative quote reaches zero", async () => {
+  const collecting:ServerSession={
+   id:"full-loyalty-sale",
+   total:"0.00",
+   documentTotal:"0.00",
+   direction:"ZERO",
+   status:"COLLECTING",
+   memberBalanceReservationId:"reservation-full-loyalty",
+   memberBalanceRequestedAmount:"0.94",
+   memberBalanceAppliedAmount:"0.94",
+   allocations:[],
+  };
+  const covered:ServerSession={...collecting,status:"COVERED"};
+  const finalized:ServerSession={
+   ...covered,
+   status:"FINALIZED",
+   ticketNumber:"T-FULL-LOYALTY",
+   printTicket:printTicket("T-FULL-LOYALTY"),
+  };
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/payment-methods")return [{id:"cash",companyId:"company-1",name:"EFECTIVO",protectedMethod:true,active:true,requiresReference:false,opensCashDrawer:false}];
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return covered;
+   if(path==="/pos/payment-sessions/full-loyalty-sale/finalize")return finalized;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onMemberBalance=vi.fn();
+  const onFinalized=vi.fn();
+  const wallet={
+   loyaltyAvailable:"0.94",
+   returnCreditAvailable:"0.00",
+   totalAvailable:"0.94",
+   lots:[],
+  };
+  const initialProps={
+   ref,locale:"es" as const,totalCents:97,
+   sale:{customerId:"customer-1",memberBalanceAmount:0,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+   customerSelected:true,memberBalanceCents:0,memberBalanceAvailableCents:94,
+   memberBalanceEligibleTotalCents:94,memberBalanceReady:true,pricingReady:true,
+   memberWallet:wallet,preferredSessionId:"full-loyalty-sale",
+   memberBalanceReservationId:"reservation-full-loyalty",onMemberBalance,onFinalized,
+  };
+  const view=render(createElement(SalePaymentCheckout,initialProps));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+  fireEvent.click(await screen.findByRole("button",{name:/Saldo socio/}));
+  fireEvent.click(await screen.findByRole("button",{name:"Aplicar saldo"}));
+
+  view.rerender(createElement(SalePaymentCheckout,{
+   ...initialProps,
+   totalCents:0,
+   memberBalanceCents:94,
+   sale:{...initialProps.sale,memberBalanceAmount:0.94},
+  }));
+
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1));
+  const reserveCall=apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions");
+  expect(reserveCall?.[1].body).toMatchObject({
+   sessionId:"full-loyalty-sale",
+   memberBalanceReservationId:"reservation-full-loyalty",
+  });
+  expect(screen.getByText("-0,94 €")).toBeInTheDocument();
+  const accept=await screen.findByRole("button",{name:"ACEPTAR"});
+  expect(accept).toBeEnabled();
+  fireEvent.click(accept);
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledOnce());
+  expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/allocations"))).toHaveLength(0);
+  expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/finalize"))).toHaveLength(1);
+  expect(onFinalized).toHaveBeenCalledWith(printTicket("T-FULL-LOYALTY"),{kind:"ZERO",totalCents:0});
  });
 
  it("recognizes the missing cash-session error with or without accents", () => {

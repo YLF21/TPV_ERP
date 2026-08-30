@@ -91,6 +91,15 @@ public class SaasMemberBalanceReservation {
     @Column(name = "closed_at")
     private Instant closedAt;
 
+    @Column(name = "retention_revision", nullable = false)
+    private long retentionRevision;
+
+    @Column(name = "retention_fingerprint", nullable = false, length = 128)
+    private String retentionFingerprint;
+
+    @Column(name = "retention_attributed_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal retentionAttributedAmount;
+
     @Version
     private long version;
 
@@ -131,6 +140,9 @@ public class SaasMemberBalanceReservation {
             BigDecimal reservedReturnCreditAmount,
             Instant now,
             Duration leaseDuration) {
+        BigDecimal loyalty = nonNegativeMoney(reservedLoyaltyAmount, "reservedLoyaltyAmount");
+        BigDecimal returnCredit = nonNegativeMoney(reservedReturnCreditAmount,
+                "reservedReturnCreditAmount");
         this.id = id;
         this.account = account;
         this.storeId = storeId;
@@ -138,15 +150,20 @@ public class SaasMemberBalanceReservation {
         this.terminalId = terminalId;
         this.saleId = saleId;
         this.status = ACTIVE;
-        this.reservedTotal = reservedLoyaltyAmount;
-        this.reservedLoyaltyAmount = reservedLoyaltyAmount;
-        this.reservedReturnCreditAmount = reservedReturnCreditAmount;
+        // V17's legacy alias represents the LOYALTY bucket. Typed V2 callers
+        // must use the two explicit buckets when they need the wallet total.
+        this.reservedTotal = loyalty;
+        this.reservedLoyaltyAmount = loyalty;
+        this.reservedReturnCreditAmount = returnCredit;
         this.preparedAmount = BigDecimal.ZERO.setScale(2);
         this.preparedLoyaltyAmount = BigDecimal.ZERO.setScale(2);
         this.preparedReturnCreditAmount = BigDecimal.ZERO.setScale(2);
         this.consumedTotal = BigDecimal.ZERO.setScale(2);
         this.consumedLoyaltyAmount = BigDecimal.ZERO.setScale(2);
         this.consumedReturnCreditAmount = BigDecimal.ZERO.setScale(2);
+        this.retentionRevision = 0L;
+        this.retentionFingerprint = "";
+        this.retentionAttributedAmount = BigDecimal.ZERO.setScale(2);
         this.createdAt = now;
         renew(now, leaseDuration);
     }
@@ -227,6 +244,47 @@ public class SaasMemberBalanceReservation {
         return leaseExpiresAt;
     }
 
+    public long getRetentionRevision() {
+        return retentionRevision;
+    }
+
+    public String getRetentionFingerprint() {
+        return retentionFingerprint;
+    }
+
+    public BigDecimal getRetentionAttributedAmount() {
+        return retentionAttributedAmount;
+    }
+
+    public void incorporateWalletLot(MemberBalanceType balanceType, BigDecimal amount) {
+        BigDecimal normalized = amount.setScale(2, java.math.RoundingMode.UNNECESSARY);
+        if (normalized.signum() <= 0) {
+            throw new IllegalArgumentException("El lote incorporado debe tener importe positivo");
+        }
+        if (balanceType == MemberBalanceType.LOYALTY) {
+            reservedTotal = reservedTotal.add(normalized);
+            reservedLoyaltyAmount = reservedLoyaltyAmount.add(normalized);
+        } else {
+            reservedReturnCreditAmount = reservedReturnCreditAmount.add(normalized);
+        }
+    }
+
+    public void configureRetention(long revision, String fingerprint) {
+        configureRetention(revision, fingerprint, BigDecimal.ZERO.setScale(2));
+    }
+
+    public void configureRetention(long revision, String fingerprint, BigDecimal attributedAmount) {
+        if (revision < 0 || fingerprint == null || fingerprint.length() > 128) {
+            throw new IllegalArgumentException("Configuracion de retencion invalida");
+        }
+        if (revision < retentionRevision) {
+            throw new IllegalStateException("La revision de retencion no puede retroceder");
+        }
+        retentionRevision = revision;
+        retentionFingerprint = fingerprint;
+        retentionAttributedAmount = attributedAmount.setScale(2, java.math.RoundingMode.UNNECESSARY);
+    }
+
     public boolean isActive() {
         return ACTIVE.equals(status);
     }
@@ -297,6 +355,23 @@ public class SaasMemberBalanceReservation {
         preparedAt = now;
     }
 
+    /**
+     * Reconciles the final return snapshot for the same prepared operation.
+     * This does not reopen or enlarge a reservation; it only replaces the
+     * retention projection after all claims have been validated atomically.
+     */
+    public void reconcilePreparedRetention(
+            UUID operationId, String fingerprint, BigDecimal attributedAmount) {
+        if (!isPrepared() || !preparedBy(operationId)) {
+            throw new IllegalStateException("La preparacion central no coincide");
+        }
+        if (fingerprint == null || fingerprint.length() > 128) {
+            throw new IllegalArgumentException("Fingerprint de retencion invalido");
+        }
+        retentionFingerprint = fingerprint;
+        retentionAttributedAmount = attributedAmount.setScale(2, java.math.RoundingMode.UNNECESSARY);
+    }
+
     public boolean preparedBy(UUID operationId) {
         return prepareOperationId != null && prepareOperationId.equals(operationId);
     }
@@ -314,13 +389,34 @@ public class SaasMemberBalanceReservation {
     }
 
     public void finalizePreparedTyped(UUID operationId, Instant now) {
+        finalizePreparedTyped(operationId, now, BigDecimal.ZERO.setScale(2));
+    }
+
+    public void finalizePreparedTyped(
+            UUID operationId, Instant now, BigDecimal retainedLoyaltyAmount) {
         if (!isPrepared() || !preparedBy(operationId)) {
             throw new IllegalStateException("La preparacion central no coincide");
         }
         status = CONSUMED;
-        consumedTotal = preparedLoyaltyAmount;
-        consumedLoyaltyAmount = preparedLoyaltyAmount;
+        consumedLoyaltyAmount = preparedLoyaltyAmount.add(retainedLoyaltyAmount);
+        // Keep the legacy alias coherent with V17: RETURN_CREDIT is exposed
+        // only through its typed column and is not folded into consumed_total.
+        consumedTotal = consumedLoyaltyAmount;
         consumedReturnCreditAmount = preparedReturnCreditAmount;
         closedAt = now;
+    }
+
+    private static BigDecimal nonNegativeMoney(BigDecimal value, String field) {
+        Objects.requireNonNull(value, field);
+        BigDecimal normalized;
+        try {
+            normalized = value.setScale(2, java.math.RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException(field + " debe tener escala 2", exception);
+        }
+        if (normalized.signum() < 0) {
+            throw new IllegalArgumentException(field + " no puede ser negativo");
+        }
+        return normalized;
     }
 }

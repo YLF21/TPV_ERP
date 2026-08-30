@@ -352,6 +352,25 @@ class SecurityAdministrationServiceTest {
         verify(backupKeyStore, never()).rewrap(any(char[].class), any(char[].class), any());
     }
 
+    @Test
+    void changeAdminPasswordWorksBeforeBackupIsConfigured() {
+        var store = store();
+        var admin = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var passwordEncoder = org.mockito.Mockito.mock(PasswordEncoder.class);
+        var backupKeyStore = org.mockito.Mockito.mock(BackupKeyStore.class);
+        when(users.findByTiendaIdAndNombre(store.getId(), "ADMIN")).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("0000", "hash")).thenReturn(true);
+        when(passwordEncoder.encode("1234")).thenReturn("new-hash");
+        authenticate(admin);
+
+        service(users, org.mockito.Mockito.mock(RoleRepository.class), passwordEncoder, backupKeyStore)
+                .changeAdminPassword("0000", "1234");
+
+        verify(backupKeyStore, never()).rewrapIfConfigured(any(char[].class), any(char[].class), any());
+        assertThat(admin.getPasswordHash()).isEqualTo("new-hash");
+    }
+
     private static SecurityAdministrationService service(
             UserAccountRepository users, RoleRepository roles) {
         return service(

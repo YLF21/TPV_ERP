@@ -160,6 +160,7 @@ describe("SalesDocumentScreen", () => {
         expect(options?.body).toMatchObject({
           type: "FACTURA_VENTA",
           customerId: "customer-1",
+          wholesaleMode: true,
           completionMode: "DRAFT",
           payments: [],
         });
@@ -170,6 +171,7 @@ describe("SalesDocumentScreen", () => {
           type: "FACTURA_VENTA",
           customerId: "customer-1",
           warehouseId: "warehouse-1",
+          wholesaleMode: true,
           completionMode: "DRAFT",
           quotedTotal: "10.00",
           payments: [],
@@ -195,6 +197,8 @@ describe("SalesDocumentScreen", () => {
       "true",
     );
     expect(screen.getByText("Añade productos por código o abre el buscador.")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
+    expect(await screen.findByText("Modo MAYORISTA activado")).toBeVisible();
     fireEvent.click(await screen.findByRole("button", { name: /seleccionar cliente/i }));
     const customerDialog = screen.getByRole("dialog", { name: /seleccionar cliente/i });
     fireEvent.doubleClick(within(customerDialog).getByRole("option", {
@@ -272,6 +276,7 @@ describe("SalesDocumentScreen", () => {
         barcode: "840000000001",
         name: "Producto fiscal",
         salePrice: 20,
+        wholesalePrice: 12,
         active: true,
         taxesIncluded: true,
         taxRegime: "IVA",
@@ -322,6 +327,8 @@ describe("SalesDocumentScreen", () => {
         customerId: "customer-2",
         customerName: "Cliente Borrador SL",
         globalDiscount: "5.00",
+        documentDiscountPercent: "5.00",
+        wholesaleMode: true,
         total: "19.00",
         internalComment: "Conservar observación interna",
         createdAt: "2026-08-11T10:00:00Z",
@@ -333,8 +340,8 @@ describe("SalesDocumentScreen", () => {
           code: "P-001",
           barcode: "840000000001",
           name: "Producto fiscal",
-          rate: null,
-          unitPrice: "20.00",
+          rate: "TARIFA-MAYORISTA",
+          unitPrice: "12.00",
           discount: "0.00",
           taxesIncluded: true,
           taxRegime: "IVA",
@@ -347,9 +354,15 @@ describe("SalesDocumentScreen", () => {
       if (path === "/pos/sales-document-drafts/draft-2/quote") {
         expect(options?.body).toMatchObject({
           draftVersion: 7,
-          globalDiscount: "5.00",
+          globalDiscount: "0.00",
+          documentDiscountPercent: "5.00",
           internalComment: "Conservar observación interna",
-          lines: [{ cartLineId: "line-2" }],
+          wholesaleMode: true,
+          lines: [{
+            cartLineId: "line-2",
+            precioUnitario: "12.00",
+            tarifa: "TARIFA-MAYORISTA",
+          }],
         });
         return Promise.resolve({ total: "19.00" });
       }
@@ -379,6 +392,9 @@ describe("SalesDocumentScreen", () => {
       .not.toBeInTheDocument();
     expect(screen.getByText("Producto fiscal")).toBeVisible();
     expect(screen.getByRole("button", { name: /cliente borrador sl/i })).toBeVisible();
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
+    expect(await screen.findByText("Ctrl+M solo puede cambiar el modo con el carrito vacío"))
+      .toBeVisible();
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
       "/pos/sales-document-drafts/draft-2/quote",
       expect.any(Object),
@@ -393,8 +409,10 @@ describe("SalesDocumentScreen", () => {
       draftVersion: 7,
       date: "2026-08-11",
       dueDate: "2026-09-10",
-      globalDiscount: "5.00",
+      globalDiscount: "0.00",
+      documentDiscountPercent: "5.00",
       internalComment: "Conservar observación interna",
+      wholesaleMode: true,
       completionMode: "DRAFT",
       lines: [{
         productoId: "product-1",
@@ -402,6 +420,132 @@ describe("SalesDocumentScreen", () => {
       }],
     });
     expect(await screen.findByText("Borrador guardado")).toBeInTheDocument();
+  });
+
+  it.each([
+    { label: "false", wholesaleMode: false },
+    { label: "absent", wholesaleMode: undefined },
+  ])("keeps normal pricing when a persisted draft wholesale mode is $label", async ({ wholesaleMode }) => {
+    const updatedBodies: unknown[] = [];
+    apiRequest.mockImplementation((path: string, options?: { method?: string; body?: unknown }) => {
+      if (path === "/sales/operation-security") return Promise.resolve(documentOperationSecurity);
+      if (path === "/terminal-configuration/payment") {
+        return Promise.resolve({
+          rules: { cardManualEnabled: true, integratedCardEnabled: false },
+          configuration: { provider: "NONE", enabled: false },
+        });
+      }
+      if (path === "/products/sale") return Promise.resolve([{
+        id: "product-1",
+        code: "P-001",
+        name: "Producto fiscal",
+        salePrice: 20,
+        wholesalePrice: 12,
+        active: true,
+        taxesIncluded: true,
+        taxRegime: "IVA",
+        taxPercentage: 21,
+      }]);
+      if (path === "/customers/sale-options") return Promise.resolve([{
+        id: "customer-1",
+        clientId: "C-001",
+        fiscalName: "Cliente Borrador SL",
+        documentNumber: "B22222222",
+        paymentTermDays: 30,
+      }]);
+      if (path === "/warehouses") return Promise.resolve([{
+        id: "warehouse-1",
+        active: true,
+        defaultWarehouse: true,
+      }]);
+      if (path === "/pos/sales-document-drafts") return Promise.resolve([{
+        id: "draft-normal",
+        version: 3,
+        type: "FACTURA_VENTA",
+        date: "2026-08-11",
+        customerId: "customer-1",
+        customerName: "Cliente Borrador SL",
+        total: "20.00",
+        createdAt: "2026-08-11T10:00:00Z",
+      }]);
+      if (path === "/pos/sales-document-drafts/draft-normal" && options?.method === "PUT") {
+        updatedBodies.push(options.body);
+        return Promise.resolve({ document: { id: "draft-normal" }, printDocument: null });
+      }
+      if (path === "/pos/sales-document-drafts/draft-normal") return Promise.resolve({
+        id: "draft-normal",
+        version: 3,
+        type: "FACTURA_VENTA",
+        date: "2026-08-11",
+        dueDate: "2026-09-10",
+        warehouseId: "warehouse-1",
+        customerId: "customer-1",
+        customerName: "Cliente Borrador SL",
+        globalDiscount: "0.00",
+        total: "20.00",
+        createdAt: "2026-08-11T10:00:00Z",
+        ...(wholesaleMode === undefined ? {} : { wholesaleMode }),
+        lines: [{
+          id: "line-normal",
+          productId: "product-1",
+          position: 1,
+          quantity: "1",
+          code: "P-001",
+          name: "Producto fiscal",
+          rate: "TARIFA-MAYORISTA",
+          unitPrice: "20.00",
+          discount: "0.00",
+          taxesIncluded: true,
+          taxRegime: "IVA",
+          taxPercentage: "21.00",
+          serialNumbers: [],
+          temporaryNameOverride: false,
+          temporaryPriceOverride: false,
+        }],
+      });
+      if (path === "/pos/sales-document-drafts/draft-normal/quote") {
+        expect(options?.body).not.toHaveProperty("wholesaleMode");
+        expect(options?.body).toMatchObject({
+          lines: [{
+            cartLineId: "line-normal",
+            precioUnitario: "20.00",
+            tarifa: "TARIFA-MAYORISTA",
+          }],
+        });
+        return Promise.resolve({ total: "20.00" });
+      }
+      return Promise.reject(new Error(`unexpected request ${path}`));
+    });
+
+    render(<SalesDocumentScreen
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+    />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Importar borrador" }));
+    const dialog = await screen.findByRole("dialog", { name: "Importar borrador" });
+    fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "Buscar borrador" }), {
+      key: "Enter",
+    });
+
+    expect(await screen.findByText("Borrador importado")).toBeInTheDocument();
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
+      "/pos/sales-document-drafts/draft-normal/quote",
+      expect.any(Object),
+    ));
+    const save = screen.getByRole("button", { name: "Guardar borrador" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(updatedBodies).toHaveLength(1));
+    expect(updatedBodies[0]).not.toHaveProperty("wholesaleMode");
+    expect(updatedBodies[0]).toMatchObject({
+      lines: [{
+        cartLineId: "line-normal",
+        precioUnitario: "20.00",
+        tarifa: "TARIFA-MAYORISTA",
+      }],
+    });
   });
 
   it("starts checkout with a new id after a draft save response is lost", async () => {
@@ -481,6 +625,7 @@ describe("SalesDocumentScreen", () => {
       terminalContext={terminalContext}
     />);
 
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true });
     fireEvent.click(await screen.findByRole("button", { name: /seleccionar cliente/i }));
     fireEvent.doubleClick(within(screen.getByRole("dialog", {
       name: /seleccionar cliente/i,
@@ -507,7 +652,10 @@ describe("SalesDocumentScreen", () => {
     fireEvent.click(within(payment).getByRole("button", { name: "ACEPTAR" }));
 
     await waitFor(() => expect(checkoutBodies).toHaveLength(1));
-    expect(checkoutBodies[0]).toMatchObject({ completionMode: "CONFIRM_PENDING" });
+    expect(checkoutBodies[0]).toMatchObject({
+      completionMode: "CONFIRM_PENDING",
+      wholesaleMode: true,
+    });
     expect(checkoutBodies[0].checkoutId).not.toBe(draftSaveBodies[0].checkoutId);
   });
 

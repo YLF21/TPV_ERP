@@ -55,13 +55,22 @@ public class AuthoritativePromotionPricing {
             LocalDate documentDate,
             CustomerContext customer,
             DocumentLineCommand line) {
+        return priceLine(product, documentDate, customer, line, false);
+    }
+
+    public DocumentLineCommand priceLine(
+            Product product, LocalDate documentDate, CustomerContext customer,
+            DocumentLineCommand line, boolean wholesaleMode) {
         var catalogSalePrice = requiredPrice(product.getSalePrice(), "precio de venta");
         var usesOpenPrice = catalogSalePrice.signum() == 0;
         var usesReservedOpenPrice = "0".equals(product.getCode())
                 && line.precioUnitario() != null
                 && line.precioUnitario().signum() > 0;
         var usesHistoricalOpenPrice = line.historicalOpenPriceOverride();
-        var price = line.temporaryPriceOverride()
+        var protectedProduct = product.getDiscountType() == DiscountType.NONE;
+        var price = protectedProduct && !usesOpenPrice && !usesReservedOpenPrice
+                ? basePrice(product, documentDate, customer, wholesaleMode)
+                : line.temporaryPriceOverride()
                 ? requiredTemporaryPrice(line.precioUnitario())
                 : usesHistoricalOpenPrice
                 ? requiredOpenPrice(line.precioUnitario())
@@ -69,12 +78,13 @@ public class AuthoritativePromotionPricing {
                 ? requiredOpenPrice(line.precioUnitario())
                 : usesOpenPrice
                 ? requiredOpenPrice(line.precioUnitario())
-                : basePrice(product, documentDate, customer);
-        var rate = line.temporaryPriceOverride()
+                : basePrice(product, documentDate, customer, wholesaleMode);
+        var rate = protectedProduct ? rate(product, documentDate, customer, wholesaleMode)
+                : line.temporaryPriceOverride()
                 ? "TEMPORAL"
                 : usesHistoricalOpenPrice ? line.tarifa()
                 : usesReservedOpenPrice ? "VENTA"
-                : usesOpenPrice ? "VENTA" : rate(product, documentDate, customer);
+                : usesOpenPrice ? "VENTA" : rate(product, documentDate, customer, wholesaleMode);
         var priced = line.withPrice(price, rate);
         if (product.getDiscountType() == DiscountType.NONE) {
             return priced.withDiscount(BigDecimal.ZERO, rate);
@@ -91,15 +101,30 @@ public class AuthoritativePromotionPricing {
         Objects.requireNonNull(product, "product");
         Objects.requireNonNull(documentDate, "documentDate");
         Objects.requireNonNull(customer, "customer");
+        return basePrice(product, documentDate, customer, false);
+    }
+
+    public BigDecimal basePrice(Product product, LocalDate documentDate,
+            CustomerContext customer, boolean wholesaleMode) {
+        Objects.requireNonNull(product, "product");
+        Objects.requireNonNull(documentDate, "documentDate");
+        Objects.requireNonNull(customer, "customer");
         var salePrice = requiredPrice(product.getSalePrice(), "precio de venta");
         if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
             return customer.isMember() && isPositive(product.getMemberPrice())
                     ? Money.euros(product.getMemberPrice()) : salePrice;
         }
+        // NONE is canonically NORMAL even for legacy rows saved before the
+        // catalog lock existed. Wholesale remains the only permitted override.
+        var mode = product.getDiscountType() == DiscountType.NONE
+                ? PriceUseMode.NORMAL
+                : product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
+        if (wholesaleMode && mode == PriceUseMode.NORMAL && isPositive(product.getWholesalePrice())) {
+            return Money.euros(product.getWholesalePrice());
+        }
         if (product.getDiscountType() == DiscountType.NONE) {
             return salePrice;
         }
-        var mode = product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
         return switch (mode) {
             case NORMAL -> salePrice;
             case MEMBER_PRICE -> customer.isMember() && isPositive(product.getMemberPrice())
@@ -125,13 +150,23 @@ public class AuthoritativePromotionPricing {
     }
 
     private String rate(Product product, LocalDate date, CustomerContext customer) {
+        return rate(product, date, customer, false);
+    }
+
+    private String rate(Product product, LocalDate date, CustomerContext customer,
+            boolean wholesaleMode) {
         if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
             return customer.isMember() && isPositive(product.getMemberPrice()) ? "MEMBER" : "VENTA";
+        }
+        var mode = product.getDiscountType() == DiscountType.NONE
+                ? PriceUseMode.NORMAL
+                : product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
+        if (wholesaleMode && mode == PriceUseMode.NORMAL && isPositive(product.getWholesalePrice())) {
+            return "MAYORISTA";
         }
         if (product.getDiscountType() == DiscountType.NONE) {
             return "VENTA";
         }
-        var mode = product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
         return switch (mode) {
             case MEMBER_PRICE -> customer.isMember() && isPositive(product.getMemberPrice()) ? "MEMBER" : "VENTA";
             case OFFER_PRICE -> offerApplies(product, date) && product.getOfferPrice() != null ? "OFERTA" : "VENTA";

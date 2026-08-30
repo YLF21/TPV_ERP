@@ -6,11 +6,19 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.Channels;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.io.InputStream;
+import java.sql.Timestamp;
+import java.util.Base64;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -28,6 +36,8 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
@@ -44,6 +54,8 @@ public class FiscalExportJobService {
     private static final long DEFAULT_MAX_XML_BYTES = 2_000_000_000L;
     private static final long MAX_ACTIVE_PER_USER_SCOPE = 3L;
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
+    private static final SecureRandom DOWNLOAD_TOKEN_RANDOM = new SecureRandom();
+    private static final Duration DOWNLOAD_TOKEN_TTL = Duration.ofMinutes(2);
     private final CurrentOrganization organization;
     private final InstallationRepository installations;
     private final LicenseRepository licenses;
@@ -232,9 +244,8 @@ public class FiscalExportJobService {
         if (job.getStatus() != FiscalExportJobStatus.COMPLETED) {
             throw new IllegalStateException("fiscal_export_job_not_ready");
         }
-        var file = safePath(job.getFilePath());
-        if (file == null || !Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)
-                || Files.isSymbolicLink(file)) {
+        var file = safeDownloadPath(job.getFilePath());
+        if (file == null) {
             throw new IllegalStateException("fiscal_export_job_file_unavailable");
         }
         try {
@@ -242,6 +253,199 @@ public class FiscalExportJobService {
         } catch (IOException exception) {
             throw new IllegalStateException("fiscal_export_job_file_unavailable", exception);
         }
+    }
+
+    /**
+     * Compatibility download that keeps the authorization and file validation
+     * attached to the channel that will actually be streamed. The capability
+     * endpoint remains the preferred one; this method exists for older clients
+     * still using GET /{id}/download.
+     */
+    @Transactional
+    DownloadHandle openAuthorizedDownload(UUID id, String requestedBy, boolean admin) {
+        var job = authorized(id, requestedBy, admin);
+        expireIfNecessary(job);
+        if (job.getStatus() != FiscalExportJobStatus.COMPLETED) {
+            throw new IllegalStateException("fiscal_export_job_not_ready");
+        }
+        var file = safeDownloadPath(job.getFilePath());
+        if (file == null) {
+            throw new IllegalStateException("fiscal_export_job_file_unavailable");
+        }
+        try {
+            return openDownloadHandle(file,
+                    "exportacion-fiscal-" + job.getId() + ".zip", job.getFileSize());
+        } catch (IOException exception) {
+            throw new IllegalStateException("fiscal_export_job_file_unavailable", exception);
+        }
+    }
+
+    /** Issues a short-lived, single-use capability without persisting its plaintext. */
+    @Transactional
+    public String issueDownloadToken(UUID id, String requestedBy, boolean admin) {
+        var job = authorized(id, requestedBy, admin);
+        if (job.getStatus() != FiscalExportJobStatus.COMPLETED
+                || !job.getExpiresAt().isAfter(Instant.now())
+                || safeDownloadPath(job.getFilePath()) == null) {
+            throw new IllegalStateException("fiscal_export_job_not_ready");
+        }
+        var now = Instant.now();
+        var expiresAt = now.plus(DOWNLOAD_TOKEN_TTL);
+        for (var attempt = 0; attempt < 3; attempt++) {
+            var token = randomDownloadToken();
+            try {
+                jdbc.update("""
+                        insert into fiscal_export_download_token
+                            (token_hash, job_id, empresa_id, tienda_id, instalacion_id,
+                             solicitado_por, expira_en, consumido_en)
+                        values (:tokenHash, :jobId, :companyId, :storeId, :installationId,
+                                :requestedBy, :expiresAt, null)
+                        """, new MapSqlParameterSource()
+                        .addValue("tokenHash", sha256(token).toLowerCase(java.util.Locale.ROOT))
+                        .addValue("jobId", job.getId())
+                        .addValue("companyId", job.getCompanyId())
+                        .addValue("storeId", job.getStoreId())
+                        .addValue("installationId", job.getInstallationId())
+                        // Bind the capability to the authenticated issuer. An
+                        // ADMIN may legitimately download another user's job;
+                        // persisting the job owner here would lose that audit
+                        // binding even though authorization happened above.
+                        .addValue("requestedBy", requestedBy)
+                        .addValue("expiresAt", expiresAt));
+                return token;
+            } catch (org.springframework.dao.DuplicateKeyException exception) {
+                if (attempt == 2) throw exception;
+            }
+        }
+        throw new IllegalStateException("fiscal_export_download_token_unavailable");
+    }
+
+    /**
+     * Atomically consumes a capability and returns only a validated filesystem
+     * resource. The token row is locked until this transaction commits, so a
+     * concurrent request cannot consume the same capability twice.
+     */
+    @Transactional
+    public Download consumeDownloadToken(String token) {
+        try (var handle = consumeDownloadTokenForStreaming(token)) {
+            return handle.download();
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("fiscal_export_job_file_unavailable", exception);
+        }
+    }
+
+    /**
+     * Consumes a capability and keeps the validated file handle open for the
+     * HTTP response. The caller owns the handle and must close it.
+     */
+    @Transactional
+    DownloadHandle consumeDownloadTokenForStreaming(String token) {
+        if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
+            throw new IllegalArgumentException("fiscal_export_download_token_invalid");
+        }
+        var tokenHash = sha256(token).toLowerCase(java.util.Locale.ROOT);
+        var rows = jdbc.query("select token_hash, job_id, empresa_id, tienda_id, instalacion_id, "
+                + "solicitado_por, expira_en, consumido_en from fiscal_export_download_token "
+                + "where token_hash = :tokenHash for update",
+                new MapSqlParameterSource("tokenHash", tokenHash),
+                (result, rowNum) -> new DownloadTokenRow(
+                        result.getString("token_hash"), result.getObject("job_id", UUID.class),
+                        result.getObject("empresa_id", UUID.class), result.getObject("tienda_id", UUID.class),
+                        result.getObject("instalacion_id", UUID.class), result.getString("solicitado_por"),
+                        result.getTimestamp("expira_en").toInstant(),
+                        result.getTimestamp("consumido_en") == null
+                                ? null : result.getTimestamp("consumido_en").toInstant()));
+        var row = rows.stream().findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("fiscal_export_download_token_invalid"));
+        var now = Instant.now();
+        if (row.consumedAt() != null || !row.expiresAt().isAfter(now)) {
+            throw new IllegalArgumentException("fiscal_export_download_token_invalid");
+        }
+        var job = jobs.findByIdAndCompanyIdAndStoreIdAndInstallationId(row.jobId(), row.companyId(),
+                row.storeId(), row.installationId()).orElseThrow(
+                        () -> new IllegalArgumentException("fiscal_export_download_token_invalid"));
+        if (row.requestedBy() == null || row.requestedBy().isBlank()
+                || job.getStatus() != FiscalExportJobStatus.COMPLETED
+                || !job.getExpiresAt().isAfter(now)) {
+            throw new IllegalArgumentException("fiscal_export_download_token_invalid");
+        }
+        var file = safeDownloadPath(job.getFilePath());
+        if (file == null) throw new IllegalArgumentException("fiscal_export_job_file_unavailable");
+        DownloadHandle handle = null;
+        try {
+            handle = openDownloadHandle(file, "exportacion-fiscal-" + job.getId() + ".zip",
+                    job.getFileSize());
+            if (jdbc.update("update fiscal_export_download_token set consumido_en = :consumedAt "
+                    + "where token_hash = :tokenHash and consumido_en is null and expira_en > :consumedAt",
+                    new MapSqlParameterSource().addValue("consumedAt", now).addValue("tokenHash", tokenHash)) != 1) {
+                throw new IllegalArgumentException("fiscal_export_download_token_invalid");
+            }
+            registerDownloadHandleRollbackCleanup(handle);
+            return handle;
+        } catch (IOException exception) {
+            closeDownloadHandle(handle);
+            throw new IllegalArgumentException("fiscal_export_job_file_unavailable", exception);
+        } catch (RuntimeException | Error exception) {
+            closeDownloadHandle(handle);
+            throw exception;
+        }
+    }
+
+    DownloadHandle openDownloadHandle(Path file, String fileName, long expectedSize) throws IOException {
+        SeekableByteChannel channel = Files.newByteChannel(file,
+                java.util.Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS));
+        boolean keepOpen = false;
+        try {
+            var attributes = Files.readAttributes(file,
+                    java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!attributes.isRegularFile()) {
+                throw new IOException("fiscal_export_job_file_unavailable");
+            }
+            var allowed = directory.toRealPath(LinkOption.NOFOLLOW_LINKS);
+            var parent = file.getParent() == null
+                    ? null : file.getParent().toRealPath(LinkOption.NOFOLLOW_LINKS);
+            var real = file.toRealPath(LinkOption.NOFOLLOW_LINKS);
+            if (parent == null || !parent.startsWith(allowed) || !real.startsWith(allowed)) {
+                throw new IOException("fiscal_export_job_file_unavailable");
+            }
+            var size = channel.size();
+            if (size < 0 || size != expectedSize) {
+                throw new IOException("fiscal_export_job_file_unavailable");
+            }
+            keepOpen = true;
+            return new DownloadHandle(new Download(file, size, fileName), channel);
+        } finally {
+            if (!keepOpen) channel.close();
+        }
+    }
+
+    private static void closeDownloadHandle(DownloadHandle handle) {
+        if (handle == null) return;
+        try {
+            handle.close();
+        } catch (IOException ignored) {
+            // Preserve the original download or capability error.
+        }
+    }
+
+    void registerDownloadHandleRollbackCleanup(DownloadHandle handle) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                    closeDownloadHandle(handle);
+                }
+            }
+        });
+    }
+
+    private static String randomDownloadToken() {
+        var bytes = new byte[32];
+        DOWNLOAD_TOKEN_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     /** Called asynchronously; each query uses a bounded keyset batch and a forward-only callback. */
@@ -348,6 +552,10 @@ public class FiscalExportJobService {
 
     public void expireJobs(Instant now) {
         cleanupOrphanParts(now);
+        // Capabilities are operational credentials, not fiscal evidence. Once
+        // expired they are removed instead of growing without bound.
+        jdbc.update("delete from fiscal_export_download_token where expira_en <= :now",
+                new MapSqlParameterSource("now", Timestamp.from(now)));
         var statuses = List.of(FiscalExportJobStatus.QUEUED,
                 FiscalExportJobStatus.FAILED, FiscalExportJobStatus.COMPLETED);
         List<FiscalExportJob> expired;
@@ -713,11 +921,23 @@ public class FiscalExportJobService {
 
     private FiscalExportJobView view(FiscalExportJob job) {
         var available = job.getStatus() == FiscalExportJobStatus.COMPLETED
-                && safePath(job.getFilePath()) != null
-                && !Files.isSymbolicLink(safePath(job.getFilePath()))
-                && Files.isRegularFile(safePath(job.getFilePath()),
-                        java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                && safeDownloadPath(job.getFilePath()) != null;
         return FiscalExportJobView.from(job, available, job.getScope());
+    }
+
+    private Path safeDownloadPath(String value) {
+        var file = safePath(value);
+        if (file == null || Files.isSymbolicLink(file)
+                || !Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return null;
+        try {
+            var allowed = directory.toRealPath(java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            var parent = file.getParent() == null
+                    ? null : file.getParent().toRealPath(java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            var real = file.toRealPath(java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            return parent != null && parent.startsWith(allowed) && real.startsWith(allowed) ? file : null;
+        } catch (IOException exception) {
+            return null;
+        }
     }
 
     private long snapshotSequence(FiscalExportKind kind, UUID companyId, UUID storeId, UUID installationId) {
@@ -887,6 +1107,49 @@ public class FiscalExportJobService {
     }
 
     public record Download(Path path, long size, String fileName) {}
+
+    /** One-shot resource backed by the channel validated at capability consumption. */
+    static final class DownloadHandle implements AutoCloseable {
+        private final Download download;
+        private final SeekableByteChannel channel;
+        private boolean streamOpened;
+
+        private DownloadHandle(Download download, SeekableByteChannel channel) {
+            this.download = download;
+            this.channel = channel;
+        }
+
+        Download download() {
+            return download;
+        }
+
+        InputStream openStream() throws IOException {
+            synchronized (this) {
+                if (streamOpened) {
+                    throw new IOException("fiscal_export_download_stream_already_open");
+                }
+                streamOpened = true;
+            }
+            try {
+                return Channels.newInputStream(channel);
+            } catch (RuntimeException | Error exception) {
+                closeDownloadHandle(this);
+                throw exception;
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            channel.close();
+        }
+
+        boolean isOpen() {
+            return channel.isOpen();
+        }
+    }
+
+    private record DownloadTokenRow(String tokenHash, UUID jobId, UUID companyId, UUID storeId,
+            UUID installationId, String requestedBy, Instant expiresAt, Instant consumedAt) {}
 
     /** Stores at most one batch of XML names in a nested ZIP central directory. */
     private final class XmlBatchWriter {

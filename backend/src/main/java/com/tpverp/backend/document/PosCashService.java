@@ -4,6 +4,7 @@ import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.ProductQuantityPolicy;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.StoreTaxRepository;
@@ -242,6 +243,7 @@ public class PosCashService {
             PreparedSale prepared,
             PosCashController.SaleRequest request,
             Authentication authentication) {
+        rejectMemberBalanceWithReturn(request);
         var command = prepared.command();
         var checkoutDiscount = effectiveCheckoutDiscount(request, prepared.replay());
         var memberBalance = effectiveMemberBalance(request);
@@ -292,15 +294,35 @@ public class PosCashService {
         var command = prepared.command();
         var combined = new CommercialDocument(
                 organization.currentStore().getId(), command.almacenId(), CommercialDocumentType.TICKET,
-                command.fecha(), requireUser(authentication).getId(), BigDecimal.ZERO);
+                command.fecha(), requireUser(authentication).getId(), BigDecimal.ZERO,
+                command.wholesaleMode());
         combined.setParties(replay.customerId(), null, null);
         combined.setInternalComment(request.internalComment());
         replay.commands().forEach(line -> combined.addLine(line.toEntity(combined)));
+        replay.adjustments().forEach(snapshot -> snapshot.restore(combined));
         if (currentQuote != null) {
+            var adjustmentSnapshots = currentQuote.getAjustes().stream()
+                    .map(adjustment -> DocumentAdjustmentSnapshot.from(
+                            adjustment, currentQuote.getLineas()))
+                    .toList();
+            var historicalLineCount = replay.commands().size();
+            var positionRemap = new java.util.HashMap<Integer, Integer>();
+            currentQuote.getLineas().forEach(line -> positionRemap.put(
+                    line.getPosicion(), line.getPosicion() + historicalLineCount));
             currentQuote.getLineas().stream()
                     .map(DocumentLineCommand::from)
                     .forEach(line -> combined.addLine(line.toEntity(combined)));
             materializeCurrentGlobalDiscount(currentQuote, combined);
+            var historicalAdjustmentOrder = combined.getAjustes().stream()
+                    .mapToInt(DocumentAdjustment::getOrden)
+                    .max()
+                    .orElse(0);
+            adjustmentSnapshots.stream()
+                    .map(snapshot -> snapshot.remapPositions(positionRemap))
+                    .filter(Objects::nonNull)
+                    .map(snapshot -> snapshot.withOrder(
+                            historicalAdjustmentOrder + snapshot.order()))
+                    .forEach(snapshot -> snapshot.restore(combined));
         }
         var expectedBase = Money.euros(replay.baseTotal().add(
                 currentQuote == null ? BigDecimal.ZERO : currentQuote.getBaseTotal()));
@@ -405,9 +427,6 @@ public class PosCashService {
     }
 
     public Result charge(PosCashController.CashRequest request, Authentication authentication) {
-        if (hasMemberBalance(request.sale())) {
-            throw new IllegalArgumentException("member_balance_requires_payment_session");
-        }
         var completed = transactions == null
                 ? chargeTransaction(request, authentication)
                 : Objects.requireNonNull(transactions.execute(
@@ -427,6 +446,21 @@ public class PosCashService {
         var terminalId = currentTerminal.terminalId(authentication);
         var userId = requireUser(authentication).getId();
         var requestHash = requestHash(request);
+        if (hasMemberBalance(request.sale())) {
+            var existing = checkouts.findScopedForUpdate(
+                    request.checkoutId(), companyId, storeId, terminalId, userId);
+            if (existing.isPresent()) {
+                var checkout = existing.orElseThrow();
+                if (!checkout.getRequestHash().equals(requestHash)) {
+                    throw new IllegalStateException("cash_checkout_idempotency_conflict");
+                }
+                if (!checkout.isCompleted()) {
+                    throw new IllegalStateException("cash_checkout_in_progress");
+                }
+                return new TransactionalCharge(resultFrom(checkout), null);
+            }
+            throw new IllegalArgumentException("member_balance_requires_payment_session");
+        }
         var now = Instant.now();
         var reserved = PosCashCheckout.reserve(
                 UUID.randomUUID(), request.checkoutId(), companyId, storeId, terminalId,
@@ -476,7 +510,7 @@ public class PosCashService {
         var ticket = prepared.replay() == null
                 ? hasMemberBalance(request.sale()) || hasDocumentDiscount(request.sale())
                         ? documents.createTicket(command, payment,
-                                request.sale().promotionalCouponCode(),
+                        request.sale().promotionalCouponCode(),
                                 request.sale().checkoutDiscountAmount(),
                                 request.sale().memberBalanceAmount(),
                                 request.sale().documentDiscountPercent(), authentication)
@@ -512,6 +546,7 @@ public class PosCashService {
     PreparedSale prepareSale(
             PosCashController.SaleRequest request,
             Authentication authentication) {
+        rejectMemberBalanceWithReturn(request);
         var store = organization.currentStore();
         var warehouse = warehouses.findByStoreIdAndPredeterminadoTrue(store.getId())
                 .filter(value -> value.isActive())
@@ -618,7 +653,7 @@ public class PosCashService {
                 LocalDate.now(ZoneId.of(store.getTimezone())), request.customerId(), null, null,
                 BigDecimal.ZERO.setScale(2), true,
                 List.copyOf(commandLines), request.internalComment(),
-                request.documentDiscountPercent());
+                request.documentDiscountPercent(), request.wholesaleMode());
         return new PreparedSale(command, sensitiveOperations, temporaryPriceClaims, replay);
     }
 
@@ -796,9 +831,64 @@ public class PosCashService {
             CommercialDocument quoted,
             UUID paymentMethodId,
             PreparedSale prepared) {
-        return ApprovedCardTicketSnapshot.from(
-                quoted, paymentMethodId, prepared.command().lineas(),
+        var positiveProductIds = prepared.command().lineas().stream()
+                .filter(line -> line.productoId() != null
+                        && (line.lineType() == null
+                                || line.lineType() == DocumentLineType.PRODUCT)
+                        && line.cantidad().signum() > 0)
+                .map(DocumentLineCommand::productoId)
+                .distinct()
+                .toList();
+        var catalogProducts = positiveProductIds.isEmpty()
+                ? java.util.Map.<UUID, Product>of()
+                : products.findAllByStoreIdAndIdIn(
+                                quoted.getTiendaId(), positiveProductIds).stream()
+                        .collect(java.util.stream.Collectors.toMap(Product::getId, product -> product));
+        if (!catalogProducts.keySet().containsAll(positiveProductIds)) {
+            throw new IllegalArgumentException("message.document.product_not_found");
+        }
+        var frozenLines = prepared.command().lineas().stream()
+                .map(line -> {
+                    if (line.productoId() == null || (line.lineType() != null
+                            && line.lineType() != DocumentLineType.PRODUCT)
+                            || line.cantidad().signum() <= 0) {
+                        return line;
+                    }
+                    var product = catalogProducts.get(line.productoId());
+                    return line.withRequiresSerialNumber(product.isRequiresSerialNumber())
+                            .withDiscountEligible(product.getDiscountType() != DiscountType.NONE);
+                })
+                .toList();
+        var snapshot = ApprovedCardTicketSnapshot.from(
+                quoted, paymentMethodId, frozenLines,
                 historicalReplayMetadata(quoted, prepared));
+        var frozenPolicies = frozenLines.stream()
+                .filter(line -> line.productoId() != null
+                        && (line.lineType() == null || line.lineType() == DocumentLineType.PRODUCT)
+                        && line.cantidad().signum() > 0
+                        && line.requiresSerialNumber() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        DocumentLineCommand::productoId, DocumentLineCommand::requiresSerialNumber,
+                        (first, ignored) -> first));
+        var frozenDiscountPolicies = frozenLines.stream()
+                .filter(line -> line.productoId() != null
+                        && (line.lineType() == null || line.lineType() == DocumentLineType.PRODUCT)
+                        && line.cantidad().signum() > 0
+                        && line.discountEligible() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        DocumentLineCommand::productoId, DocumentLineCommand::discountEligible,
+                        (first, ignored) -> first));
+        return new ApprovedCardTicketSnapshot(
+                snapshot.storeId(), snapshot.warehouseId(), snapshot.date(), snapshot.customerId(),
+                snapshot.wholesaleMode(), snapshot.paymentMethodId(), snapshot.globalDiscount(), snapshot.baseTotal(),
+                snapshot.taxTotal(), snapshot.total(),
+                snapshot.lines().stream()
+                        .map(line -> line.withRequiresSerialNumber(
+                                frozenPolicies.get(line.productoId()))
+                                .withDiscountEligible(
+                                        frozenDiscountPolicies.get(line.productoId())))
+                        .toList(), snapshot.internalComment(), snapshot.historicalReplay(),
+                snapshot.adjustments());
     }
 
     private HistoricalTicketReplayMetadata historicalReplayMetadata(
@@ -1318,7 +1408,8 @@ public class PosCashService {
             List<QuoteLine> lines,
             List<TaxBreakdown> taxes,
             int pricingVersion,
-            List<AuthoritativeLineBreakdown> lineBreakdown) {
+            List<AuthoritativeLineBreakdown> lineBreakdown,
+            BigDecimal memberBalanceEligibleTotal) {
 
         static Quote from(
                 CommercialDocument ticket,
@@ -1381,18 +1472,21 @@ public class PosCashService {
                     ticket, request, catalog, customer,
                     historicalProductCount, historicalLineCount,
                     frozenHistoricalBlock);
+            var memberBalanceEligibleTotal = PosCashService.memberBalanceEligibleTotal(
+                    ticket, catalog, historicalLineCount,
+                    frozenHistoricalBlock);
             return new Quote(
                     ticket.getTotal(), productTotal, new PromotionPreviewView(promotions),
                     ticket.getBaseTotal(), ticket.getImpuestoTotal(), discountTotal,
                     memberBalanceTotal, adjustments,
                     ticket.getMoneda(), ticket.getTiendaId(), ticket.getClienteId(),
-                    fingerprint, quoteLines, taxes, 2, breakdown);
+                    fingerprint, quoteLines, taxes, 2, breakdown, memberBalanceEligibleTotal);
         }
 
         public Quote(BigDecimal total) {
             this(total, total, new PromotionPreviewView(List.of()), total, BigDecimal.ZERO,
                     BigDecimal.ZERO, BigDecimal.ZERO, List.of(), "EUR", null, null, "", List.of(),
-                    List.of(), 2, List.of());
+                    List.of(), 2, List.of(), BigDecimal.ZERO.setScale(Money.SCALE));
         }
 
         public Quote(
@@ -1414,7 +1508,7 @@ public class PosCashService {
             this(total, productTotal, promotionPreview, baseTotal, taxTotal,
                     discountTotal, BigDecimal.ZERO.setScale(Money.SCALE), documentAdjustments,
                     currency, storeId, customerId, quoteFingerprint, lines, taxes,
-                    pricingVersion, lineBreakdown);
+                    pricingVersion, lineBreakdown, BigDecimal.ZERO.setScale(Money.SCALE));
         }
 
         public Quote(
@@ -1435,7 +1529,8 @@ public class PosCashService {
                 List<AuthoritativeLineBreakdown> lineBreakdown) {
             this(total, productTotal, promotionPreview, baseTotal, taxTotal,
                     discountTotal, memberBalanceTotal, List.of(), currency, storeId,
-                    customerId, quoteFingerprint, lines, taxes, pricingVersion, lineBreakdown);
+                    customerId, quoteFingerprint, lines, taxes, pricingVersion, lineBreakdown,
+                    BigDecimal.ZERO.setScale(Money.SCALE));
         }
     }
 
@@ -1616,6 +1711,40 @@ public class PosCashService {
         return List.copyOf(result);
     }
 
+    private static BigDecimal memberBalanceEligibleTotal(
+            CommercialDocument ticket,
+            Map<UUID, Product> catalog,
+            int historicalLineCount,
+            boolean frozenHistoricalBlock) {
+        var currentLines = ticket.getLineas().stream()
+                .filter(line -> !frozenHistoricalBlock || line.getPosicion() > historicalLineCount)
+                .toList();
+        var eligibleProductTotal = currentLines.stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> {
+                    var product = catalog.get(line.getProductoId());
+                    return product != null && product.getDiscountType() != DiscountType.NONE;
+                })
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var currentReductions = currentLines.stream()
+                .filter(line -> line.getTotal().signum() < 0)
+                .filter(line -> line.getLineType() == DocumentLineType.PROMOTION
+                        || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON
+                        || line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT
+                        || line.getLineType() == DocumentLineType.MANUAL_DISCOUNT
+                        || line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var appliedMemberBalance = currentLines.stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MEMBER_BALANCE)
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .negate();
+        return Money.euros(eligibleProductTotal.add(currentReductions)
+                .add(appliedMemberBalance).max(BigDecimal.ZERO));
+    }
+
     private static Optional<AuthoritativeLineBreakdown> manualDiscountBreakdown(
             List<DocumentLine> lines) {
         var discounts = lines.stream()
@@ -1709,6 +1838,8 @@ public class PosCashService {
         var affectedPositions = adjustment.getPromotionAffectedPositions();
         var candidates = builders.stream()
                 .filter(line -> line.historical == historical)
+                .filter(line -> historical
+                        || line.product.getDiscountType() != DiscountType.NONE)
                 .filter(line -> adjustment.getSourceLineId() == null
                         || adjustment.getSourceLineId().equals(line.line.getId()))
                 .filter(line -> affectedPositions.isEmpty()
@@ -1952,6 +2083,7 @@ public class PosCashService {
     }
 
     static String requestHash(PosCashController.CashRequest request) {
+        var wholesale = request.sale().wholesaleMode();
         var internalComment = normalize(request.sale().internalComment());
         if (request.sale().previousTicketImport() == null
                 && !hasCheckoutReduction(request.sale()) && !hasDocumentDiscount(request.sale())
@@ -1967,21 +2099,31 @@ public class PosCashService {
         var hasTemporaryNames = request.sale().lines().stream()
                 .anyMatch(line -> line.temporaryName() != null
                         && !line.temporaryName().isBlank());
-        var canonical = new StringBuilder(request.sale().memberBalanceAmount() != null
+        var canonical = new StringBuilder(wholesale ? (request.sale().memberBalanceAmount() != null
+                && Money.euros(request.sale().memberBalanceAmount()).signum() > 0
+                ? "v10-member-balance|"
+                : request.sale().previousTicketImport() != null
+                ? "v9-previous-ticket-import|"
+                : hasTemporaryNames
+                ? "v8-temporary-name|"
+                : !internalComment.isEmpty()
+                ? "v7-internal-comment|"
+                : hasSerialNumbers
+                ? "v6-checkout-serials|"
+                : hasOpenPrice
+                ? "v5-checkout-discount-open-price|"
+                : "v5-checkout-discount|") : request.sale().memberBalanceAmount() != null
                 && Money.euros(request.sale().memberBalanceAmount()).signum() > 0
                 ? "v9-member-balance|"
                 : request.sale().previousTicketImport() != null
                 ? "v8-previous-ticket-import|"
-                : hasTemporaryNames
-                ? "v7-temporary-name|"
-                : !internalComment.isEmpty()
-                ? "v6-internal-comment|"
-                : hasSerialNumbers
-                ? "v5-checkout-serials|"
-                : hasOpenPrice
-                ? "v4-checkout-discount-open-price|"
+                : hasTemporaryNames ? "v7-temporary-name|"
+                : !internalComment.isEmpty() ? "v6-internal-comment|"
+                : hasSerialNumbers ? "v5-checkout-serials|"
+                : hasOpenPrice ? "v4-checkout-discount-open-price|"
                 : "v4-checkout-discount|")
                 .append(request.sale().customerId()).append('|')
+                .append(wholesale ? "true|" : "")
                 .append(canonicalPreviousTicketImport(
                         request.sale().previousTicketImport())).append('|');
         if (!internalComment.isEmpty()) {
@@ -2029,6 +2171,7 @@ public class PosCashService {
     }
 
     private static String legacyRequestHash(PosCashController.CashRequest request) {
+        var wholesale = request.sale().wholesaleMode();
         var couponCode = normalize(request.sale().promotionalCouponCode());
         var hasOpenPrice = request.sale().lines().stream()
                 .anyMatch(line -> line.openUnitPrice() != null);
@@ -2037,14 +2180,17 @@ public class PosCashService {
         var hasTemporaryNames = request.sale().lines().stream()
                 .anyMatch(line -> line.temporaryName() != null
                         && !line.temporaryName().isBlank());
-        var canonical = new StringBuilder(hasTemporaryNames
-                ? "v7-temporary-name|"
+        var canonical = new StringBuilder(wholesale ? (hasTemporaryNames
+                ? "v8-temporary-name|"
                 : hasSerialNumbers
-                ? "v4-serials|"
+                ? "v5-serials|"
                 : hasOpenPrice
-                ? "v3-open-price|"
-                : couponCode.isEmpty() ? "v1|" : "v2-coupon|")
-                .append(request.sale().customerId()).append('|');
+                ? "v4-open-price|"
+                : couponCode.isEmpty() ? "v2|" : "v3-coupon|") : hasTemporaryNames
+                ? "v7-temporary-name|" : hasSerialNumbers ? "v4-serials|"
+                : hasOpenPrice ? "v3-open-price|" : couponCode.isEmpty() ? "v1|" : "v2-coupon|")
+                .append(request.sale().customerId()).append('|')
+                .append(wholesale ? "true|" : "");
         if (!couponCode.isEmpty()) canonical.append(couponCode).append('|');
         canonical.append(Money.euros(request.received())).append('|')
                 .append(Money.euros(request.quotedTotal()));
@@ -2113,6 +2259,20 @@ public class PosCashService {
     private static boolean hasMemberBalance(PosCashController.SaleRequest request) {
         return request.memberBalanceAmount() != null
                 && Money.euros(request.memberBalanceAmount()).signum() > 0;
+    }
+
+    /**
+     * A return and a member-balance spend are separate cashier operations.
+     * Keep this invariant at the shared POS preparation boundary so cash,
+     * card, quotes, and payment sessions cannot bypass the UI rule.
+     */
+    private static void rejectMemberBalanceWithReturn(PosCashController.SaleRequest request) {
+        if (request == null || !hasMemberBalance(request)
+                || request.lines().stream().noneMatch(line ->
+                        line.returnOrigin() != null && line.quantity().signum() < 0)) {
+            return;
+        }
+        throw new IllegalArgumentException("member_balance_not_allowed_with_return");
     }
 
     private static boolean hasCheckoutReduction(PosCashController.SaleRequest request) {

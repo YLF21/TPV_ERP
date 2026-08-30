@@ -7,9 +7,17 @@ import org.springframework.stereotype.Component;
 public class VerifactuSubmissionPropertiesFactory {
 
     private final Environment environment;
+    private final FiscalRuntimeProperties runtime;
 
     public VerifactuSubmissionPropertiesFactory(Environment environment) {
+        this(environment, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public VerifactuSubmissionPropertiesFactory(Environment environment,
+            FiscalRuntimeProperties runtime) {
         this.environment = environment;
+        this.runtime = runtime;
     }
 
     public VerifactuSubmissionProperties current() {
@@ -19,7 +27,8 @@ public class VerifactuSubmissionPropertiesFactory {
                 required("tpv.verifactu.system-id"),
                 defaulted("tpv.verifactu.producer-name", "TPV ERP DEV"),
                 defaulted("tpv.verifactu.producer-tax-id", "B00000000"),
-                defaulted("tpv.verifactu.system-version", "4.1.0"));
+                runtime == null ? defaulted("tpv.verifactu.system-version", "4.2.0")
+                        : runtime.systemVersion());
     }
     // Lee la configuracion efectiva desde Spring, incluyendo variables de entorno resueltas.
 

@@ -10,6 +10,7 @@ import com.tpverp.backend.verifactu.FiscalRecordOperation;
 import com.tpverp.backend.verifactu.FiscalRecordRepository;
 import com.tpverp.backend.verifactu.FiscalRecordService;
 import com.tpverp.backend.verifactu.FiscalRectificationMethod;
+import com.tpverp.backend.verifactu.FiscalInstallationResolver;
 import com.tpverp.backend.verifactu.VerifactuInactiveException;
 import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
@@ -23,7 +24,7 @@ public class DocumentFiscalIntegration {
 
     private static final String FORMAT_VERSION = "VERIFACTU-1";
     private static final String ALGORITHM_VERSION = "AEAT-SHA256-1";
-    private String applicationVersion = "4.1.0";
+    private String applicationVersion = "4.2.0";
 
     private final FiscalRecordService fiscalRecords;
     private final FiscalRecordRepository recordRepository;
@@ -70,12 +71,15 @@ public class DocumentFiscalIntegration {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setFiscalRuntimeProperties(FiscalRuntimeProperties runtimeProperties) {
         this.runtimeProperties = runtimeProperties;
+        if (runtimeProperties.isSandbox()) {
+            this.applicationVersion = runtimeProperties.systemVersion();
+        }
     }
 
     /** The frozen fiscal record must carry the build version used to produce it. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setApplicationVersion(
-            @Value("${tpv.verifactu.system-version:4.1.0}") String applicationVersion) {
+            @Value("${tpv.verifactu.system-version:4.2.0}") String applicationVersion) {
         if (applicationVersion != null && !applicationVersion.isBlank()) {
             this.applicationVersion = applicationVersion.trim();
         }
@@ -202,10 +206,7 @@ public class DocumentFiscalIntegration {
     }
 
     private java.util.UUID currentInstallationId() {
-        return installations.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "La instalacion no esta inicializada"))
-                .getId();
+        return FiscalInstallationResolver.resolveCurrent(organization, installations, licenses).getId();
     }
 
     private boolean skipFiscalRegistration() {
@@ -225,9 +226,8 @@ public class DocumentFiscalIntegration {
             return true;
         }
         var storeId = organization.currentStore().getId();
-        var installationId = installations.findAll().stream().findFirst()
-                .map(com.tpverp.backend.installation.Installation::getId)
-                .orElse(null);
+        var installationId = FiscalInstallationResolver.resolveCurrent(
+                organization, installations, licenses).getId();
         return installationId == null
                 || licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(storeId, installationId)
                         .isEmpty();

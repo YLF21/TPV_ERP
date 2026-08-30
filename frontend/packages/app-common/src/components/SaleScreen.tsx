@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import { hasPermission } from "../auth/auth";
@@ -10,13 +10,18 @@ import { CashPaymentDialog } from "./CashPaymentDialog";
 import { CashPaymentResultDialog } from "./CashPaymentResultDialog";
 import { CardPaymentDialog } from "./CardPaymentDialog";
 import { readCashInputMode, type CashInputMode } from "../sale/cashInputMode";
-import { useMemberBalanceReservation } from "../sale/memberBalanceReservation";
+import {
+  memberBalanceRetentionKey,
+  MEMBER_BALANCE_REQUEST_TIMEOUT_MS,
+  useMemberBalanceReservation,
+} from "../sale/memberBalanceReservation";
 import { PromotionPreviewPanel, type PromotionPreview } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
 import type { TicketPrinterHealth } from "../hardware/hardware";
 import { SalePaymentCheckout, type PaymentFinalizationSummary, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import type { MemberWalletView } from "./PaymentAllocationPanel";
 import {
   TouchSaleActionPanel,
   type SaleCommandLabels
@@ -158,6 +163,7 @@ export type SaleProduct = {
   name?: string | null;
   salePrice?: number | string | null;
   memberPrice?: number | string | null;
+  wholesalePrice?: number | string | null;
   offerPrice?: number | string | null;
   offerDiscountPercent?: number | string | null;
   priceUseMode?: "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT" | string | null;
@@ -172,6 +178,7 @@ export type SaleProduct = {
   taxPercentage: number | string;
   rate?: string | null;
   packageQuantity?: number | string | null;
+  requiresSerialNumber?: boolean | null;
 };
 
 export type SaleLine = {
@@ -326,6 +333,7 @@ type PosAuthoritativeQuote = {
   total: number | string;
   productTotal: number | string;
   memberBalanceTotal?: number | string;
+  memberBalanceEligibleTotal?: number | string | null;
   documentAdjustments?: Array<{
     type: "MANUAL_PERCENT" | "MEMBER_PERCENT" | string;
     percent: number | string;
@@ -415,7 +423,7 @@ export function visibleSaleCartColumns(
 }
 
 type SaleCartSpecialPrice = {
-  type: "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
+  type: "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT" | "WHOLESALE";
   unitPrice: number;
   discountPercent?: number;
 };
@@ -439,6 +447,7 @@ export function saleCartSpecialPrice(
   product: SaleProduct,
   activeMember: boolean,
   authoritativeLine?: AuthoritativeSaleLine,
+  wholesaleMode = false,
 ): SaleCartSpecialPrice | null {
   const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
   if (authoritativeLine) {
@@ -446,6 +455,12 @@ export function saleCartSpecialPrice(
     if (source === "MEMBER" || source === "MEMBER_PRICE") {
       return {
         type: "MEMBER_PRICE",
+        unitPrice: finiteAmount(authoritativeLine.baseUnitPrice),
+      };
+    }
+    if (source === "MAYORISTA" || source === "WHOLESALE") {
+      return {
+        type: "WHOLESALE",
         unitPrice: finiteAmount(authoritativeLine.baseUnitPrice),
       };
     }
@@ -469,9 +484,21 @@ export function saleCartSpecialPrice(
     return null;
   }
 
+  const discountType = String(product.discountType ?? "NORMAL").toUpperCase();
+  const memberPriceMode = mode === "MEMBER_PRICE" || discountType === "MEMBER_PRICE";
+  if (discountType === "NONE") {
+    if (wholesaleMode && finiteAmount(product.wholesalePrice) > 0) {
+      return {
+        type: "WHOLESALE",
+        unitPrice: finiteAmount(product.wholesalePrice),
+      };
+    }
+    return null;
+  }
+
   if (
     activeMember
-    && String(product.discountType ?? "").toUpperCase() === "MEMBER_PRICE"
+    && memberPriceMode
     && finiteAmount(product.memberPrice) > 0
   ) {
     return {
@@ -485,7 +512,17 @@ export function saleCartSpecialPrice(
       unitPrice: effectiveSaleProductPrice(product, activeMember),
       ...(mode === "OFFER_DISCOUNT"
         ? { discountPercent: finiteAmount(product.offerDiscountPercent) }
-        : {}),
+      : {}),
+    };
+  }
+  if (
+    wholesaleMode
+    && mode === "NORMAL"
+    && finiteAmount(product.wholesalePrice) > 0
+  ) {
+    return {
+      type: "WHOLESALE",
+      unitPrice: finiteAmount(product.wholesalePrice),
     };
   }
   return null;
@@ -532,6 +569,13 @@ function SaleCartProductThumbnail({
 }
 
 export function isCompleteAuthoritativeQuote(
+  quote: PosAuthoritativeQuote | null | undefined,
+): quote is PosAuthoritativeQuote & { pricingVersion: 2; lineBreakdown: AuthoritativeSaleLine[] } {
+  if (!isCompleteCommercialQuote(quote)) return false;
+  return Number.isFinite(Number(quote.memberBalanceEligibleTotal));
+}
+
+function isCompleteCommercialQuote(
   quote: PosAuthoritativeQuote | null | undefined,
 ): quote is PosAuthoritativeQuote & { pricingVersion: 2; lineBreakdown: AuthoritativeSaleLine[] } {
   if (quote?.pricingVersion !== 2 || !Array.isArray(quote.lineBreakdown)) return false;
@@ -914,11 +958,12 @@ function saleShortcutTargetIsEditable(target: EventTarget | null) {
   );
 }
 
-export function saleLineSubtotal(line: SaleLine, activeMember = false) {
+export function saleLineSubtotal(line: SaleLine, activeMember = false, wholesaleMode = false) {
   if (line.previousTicketImportOrigin) {
     return line.previousTicketImportOrigin.historicalTotal;
   }
-  return saleLineUnitPrice(line, activeMember) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+  return saleLineUnitPrice(line, activeMember, wholesaleMode) * line.quantity
+    * (1 - effectiveSaleLineDiscount(line) / 100);
 }
 
 export function updateSaleLineSerialNumbers(
@@ -969,6 +1014,9 @@ export function updateSaleLineTemporaryPrice(
   return lines.map((line) => {
     if (saleCartLineIdentity(line) !== lineId) return line;
     if (line.previousTicketImportOrigin) throw new Error("historical_import_locked");
+    if (value != null && saleProductBlocksManualDiscount(line.product)) {
+      throw new Error("price_change_blocked");
+    }
     const {
       openUnitPrice: _previous,
       temporaryPriceAuthorization: _previousAuthorization,
@@ -1002,20 +1050,21 @@ export function saleLineHasValidTemporaryPriceAuthorization(
   );
 }
 
-export function saleLineUnitPrice(line: SaleLine, activeMember = false) {
+export function saleLineUnitPrice(line: SaleLine, activeMember = false, wholesaleMode = false) {
   return line.previousTicketImportOrigin?.historicalUnitPrice
     ?? line.returnUnitPrice
     ?? line.openUnitPrice
-    ?? effectiveSaleProductPrice(line.product, activeMember);
+    ?? effectiveSaleProductPrice(line.product, activeMember, currentSaleDate(), wholesaleMode);
 }
 
 export function saleCartDisplayedUnitPrice(
   line: SaleLine,
   activeMember = false,
   authoritativeLine?: AuthoritativeSaleLine,
+  wholesaleMode = false,
 ) {
   const appliedUnitPrice = finiteAmount(
-    authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(line, activeMember),
+    authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(line, activeMember, wholesaleMode),
   );
   if (line.returnOrigin || line.openUnitPrice != null) return appliedUnitPrice;
   const catalogSalePrice = authoritativeLine
@@ -1034,6 +1083,35 @@ export function saleProductRequiresOpenPrice(product: SaleProduct) {
 
 export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lineCount:number, reservedTotalCents:number|null){
   return paymentLocked && lineCount===0 && reservedTotalCents!=null ? reservedTotalCents/100 : localTotal;
+}
+
+export function memberBalanceReadyForCheckout(
+  reservationStatus: "IDLE" | "RESERVING" | "ACTIVE" | "UNAVAILABLE" | "DUPLICATE",
+  walletStatus: "IDLE" | "LOADING" | "READY" | "FAILED",
+  returnRetentionConfigured: boolean,
+  retentionSnapshotConfirmed: boolean,
+) {
+  return reservationStatus === "ACTIVE"
+    && walletStatus === "READY"
+    && (!returnRetentionConfigured || retentionSnapshotConfirmed);
+}
+
+/**
+ * A quoted line is authoritative for fiscal display. When there is no quote,
+ * the product's captured fiscal snapshot is the only safe fallback (not the
+ * current catalogue flag for a return-origin line).
+ */
+export function effectiveSaleLineTaxIncluded(
+  productTaxesIncluded: boolean,
+  authoritativeTaxIncluded?: boolean | null,
+): boolean {
+  return typeof authoritativeTaxIncluded === "boolean"
+    ? authoritativeTaxIncluded
+    : productTaxesIncluded;
+}
+
+export function saleCartTaxLabelVisible(taxIncluded: boolean): boolean {
+  return taxIncluded === false;
 }
 
 export function effectiveSaleLineDiscount(line: SaleLine) {
@@ -1057,6 +1135,27 @@ export function previousTicketImportSerialNumbersReady(lines: SaleLine[]) {
   return new Set(normalizedSerialNumbers).size === normalizedSerialNumbers.length;
 }
 
+/** Product capability is delivered by the catalogue contract. Keep this
+ * helper tolerant while older catalogue responses are still in circulation. */
+export function saleLineRequiresSerialNumber(line: SaleLine) {
+  return line.product.productType === "UNIT"
+    && !line.returnOrigin
+    && line.quantity > 0
+    && line.product.requiresSerialNumber === true;
+}
+
+export function saleSerialNumbersReady(lines: SaleLine[]) {
+  const serials: string[] = [];
+  for (const line of lines) {
+    if (!saleLineRequiresSerialNumber(line)) continue;
+    const values = (line.serialNumbers ?? []).map((value) => value.trim().toUpperCase());
+    if (!Number.isInteger(line.quantity) || line.quantity <= 0
+      || values.length !== line.quantity || values.some((value) => !value)) return false;
+    serials.push(...values);
+  }
+  return new Set(serials).size === serials.length;
+}
+
 export function applyMemberDiscounts(lines: SaleLine[], customer: SaleCustomer | null) {
   const customerDiscount = customer?.activeMember ? Number(customer.memberDiscountPercent ?? 0) : 0;
   return lines.map((line) => line.previousTicketImportOrigin ? line : ({
@@ -1065,8 +1164,11 @@ export function applyMemberDiscounts(lines: SaleLine[], customer: SaleCustomer |
   }));
 }
 
-export function saleTotal(lines: SaleLine[], activeMember = false) {
-  return lines.reduce((total, line) => total + saleLineSubtotal(line, activeMember), 0);
+export function saleTotal(lines: SaleLine[], activeMember = false, wholesaleMode = false) {
+  return lines.reduce(
+    (total, line) => total + saleLineSubtotal(line, activeMember, wholesaleMode),
+    0,
+  );
 }
 
 type CashPaymentResponse = {
@@ -1317,16 +1419,33 @@ export function saleProductBlocksManualDiscount(product: SaleProduct) {
   return String(product.discountType ?? "NORMAL").toUpperCase() === "NONE";
 }
 
-export function effectiveSaleProductPrice(product: SaleProduct, activeMember = false, currentDate = currentSaleDate()) {
+export function effectiveSaleProductPrice(
+  product: SaleProduct,
+  activeMember = false,
+  currentDate = currentSaleDate(),
+  wholesaleMode = false,
+) {
   const salePrice = salePriceNumber(product.salePrice);
+  const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
+  const discountType = String(product.discountType ?? "NORMAL").toUpperCase();
+  const wholesalePrice = salePriceNumber(product.wholesalePrice);
+  if (discountType === "NONE") {
+    return wholesaleMode && wholesalePrice > 0 ? wholesalePrice : salePrice;
+  }
   if (
     activeMember
-    && String(product.discountType ?? "").toUpperCase() === "MEMBER_PRICE"
+    && (discountType === "MEMBER_PRICE" || mode === "MEMBER_PRICE")
     && salePriceNumber(product.memberPrice) > 0
   ) {
     return salePriceNumber(product.memberPrice);
   }
-  const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
+  if (
+    wholesaleMode
+    && mode === "NORMAL"
+    && wholesalePrice > 0
+  ) {
+    return wholesalePrice;
+  }
   if ((mode === "OFFER_PRICE" || mode === "OFFER_DISCOUNT") && saleOfferIsCurrent(product, currentDate)) {
     const explicitOfferPrice = salePriceNumber(product.offerPrice, Number.NaN);
     if (Number.isFinite(explicitOfferPrice)) return explicitOfferPrice;
@@ -1442,12 +1561,14 @@ export function pendingSaleDraftForCustomer(
   internalComment = "",
   printMode: SalePrintMode = "DEFAULT",
   documentDiscountPercent = 0,
+  wholesaleMode = false,
 ): PendingSaleDraft {
   return {
     checkoutId, warehouseId, type: "ALBARAN_VENTA", date: addLocalDays(now, 0),
     customerId: customer.id,
     dueDate: addLocalDays(now, Math.max(0, customer.paymentTermDays ?? 30)),
     globalDiscount: "0.00",
+    ...(wholesaleMode ? { wholesaleMode: true } : {}),
     ...(documentDiscountPercent > 0
       ? { documentDiscountPercent: documentDiscountPercent.toFixed(2) }
       : {}),
@@ -1458,7 +1579,11 @@ export function pendingSaleDraftForCustomer(
       code: line.product.code ?? line.product.barcode ?? line.product.id,
       name: line.temporaryName ?? line.product.name ?? line.product.code ?? "Producto",
       rate: line.product.rate ?? null,
-      price: saleLineUnitPrice(line, customer.activeMember === true).toFixed(2),
+      price: saleLineUnitPrice(
+        line,
+        customer.activeMember === true,
+        wholesaleMode,
+      ).toFixed(2),
       // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
       discount: line.discountPercent.toFixed(2), ...saleProductFiscalSnapshot(line.product),
       serialNumbers: line.serialNumbers ?? [],
@@ -1576,6 +1701,8 @@ export function SaleScreen({
   const [query, setQuery] = useState("");
   const [searchPreviewProduct, setSearchPreviewProduct] = useState<SaleProduct | null>(null);
   const [lines, setLines] = useState<SaleLine[]>([]);
+  const [returnRetentionSourceDocumentId, setReturnRetentionSourceDocumentId] = useState<string | null>(null);
+  const [wholesaleMode, setWholesaleMode] = useState(false);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [actionDialog, setActionDialog] = useState<
     "quantity"
@@ -1709,6 +1836,10 @@ export function SaleScreen({
   const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
   const [documentDiscountPercent, setDocumentDiscountPercent] = useState(0);
   const [memberBalanceCents, setMemberBalanceCents] = useState(0);
+  const [memberWallet, setMemberWallet] = useState<MemberWalletView | null>(null);
+  const [memberWalletStatus, setMemberWalletStatus] = useState<"IDLE" | "LOADING" | "READY" | "FAILED">("IDLE");
+  const [memberWalletRetry, setMemberWalletRetry] = useState(0);
+  const [memberBalanceRetrying, setMemberBalanceRetrying] = useState(false);
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
   const [parkedSaleSaving, setParkedSaleSaving] = useState(false);
   const [parkedSaleAuthorizationOpen, setParkedSaleAuthorizationOpen] = useState(false);
@@ -1719,6 +1850,8 @@ export function SaleScreen({
   const [ticketReturnOpen, setTicketReturnOpen] = useState(false);
   const [giftReceiptOpen, setGiftReceiptOpen] = useState(false);
   const [serialNumberOpen, setSerialNumberOpen] = useState(false);
+  const [serialNumberLineId, setSerialNumberLineId] = useState<string | null>(null);
+  const [pendingSerialQuantity, setPendingSerialQuantity] = useState<number | null>(null);
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
@@ -1759,6 +1892,25 @@ export function SaleScreen({
   const previousTicketImportBusyRef = useRef(false);
   const customerSearchGenerationRef = useRef(0);
   const linesRef = useRef(lines);
+  const serialQuantityRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (paymentLocked) return;
+    for (const line of lines) {
+      const id = saleCartLineIdentity(line);
+      const previous = serialQuantityRef.current[id];
+      if (saleLineRequiresSerialNumber(line) && previous !== undefined && previous !== line.quantity) {
+        setSerialNumberLineId(id);
+        setSerialNumberOpen(true);
+        break;
+      }
+      serialQuantityRef.current[id] = line.quantity;
+    }
+    const ids = new Set(lines.map(saleCartLineIdentity));
+    serialQuantityRef.current = Object.fromEntries(
+      Object.entries(serialQuantityRef.current).filter(([id]) => ids.has(id)),
+    );
+  }, [lines, paymentLocked]);
 
   useEffect(() => {
     const hardware = window.tpvDesktop?.hardware;
@@ -1873,37 +2025,275 @@ export function SaleScreen({
   const activeMember = selectedCustomer?.activeMember === true;
   const visibleCartColumns = visibleSaleCartColumns(cartTableLayout.layout);
   const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
+  const currentEconomicLines = lines.filter((line) => !line.previousTicketImportOrigin);
+  const memberBalanceBlockedByReturn = activeMember
+    && currentEconomicLines.some((line) => line.returnOrigin && line.quantity < 0);
   const currentSaleRequest = cashSaleRequest();
   const currentSaleRequestKey = JSON.stringify(currentSaleRequest);
-  const currentEconomicLines = lines.filter((line) => !line.previousTicketImportOrigin);
   const previousTicketImportSerialsReady = previousTicketImportSerialNumbersReady(lines);
+  const requiredSerialNumbersReady = saleSerialNumbersReady(lines);
   // A CURRENT_REPRICING preview is not a price commitment. Its historical
   // total must never be presented as the current sale while the authoritative
   // quote is pending or unavailable.
   const total = previousTicketImportBatch?.pricingMode === "CURRENT_REPRICING"
     ? 0
     : (previousTicketImportBatch?.total ?? 0)
-      + saleTotal(currentEconomicLines, activeMember);
+      + saleTotal(currentEconomicLines, activeMember, wholesaleMode);
   const confirmedAuthoritativeQuote = isCompleteAuthoritativeQuote(authoritativeQuote)
+    ? authoritativeQuote
+    : null;
+  const confirmedCommercialQuote = isCompleteCommercialQuote(authoritativeQuote)
     ? authoritativeQuote
     : null;
   const authoritativeQuoteReady = authoritativeQuoteRequestKey === currentSaleRequestKey
     && confirmedAuthoritativeQuote !== null;
-  const authoritativeTotal = authoritativeQuoteReady ? Number(confirmedAuthoritativeQuote.total) : total;
+  const commercialQuoteReady = authoritativeQuoteRequestKey === currentSaleRequestKey
+    && confirmedCommercialQuote !== null;
+  const authoritativeTotal = commercialQuoteReady ? Number(confirmedCommercialQuote.total) : total;
   const acceptedMemberBalanceCents = authoritativeQuoteReady
     ? Math.round(Number(confirmedAuthoritativeQuote.memberBalanceTotal ?? 0) * 100)
     : memberBalanceCents;
+  const memberBalanceEligibleTotalCents = authoritativeQuoteReady
+    && confirmedAuthoritativeQuote.memberBalanceEligibleTotal != null
+    && Number.isFinite(Number(confirmedAuthoritativeQuote.memberBalanceEligibleTotal))
+    ? Math.max(0, Math.round(Number(confirmedAuthoritativeQuote.memberBalanceEligibleTotal) * 100))
+    : undefined;
+  const memberBalancePricingReady = authoritativeQuoteReady && memberBalanceEligibleTotalCents !== undefined;
   const memberBalanceReservation = useMemberBalanceReservation({
     token: session.accessToken ?? "",
     customerId: selectedCustomer?.activeMember ? selectedCustomer.id : null,
     heartbeatPaused: paymentLocked && acceptedMemberBalanceCents > 0,
   });
-  const availableMemberBalanceCents = selectedCustomer?.activeMember
-    && memberBalanceReservation.status === "ACTIVE"
-    ? Math.max(0, Math.round(Number(selectedCustomer.memberBalance ?? 0) * 100))
+  useEffect(() => {
+    if (!selectedCustomer?.activeMember || !memberBalanceReservation.reservationId) {
+      setMemberWallet(null);
+      setMemberWalletStatus("IDLE");
+      return;
+    }
+    let current = true;
+    const controller = new AbortController();
+    const timeoutId = globalThis.setTimeout(() => controller.abort(), MEMBER_BALANCE_REQUEST_TIMEOUT_MS);
+    setMemberWallet(null);
+    setMemberWalletStatus("LOADING");
+    void apiRequest<MemberWalletView>(
+      `/customers/${encodeURIComponent(selectedCustomer.id)}/member-wallet`,
+      { token: session.accessToken, signal: controller.signal },
+    ).then((wallet) => {
+      if (current) setMemberWallet({
+        ...wallet,
+        lots: (wallet.lots ?? []).map((lot) => ({ ...lot, expiresAt: lot.expiresAt ?? undefined })),
+      });
+      if (current) setMemberWalletStatus("READY");
+    }).catch(() => {
+      if (current) {
+        setMemberWallet(null);
+        setMemberWalletStatus("FAILED");
+      }
+    }).finally(() => globalThis.clearTimeout(timeoutId));
+    return () => {
+      current = false;
+      controller.abort();
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [memberBalanceReservation.reservationId, memberWalletRetry, selectedCustomer?.activeMember, selectedCustomer?.id, session.accessToken]);
+  useEffect(() => {
+    if (memberBalanceReservation.status !== "ACTIVE" && memberBalanceCents > 0) {
+      setMemberBalanceCents(0);
+    }
+  }, [memberBalanceCents, memberBalanceReservation.status]);
+  const returnRetentionCandidates = useMemo(
+    () => saleReturnCartReservations(lines).map((selection) => ({
+      lineId: selection.lineId,
+      quantity: selection.returnQuantity,
+      serialNumbers: selection.selectedSerialNumbers,
+    })),
+    [lines],
+  );
+  const returnRetentionKey = memberBalanceRetentionKey(
+    returnRetentionSourceDocumentId,
+    returnRetentionCandidates,
+  );
+  const stableReturnRetention = useRef({
+    key: "",
+    selections: returnRetentionCandidates,
+  });
+  if (stableReturnRetention.current.key !== returnRetentionKey) {
+    stableReturnRetention.current = {
+      key: returnRetentionKey,
+      selections: returnRetentionCandidates,
+    };
+  }
+  const returnRetentionSelections = stableReturnRetention.current.selections;
+  const returnRetentionConfigured = returnRetentionSourceDocumentId !== null;
+  const retentionLotsHeldAmount = memberBalanceReservation.reservedLots
+    .reduce((sum, lot) => sum + lot.heldAmount, 0);
+  const operationalMemberWallet = useMemo<MemberWalletView | null>(() => {
+    if (!memberWallet) return null;
+    const heldByLot = new Map(memberBalanceReservation.reservedLots.map((lot) => [lot.lotId, lot.heldAmount]));
+    return {
+      ...memberWallet,
+      lots: (memberWallet.lots ?? []).map((lot) => ({
+        ...lot,
+        // A document can contain several balance lots. Never attribute a
+        // hold to a different row when the central lot id is absent.
+        heldAmount: heldByLot.get(lot.id) ?? 0,
+      })),
+    };
+  }, [memberBalanceReservation.reservedLots, memberWallet]);
+  const allHeldLotsMatched = !returnRetentionConfigured || memberWalletStatus !== "READY"
+    || memberBalanceReservation.reservedLots
+      .filter((lot) => lot.heldAmount > 0)
+      .every((reservedLot) => (memberWallet?.lots ?? []).some((lot) => lot.id === reservedLot.lotId));
+  const retentionAttributionComplete = (memberBalanceReservation.retentionHeldKnown === 0
+    || Math.abs(retentionLotsHeldAmount - memberBalanceReservation.retentionHeldKnown) < 0.005)
+    && allHeldLotsMatched;
+  const retentionSnapshotConfirmed = memberBalanceReservation.status === "ACTIVE"
+    && memberBalanceReservation.retentionStatus === "CONFIRMED"
+    && Number(memberBalanceReservation.retentionRevision) > 0
+    && Boolean(memberBalanceReservation.retentionFingerprint)
+    && retentionAttributionComplete;
+  const memberBalanceReady = memberBalanceReadyForCheckout(
+    memberBalanceReservation.status,
+    memberWalletStatus,
+    returnRetentionConfigured,
+    retentionSnapshotConfirmed,
+  );
+  // Quote/pricing readiness is independent from wallet-retention readiness:
+  // F11 and ordinary tenders remain available while F10 waits for central
+  // reconciliation.
+  const retentionHeldLoyaltyAmount = retentionAttributionComplete
+    ? memberBalanceReservation.reservedLots
+      .filter((lot) => lot.balanceType === "LOYALTY")
+      .reduce((sum, lot) => sum + lot.heldAmount, 0)
     : 0;
-  const authoritativeLineBreakdown = authoritativeQuoteReady ? confirmedAuthoritativeQuote.lineBreakdown : null;
-  const currentPromotionPreview = confirmedAuthoritativeQuote?.promotionPreview ?? null;
+  const retentionHeldReturnCreditAmount = retentionAttributionComplete
+    ? memberBalanceReservation.reservedLots
+      .filter((lot) => lot.balanceType === "RETURN_CREDIT")
+      .reduce((sum, lot) => sum + lot.heldAmount, 0)
+    : 0;
+  // Legacy snapshots cannot safely attribute their aggregate hold to a bucket;
+  // keep it visible as context while leaving typed spendability fail-closed.
+  const retentionHeldAmount = retentionAttributionComplete
+    ? retentionHeldLoyaltyAmount + retentionHeldReturnCreditAmount
+    : memberBalanceReservation.retentionHeldKnown;
+  const retentionHeldCents = returnRetentionConfigured
+    ? Math.max(0, Math.round(retentionHeldAmount * 100))
+    : 0;
+  const reservedLoyaltyCents = memberBalanceReservation.status === "ACTIVE" && memberBalanceReady
+    ? Math.max(0, Math.round(memberBalanceReservation.reservedLoyaltyAmount * 100))
+    : undefined;
+  const reservedReturnCreditCents = memberBalanceReservation.status === "ACTIVE" && memberBalanceReady
+    ? Math.max(0, Math.round(memberBalanceReservation.reservedReturnCreditAmount * 100))
+    : undefined;
+  const centralLoyaltyCents = reservedLoyaltyCents == null ? 0 : reservedLoyaltyCents;
+  const centralReturnCreditCents = reservedReturnCreditCents == null ? 0 : reservedReturnCreditCents;
+  const netReservedLoyaltyCents = operationalMemberWallet == null
+    ? Math.max(0, centralLoyaltyCents - Math.round(retentionHeldLoyaltyAmount * 100))
+    : Math.max(0, centralLoyaltyCents - Math.round(retentionHeldLoyaltyAmount * 100));
+  const netReturnCreditCents = operationalMemberWallet == null
+    ? Math.max(0, centralReturnCreditCents - Math.round(retentionHeldReturnCreditAmount * 100))
+    : Math.max(0, centralReturnCreditCents - Math.round(retentionHeldReturnCreditAmount * 100));
+  const netMemberBalanceCents = returnRetentionConfigured
+    ? (memberBalanceReady ? netReservedLoyaltyCents + netReturnCreditCents : 0)
+    : memberWalletStatus === "READY"
+      ? centralLoyaltyCents + centralReturnCreditCents
+      : 0;
+  const cardMemberBalanceCents = returnRetentionConfigured
+    ? netMemberBalanceCents
+    : memberBalanceReservation.status === "ACTIVE"
+      ? centralLoyaltyCents + centralReturnCreditCents
+      : 0;
+  const memberBalanceUnavailable = Boolean(selectedCustomer?.activeMember)
+    && (memberBalanceReservation.status === "UNAVAILABLE"
+      || memberBalanceReservation.status === "DUPLICATE"
+      || memberWalletStatus === "FAILED"
+      || (returnRetentionConfigured && memberBalanceReservation.retentionStatus === "FAILED")
+      || (returnRetentionConfigured && memberWalletStatus === "READY" && !retentionAttributionComplete));
+  const memberBalanceChecking = Boolean(selectedCustomer?.activeMember)
+    && !memberBalanceUnavailable
+    && (memberBalanceReservation.status === "IDLE"
+      || memberBalanceReservation.status === "RESERVING"
+      || memberWalletStatus === "LOADING"
+      || memberWalletStatus === "IDLE"
+      || (returnRetentionConfigured && !memberBalanceReady)
+      || (returnRetentionConfigured && memberBalanceReservation.retentionStatus === "PENDING"));
+  const memberBalanceRetryVisible = Boolean(selectedCustomer?.activeMember)
+    && (memberWalletStatus === "FAILED"
+      || memberBalanceReservation.status === "UNAVAILABLE"
+      || memberBalanceReservation.status === "DUPLICATE"
+      || (returnRetentionConfigured && memberBalanceReservation.retentionStatus === "FAILED"));
+  const retryResolutionOutcome = memberBalanceReservation.retryResolutionOutcome ?? null;
+  const retryResolutionMessage = retryResolutionOutcome === "BLOCKED_OTHER_TERMINAL"
+    ? t("sale.memberBalance.retry.otherTerminal")
+    : retryResolutionOutcome === "BLOCKED_LIVE_SALE"
+      ? t("sale.memberBalance.retry.liveSale")
+      : retryResolutionOutcome === "RECOVERY_PENDING"
+        ? t("sale.memberBalance.retry.pending")
+        : retryResolutionOutcome === "UNAVAILABLE"
+          ? t("sale.memberBalance.retry.unavailable")
+          : null;
+  const retryMemberBalance = useCallback(async () => {
+    if (memberBalanceRetrying) return;
+    if (memberBalanceReservation.status === "DUPLICATE"
+      || memberBalanceReservation.status === "UNAVAILABLE") {
+      setMemberBalanceRetrying(true);
+      try {
+        await memberBalanceReservation.retryResolution();
+      } finally {
+        setMemberBalanceRetrying(false);
+      }
+      return;
+    }
+    if (returnRetentionConfigured && memberBalanceReservation.retentionStatus === "FAILED") {
+      void memberBalanceReservation.configureRetention(
+        returnRetentionSourceDocumentId!,
+        returnRetentionSelections,
+      );
+      return;
+    }
+    if (memberWalletStatus === "FAILED") {
+      setMemberWalletRetry((value) => value + 1);
+    }
+  }, [
+    memberBalanceReservation,
+    memberWalletStatus,
+    returnRetentionConfigured,
+    returnRetentionSelections,
+    returnRetentionSourceDocumentId,
+    memberBalanceRetrying,
+  ]);
+  useEffect(() => {
+    if (!selectedCustomer?.activeMember
+      || !returnRetentionSourceDocumentId
+      || memberBalanceReservation.status !== "ACTIVE"
+      || !memberBalanceReservation.reservationId) {
+      return;
+    }
+    void memberBalanceReservation.configureRetention(
+      returnRetentionSourceDocumentId,
+      returnRetentionSelections,
+    ).then((result) => {
+      // Once the central clear is acknowledged, the old return source no
+      // longer belongs to the next sale. Keep it only while the empty PUT is
+      // still pending or unavailable.
+      if (result && returnRetentionSelections.length === 0
+        && !linesRef.current.some((line) => Boolean(line.returnOrigin))) {
+        setReturnRetentionSourceDocumentId((current) => current === returnRetentionSourceDocumentId ? null : current);
+      }
+    });
+  }, [
+    memberBalanceReservation.configureRetention,
+    memberBalanceReservation.reservationId,
+    memberBalanceReservation.saleId,
+    memberBalanceReservation.status,
+    returnRetentionSelections,
+    returnRetentionKey,
+    returnRetentionSourceDocumentId,
+    selectedCustomer?.activeMember,
+    selectedCustomer?.id,
+  ]);
+  const authoritativeLineBreakdown = commercialQuoteReady ? confirmedCommercialQuote.lineBreakdown : null;
+  const currentPromotionPreview = confirmedCommercialQuote?.promotionPreview ?? null;
   const visiblePromotionPreview: PromotionPreview | null = previousTicketImportBatch?.pricingMode === "FROZEN_EXACT"
     ? {
         appliedPromotions: [
@@ -1927,7 +2317,7 @@ export function SaleScreen({
     : currentPromotionPreview;
   useLayoutEffect(() => {
     if (!pendingLastCartLineVisibilityRef.current || lines.length === 0) return;
-    if (!authoritativeQuoteReady) return;
+    if (!commercialQuoteReady) return;
     const lastLine = lines.at(-1);
     if (lastLine) {
       const lineId = saleCartLineIdentity(lastLine);
@@ -1938,9 +2328,9 @@ export function SaleScreen({
         ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
     pendingLastCartLineVisibilityRef.current = false;
-  }, [authoritativeQuoteReady, lines.length, visiblePromotionPreview]);
+  }, [commercialQuoteReady, lines.length, visiblePromotionPreview]);
   const currentRepricingQuotePending = previousTicketImportBatch?.pricingMode === "CURRENT_REPRICING"
-    && !authoritativeQuoteReady;
+    && !commercialQuoteReady;
   const currentRepricingQuoteStatus = currentRepricingQuotePending
     ? authoritativeQuoteError
       ? {
@@ -1958,30 +2348,31 @@ export function SaleScreen({
     ? null
     : lines.length === 0
       ? saleDisplayedTotal(0, paymentLocked, 0, reservedPaymentTotalCents)
-      : confirmedAuthoritativeQuote
-        ? Number(confirmedAuthoritativeQuote.total)
+      : confirmedCommercialQuote
+        ? Number(confirmedCommercialQuote.total)
         : null;
   const regularQuotePending = lines.length > 0
-    && !authoritativeQuoteReady
+    && !commercialQuoteReady
     && !currentRepricingQuotePending
     && !authoritativeQuoteError
     && previousTicketImportSerialsReady;
   const displayedDocumentDiscount = lines.length > 0 && !currentRepricingQuotePending
-    ? saleDocumentDiscountTotal(confirmedAuthoritativeQuote?.documentAdjustments)
+    ? saleDocumentDiscountTotal(confirmedCommercialQuote?.documentAdjustments)
     : 0;
   const displayedDocumentAdjustment = lines.length > 0 && !currentRepricingQuotePending
-    ? confirmedAuthoritativeQuote?.documentAdjustments?.find(
+    ? confirmedCommercialQuote?.documentAdjustments?.find(
       (adjustment) => finiteAmount(adjustment.amount) > 0,
     )
     : undefined;
   const displayedDocumentDiscountIsMember = displayedDocumentAdjustment?.type === "MEMBER_PERCENT";
   const displayedDocumentDiscountPercent = finiteAmount(displayedDocumentAdjustment?.percent);
   const previousTicketImportQuoteFingerprintReady = !previousTicketImportBatch
-    || Boolean(authoritativeQuoteReady && authoritativeQuote?.quoteFingerprint?.trim());
+    || Boolean(commercialQuoteReady && authoritativeQuote?.quoteFingerprint?.trim());
   const basePaymentActionsDisabled = lines.length === 0 || cashOpening
     || !previousTicketImportSerialsReady
+    || !requiredSerialNumbersReady
     || !previousTicketImportQuoteFingerprintReady
-    || authoritativeQuoteLoading || !authoritativeQuoteReady || Boolean(authoritativeQuoteError);
+    || authoritativeQuoteLoading || !commercialQuoteReady || Boolean(authoritativeQuoteError);
   const canApplyManualDiscount = Boolean(operationSecurity?.operations.some(
     (operation) => operation.code === "APPLY_SALE_DISCOUNT",
   ));
@@ -2180,6 +2571,17 @@ export function SaleScreen({
     return t(`sale.cart.column.${column}`);
   }
 
+  function requestLineQuantityChange(line: SaleLine, quantity: number) {
+    const lineId = saleCartLineIdentity(line);
+    if (saleLineRequiresSerialNumber(line)) {
+      setSerialNumberLineId(lineId);
+      setPendingSerialQuantity(quantity);
+      setSerialNumberOpen(true);
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(current, lineId, quantity));
+  }
+
   function renderCartRow(
     localLine: SaleLine,
     authoritativeLine?: AuthoritativeSaleLine,
@@ -2202,17 +2604,24 @@ export function SaleScreen({
       ? packageQuantity.toLocaleString(locale, { maximumFractionDigits: 3 })
       : "";
     const appliedUnitPrice = finiteAmount(
-      authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(localLine, activeMember),
+      authoritativeLine?.baseUnitPrice
+        ?? saleLineUnitPrice(localLine, activeMember, wholesaleMode),
     );
     const displayedSalePrice = saleCartDisplayedUnitPrice(
       localLine,
       activeMember,
       authoritativeLine,
+      wholesaleMode,
     );
     const manualDiscount = authoritativeLine
       ? finiteAmount(authoritativeLine.manualDiscountPercent)
       : finiteAmount(localLine.discountPercent);
-    const specialPrice = saleCartSpecialPrice(product, activeMember, authoritativeLine);
+    const specialPrice = saleCartSpecialPrice(
+      product,
+      activeMember,
+      authoritativeLine,
+      wholesaleMode,
+    );
     const offerDiscount = specialPrice?.type === "OFFER_DISCOUNT"
       ? finiteAmount(specialPrice.discountPercent)
       : 0;
@@ -2222,6 +2631,10 @@ export function SaleScreen({
           ? `${formatSaleAmount(manualDiscount)}%`
           : "";
     const confirmedDisplayLine = authoritativeLine ?? lastConfirmedLine;
+    const effectiveTaxIncluded = effectiveSaleLineTaxIncluded(
+      product.taxesIncluded,
+      confirmedDisplayLine?.taxIncluded,
+    );
     const historicalTotal = localLine.previousTicketImportOrigin?.pricingMode === "FROZEN_EXACT"
       ? localLine.previousTicketImportOrigin.historicalTotal
       : null;
@@ -2239,7 +2652,7 @@ export function SaleScreen({
       if (touchQuantityLocked) return;
       const nextQuantity = Math.min(9999, Math.max(1, localLine.quantity + delta));
       setSelectedLineId(cartLineId);
-      setLines((current) => updateSaleLineQuantity(current, cartLineId, nextQuantity));
+      requestLineQuantityChange(localLine, nextQuantity);
     }
 
     function renderCell(column: SaleCartColumnKey) {
@@ -2332,6 +2745,9 @@ export function SaleScreen({
         return (
           <td className="sale-cart-number sale-cart-sale-price" data-column-key={column} key={column}>
             {formatSaleAmount(displayedSalePrice)} €
+            {saleCartTaxLabelVisible(effectiveTaxIncluded) && (
+              <small className="sale-cart-tax-excluded">{t("sale.cart.taxExcluded")}</small>
+            )}
           </td>
         );
       }
@@ -2341,6 +2757,8 @@ export function SaleScreen({
       if (column === "specialPrice") {
         const specialLabel = specialPrice?.type === "MEMBER_PRICE"
           ? t("sale.cart.special.member")
+          : specialPrice?.type === "WHOLESALE"
+            ? t("sale.cart.special.wholesale")
           : specialPrice?.type === "OFFER_DISCOUNT"
             ? t("sale.cart.special.offerDiscount")
             : t("sale.cart.special.offerPrice");
@@ -2798,6 +3216,10 @@ export function SaleScreen({
       selectedCustomer,
     ));
     setSelectedLineId(cartLineId);
+    if (saleLineRequiresSerialNumber({ product, quantity, discountPercent: 0 })) {
+      setSerialNumberLineId(cartLineId);
+      setSerialNumberOpen(true);
+    }
     setQuery("");
     setShortcutStatus(interfaceMode === "TOUCH"
       ? `${t("sale.touch.productAdded")}: ${product.name || product.code || t("sale.main.unnamedProduct")}`
@@ -2959,16 +3381,20 @@ export function SaleScreen({
     }
     const added = returnLines.map((returnLine): SaleLine => {
       const catalogProduct = products.find((product) => product.id === returnLine.productId);
-      const product: SaleProduct = catalogProduct ?? {
-        id: returnLine.productId,
-        active: true,
-        productType: returnLine.productType,
-        code: returnLine.code,
-        barcode: returnLine.barcode,
-        barcode2: returnLine.barcode2,
-        name: returnLine.name,
-        salePrice: returnLine.unitPrice,
-        taxId: "return-origin",
+      // The return dialog carries the original fiscal snapshot. Preserve it
+      // even when the live catalogue row has since changed its tax setup.
+      const product: SaleProduct = {
+        ...(catalogProduct ?? {
+          id: returnLine.productId,
+          active: true,
+          productType: returnLine.productType,
+          code: returnLine.code,
+          barcode: returnLine.barcode,
+          barcode2: returnLine.barcode2,
+          name: returnLine.name,
+          salePrice: returnLine.unitPrice,
+        }),
+        taxId: `return-origin:${returnLine.lineId}`,
         taxesIncluded: returnLine.taxesIncluded,
         taxRegime: returnLine.taxRegime === "IGIC" ? "IGIC" : "IVA",
         taxPercentage: returnLine.taxPercentage,
@@ -2990,6 +3416,10 @@ export function SaleScreen({
         },
       };
     });
+    if (activeMember && memberBalanceCents > 0) {
+      setMemberBalanceCents(0);
+    }
+    setReturnRetentionSourceDocumentId(returnLines[0]?.sourceTicketId ?? null);
     const lastAddition = added[added.length - 1];
     const existingTarget = lines.find((line) => line.returnOrigin
       && lastAddition.returnOrigin
@@ -3109,7 +3539,8 @@ export function SaleScreen({
 
   function openTemporaryPriceDialog() {
     if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin
-        || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)) return;
+        || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)
+        || saleProductBlocksManualDiscount(selectedLine.product)) return;
     setTemporaryPriceInput(
       selectedLine.openUnitPrice == null ? "" : String(selectedLine.openUnitPrice),
     );
@@ -3125,7 +3556,21 @@ export function SaleScreen({
         selectedLineId,
         parseProductQuantityInput(quantityInput),
       );
-      setLines(nextLines);
+      const nextQuantity = parseProductQuantityInput(quantityInput);
+      const currentLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
+      if (currentLine
+          && saleLineRequiresSerialNumber(currentLine)
+          && nextQuantity < currentLine.quantity
+          && (currentLine.serialNumbers?.length ?? 0) > nextQuantity) {
+        setSerialNumberLineId(selectedLineId);
+        setPendingSerialQuantity(nextQuantity);
+        setSerialNumberOpen(true);
+        setActionDialog(null);
+        return;
+      }
+      if (currentLine && saleLineRequiresSerialNumber(currentLine)) {
+        requestLineQuantityChange(currentLine, nextQuantity);
+      } else setLines(nextLines);
       setActionDialog(null);
     } catch {
       setActionError(t("sale.quantity.invalid"));
@@ -3397,7 +3842,7 @@ export function SaleScreen({
 
   async function beginPendingSale(customer: SaleCustomer) {
     if (pendingOpening || paymentActionsDisabled || paymentLocked
-      || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
+      || !commercialQuoteReady || authoritativeTotal <= 0) return;
     setPendingOpening(true);
     setPendingError("");
     try {
@@ -3415,6 +3860,7 @@ export function SaleScreen({
         saleComment,
         salePrintMode,
         documentDiscountPercent,
+        wholesaleMode,
       ));
     } catch (failure) {
       setPendingError(failure instanceof Error ? failure.message : "No se pudo preparar la venta pendiente");
@@ -3423,7 +3869,7 @@ export function SaleScreen({
 
   function openPendingSale() {
     if (pendingRecoveryBlocked || recoveredPendingSale || paymentActionsDisabled
-      || paymentLocked || !paymentHydrated || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
+      || paymentLocked || !paymentHydrated || !commercialQuoteReady || authoritativeTotal <= 0) return;
     if (!selectedCustomer) { openCustomerDialog(true); return; }
     void beginPendingSale(selectedCustomer);
   }
@@ -3617,7 +4063,7 @@ export function SaleScreen({
       setShortcutStatus("Las devoluciones de F10 solo pueden eliminarse con 0 + Pausa");
       return;
     }
-    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), quantity));
+    changeSelectedLineQuantity(quantity);
     clearQuickEntry(quantity === -1
       ? "Devolución manual -1 aplicada; se registrará como alerta de control"
       : "");
@@ -3637,7 +4083,7 @@ export function SaleScreen({
       setShortcutStatus("La cantidad no puede superar 9999");
       return;
     }
-    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), result));
+    changeSelectedLineQuantity(result);
     clearQuickEntry();
   }
 
@@ -3660,7 +4106,7 @@ export function SaleScreen({
       clearQuickEntry();
       return;
     }
-    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), result));
+    changeSelectedLineQuantity(result);
     clearQuickEntry();
   }
 
@@ -3716,7 +4162,7 @@ export function SaleScreen({
     if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked || !canApplyManualDiscount
       || saleProductBlocksManualDiscount(selectedLine.product)) return;
     const desiredPrice = quickOperand();
-    const currentPrice = saleLineUnitPrice(selectedLine, activeMember);
+    const currentPrice = saleLineUnitPrice(selectedLine, activeMember, wholesaleMode);
     if (desiredPrice == null || desiredPrice < 0 || desiredPrice > currentPrice || currentPrice <= 0) {
       setShortcutStatus("Introduce un precio final válido para la línea");
       return;
@@ -3738,6 +4184,7 @@ export function SaleScreen({
       }),
     );
     return {
+      wholesaleMode,
       customerId: selectedCustomer?.id ?? null,
       lines: lines.filter((line) => !line.previousTicketImportOrigin).map((line) => ({
         productId: line.product.id,
@@ -3775,14 +4222,41 @@ export function SaleScreen({
         ? { documentDiscountPercent }
         : {}),
       ...(memberBalanceCents > 0 && selectedCustomer?.activeMember
+        && !memberBalanceBlockedByReturn
         ? { memberBalanceAmount: memberBalanceCents / 100 }
         : {}),
       ...(saleComment ? { internalComment: saleComment } : {}),
     };
   }
 
+  function changeSelectedLineQuantity(quantity: number) {
+    if (selectedLine
+        && saleLineRequiresSerialNumber(selectedLine)
+        && quantity < selectedLine.quantity
+        && (selectedLine.serialNumbers?.length ?? 0) > quantity) {
+      setSerialNumberLineId(saleCartLineIdentity(selectedLine));
+      setPendingSerialQuantity(quantity);
+      setSerialNumberOpen(true);
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine!), quantity));
+  }
+
+  function toggleWholesaleMode() {
+    if (lines.length > 0 || paymentLocked) {
+      setShortcutStatus(t("sale.wholesale.blocked"));
+      return;
+    }
+    setWholesaleMode((current) => {
+      const next = !current;
+      setShortcutStatus(t(next ? "sale.wholesale.enabled" : "sale.wholesale.disabled"));
+      return next;
+    });
+  }
+
   function clearCurrentSale() {
     setLines([]);
+    setReturnRetentionSourceDocumentId(null);
     setPreviousTicketImportBatch(null);
     setSelectedLineId(null);
     setSelectedCustomer(null);
@@ -3795,6 +4269,7 @@ export function SaleScreen({
     setSaleComment("");
     setCommentInput("");
     setSalePrintMode("DEFAULT");
+    setWholesaleMode(false);
     setPrintModeInput("DEFAULT");
     setShortcutStatus("");
     deletionControl.reset("CART_EMPTIED");
@@ -3819,7 +4294,7 @@ export function SaleScreen({
             code: line.product.code ?? "",
             name: line.product.name ?? "",
             quantity: line.quantity,
-            unitPrice: saleLineUnitPrice(line, activeMember),
+            unitPrice: saleLineUnitPrice(line, activeMember, wholesaleMode),
           })),
         },
       }),
@@ -3841,6 +4316,7 @@ export function SaleScreen({
     setDocumentDiscountPercent(0);
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
+    setWholesaleMode(false);
     setActionDialog(null);
     setShortcutStatus("");
     recordSaleLinesDeletion(removedLines, true);
@@ -3893,7 +4369,16 @@ export function SaleScreen({
         || saleMutationSecurityUnavailable || previousTicketImportBatch) return;
     setParkedSaleSaving(true);
     setParkedSaleError("");
+    const hadActiveReservation = memberBalanceReservation.status === "ACTIVE";
+    let releasedActiveReservation = false;
     try {
+      // A parked sale no longer owns the member wallet. Complete the ACTIVE
+      // release before persisting/clearing the cart so the balance is usable
+      // immediately and a failed release cannot create a competing sale.
+      releasedActiveReservation = await memberBalanceReservation.releaseActiveReservation();
+      if (!releasedActiveReservation) {
+        throw new Error(t("sale.memberBalance.reservationUnavailable"));
+      }
       await apiRequest("/parked-sales/from-pos", {
         token: session.accessToken,
         method: "POST",
@@ -3911,6 +4396,17 @@ export function SaleScreen({
       setShortcutStatus(t("parkedSales.saved"));
       queueMicrotask(() => searchInputRef.current?.focus());
     } catch (reason) {
+      // The cart remains open when parking fails. Re-establish the lease so
+      // the member does not lose wallet availability while correcting/retrying
+      // the park operation. Keep the original park error visible to the user.
+      if (hadActiveReservation && releasedActiveReservation) {
+        try {
+          await memberBalanceReservation.renew();
+        } catch {
+          // The original park failure is the actionable error here; a later
+          // reservation retry can recover the lease without masking it.
+        }
+      }
       const message = reason instanceof Error
         ? reason.message : t("parkedSales.error.park");
       setParkedSaleError(message);
@@ -4078,9 +4574,19 @@ export function SaleScreen({
           : {})
       } satisfies SaleLine];
     });
-    setLines(recoveredLines);
+    let recoveredCustomer: SaleCustomer | null = null;
+    const customerId = opened.document.clienteId;
+    if (customerId) {
+      const options = await apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken });
+      recoveredCustomer = options.find((candidate) => candidate.id === customerId) ?? null;
+      if (!recoveredCustomer) throw new Error("recovered sale customer is no longer available");
+    }
+    const linesWithCustomerPricing = applyMemberDiscounts(recoveredLines, recoveredCustomer);
+    setLines(linesWithCustomerPricing);
+    setReturnRetentionSourceDocumentId(linesWithCustomerPricing.find((line) => line.returnOrigin)?.returnOrigin?.sourceTicketId ?? null);
+    setWholesaleMode(opened.document.wholesaleMode === true);
     setPreviousTicketImportBatch(null);
-    setSelectedLineId(recoveredLines[0] ? saleCartLineIdentity(recoveredLines[0]) : null);
+    setSelectedLineId(linesWithCustomerPricing[0] ? saleCartLineIdentity(linesWithCustomerPricing[0]) : null);
     setCheckoutDiscountCents(0);
     setDocumentDiscountPercent(Math.max(0, Number(opened.document.documentDiscountPercent ?? 0)));
     setNextScanQuantity(1);
@@ -4089,21 +4595,9 @@ export function SaleScreen({
     setCommentInput(opened.document.comentarioInterno?.trim() ?? "");
     setSalePrintMode(opened.printMode ?? "DEFAULT");
     setPrintModeInput(opened.printMode ?? "DEFAULT");
+    setSelectedCustomer(recoveredCustomer);
     setShortcutStatus("");
     setParkedSalesOpen(false);
-    const customerId = opened.document.clienteId;
-    if (customerId) {
-      try {
-        const options = await apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken });
-        const customer = options.find((candidate) => candidate.id === customerId) ?? null;
-        setSelectedCustomer(customer);
-        setLines((current) => applyMemberDiscounts(current, customer));
-      } catch {
-        setSelectedCustomer(null);
-      }
-    } else {
-      setSelectedCustomer(null);
-    }
   }
 
   useEffect(() => {
@@ -4139,7 +4633,7 @@ export function SaleScreen({
       signal: quoteAbortController.signal,
     }).then((quote) => {
       if (generation !== quoteGenerationRef.current) return;
-      if (!isCompleteAuthoritativeQuote(quote)) {
+      if (!isCompleteCommercialQuote(quote)) {
         throw new Error(t("sale.quote.invalidResponse"));
       }
       const productLines = quote.lineBreakdown.filter(
@@ -4166,11 +4660,11 @@ export function SaleScreen({
       if (generation === quoteGenerationRef.current) setAuthoritativeQuoteLoading(false);
     });
     return () => quoteAbortController.abort();
-  }, [currentSaleRequestKey, previousTicketImportSerialsReady, session.accessToken]);
+  }, [currentSaleRequestKey, previousTicketImportSerialsReady, requiredSerialNumbersReady, session.accessToken]);
 
   async function openCashDialog() {
     await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
-      if (paymentActionsDisabled || paymentLocked || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
+      if (paymentActionsDisabled || paymentLocked || !commercialQuoteReady || authoritativeTotal <= 0) return;
       setCashOpening(true);
       setCashError("");
       setCashStatus("");
@@ -4212,6 +4706,7 @@ export function SaleScreen({
       setLastPrintMode(completedPrintMode);
       setCashDialogOpen(transition.cashDialogOpen);
       setLines(transition.lines);
+      setReturnRetentionSourceDocumentId(null);
       setSelectedLineId(transition.selectedLineId);
       setSelectedCustomer(transition.selectedCustomer);
       setCashResult(transition.cashResult);
@@ -4240,7 +4735,7 @@ export function SaleScreen({
   const newCheckoutId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
   async function openCardDialog() {
-    if (paymentActionsDisabled || paymentLocked || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
+    if (paymentActionsDisabled || paymentLocked || !commercialQuoteReady || authoritativeTotal <= 0) return;
     await runGuardedCardOpening(cardOpeningRef.current, async (opening) => {
       setCardOpening(true); setCashStatus("");
       try {
@@ -4264,13 +4759,14 @@ export function SaleScreen({
         const outcome = resolveCardPaymentOutcome(response, quotedCents);
         setCardStatus(outcome.status); setCardMessage(outcome.message);
         if (outcome.clearSale && outcome.result) {
-          setCardDialogOpen(false); setLines([]); setPreviousTicketImportBatch(null); setSelectedLineId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
+          setCardDialogOpen(false); setLines([]); setReturnRetentionSourceDocumentId(null); setPreviousTicketImportBatch(null); setSelectedLineId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
           setNextScanQuantity(1);
           setNextScanMode("UNIT");
           setSaleComment("");
           setCommentInput("");
           setSalePrintMode("DEFAULT");
           setPrintModeInput("DEFAULT");
+          setWholesaleMode(false);
           deletionControl.reset("SALE_FINALIZED");
           setVerifactuRefreshSignal((current) => current + 1);
         }
@@ -4349,6 +4845,8 @@ export function SaleScreen({
   function saleCommandDisabled(command: SaleCommandId) {
     if (previousTicketImportBusy && command !== "import-previous-ticket") return true;
     switch (command) {
+      case "wholesale-mode":
+        return false;
       case "product-search":
         return catalogLoading || catalogError || paymentLocked;
       case "sales-document":
@@ -4422,7 +4920,8 @@ export function SaleScreen({
       case "temporary-price":
         return paymentLocked || !selectedLine || Boolean(selectedLine.returnOrigin)
           || Boolean(selectedLine.previousTicketImportOrigin)
-          || saleProductRequiresOpenPrice(selectedLine.product);
+          || saleProductRequiresOpenPrice(selectedLine.product)
+          || saleProductBlocksManualDiscount(selectedLine.product);
       case "sale-discount":
         return currentEconomicLines.length === 0 || paymentLocked || !canApplyManualDiscount;
       case "close-cash":
@@ -4444,6 +4943,16 @@ export function SaleScreen({
     const keyboardReturnRemoval = command === "quantity"
       && source === "KEYBOARD"
       && saleKeyboardReturnRemovalAllowed(selectedLine, query, paymentLocked);
+    if (command === "checkout" && !requiredSerialNumbersReady) {
+      const missingSerialLine = lines.find(saleLineRequiresSerialNumber);
+      if (missingSerialLine) {
+        setSerialNumberLineId(saleCartLineIdentity(missingSerialLine));
+        setSelectedLineId(saleCartLineIdentity(missingSerialLine));
+        setSerialNumberOpen(true);
+        setShortcutStatus(t("sale.serialNumber.complete"));
+      }
+      return false;
+    }
     if (saleCommandDisabled(command) && !keyboardReturnRemoval) return false;
     switch (command) {
       case "sales-document":
@@ -4532,6 +5041,9 @@ export function SaleScreen({
         break;
       case "park-sale":
         runParkSaleCommand();
+        break;
+      case "wholesale-mode":
+        toggleWholesaleMode();
         break;
       case "sale-comment":
         openSaleComment();
@@ -4756,6 +5268,11 @@ export function SaleScreen({
       id: "document",
       label: t("sale.menu.document"),
       entries: [
+        {
+          type: "action", id: "wholesale-mode", label: wholesaleMode ? t("sale.wholesale.normal") : t("sale.wholesale.active"), shortcut: "Ctrl+M",
+          disabled: lines.length > 0 || paymentLocked,
+          onSelect: () => executeSaleCommand("wholesale-mode"),
+        },
         {
           type: "action", id: "checkout", label: commandLabels.checkout, shortcut: commandLabels.pageDownKey,
           disabled: paymentActionsDisabled || paymentLocked,
@@ -5042,6 +5559,9 @@ export function SaleScreen({
 
         <section className="sale-tools work-panel" aria-label={t("sale.main.searchAndPayment")}>
           <footer className="sale-total">
+            <span className="sale-wholesale-indicator">
+              {t(wholesaleMode ? "sale.wholesale.active" : "sale.wholesale.normal")}
+            </span>
             <span>{t("sale.main.total")}</span>
             <strong aria-busy={regularQuotePending || currentRepricingQuoteStatus?.kind === "LOADING" || undefined}>
               {displayedTotal == null ? "—" : formatSaleAmount(displayedTotal)}
@@ -5101,6 +5621,8 @@ export function SaleScreen({
                       price: formatSaleAmount(effectiveSaleProductPrice(
                         searchPreviewProduct,
                         activeMember,
+                        currentSaleDate(),
+                        wholesaleMode,
                       )),
                     })
                   : ""}
@@ -5155,7 +5677,11 @@ export function SaleScreen({
                   {selectedCustomer.activeMember && (
                     <span>
                       <small>{t("sale.customer.card.balance")}</small>
-                      <strong>{formatSaleAmount(selectedCustomer.memberBalance)} €</strong>
+                      <strong className="sale-customer-member-balance-value">{memberBalanceChecking
+                        ? (locale === "es" ? "Comprobando…" : locale === "en" ? "Checking…" : "正在检查…")
+                        : memberBalanceUnavailable
+                          ? (locale === "es" ? "No disponible" : locale === "en" ? "Unavailable" : "不可用")
+                          : <span>{t("sale.customer.card.available")}: {formatSaleAmount(cardMemberBalanceCents / 100)} €</span>}</strong>
                     </span>
                   )}
                   {Number(selectedCustomer.outstandingDebt ?? 0) > 0 && (
@@ -5174,6 +5700,34 @@ export function SaleScreen({
               </>
             )}
           </button>
+          {memberBalanceRetryVisible && (
+            <button
+              type="button"
+              className="sale-customer-wallet-retry"
+              onClick={retryMemberBalance}
+              disabled={memberBalanceRetrying}
+              aria-busy={memberBalanceRetrying}
+              aria-label={t("sale.main.retry")}
+            >
+              {memberBalanceRetrying
+                ? (locale === "es" ? "Comprobando…" : locale === "en" ? "Checking…" : "正在检查…")
+                : t("sale.main.retry")}
+            </button>
+          )}
+          {retryResolutionMessage ? (
+            <p className="sale-search-status sale-search-error" role="alert">
+              {retryResolutionMessage}
+            </p>
+          ) : memberBalanceReservation.status === "DUPLICATE" && (
+            <p className="sale-search-status sale-search-error" role="alert">
+              {t("sale.memberBalance.reservationDuplicate")}
+            </p>
+          )}
+          {!retryResolutionMessage && memberBalanceReservation.status === "UNAVAILABLE" && selectedCustomer?.activeMember && (
+            <p className="sale-search-status sale-search-error" role="alert">
+              {t("sale.memberBalance.reservationUnavailable")}
+            </p>
+          )}
           {interfaceMode === "TOUCH" && (
             <TouchSaleActionPanel
               labels={commandLabels}
@@ -5249,15 +5803,34 @@ export function SaleScreen({
               unifiedCheckout
               interfaceMode={interfaceMode}
               customerSelected={Boolean(selectedCustomer)}
+              memberCreditEligible={selectedCustomer?.activeMember === true}
+              memberBalanceBlockedByReturn={memberBalanceBlockedByReturn}
               voucherOnlyRefund={authoritativeTotal < 0 && lines.some((line) =>
                 line.returnOrigin?.sourceType === "GIFT_RECEIPT")}
               checkoutDiscountCents={checkoutDiscountCents}
               memberBalanceCents={acceptedMemberBalanceCents}
-              memberBalanceAvailableCents={availableMemberBalanceCents}
-              pricingReady={authoritativeQuoteReady}
+              memberBalanceAvailableCents={netMemberBalanceCents}
+              memberBalanceEligibleTotalCents={memberBalanceEligibleTotalCents}
+              memberBalanceReservedLoyaltyCents={reservedLoyaltyCents}
+              memberBalanceReservedReturnCreditCents={reservedReturnCreditCents}
+              memberBalanceRetentionHeldCents={Math.max(0, Math.round(retentionHeldLoyaltyAmount * 100))}
+              memberBalanceRetentionHeldReturnCreditCents={Math.max(0, Math.round(retentionHeldReturnCreditAmount * 100))}
+              memberWallet={operationalMemberWallet}
+              pricingReady={memberBalancePricingReady}
+              memberBalanceReady={memberBalanceReady}
               preferredSessionId={memberBalanceReservation.saleId ?? undefined}
               memberBalanceReservationId={memberBalanceReservation.reservationId ?? undefined}
-              onSessionClosed={memberBalanceReservation.renew}
+               onSessionClosed={memberBalanceReservation.renew}
+               onReservationFinalized={async (reservationCommitted) => {
+                 if (reservationCommitted) {
+                   memberBalanceReservation.markFinalized();
+                   return;
+                 }
+                 const released = await memberBalanceReservation.releaseActiveReservation();
+                 if (!released) {
+                   throw new Error(t("sale.memberBalance.reservationUnavailable"));
+                 }
+               }}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               manualCardPaymentAuthorization={manualCardPaymentAuthorization}
               transferPaymentAuthorization={transferPaymentAuthorization}
@@ -5290,6 +5863,7 @@ export function SaleScreen({
                 deletionControl.reset("SALE_FINALIZED");
                 setVerifactuRefreshSignal((current) => current + 1);
                 setLines([]);
+                setReturnRetentionSourceDocumentId(null);
                 setPreviousTicketImportBatch(null);
                 setSelectedLineId(null);
                 setSelectedCustomer(null);
@@ -5303,6 +5877,7 @@ export function SaleScreen({
                 setCheckoutDiscountCents(0);
                 setDocumentDiscountPercent(0);
                 setMemberBalanceCents(0);
+                setWholesaleMode(false);
                 setReservedPaymentTotalCents(null);
                 setLastPrintMode(completedPrintMode);
                 const result = paymentResultFromFinalization(
@@ -5479,11 +6054,12 @@ export function SaleScreen({
           searchInputRef.current?.focus();
         }}
         onSuccess={(_result, retry) => {
-          setPendingDraft(null); setLines([]); setPreviousTicketImportBatch(null); setSelectedLineId(null);
+          setPendingDraft(null); setLines([]); setReturnRetentionSourceDocumentId(null); setPreviousTicketImportBatch(null); setSelectedLineId(null);
           setPendingPrintRetry(() => retry ?? null);
           setSelectedCustomer(null); setQuery(""); setNextScanQuantity(1); setNextScanMode("UNIT");
           setSaleComment(""); setCommentInput(""); setSalePrintMode("DEFAULT");
           setPrintModeInput("DEFAULT");
+          setWholesaleMode(false);
           searchInputRef.current?.focus();
           setVerifactuRefreshSignal((current) => current + 1);
         }}
@@ -6154,24 +6730,39 @@ export function SaleScreen({
         />
       )}
 
-      {serialNumberOpen && selectedLine && (
+      {serialNumberOpen && (lines.find((line) => saleCartLineIdentity(line) === serialNumberLineId) ?? selectedLine) && (() => {
+        const serialLine = lines.find((line) => saleCartLineIdentity(line) === serialNumberLineId) ?? selectedLine!;
+        return (
         <SaleSerialNumberDialog
           locale={locale}
-          productName={selectedLine.product.name ?? selectedLine.product.code ?? ""}
-          quantity={selectedLine.quantity}
-          initialSerialNumbers={selectedLine.serialNumbers ?? []}
-          onCancel={() => setSerialNumberOpen(false)}
-          onConfirm={(serialNumbers) => {
-            setLines((current) => updateSaleLineSerialNumbers(
-              current,
-              saleCartLineIdentity(selectedLine),
-              serialNumbers,
-            ));
+          productName={serialLine.product.name ?? serialLine.product.code ?? ""}
+          initialSerialNumbers={serialLine.serialNumbers ?? []}
+          quantity={pendingSerialQuantity ?? serialLine.quantity}
+          onCancel={() => {
             setSerialNumberOpen(false);
+            setSerialNumberLineId(null);
+            setPendingSerialQuantity(null);
+          }}
+          onConfirm={(serialNumbers) => {
+            // Mark the current quantity as reviewed before the lines effect runs;
+            // otherwise the effect reopens this dialog after every confirmation.
+            const lineId = saleCartLineIdentity(serialLine);
+            const confirmedQuantity = pendingSerialQuantity ?? serialLine.quantity;
+            serialQuantityRef.current[lineId] = confirmedQuantity;
+            setLines((current) => {
+              const withSerials = updateSaleLineSerialNumbers(current, lineId, serialNumbers);
+              return pendingSerialQuantity == null
+                ? withSerials
+                : updateSaleLineQuantity(withSerials, lineId, confirmedQuantity);
+            });
+            setSerialNumberOpen(false);
+            setSerialNumberLineId(null);
+            setPendingSerialQuantity(null);
             setShortcutStatus(t("sale.serialNumber.saved"));
           }}
         />
-      )}
+        );
+      })()}
 
       {pendingInactiveProduct && (
         <SaleActionDialog

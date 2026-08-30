@@ -43,11 +43,18 @@ const cancellationReceipt = {
   operatorUsername: "CAJERO",
   authorizerUsername: "ADMIN",
   delegated: true,
-  payments: [{
-    method: "TRANSFERENCIA",
-    amount: "25.00",
-    reference: "DEV-123",
-  }],
+  payments: [
+    {
+      method: "CREDITO_DEVOLUCION",
+      amount: "20.00",
+      reference: "DEV-123",
+    },
+    {
+      method: "TARJETA",
+      amount: "5.00",
+      reference: "CARD-123",
+    },
+  ],
   renderedPdf: {
     contentType: "application/pdf" as const,
     base64: "JVBERi0xLjc=",
@@ -145,11 +152,18 @@ describe("SaleTicketCancellationDialog", () => {
       renderedPdf: cancellationReceipt.renderedPdf,
       documentRaster: "data:image/png;base64,iVBORw0KGgo=",
       total: 25,
-      payments: [{
-        method: "TRANSFERENCIA",
-        amount: 25,
-        reference: "DEV-123",
-      }],
+      payments: [
+        {
+          method: "CREDITO DEVOLUCION",
+          amount: 20,
+          reference: "DEV-123",
+        },
+        {
+          method: "TARJETA",
+          amount: 5,
+          reference: "CARD-123",
+        },
+      ],
     }));
   });
 

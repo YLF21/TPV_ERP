@@ -245,6 +245,35 @@ class CustomerReceivableServiceTest {
     }
 
     @Test
+    void existingWalletPaymentReplayReturnsBeforeDirectAuthorization() {
+        var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
+        var wallet = new PaymentMethod(store.getEmpresa().getId(), "SALDO_MIEMBRO", false);
+        var persisted = new DocumentPayment(
+                document, wallet, 1, new BigDecimal("20.00"), true,
+                null, null, null, "WALLET-1", Instant.now(), null, null,
+                null, null, null, PAYMENT_ID);
+        document.addPayment(persisted);
+        document.updatePaymentStatus();
+        when(documents.findLockedReceivable(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+        when(payments.findByRequestId(PAYMENT_ID)).thenReturn(Optional.of(persisted));
+        when(views.receivableView(any(), any())).thenAnswer(invocation ->
+                CustomerReceivableView.from(invocation.getArgument(0), "CLIENTE",
+                        invocation.getArgument(1)));
+
+        var request = transfer(wallet.getId(), PAYMENT_ID, "20.00", "WALLET-1");
+        var result = service.pay(document.getId(), request, authentication);
+
+        assertThat(result.pendingTotal()).isEqualByComparingTo("80.00");
+        verify(mutationAuthorizations, never()).authorizePayments(
+                org.mockito.ArgumentMatchers.any(PaymentRequest.class),
+                any(), any(), any(), any(), any());
+        verify(paymentReservations, never()).acquire(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(documentService, never()).collectReceivable(any(), any(), any());
+    }
+
+    @Test
     void rejectsAmountAboveCurrentLockedPendingBalance() {
         var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
         when(documents.findLockedReceivable(document.getId(), store.getId()))

@@ -30,7 +30,9 @@ public record DocumentLineCommand(
         BigDecimal frozenBase,
         BigDecimal frozenTax,
         BigDecimal frozenTotal,
-        String barcode) {
+        String barcode,
+        Boolean requiresSerialNumber,
+        Boolean discountEligible) {
 
     private static final String HISTORICAL_OPEN_PRICE_RATE =
             "OPEN_PRICE";
@@ -67,7 +69,46 @@ public record DocumentLineCommand(
                 serialNumbers, temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode, returnSourceTicketId,
                 originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
-                frozenTotal, null);
+                frozenTotal, null, null, null);
+    }
+
+    public DocumentLineCommand(
+            UUID productoId, BigDecimal cantidad, String codigo, String nombre,
+            String tarifa, BigDecimal precioUnitario, BigDecimal descuento,
+            boolean impuestosIncluidos, String regimenImpuesto,
+            BigDecimal porcentajeImpuesto, DocumentLineType lineType,
+            UUID promotionId, UUID promotionVersionId, UUID promotionalCouponId,
+            List<String> serialNumbers, boolean temporaryNameOverride,
+            boolean temporaryPriceOverride, TicketReturnService.ReturnSourceType returnSourceType,
+            String returnSourceCode, UUID returnSourceTicketId, UUID originalDocumentLineId,
+            UUID giftReceiptLineId, BigDecimal frozenBase, BigDecimal frozenTax,
+            BigDecimal frozenTotal, String barcode) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride, returnSourceType,
+                returnSourceCode, returnSourceTicketId, originalDocumentLineId,
+                giftReceiptLineId, frozenBase, frozenTax, frozenTotal, barcode, null, null);
+    }
+
+    DocumentLineCommand withRequiresSerialNumber(Boolean required) {
+        return new DocumentLineCommand(productoId, cantidad, codigo, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
+                porcentajeImpuesto, lineType, promotionId, promotionVersionId,
+                promotionalCouponId, serialNumbers, temporaryNameOverride,
+                temporaryPriceOverride, returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
+                frozenBase, frozenTax, frozenTotal, barcode, required, discountEligible);
+    }
+
+    DocumentLineCommand withDiscountEligible(Boolean eligible) {
+        return new DocumentLineCommand(productoId, cantidad, codigo, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
+                porcentajeImpuesto, lineType, promotionId, promotionVersionId,
+                promotionalCouponId, serialNumbers, temporaryNameOverride,
+                temporaryPriceOverride, returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
+                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, eligible);
     }
 
     public DocumentLineCommand(

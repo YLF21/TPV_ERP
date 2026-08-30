@@ -1,6 +1,7 @@
 package com.tpverp.backend.document.template;
 
 import com.tpverp.backend.document.Money;
+import com.tpverp.backend.document.PaymentMethodPrintLabel;
 import com.tpverp.backend.document.TicketCancellationService;
 import com.tpverp.backend.organization.Store;
 import java.io.ByteArrayInputStream;
@@ -95,7 +96,7 @@ public class TicketCancellationJasperRenderer {
             TicketCancellationService.CancellationReceipt receipt) {
         if (receipt.payments() == null || receipt.payments().isEmpty()) return "Sin pagos";
         return receipt.payments().stream()
-                .map(payment -> text(payment.method()) + "  "
+                .map(payment -> PaymentMethodPrintLabel.format(payment.method()) + "  "
                         + Money.euros(payment.amount()).setScale(2, RoundingMode.HALF_UP)
                                 .toPlainString()
                         + (payment.reference() == null || payment.reference().isBlank()

@@ -194,6 +194,27 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
 
     java.util.Optional<CommercialDocument> findByReturnRequestId(UUID requestId);
 
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.returnRequestId = :returnRequestId
+              and document.tiendaId = :storeId
+            """)
+    List<CommercialDocument> findByReturnRequestIdAndTiendaId(
+            @Param("returnRequestId") UUID returnRequestId,
+            @Param("storeId") UUID storeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.returnRequestId = :returnRequestId
+              and document.tiendaId = :storeId
+            """)
+    List<CommercialDocument> findLockedByReturnRequestIdAndTiendaId(
+            @Param("returnRequestId") UUID returnRequestId,
+            @Param("storeId") UUID storeId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = "lineas")
     @Query("select document from CommercialDocument document where document.id = :id and document.tiendaId = :storeId")
@@ -688,6 +709,27 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             @Param("to") LocalDate to,
             @Param("types") Collection<CommercialDocumentType> types,
             @Param("warehouseId") UUID warehouseId);
+
+    @Query("""
+            select document.id as documentId,
+                   document.numero as documentNumber
+            from CommercialDocument document
+            where document.id in :documentIds
+              and document.tiendaId in (
+                  select store.id
+                  from Store store
+                  where store.empresa.id = :companyId)
+            """)
+    List<DocumentNumberProjection> findDocumentNumbersByIdsAndCompanyId(
+            @Param("documentIds") Collection<UUID> documentIds,
+            @Param("companyId") UUID companyId);
+
+    interface DocumentNumberProjection {
+
+        UUID getDocumentId();
+
+        String getDocumentNumber();
+    }
 
     @Query(value = """
             select document.id as "documentId",

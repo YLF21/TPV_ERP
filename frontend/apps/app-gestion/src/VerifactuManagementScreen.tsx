@@ -22,6 +22,7 @@ import { FiscalComplianceView } from "./FiscalComplianceView";
 import { FiscalModeControlView } from "./FiscalModeControlView";
 import { FiscalRecordsView } from "./FiscalRecordsView";
 import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
+import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import {
   VerifactuResolutionPanel,
   type VerifactuResolutionTarget
@@ -35,6 +36,7 @@ import {
   dispatchFiscalSandboxNext,
   verifactuDocumentTypes,
   verifactuOperations,
+  verifactuActiveSubmissionStatuses,
   verifactuSubmissionStatuses,
   type VerifactuAdminSubmissionFilters,
   type VerifactuAdminSubmissionPage,
@@ -85,7 +87,8 @@ const emptyPage: VerifactuAdminSubmissionPage = {
   page: 0,
   size: 25,
   totalElements: 0,
-  totalPages: 0
+  totalPages: 0,
+  truncated: false
 };
 
 export function VerifactuManagementScreen({ locale, session, t }: VerifactuManagementScreenProps) {
@@ -615,7 +618,7 @@ function FiscalStatusStrip({
               ? t("verifactu.management.fiscalTransitionFailed")
               : t("verifactu.management.fiscalTransitionScheduled")}</strong>
             {fiscalModeLabel(status.scheduledTransition.newMode, t)} · {formatDateTime(status.scheduledTransition.effectiveAt, locale, status.timezone ?? null)}
-            {status.scheduledTransition.lastErrorCode ? ` · ${status.scheduledTransition.lastErrorCode}` : ""}
+            {status.scheduledTransition.lastErrorCode && <span> · {fiscalErrorMessage(status.scheduledTransition.lastErrorCode, t, locale)}</span>}
           </span>}
           {status.runtimeClass === "REAL" && status.endpointEnvironment === "PRODUCTION" && !status.productionEnabled && <span>
             <strong>{t("verifactu.management.fiscalProductionBlocked")}</strong>
@@ -780,7 +783,7 @@ function QueueView({
   const visibleColumns = visibleTableColumns(tableLayout.layout);
   const statusOptions = useMemo(() => [
     { value: "", label: t("verifactu.management.allStatuses") },
-    ...verifactuSubmissionStatuses.map((status) => ({ value: status, label: statusLabel(status, t) }))
+    ...verifactuActiveSubmissionStatuses.map((status) => ({ value: status, label: statusLabel(status, t) }))
   ], [t]);
   const documentTypeOptions = useMemo(() => [
     { value: "", label: t("verifactu.management.allTypes") },
@@ -886,6 +889,11 @@ function QueueView({
             </button>
           </div>
         </header>
+        {page.truncated && (
+          <div className="gestion-verifactu-message warning" role="status">
+            {t("verifactu.management.queueTruncated")}
+          </div>
+        )}
         {error ? (
           <div className="gestion-verifactu-message error" role="alert">{t("verifactu.management.queueError")}</div>
         ) : !loading && page.items.length === 0 ? (

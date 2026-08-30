@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.tpverp</groupId>
 	<artifactId>tpv-erp-backend</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>4.2.0</version>
 	<name>TPV ERP Backend</name>
 	<description>Backend local para TPV ERP</description>
 	<url/>
@@ -32,6 +32,15 @@
 		<jna.version>5.19.1</jna.version>
 		<jasperreports.version>7.0.8</jasperreports.version>
 		<dss.version>6.4</dss.version>
+		<!-- Default artifact is the non-promotable DEV laboratory build. -->
+		<tpv.release.id>tpv-erp-dev-v231</tpv.release.id>
+		<tpv.release.version>DEV</tpv.release.version>
+		<tpv.release.capability>DUAL</tpv.release.capability>
+		<tpv.release.sequence>1</tpv.release.sequence>
+		<tpv.release.build.sequence>0</tpv.release.build.sequence>
+		<tpv.release.commit.hash></tpv.release.commit.hash>
+		<tpv.release.declaration.hash></tpv.release.declaration.hash>
+		<tpv.release.manifest.hash></tpv.release.manifest.hash>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -192,6 +201,19 @@
 		<resources>
 			<resource>
 				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>META-INF/tpv-erp-release.properties</include>
+					<include>application.yml</include>
+				</includes>
+			</resource>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>false</filtering>
+				<excludes>
+					<exclude>META-INF/tpv-erp-release.properties</exclude>
+					<exclude>application.yml</exclude>
+				</excludes>
 			</resource>
 			<!-- Package editable ticket sources; compiled reports are materialized at runtime. -->
 			<resource>
@@ -253,6 +275,16 @@
 		</resources>
 		<plugins>
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+				<configuration>
+					<delimiters>
+						<delimiter>@</delimiter>
+					</delimiters>
+					<useDefaultDelimiters>false</useDefaultDelimiters>
+				</configuration>
+			</plugin>
+			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
@@ -277,5 +309,41 @@
 			</plugin>
 		</plugins>
 	</build>
+	<profiles>
+		<profile>
+			<id>production-release</id>
+			<properties>
+				<tpv.release.id>tpv-erp-4.2.0</tpv.release.id>
+				<tpv.release.version>4.2.0</tpv.release.version>
+				<tpv.release.capability>VERIFACTU_ONLY</tpv.release.capability>
+				<tpv.release.sequence>1</tpv.release.sequence>
+				<tpv.release.build.sequence>1</tpv.release.build.sequence>
+			</properties>
+			<build>
+				<plugins>
+					<!-- The digest is generated after the JAR is closed and is kept
+					     adjacent to it, never embedded in the JAR itself. -->
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<version>3.1.0</version>
+						<executions>
+							<execution>
+								<id>write-release-artifact-sidecar</id>
+								<phase>package</phase>
+								<configuration>
+									<target>
+										<checksum file="${project.build.directory}/${project.build.finalName}.jar"
+											fileext=".sha256" algorithm="SHA-256" forceOverwrite="true"/>
+									</target>
+								</configuration>
+								<goals><goal>run</goal></goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>

@@ -25,7 +25,8 @@ vi.mock("./verifactuManagementApi", async (importOriginal) => {
     downloadFiscalExportJob: vi.fn(),
     registerFiscalRequiredSubmission: vi.fn(),
     exportFiscalRequiredSubmission: vi.fn(),
-    createFiscalRequiredSubmissionExportJob: vi.fn()
+    createFiscalRequiredSubmissionExportJob: vi.fn(),
+    loadFiscalResponsibleDeclaration: vi.fn()
   };
 });
 
@@ -59,10 +60,17 @@ const messages: Record<string, string> = {
   "verifactu.records.copiedHash": "Huella copiada",
   "verifactu.records.copyHashError": "Error al copiar la huella",
   "verifactu.compliance.requirementReference": "Referencia del requerimiento",
-  "verifactu.compliance.attendRequirement": "Generar entrega firmada"
+  "verifactu.compliance.attendRequirement": "Generar entrega firmada",
+  "verifactu.compliance.declarationAction": "Consultar declaración",
+  "verifactu.compliance.declarationTitle": "Declaración responsable",
+  "verifactu.compliance.declarationEyebrow": "Documento fiscal",
+  "verifactu.compliance.declarationLoading": "Consultando...",
+  "verifactu.compliance.declarationError": "Error declaración",
+  "verifactu.compliance.declarationStatus.AVAILABLE": "Disponible",
+  "verifactu.compliance.declarationDownload": "Descargar declaración"
 };
 Object.assign(messages, {
-  "verifactu.exportJobs.recentTitle": "Exportaciones recientes", "verifactu.exportJobs.refresh": "Actualizar trabajos", "verifactu.exportJobs.loading": "Cargando trabajos", "verifactu.exportJobs.error": "Error trabajos", "verifactu.exportJobs.retry": "Reintentar carga", "verifactu.exportJobs.empty": "Sin trabajos", "verifactu.exportJobs.processed": "procesados", "verifactu.exportJobs.failedHint": "Trabajo fallido", "verifactu.exportJobs.expiredHint": "Trabajo caducado", "verifactu.exportJobs.downloading": "Descargando", "verifactu.exportJobs.download": "Descargar ZIP", "verifactu.exportJobs.retryRequest": "Solicitar de nuevo", "verifactu.exportJobs.created": "Trabajo creado", "verifactu.exportJobs.kindBilling": "Registros de facturación", "verifactu.exportJobs.kindEvents": "Eventos", "verifactu.exportJobs.kindUnknown": "Exportación fiscal", "verifactu.exportJobs.statusQueued": "En cola", "verifactu.exportJobs.statusRunning": "En proceso", "verifactu.exportJobs.statusCompleted": "Completado", "verifactu.exportJobs.statusFailed": "Fallido", "verifactu.exportJobs.statusExpired": "Caducado", "verifactu.exportJobs.periodRegulatory": "Por periodo (reglamentaria)", "verifactu.exportJobs.partialHint": "Copia operativa/parcial"
+  "verifactu.exportJobs.recentTitle": "Exportaciones recientes", "verifactu.exportJobs.refresh": "Actualizar trabajos", "verifactu.exportJobs.loading": "Cargando trabajos", "verifactu.exportJobs.error": "Error trabajos", "verifactu.exportJobs.retry": "Reintentar carga", "verifactu.exportJobs.empty": "Sin trabajos", "verifactu.exportJobs.processed": "procesados", "verifactu.exportJobs.failedHint": "Trabajo fallido", "verifactu.exportJobs.expiredHint": "Trabajo caducado", "verifactu.exportJobs.downloading": "Descargando", "verifactu.exportJobs.download": "Descargar ZIP", "verifactu.exportJobs.retryRequest": "Solicitar de nuevo", "verifactu.exportJobs.created": "Trabajo creado", "verifactu.exportJobs.kindBilling": "Registros de facturación", "verifactu.exportJobs.kindEvents": "Eventos", "verifactu.exportJobs.kindUnknown": "Exportación fiscal", "verifactu.exportJobs.statusQueued": "En cola", "verifactu.exportJobs.statusRunning": "En proceso", "verifactu.exportJobs.statusCompleted": "Completado", "verifactu.exportJobs.statusFailed": "Fallido", "verifactu.exportJobs.statusExpired": "Caducado", "verifactu.exportJobs.periodRegulatory": "Por periodo (reglamentaria)", "verifactu.exportJobs.partialHint": "Copia operativa/parcial", "verifactu.exportJobs.page": "Páginas de trabajos", "verifactu.exportJobs.previous": "Anterior", "verifactu.exportJobs.next": "Siguiente"
 });
 const t = (key: string) => messages[key] ?? key;
 
@@ -104,6 +112,7 @@ describe("FiscalComplianceView", () => {
     vi.mocked(api.loadFiscalExportJobs).mockResolvedValue({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 20 });
     vi.mocked(api.createFiscalExportJob).mockResolvedValue({ id: "job-1", status: "QUEUED", processed: 0, hasMore: true, error: null, fileSize: 0, downloadAvailable: false, createdAt: "2026-08-26T10:00:00Z" });
     vi.mocked(api.createFiscalRequiredSubmissionExportJob).mockResolvedValue({ id: "job-req", status: "QUEUED", processed: 0, hasMore: true, error: null, fileSize: 0, downloadAvailable: false, createdAt: "2026-08-26T10:00:00Z", requiredSubmissionId: "requirement-1" });
+    vi.mocked(api.loadFiscalResponsibleDeclaration).mockResolvedValue({ status: "AVAILABLE", fileName: "declaracion.pdf", contentType: "application/pdf", size: 2048, sha256: "abc", issuedAt: "2026-08-26T10:00:00Z" });
   });
 
   it("ofrece trazabilidad al lector sin exponer acciones de mutación", async () => {
@@ -352,5 +361,13 @@ describe("FiscalComplianceView", () => {
     expect(api.exportFiscalRequiredSubmission).not.toHaveBeenCalled();
     expect(await screen.findByRole("dialog")).toBeTruthy();
     void from;
+  });
+
+  it("permite consultar la declaración responsable también en modo solo lectura", async () => {
+    render(<FiscalComplianceView locale="es" token="token" mode="NO_VERIFACTU" timezone="Atlantic/Canary" username="reader" canManage={false} revision={0} t={t} onChanged={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Consultar declaración" }));
+    await waitFor(() => expect(api.loadFiscalResponsibleDeclaration).toHaveBeenCalledWith("token"));
+    expect(await screen.findByText("Disponible")).toBeTruthy();
+    expect(screen.getByText("declaracion.pdf")).toBeTruthy();
   });
 });

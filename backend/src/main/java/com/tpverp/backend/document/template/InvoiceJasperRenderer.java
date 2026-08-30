@@ -11,6 +11,7 @@ import com.tpverp.backend.document.DocumentLineTotals;
 import com.tpverp.backend.document.FiscalPrintView;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
 import com.tpverp.backend.document.Money;
+import com.tpverp.backend.document.PaymentMethodPrintLabel;
 import com.tpverp.backend.document.SalesInvoiceRectificationRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
@@ -537,7 +538,8 @@ public class InvoiceJasperRenderer {
                     .sorted(Comparator.comparingInt(value -> value.getPosicion()))
                     .toList();
             putNullable(payment, "method", orderedPayments.stream()
-                    .map(value -> value.getMetodoPago().getNombre())
+                    .map(value -> PaymentMethodPrintLabel.format(
+                            value.getMetodoPago().getNombre()))
                     .filter(Objects::nonNull).distinct().collect(Collectors.joining(" / ")));
             putNullable(payment, "terms", null);
             putNullable(payment, "dueDate",

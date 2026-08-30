@@ -17,13 +17,16 @@ public class VerifactuSubmissionScheduler {
         this.environment = environment;
     }
 
-    @Scheduled(fixedDelayString = "${tpv.verifactu.worker-delay-ms:3600000}")
+    @Scheduled(fixedDelayString = "${tpv.verifactu.worker-delay-ms:60000}")
     public void tick() {
         if (enabled()) {
+            // The scope coordinator decides the batch size. A scheduler-side
+            // batch size would make the pacing bypass depend on configuration
+            // instead of the actual number sent to AEAT.
             worker.processNext();
         }
     }
-    // Ejecuta un unico envio por tick para no bloquear el sistema ni las ventas.
+    // Drena un lote acotado por tick y deja el claim durable si el proceso cae.
 
     private boolean enabled() {
         return environment.getProperty(

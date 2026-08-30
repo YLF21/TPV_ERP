@@ -80,10 +80,15 @@ public class MemberWalletBootstrapAdminV2Service {
             throw conflict("Tiendas sin instalacion vinculada: " + storesWithoutInstallation);
         }
 
-        SaasMemberWalletBootstrap bootstrap = bootstraps.save(new SaasMemberWalletBootstrap(
+        SaasMemberWalletBootstrap bootstrap = new SaasMemberWalletBootstrap(
                 UUID.randomUUID(),
                 company,
-                now));
+                now);
+        // Establish the common cutoff at the administrative start. This keeps
+        // the first discovery response usable by source workers and guarantees
+        // every store captures the same historical boundary.
+        bootstrap.establishCutoff(now);
+        bootstrap = bootstraps.save(bootstrap);
         for (SaasStore store : companyStores) {
             expectedStores.save(new SaasMemberWalletBootstrapStore(
                     UUID.randomUUID(),

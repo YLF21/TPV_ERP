@@ -293,6 +293,11 @@ public class SaleDocumentMutationAuthorizationService {
         for (var payment : Objects.requireNonNull(requestedPayments, "requestedPayments")) {
             Objects.requireNonNull(payment, "payment");
             if (payment.paymentTerminalOperationId() != null) {
+                // A direct caller cannot turn a wallet into a terminal payment by
+                // supplying an operation id. Keep the historical operation path
+                // for known non-wallet methods and for legacy unknown metadata.
+                paymentMethods.findByIdAndEmpresaId(payment.metodoPagoId(), companyId)
+                        .ifPresent(DirectDocumentPaymentGuard::requireAllowed);
                 if (integratedPaymentPolicy == IntegratedPaymentPolicy.REJECT_UNPROVEN
                         || payment.cardMode()
                         == com.tpverp.backend.terminal.PaymentCardMode.MANUAL) {
@@ -310,6 +315,7 @@ public class SaleDocumentMutationAuthorizationService {
                             payment.metodoPagoId(), companyId)
                     .orElseThrow(() -> new IllegalArgumentException(
                             "Metodo de pago no encontrado"));
+            DirectDocumentPaymentGuard.requireAllowed(method);
             if ("TARJETA".equals(method.getNombre())) {
                 operations.add(SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT);
             } else if ("TRANSFERENCIA".equals(method.getNombre())) {

@@ -36,8 +36,10 @@ class VerifactuResponseParserTest {
                   <EstadoEnvio>Incorrecto</EstadoEnvio>
                   <CodigoErrorRegistro>3000</CodigoErrorRegistro>
                   <DescripcionErrorRegistro>Registro duplicado</DescripcionErrorRegistro>
-                  <IdPeticionRegistroDuplicado>ABC123</IdPeticionRegistroDuplicado>
-                  <EstadoRegistroDuplicado>Correcta</EstadoRegistroDuplicado>
+                  <RegistroDuplicado>
+                    <IdPeticionRegistroDuplicado>ABC123</IdPeticionRegistroDuplicado>
+                    <EstadoRegistroDuplicado>Correcta</EstadoRegistroDuplicado>
+                  </RegistroDuplicado>
                 </RespuestaRegFactuSistemaFacturacion>
                 """));
 
@@ -48,6 +50,19 @@ class VerifactuResponseParserTest {
     @Test
     void marcaDefectuosoSiLaRespuestaNoEsXml() {
         var result = parser().parse(new VerifactuTransportResponse(200, "no es xml"));
+
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
+        assertThat(result.errorCode()).isEqualTo("INVALID_AEAT_RESPONSE");
+    }
+
+    @Test
+    void rechazaDtdYEntidadesExternas() {
+        var result = parser().parse(new VerifactuTransportResponse(200, """
+                <!DOCTYPE respuesta [<!ENTITY secreto SYSTEM "file:///etc/passwd">]>
+                <RespuestaRegFactuSistemaFacturacion>
+                  <EstadoEnvio>&secreto;</EstadoEnvio>
+                </RespuestaRegFactuSistemaFacturacion>
+                """));
 
         assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
         assertThat(result.errorCode()).isEqualTo("INVALID_AEAT_RESPONSE");
