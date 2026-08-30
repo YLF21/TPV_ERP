@@ -134,7 +134,7 @@ class FiscalSubmissionQueuePostgreSqlTest {
                 installation, timestamp(NOW), timestamp(NOW.plusSeconds(30L * 24 * 3600)));
         jdbc.update("insert into empresa (id, tax_id, razon_social, domicilio_fiscal) values (?, 'B12345674', 'Claim test', cast(? as jsonb))",
                 company, "{\"linea1\":\"Calle\",\"ciudad\":\"Las Palmas\",\"codigoPostal\":\"35001\",\"provincia\":\"Las Palmas\",\"pais\":\"ES\"}");
-        jdbc.update("insert into tienda (id, empresa_id, nombre, direccion, address_normalized_hash, timezone, moneda, locale) values (?, ?, 'Claim', cast(? as jsonb), 'claim-hash', 'Atlantic/Canary', 'EUR', 'es-ES')",
+        jdbc.update("insert into tienda (id, empresa_id, codigo_tienda, nombre, direccion, address_normalized_hash, timezone, moneda, locale) values (?, ?, '001', 'Claim', cast(? as jsonb), 'claim-hash', 'Atlantic/Canary', 'EUR', 'es-ES')",
                 store, company, "{\"linea1\":\"Calle\",\"ciudad\":\"Las Palmas\",\"codigoPostal\":\"35001\",\"provincia\":\"Las Palmas\",\"pais\":\"ES\"}");
         jdbc.update("insert into cadena_fiscal (id, empresa_id, instalacion_id, ultima_secuencia, actualizada_en) values (?, ?, ?, 0, ?)",
                 chain, company, installation, timestamp(NOW));

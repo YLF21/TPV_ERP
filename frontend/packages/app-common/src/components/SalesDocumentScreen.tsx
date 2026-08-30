@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -239,9 +240,14 @@ export function SalesDocumentScreen({
   const [cardPaymentMode, setCardPaymentMode] =
     useState<PendingCardPaymentMode | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const linesRef = useRef(lines);
   const customerDialogRef = useRef<HTMLElement>(null);
   const lineEditDialogRef = useRef<HTMLElement>(null);
   const lineEditInputRef = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
   const lineTableLayout = useTableLayoutPreference({
     app: "venta",
     username: session.username,
@@ -1088,7 +1094,7 @@ export function SalesDocumentScreen({
     if (saving || checkoutMode || recovery) return;
     switch (command) {
       case "wholesale-mode":
-        if (lines.length > 0) {
+        if (linesRef.current.length > 0) {
           setShortcutError(t("sale.wholesale.blocked"));
           return;
         }
