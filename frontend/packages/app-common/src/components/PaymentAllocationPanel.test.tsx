@@ -657,6 +657,63 @@ describe("PaymentAllocationPanel", () => {
     expect(html).toMatch(/class="primary"[^>]*>ACEPTAR/);
   });
 
+  it("offers an original transfer refund, keeps its reference, and hides the transfer date", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [
+          { paymentMethod: "TRANSFERENCIA", kind: "TRANSFER", originalAmountCents: 1200, refundedAmountCents: 0, reservedAmountCents: 0, availableAmountCents: 1200 },
+        ],
+      }}
+      providers={[]}
+      manualCardEnabled={false}
+      cashEnabled={false}
+      cardEnabled={false}
+      voucherEnabled={false}
+      transferEnabled
+      transferRequiresReference
+      transferDateEnabled
+      initialMethod="TRANSFER"
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    const transfer = within(container).getByRole("button", { name: /Transferencia.*12,00/ });
+    expect(transfer).toBeEnabled();
+    expect(container.querySelector("#checkout-transfer-date")).toBeNull();
+    const reference = within(container).getByLabelText("Nº DOCUMENTO");
+    fireEvent.change(reference, { target: { value: "TR-REF-1" } });
+    const amount = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    fireEvent.keyDown(amount, { key: "Enter" });
+
+    expect(onAdd).toHaveBeenCalledWith(
+      { kind: "TRANSFER", amountCents: 1200, reference: "TR-REF-1" },
+      { finalizeWhenCovered: true },
+    );
+  });
+
+  it("does not offer a transfer refund without available original transfer balance", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, direction: "REFUND", allocations: [], refundPaymentAvailability: [] }}
+      providers={[]}
+      manualCardEnabled={false}
+      cashEnabled={false}
+      cardEnabled={false}
+      voucherEnabled={false}
+      transferEnabled
+      initialMethod="TRANSFER"
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).queryByRole("button", { name: /Transferencia/ })).toBeNull();
+  });
+
   it("presents a ZERO session covered by loyalty as a fully paid sale", () => {
     const html = renderToStaticMarkup(<PaymentAllocationPanel
       locale="es"

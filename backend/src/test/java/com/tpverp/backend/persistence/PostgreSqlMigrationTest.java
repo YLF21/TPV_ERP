@@ -574,8 +574,8 @@ class PostgreSqlMigrationTest {
                     statement, schema, chainId, secondRecordId, 2, "B".repeat(64));
             statement.executeUpdate("""
                     insert into %1$s.estado_envio_fiscal (
-                        registro_id, estado, actualizado_en)
-                    values ('%2$s', 'ENVIADO', now())
+                        registro_id, estado, actualizado_en, proximo_intento_en)
+                    values ('%2$s', 'ENVIADO', now(), now() + interval '1 hour')
                     """.formatted(schema, firstRecordId));
             statement.executeUpdate("""
                     insert into %1$s.registro_fiscal_relacion (

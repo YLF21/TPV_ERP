@@ -441,8 +441,7 @@ public class SalePaymentSessionService {
                   && hasReturnLines(snapshots.deserialize(session.getSnapshot()))) {
               throw new IllegalArgumentException("member_balance_not_allowed_with_return");
           }
-         if (refund && (kind == SalePaymentAllocationKind.PENDING
-                 || kind == SalePaymentAllocationKind.TRANSFER)) {
+         if (refund && kind == SalePaymentAllocationKind.PENDING) {
              throw new IllegalArgumentException("refund_payment_method_not_allowed");
          }
          if (kind == SalePaymentAllocationKind.VOUCHER && !refund) {
@@ -540,6 +539,13 @@ public class SalePaymentSessionService {
                  if (kind == SalePaymentAllocationKind.INTEGRATED_CARD) {
                      throw new IllegalArgumentException(
                              "original_card_payment_not_available");
+                 }
+                 if (kind == SalePaymentAllocationKind.TRANSFER) {
+                     // A transfer refund is only valid against an original
+                     // transfer payment with enough unrefunded balance. It
+                     // must never be converted into a tender override.
+                     throw new IllegalArgumentException(
+                             "original_transfer_payment_not_available");
                  }
                  refundTenderAuthorizationResult = authorizeRefundTenderOverride(
                          refundTenderAuthorization, auth);

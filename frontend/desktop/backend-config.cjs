@@ -4,10 +4,10 @@ const path = require("node:path");
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8080";
 const MAX_CONFIG_FILE_BYTES = 8 * 1024;
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
-const PRODUCTION_CONFIG_RELATIVE_PATH = path.join("TPV ERP", "desktop", "backend-config.json");
+const PRODUCTION_CONFIG_RELATIVE_PATH = path.win32.join("TPV ERP", "desktop", "backend-config.json");
 
 function productionBackendConfigPath(programData = "C:\\ProgramData") {
-  return path.join(programData, PRODUCTION_CONFIG_RELATIVE_PATH);
+  return path.win32.join(programData, PRODUCTION_CONFIG_RELATIVE_PATH);
 }
 
 function assertRegularConfigPath(configPath) {

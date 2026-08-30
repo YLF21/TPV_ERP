@@ -794,7 +794,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
   }
   const refundPolicyRequired=refundCheckout
    &&returnPolicy==="EXCHANGE_OR_VOUCHER_ONLY"
-   &&(input.kind==="CASH"||input.kind==="MANUAL_CARD"||input.kind==="INTEGRATED_CARD");
+   &&(input.kind==="CASH"||input.kind==="MANUAL_CARD"||input.kind==="INTEGRATED_CARD"||input.kind==="TRANSFER");
   const refundAuthorization=refundPolicyRequired
    ? effectiveRefundPolicyOverrideAuthorization
    : undefined;

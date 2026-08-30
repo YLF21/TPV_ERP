@@ -303,7 +303,7 @@ public class BackupArchiveService {
                 Path path = iterator.next();
                 BasicFileAttributes attributes = readNoFollowAttributes(path);
                 if (attributes.isSymbolicLink() || attributes.isOther()) {
-                    throw new IOException("El arbol de backup contiene un enlace o punto de reanalisis");
+                    throw new IOException("El arbol de backup contiene un enlace simbolico o punto de reanalisis");
                 }
                 if (!attributes.isRegularFile()) continue;
                 entries = requireEntryCapacity(entries);

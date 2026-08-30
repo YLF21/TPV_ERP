@@ -511,7 +511,65 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(confirm);
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
-  expect(allocationCalls).toBe(2);
+ expect(allocationCalls).toBe(2);
+ });
+
+ it("sends an original transfer refund through the exchange policy", async () => {
+  const collecting:ServerSession={
+   id:"refund-transfer-policy",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[],
+   refundPaymentAvailability:[{paymentMethod:"TRANSFERENCIA",kind:"TRANSFER",originalAmount:"10.00",refundedAmount:"0.00",reservedAmount:"0.00",availableAmount:"10.00"}],
+  };
+  let allocationBody:{kind?:string;reference?:string;refundPolicyAuthorization?:unknown}|undefined;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/payment-methods")return [
+    {id:"cash",companyId:"company-1",name:"EFECTIVO",protectedMethod:true,active:true,requiresReference:false,opensCashDrawer:true},
+    {id:"transfer",companyId:"company-1",name:"TRANSFERENCIA",protectedMethod:false,active:true,requiresReference:true,opensCashDrawer:false},
+   ];
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"EXCHANGE_OR_VOUCHER_ONLY"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/refund-transfer-policy/allocations"){
+    allocationBody=options?.body as typeof allocationBody;
+    const id=(allocationBody as {allocationId:string}).allocationId;
+    return {...collecting,status:"COVERED",allocations:[{id,idempotencyKey:id,kind:"TRANSFER",amount:"10.00",reference:"TR-ORIGINAL",status:"APPROVED"}]};
+   }
+   if(path==="/pos/payment-sessions/refund-transfer-policy/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-TRANSFER",printTicket:printTicket("R-TRANSFER")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",currentUsername:"CAJERO",totalCents:-1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+   transferPaymentAuthorization:{mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true},
+   refundPolicyOverrideAuthorization:{mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true},
+   onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("TRANSFER"));
+  const amount=await screen.findByLabelText(/importe a devolver/i);
+  await waitFor(()=>expect(amount).toBeEnabled());
+  const reference=screen.getByLabelText("Nº DOCUMENTO");
+  fireEvent.change(reference,{target:{value:"TR-ORIGINAL"}});
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  const dialog=await screen.findByRole("dialog",{name:/Autorización de la venta/i});
+  expect(within(dialog).getByRole("group",{name:"Autorizar pago por transferencia"})).toBeInTheDocument();
+  expect(within(dialog).getByRole("group",{name:"Devolver dinero contra la política de la tienda"})).toBeInTheDocument();
+  const passwords=within(dialog).getAllByLabelText("Tu contraseña");
+  expect(passwords).toHaveLength(2);
+  for(const password of passwords)fireEvent.change(password,{target:{value:"secret"}});
+  fireEvent.click(within(dialog).getByRole("button",{name:/Confirmar y continuar/i}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(allocationBody).toMatchObject({
+   kind:"TRANSFER",
+   reference:"TR-ORIGINAL",
+   operationAuthorization:{authorizerPassword:"secret"},
+   refundPolicyAuthorization:{authorizerPassword:"secret"},
+  });
  });
 
  it("returns the exact issued voucher from refund finalization", async () => {

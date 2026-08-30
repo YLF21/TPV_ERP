@@ -77,6 +77,26 @@ class RefundPaymentAvailabilityTest {
         });
     }
 
+    @Test
+    void exposesRemainingTransferBalanceAsARefundSource() {
+        var ticket = ticket();
+        var transfer = new PaymentMethod(UUID.randomUUID(), "TRANSFERENCIA", false);
+        var transferPayment = payment(ticket, transfer, 1, "10.00", null);
+        ticket.addPayment(transferPayment);
+
+        var tenders = Mockito.mock(RefundTenderRepository.class);
+        when(tenders.refundedAmountByOriginalPaymentId(transferPayment.getId()))
+                .thenReturn(new BigDecimal("2.50"));
+
+        var availability = RefundPaymentAvailability.calculate(ticket, tenders, List.of());
+
+        assertThat(availability).singleElement().satisfies(view -> {
+            assertThat(view.paymentMethod()).isEqualTo("TRANSFERENCIA");
+            assertThat(view.kind()).isEqualTo(SalePaymentAllocationKind.TRANSFER);
+            assertThat(view.availableAmount()).isEqualByComparingTo("7.50");
+        });
+    }
+
     private static CommercialDocument ticket() {
         var ticket = new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,

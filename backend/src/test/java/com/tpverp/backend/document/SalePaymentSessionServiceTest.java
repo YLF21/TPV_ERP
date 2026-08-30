@@ -257,7 +257,42 @@ class SalePaymentSessionServiceTest {
   assertThat(session.getAllocations()).singleElement().satisfies(allocation->{assertThat(allocation.getKind()).isEqualTo(SalePaymentAllocationKind.CASH);assertThat(allocation.getOriginalPaymentId()).isEqualTo(originalPaymentId);});
   verify(cash,times(2)).requireOpenSession(terminalId);
   verify(security).authorize(SaleOperationCode.REFUND_TENDER_OVERRIDE,"ENCARGADO","secret",auth);
-  verify(audit).record(eq("REFUND_TENDER_OVERRIDE_AUTHORIZED"),eq(AuditResult.EXITO),anyMap());
+ verify(audit).record(eq("REFUND_TENDER_OVERRIDE_AUTHORIZED"),eq(AuditResult.EXITO),anyMap());
+ }
+
+ @Test void transferRefundUsesTheMatchingOriginalTransferPayment(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var security=mock(SaleOperationSecurityService.class);var audit=mock(AuditService.class);var auth=mock(Authentication.class);
+  var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var sourceTicketId=UUID.randomUUID();var originalPaymentId=UUID.randomUUID();
+  var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(user.getUserName()).thenReturn("CAJERO");when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var transferMethod=new PaymentMethod(companyId,"TRANSFERENCIA",true);when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"TRANSFERENCIA")).thenReturn(Optional.of(transferMethod));
+  var operatorAuthorization=new Authorization(user,user,false);when(security.authorize(SaleOperationCode.CONFIRM_TRANSFER_PAYMENT,"ENCARGADO","secret",auth)).thenReturn(operatorAuthorization);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","snapshot",new BigDecimal("-10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));
+  var line=mock(DocumentLineCommand.class);when(line.originalDocumentLineId()).thenReturn(UUID.randomUUID());when(line.cantidad()).thenReturn(BigDecimal.ONE.negate());when(line.returnSourceTicketId()).thenReturn(sourceTicketId);var snapshot=mock(ApprovedCardTicketSnapshot.class);when(snapshot.lines()).thenReturn(List.of(line));when(snapshots.deserialize("snapshot")).thenReturn(snapshot);
+  var source=mock(CommercialDocument.class);var originalPayment=mock(DocumentPayment.class);when(originalPayment.getId()).thenReturn(originalPaymentId);when(originalPayment.getImporte()).thenReturn(new BigDecimal("10.00"));when(originalPayment.getMetodoPago()).thenReturn(transferMethod);when(source.getPagos()).thenReturn(List.of(originalPayment));when(docs.find(sourceTicketId)).thenReturn(source);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cash,security,audit);
+
+  service.add(sessionId,UUID.randomUUID(),"transfer-refund",SalePaymentAllocationKind.TRANSFER,new BigDecimal("10.00"),null,null,"TR-REF-1",null,null,null,new OperationAuthorizationRequest("ENCARGADO","secret"),null,null,auth);
+
+  assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COVERED);
+  assertThat(session.getAllocations()).singleElement().satisfies(allocation->{assertThat(allocation.getKind()).isEqualTo(SalePaymentAllocationKind.TRANSFER);assertThat(allocation.getOriginalPaymentId()).isEqualTo(originalPaymentId);});
+  verify(security).authorize(SaleOperationCode.CONFIRM_TRANSFER_PAYMENT,"ENCARGADO","secret",auth);
+  verify(audit,never()).record(eq("REFUND_TENDER_OVERRIDE_AUTHORIZED"),any(),anyMap());
+ }
+
+ @Test void transferRefundRejectsMissingOriginalTransferWithoutTenderOverride(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var security=mock(SaleOperationSecurityService.class);var audit=mock(AuditService.class);var auth=mock(Authentication.class);
+  var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var sourceTicketId=UUID.randomUUID();
+  var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var transferMethod=new PaymentMethod(companyId,"TRANSFERENCIA",true);when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"TRANSFERENCIA")).thenReturn(Optional.of(transferMethod));
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","snapshot",new BigDecimal("-10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));
+  var line=mock(DocumentLineCommand.class);when(line.originalDocumentLineId()).thenReturn(UUID.randomUUID());when(line.cantidad()).thenReturn(BigDecimal.ONE.negate());when(line.returnSourceTicketId()).thenReturn(sourceTicketId);var snapshot=mock(ApprovedCardTicketSnapshot.class);when(snapshot.lines()).thenReturn(List.of(line));when(snapshots.deserialize("snapshot")).thenReturn(snapshot);
+  var source=mock(CommercialDocument.class);var cashMethod=mock(PaymentMethod.class);when(cashMethod.getNombre()).thenReturn("EFECTIVO");var originalPayment=mock(DocumentPayment.class);when(originalPayment.getId()).thenReturn(UUID.randomUUID());when(originalPayment.getImporte()).thenReturn(new BigDecimal("10.00"));when(originalPayment.getMetodoPago()).thenReturn(cashMethod);when(source.getPagos()).thenReturn(List.of(originalPayment));when(docs.find(sourceTicketId)).thenReturn(source);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cash,security,audit);
+
+  assertThatThrownBy(()->service.add(sessionId,UUID.randomUUID(),"transfer-refund-with-override",SalePaymentAllocationKind.TRANSFER,new BigDecimal("10.00"),null,null,"TR-REF-2",null,null,null,new OperationAuthorizationRequest("ENCARGADO","secret"),null,new OperationAuthorizationRequest("ENCARGADO","secret"),auth))
+          .hasMessage("original_transfer_payment_not_available");
+  verify(security,never()).authorize(eq(SaleOperationCode.REFUND_TENDER_OVERRIDE),any(),any(),eq(auth));
+  assertThat(session.getAllocations()).isEmpty();
  }
 
  @Test void voucherRefundRemainsAvailableWhenTheStoreDoesNotReturnMoney(){
@@ -323,8 +358,24 @@ class SalePaymentSessionServiceTest {
 
   assertThat(result.session().getTicketId()).isEqualTo(ticketId);
   verify(docs).createApprovedReturn(eq(sessionId),eq(sourceTicketId),eq(new BigDecimal("10.00")),argThat(values->values.size()==1&&values.getFirst().lineId().equals(sourceLineId)&&values.getFirst().quantity().compareTo(BigDecimal.ONE)==0),isNull(),eq(valuation),eq(auth));
-  verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),anyList(),any());
-  verify(settlements).recordExistingNegativeTicket(eq(ticket),argThat(values->values.size()==1&&values.getFirst().type()==RefundTenderType.CASH&&values.getFirst().originalPaymentId().equals(originalPaymentId)),eq(auth));
+ verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),anyList(),any());
+ verify(settlements).recordExistingNegativeTicket(eq(ticket),argThat(values->values.size()==1&&values.getFirst().type()==RefundTenderType.CASH&&values.getFirst().originalPaymentId().equals(originalPaymentId)),eq(auth));
+ }
+
+ @Test void finalizingATransferRefundPersistsTheOriginalTransferPaymentReference(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var settlements=mock(RefundSettlementRecorder.class);var valuations=mock(TicketReturnValuationService.class);var auth=mock(Authentication.class);
+  var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var sourceTicketId=UUID.randomUUID();var sourceLineId=UUID.randomUUID();var productId=UUID.randomUUID();var originalPaymentId=UUID.randomUUID();
+  var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","snapshot",new BigDecimal("-10.00"));var allocation=session.addAllocation(UUID.randomUUID(),"transfer",SalePaymentAllocationKind.TRANSFER,new BigDecimal("10.00"),null,null);allocation.assignOriginalPaymentId(originalPaymentId);allocation.approve(null,"TR-ORIGINAL",null);when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));
+  var line=new DocumentLineCommand(productId,new BigDecimal("-1"),"P-1","Producto","DEVOLUCION",new BigDecimal("10.00"),BigDecimal.ZERO,true,"GENERAL",new BigDecimal("21"),DocumentLineType.PRODUCT,null,null,null,List.of(),false,false,TicketReturnService.ReturnSourceType.TICKET,"T-1",sourceTicketId,sourceLineId,null);var snapshot=new ApprovedCardTicketSnapshot(storeId,UUID.randomUUID(),java.time.LocalDate.of(2026,8,4),null,UUID.randomUUID(),BigDecimal.ZERO,new BigDecimal("-8.26"),new BigDecimal("-1.74"),new BigDecimal("-10.00"),List.of(line));when(snapshots.deserialize("snapshot")).thenReturn(snapshot);
+  var original=mock(CommercialDocument.class);when(docs.find(sourceTicketId)).thenReturn(original);var valuation=new TicketReturnValuationService.Valuation(new BigDecimal("10.00"),BigDecimal.ZERO,new BigDecimal("10.00"),new BigDecimal("10.00"),new BigDecimal("10.00"),new BigDecimal("10.00"),BigDecimal.ZERO,BigDecimal.ZERO,List.of());when(valuations.value(eq(original),anyMap())).thenReturn(valuation);
+  var transferMethod=new PaymentMethod(companyId,"TRANSFERENCIA",true);when(methods.findByEmpresaIdAndNombreAndActivoTrue(companyId,"TRANSFERENCIA")).thenReturn(Optional.of(transferMethod));var ticket=mock(CommercialDocument.class);var ticketId=UUID.randomUUID();when(ticket.getId()).thenReturn(ticketId);when(ticket.getNumero()).thenReturn("R-TRANSFER-1");when(ticket.getEstado()).thenReturn(DocumentStatus.CONFIRMADO);when(ticket.getConfirmadoEn()).thenReturn(java.time.Instant.parse("2026-08-04T10:00:00Z"));when(ticket.getLineas()).thenReturn(List.of());when(ticket.getPagos()).thenReturn(List.of());when(ticket.getTotal()).thenReturn(new BigDecimal("-10.00"));when(ticket.getBaseTotal()).thenReturn(new BigDecimal("-8.26"));when(ticket.getImpuestoTotal()).thenReturn(new BigDecimal("-1.74"));when(docs.createApprovedReturn(eq(sessionId),eq(sourceTicketId),eq(new BigDecimal("10.00")),anyList(),isNull(),eq(valuation),eq(auth))).thenReturn(ticket);when(settlements.recordExistingNegativeTicket(eq(ticket),anyList(),eq(auth))).thenReturn(ticket);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cash);service.setRefundSettlementRecorder(settlements);service.setTicketReturnValuationService(valuations);
+
+  var result=service.finalizeSession(sessionId,auth);
+
+  assertThat(result.session().getTicketId()).isEqualTo(ticketId);
+  verify(settlements).recordExistingNegativeTicket(eq(ticket),argThat(values->values.size()==1&&values.getFirst().type()==RefundTenderType.TRANSFER&&values.getFirst().amount().compareTo(new BigDecimal("10.00"))==0&&originalPaymentId.equals(values.getFirst().originalPaymentId())&&values.getFirst().terminalOperationId()==null&&"TR-ORIGINAL".equals(values.getFirst().reference())),eq(auth));
  }
 
  @Test void preparedMemberCreditFinalizesAndASecondFinalizeIsIdempotent(){

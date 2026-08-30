@@ -394,6 +394,8 @@ export function PaymentAllocationPanel({
       ? ["CASH"]
       : value === "CARD"
         ? ["MANUAL_CARD", "INTEGRATED_CARD"]
+        : value === "TRANSFER"
+          ? ["TRANSFER"]
         : [];
     if (kinds.length === 0) return undefined;
     return (session.refundPaymentAvailability ?? [])
@@ -407,6 +409,8 @@ export function PaymentAllocationPanel({
       .filter((availability) => availability.kind === kind)
       .reduce((sum, availability) => sum + availability.availableAmountCents, 0);
   }
+
+  const transferRefundAvailabilityCents = refundAvailabilityForKind("TRANSFER");
 
   const cardAllocationKind: "MANUAL_CARD" | "INTEGRATED_CARD" = refund
     && refundAvailabilityForKind("MANUAL_CARD") > 0
@@ -430,7 +434,8 @@ export function PaymentAllocationPanel({
     if (next === "CASH") return cashEnabled;
     if (next === "CARD") return cardEnabled && (manualCardEnabled || providers.length > 0);
     if (next === "VOUCHER") return voucherEnabled;
-    if (next === "TRANSFER") return !refund && transferEnabled;
+    if (next === "TRANSFER") return transferEnabled
+      && (!refund || (!voucherOnlyRefund && transferRefundAvailabilityCents > 0));
     if (next === "PENDING") return !refund && pendingVisible && pendingEnabled;
     if (next === "MEMBER_BALANCE") return !refund && customerSelected
       && Boolean(onMemberWallet || onMemberBalance)
@@ -471,7 +476,7 @@ export function PaymentAllocationPanel({
   }, [
     cardEnabled, cashEnabled, checkoutDiscountEligibleLimit, checkoutDiscountInputLimit, customerSelected, memberCreditEligible, discountVisible, initialMethod, manualCardEnabled,
     memberWallet, memberWalletLimit, onMemberWallet, pendingEnabled, pendingVisible, providers.length,
-    memberBalanceBlockedByReturn, memberBalanceReady, pricingReady, transferEnabled, voucherEnabled, voucherOnlyRefund,
+    memberBalanceBlockedByReturn, memberBalanceReady, pricingReady, transferEnabled, transferRefundAvailabilityCents, voucherEnabled, voucherOnlyRefund,
   ]);
 
   useEffect(() => {
@@ -685,7 +690,7 @@ export function PaymentAllocationPanel({
       onAdd({
         kind: "TRANSFER",
         ...common,
-        ...(transferDateEnabled && transferDate ? { transferDate } : {}),
+        ...(transferDateEnabled && !refund && transferDate ? { transferDate } : {}),
       }, { finalizeWhenCovered });
     } else if (method === "MEMBER_CREDIT") {
       onAdd({ kind: "MEMBER_CREDIT", ...common }, { finalizeWhenCovered });
@@ -770,7 +775,8 @@ export function PaymentAllocationPanel({
     { value: "CARD", shortcut: "+", visible: cardEnabled && !voucherOnlyRefund, disabled: !manualCardEnabled && providers.length === 0 },
     { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
     { value: "PENDING", shortcut: "F8", visible: !refund && pendingVisible, disabled: !pendingEnabled },
-    { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
+    { value: "TRANSFER", shortcut: "F7", visible: transferEnabled
+      && (!refund || (!voucherOnlyRefund && refundAvailabilityForKind("TRANSFER") > 0)) },
     { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: !pricingReady || checkoutDiscountInputLimit <= 0 || effectiveRows.length > 0 },
     { value: "MEMBER_BALANCE", shortcut: "F10", visible: !refund && Boolean(onMemberWallet || onMemberBalance), disabled: memberBalanceBlockedByReturn || !customerSelected || (Boolean(onMemberWallet) && !memberWallet) || !memberBalanceReady || (onMemberWallet ? memberWalletLimit : memberBalanceLimit) <= 0 || effectiveRows.length > 0 },
     { value: "MEMBER_CREDIT", shortcut: "F10", visible: refund, disabled: !customerSelected || !memberCreditEligible },
@@ -805,7 +811,7 @@ export function PaymentAllocationPanel({
                 disabled={entryLocked || (selectedMethod === "VOUCHER" && !refund)}
                 onChange={(event) => setAmount(event.currentTarget.value)} />
             </label>
-            <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
+            <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled && !refund ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
               {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
                 <input ref={voucherCodeRef} id="checkout-voucher-code" autoComplete="off"
                   value={voucherCode}
@@ -817,7 +823,7 @@ export function PaymentAllocationPanel({
                   disabled={entryLocked}
                   onChange={(event) => setReference(event.currentTarget.value)} />
               </label>
-              {selectedMethod === "TRANSFER" && transferDateEnabled && <label>
+              {selectedMethod === "TRANSFER" && transferDateEnabled && !refund && <label>
                 <span>{locale === "es" ? "FECHA DE TRANSFERENCIA" : locale === "en" ? "TRANSFER DATE" : "转账日期"}</span>
                 <input ref={transferDateRef} id="checkout-transfer-date" type="date"
                   max={localDateInput()} value={transferDate} disabled={entryLocked}
@@ -889,7 +895,7 @@ export function PaymentAllocationPanel({
                   </td>
                   <td>{money(allocation.amountCents)} €</td>
                   <td>{allocation.reference || "—"}
-                    {allocation.transferDate && <small>
+                    {allocation.transferDate && !refund && <small>
                       {locale === "es" ? "Fecha" : locale === "en" ? "Date" : "日期"}: {allocation.transferDate}
                     </small>}
                   </td>
