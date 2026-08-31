@@ -65,8 +65,8 @@ type Copy = {
 
 const COPY: Record<MemberWalletLocale, Copy> = {
   es: {
-    title: "Consumir saldo de socio",
-    subtitle: "El consumo es automático: primero el saldo de socio por caducidad y antigüedad, y después el saldo por devolución.",
+    title: "Consumir saldo de miembro",
+    subtitle: "El consumo es automático: primero el saldo de miembro por caducidad y antigüedad, y después el saldo por devolución.",
     close: "Cerrar",
     lotsTitle: "Saldos disponibles por origen",
     noLots: "No hay saldos disponibles.",
@@ -76,7 +76,7 @@ const COPY: Record<MemberWalletLocale, Copy> = {
     available: "Disponible neto",
     held: "Bloqueo parcial",
     expiresAt: "Caducidad",
-    loyalty: "Saldo socio",
+    loyalty: "Saldo de miembro",
     returnCredit: "Saldo por devolución",
     noDocument: "Sin documento asociado",
     noExpiration: "No caduca",

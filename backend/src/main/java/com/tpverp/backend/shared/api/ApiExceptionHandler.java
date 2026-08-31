@@ -85,9 +85,9 @@ public class ApiExceptionHandler {
                 default -> "中央会员余额服务当前不可用";
             };
             default -> switch (exception.getKind()) {
-                case CONFLICT -> "El saldo del socio esta reservado en otra caja";
-                case REJECTED -> "La operacion de saldo socio ha sido rechazada";
-                default -> "El servicio central de saldo socio no esta disponible";
+                case CONFLICT -> "El saldo del miembro esta reservado en otra caja";
+                case REJECTED -> "La operacion de saldo del miembro ha sido rechazada";
+                default -> "El servicio central de saldo del miembro no esta disponible";
             };
         };
         var problem = problem(status, code, detail, language, request);

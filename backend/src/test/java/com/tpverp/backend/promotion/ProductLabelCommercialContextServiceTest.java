@@ -74,7 +74,7 @@ class ProductLabelCommercialContextServiceTest {
         publicPromotion.activate();
 
         var memberPromotion = Promotion.draft(
-                company.getId(), "Solo socios", PromotionType.SECOND_UNIT_PERCENT,
+                company.getId(), "Solo miembros", PromotionType.SECOND_UNIT_PERCENT,
                 LocalDate.of(2026, 8, 1));
         memberPromotion.configureManagementFields(
                 LocalDate.of(2026, 8, 1), null,

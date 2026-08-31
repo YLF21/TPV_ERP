@@ -64,7 +64,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    expect(within(container).getByRole("button", { name: /Saldo socio/ })).toBeEnabled();
+    expect(within(container).getByRole("button", { name: /Saldo de miembro/ })).toBeEnabled();
   });
 
   it("uses central typed reservation amounts while the local wallet snapshot is absent", () => {
@@ -87,7 +87,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    expect(within(container).getByRole("button", { name: /Saldo socio/ }))
+    expect(within(container).getByRole("button", { name: /Saldo de miembro/ }))
       .toHaveTextContent("Disponible: 11,00 €");
   });
 
@@ -109,7 +109,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(container).getByRole("button", { name: /Saldo de miembro/ });
     expect(memberButton).toBeDisabled();
     expect(memberButton).toHaveTextContent("Disponible: 0,00 €");
     fireEvent.keyDown(window, { key: "F10" });
@@ -134,7 +134,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(container).getByRole("button", { name: /Saldo de miembro/ });
     expect(memberButton).toBeEnabled();
     expect(memberButton).toHaveTextContent("Disponible: 5,50 €");
     fireEvent.click(memberButton);
@@ -167,7 +167,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(container).getByRole("button", { name: /Saldo de miembro/ });
     expect(memberButton).toBeDisabled();
     fireEvent.keyDown(window, { key: "F10" });
     expect(onMemberBalance).not.toHaveBeenCalled();
@@ -276,7 +276,7 @@ describe("PaymentAllocationPanel", () => {
     />);
 
     const table = container.querySelector(".sale-checkout-table")!;
-    expect(table).toHaveTextContent("Saldo socio");
+    expect(table).toHaveTextContent("Saldo de miembro");
     expect(table).toHaveTextContent("-0,97 €");
     expect(table).not.toHaveTextContent("Saldo a favor");
     const totals = container.querySelector(".sale-checkout-totals")!;
@@ -311,7 +311,7 @@ describe("PaymentAllocationPanel", () => {
       />);
 
       const table = container.querySelector(".sale-checkout-table")!;
-      expect(table).toHaveTextContent("Saldo socio");
+      expect(table).toHaveTextContent("Saldo de miembro");
       expect(table).toHaveTextContent("Saldo a favor");
       expect(table).toHaveTextContent("0,03 €");
     },
@@ -422,13 +422,13 @@ describe("PaymentAllocationPanel", () => {
       onMemberWallet={vi.fn()} onClose={onClose} onAdd={vi.fn()} onQuery={vi.fn()}
     />);
 
-    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(container).getByRole("button", { name: /Saldo de miembro/ });
     memberButton.focus();
     fireEvent.click(memberButton);
 
     const checkout = container.querySelector<HTMLElement>(".sale-checkout-dialog");
     expect(checkout).not.toBeNull();
-    const wallet = within(container).getByRole("dialog", { name: "Consumir saldo de socio" });
+    const wallet = within(container).getByRole("dialog", { name: "Consumir saldo de miembro" });
     const amount = within(wallet).getByRole("textbox");
     expect(checkout).toHaveAttribute("aria-hidden", "true");
     expect(amount).toHaveFocus();
@@ -440,7 +440,7 @@ describe("PaymentAllocationPanel", () => {
     expect(close).toHaveFocus();
 
     fireEvent.keyDown(amount, { key: "Escape" });
-    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de socio" })).not.toBeInTheDocument();
+    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de miembro" })).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(container.querySelector(".sale-checkout-dialog")).not.toHaveAttribute("aria-hidden");
     expect(memberButton).toHaveFocus();
@@ -725,7 +725,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    expect(html).toContain("Saldo socio");
+    expect(html).toContain("Saldo de miembro");
     expect(html).toContain("-0,94 €");
     expect(html).toContain("TOTAL A COBRAR");
     expect(html).toContain("0,94 €");
@@ -1047,7 +1047,7 @@ describe("PaymentAllocationPanel", () => {
       onQuery: vi.fn(),
     };
     const view = render(<PaymentAllocationPanel {...props} pricingReady={false} />);
-    const memberButton = within(view.container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(view.container).getByRole("button", { name: /Saldo de miembro/ });
     expect(memberButton).toBeDisabled();
 
     fireEvent.keyDown(window, { key: "F10" });
@@ -1078,15 +1078,15 @@ describe("PaymentAllocationPanel", () => {
       onMemberWallet={onMemberWallet} onDiscount={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
     />);
 
-    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(container).getByRole("button", { name: /Saldo de miembro/ });
     const discountButton = within(container).getByRole("button", { name: /Descuento/ });
     expect(memberButton).toBeDisabled();
     expect(discountButton).toBeEnabled();
-    expect(memberButton).toHaveAccessibleName("Saldo socioDisponible: 0,00 €");
+    expect(memberButton).toHaveAccessibleName("Saldo de miembroDisponible: 0,00 €");
 
     fireEvent.keyDown(window, { key: "F10" });
     expect(onMemberWallet).not.toHaveBeenCalled();
-    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de socio" })).not.toBeInTheDocument();
+    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de miembro" })).not.toBeInTheDocument();
   });
 
   it("does not reactivate F10 after the reservation becomes unavailable", () => {
@@ -1099,11 +1099,11 @@ describe("PaymentAllocationPanel", () => {
       onMemberWallet={onMemberWallet} onDiscount={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
     />);
 
-    expect(within(container).getByRole("button", { name: /Saldo socio/ })).toBeDisabled();
+    expect(within(container).getByRole("button", { name: /Saldo de miembro/ })).toBeDisabled();
     expect(within(container).getByRole("button", { name: /Descuento/ })).toBeEnabled();
     fireEvent.keyDown(window, { key: "F10" });
     expect(onMemberWallet).not.toHaveBeenCalled();
-    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de socio" })).not.toBeInTheDocument();
+    expect(within(container).queryByRole("dialog", { name: "Consumir saldo de miembro" })).not.toBeInTheDocument();
   });
 
   it("intersects typed wallet buckets before subtracting a partial loyalty hold", () => {
@@ -1125,10 +1125,10 @@ describe("PaymentAllocationPanel", () => {
       onQuery={vi.fn()}
     />);
 
-    const memberButton = within(container).getByRole("button", { name: /Saldo socio/ });
+    const memberButton = within(container).getByRole("button", { name: /Saldo de miembro/ });
     expect(memberButton).toHaveTextContent("Disponible: 17,59 €");
     fireEvent.click(memberButton);
-    expect(within(container).getByRole("dialog", { name: "Consumir saldo de socio" }))
+    expect(within(container).getByRole("dialog", { name: "Consumir saldo de miembro" }))
       .toHaveTextContent("Máximo aplicable a esta venta: 17,59");
   });
 
@@ -1150,7 +1150,7 @@ describe("PaymentAllocationPanel", () => {
     />);
 
     fireEvent.keyDown(window, { key: "F10" });
-    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de miembro/ });
     const amount = within(dialog).getByRole("textbox");
     expect(amount).toHaveValue("10,00");
     fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar saldo" }));
@@ -1177,7 +1177,7 @@ describe("PaymentAllocationPanel", () => {
     />);
 
     fireEvent.keyDown(window, { key: "F10" });
-    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de miembro/ });
     expect(within(dialog).getByRole("textbox")).toHaveValue("12,00");
     fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar saldo" }));
 
@@ -1201,7 +1201,7 @@ describe("PaymentAllocationPanel", () => {
     />);
 
     fireEvent.keyDown(window, { key: "F10" });
-    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de miembro/ });
     expect(within(dialog).getByRole("textbox")).toHaveValue("12,00");
     expect(within(dialog).getByText(/Total bruto/).textContent).toContain("18,00");
     fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar saldo" }));
@@ -1244,7 +1244,7 @@ describe("PaymentAllocationPanel", () => {
     />);
 
     fireEvent.keyDown(window, { key: "F10" });
-    const dialog = within(container).getByRole("dialog", { name: "Consumir saldo de socio" });
+    const dialog = within(container).getByRole("dialog", { name: "Consumir saldo de miembro" });
     const row = container.querySelector(".member-wallet-lot-partial-hold");
     expect(row).not.toBeNull();
     expect(row).toHaveTextContent("001-260829-00003");
@@ -1267,7 +1267,7 @@ describe("PaymentAllocationPanel", () => {
     />);
 
     fireEvent.keyDown(window, { key: "F10" });
-    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de socio/ });
+    const dialog = within(container).getByRole("dialog", { name: /Consumir saldo de miembro/ });
     expect(within(dialog).getByRole("textbox")).toHaveValue("2,00");
     expect(within(dialog).getByText(/Bloqueo parcial de saldo/)).toBeInTheDocument();
   });
@@ -1327,7 +1327,7 @@ describe("PaymentAllocationPanel", () => {
       onMemberBalance={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
     />);
 
-    expect(html).toContain("Saldo socio");
+    expect(html).toContain("Saldo de miembro");
     expect(html).toContain("-3,00 €");
     expect(html).toContain("-2,00 €");
     expect(html).toContain('<kbd aria-hidden="true">F10</kbd>');
@@ -1350,7 +1350,7 @@ describe("PaymentAllocationPanel", () => {
       "PendienteF8",
       "TransferenciaF7",
       "DescuentoF11",
-      "Saldo socioDisponible: 25,90 €F10",
+      "Saldo de miembroDisponible: 25,90 €F10",
     ]);
     expect(methodButtons.at(-1)).toHaveClass("sale-checkout-member-balance");
   });
@@ -1362,7 +1362,7 @@ describe("PaymentAllocationPanel", () => {
       onDiscount={vi.fn()} onAdd={vi.fn()} onQuery={vi.fn()}
     />);
 
-    expect(within(container).queryByRole("button", { name: /Saldo socio/ })).not.toBeInTheDocument();
+    expect(within(container).queryByRole("button", { name: /Saldo de miembro/ })).not.toBeInTheDocument();
   });
 
   it("renders the numeric keypad only in touch mode and hides shortcut labels", () => {

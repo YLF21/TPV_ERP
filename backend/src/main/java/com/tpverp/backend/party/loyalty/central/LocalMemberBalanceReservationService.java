@@ -532,7 +532,7 @@ public class LocalMemberBalanceReservationService {
                     "La reserva local ha superado su lease");
         }
         if (!reservation.isActive()) {
-            throw new IllegalStateException("La reserva de saldo socio ya no esta activa");
+            throw new IllegalStateException("La reserva de saldo del miembro ya no esta activa");
         }
         try {
             reservation.apply(coordinator.heartbeat(
@@ -604,7 +604,7 @@ public class LocalMemberBalanceReservationService {
             UUID terminalId,
             String saleId) {
         LocalMemberBalanceReservation reservation = reservations.findForUpdate(reservationId)
-                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo socio no encontrada"));
+                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo del miembro no encontrada"));
         if (!reservation.matches(storeId, terminalId, saleId)) {
             throw new IllegalStateException("La reserva no pertenece a esta venta y terminal");
         }

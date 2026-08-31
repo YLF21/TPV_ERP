@@ -80,7 +80,7 @@ describe("PartyDirectoryPanel", () => {
 
   it("preserves an existing membership when the customer identity is edited", () => {
     expect(buildPartyRequest({
-      ...emptyPartyForm, name: "Cliente socio", documentNumber: "1", numMember: "EXT-7"
+      ...emptyPartyForm, name: "Cliente miembro", documentNumber: "1", numMember: "EXT-7"
     }, false, true)).toMatchObject({ isMember: true, numMember: "EXT-7" });
   });
 

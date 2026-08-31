@@ -319,7 +319,7 @@ class PromotionServiceTest {
         previewPricing(false);
         var categoryId = UUID.randomUUID();
         var otherCategoryId = UUID.randomUUID();
-        var promotion = buyXPayY("3x2 Socio Empleado");
+        var promotion = buyXPayY("3x2 Miembro Empleado");
         promotion.configureManagementFields(
                 LocalDate.of(2026, 7, 1),
                 null,

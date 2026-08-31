@@ -144,7 +144,7 @@ class TicketReportServiceTest {
                 .thenReturn(new BigDecimal("5.00"));
 
         assertThat(fixture.service().list(500, null).items()).singleElement()
-                .extracting(TicketReportView::saldoSocio)
+                .extracting(TicketReportView::memberBalance)
                 .isEqualTo(new BigDecimal("5.00"));
     }
 

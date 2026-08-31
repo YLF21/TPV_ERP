@@ -55,7 +55,7 @@ public class MemberBalanceCheckoutRecoveryWorker {
             paymentSessions.recoverMemberBalanceFinalization(sessionId);
         } catch (RuntimeException error) {
             incidents.recordFailure(sessionId, error);
-            LOGGER.warn("No se pudo recuperar la finalizacion de saldo socio de la sesion {}: {}",
+            LOGGER.warn("No se pudo recuperar la finalizacion de saldo del miembro de la sesion {}: {}",
                     sessionId, message(error));
         }
     }
@@ -65,7 +65,7 @@ public class MemberBalanceCheckoutRecoveryWorker {
             paymentSessions.recoverMemberBalanceAbort(sessionId);
         } catch (RuntimeException error) {
             incidents.recordFailure(sessionId, error);
-            LOGGER.warn("No se pudo recuperar el aborto de saldo socio de la sesion {}: {}",
+            LOGGER.warn("No se pudo recuperar el aborto de saldo del miembro de la sesion {}: {}",
                     sessionId, message(error));
         }
     }

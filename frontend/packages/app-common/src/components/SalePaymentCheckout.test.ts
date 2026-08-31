@@ -113,7 +113,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   await waitFor(()=>expect(onMemberBalance).toHaveBeenCalledWith(0));
   expect(screen.getByRole("alert")).toHaveTextContent(
-   "El saldo socio no está disponible. Continúa el cobro sin utilizarlo.",
+   "El saldo de miembro no está disponible. Continúa el cobro sin utilizarlo.",
   );
   expect(apiRequestMock.mock.calls.some(([path]) => String(path).endsWith("/allocations"))).toBe(false);
   expect(screen.getAllByText("10,00 €")).toHaveLength(2);
@@ -149,7 +149,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   await waitFor(()=>expect(onMemberBalance).toHaveBeenCalledWith(0));
   expect(screen.getByRole("alert")).toHaveTextContent(
-   "No se ha podido confirmar el estado del saldo socio. Puedes continuar sin utilizarlo o reintentarlo.",
+   "No se ha podido confirmar el estado del saldo de miembro. Puedes continuar sin utilizarlo o reintentarlo.",
   );
   expect(screen.getByRole("button",{name:"Efectivo"})).toBeEnabled();
  });
@@ -192,7 +192,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   const view=render(createElement(SalePaymentCheckout,props));
   await waitFor(()=>expect(ref.current).not.toBeNull());
   act(()=>ref.current!.openCheckout("CASH"));
-  fireEvent.click(await screen.findByRole("button",{name:/Saldo socio/}));
+  fireEvent.click(await screen.findByRole("button",{name:/Saldo de miembro/}));
   fireEvent.click(await screen.findByRole("button",{name:"Aplicar saldo"}));
 
   view.rerender(createElement(SalePaymentCheckout,{
@@ -265,7 +265,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   view.rerender(createElement(SalePaymentCheckout,{
    ...baseProps,pricingReady:true,totalCents:772,
   }));
-  const memberBalanceButton=await screen.findByRole("button",{name:/Saldo socio/});
+  const memberBalanceButton=await screen.findByRole("button",{name:/Saldo de miembro/});
   expect(memberBalanceButton).toBeEnabled();
   fireEvent.click(memberBalanceButton);
   fireEvent.click(await screen.findByRole("button",{name:"Aplicar saldo"}));
@@ -930,7 +930,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   const view=render(createElement(SalePaymentCheckout,initialProps));
   await waitFor(()=>expect(ref.current).not.toBeNull());
   act(()=>ref.current!.openCheckout("CASH"));
-  fireEvent.click(await screen.findByRole("button",{name:/Saldo socio/}));
+  fireEvent.click(await screen.findByRole("button",{name:/Saldo de miembro/}));
   fireEvent.click(await screen.findByRole("button",{name:"Aplicar saldo"}));
 
   view.rerender(createElement(SalePaymentCheckout,{

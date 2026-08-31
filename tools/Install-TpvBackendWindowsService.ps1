@@ -13,7 +13,7 @@ param(
     [ValidateRange(1, 65535)] [int] $Port = 8080,
     [string] $ExpectedVersion = '4.2.0',
     [string] $ExpectedReleaseId = 'tpv-erp-4.2.0',
-    [string] $ExpectedSchemaVersion = 'V233',
+    [string] $ExpectedSchemaVersion = 'V234',
     [long] $ExpectedReleaseSequence = 1,
     [long] $ExpectedBuildSequence = 1,
     [string] $SecretDirectory = 'C:\ProgramData\TPV ERP\secrets\verifactu',

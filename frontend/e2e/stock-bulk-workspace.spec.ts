@@ -30,7 +30,7 @@ test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios"
     const salePrice = page.getByLabel("Precio venta").first();
     await salePrice.fill("12.75");
     await salePrice.press("Enter");
-    await expect(page.getByLabel("Precio socio").first()).toBeFocused();
+    await expect(page.getByLabel("Precio de miembro").first()).toBeFocused();
 
     await page.keyboard.press("Control+s");
     const saveDialog = page.getByRole("dialog", { name: "Guardar lista de productos" });

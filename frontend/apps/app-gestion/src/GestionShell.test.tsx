@@ -123,7 +123,7 @@ describe("GestionShell", () => {
             ]
           },
           { key: "stock.party.customers", label: "Clientes", onOpen: openCustomers },
-          { key: "stock.party.members", label: "Socios", onOpen: openMembers },
+          { key: "stock.party.members", label: "Miembros", onOpen: openMembers },
           { key: "stock.party.suppliers", label: "Proveedores", onOpen: openSuppliers }
         ]}
       >
@@ -132,7 +132,7 @@ describe("GestionShell", () => {
     );
 
     expect(screen.getByRole("button", { name: "Clientes" })).not.toHaveAttribute("aria-expanded");
-    expect(screen.getByRole("button", { name: "Socios" })).not.toHaveAttribute("aria-expanded");
+    expect(screen.getByRole("button", { name: "Miembros" })).not.toHaveAttribute("aria-expanded");
     expect(screen.getByRole("button", { name: "Proveedores" })).not.toHaveAttribute("aria-expanded");
 
     fireEvent.click(screen.getByRole("button", { name: "Stock" }));
@@ -147,7 +147,7 @@ describe("GestionShell", () => {
     expect(screen.getByRole("button", { name: "Comprobación de pedido" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Clientes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Socios" }));
+    fireEvent.click(screen.getByRole("button", { name: "Miembros" }));
     fireEvent.click(screen.getByRole("button", { name: "Proveedores" }));
     expect(openCustomers).toHaveBeenCalledOnce();
     expect(openMembers).toHaveBeenCalledOnce();

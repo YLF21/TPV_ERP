@@ -128,7 +128,7 @@ public class MemberPointsOfficialProjectionService {
             var member = members.findByIdAndCompanyId(item.getMemberId(), companyId)
                     .orElse(null);
             if (member == null) {
-                item.defer(now, "Socio pendiente de sincronizar en la tienda");
+                item.defer(now, "Miembro pendiente de sincronizar en la tienda");
                 continue;
             }
             member.applyOfficialPoints(

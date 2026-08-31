@@ -117,7 +117,7 @@ const labels = {
   es: {
     title: "COBRO", amount: "IMPORTE / RECIBIDO", document: "Nº DOCUMENTO", comment: "COMENTARIO",
     cash: "Efectivo", card: "Tarjeta", voucher: "Vale", pending: "Pendiente",
-    transfer: "Transferencia", memberBalance: "Saldo socio", memberBalanceAvailable: "Disponible", memberBalanceTotal: "Total", partialHold: "Bloqueo parcial de saldo", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
+    transfer: "Transferencia", memberBalance: "Saldo de miembro", memberBalanceAvailable: "Disponible", memberBalanceTotal: "Total", partialHold: "Bloqueo parcial de saldo", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
     tableAmount: "IMPORTE", change: "Cambio", total: "TOTAL A COBRAR", paid: "COBRADO",
     remaining: "FALTA", accept: "ACEPTAR", cancel: "CANCELAR", exact: "Exacto",
     clear: "Eliminar pagos", customerRequired: "Selecciona un cliente para dejar el ticket pendiente",
@@ -128,7 +128,7 @@ const labels = {
     voucherInvalidated: "Este vale está invalidado", voucherNoBalance: "Este vale no tiene saldo disponible",
     voucherLookupFailed: "No se pudo consultar el vale. Inténtalo de nuevo",
     voucherOnlyRefund: "Este ticket regalo solo puede devolverse mediante un vale.",
-    voucherOnlyRefundWithMember: "Este ticket regalo admite un vale o un abono al saldo del socio comprador del ticket original.",
+    voucherOnlyRefundWithMember: "Este ticket regalo admite un vale o un abono al saldo del miembro comprador del ticket original.",
     voucherOnlyRemainder: "La parte que no procede de un pago real solo puede devolverse mediante un vale.",
   },
   en: {

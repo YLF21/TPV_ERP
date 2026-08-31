@@ -10,7 +10,7 @@ public class MemberBalanceManualReconciliationRequiredException extends RuntimeE
     public MemberBalanceManualReconciliationRequiredException(
             UUID reservationId,
             LocalMemberBalanceReservationStatus reservationStatus) {
-        super("La reserva de saldo socio " + reservationId
+        super("La reserva de saldo del miembro " + reservationId
                 + " esta en estado " + reservationStatus
                 + " y requiere conciliacion manual");
         this.reservationId = reservationId;

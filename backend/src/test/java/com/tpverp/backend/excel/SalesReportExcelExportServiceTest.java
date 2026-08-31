@@ -115,7 +115,7 @@ class SalesReportExcelExportServiceTest {
         when(invoice.numero()).thenReturn("FRV-001");
         when(invoice.fecha()).thenReturn(LocalDate.of(2026, 7, 27));
         when(invoice.pendiente()).thenReturn(new BigDecimal("-12.10"));
-        when(invoice.saldoSocio()).thenReturn(new BigDecimal("4.85"));
+        when(invoice.memberBalance()).thenReturn(new BigDecimal("4.85"));
         when(invoice.total()).thenReturn(new BigDecimal("-12.10"));
         when(invoice.payments()).thenReturn(List.of());
         when(reports.allInvoices(true, false)).thenReturn(List.of(invoice));
@@ -138,7 +138,7 @@ class SalesReportExcelExportServiceTest {
                         new SalesReportExportRequest.Column("invoice", "Factura"),
                         new SalesReportExportRequest.Column("documentType", "Tipo de factura"),
                         new SalesReportExportRequest.Column("pending", "Pendiente"),
-                        new SalesReportExportRequest.Column("memberBalance", "Saldo socio"),
+                        new SalesReportExportRequest.Column("memberBalance", "Saldo de miembro"),
                         new SalesReportExportRequest.Column("total", "Total")));
 
         byte[] result = service.export(request, authentication);

@@ -1277,7 +1277,7 @@ describe("StockScreen", () => {
     expect(html).toContain("Stock total");
     expect(html).toContain("Stock");
     expect(html).toContain("Productos con oferta");
-    expect(html).toContain("Productos con precio socio");
+    expect(html).toContain("Productos con precio de miembro");
     expect(html).toContain("Productos con promoción");
     expect(html).toContain("Productos prohibidos a descuento");
     expect(html).toContain("Edición masiva de productos");

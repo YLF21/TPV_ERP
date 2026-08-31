@@ -115,7 +115,7 @@ persistidos ni se duplica un evento operativo `CREADO`.
 ### Eliminación de descuentos
 
 - Solo elimina descuentos introducidos manualmente.
-- No elimina precios de socio, precios de oferta ni descuentos de oferta calculados por promociones activas.
+- No elimina precios de miembro, precios de oferta ni descuentos de oferta calculados por promociones activas.
 - Debe recalcular inmediatamente todas las líneas y el total.
 - Debe respetar la política de permisos de descuento existente.
 

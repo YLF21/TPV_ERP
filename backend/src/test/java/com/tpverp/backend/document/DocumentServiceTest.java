@@ -440,7 +440,7 @@ class DocumentServiceTest {
         when(promotionPricing.customerContext(store.getEmpresa().getId(), customerId))
                 .thenReturn(new AuthoritativePromotionPricing.CustomerContext(
                         customerId, UUID.randomUUID(), UUID.randomUUID(),
-                        "Socio", new BigDecimal("10.00")));
+                        "Miembro", new BigDecimal("10.00")));
         var command = command(CommercialDocumentType.TICKET, List.of(
                 new DocumentLineCommand(
                         productId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
@@ -466,7 +466,7 @@ class DocumentServiceTest {
         when(promotionPricing.customerContext(store.getEmpresa().getId(), customerId))
                 .thenReturn(new AuthoritativePromotionPricing.CustomerContext(
                         customerId, UUID.randomUUID(), UUID.randomUUID(),
-                        "Socio", new BigDecimal("10.00")));
+                        "Miembro", new BigDecimal("10.00")));
         var command = command(CommercialDocumentType.TICKET, List.of(
                 new DocumentLineCommand(
                         returnedProductId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
@@ -709,7 +709,7 @@ class DocumentServiceTest {
         var customerId = UUID.randomUUID();
         var quote = service.quoteTicket(
                 command(CommercialDocumentType.TICKET, List.of(
-                        line(productId, "P-MEMBER", "Producto socio", new BigDecimal("20.00"))), customerId),
+                        line(productId, "P-MEMBER", "Producto miembro", new BigDecimal("20.00"))), customerId),
                 null, null, new BigDecimal("16.67"), authentication());
 
         assertThat(quote.getTotal()).isEqualByComparingTo("3.33");
@@ -732,7 +732,7 @@ class DocumentServiceTest {
 
         assertThatThrownBy(() -> service.createTicket(
                 command(CommercialDocumentType.TICKET, List.of(
-                        line(productId, "P-MEMBER", "Producto socio", new BigDecimal("20.00"))), customerId),
+                        line(productId, "P-MEMBER", "Producto miembro", new BigDecimal("20.00"))), customerId),
                 List.of(), null, null, balance, authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("official_sync_required");
@@ -1044,7 +1044,7 @@ class DocumentServiceTest {
                 BigDecimal.ZERO, new BigDecimal("8.26"), new BigDecimal("1.74"),
                 new BigDecimal("10.00"), List.of(new DocumentLineCommand(
                         UUID.randomUUID(), BigDecimal.ONE, "P-OLD", "Precio autorizado",
-                        "SOCIO", new BigDecimal("10.00"), BigDecimal.ZERO,
+                        "MEMBER", new BigDecimal("10.00"), BigDecimal.ZERO,
                         true, "IVA", new BigDecimal("21"))
                         .withRequiresSerialNumber(false)
                         .withDiscountEligible(true)), null, null);
@@ -1062,7 +1062,7 @@ class DocumentServiceTest {
         assertThat(ticket.getBaseTotal()).isEqualByComparingTo("8.26");
         assertThat(ticket.getImpuestoTotal()).isEqualByComparingTo("1.74");
         assertThat(ticket.getLineas().getFirst().getPrecioUnitario()).isEqualByComparingTo("10.00");
-        assertThat(ticket.getLineas().getFirst().getTarifa()).isEqualTo("SOCIO");
+        assertThat(ticket.getLineas().getFirst().getTarifa()).isEqualTo("MEMBER");
         assertThat(ticket.getPagos().getFirst().getPaymentTerminalProvider())
                 .isEqualTo(PaymentTerminalProvider.GLOBAL_PAYMENTS);
         verify(productRepository, never()).findById(any());
@@ -2093,7 +2093,7 @@ class DocumentServiceTest {
                 store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
         ticket.addLine(new DocumentLine(
-                ticket, productId, 1, BigDecimal.ONE, "P", "Producto socio",
+                ticket, productId, 1, BigDecimal.ONE, "P", "Producto miembro",
                 "VENTA", new BigDecimal("100.00"), BigDecimal.ZERO,
                 true, "IVA", BigDecimal.ZERO));
         ticket.addLine(DocumentLine.special(

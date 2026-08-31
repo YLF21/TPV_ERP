@@ -364,7 +364,7 @@ public class MemberWalletBootstrapIngestionService {
                     BigDecimal.ZERO.setScale(2));
             if (loyalty.compareTo(account.getLoyaltyBalance()) != 0
                     || returnCredit.compareTo(account.getReturnCreditBalance()) != 0) {
-                return "Los saldos declarados no cuadran con los lotes efectivos del socio "
+                return "Los saldos declarados no cuadran con los lotes efectivos del miembro "
                         + account.getMemberId();
             }
         }

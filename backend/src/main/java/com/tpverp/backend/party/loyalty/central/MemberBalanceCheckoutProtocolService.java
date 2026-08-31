@@ -121,7 +121,7 @@ public class MemberBalanceCheckoutProtocolService {
             BigDecimal loyaltyAmount,
             BigDecimal returnCreditAmount) {
         LocalMemberBalanceReservation reservation = reservations.findForUpdate(reservationId)
-                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo socio no encontrada"));
+                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo del miembro no encontrada"));
         if (reservation.getStatus() != LocalMemberBalanceReservationStatus.PREPARED) {
             throw new IllegalStateException("La reserva no esta preparada para el cobro local");
         }
@@ -132,7 +132,7 @@ public class MemberBalanceCheckoutProtocolService {
             throw new IllegalStateException("Los importes no coinciden con la reserva preparada");
         }
         var member = members.findById(reservation.getMemberId())
-                .orElseThrow(() -> new NoSuchElementException("Socio de la reserva no encontrado"));
+                .orElseThrow(() -> new NoSuchElementException("Miembro de la reserva no encontrado"));
         if (!member.getCustomer().getId().equals(customerId)) {
             throw new IllegalStateException("La reserva no pertenece al cliente de la venta");
         }
@@ -145,7 +145,7 @@ public class MemberBalanceCheckoutProtocolService {
     @Transactional
     public void markTicketCommitted(UUID reservationId, UUID ticketId) {
         LocalMemberBalanceReservation reservation = reservations.findForUpdate(reservationId)
-                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo socio no encontrada"));
+                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo del miembro no encontrada"));
         if (reservation.getStatus() != LocalMemberBalanceReservationStatus.PREPARED
                 && reservation.getStatus() != LocalMemberBalanceReservationStatus.TICKET_COMMITTED
                 && reservation.getStatus() != LocalMemberBalanceReservationStatus.FINALIZE_PENDING
@@ -250,7 +250,7 @@ public class MemberBalanceCheckoutProtocolService {
 
     private LocalMemberBalanceReservation required(UUID reservationId) {
         return reservations.findById(reservationId)
-                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo socio no encontrada"));
+                .orElseThrow(() -> new NoSuchElementException("Reserva de saldo del miembro no encontrada"));
     }
 
     public boolean requiresCentralWalletCompletion(UUID reservationId) {

@@ -139,7 +139,7 @@ public class SalesReportExcelExportService {
             row.put("base", value.base());
             row.put("tax", value.impuesto());
             row.put("discount", BigDecimal.ZERO);
-            row.put("memberBalance", value.saldoSocio());
+            row.put("memberBalance", value.memberBalance());
             row.put("total", value.total());
             return row;
         }).toList();
@@ -160,7 +160,7 @@ public class SalesReportExcelExportService {
             row.put("base", value.base());
             row.put("tax", value.impuesto());
             row.put("discount", value.descuentoGlobal());
-            row.put("memberBalance", value.saldoSocio());
+            row.put("memberBalance", value.memberBalance());
             row.put("dueDate", displayDate(value.fechaVencimiento()));
             row.put("productCount", value.lineas());
             row.put("warehouse", text(value.almacenNombre(), id(value.almacenId())));

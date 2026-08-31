@@ -73,7 +73,7 @@ describe("SharedExcelImportDialog", () => {
     expect(html).toContain("Código");
     expect(html).toContain("Código de barras");
     expect(html).toContain("Los productos empiezan en la fila");
-    expect(html).toContain("Precio de socio");
+    expect(html).toContain("Precio de miembro");
     expect(html).not.toContain('value="A"');
     expect(html).not.toContain('value="F"');
     expect(html).toContain("Productos no importables (0)");
@@ -110,7 +110,7 @@ describe("SharedExcelImportDialog", () => {
 
   it("detects column mappings and update checks from the first row", () => {
     expect(detectExcelHeaderMapping([
-      ["Código", "EAN", "Descripción", "Cantidad", "Precio", "Descuento", "Precio de venta", "Precio de socio"],
+      ["Código", "EAN", "Descripción", "Cantidad", "Precio", "Descuento", "Precio de venta", "Precio de miembro"],
       ["A001", "843000000001", "Producto", 2, 4.1, 10, 10.25, 8.2]
     ])).toEqual({
       mapping: {
@@ -270,7 +270,7 @@ describe("SharedExcelImportDialog", () => {
     expect(html).toMatch(/type="checkbox" checked=""\/> Mostrar solo importados/);
     expect(html).toMatch(/type="checkbox"\/> No actualizar cuando el precio nuevo sea 0/);
     expect(html).toMatch(/type="checkbox" checked=""\/> Actualizar el proveedor del producto/);
-    expect(html).toContain('<option value="memberPrice" selected="">Precio de socio</option>');
+    expect(html).toContain('<option value="memberPrice" selected="">Precio de miembro</option>');
   });
 
   it("keeps column mappings empty until an Excel file is loaded", () => {

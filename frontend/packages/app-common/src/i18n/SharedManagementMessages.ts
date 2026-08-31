@@ -33,7 +33,7 @@ const es = {
   "sharedExcel.priceSource": "Precio del documento tomado de",
   "sharedExcel.price.purchase": "Precio de compra",
   "sharedExcel.price.sale": "Precio de venta",
-  "sharedExcel.price.member": "Precio de socio",
+  "sharedExcel.price.member": "Precio de miembro",
   "sharedExcel.price.wholesale": "Precio mayorista",
   "sharedExcel.price.offer": "Precio de oferta",
   "sharedExcel.result.summary": "Documento resumen",

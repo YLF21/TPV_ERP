@@ -112,7 +112,7 @@ public class MemberPointsBootstrapReconciliationService {
             AccountMerge current=result.get(value.getMemberId());
             if(current==null){result.put(value.getMemberId(),new AccountMerge(value.getMemberId(),points,debt,new TreeSet<>(Comparator.comparing(UUID::toString)),new ArrayList<>()));current=result.get(value.getMemberId());}
             else if(current.points().compareTo(points)!=0 || current.pointsDebt().compareTo(debt)!=0)
-                throw conflict("Socio "+value.getMemberId()+" difiere entre tiendas: "+current.points()+"/"+current.pointsDebt()+" frente a "+points+"/"+debt,
+                throw conflict("Miembro "+value.getMemberId()+" difiere entre tiendas: "+current.points()+"/"+current.pointsDebt()+" frente a "+points+"/"+debt,
                     union(current.storeIds(),Set.of(store)));
             current.storeIds().add(store); current.checksums().add(store+"|"+value.getSnapshot().getSnapshotChecksum()+"\n");
         }

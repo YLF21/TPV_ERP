@@ -38,7 +38,7 @@ describe("SalePriceConsultationDialog", () => {
       return jsonResponse({
         productId: "product-1",
         code: "P-001",
-        name: "Producto socio",
+        name: "Producto miembro",
         salePrice: 10,
         activePriceType: "MEMBER_PRICE",
         memberPrice: 8.5,
@@ -57,19 +57,19 @@ describe("SalePriceConsultationDialog", () => {
 
     await user.keyboard("{Enter}");
 
-    const productName = await screen.findByText("Producto socio");
+    const productName = await screen.findByText("Producto miembro");
     expect(productName).toBeVisible();
     expect(scannedCode.nextElementSibling).toBe(productName);
     expect(screen.getByText(/10,00/)).toBeVisible();
     expect(screen.getByText(/8,50/)).toBeVisible();
-    expect(screen.getByText("Precio socio")).toBeVisible();
+    expect(screen.getByText("Precio de miembro")).toBeVisible();
     expect(screen.queryByText("Precio oferta")).not.toBeInTheDocument();
     expect(input).toHaveValue("");
 
     await user.type(input, "SIGUIENTE");
 
     expect(screen.getByText("SIGUIENTE")).toBeVisible();
-    expect(screen.queryByText("Producto socio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Producto miembro")).not.toBeInTheDocument();
     expect(screen.queryByText("Precio de venta")).not.toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe("SalePriceConsultationDialog", () => {
     expect(screen.getByText("15%")).toBeVisible();
     expect(screen.getByText("Oferta válida hasta")).toBeVisible();
     expect(screen.getByText(/31\/0?7\/2026/)).toBeVisible();
-    expect(screen.queryByText("Precio socio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Precio de miembro")).not.toBeInTheDocument();
     expect(screen.queryByText("Precio oferta")).not.toBeInTheDocument();
   });
 

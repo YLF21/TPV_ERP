@@ -64,7 +64,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 				<printWhenExpression><![CDATA[$F{porcentaje_descuento} != null
 && $F{porcentaje_descuento}.compareTo(java.math.BigDecimal.ZERO) > 0
 && java.lang.Boolean.TRUE.equals($F{descuento_cliente_aplicado})]]></printWhenExpression>
-				<expression><![CDATA["Descuento Socio: "
+				<expression><![CDATA["Descuento de miembro: "
     + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento}) + "%"]]></expression>
 			</element>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>

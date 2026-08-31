@@ -47,7 +47,7 @@ final class CheckoutDiscountAllocator {
                 requestedAmount,
                 eligibleProductIds,
                 DocumentLineType.MEMBER_BALANCE,
-                "SALDO SOCIO",
+                "SALDO DE MIEMBRO",
                 true,
                 "member_balance");
     }

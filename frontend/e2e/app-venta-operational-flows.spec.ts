@@ -225,7 +225,7 @@ async function completeCashTicket(page: Page, request: APIRequestContext) {
 }
 
 test.describe("APP VENTA operational flows", () => {
-  test("busca con teclado, selecciona un socio y usa la cotización autoritativa", async ({ page, request }) => {
+  test("busca con teclado, selecciona un miembro y usa la cotización autoritativa", async ({ page, request }) => {
     const session = await loginApi(request);
     await discardActivePaymentSession(request, session.accessToken);
     const [products, customers] = await Promise.all([
@@ -236,7 +236,7 @@ test.describe("APP VENTA operational flows", () => {
     const customer = customers.find(candidate =>
       candidate.activeMember && Number(candidate.memberDiscountPercent ?? 0) > 0);
     test.skip(!product || !customer,
-      "La prueba necesita un producto vendible y un cliente socio con descuento");
+      "La prueba necesita un producto vendible y un cliente miembro con descuento");
 
     await openSale(page);
     await addProductWithKeyboard(page, product);

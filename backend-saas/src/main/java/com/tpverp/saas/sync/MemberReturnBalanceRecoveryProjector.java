@@ -515,7 +515,7 @@ public class MemberReturnBalanceRecoveryProjector {
                 .filter(value -> value.isPrepared()
                         || (value.isActive() && !value.isExpiredAt(now)))
                 .anyMatch(value -> !sameReservation(value, recovery));
-        if (conflictingReservation) throw conflict("Existe otra reserva activa para el socio");
+        if (conflictingReservation) throw conflict("Existe otra reserva activa para el miembro");
     }
 
     private boolean sameReservation(SaasMemberBalanceReservation reservation, Recovery recovery) {

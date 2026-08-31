@@ -75,7 +75,7 @@ public class MemberBalanceRecoveryIncidentService {
         SalePaymentSession session = sessions.findLocked(sessionId)
                 .filter(candidate -> candidate.getStoreId().equals(storeId))
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Incidencia de saldo socio no encontrada"));
+                        HttpStatus.NOT_FOUND, "Incidencia de saldo del miembro no encontrada"));
         if (session.getVersion() != expectedVersion) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,

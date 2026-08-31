@@ -40,7 +40,7 @@ configurar un metodo llamado `PENDIENTE` y nunca genera una fila en
 6. Pulse **Confirmar venta pendiente** o `Enter` con el formulario valido.
 7. Compruebe numero y estado `PENDIENTE`, e imprima el documento comercial.
 
-El backend recalcula catalogo, precio de socio, descuento por nivel,
+El backend recalcula catálogo, precio de miembro, descuento por nivel,
 promociones, impuestos y total. Ante un cambio exige revisar la cotizacion.
 La pantalla se limpia solo despues de una confirmacion correcta.
 

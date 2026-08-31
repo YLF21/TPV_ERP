@@ -15,7 +15,7 @@ producción solo porque el simulador haya terminado correctamente.
 | Conversión a factura | E2E + prueba de servicio | Un único F3, sin duplicar stock ni pagos; repetir la petición devuelve la misma factura |
 | Anulación | Pruebas de servicio | Compensaciones idempotentes, caja/vale/tarjeta coherentes y evento fiscal |
 | Devolución parcial | Pruebas de servicio | Se respetan cantidad, serie, promoción histórica y medio de pago original |
-| Promociones | Integración de documentos | Cotización autoritativa, cupón, socio y Buy-X-Pay-Y no confían en importes del cliente |
+| Promociones | Integración de documentos | Cotización autoritativa, cupón, miembro y Buy-X-Pay-Y no confían en importes del cliente |
 | Trazabilidad | Timeline operacional | Operador, autorizador, terminal y documento relacionado, sin contraseñas ni PAN |
 | Interfaz táctil | Playwright a 1280 × 800 | Sin desbordamiento, nombres accesibles y acciones de al menos 44 px |
 

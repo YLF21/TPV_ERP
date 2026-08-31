@@ -192,7 +192,7 @@ class PosCashServiceTest {
                 ticket, protectedId, 2, BigDecimal.ONE, "N", "No elegible", "VENTA",
                 new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
         ticket.addLine(DocumentLine.special(
-                ticket, 3, "SALDO SOCIO", new BigDecimal("-4.00"), true,
+                ticket, 3, "SALDO DE MIEMBRO", new BigDecimal("-4.00"), true,
                 "IVA", new BigDecimal("21.00"), null, null, null,
                 DocumentLineType.MEMBER_BALANCE));
         var request = new PosCashController.SaleRequest(
@@ -696,7 +696,7 @@ class PosCashServiceTest {
                 LocalDate.of(2026, 7, 21), UUID.randomUUID(), BigDecimal.ZERO);
         ticket.setParties(customerId, null, null);
         ticket.addLine(new DocumentLine(
-                ticket, productId, 1, new BigDecimal("2.000"), "SKU-1", "Cafe socio",
+                ticket, productId, 1, new BigDecimal("2.000"), "SKU-1", "Cafe miembro",
                 "MEMBER", new BigDecimal("10.00"), new BigDecimal("10.00"),
                 true, "IVA", new BigDecimal("21.00")));
         ticket.addLine(DocumentLine.special(
@@ -770,7 +770,7 @@ class PosCashServiceTest {
                 "IVA", new BigDecimal("21.00"), null, null, null,
                 DocumentLineType.DOCUMENT_DISCOUNT));
         ticket.addLine(DocumentLine.special(
-                ticket, 5, "SALDO SOCIO", new BigDecimal("-1.00"), true,
+                ticket, 5, "SALDO DE MIEMBRO", new BigDecimal("-1.00"), true,
                 "IVA", new BigDecimal("21.00"), null, null, null,
                 DocumentLineType.MEMBER_BALANCE));
         var request = new PosCashController.SaleRequest(

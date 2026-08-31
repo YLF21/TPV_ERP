@@ -25,7 +25,7 @@ public class ProductBulkXlsxService {
     private static final int ROW_WINDOW = 100;
     private static final String[] PRODUCT_HEADERS_ES = {
         "Codigo", "Codigo de barra", "Codigo barra 2", "Nombre", "Descripcion",
-        "Precio compra", "Descuento compra", "Precio venta", "Precio socio",
+        "Precio compra", "Descuento compra", "Precio venta", "Precio de miembro",
         "Precio mayor", "Precio oferta", "Usar precio", "Descuento oferta",
         "Oferta desde", "Oferta hasta", "Referencia proveedor", "Comentarios",
         "Producto ID", "Version", "Imagen ID", "Almacen ID", "Tipo producto",

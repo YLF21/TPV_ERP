@@ -81,7 +81,7 @@ class LocalMemberBalanceReservationServiceTest {
         when(coordinator.reserve(storeId, terminalId, memberId, "sale-reserve-404"))
                 .thenThrow(new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED, 404,
-                        "Reserva de saldo socio no encontrada"));
+                        "Reserva de saldo del miembro no encontrada"));
 
         assertThatThrownBy(() -> service.reserve(
                 storeId, terminalId, memberId, "sale-reserve-404"))
@@ -134,7 +134,7 @@ class LocalMemberBalanceReservationServiceTest {
                 reservation.getCentralReservationId(), storeId, terminalId, "sale-404"))
                 .thenThrow(new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED, 404,
-                        "Reserva de saldo socio no encontrada"));
+                        "Reserva de saldo del miembro no encontrada"));
 
         LocalMemberBalanceReservation released = service.release(
                 reservation.getId(), storeId, terminalId, "sale-404");

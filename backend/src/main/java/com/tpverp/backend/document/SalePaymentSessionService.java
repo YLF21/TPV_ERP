@@ -181,7 +181,7 @@ public class SalePaymentSessionService {
                           "member_balance_retention_requires_return", error);
               }
               LOGGER.warn(
-                      "No se pudo preparar el saldo socio de la sesion {}; se continuara sin saldo",
+                      "No se pudo preparar el saldo del miembro de la sesion {}; se continuara sin saldo",
                       id, error);
               memberBalanceFailureCode = "member_balance_unavailable";
               effectiveSale = withoutMemberBalance(sale);
@@ -336,7 +336,7 @@ public class SalePaymentSessionService {
      try {
          memberBalanceProtocol.abortPrepared(reservationId);
      } catch (RuntimeException error) {
-         LOGGER.warn("No se pudo abortar la preparacion de saldo socio {}", reservationId, error);
+         LOGGER.warn("No se pudo abortar la preparacion de saldo del miembro {}", reservationId, error);
      }
  }
  @Transactional(readOnly=true) public SalePaymentSession get(UUID id,Authentication auth){return scoped(sessions.findState(id).orElseThrow(),auth);}
@@ -972,8 +972,8 @@ public class SalePaymentSessionService {
              saved, ticket, printTicket, additionalPrintDocuments,
              nonFiscalSummary, issuedVoucher, ticket.getNumero());
  }
- public SalePaymentSession cancel(UUID id,Authentication auth){var cancelled=Objects.requireNonNull(transactions.execute(ignored->{var s=scoped(sessions.findLocked(id).orElseThrow(),auth);s.cancel();sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));try{recoverMemberBalanceAbort(id);}catch(RuntimeException error){LOGGER.warn("El aborto de saldo socio queda pendiente para la sesion {}",id,error);}return cancelled;}
- public SalePaymentSession discardSimulation(UUID id,String reason,Authentication auth){var discarded=Objects.requireNonNull(transactions.execute(ignored->{var normalizedReason=SimulatorDiscardReason.require(reason);var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var configuration=configurations.required(s.getTerminalId());if(!configuration.terminalId().equals(s.getTerminalId())||!configuration.storeId().equals(s.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(!configuration.testMode())throw new IllegalStateException("simulator_discard_requires_test_mode");s.discardSimulation(normalizedReason,requireUser(auth).getId());sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));if(discarded.getStatus()==SalePaymentSessionStatus.CANCELLED){try{recoverMemberBalanceAbort(id);}catch(RuntimeException error){LOGGER.warn("El aborto de saldo socio queda pendiente para la sesion {}",id,error);}}return discarded;}
+ public SalePaymentSession cancel(UUID id,Authentication auth){var cancelled=Objects.requireNonNull(transactions.execute(ignored->{var s=scoped(sessions.findLocked(id).orElseThrow(),auth);s.cancel();sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));try{recoverMemberBalanceAbort(id);}catch(RuntimeException error){LOGGER.warn("El aborto de saldo del miembro queda pendiente para la sesion {}",id,error);}return cancelled;}
+ public SalePaymentSession discardSimulation(UUID id,String reason,Authentication auth){var discarded=Objects.requireNonNull(transactions.execute(ignored->{var normalizedReason=SimulatorDiscardReason.require(reason);var s=scoped(sessions.findLocked(id).orElseThrow(),auth);var configuration=configurations.required(s.getTerminalId());if(!configuration.terminalId().equals(s.getTerminalId())||!configuration.storeId().equals(s.getStoreId()))throw new IllegalArgumentException("payment_terminal_configuration_scope_mismatch");if(!configuration.testMode())throw new IllegalStateException("simulator_discard_requires_test_mode");s.discardSimulation(normalizedReason,requireUser(auth).getId());sales.releaseTemporaryPriceAuthorizations("PAYMENT_SESSION",id);return sessions.save(s);}));if(discarded.getStatus()==SalePaymentSessionStatus.CANCELLED){try{recoverMemberBalanceAbort(id);}catch(RuntimeException error){LOGGER.warn("El aborto de saldo del miembro queda pendiente para la sesion {}",id,error);}}return discarded;}
 
  public void recoverMemberBalanceFinalization(UUID sessionId) {
      var session = transactions.execute(ignored -> sessions.findState(sessionId).orElse(null));
@@ -1095,7 +1095,7 @@ public class SalePaymentSessionService {
                  session.getMemberBalanceReservationId(), session.getTicketId());
      } catch (RuntimeException error) {
          LOGGER.warn(
-                 "El ticket {} esta confirmado; su saldo socio queda pendiente de sincronizar",
+                 "El ticket {} esta confirmado; su saldo del miembro queda pendiente de sincronizar",
                  session.getTicketId(), error);
      }
  }
@@ -1472,7 +1472,7 @@ public class SalePaymentSessionService {
                  Objects.requireNonNull(returnCreditAmount));
      } catch (RuntimeException error) {
          LOGGER.warn(
-                 "No se pudo preparar el monedero del socio para la sesion {}",
+                 "No se pudo preparar el monedero del miembro para la sesion {}",
                  session.getId(), error);
          throw error;
      }

@@ -17,7 +17,7 @@ public record TicketReportView(
         BigDecimal total,
         BigDecimal effectiveTotal,
         BigDecimal descuentoGlobal,
-        BigDecimal saldoSocio,
+        BigDecimal memberBalance,
         UUID customerId,
         String customerCode,
         String customerName,
