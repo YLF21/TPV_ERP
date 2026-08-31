@@ -176,6 +176,7 @@ export function TableLayoutHeaderCell<Key extends string>({
   const classes = [
     "table-layout-header-cell",
     className,
+    onSort ? "sortable" : "",
     columnMenuEnabled ? "has-column-menu" : "",
     movable ? "movable" : "fixed",
     dragging ? "dragging" : "",

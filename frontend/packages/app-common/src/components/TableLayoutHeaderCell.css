@@ -149,6 +149,20 @@
 .stock-screen .table-layout-header-controls { width: 100% !important; max-width: 100%; margin: 0 !important; padding: 0 !important; box-sizing: border-box; }
 .report-screen .table-layout-header-controls .table-layout-sort-button,
 .stock-screen .table-layout-header-controls .table-layout-sort-button { width: 100%; max-width: 100%; margin: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; box-sizing: border-box; }
+.stock-screen .stock-header-cell > .table-layout-sort-button {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
+.stock-screen .stock-row-head > .stock-header-cell {
+  align-self: stretch;
+  margin-left: -6px;
+  padding-left: 6px;
+}
+.stock-screen .stock-row-head > .stock-header-cell + .stock-header-cell::before {
+  left: 0;
+}
 .report-screen .table-layout-header-actions,
 .stock-screen .table-layout-header-actions { position: absolute; z-index: 2; top: 50%; right: 0; transform: translateY(-50%); }
 .report-screen .table-layout-sort-indicator { position: absolute; right: 54px; }
@@ -186,6 +200,29 @@
 .table-layout-header-action { display: inline-flex; align-items: center; flex: 0 0 auto; margin-left: 2px; }
 .table-layout-sort-button:hover,
 .table-layout-sort-button:focus-visible { background: rgba(255, 255, 255, .12); outline: 2px solid rgba(255, 255, 255, .7); outline-offset: -2px; }
+
+/* Fill the complete interactive cell. A background layer is used instead of a
+   pseudo-element because stock grids already reserve ::before for dividers. */
+.table-layout-header-cell.sortable:hover,
+.table-layout-header-cell.sortable:focus-within,
+.stock-screen .table-layout-header-cell:hover,
+.stock-screen .table-layout-header-cell:focus-visible,
+.stock-screen .table-layout-header-cell:focus-within,
+:is(th, [role="columnheader"]):not(.table-layout-header-cell):has(> .table-layout-sort-button):hover,
+:is(th, [role="columnheader"]):not(.table-layout-header-cell):has(> .table-layout-sort-button):focus-within {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 12%, transparent),
+    color-mix(in srgb, currentColor 12%, transparent)
+  ) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent) !important;
+}
+
+.table-layout-header-cell.sortable:hover .table-layout-sort-button:not(:focus-visible),
+.stock-screen .table-layout-header-cell:hover .table-layout-sort-button:not(:focus-visible),
+:is(th, [role="columnheader"]):not(.table-layout-header-cell):has(> .table-layout-sort-button):hover > .table-layout-sort-button:not(:focus-visible) {
+  background: transparent;
+  outline: none;
+}
 
 .sale-cart-table .table-layout-drag-handle { display: none; }
 .sale-cart-table .table-layout-header-cell.movable > .table-layout-header-label { padding-left: 0; }

@@ -2,12 +2,42 @@
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 
 afterEach(cleanup);
 
+const tableLayoutHeaderCss = readFileSync(
+  resolve(process.cwd(), "packages/app-common/src/components/TableLayoutHeaderCell.css"),
+  "utf8"
+);
+
 describe("TableLayoutHeaderCell sorting", () => {
+  it("keeps direct stock sort labels inside clipped header cells", () => {
+    expect(tableLayoutHeaderCss).toMatch(
+      /\.stock-screen \.stock-header-cell > \.table-layout-sort-button \{[\s\S]*?margin: 0;[\s\S]*?box-sizing: border-box;/
+    );
+  });
+
+  it("fills the complete configurable header cell across APP VENTA stock tables", () => {
+    expect(tableLayoutHeaderCss).toMatch(
+      /\.stock-screen \.stock-row-head > \.stock-header-cell \{[\s\S]*?align-self: stretch;[\s\S]*?margin-left: -6px;[\s\S]*?padding-left: 6px;/
+    );
+    expect(tableLayoutHeaderCss).toMatch(
+      /\.stock-screen \.stock-row-head > \.stock-header-cell \+ \.stock-header-cell::before \{[\s\S]*?left: 0;/
+    );
+    expect(tableLayoutHeaderCss).toContain(
+      ".stock-screen .table-layout-header-cell:hover"
+    );
+    expect(tableLayoutHeaderCss).toMatch(
+      /\.stock-screen \.table-layout-header-cell:hover,[\s\S]*?background-image: linear-gradient\([\s\S]*?box-shadow: inset 0 0 0 1px/
+    );
+    expect(tableLayoutHeaderCss).not.toContain("-6px 0 0 color-mix");
+    expect(tableLayoutHeaderCss).not.toContain(".table-layout-header-cell.sortable::before");
+  });
+
   it("provides a dedicated drag handle so sorting controls do not block column reordering", () => {
     const onReorder = vi.fn();
     const stored = new Map<string, string>();
@@ -69,6 +99,7 @@ describe("TableLayoutHeaderCell sorting", () => {
 
     const button = screen.getByRole("button", { name: "Ordenar por nombre" });
     expect(screen.getByRole("columnheader")).toHaveAttribute("aria-sort", "none");
+    expect(screen.getByRole("columnheader")).toHaveClass("sortable");
     expect(button).toHaveTextContent("\u2195");
     expect(button).toHaveAttribute("data-sort-direction", "none");
     fireEvent.click(button);
