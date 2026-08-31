@@ -2179,7 +2179,7 @@ function productTypeFromExcel(value: string): ProductCreateFormState["productTyp
 
 function priceUseModeFromExcel(value: string): ProductCreateFormState["priceUseMode"] {
   const normalized = normalizeExcelOption(value);
-  if (["MEMBER_PRICE", "MEMBER", "SOCIO", "PRECIO_SOCIO"].includes(normalized)) return "MEMBER_PRICE";
+  if (["MEMBER_PRICE", "MEMBER", "MIEMBRO", "PRECIO_MIEMBRO", "PRECIO_DE_MIEMBRO"].includes(normalized)) return "MEMBER_PRICE";
   if (["OFFER_PRICE", "OFERTA", "PRECIO_OFERTA"].includes(normalized)) return "OFFER_PRICE";
   if (["OFFER_DISCOUNT", "DESCUENTO_OFERTA"].includes(normalized)) return "OFFER_DISCOUNT";
   return "NORMAL";
@@ -2188,7 +2188,7 @@ function priceUseModeFromExcel(value: string): ProductCreateFormState["priceUseM
 function discountTypeFromExcel(value: string): ProductCreateFormState["discountType"] {
   const normalized = normalizeExcelOption(value);
   if (["1", "TRUE", "SI", "YES", "NONE", "NO_APLICAR", "PROHIBIDO"].includes(normalized)) return "NONE";
-  if (["MEMBER_PRICE", "SOCIO"].includes(normalized)) return "MEMBER_PRICE";
+  if (["MEMBER_PRICE", "MIEMBRO", "PRECIO_MIEMBRO", "PRECIO_DE_MIEMBRO"].includes(normalized)) return "MEMBER_PRICE";
   if (["DISCOUNT_PRICE", "OFERTA", "DESCUENTO"].includes(normalized)) return "DISCOUNT_PRICE";
   return "NORMAL";
 }

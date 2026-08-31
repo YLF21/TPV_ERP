@@ -268,7 +268,7 @@ class DevSampleDataSeederPostgreSqlTest {
 
     @Test
     void seedsProductsForTheSupportedDemoPricingScenarios() {
-        assertProductPricing("DEV-CAFE-SOCIO", "MEMBER_PRICE", "MEMBER_PRICE",
+        assertProductPricing("DEV-CAFE-MIEMBRO", "MEMBER_PRICE", "MEMBER_PRICE",
                 "9.90", "7.50", null, null);
         assertProductPricing("DEV-ZUMO-OFERTA", "DISCOUNT_PRICE", "OFFER_PRICE",
                 "2.80", null, "2.10", null);

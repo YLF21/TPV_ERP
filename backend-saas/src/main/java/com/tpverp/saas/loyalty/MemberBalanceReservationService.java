@@ -229,7 +229,7 @@ public class MemberBalanceReservationService {
         }
         if (active != null) {
             if (!active.belongsTo(installation.getId(), request.terminalId().trim(), request.saleId().trim())) {
-                throw reservationConflict("El saldo del socio esta reservado temporalmente en otra caja");
+                throw reservationConflict("El saldo del miembro esta reservado temporalmente en otra caja");
             }
             active.renew(now, LEASE_DURATION);
             return response(active, account);
@@ -246,7 +246,7 @@ public class MemberBalanceReservationService {
                 .map(SaasMemberBalanceLot::getRemainingAmount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         if (available.signum() <= 0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "El socio no dispone de saldo utilizable");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "El miembro no dispone de saldo utilizable");
         }
 
         SaasMemberBalanceReservation reservation = reservations.save(new SaasMemberBalanceReservation(
@@ -419,7 +419,7 @@ public class MemberBalanceReservationService {
         }
         if (active != null) {
             if (!active.belongsTo(installation.getId(), request.terminalId().trim(), request.saleId().trim())) {
-                throw reservationConflict("El monedero del socio esta reservado temporalmente en otra caja");
+                throw reservationConflict("El monedero del miembro esta reservado temporalmente en otra caja");
             }
             active.renew(now, LEASE_DURATION);
             if (!request.retentionClaims().isEmpty()) {
@@ -784,7 +784,7 @@ public class MemberBalanceReservationService {
             throw conflict("El snapshot de retencion es invalido");
         }
         if (!reservation.getAccount().getMemberId().equals(snapshot.memberId())) {
-            throw conflict("El snapshot de retencion no pertenece al socio de la reserva");
+            throw conflict("El snapshot de retencion no pertenece al miembro de la reserva");
         }
         if (snapshot.returnDocumentId() == null) {
             throw conflict("El snapshot de retencion requiere returnDocumentId");
@@ -964,7 +964,7 @@ public class MemberBalanceReservationService {
 
     private SaasMemberBalanceAccount accountForUpdate(UUID companyId, UUID memberId) {
         return accounts.findForUpdate(companyId, memberId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Socio no encontrado en SaaS"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Miembro no encontrado en SaaS"));
     }
 
     private SaasMemberBalanceReservation reservation(UUID reservationId) {
@@ -1520,10 +1520,10 @@ public class MemberBalanceReservationService {
             Set<UUID> memberIds,
             Set<UUID> lotIds) {
         if (account == null || account.memberId() == null || account.balance() == null || account.points() == null) {
-            throw invalid("Cuenta de socio incompleta en bootstrap");
+            throw invalid("Cuenta de miembro incompleta en bootstrap");
         }
         if (!memberIds.add(account.memberId())) {
-            throw invalid("Socio duplicado en bootstrap: " + account.memberId());
+            throw invalid("Miembro duplicado en bootstrap: " + account.memberId());
         }
         BigDecimal balance = money(account.balance());
         BigDecimal points = points(account.points());
@@ -1551,7 +1551,7 @@ public class MemberBalanceReservationService {
             lotTotal = lotTotal.add(amount);
         }
         if (lotTotal.compareTo(balance) != 0) {
-            throw invalid("El saldo del socio no coincide con la suma de sus lotes: " + account.memberId());
+            throw invalid("El saldo del miembro no coincide con la suma de sus lotes: " + account.memberId());
         }
     }
 

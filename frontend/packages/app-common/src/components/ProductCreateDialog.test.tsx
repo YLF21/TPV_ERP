@@ -492,12 +492,12 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Usar precio");
     expect(html).toContain("Precio venta");
     expect(html).toContain("No aplicar descuento");
-    expect(html).toContain("bloquea precio socio");
+    expect(html).toContain("bloquea precio de miembro");
     expect(html).toContain("el precio mayorista sí está permitido");
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain('aria-describedby="product-no-discount-description"');
     expect(html).toContain('id="product-no-discount-description"');
-    expect(html).toContain("Precio socio");
+    expect(html).toContain("Precio de miembro");
     expect(html).toContain("Precio oferta");
     expect(html).toContain("Descuento oferta");
     expect(html).toContain("required");

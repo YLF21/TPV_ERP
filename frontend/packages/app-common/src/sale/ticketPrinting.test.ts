@@ -229,11 +229,11 @@ describe("confirmed ticket printing", () => {
       memberBalance: 4.85,
       discount: 1,
       total: 1.15,
-      labels: expect.objectContaining({ memberBalance: "Saldo socio" }),
-      escposLabels: expect.objectContaining({ memberBalance: "Saldo socio" }),
+      labels: expect.objectContaining({ memberBalance: "Saldo de miembro" }),
+      escposLabels: expect.objectContaining({ memberBalance: "Saldo de miembro" }),
     }));
     expect(buildTicketBuffer(request).toString("latin1"))
-      .toContain("Saldo socio                          -4.85");
+      .toContain(`Saldo de miembro${" ".repeat(21)}-4.85`);
   });
 
   it("prints confirmed tickets even when a legacy route disabled automatic printing", async () => {

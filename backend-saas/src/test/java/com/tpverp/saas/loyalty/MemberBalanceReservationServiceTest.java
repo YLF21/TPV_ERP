@@ -641,7 +641,7 @@ class MemberBalanceReservationServiceTest {
         assertThatThrownBy(() -> service.finalizePreparedWallet(
                 reservation.getId(), request, "token"))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .hasMessageContaining("socio");
+                .hasMessageContaining("miembro");
         assertThat(reservation.getStatus()).isEqualTo(SaasMemberBalanceReservation.PREPARED);
         assertThat(account.getBalance()).isEqualByComparingTo("10.00");
         assertThat(lot.getRemainingAmount()).isEqualByComparingTo("10.00");

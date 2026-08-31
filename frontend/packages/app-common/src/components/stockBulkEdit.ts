@@ -200,7 +200,7 @@ const excelFields: Array<{ keys: string[]; field: keyof StockInventoryRow }> = [
   { keys: ["precio compra", "purchase price"], field: "purchasePrice" },
   { keys: ["descuento compra", "purchase discount"], field: "purchaseDiscountPercent" },
   { keys: ["precio venta", "sale price"], field: "salePrice" },
-  { keys: ["precio socio", "member price"], field: "memberPrice" },
+  { keys: ["precio de miembro", "precio miembro", "member price"], field: "memberPrice" },
   { keys: ["precio mayor", "wholesale price"], field: "wholesalePrice" },
   { keys: ["precio oferta", "offer price"], field: "offerPrice" },
   { keys: ["usar precio", "price use"], field: "discountType" },

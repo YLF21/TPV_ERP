@@ -367,12 +367,12 @@ public class MemberCategoryBootstrapService {
                                     selected.assignmentAction()));
             if (contradiction) {
                 return new MergeAssignments(List.of(),
-                        "Empate contradictorio en la asignacion manual del socio "
+                        "Empate contradictorio en la asignacion manual del miembro "
                                 + entry.getKey());
             }
             if (!selected.lockKnown()) {
                 return new MergeAssignments(List.of(),
-                        "No se puede reconstruir lockAutomatic del socio "
+                        "No se puede reconstruir lockAutomatic del miembro "
                                 + entry.getKey());
             }
             merged.add(selected);

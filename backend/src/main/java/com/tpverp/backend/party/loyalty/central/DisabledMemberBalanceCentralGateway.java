@@ -87,6 +87,6 @@ public class DisabledMemberBalanceCentralGateway implements MemberBalanceCentral
     private MemberBalanceCentralException unavailable() {
         return new MemberBalanceCentralException(
                 MemberBalanceCentralException.Kind.UNAVAILABLE,
-                "El servicio central de saldo socio no esta configurado");
+                "El servicio central de saldo del miembro no esta configurado");
     }
 }

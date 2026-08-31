@@ -563,7 +563,7 @@
 		</element>
 				<element kind="staticText" uuid="73000000-0000-4000-8000-000000000001" x="315" y="48" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[$F{memberBalanceTotal} != null && $F{memberBalanceTotal}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
-			<text><![CDATA[Saldo socio]]></text>
+			<text><![CDATA[Saldo de miembro]]></text>
 		</element>
 		<element kind="textField" uuid="73000000-0000-4000-8000-000000000002" x="460" y="48" width="95" height="14" fontName="SansSerif" fontSize="8.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[$F{memberBalanceTotal} != null && $F{memberBalanceTotal}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>

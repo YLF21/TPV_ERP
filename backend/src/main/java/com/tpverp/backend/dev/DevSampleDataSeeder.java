@@ -342,8 +342,8 @@ public class DevSampleDataSeeder {
         }
         product(PRODUCT_A, "DEV-CAFE", "8410000000011", "Cafe molido pruebas", "3.50", "12.10");
         product(PRODUCT_B, "DEV-AGUA", "8410000000028", "Agua mineral pruebas", "1.20", "6.05");
-        pricedProduct(PRODUCT_MEMBER, "DEV-CAFE-SOCIO", "8410000000035",
-                "Cafe premium precio socio", "4.20", "9.90", "7.50", null,
+        pricedProduct(PRODUCT_MEMBER, "DEV-CAFE-MIEMBRO", "8410000000035",
+                "Cafe premium precio de miembro", "4.20", "9.90", "7.50", null,
                 "MEMBER_PRICE", "MEMBER_PRICE", false, null);
         pricedProduct(PRODUCT_OFFER, "DEV-ZUMO-OFERTA", "8410000000042",
                 "Zumo naranja en oferta", "1.10", "2.80", null, "2.10",
@@ -589,11 +589,11 @@ public class DevSampleDataSeeder {
         memberCategory("PLATA", "Plata", "10.00", 200);
         memberCategory("ORO", "Oro", "15.00", 300);
         demoMember(CUSTOMER_BRONZE, "CLIENTE BRONCE DEMO", "11111111H",
-                "C-001-999002", "BRONCE", "M-001-999002", "SOCIO-BRONCE-001");
+                "C-001-999002", "BRONCE", "M-001-999002", "MIEMBRO-BRONCE-001");
         demoMember(CUSTOMER_SILVER, "CLIENTE PLATA DEMO", "22222222J",
-                "C-001-999003", "PLATA", "M-001-999003", "SOCIO-PLATA-001");
+                "C-001-999003", "PLATA", "M-001-999003", "MIEMBRO-PLATA-001");
         demoMember(CUSTOMER_GOLD, "CLIENTE ORO DEMO", "33333333P",
-                "C-001-999004", "ORO", "M-001-999004", "SOCIO-ORO-001");
+                "C-001-999004", "ORO", "M-001-999004", "MIEMBRO-ORO-001");
         for (int index = 1; index <= DEMO_CUSTOMERS; index++) {
             seedDemoCustomer(index);
         }
@@ -770,7 +770,7 @@ public class DevSampleDataSeeder {
                 insert into cliente
                     (id, empresa_id, nombre_fiscal, tipo_documento, numero_documento,
                      observaciones, tarifa, descuento, client_id, client_code_store_id)
-                values (?, ?, ?, 'NIF', ?, 'Socio de demostracion para pruebas de descuento',
+                values (?, ?, ?, 'NIF', ?, 'Miembro de demostracion para pruebas de descuento',
                         'VENTA', 0, ?, ?)
                 on conflict (id) do update
                 set nombre_fiscal = excluded.nombre_fiscal,
@@ -1160,7 +1160,7 @@ public class DevSampleDataSeeder {
                 PRODUCT_B, 48, "1.20", 1);
         seedWarehouseInput(
                 "warehouse-input-900003", warehouseNumber("ENT", "900003"), TODAY.minusDays(2),
-                "COMPRA PROMOCIONAL", "Entrada para campaña de socios",
+                "COMPRA PROMOCIONAL", "Entrada para campaña de miembros",
                 PRODUCT_MEMBER, 12, "4.20", 2);
         seedWarehouseInput(
                 "warehouse-input-900004", warehouseNumber("ENT", "900004"), TODAY.minusDays(4),

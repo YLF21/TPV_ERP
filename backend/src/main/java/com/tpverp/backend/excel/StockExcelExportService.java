@@ -548,7 +548,7 @@ public class StockExcelExportService {
         return translate(value, language, Map.of(
                 "NONE", List.of("Sin descuento", "No discount", "无折扣"),
                 "NORMAL", List.of("Normal", "Normal", "普通"),
-                "MEMBER_PRICE", List.of("Precio socio", "Member price", "会员价"),
+                "MEMBER_PRICE", List.of("Precio de miembro", "Precio miembro", "Member price", "会员价"),
                 "OFFER_PRICE", List.of("Precio oferta", "Offer price", "优惠价"),
                 "OFFER_DISCOUNT", List.of("Descuento oferta", "Offer discount", "优惠折扣")));
     }

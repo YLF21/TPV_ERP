@@ -246,7 +246,7 @@ describe("stock bulk edit", () => {
     readSheetMock.mockResolvedValueOnce([
       [
         "Codigo", "Nombre", "Descripcion", "Precio compra", "Descuento compra",
-        "Precio venta", "Precio socio", "Precio mayor", "Precio oferta", "Usar precio",
+        "Precio venta", "Precio de miembro", "Precio mayor", "Precio oferta", "Usar precio",
         "Descuento oferta", "Oferta desde", "Oferta hasta", "Comentarios", "Familia ID",
         "Familia", "Subfamilia ID", "Subfamilia", "Impuesto ID", "Impuesto",
         "Impuestos incluidos", "Oferta activa"

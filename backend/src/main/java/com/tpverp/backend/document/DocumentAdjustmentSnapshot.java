@@ -52,8 +52,8 @@ public record DocumentAdjustmentSnapshot(
         return new DocumentAdjustmentSnapshot(
                 adjustment.getTipo(), adjustment.getOrden(), adjustment.getPorcentaje(),
                 adjustment.getBaseElegible(), adjustment.getImporteAplicado(),
-                adjustment.getUsuarioId(), adjustment.getCreadoEn(), adjustment.getSocioId(),
-                adjustment.getCategoriaSocioId(), adjustment.getCategoriaSocioNombre(), links);
+                adjustment.getUsuarioId(), adjustment.getCreadoEn(), adjustment.getMemberId(),
+                adjustment.getMemberCategoryId(), adjustment.getMemberCategoryName(), links);
     }
 
     void restore(CommercialDocument document) {

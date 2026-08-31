@@ -125,7 +125,7 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
                         current.memberId, current.accountLoyaltyBalance, now);
                 return current.response();
             }
-            throw reservationConflict("El saldo del socio ya esta reservado en otra caja o venta");
+            throw reservationConflict("El saldo del miembro ya esta reservado en otra caja o venta");
         }
 
         AvailableWallet wallet = availableWallet(request.memberId(), now);
@@ -292,7 +292,7 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
 
     private void refreshOfficialLoyaltyBalance(UUID memberId, BigDecimal balance, Instant now) {
         var member = members.findById(memberId)
-                .orElseThrow(() -> rejected("Socio no encontrado"));
+                .orElseThrow(() -> rejected("Miembro no encontrado"));
         member.refreshOfficialBalance(balance, now);
     }
 
@@ -348,7 +348,7 @@ public class DevMemberBalanceCentralGateway implements MemberBalanceCentralGatew
 
     private DevReservation restore(LocalMemberBalanceReservation local) {
         var member = members.findById(local.getMemberId())
-                .orElseThrow(() -> rejected("Socio no encontrado"));
+                .orElseThrow(() -> rejected("Miembro no encontrado"));
         return DevReservation.restore(
                 local,
                 member.getCustomer().getCompany().getId());

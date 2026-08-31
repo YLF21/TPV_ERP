@@ -175,7 +175,7 @@ class TicketPrintViewTest {
                 document, 2, new BigDecimal("-4.00"), true,
                 "IVA", new BigDecimal("21.00")));
         document.addLine(DocumentLine.special(
-                document, 3, "SALDO SOCIO", new BigDecimal("-6.00"), true,
+                document, 3, "SALDO DE MIEMBRO", new BigDecimal("-6.00"), true,
                 "IVA", new BigDecimal("21.00"), null, null, null,
                 DocumentLineType.MEMBER_BALANCE));
         document.confirm("001-260809-000001", UUID.randomUUID(),

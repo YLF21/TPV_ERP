@@ -101,7 +101,7 @@ function buildRasterDocumentBuffer(raster, configuredAdditionalLines = 0) {
 
 function buildTicketBuffer(ticket, configuredAdditionalLines = 0) {
   const suppliedLabels = ticket.escposLabels || ticket.labels;
-  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", memberBalance: "Saldo socio", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
+  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", memberBalance: "Saldo de miembro", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
   const raw = ticket.escposContent;
   const giftReceipt = ticket.layout === "GIFT_RECEIPT";
   const cancellationReceipt = ticket.layout === "CANCELLATION_RECEIPT";

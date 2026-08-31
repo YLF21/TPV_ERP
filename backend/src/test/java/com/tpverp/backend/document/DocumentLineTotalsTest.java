@@ -19,7 +19,7 @@ class DocumentLineTotalsTest {
                 null, new BigDecimal("20.00"), BigDecimal.ZERO, true,
                 "IVA", new BigDecimal("21.00")));
         document.addLine(DocumentLine.special(
-                document, 2, "SALDO SOCIO", new BigDecimal("-6.00"), true,
+                document, 2, "SALDO DE MIEMBRO", new BigDecimal("-6.00"), true,
                 "IVA", new BigDecimal("21.00"), null, null, null,
                 DocumentLineType.MEMBER_BALANCE));
 

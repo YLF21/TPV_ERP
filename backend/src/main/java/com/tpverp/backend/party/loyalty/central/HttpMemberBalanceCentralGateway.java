@@ -284,7 +284,7 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
             } catch (Exception exception) {
                 throw new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.INVALID_RESPONSE,
-                        "SaaS devolvio una respuesta de saldo socio invalida",
+                        "SaaS devolvio una respuesta de saldo del miembro invalida",
                         exception);
             }
         }
@@ -383,7 +383,7 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
         } catch (Exception exception) {
             throw new MemberBalanceCentralException(
                     MemberBalanceCentralException.Kind.UNAVAILABLE,
-                    "No se pudo contactar con el servicio central de saldo socio",
+                        "No se pudo contactar con el servicio central de saldo del miembro",
                     exception);
         }
     }
@@ -401,7 +401,7 @@ public class HttpMemberBalanceCentralGateway implements MemberBalanceCentralGate
         if (initialReservation && status == 409
                 && "MEMBER_BALANCE_RESERVED_ELSEWHERE".equals(code)) {
             return new MemberBalanceReservationConflictException(
-                    detail == null ? "El saldo del socio esta reservado en otra caja" : detail,
+                    detail == null ? "El saldo del miembro esta reservado en otra caja" : detail,
                     status,
                     null);
         }

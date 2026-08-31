@@ -244,7 +244,7 @@ public class MemberWalletSyncProjector {
         if (allocatedPending.signum() > 0) {
             SaasMemberBalanceAccount account = accounts
                     .findForUpdate(companyId, creation.memberId())
-                    .orElseThrow(() -> conflict("Cuenta de socio no encontrada para retencion"));
+                    .orElseThrow(() -> conflict("Cuenta de miembro no encontrada para retencion"));
             existingLot.consume(allocatedPending);
             account.debit(creation.balanceType(), allocatedPending, now);
         }

@@ -103,7 +103,7 @@ class MemberBalanceCheckoutProtocolServiceTest {
         when(coordinator.release(any(), any(), any(), any()))
                 .thenThrow(new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED, 404,
-                        "Reserva de saldo socio no encontrada"));
+                        "Reserva de saldo del miembro no encontrada"));
         when(reservations.save(reservation)).thenReturn(reservation);
         var service = new MemberBalanceCheckoutProtocolService(
                 reservations, coordinator, mock(MemberRepository.class), Clock.systemUTC());
@@ -167,7 +167,7 @@ class MemberBalanceCheckoutProtocolServiceTest {
         when(coordinator.abortPrepared(centralId, storeId, terminalId, "sale-prepared-404", operationId))
                 .thenThrow(new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED, 404,
-                        "Reserva de saldo socio no encontrada"));
+                        "Reserva de saldo del miembro no encontrada"));
         when(reservations.save(reservation)).thenReturn(reservation);
         var service = new MemberBalanceCheckoutProtocolService(
                 reservations, coordinator, mock(MemberRepository.class), Clock.systemUTC());
@@ -233,7 +233,7 @@ class MemberBalanceCheckoutProtocolServiceTest {
                 any(), eq(java.math.BigDecimal.ZERO), eq(java.math.BigDecimal.ZERO), any(Long.class), any()))
                 .thenThrow(new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED, 404,
-                        "Reserva de saldo socio no encontrada"));
+                        "Reserva de saldo del miembro no encontrada"));
         var service = new MemberBalanceCheckoutProtocolService(
                 reservations, coordinator, mock(MemberRepository.class), Clock.systemUTC());
 
@@ -266,7 +266,7 @@ class MemberBalanceCheckoutProtocolServiceTest {
         when(coordinator.finalizePrepared(centralId, storeId, terminalId, "sale-finalize-404", operationId, null))
                 .thenThrow(new MemberBalanceCentralException(
                         MemberBalanceCentralException.Kind.REJECTED, 404,
-                        "Reserva de saldo socio no encontrada"));
+                        "Reserva de saldo del miembro no encontrada"));
         var service = new MemberBalanceCheckoutProtocolService(
                 reservations, coordinator, mock(MemberRepository.class), Clock.systemUTC());
 

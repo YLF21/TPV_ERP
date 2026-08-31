@@ -114,7 +114,7 @@ public class MemberPointsBootstrapProgressService {
             var existing = officialAccounts.findById(id);
             if (existing.isPresent()) {
                 throw new IllegalStateException(
-                        "El socio aparece repetido en el snapshot oficial");
+                        "El miembro aparece repetido en el snapshot oficial");
             }
             staged.add(new MemberPointsOfficialSnapshotAccount(
                     snapshotId,

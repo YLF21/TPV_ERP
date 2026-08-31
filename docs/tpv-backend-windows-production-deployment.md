@@ -1,7 +1,7 @@
 # Despliegue productivo del backend TPV ERP en Windows
 
 Este procedimiento prepara y verifica el backend `4.2.0` con capacidad
-`VERIFACTU_ONLY` y esquema esperado `V233` (parametrizable si cambia). Es deliberadamente conservador:
+`VERIFACTU_ONLY` y esquema esperado `V234` (parametrizable si cambia). Es deliberadamente conservador:
 no descarga WinSW, no escribe secretos, no arranca el backend y no instala un
 servicio durante el preflight.
 
@@ -11,7 +11,7 @@ El bundle debe contener un único fat JAR, su sidecar `JAR.sha256`,
 `META-INF/tpv-erp-release.properties` y el PDF legal versionado dentro del
 JAR en `META-INF/fiscal/declaracion-responsable-4.2.0.pdf`. El manifiesto debe
 tener `release.id=tpv-erp-4.2.0`, `system.version=4.2.0`,
-`capability=VERIFACTU_ONLY`, `schema.version=V233`, `release.sequence=1`,
+`capability=VERIFACTU_ONLY`, `schema.version=V234`, `release.sequence=1`,
 `build.sequence=1`, un `commit.hash`,
 `declaration.hash` y un `manifest.hash` coherente. El verificador compara todos
 los hashes y la firma `%PDF-`; nunca imprime contraseñas, tokens ni contenido

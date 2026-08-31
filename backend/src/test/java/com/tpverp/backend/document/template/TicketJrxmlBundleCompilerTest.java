@@ -63,10 +63,9 @@ class TicketJrxmlBundleCompilerTest {
                             .contains("FROM documento_ajuste da")
                             .contains("da.tipo = 'MEMBER_PERCENT'")
                             .contains("da.tipo = 'MANUAL_PERCENT'")
-                            .contains("Descuento Socio (")
+                            .contains("Descuento de miembro (")
                             .contains("Descuento documento (")
                             .contains("<![CDATA[\"Descuento:\"]]>")
-                            .doesNotContain("c.descuento AS porcentaje_descuento_socio")
                             .doesNotContain("Descuento Adicional");
                 });
     }

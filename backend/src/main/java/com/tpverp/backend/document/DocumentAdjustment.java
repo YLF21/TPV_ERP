@@ -37,12 +37,12 @@ public class DocumentAdjustment {
     private UUID usuarioId;
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
-    @Column(name = "socio_id")
-    private UUID socioId;
-    @Column(name = "categoria_socio_id")
-    private UUID categoriaSocioId;
-    @Column(name = "categoria_socio_nombre", length = 160)
-    private String categoriaSocioNombre;
+    @Column(name = "member_id")
+    private UUID memberId;
+    @Column(name = "member_category_id")
+    private UUID memberCategoryId;
+    @Column(name = "member_category_name", length = 160)
+    private String memberCategoryName;
 
     protected DocumentAdjustment() {
     }
@@ -56,9 +56,9 @@ public class DocumentAdjustment {
             BigDecimal importeAplicado,
             UUID usuarioId,
             Instant creadoEn,
-            UUID socioId,
-            UUID categoriaSocioId,
-            String categoriaSocioNombre) {
+            UUID memberId,
+            UUID memberCategoryId,
+            String memberCategoryName) {
         this.id = UUID.randomUUID();
         this.documento = Objects.requireNonNull(documento, "documento");
         this.tipo = Objects.requireNonNull(tipo, "tipo");
@@ -68,9 +68,9 @@ public class DocumentAdjustment {
         this.importeAplicado = Money.euros(Objects.requireNonNull(importeAplicado, "importeAplicado"));
         this.usuarioId = usuarioId;
         this.creadoEn = Objects.requireNonNull(creadoEn, "creadoEn");
-        this.socioId = socioId;
-        this.categoriaSocioId = categoriaSocioId;
-        this.categoriaSocioNombre = categoriaSocioNombre;
+        this.memberId = memberId;
+        this.memberCategoryId = memberCategoryId;
+        this.memberCategoryName = memberCategoryName;
     }
 
     public UUID getId() { return id; }
@@ -81,7 +81,7 @@ public class DocumentAdjustment {
     public BigDecimal getImporteAplicado() { return importeAplicado; }
     public UUID getUsuarioId() { return usuarioId; }
     public Instant getCreadoEn() { return creadoEn; }
-    public UUID getSocioId() { return socioId; }
-    public UUID getCategoriaSocioId() { return categoriaSocioId; }
-    public String getCategoriaSocioNombre() { return categoriaSocioNombre; }
+    public UUID getMemberId() { return memberId; }
+    public UUID getMemberCategoryId() { return memberCategoryId; }
+    public String getMemberCategoryName() { return memberCategoryName; }
 }

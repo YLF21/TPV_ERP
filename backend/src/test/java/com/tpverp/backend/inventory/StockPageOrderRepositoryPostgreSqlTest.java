@@ -146,7 +146,7 @@ class StockPageOrderRepositoryPostgreSqlTest {
                 context.storeId(), null, null, PriceUseMode.MEMBER_PRICE, null, false,
                 null, null, null, null,
                 "name", "asc", null, 10))
-                .as("productos con precio socio")
+                .as("productos con precio de miembro")
                 .doesNotThrowAnyException();
         assertThatCode(() -> repository.findProductIds(
                 context.storeId(), null, null, null, DiscountType.NONE, false,

@@ -19,7 +19,7 @@ public record DocumentView(
         BigDecimal base,
         BigDecimal impuesto,
         BigDecimal total,
-        BigDecimal saldoSocio,
+        BigDecimal memberBalance,
         BigDecimal paidTotal,
         BigDecimal pendingTotal,
         String numTicket,

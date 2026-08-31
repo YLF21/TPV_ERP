@@ -44,7 +44,7 @@
     <line x1="32" y1="202" x2="188" y2="202" stroke="#8b9caf" stroke-width=".4"/>
     <text x="34" y="214" font-size="6.4">Subtotal</text>
     <text x="186" y="214" text-anchor="end" font-size="6.4">2,18 €</text>
-    <text x="34" y="226" font-size="6.4">Descuento Socio (2%)</text>
+    <text x="34" y="226" font-size="6.4">Descuento de miembro (2%)</text>
     <text x="186" y="226" text-anchor="end" font-size="6.4">−0,04 €</text>
     <line x1="32" y1="237" x2="188" y2="237" stroke="#172a40" stroke-width=".7"/>
     <text x="34" y="255" font-size="8.5" font-weight="700">TOTAL A PAGAR</text>
@@ -71,7 +71,7 @@
     <line x1="32" y1="363" x2="188" y2="363" stroke="#172a40" stroke-width=".6"/>
     <text x="34" y="377" font-size="6.7">CLIENTE DEMO 01</text>
     <text x="34" y="389" font-size="6">Código: C-001-000101 · Tel.: 610000001</text>
-    <text x="34" y="401" font-size="6">Descuento Socio: 2%</text>
+    <text x="34" y="401" font-size="6">Descuento de miembro: 2%</text>
 
     <!-- Condiciones centradas -->
 

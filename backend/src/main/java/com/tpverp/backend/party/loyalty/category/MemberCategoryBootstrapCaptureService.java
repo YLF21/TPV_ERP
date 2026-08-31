@@ -83,7 +83,7 @@ public class MemberCategoryBootstrapCaptureService {
                                         selected.getCategoryLockAutomatic()));
                 if (contradictory) {
                     throw new IllegalStateException(
-                            "Empate local contradictorio en la categoria del socio "
+                            "Empate local contradictorio en la categoria del miembro "
                                     + member.getId());
                 }
                 String action = selected.getCategoryAssignmentAction() != null

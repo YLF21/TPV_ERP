@@ -671,7 +671,7 @@ describe("SalesReportScreen", () => {
         numero: "T-SALDO-1",
         fecha: "2026-08-21",
         total: "45.00",
-        saldoSocio: "5.00",
+        memberBalance: "5.00",
         paymentMethods: ["SALDO_MIEMBRO"]
       }, {
         id: "ticket-member-balance-internal",

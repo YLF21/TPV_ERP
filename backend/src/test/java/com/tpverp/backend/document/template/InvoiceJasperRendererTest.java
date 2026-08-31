@@ -381,15 +381,15 @@ class InvoiceJasperRendererTest {
                 LocalDate.of(2026, 8, 19), UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, BigDecimal.ONE,
-                "P-SOCIO", "Producto socio", "VENTA", new BigDecimal("20.00"),
+                "P-MIEMBRO", "Producto miembro", "VENTA", new BigDecimal("20.00"),
                 BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
         document.addLine(new DocumentLineCommand(
-                null, BigDecimal.ONE, "SALDO SOCIO", "Saldo socio", null,
+                null, BigDecimal.ONE, "SALDO DE MIEMBRO", "Saldo de miembro", null,
                 new BigDecimal("-6.00"), BigDecimal.ZERO, true,
                 "IVA", new BigDecimal("21.00"),
                 DocumentLineType.MEMBER_BALANCE, null, null, null)
                 .toEntity(document, 2));
-        document.confirm("FV-2026-SOCIO", UUID.randomUUID(),
+        document.confirm("FV-2026-MIEMBRO", UUID.randomUUID(),
                 Instant.parse("2026-08-19T09:00:00Z"), false);
         var renderer = new InvoiceJasperRenderer(
                 mock(DocumentTemplateRepository.class),
@@ -405,7 +405,7 @@ class InvoiceJasperRendererTest {
                 null, null);
 
         assertThat(json.at("/lines").size()).isEqualTo(1);
-        assertThat(json.at("/lines/0/articleName").asText()).isEqualTo("Producto socio");
+        assertThat(json.at("/lines/0/articleName").asText()).isEqualTo("Producto miembro");
         assertThat(json.at("/totals/memberBalanceTotal").decimalValue())
                 .isEqualByComparingTo("6.00");
         assertThat(json.at("/totals/discountTotal").decimalValue()).isZero();

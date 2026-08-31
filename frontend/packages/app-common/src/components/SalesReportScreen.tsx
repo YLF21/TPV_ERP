@@ -438,7 +438,7 @@ type DocumentView = {
   impuesto?: number | string;
   pendiente?: number | string;
   descuentoGlobal?: number | string;
-  saldoSocio?: number | string;
+  memberBalance?: number | string;
   total?: number | string;
   effectiveTotal?: number | string;
   numTicket?: string | null;
@@ -1580,7 +1580,7 @@ export function buildDocumentReports(
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
-    memberBalance: formatAmount(Number(document.saldoSocio ?? 0)),
+    memberBalance: formatAmount(Number(document.memberBalance ?? 0)),
     total: formatAmount(Number(document.total ?? 0)),
     __effectiveTotal: formatAmount(Number(document.effectiveTotal ?? document.total ?? 0))
   }));
@@ -1603,7 +1603,7 @@ export function buildDocumentReports(
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
-    memberBalance: formatAmount(Number(document.saldoSocio ?? 0)),
+    memberBalance: formatAmount(Number(document.memberBalance ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputInvoiceRows = invoices.filter(isPurchaseDocument).map((document) => ({

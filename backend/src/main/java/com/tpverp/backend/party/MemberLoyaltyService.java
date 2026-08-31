@@ -547,7 +547,7 @@ public class MemberLoyaltyService {
                 now, expiryBlockStartedAt);
         member.applyBalance(value.negate());
         var movement = saveMovement(member, document.getId(), MemberMovementType.USO_SALDO,
-                value.negate(), 0, null, null, "saldo socio aplicado a venta");
+                value.negate(), 0, null, null, "saldo del miembro aplicado a venta");
         consumeLots(
                 member, movement, MemberBalanceLotType.LOYALTY, value,
                 now, expiryBlockStartedAt);
@@ -642,7 +642,7 @@ public class MemberLoyaltyService {
         if (originalConsumptions.stream().anyMatch(movement ->
                 !movement.getMember().getId().equals(member.getId()))) {
             throw new IllegalStateException(
-                    "el ticket contiene saldo a favor de varios socios");
+                    "el ticket contiene saldo a favor de varios miembros");
         }
         var consumed = PartyValues.money(originalConsumptions.stream()
                 .map(MemberMovement::getBalanceAmount)
@@ -755,7 +755,7 @@ public class MemberLoyaltyService {
             if (recoveryReservation != null) {
                 var member = members.findById(recoveryReservation.getMemberId())
                         .orElseThrow(() -> new IllegalStateException(
-                                "La reserva de retencion referencia un socio inexistente"));
+                                "La reserva de retencion referencia un miembro inexistente"));
                 if (!member.getCompany().getId().equals(context.currentCompany().getId())) {
                     throw new IllegalStateException("La reserva de retencion no pertenece a la empresa");
                 }

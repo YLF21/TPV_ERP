@@ -166,7 +166,7 @@ class DocumentViewTest {
                 DocumentAttributionResolver.Attribution.empty(document),
                 new BigDecimal("0.03"));
 
-        assertThat(view.saldoSocio()).isEqualByComparingTo("0.03");
+        assertThat(view.memberBalance()).isEqualByComparingTo("0.03");
     }
 
     @Test

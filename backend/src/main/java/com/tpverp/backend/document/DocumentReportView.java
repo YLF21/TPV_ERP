@@ -20,7 +20,7 @@ public record DocumentReportView(
         BigDecimal total,
         BigDecimal pendiente,
         BigDecimal descuentoGlobal,
-        BigDecimal saldoSocio,
+        BigDecimal memberBalance,
         String numTicket,
         boolean origenStock,
         UUID clienteId,

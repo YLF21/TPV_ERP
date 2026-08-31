@@ -397,7 +397,7 @@ ORDER BY l.posicion NULLS LAST]]></query>
 		</element>
 		<element kind="textField" uuid="d9265e60-49d7-409c-b9bf-bd47a6fe4df2" x="3" y="223" width="201" height="12" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{porcentaje_descuento_cliente} != null && $F{porcentaje_descuento_cliente}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
-			<expression><![CDATA["Descuento socio: " + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_cliente}) + "%"]]></expression>
+			<expression><![CDATA["Descuento de miembro: " + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_cliente}) + "%"]]></expression>
 		</element>
 		<element kind="staticText" uuid="842215b5-327b-49d8-b601-f723784ad82f" x="3" y="241" width="201" height="12" fontSize="8.0" bold="true" hTextAlign="Center">
 			<printWhenExpression><![CDATA[($F{usuario_nombre} != null && !$F{usuario_nombre}.trim().isEmpty()) || ($F{terminal_nombre} != null && !$F{terminal_nombre}.trim().isEmpty())]]></printWhenExpression>

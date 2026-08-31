@@ -206,7 +206,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     noOperationalIncidents: "No hay incidencias operativas para el filtro actual.",
     operationalIncidentPermission: "Se requiere VIEW_ADMIN_DATA para consultar incidencias y MANAGE_OPERATIONAL_INCIDENTS para resolverlas.",
     incidentProcess: "Proceso",
-    memberCategoryBootstrap: "Bootstrap de categorias de socio",
+    memberCategoryBootstrap: "Bootstrap de categorías de miembro",
     incidentProgress: "Tiendas",
     incidentInactivity: "Inactividad",
     incidentInactive: "Inactiva",

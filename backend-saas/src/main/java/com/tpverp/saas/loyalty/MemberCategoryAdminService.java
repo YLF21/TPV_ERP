@@ -138,7 +138,7 @@ public class MemberCategoryAdminService {
                 clock.instant(),
                 action);
         if (changed != 1) {
-            throw conflict("El socio ya pertenece a otra empresa en la autoridad central");
+            throw conflict("El miembro ya pertenece a otra empresa en la autoridad central");
         }
         return audit(
                 command.commandId(), context, command.actorUserId(), command.actorName(),
@@ -167,7 +167,7 @@ public class MemberCategoryAdminService {
                 """, (rs, row) -> rs.getObject(1, UUID.class),
                 companyId, categoryId, minPoints);
         if (fallback.isEmpty()) {
-            throw conflict("No existe una categoria inferior activa para los socios afectados");
+            throw conflict("No existe una categoria inferior activa para los miembros afectados");
         }
         long revision = nextRevision();
         jdbc.update("""

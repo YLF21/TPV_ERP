@@ -237,7 +237,7 @@ vi.mock("./SalePaymentCheckout", async () => {
       }, [props.disabled]);
       return <>
         <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>
-        {walletOpen && f10FixtureLot && <section role="dialog" aria-label="Saldo socio">
+        {walletOpen && f10FixtureLot && <section role="dialog" aria-label="Saldo de miembro">
           <table><tbody><tr className={f10FixtureLot.heldAmount && f10FixtureLot.heldAmount > 0
             ? "member-wallet-lot-partial-hold" : undefined}>
             <td>{f10FixtureLot.documentNumber}</td>
@@ -638,7 +638,7 @@ function previousTicketPreview(
 const memberDiscountProduct: SaleProduct = {
   id: "member-coffee",
   code: "MEM-CAFE",
-  name: "Cafe socio",
+  name: "Cafe miembro",
   salePrice: 10,
   discountType: "MEMBER_DISCOUNT",
   taxId: "tax-iva-21",
@@ -927,7 +927,7 @@ describe("SaleScreen", () => {
     }));
 
     fireEvent.keyDown(window, { key: "F10" });
-    const walletDialog = await screen.findByRole("dialog", { name: "Saldo socio" });
+    const walletDialog = await screen.findByRole("dialog", { name: "Saldo de miembro" });
     const row = within(walletDialog).getByText("001-260829-00003").closest("tr");
     expect(row).toHaveClass("member-wallet-lot-partial-hold");
     expect(within(row!).getByText("0.04")).toBeInTheDocument();
@@ -1851,7 +1851,7 @@ describe("SaleScreen", () => {
       submitQuickEntry(search, "CAF-001");
 
       const label = type === "MEMBER_PERCENT"
-        ? "Descuento por socio"
+        ? "Descuento por miembro"
         : "Descuento total documento";
       const discount = await screen.findByText(label);
       const summary = discount.closest(".sale-document-discount-total");
@@ -1859,7 +1859,7 @@ describe("SaleScreen", () => {
       expect(within(summary as HTMLElement).getByText("15,00 %")).toBeInTheDocument();
       expect(within(summary as HTMLElement).getByText("−1,50 €")).toBeInTheDocument();
       expect(document.querySelector(".sale-cart-total")?.textContent).toContain("10,00 €");
-      expect(document.querySelector(".sale-cart-discount")?.textContent).not.toContain("Socio");
+      expect(document.querySelector(".sale-cart-discount")?.textContent).not.toContain("Miembro");
     },
   );
 
@@ -4927,7 +4927,7 @@ describe("SaleScreen", () => {
     const importedCustomer: SaleCustomer = {
       ...customers[1],
       activeMember: true,
-      memberCategoryName: "Socio Oro",
+      memberCategoryName: "Miembro Oro",
       memberDiscountPercent: "7.50",
       memberBalance: "12.50",
       outstandingDebt: "34.25",

@@ -111,7 +111,7 @@ const copy = {
     incidentsDescription: "Elementos que requieren intervención administrativa y quedan registrados en auditoría.",
     incidentsUnavailable: "No se pudieron consultar todas las incidencias operativas.",
     outboxIncidents: "Sincronización bloqueada",
-    memberBalanceIncidents: "Recuperación de saldo de socio",
+    memberBalanceIncidents: "Recuperación de saldo de miembro",
     noOutboxIncidents: "No hay eventos de sincronización bloqueados.",
     noMemberBalanceIncidents: "No hay recuperaciones de saldo pendientes de intervención.",
     reference: "Referencia",

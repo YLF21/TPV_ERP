@@ -532,7 +532,7 @@ public class MemberPointsSyncProjector {
             SaasMemberPointsSettlement settlement
     ) {
         if (!settlement.getMemberId().equals(operation.getMemberId())) {
-            throw new DomainConflict("El settlement original pertenece a otro socio");
+            throw new DomainConflict("El settlement original pertenece a otro miembro");
         }
         if (settlement.isCancelled()) {
             throw new DomainConflict("El settlement ya tiene una cancelacion aplicada");
