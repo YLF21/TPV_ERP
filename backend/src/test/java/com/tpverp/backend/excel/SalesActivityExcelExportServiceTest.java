@@ -6,6 +6,8 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.document.DocumentStatus;
+import com.tpverp.backend.document.DailyOperationsSupplement;
+import com.tpverp.backend.document.DailyPaymentBreakdownView;
 import com.tpverp.backend.document.SalesActivityDocumentRowView;
 import com.tpverp.backend.document.SalesActivityPaymentMethod;
 import com.tpverp.backend.document.SalesActivityReportService;
@@ -62,6 +64,40 @@ class SalesActivityExcelExportServiceTest {
             assertThat(sheet.getRow(3).getCell(2).getNumericCellValue()).isEqualTo(1.0);
             assertThat(sheet.getRow(3).getCell(3).getNumericCellValue()).isEqualTo(2.0);
             assertThat(sheet.getRow(3).getCell(7).getNumericCellValue()).isEqualTo(100.0);
+        }
+    }
+
+    @Test
+    void exportsOperationalScalarsAtZeroAndRedactsOnlyNullCashTotals() throws Exception {
+        var reports = mock(SalesActivityReportService.class);
+        var organization = mock(CurrentOrganization.class);
+        var company = new Company("B00000000", "EMPRESA PRUEBA", address());
+        var store = new Store(
+                company, "001", "Tienda", address(), UUID.randomUUID().toString(),
+                "Atlantic/Canary", "EUR", "es-ES");
+        when(organization.currentStore()).thenReturn(store);
+        when(reports.daily(REPORT_DATE)).thenReturn(new SalesDailySummaryView(
+                store.getId(), company.getRazonSocial(), store.getCodigoTienda(), REPORT_DATE,
+                BigDecimal.ZERO, List.of(),
+                new SalesDailySummaryView.ActivityCountsView(0, 0, 0, 0), List.of(),
+                new DailyOperationsSupplement(
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        DailyPaymentBreakdownView.zero(), DailyPaymentBreakdownView.zero(),
+                        BigDecimal.ZERO, null, BigDecimal.ZERO, BigDecimal.ZERO, null),
+                REPORT_DATE));
+        var service = new SalesActivityExcelExportService(
+                reports, organization, mock(AuditService.class));
+
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.daily(REPORT_DATE)))) {
+            var sheet = workbook.getSheet("Resumen diario");
+            var labels = java.util.stream.IntStream.rangeClosed(0, sheet.getLastRowNum())
+                    .mapToObj(sheet::getRow)
+                    .filter(java.util.Objects::nonNull)
+                    .map(row -> row.getCell(0).getStringCellValue())
+                    .toList();
+            assertThat(labels).contains(
+                    "COBROS, DEVOLUCIONES Y CAJA", "Cobros actuales", "Entradas", "Retiradas");
+            assertThat(labels).doesNotContain("Efectivo", "Tarjeta", "Fondo inicial", "Efectivo esperado");
         }
     }
 

@@ -86,11 +86,15 @@
 				<printWhenExpression><![CDATA["DOCUMENT".equals($F{lineType})]]></printWhenExpression>
 				<expression><![CDATA[$F{value}]]></expression>
 			</element>
-			<element kind="textField" uuid="2bef570c-4b63-449b-a565-cdf097658394" x="0" y="4" width="130" height="13" fontName="Monospaced" fontSize="8.5" blankWhenNull="true" bold="true">
+			<element kind="textField" uuid="2bef570c-4b63-449b-a565-cdf097658394" x="0" y="4" width="72" height="13" fontName="Monospaced" fontSize="8.5" blankWhenNull="true" bold="true">
 				<printWhenExpression><![CDATA["DAY".equals($F{lineType})]]></printWhenExpression>
 				<expression><![CDATA[$F{label}]]></expression>
 			</element>
-			<element kind="textField" uuid="7241334b-207e-4f8a-8c5f-11030e8e3fb4" x="130" y="4" width="81" height="13" fontName="Monospaced" fontSize="8.5" blankWhenNull="true" bold="true" hTextAlign="Right">
+			<element kind="textField" uuid="c0f76226-9ad2-4df1-aa55-6fb75faeb1cd" x="72" y="4" width="93" height="13" fontName="Monospaced" fontSize="7.5" blankWhenNull="true" bold="true" hTextAlign="Right" textAdjust="ScaleFont">
+				<printWhenExpression><![CDATA["DAY".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{secondary}]]></expression>
+			</element>
+			<element kind="textField" uuid="7241334b-207e-4f8a-8c5f-11030e8e3fb4" x="165" y="4" width="46" height="13" fontName="Monospaced" fontSize="8.5" blankWhenNull="true" bold="true" hTextAlign="Right">
 				<printWhenExpression><![CDATA["DAY".equals($F{lineType})]]></printWhenExpression>
 				<expression><![CDATA[$F{value}]]></expression>
 			</element>

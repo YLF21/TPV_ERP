@@ -13,7 +13,21 @@ public record SalesDailySummaryView(
         BigDecimal netSalesTotal,
         List<PaymentTotalView> paymentMethods,
         ActivityCountsView counts,
-        List<UserSummaryView> users) {
+        List<UserSummaryView> users,
+        DailyOperationsSupplement operations,
+        LocalDate currentDate) {
+
+    public SalesDailySummaryView(
+            UUID storeId,
+            String companyName,
+            String storeCode,
+            LocalDate date,
+            BigDecimal netSalesTotal,
+            List<PaymentTotalView> paymentMethods,
+            ActivityCountsView counts,
+            List<UserSummaryView> users) {
+        this(storeId, companyName, storeCode, date, netSalesTotal, paymentMethods, counts, users, null, null);
+    }
 
     public record PaymentTotalView(
             SalesActivityPaymentMethod method,

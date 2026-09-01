@@ -92,6 +92,8 @@ class DailyCommercialReportServiceTest {
                 .thenReturn(java.util.Set.of(ticket.getId()));
         when(fixture.relations().findDerivedSalesInvoiceIds(fixture.store().getId(), REPORT_DATE))
                 .thenReturn(java.util.Set.of(invoice.getId()));
+        when(fixture.relations().countActiveInvoicesForSalesActivityTickets(
+                fixture.store().getId(), REPORT_DATE, REPORT_DATE)).thenReturn(1L);
         when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
                 .thenReturn(List.of(ticket, invoice, rectification));
         when(fixture.payments().findAllByStoreAndCreatedBetween(
@@ -111,7 +113,7 @@ class DailyCommercialReportServiceTest {
         assertThat(report.refunds()).isEqualByComparingTo("1000000.00");
         assertThat(report.cashInflow()).isZero();
         assertThat(report.ticketCount()).isEqualTo(1);
-        assertThat(report.invoiceCount()).isEqualTo(1);
+        assertThat(report.invoiceCount()).isEqualTo(2);
         assertThat(report.salesTotal()).isZero();
         assertThat(report.salesByPaymentMethod().total()).isZero();
     }
@@ -131,6 +133,8 @@ class DailyCommercialReportServiceTest {
         when(fixture.relations().findDerivedSalesInvoiceIds(
                 fixture.store().getId(), REPORT_DATE))
                 .thenReturn(Set.of(invoiceFromTicket.getId()));
+        when(fixture.relations().countActiveInvoicesForSalesActivityTickets(
+                fixture.store().getId(), REPORT_DATE, REPORT_DATE)).thenReturn(1L);
         when(fixture.documents().findAllByTiendaIdAndFecha(
                 fixture.store().getId(), REPORT_DATE))
                 .thenReturn(List.of(ticket, invoiceFromTicket, directInvoice));
@@ -147,6 +151,44 @@ class DailyCommercialReportServiceTest {
         assertThat(report.salesByPaymentMethod().card()).isEqualByComparingTo("20.00");
         assertThat(report.salesByPaymentMethod().pending()).isEqualByComparingTo("20.00");
         assertThat(report.salesByPaymentMethod().total()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void attributesDerivedInvoiceToTicketDateEvenWhenInvoiceIsCreatedOnTheFollowingDay() {
+        var fixture = fixture();
+        var followingDate = REPORT_DATE.plusDays(1);
+        var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "60.00");
+        var derivedInvoice = receivable(
+                CommercialDocumentType.FACTURA_VENTA, followingDate, "60.00");
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), REPORT_DATE)).thenReturn(List.of(ticket));
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), followingDate)).thenReturn(List.of(derivedInvoice));
+        when(fixture.relations().findDerivedSalesInvoiceIds(
+                fixture.store().getId(), REPORT_DATE)).thenReturn(Set.of());
+        when(fixture.relations().findDerivedSalesInvoiceIds(
+                fixture.store().getId(), followingDate)).thenReturn(Set.of(derivedInvoice.getId()));
+        when(fixture.relations().countActiveInvoicesForSalesActivityTickets(
+                fixture.store().getId(), REPORT_DATE, REPORT_DATE)).thenReturn(1L);
+        when(fixture.relations().countActiveInvoicesForSalesActivityTickets(
+                fixture.store().getId(), followingDate, followingDate)).thenReturn(0L);
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of());
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(followingDate), end(followingDate)))
+                .thenReturn(List.of());
+
+        var ticketDay = fixture.service().report(REPORT_DATE);
+        var invoiceDay = fixture.service().report(followingDate);
+
+        assertThat(ticketDay.ticketCount()).isEqualTo(1);
+        assertThat(ticketDay.invoiceCount()).isEqualTo(1);
+        assertThat(ticketDay.salesTotal()).isEqualByComparingTo("60.00");
+        assertThat(invoiceDay.ticketCount()).isZero();
+        assertThat(invoiceDay.invoiceCount()).isZero();
+        assertThat(invoiceDay.salesTotal()).isZero();
+        assertThat(invoiceDay.newPending()).isZero();
     }
 
     @Test
@@ -177,6 +219,58 @@ class DailyCommercialReportServiceTest {
         assertThat(report.salesByPaymentMethod().transfer()).isEqualByComparingTo("80.00");
         assertThat(report.refundsByPaymentMethod().transfer()).isEqualByComparingTo("20.00");
         assertThat(report.salesByPaymentMethod().total()).isEqualByComparingTo(report.salesTotal());
+    }
+
+    @Test
+    void treatsPositiveRectificationAsSignedSaleAndIncludesItsRealPayment() {
+        var fixture = fixture();
+        var rectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "10.00");
+        var payment = payment(fixture, rectification, "10.00",
+                start(REPORT_DATE).plusSeconds(1), "EFECTIVO");
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), REPORT_DATE)).thenReturn(List.of(rectification));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(payment));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.salesTotal()).isEqualByComparingTo("10.00");
+        assertThat(report.ticketCount()).isZero();
+        assertThat(report.invoiceCount()).isEqualTo(1);
+        assertThat(report.salesByPaymentMethod().cash()).isEqualByComparingTo("10.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("10.00");
+        assertThat(report.newPending()).isZero();
+        assertThat(report.cashInflow()).isEqualByComparingTo("10.00");
+        assertThat(report.refundsByPaymentMethod().total()).isZero();
+    }
+
+    @Test
+    void keepsPositiveRectificationPaymentsSeparateFromOrdinaryPendingSales() {
+        var fixture = fixture();
+        var ordinarySale = receivable(
+                CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
+        var rectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "10.00");
+        var rectificationPayment = payment(
+                fixture, rectification, "10.00",
+                start(REPORT_DATE).plusSeconds(1), "EFECTIVO");
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(ordinarySale, rectification));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(rectificationPayment));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.salesTotal()).isEqualByComparingTo("110.00");
+        assertThat(report.salesByPaymentMethod().cash()).isEqualByComparingTo("10.00");
+        assertThat(report.salesByPaymentMethod().pending()).isEqualByComparingTo("100.00");
+        assertThat(report.salesByPaymentMethod().other()).isZero();
+        assertThat(report.salesByPaymentMethod().total()).isEqualByComparingTo("110.00");
+        assertThat(report.newPending()).isEqualByComparingTo("100.00");
     }
 
     @Test
@@ -218,9 +312,11 @@ class DailyCommercialReportServiceTest {
         when(entry.getAmount()).thenReturn(new BigDecimal("10.00"));
         when(withdrawal.getType()).thenReturn(CashMovementType.RETIRADA);
         when(withdrawal.getAmount()).thenReturn(new BigDecimal("5.00"));
-        when(fixture.cashMovements().findAllByTiendaIdAndCreadoEnBetweenOrderByCreadoEnAsc(
+        when(fixture.cashMovements().findAllByTiendaIdAndCreadoEnFromInclusiveToExclusiveOrderByCreadoEnAsc(
                 fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
                 .thenReturn(List.of(entry, withdrawal));
+        when(fixture.cashPositions().positionAt(fixture.store().getId(), start(REPORT_DATE)))
+                .thenReturn(new BigDecimal("50.00"));
         when(fixture.cashPositions().positionAt(fixture.store().getId(), end(REPORT_DATE)))
                 .thenReturn(new BigDecimal("55.00"));
 

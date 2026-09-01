@@ -30,6 +30,18 @@ public interface CashMovementRepository extends JpaRepository<CashMovement, UUID
     List<CashMovement> findAllByTiendaIdAndCreadoEnBetweenOrderByCreadoEnAsc(
             UUID storeId, Instant from, Instant to);
 
+    @Query("""
+            select movement from CashMovement movement
+            where movement.tiendaId = :storeId
+              and movement.creadoEn >= :from
+              and movement.creadoEn < :to
+            order by movement.creadoEn asc
+            """)
+    List<CashMovement> findAllByTiendaIdAndCreadoEnFromInclusiveToExclusiveOrderByCreadoEnAsc(
+            @Param("storeId") UUID storeId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
     List<CashMovement> findAllByTiendaIdAndTerminalIdAndCreadoEnBetweenOrderByCreadoEnAsc(
             UUID storeId, UUID terminalId, Instant from, Instant to);
 

@@ -132,6 +132,42 @@ class SalesActivityReportServiceTest {
     }
 
     @Test
+    void dailyPositiveRectificationUsesRealPaymentsAndPutsOnlyRemainderInOther() {
+        var fixture = fixture();
+        var cashier = UUID.randomUUID();
+        var rectification = confirmed(
+                fixture.store(), CommercialDocumentType.RECTIFICATIVA_VENTA,
+                "R-001", "10.00", cashier);
+        addPayment(fixture, rectification, "EFECTIVO", "7.00");
+        var issued = List.of(rectification);
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), REPORT_DATE)).thenReturn(issued);
+        when(fixture.relations().findDerivedSalesInvoiceIds(
+                fixture.store().getId(), REPORT_DATE)).thenReturn(Set.of());
+        when(fixture.relations().findActiveRelatedDocuments(
+                eq(fixture.store().getId()), anyCollection(), eq(DocumentRelationType.FACTURA_DE)))
+                .thenReturn(List.of());
+        when(fixture.attributions().resolve(issued)).thenReturn(Map.of(
+                rectification.getId(), attribution(rectification, cashier, "CAJA")));
+
+        var result = fixture.service().daily(REPORT_DATE);
+
+        assertThat(result.netSalesTotal()).isEqualByComparingTo("10.00");
+        assertThat(result.paymentMethods())
+                .extracting(SalesDailySummaryView.PaymentTotalView::method,
+                        SalesDailySummaryView.PaymentTotalView::amount)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(
+                                SalesActivityPaymentMethod.EFECTIVO, new BigDecimal("7.00")),
+                        org.assertj.core.groups.Tuple.tuple(
+                                SalesActivityPaymentMethod.OTROS, new BigDecimal("3.00")));
+        assertThat(result.paymentMethods())
+                .noneMatch(value -> value.method() == SalesActivityPaymentMethod.PENDIENTE);
+        assertThat(result.counts()).isEqualTo(
+                new SalesDailySummaryView.ActivityCountsView(1, 0, 0, 0));
+    }
+
+    @Test
     void documentsClassifiesAnyNegativeTicketAsReturn() {
         var fixture = fixture();
         var cashier = UUID.randomUUID();
@@ -171,6 +207,70 @@ class SalesActivityReportServiceTest {
             assertThat(row.paymentMethods()).containsExactly("VALE");
         });
         assertThat(result.total()).isEqualByComparingTo("-16.40");
+        assertThat(result.currentDate()).isEqualTo(
+                LocalDate.now(ZoneId.of(fixture.store().getTimezone())));
+    }
+
+    @Test
+    void dailyDocumentsUsesDatabaseGroupingAndPaginatesByDate() {
+        var fixture = fixture();
+        var secondDate = REPORT_DATE.minusDays(1);
+        var first = mock(SalesActivityDailyProjection.class);
+        var second = mock(SalesActivityDailyProjection.class);
+        var totals = mock(SalesActivityDailyTotalsProjection.class);
+        when(first.getDate()).thenReturn(REPORT_DATE);
+        when(first.getTicketCount()).thenReturn(3L);
+        when(first.getInvoiceCount()).thenReturn(0L);
+        when(first.getTotal()).thenReturn(new BigDecimal("25.10"));
+        when(second.getDate()).thenReturn(secondDate);
+        when(second.getTicketCount()).thenReturn(2L);
+        when(second.getInvoiceCount()).thenReturn(0L);
+        when(second.getTotal()).thenReturn(new BigDecimal("-4.20"));
+        when(fixture.documents().findSalesActivityDaily(
+                eq(fixture.store().getId()), eq(REPORT_DATE.minusDays(1)), eq(REPORT_DATE), any()))
+                .thenReturn(List.of(first, second));
+        when(fixture.documents().sumSalesActivityDaily(
+                fixture.store().getId(), REPORT_DATE.minusDays(1), REPORT_DATE))
+                .thenReturn(totals);
+        when(totals.getTicketCount()).thenReturn(5L);
+        when(totals.getInvoiceCount()).thenReturn(0L);
+        when(totals.getTotal()).thenReturn(new BigDecimal("20.90"));
+
+        var result = fixture.service().dailyDocuments(
+                REPORT_DATE.minusDays(1), REPORT_DATE, 1, null);
+
+        assertThat(result.items()).singleElement().satisfies(row -> {
+            assertThat(row.date()).isEqualTo(REPORT_DATE);
+            assertThat(row.ticketCount()).isEqualTo(3L);
+            assertThat(row.invoiceCount()).isZero();
+            assertThat(row.total()).isEqualByComparingTo("25.10");
+        });
+        assertThat(result.nextCursor()).isEqualTo(REPORT_DATE.toString());
+        assertThat(result.hasMore()).isTrue();
+        assertThat(result.ticketCount()).isEqualTo(5L);
+        assertThat(result.invoiceCount()).isZero();
+        assertThat(result.total()).isEqualByComparingTo("20.90");
+        assertThat(result.dateFrom()).isEqualTo(REPORT_DATE.minusDays(1));
+        assertThat(result.dateTo()).isEqualTo(REPORT_DATE);
+    }
+
+    @Test
+    void dailyDocumentsUsesDateCursorForTheNextPage() {
+        var fixture = fixture();
+        var totals = mock(SalesActivityDailyTotalsProjection.class);
+        when(fixture.documents().findSalesActivityDailyAfter(
+                eq(fixture.store().getId()), eq(REPORT_DATE.minusDays(2)), eq(REPORT_DATE),
+                eq(REPORT_DATE), any())).thenReturn(List.of());
+        when(fixture.documents().sumSalesActivityDaily(
+                fixture.store().getId(), REPORT_DATE.minusDays(2), REPORT_DATE))
+                .thenReturn(totals);
+
+        var result = fixture.service().dailyDocuments(
+                REPORT_DATE.minusDays(2), REPORT_DATE, 10, REPORT_DATE.toString());
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.hasMore()).isFalse();
+        assertThat(result.nextCursor()).isNull();
     }
 
     private static DocumentAttributionResolver.Attribution attribution(
