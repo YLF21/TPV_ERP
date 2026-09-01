@@ -10,7 +10,9 @@ class MigrationV233RetentionContractTest {
     @Test
     void addsDurableRevisionFingerprintAndRecoveryMetrics() throws Exception {
         Path migration = Path.of("src/main/resources/db/migration/V233__retencion_saldo_devoluciones_local.sql");
-        String sql = Files.readString(migration);
+        String sql = Files.readString(migration)
+                .replace("\r\n", "\n")
+                .replace('\r', '\n');
 
         assertThat(sql).contains(
                 "retention_revision BIGINT NOT NULL DEFAULT 0",

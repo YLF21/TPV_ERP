@@ -1,2 +1,5 @@
-"plantillas documentos/*.jrxml" text eol=lf
+*.sql text eol=lf
+*.sql.conf text eol=lf
+*.jrxml text eol=lf
+*.pdf binary
 backend/src/main/resources/verifactu/xsd/RespuestaSuministro.xsd -whitespace
