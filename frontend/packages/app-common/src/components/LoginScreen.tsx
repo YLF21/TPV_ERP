@@ -14,6 +14,7 @@ type LoginScreenProps = {
   terminalContext: TerminalContext;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogin: (session: UserSession) => void;
+  onAuthenticationError?: (error: unknown) => void;
   presentation?: "desktop" | "embedded";
   heading?: string;
   notice?: string;
@@ -33,6 +34,7 @@ export function LoginScreen({
   terminalContext,
   onLocaleChange,
   onLogin,
+  onAuthenticationError,
   presentation = "desktop",
   heading,
   notice,
@@ -91,6 +93,7 @@ export function LoginScreen({
       rememberUser(normalizedUsername);
       onLogin(session);
     } catch (caught) {
+      onAuthenticationError?.(caught);
       const invalidCredentials = caught instanceof ApiError && caught.status === 401;
       if (caught instanceof ApiConnectionError) {
         setBackendOnline(false);

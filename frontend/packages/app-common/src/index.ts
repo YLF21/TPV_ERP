@@ -1,5 +1,13 @@
 export { authenticate, authenticateRemote, canAccessApp, hasPermission } from "./auth/auth";
-export { apiRequest, checkBackendConnection, ApiConnectionError, ApiError } from "./api/client";
+export {
+  apiRequest,
+  apiProblemCode,
+  checkBackendConnection,
+  classifyApiFailure,
+  ApiConnectionError,
+  ApiError
+} from "./api/client";
+export type { ApiFailureKind } from "./api/client";
 export { apiBaseUrl, devTerminalContext } from "./api/runtime";
 export {
   familyBusinessCode,
@@ -119,6 +127,9 @@ export type {
   HardwareConfig,
   HardwarePrinter,
   HardwareResult,
+  ProductLabelItem,
+  ProductLabelPrintRequest,
+  ProductLabelProfile,
   TicketPrinterHealth,
   TicketPrinterHealthStatus,
   TicketPrintRequest

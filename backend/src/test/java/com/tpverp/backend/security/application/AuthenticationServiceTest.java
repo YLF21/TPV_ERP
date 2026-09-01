@@ -191,6 +191,30 @@ class AuthenticationServiceTest {
 				.isInstanceOf(AuthenticationFailedException.class);
 	}
 
+	@Test
+	void reportsAnApprovedDisabledPdaOnlyAfterValidatingItsProvisionedCredential() {
+		var store = store();
+		var terminal = new Terminal(store, "PDA 1", TerminalType.PDA, "credential");
+		terminal.deactivate();
+		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(passwordEncoder.matches("device-secret", "credential")).thenReturn(true);
+
+		assertThatThrownBy(() -> service().login(terminal.getId(), "device-secret", "ADMIN", "0000"))
+				.isInstanceOf(TerminalDisabledException.class);
+	}
+
+	@Test
+	void hidesDisabledTerminalStateWhenItsProvisionedCredentialIsInvalid() {
+		var store = store();
+		var terminal = new Terminal(store, "PDA 1", TerminalType.PDA, "credential");
+		terminal.deactivate();
+		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(passwordEncoder.matches("wrong", "credential")).thenReturn(false);
+
+		assertThatThrownBy(() -> service().login(terminal.getId(), "wrong", "ADMIN", "0000"))
+				.isInstanceOf(AuthenticationFailedException.class);
+	}
+
 	private AuthenticationService service() {
 		return new AuthenticationService(
 				terminalRepository,

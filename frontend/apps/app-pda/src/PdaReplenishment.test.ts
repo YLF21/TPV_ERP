@@ -4,7 +4,7 @@ import {
   hasAtMostThreeDecimals,
   pdaReplenishmentPagePath,
   suggestedReplenishmentWarehouses
-} from "./PdaReplenishment";
+} from "./PdaReplenishmentUtils";
 
 describe("PdaReplenishment", () => {
   const warehouses = [

@@ -2,6 +2,7 @@ package com.tpverp.backend.shared.i18n;
 
 public enum SystemErrorCode {
     AUTHENTICATION_FAILED,
+    TERMINAL_DISABLED,
     VALIDATION_ERROR,
     INVALID_LICENSE,
     STATE_CONFLICT,

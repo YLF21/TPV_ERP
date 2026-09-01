@@ -1,5 +1,13 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { apiRequest, productLabelEanBits, type LocaleCode } from "@tpverp/app-common";
+import {
+  apiRequest,
+  getHardwareBridge,
+  productLabelEanBits,
+  type HardwareConfig,
+  type LocaleCode,
+  type ProductLabelPrintRequest,
+  type ProductLabelProfile
+} from "@tpverp/app-common";
 import { PhysicalScannerStatus, usePhysicalScanner } from "./usePhysicalScanner";
 
 type PriceResult = {
@@ -34,6 +42,52 @@ export type PdaLabelJob = {
 
 export function pdaExpandLabelJobs(jobs: PdaLabelJob[]) {
   return jobs.flatMap((job) => Array.from({ length: job.copies }, (_, copyIndex) => ({ ...job, copyIndex })));
+}
+
+const LABEL_SIZE: Record<PdaLabelTemplate, { widthMm: number; heightMm: number }> = {
+  "40x30": { widthMm: 40, heightMm: 30 },
+  "50x30": { widthMm: 50, heightMm: 30 },
+  "58x40": { widthMm: 58, heightMm: 40 }
+};
+
+export function pdaLabelProfile(template: PdaLabelTemplate, config: HardwareConfig): ProductLabelProfile {
+  const size = LABEL_SIZE[template];
+  const configured = config.productLabelProfiles.find((profile) =>
+    profile.widthMm === size.widthMm && profile.heightMm === size.heightMm)
+    ?? config.productLabelProfiles.find((profile) => profile.id === config.defaultProductLabelProfileId);
+  return {
+    id: configured?.id ?? `pda-${template}`,
+    name: configured?.name ?? `PDA ${template}`,
+    destination: configured?.destination ?? "LABEL_PRINTER",
+    printerName: configured?.printerName ?? "",
+    widthMm: size.widthMm,
+    heightMm: size.heightMm,
+    orientation: configured?.orientation ?? "PORTRAIT",
+    marginTopMm: configured?.marginTopMm ?? 1,
+    marginRightMm: configured?.marginRightMm ?? 1,
+    marginBottomMm: configured?.marginBottomMm ?? 1,
+    marginLeftMm: configured?.marginLeftMm ?? 1,
+    horizontalGapMm: configured?.horizontalGapMm ?? 0,
+    verticalGapMm: configured?.verticalGapMm ?? 0,
+    copies: 1,
+    showStoreName: configured?.showStoreName ?? true
+  };
+}
+
+export function pdaLabelPrintRequest(
+  jobs: PdaLabelJob[], template: PdaLabelTemplate, config: HardwareConfig, storeName: string
+): ProductLabelPrintRequest {
+  return {
+    version: 2,
+    kind: "SEQUENTIAL",
+    storeName,
+    profile: pdaLabelProfile(template, config),
+    items: jobs.map((job) => ({
+      id: job.id,
+      product: { name: job.name, code: job.code, barcode: job.barcode, price: job.price },
+      copies: job.copies
+    }))
+  };
 }
 
 export function pdaPriceLookupPath(identifier: string) {
@@ -78,6 +132,9 @@ export function PdaProductLookup({ token, locale, warehouses, storeName, t }: {
   const [labelQueue, setLabelQueue] = useState<PdaLabelJob[]>([]);
   const [printSelection, setPrintSelection] = useState<"current" | "queue">("current");
   const [printHistory, setPrintHistory] = useState<string[]>([]);
+  const [printError, setPrintError] = useState("");
+  const [printBusy, setPrintBusy] = useState(false);
+  const [fallbackSelection, setFallbackSelection] = useState<"current" | "queue" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -152,15 +209,42 @@ export function PdaProductLookup({ token, locale, warehouses, storeName, t }: {
     setLabelQueue((current) => [...current, job]);
   }
 
-  function printLabels(selection: "current" | "queue") {
+  function browserPrintLabels(selection: "current" | "queue") {
     const jobs = selection === "queue" ? labelQueue : [currentLabelJob()].filter((job): job is PdaLabelJob => Boolean(job));
     if (jobs.length === 0) return;
     setPrintSelection(selection);
-    setPrintHistory((current) => [
-      `${new Date().toLocaleTimeString()} · ${jobs.reduce((total, job) => total + job.copies, 0)} ${t("pda.lookup.labels")}`,
-      ...current
-    ].slice(0, 5));
+    setFallbackSelection(null);
     window.setTimeout(() => window.print(), 0);
+  }
+
+  async function printLabels(selection: "current" | "queue") {
+    const jobs = selection === "queue" ? labelQueue : [currentLabelJob()].filter((job): job is PdaLabelJob => Boolean(job));
+    if (jobs.length === 0 || printBusy) return;
+    setPrintError("");
+    setFallbackSelection(null);
+    setPrintBusy(true);
+    try {
+      const hardware = getHardwareBridge();
+      const config = await hardware.getHardwareConfig();
+      const response = await hardware.printProductLabel(
+        pdaLabelPrintRequest(jobs, labelTemplate, config, storeName), config
+      );
+      if (!response.ok) {
+        setPrintError(`${t("pda.lookup.nativePrintError")} (${response.code})`);
+        setFallbackSelection(selection);
+        return;
+      }
+      if (selection === "queue") setLabelQueue([]);
+      setPrintHistory((current) => [
+        `${new Date().toLocaleTimeString()} · ${jobs.reduce((total, job) => total + job.copies, 0)} ${t("pda.lookup.labels")}`,
+        ...current
+      ].slice(0, 5));
+    } catch {
+      setPrintError(t("pda.lookup.nativePrintError"));
+      setFallbackSelection(selection);
+    } finally {
+      setPrintBusy(false);
+    }
   }
 
   const currentJob = currentLabelJob();
@@ -209,11 +293,13 @@ export function PdaProductLookup({ token, locale, warehouses, storeName, t }: {
               <span>{barcode}</span>
             </article>}
             <div className="pda-label-buttons">
-              <button type="button" disabled={!barcode} onClick={() => printLabels("current")}>{t("pda.lookup.printLabel")}</button>
+              <button type="button" disabled={!barcode || printBusy} onClick={() => void printLabels("current")}>{printBusy ? t("pda.lookup.printing") : t("pda.lookup.printLabel")}</button>
               <button type="button" className="secondary" disabled={!barcode} onClick={addCurrentToQueue}>{t("pda.lookup.addToQueue")}</button>
-              <button type="button" className="secondary" disabled={labelQueue.length === 0} onClick={() => printLabels("queue")}>{t("pda.lookup.printQueue").replace("{count}", String(queuedCopies))}</button>
+              <button type="button" className="secondary" disabled={labelQueue.length === 0 || printBusy} onClick={() => void printLabels("queue")}>{t("pda.lookup.printQueue").replace("{count}", String(queuedCopies))}</button>
               {labelQueue.length > 0 && <button type="button" className="ghost" onClick={() => setLabelQueue([])}>{t("pda.lookup.clearQueue")}</button>}
             </div>
+            {printError && <p className="pda-lookup-error" role="alert">{printError}</p>}
+            {fallbackSelection && <button type="button" className="secondary" onClick={() => browserPrintLabels(fallbackSelection)}>{t("pda.lookup.browserPrintFallback")}</button>}
             {!barcode && <small>{t("pda.lookup.labelUnavailable")}</small>}
             {labelQueue.length > 0 && <ul className="pda-label-queue">{labelQueue.map((job) => <li key={job.id}><span>{job.name}</span><b>× {job.copies}</b><button type="button" aria-label={t("common.delete")} onClick={() => setLabelQueue((current) => current.filter((item) => item.id !== job.id))}>×</button></li>)}</ul>}
             {printHistory.length > 0 && <div className="pda-label-history"><strong>{t("pda.lookup.printHistory")}</strong>{printHistory.map((entry) => <span key={entry}>{entry}</span>)}</div>}

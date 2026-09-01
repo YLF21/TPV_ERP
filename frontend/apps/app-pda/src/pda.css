@@ -1610,6 +1610,17 @@ select {
 .pda-module-toolbar button { min-height: 42px; padding: 0 14px; border: 1px solid #8fa4b8; border-radius: 7px; background: #fff; color: #163c60; font-weight: 900; }
 .pda-module-toolbar strong { grid-column: 2; color: #173653; text-align: center; }
 
+.pda-module-loading { width: min(100%, 820px); min-height: calc(100dvh - 124px); display: grid; place-items: start center; box-sizing: border-box; margin: 0 auto; padding: clamp(28px, 9vh, 82px) 18px 28px; }
+.pda-module-loading-card { width: min(100%, 480px); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; box-sizing: border-box; padding: 22px; border: 1px solid #b6c6d5; border-radius: 12px; background: #fff; box-shadow: 0 12px 30px rgba(18, 49, 79, .09); }
+.pda-module-loading-icon { color: #1475b8; animation: pda-loading-spin 1s linear infinite; }
+.pda-module-loading-card > div { min-width: 0; display: grid; gap: 4px; }
+.pda-module-loading-card span { color: #2772a8; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.pda-module-loading-card strong { overflow-wrap: anywhere; color: #0b3157; font-size: 19px; line-height: 1.2; }
+.pda-module-loading-card p { margin: 0; color: #5f7488; font-size: 13px; line-height: 1.45; }
+.pda-module-loading-card progress { grid-column: 1 / -1; width: 100%; height: 7px; margin-top: 4px; accent-color: #1475b8; }
+@keyframes pda-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pda-module-loading-icon { animation: none; } }
+
 .pda-replenishment {
   width: min(100%, 820px);
   min-height: calc(100dvh - 124px);
@@ -1664,6 +1675,9 @@ select {
   .pda-home-menu button { min-height: 108px; }
   .pda-module-toolbar { padding-inline: 8px; }
   .pda-module-toolbar button { padding-inline: 9px; }
+  .pda-module-loading { padding: 24px 12px; }
+  .pda-module-loading-card { grid-template-columns: 1fr; justify-items: center; padding: 20px 18px; text-align: center; }
+  .pda-module-loading-card > div { justify-items: center; }
 }
 /* Sugerencias inteligentes de reposición PDA. */
 .pda-replenishment-suggestions {
@@ -1717,6 +1731,18 @@ select {
 .pda-replenishment-suggestions > footer { position: sticky; bottom: 0; padding: 11px; border-top: 1px solid #d4dee7; background: rgba(247, 250, 252, .96); }
 .pda-replenishment-suggestions > footer button { width: 100%; }
 .pda-replenishment-suggestions > .pda-replenishment-error { margin: 11px; }
+.pda-replenishment-dialog-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(5, 25, 48, .62); }
+.pda-replenishment-dialog { width: min(100%, 560px); max-height: min(82dvh, 720px); overflow: auto; border-radius: 12px; background: #fff; box-shadow: 0 24px 70px rgba(0, 18, 42, .35); }
+.pda-replenishment-dialog > header { padding: 18px; border-bottom: 1px solid #d4dee7; }
+.pda-replenishment-dialog h3 { margin: 0; color: #123a60; font-size: 22px; }
+.pda-replenishment-dialog header p { margin: 7px 0 0; color: #587086; line-height: 1.45; }
+.pda-replenishment-dialog ul { display: grid; gap: 8px; margin: 0; padding: 14px 18px; list-style: none; }
+.pda-replenishment-dialog li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; padding: 11px; border: 1px solid #c1cfdb; border-radius: 8px; }
+.pda-replenishment-dialog li span { display: grid; gap: 2px; color: #183a59; }
+.pda-replenishment-dialog li strong { color: #0a568e; font-size: 20px; }
+.pda-replenishment-dialog li small { grid-column: 1 / -1; color: #607589; }
+.pda-replenishment-dialog > footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 18px 18px; border-top: 1px solid #d4dee7; }
+.pda-replenishment-dialog .secondary { border: 1px solid #879eb3; background: #fff; color: #214665; }
 
 @media (max-width: 700px) {
   .pda-replenishment-suggestions > header { grid-template-columns: 1fr auto; align-items: end; }
@@ -1732,6 +1758,7 @@ select {
   .pda-replenishment-suggestions > header { grid-template-columns: 1fr; }
   .pda-replenishment-suggestions > header > div { grid-column: 1; }
   .pda-replenishment-suggestions .secondary { width: 100%; }
+  .pda-replenishment-dialog > footer { grid-template-columns: 1fr; }
 }
 /* Inventario rápido PDA. */
 .pda-count { width:min(100%,900px); min-height:calc(100dvh - 124px); box-sizing:border-box; display:grid; align-content:start; gap:14px; margin:0 auto; padding:18px; }

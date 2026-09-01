@@ -1,4 +1,7 @@
 import { ApiConnectionError, ApiError, apiRequest } from "@tpverp/app-common";
+import {
+  clearPdaDurableStorage, queuePdaDurableRemove, queuePdaDurableWrite, readPdaDurableValue
+} from "./PdaDurableStorage";
 
 export type WorkAction = "create" | "finish" | "cancel";
 export type WorkQueueState = "pending" | "retrying" | "conflict";
@@ -18,6 +21,11 @@ export type WorkQueueEntry<T = unknown> = {
 const QUEUE_KEY = "tpverp.pda.work.queue.v2";
 const LEGACY_QUEUE_KEY = "tpverp.pda.work.queue.v1";
 export const PDA_LAST_WORK_KEY = "tpverp.pda.lastWork.v1";
+export const PDA_WORK_DRAFT_KEY = "tpverp.pda.work.draft.v1";
+export const PDA_LAST_SYNC_KEY = "tpverp.pda.lastSyncAt.v1";
+const DURABLE_QUEUE_KEY = "work-queue-v2";
+const DURABLE_LAST_WORK_KEY = "last-work-v1";
+const DURABLE_WORK_DRAFT_KEY = "work-draft-v1";
 
 function normalize(value: Partial<WorkQueueEntry> & { id: string; createdAt: string }): WorkQueueEntry {
   return {
@@ -48,7 +56,22 @@ export function writePdaWorkQueue(values: Array<Partial<WorkQueueEntry> & { id: 
   const normalized = values.map(normalize);
   localStorage.setItem(QUEUE_KEY, JSON.stringify(normalized));
   localStorage.removeItem(LEGACY_QUEUE_KEY);
+  void queuePdaDurableWrite(DURABLE_QUEUE_KEY, normalized);
   window.dispatchEvent(new CustomEvent("pda-work-queue-change", { detail: normalized }));
+}
+
+export async function hydratePdaWorkQueue() {
+  const durable = await readPdaDurableValue<Array<Partial<WorkQueueEntry> & { id: string; createdAt: string }>>(DURABLE_QUEUE_KEY);
+  if (Array.isArray(durable)) {
+    const normalized = durable.filter((item) => item?.id && item?.createdAt).map(normalize);
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(normalized));
+    localStorage.removeItem(LEGACY_QUEUE_KEY);
+    window.dispatchEvent(new CustomEvent("pda-work-queue-change", { detail: normalized }));
+    return normalized;
+  }
+  const legacy = readPdaWorkQueue();
+  await queuePdaDurableWrite(DURABLE_QUEUE_KEY, legacy);
+  return legacy;
 }
 
 export function queueRetryDelay(attempts: number) {
@@ -86,7 +109,9 @@ export function nextQueueWakeup(queue: WorkQueueEntry[], now = Date.now()) {
 }
 
 export function rememberLastWork(work: { id: string; title: string; type: string; status: string }) {
-  localStorage.setItem(PDA_LAST_WORK_KEY, JSON.stringify({ ...work, rememberedAt: new Date().toISOString() }));
+  const remembered = { ...work, rememberedAt: new Date().toISOString() };
+  localStorage.setItem(PDA_LAST_WORK_KEY, JSON.stringify(remembered));
+  void queuePdaDurableWrite(DURABLE_LAST_WORK_KEY, remembered);
   window.dispatchEvent(new Event("pda-last-work-change"));
 }
 
@@ -97,6 +122,56 @@ export function readLastWork(): { id: string; title: string; type: string; statu
   } catch {
     return null;
   }
+}
+
+export async function hydrateLastWork() {
+  const durable = await readPdaDurableValue<ReturnType<typeof readLastWork>>(DURABLE_LAST_WORK_KEY);
+  if (durable?.id) {
+    localStorage.setItem(PDA_LAST_WORK_KEY, JSON.stringify(durable));
+    window.dispatchEvent(new Event("pda-last-work-change"));
+    return durable;
+  }
+  const legacy = readLastWork();
+  if (legacy) await queuePdaDurableWrite(DURABLE_LAST_WORK_KEY, legacy);
+  return legacy;
+}
+
+export function readPdaWorkDraft<T>(): T | null {
+  try {
+    return JSON.parse(localStorage.getItem(PDA_WORK_DRAFT_KEY) ?? "null") as T | null;
+  } catch {
+    return null;
+  }
+}
+
+export function writePdaWorkDraft<T>(draft: T) {
+  localStorage.setItem(PDA_WORK_DRAFT_KEY, JSON.stringify(draft));
+  void queuePdaDurableWrite(DURABLE_WORK_DRAFT_KEY, draft);
+}
+
+export async function hydratePdaWorkDraft<T>() {
+  const durable = await readPdaDurableValue<T>(DURABLE_WORK_DRAFT_KEY);
+  if (durable !== undefined) {
+    localStorage.setItem(PDA_WORK_DRAFT_KEY, JSON.stringify(durable));
+    return durable;
+  }
+  const legacy = readPdaWorkDraft<T>();
+  if (legacy) await queuePdaDurableWrite(DURABLE_WORK_DRAFT_KEY, legacy);
+  return legacy;
+}
+
+export function clearPdaWorkDraft() {
+  localStorage.removeItem(PDA_WORK_DRAFT_KEY);
+  void queuePdaDurableRemove(DURABLE_WORK_DRAFT_KEY);
+}
+
+export function clearPdaDeviceData() {
+  for (const key of [QUEUE_KEY, LEGACY_QUEUE_KEY, PDA_LAST_WORK_KEY, PDA_WORK_DRAFT_KEY, PDA_LAST_SYNC_KEY]) {
+    localStorage.removeItem(key);
+  }
+  void clearPdaDurableStorage();
+  window.dispatchEvent(new CustomEvent("pda-work-queue-change", { detail: [] }));
+  window.dispatchEvent(new Event("pda-last-work-change"));
 }
 
 export function tokenIdentity(token?: string) {

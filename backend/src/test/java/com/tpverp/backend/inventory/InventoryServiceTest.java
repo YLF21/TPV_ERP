@@ -286,6 +286,71 @@ class InventoryServiceTest {
         verify(syncOutbox, never()).enqueue(any());
     }
 
+    @Test
+    void batchTransferValidatesAggregateBalanceBeforeWritingAnything() {
+        var product = product();
+        var source = new Warehouse(storeId, "ORIGEN");
+        var firstTarget = new Warehouse(storeId, "TIENDA 1");
+        var secondTarget = new Warehouse(storeId, "TIENDA 2");
+        var sourceStock = StockLevel.snapshot(product.getId(), source.getId(), new BigDecimal("2.000"));
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouseRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(warehouseRepository.findById(firstTarget.getId())).thenReturn(Optional.of(firstTarget));
+        when(warehouseRepository.findById(secondTarget.getId())).thenReturn(Optional.of(secondTarget));
+        when(settingsRepository.findById(storeId)).thenReturn(Optional.of(negativeStockDisabled(source.getId())));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(product.getId(), source.getId()))
+                .thenReturn(Optional.of(sourceStock));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(product.getId(), firstTarget.getId()))
+                .thenReturn(Optional.empty());
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(product.getId(), secondTarget.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.transferBatch(List.of(
+                new InventoryService.TransferCommand(product.getId(), source.getId(), firstTarget.getId(), BigDecimal.ONE),
+                new InventoryService.TransferCommand(product.getId(), source.getId(), secondTarget.getId(), new BigDecimal("2"))
+        ), authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no permite stock negativo");
+
+        assertThat(sourceStock.getQuantity()).isEqualByComparingTo("2.000");
+        verify(stockRepository, never()).saveAll(any());
+        verify(movementRepository, never()).save(any());
+        verify(syncOutbox, never()).enqueue(any());
+    }
+
+    @Test
+    void batchTransferAppliesEveryLineAndReturnsOneBatchResult() {
+        var firstProduct = product();
+        var secondProduct = product();
+        var source = new Warehouse(storeId, "ORIGEN");
+        var target = new Warehouse(storeId, "DESTINO");
+        when(productRepository.findById(firstProduct.getId())).thenReturn(Optional.of(firstProduct));
+        when(productRepository.findById(secondProduct.getId())).thenReturn(Optional.of(secondProduct));
+        when(warehouseRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(warehouseRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(firstProduct.getId(), source.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(firstProduct.getId(), source.getId(), new BigDecimal("10"))));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(firstProduct.getId(), target.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(firstProduct.getId(), target.getId(), BigDecimal.ZERO)));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(secondProduct.getId(), source.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(secondProduct.getId(), source.getId(), new BigDecimal("8"))));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(secondProduct.getId(), target.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(secondProduct.getId(), target.getId(), BigDecimal.ONE)));
+
+        var result = service.transferBatch(List.of(
+                new InventoryService.TransferCommand(firstProduct.getId(), source.getId(), target.getId(), new BigDecimal("3")),
+                new InventoryService.TransferCommand(secondProduct.getId(), source.getId(), target.getId(), new BigDecimal("2"))
+        ), authentication);
+
+        assertThat(result.batchId()).isNotNull();
+        assertThat(result.transfers()).hasSize(2);
+        assertThat(result.transfers().get(0).sourceQuantity()).isEqualByComparingTo("7.000");
+        assertThat(result.transfers().get(1).targetQuantity()).isEqualByComparingTo("3.000");
+        verify(stockRepository).saveAll(any());
+        verify(movementRepository, times(4)).save(any(StockMovement.class));
+        verify(syncOutbox, times(4)).enqueue(any());
+    }
+
     private StockSettings negativeStockDisabled(UUID warehouseId) {
         var settings = new StockSettings(storeId, warehouseId);
         settings.update(warehouseId, false, StockSettings.DEFAULT_MINIMUM_STOCK, true);

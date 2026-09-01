@@ -17,8 +17,11 @@ import java.time.Instant;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
@@ -176,6 +179,82 @@ public class InventoryService {
         return new TransferResult(
                 transferId, productId, sourceWarehouseId, targetWarehouseId,
                 source.getQuantity(), target.getQuantity());
+    }
+
+    @Transactional
+    public BatchTransferResult transferBatch(
+            List<TransferCommand> commands,
+            Authentication authentication) {
+        if (commands == null || commands.isEmpty()) {
+            throw new IllegalArgumentException("El lote de transferencias no puede estar vacio");
+        }
+        if (commands.size() > 100) {
+            throw new IllegalArgumentException("El lote no puede superar 100 transferencias");
+        }
+
+        UUID storeId = currentStore().getId();
+        boolean allowNegativeStock = allowsNegativeStock(storeId);
+        Map<UUID, Product> products = new HashMap<>();
+        Map<UUID, Warehouse> warehouses = new HashMap<>();
+        List<PreparedTransfer> prepared = new ArrayList<>(commands.size());
+        Map<StockKey, BigDecimal> deltas = new HashMap<>();
+
+        for (TransferCommand command : commands) {
+            Objects.requireNonNull(command, "transferencia");
+            UUID productId = Objects.requireNonNull(command.productId(), "productId");
+            UUID sourceWarehouseId = Objects.requireNonNull(command.sourceWarehouseId(), "sourceWarehouseId");
+            UUID targetWarehouseId = Objects.requireNonNull(command.targetWarehouseId(), "targetWarehouseId");
+            if (sourceWarehouseId.equals(targetWarehouseId)) {
+                throw new IllegalArgumentException("Los almacenes de origen y destino deben ser distintos");
+            }
+            BigDecimal transferQuantity = positive(command.quantity());
+            Product transferProduct = products.computeIfAbsent(productId, id -> product(id, storeId));
+            validateStockQuantity(transferProduct, transferQuantity);
+            warehouses.computeIfAbsent(sourceWarehouseId, id -> warehouse(id, storeId));
+            warehouses.computeIfAbsent(targetWarehouseId, id -> warehouse(id, storeId));
+            prepared.add(new PreparedTransfer(command, transferQuantity));
+            deltas.merge(new StockKey(productId, sourceWarehouseId), transferQuantity.negate(), BigDecimal::add);
+            deltas.merge(new StockKey(productId, targetWarehouseId), transferQuantity, BigDecimal::add);
+        }
+
+        Map<StockKey, StockLevel> stocks = new LinkedHashMap<>();
+        deltas.keySet().stream()
+                .sorted(Comparator.comparing((StockKey key) -> key.productId().toString())
+                        .thenComparing(key -> key.warehouseId().toString()))
+                .forEach(key -> stocks.put(key, stockLevel(key.productId(), key.warehouseId(), true)));
+        if (!allowNegativeStock) {
+            deltas.forEach((key, delta) -> requireAllowedBalance(stocks.get(key), delta, false));
+        }
+
+        prepared.forEach(item -> {
+            TransferCommand command = item.command();
+            stocks.get(new StockKey(command.productId(), command.sourceWarehouseId()))
+                    .apply(item.quantity().negate());
+            stocks.get(new StockKey(command.productId(), command.targetWarehouseId()))
+                    .apply(item.quantity());
+        });
+        stockRepository.saveAll(stocks.values());
+
+        UUID batchId = UUID.randomUUID();
+        UserAccount user = organization.currentUser(authentication);
+        Instant now = Instant.now(clock);
+        List<TransferResult> results = new ArrayList<>(prepared.size());
+        for (PreparedTransfer item : prepared) {
+            TransferCommand command = item.command();
+            UUID transferId = UUID.randomUUID();
+            enqueueStockMovement(movementRepository.save(StockMovement.transferOut(
+                    command.productId(), command.sourceWarehouseId(), user.getId(), item.quantity(), transferId, now)));
+            enqueueStockMovement(movementRepository.save(StockMovement.transferIn(
+                    command.productId(), command.targetWarehouseId(), user.getId(), item.quantity(), transferId, now)));
+            results.add(new TransferResult(
+                    transferId,
+                    command.productId(),
+                    command.sourceWarehouseId(),
+                    command.targetWarehouseId(),
+                    stocks.get(new StockKey(command.productId(), command.sourceWarehouseId())).getQuantity(),
+                    stocks.get(new StockKey(command.productId(), command.targetWarehouseId())).getQuantity()));
+        }
+        return new BatchTransferResult(batchId, List.copyOf(results));
     }
 
     private void enqueueStockMovement(StockMovement movement) {
@@ -416,6 +495,22 @@ public class InventoryService {
             UUID targetWarehouseId,
             BigDecimal sourceQuantity,
             BigDecimal targetQuantity) {
+    }
+
+    public record TransferCommand(
+            UUID productId,
+            UUID sourceWarehouseId,
+            UUID targetWarehouseId,
+            BigDecimal quantity) {
+    }
+
+    public record BatchTransferResult(UUID batchId, List<TransferResult> transfers) {
+    }
+
+    private record PreparedTransfer(TransferCommand command, BigDecimal quantity) {
+    }
+
+    private record StockKey(UUID productId, UUID warehouseId) {
     }
 
     private static int normalizedLimit(Integer requestedLimit) {

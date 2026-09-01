@@ -25,6 +25,34 @@ export class ApiConnectionError extends Error {
   }
 }
 
+export type ApiFailureKind =
+  | "offline"
+  | "authentication"
+  | "terminal-disabled"
+  | "forbidden"
+  | "not-found"
+  | "conflict"
+  | "server"
+  | "unknown";
+
+export function apiProblemCode(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  const code = error.problem?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+export function classifyApiFailure(error: unknown): ApiFailureKind {
+  if (error instanceof ApiConnectionError) return "offline";
+  if (!(error instanceof ApiError)) return "unknown";
+  if (apiProblemCode(error) === "TERMINAL_DISABLED") return "terminal-disabled";
+  if (error.status === 401) return "authentication";
+  if (error.status === 403) return "forbidden";
+  if (error.status === 404) return "not-found";
+  if (error.status === 409 || error.status === 412) return "conflict";
+  if (error.status >= 500) return "server";
+  return "unknown";
+}
+
 function isFormData(body: unknown): body is FormData {
   return typeof FormData !== "undefined" && body instanceof FormData;
 }

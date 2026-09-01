@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
+import com.tpverp.backend.security.application.TerminalDisabledException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
@@ -96,6 +97,18 @@ class ApiExceptionHandlerTest {
 
         assertEquals("zh", problem.getProperties().get("locale"));
         assertEquals("用户名或密码不正确", problem.getDetail());
+    }
+
+    @Test
+    void reportsDisabledTerminalsWithAStableForbiddenCode() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es");
+
+        var problem = handler.terminalDisabled(new TerminalDisabledException(), request);
+
+        assertEquals(403, problem.getStatus());
+        assertEquals("TERMINAL_DISABLED", problem.getProperties().get("code"));
+        assertEquals("Este terminal está desactivado. Vuelve a vincularlo o contacta con un administrador", problem.getDetail());
     }
 
     @Test

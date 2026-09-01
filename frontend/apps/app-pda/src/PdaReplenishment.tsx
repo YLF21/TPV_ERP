@@ -1,21 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest, type LocaleCode } from "@tpverp/app-common";
 import { pdaPriceLookupPath, pdaStockLookupPath } from "./PdaProductLookup";
+import {
+  buildReplenishmentSuggestions,
+  hasAtMostThreeDecimals,
+  numeric,
+  pdaReplenishmentPagePath,
+  suggestedReplenishmentWarehouses,
+  type ReplenishmentSuggestion,
+  type StockItem,
+  type StockPageItem,
+  type WarehouseOption
+} from "./PdaReplenishmentUtils";
 import { PhysicalScannerStatus, usePhysicalScanner } from "./usePhysicalScanner";
 
-type WarehouseOption = { id: string; name?: string | null; nombre?: string | null; defaultWarehouse?: boolean; active?: boolean };
-export type StockItem = { productId: string; warehouseId: string; quantity: number | string };
 type ProductResult = { productId: string; code: string; name: string };
-type InventoryProduct = {
-  id: string;
-  code?: string | null;
-  name?: string | null;
-  active?: boolean | null;
-  productType?: string | null;
-  stockMin?: number | string | null;
-  stockMax?: number | string | null;
-};
-type StockPageItem = { product: InventoryProduct; stock: StockItem[] };
 type PagedResult<T> = { items: T[]; nextCursor?: string | null; hasMore: boolean };
 type TransferResult = {
   sourceWarehouseId: string;
@@ -23,75 +22,7 @@ type TransferResult = {
   sourceQuantity: number | string;
   targetQuantity: number | string;
 };
-
-export type ReplenishmentSuggestion = {
-  product: InventoryProduct;
-  stock: StockItem[];
-  sourceWarehouseId: string;
-  targetWarehouseId: string;
-  currentQuantity: number;
-  minimumQuantity: number;
-  targetQuantity: number;
-  sourceQuantity: number;
-  suggestedQuantity: number;
-};
-
-function numeric(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-export function hasAtMostThreeDecimals(value: number) {
-  return Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-7;
-}
-
-export function suggestedReplenishmentWarehouses(stock: StockItem[], warehouses: WarehouseOption[], targetWarehouseId = "") {
-  const balances = warehouses.filter((warehouse) => warehouse.id !== targetWarehouseId).map((warehouse) => ({
-    id: warehouse.id,
-    quantity: numeric(stock.find((item) => item.warehouseId === warehouse.id)?.quantity)
-  })).sort((left, right) => right.quantity - left.quantity);
-  return {
-    sourceId: balances[0]?.id ?? "",
-    targetId: targetWarehouseId || balances[1]?.id || warehouses.find((warehouse) => warehouse.id !== balances[0]?.id)?.id || ""
-  };
-}
-
-export function buildReplenishmentSuggestions(items: StockPageItem[], warehouses: WarehouseOption[], targetWarehouseId: string) {
-  if (!targetWarehouseId) return [];
-  return items.flatMap<ReplenishmentSuggestion>((item) => {
-    const minimumQuantity = numeric(item.product.stockMin);
-    const currentQuantity = numeric(item.stock.find((stockItem) => stockItem.warehouseId === targetWarehouseId)?.quantity);
-    if (item.product.active === false || item.product.productType === "SERVICE" || minimumQuantity <= 0 || currentQuantity >= minimumQuantity) return [];
-    const configuredMaximum = numeric(item.product.stockMax);
-    const targetQuantity = configuredMaximum > minimumQuantity ? configuredMaximum : minimumQuantity;
-    const source = warehouses.filter((warehouse) => warehouse.id !== targetWarehouseId).map((warehouse) => ({
-      id: warehouse.id,
-      quantity: numeric(item.stock.find((stockItem) => stockItem.warehouseId === warehouse.id)?.quantity)
-    })).sort((left, right) => right.quantity - left.quantity)[0];
-    const sourceQuantity = Math.max(0, source?.quantity ?? 0);
-    return [{
-      product: item.product,
-      stock: item.stock,
-      sourceWarehouseId: source?.id ?? "",
-      targetWarehouseId,
-      currentQuantity,
-      minimumQuantity,
-      targetQuantity,
-      sourceQuantity,
-      suggestedQuantity: Math.min(Math.max(0, targetQuantity - currentQuantity), sourceQuantity)
-    }];
-  }).sort((left, right) => {
-    const leftRatio = left.minimumQuantity > 0 ? left.currentQuantity / left.minimumQuantity : 1;
-    const rightRatio = right.minimumQuantity > 0 ? right.currentQuantity / right.minimumQuantity : 1;
-    return leftRatio - rightRatio || String(left.product.name ?? "").localeCompare(String(right.product.name ?? ""));
-  });
-}
-
-export function pdaReplenishmentPagePath(cursor?: string | null) {
-  const parameters = new URLSearchParams({ limit: "100", sortBy: "name", sortDirection: "asc" });
-  if (cursor) parameters.set("cursor", cursor);
-  return `/stock/page?${parameters.toString()}`;
-}
+type BatchTransferResult = { batchId: string; transfers: Array<TransferResult & { productId: string }> };
 
 function updateInventoryStock(items: StockPageItem[], productId: string, result: TransferResult) {
   return items.map((item) => {
@@ -122,10 +53,12 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkReviewOpen, setBulkReviewOpen] = useState(false);
   const [error, setError] = useState("");
   const [suggestionsError, setSuggestionsError] = useState("");
   const [status, setStatus] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const bulkConfirmRef = useRef<HTMLButtonElement | null>(null);
   const number = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { maximumFractionDigits: 3 }), [locale]);
   const warehouseName = useCallback((id: string) => {
     const warehouse = activeWarehouses.find((item) => item.id === id);
@@ -179,6 +112,10 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
     const available = new Set(selectableSuggestions.map((suggestion) => suggestion.product.id));
     setSelectedProductIds((current) => new Set([...current].filter((id) => available.has(id))));
   }, [inventoryItems, targetWarehouseId]);
+
+  useEffect(() => {
+    if (bulkReviewOpen) window.setTimeout(() => bulkConfirmRef.current?.focus(), 0);
+  }, [bulkReviewOpen]);
 
   function chooseSuggestion(suggestion: ReplenishmentSuggestion) {
     setProduct({ productId: suggestion.product.id, code: suggestion.product.code ?? "", name: suggestion.product.name ?? suggestion.product.code ?? suggestion.product.id });
@@ -271,29 +208,32 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
     }
   }
 
-  async function transferSelected() {
+  async function confirmSelectedTransfers() {
     if (!token || selectedSuggestions.length === 0) return;
     setBulkSaving(true);
     setError("");
     setStatus("");
-    const completed: Array<{ productId: string; result: TransferResult }> = [];
-    let failed = 0;
-    for (const suggestion of selectedSuggestions) {
-      try {
-        const result = await createTransfer(suggestion.product.id, suggestion.sourceWarehouseId, suggestion.targetWarehouseId, suggestion.suggestedQuantity);
-        completed.push({ productId: suggestion.product.id, result });
-      } catch {
-        failed += 1;
-      }
-    }
-    if (completed.length > 0) {
-      setInventoryItems((current) => completed.reduce((values, item) => updateInventoryStock(values, item.productId, item.result), current));
+    try {
+      const result = await apiRequest<BatchTransferResult>("/stock/transfers/batch", {
+        token,
+        body: { transfers: selectedSuggestions.map((suggestion) => ({
+          productId: suggestion.product.id,
+          sourceWarehouseId: suggestion.sourceWarehouseId,
+          targetWarehouseId: suggestion.targetWarehouseId,
+          quantity: suggestion.suggestedQuantity
+        })) }
+      });
+      setInventoryItems((current) => result.transfers.reduce((values, item) => updateInventoryStock(values, item.productId, item), current));
       setSelectedProductIds(new Set());
-      setStatus(t("pda.replenishment.bulkCompleted").replace("{count}", String(completed.length)));
+      setBulkReviewOpen(false);
+      setStatus(t("pda.replenishment.bulkCompleted").replace("{count}", String(result.transfers.length)));
       navigator.vibrate?.([60, 40, 60]);
+    } catch {
+      setError(t("pda.replenishment.bulkAtomicError"));
+      navigator.vibrate?.([100, 60, 100]);
+    } finally {
+      setBulkSaving(false);
     }
-    if (failed > 0) setError(t("pda.replenishment.bulkError").replace("{count}", String(failed)));
-    setBulkSaving(false);
   }
 
   const physicalScanner = usePhysicalScanner({
@@ -329,9 +269,19 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
             </button>
           </article>)}
         </div>
-        <footer><button type="button" disabled={bulkSaving || selectedSuggestions.length === 0} onClick={() => void transferSelected()}>{bulkSaving ? t("common.loading") : `${t("pda.replenishment.replenishSelected")} (${selectedSuggestions.length})`}</button></footer>
+        <footer><button type="button" disabled={bulkSaving || selectedSuggestions.length === 0} onClick={() => setBulkReviewOpen(true)}>{bulkSaving ? t("common.loading") : `${t("pda.replenishment.replenishSelected")} (${selectedSuggestions.length})`}</button></footer>
       </>}
     </section>
+    {bulkReviewOpen && <div className="pda-replenishment-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !bulkSaving) setBulkReviewOpen(false); }}>
+      <section className="pda-replenishment-dialog" role="dialog" aria-modal="true" aria-labelledby="pda-bulk-review-title" aria-describedby="pda-bulk-review-help">
+        <header><h3 id="pda-bulk-review-title">{t("pda.replenishment.bulkReviewTitle")}</h3><p id="pda-bulk-review-help">{t("pda.replenishment.bulkReviewHelp")}</p></header>
+        <ul>{selectedSuggestions.map((suggestion) => <li key={suggestion.product.id}><span><b>{suggestion.product.code}</b>{suggestion.product.name}</span><strong>{number.format(suggestion.suggestedQuantity)}</strong><small>{warehouseName(suggestion.sourceWarehouseId)} → {warehouseName(suggestion.targetWarehouseId)}</small></li>)}</ul>
+        <footer>
+          <button type="button" className="secondary" disabled={bulkSaving} onClick={() => setBulkReviewOpen(false)}>{t("pda.replenishment.bulkCancel")}</button>
+          <button ref={bulkConfirmRef} type="button" disabled={bulkSaving} onClick={() => void confirmSelectedTransfers()}>{bulkSaving ? t("common.loading") : t("pda.replenishment.bulkConfirm")}</button>
+        </footer>
+      </section>
+    </div>}
     <form className="pda-replenishment-search" onSubmit={search}>
       <label><span>{t("pda.replenishment.manualScan")}</span><input ref={inputRef} data-physical-scanner-input value={identifier} disabled={busy} onChange={(event) => setIdentifier(event.target.value)} /></label>
       <button type="submit" disabled={busy || !identifier.trim()}>{busy ? t("common.loading") : t("pda.replenishment.scan")}</button>

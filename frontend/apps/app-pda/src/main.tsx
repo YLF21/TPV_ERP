@@ -1,23 +1,49 @@
-import { StrictMode, useEffect, useState, type FormEvent } from "react";
+import { lazy, StrictMode, Suspense, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
+import { SpinnerGap } from "@phosphor-icons/react";
 import {
   ApiError,
   LoginScreen,
   apiRequest,
+  classifyApiFailure,
   createTranslator,
   type LocaleCode,
   type TerminalContext,
   type UserSession
 } from "@tpverp/app-common";
-import { GoodsCheckPanel } from "../../../packages/app-common/src/components/GoodsCheckPanel";
-import { PdaProductLookup } from "./PdaProductLookup";
-import { PdaReplenishment } from "./PdaReplenishment";
-import { PdaStockCount } from "./PdaStockCount";
-import { PdaHistory } from "./PdaHistory";
-import { PdaWorkboard } from "./PdaWorkboard";
 import { PdaHomeDashboard } from "./PdaHomeDashboard";
-import { clearPdaIdentity, readPdaIdentity, writePdaIdentity, type PdaIdentity } from "./pdaIdentity";
+import {
+  clearPdaIdentity, quarantineDisabledPdaIdentity, readPdaIdentity, writePdaIdentity, type PdaIdentity
+} from "./pdaIdentity";
+import { usePdaModuleExitWarning, usePdaNavigation } from "./usePdaNavigation";
 import "./pda.css";
+
+const GoodsCheckPanel = lazy(async () => ({ default: (await import("../../../packages/app-common/src/components/GoodsCheckPanel")).GoodsCheckPanel }));
+const PdaProductLookup = lazy(async () => ({ default: (await import("./PdaProductLookup")).PdaProductLookup }));
+const PdaReplenishment = lazy(async () => ({ default: (await import("./PdaReplenishment")).PdaReplenishment }));
+const PdaStockCount = lazy(async () => ({ default: (await import("./PdaStockCount")).PdaStockCount }));
+const PdaHistory = lazy(async () => ({ default: (await import("./PdaHistory")).PdaHistory }));
+const PdaWorkboard = lazy(async () => ({ default: (await import("./PdaWorkboard")).PdaWorkboard }));
+
+const moduleLoadingCopy: Record<LocaleCode, { eyebrow: string; title: string; detail: string }> = {
+  es: { eyebrow: "Preparando módulo", title: "Cargando {module}", detail: "Estamos preparando los datos y las herramientas necesarias." },
+  en: { eyebrow: "Preparing module", title: "Loading {module}", detail: "We are preparing the data and tools you need." },
+  zh: { eyebrow: "正在准备模块", title: "正在加载{module}", detail: "正在准备所需的数据和工具。" }
+};
+
+function PdaModuleLoading({ locale, moduleTitle }: { locale: LocaleCode; moduleTitle: string }) {
+  const content = moduleLoadingCopy[locale];
+  const title = content.title.replace("{module}", moduleTitle);
+  return (
+    <section className="pda-module-loading" role="status" aria-live="polite" aria-busy="true">
+      <div className="pda-module-loading-card">
+        <SpinnerGap className="pda-module-loading-icon" size={44} weight="bold" aria-hidden="true" />
+        <div><span>{content.eyebrow}</span><strong>{title}</strong><p>{content.detail}</p></div>
+        <progress aria-label={title} />
+      </div>
+    </section>
+  );
+}
 
 type PdaRegistrationResult = {
   terminalId: string;
@@ -119,6 +145,13 @@ function App() {
     setIdentity(null);
   }
 
+  function handleAuthenticationError(error: unknown) {
+    if (classifyApiFailure(error) !== "terminal-disabled") return;
+    quarantineDisabledPdaIdentity(window.localStorage);
+    setSession(null);
+    setIdentity(null);
+  }
+
   if (!identity) {
     return <PdaEnrollment locale={locale} onLocaleChange={setLocale} onRegistered={setIdentity} />;
   }
@@ -128,7 +161,7 @@ function App() {
     return (
       <div className="pda-classic-login-shell">
         <LoginScreen
-          app="gestion"
+          app="pda"
           locale={locale}
           terminalContext={identity}
           onLocaleChange={setLocale}
@@ -138,6 +171,7 @@ function App() {
             setIdentity(approved);
             setSession(value);
           }}
+          onAuthenticationError={handleAuthenticationError}
           heading={text.loginTitle}
           notice={identity.pendingApproval ? text.pending : undefined}
           secondaryActionLabel={text.reset}
@@ -286,8 +320,11 @@ function PdaWorkspace({
 }) {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
-  const [view, setView] = useState<"home" | "check" | "lookup" | "replenishment" | "count" | "history" | "work">("home");
+  const { view, openView, goHome } = usePdaNavigation();
   const t = createTranslator(locale);
+  const moduleTitle = t(view === "check" ? "pda.navigation.check" : view === "lookup" ? "pda.navigation.lookup" : view === "count" ? "pda.navigation.count" : view === "history" ? "pda.navigation.history" : view === "work" ? "pda.navigation.work" : "pda.navigation.replenishment");
+
+  usePdaModuleExitWarning(view !== "home");
 
   useEffect(() => {
     let cancelled = false;
@@ -319,21 +356,22 @@ function PdaWorkspace({
       </header>
       {view === "home" && <section className="pda-home">
         <header><span>{t("pda.home.eyebrow")}</span><h1>{t("pda.home.title")}</h1><p>{t("pda.home.subtitle")}</p></header>
-        <PdaHomeDashboard token={session.accessToken} locale={locale} warehouses={warehouses} onOpen={setView} />
+        <PdaHomeDashboard token={session.accessToken} locale={locale} warehouses={warehouses} onOpen={openView} />
         <nav className="pda-home-menu" aria-label={t("pda.navigation")}>
-          <button type="button" onClick={() => setView("lookup")}><b aria-hidden="true">⌕</b><span>{t("pda.navigation.lookup")}</span><small>{t("pda.home.lookupHelp")}</small></button>
-          <button type="button" onClick={() => setView("check")}><b aria-hidden="true">✓</b><span>{t("pda.navigation.check")}</span><small>{t("pda.home.checkHelp")}</small></button>
-          <button type="button" onClick={() => setView("replenishment")}><b aria-hidden="true">⇄</b><span>{t("pda.navigation.replenishment")}</span><small>{t("pda.home.replenishmentHelp")}</small></button>
-          <button type="button" onClick={() => setView("count")}><b aria-hidden="true">≣</b><span>{t("pda.navigation.count")}</span><small>{t("pda.home.countHelp")}</small></button>
-          <button type="button" onClick={() => setView("history")}><b aria-hidden="true">↺</b><span>{t("pda.navigation.history")}</span><small>{t("pda.home.historyHelp")}</small></button>
-          <button type="button" onClick={() => setView("work")}><b aria-hidden="true">▦</b><span>{t("pda.navigation.work")}</span><small>{t("pda.home.workHelp")}</small></button>
+          <button type="button" onClick={() => openView("lookup")}><b aria-hidden="true">⌕</b><span>{t("pda.navigation.lookup")}</span><small>{t("pda.home.lookupHelp")}</small></button>
+          <button type="button" onClick={() => openView("check")}><b aria-hidden="true">✓</b><span>{t("pda.navigation.check")}</span><small>{t("pda.home.checkHelp")}</small></button>
+          <button type="button" onClick={() => openView("replenishment")}><b aria-hidden="true">⇄</b><span>{t("pda.navigation.replenishment")}</span><small>{t("pda.home.replenishmentHelp")}</small></button>
+          <button type="button" onClick={() => openView("count")}><b aria-hidden="true">≣</b><span>{t("pda.navigation.count")}</span><small>{t("pda.home.countHelp")}</small></button>
+          <button type="button" onClick={() => openView("history")}><b aria-hidden="true">↺</b><span>{t("pda.navigation.history")}</span><small>{t("pda.home.historyHelp")}</small></button>
+          <button type="button" onClick={() => openView("work")}><b aria-hidden="true">▦</b><span>{t("pda.navigation.work")}</span><small>{t("pda.home.workHelp")}</small></button>
         </nav>
       </section>}
       {view !== "home" && <nav className="pda-module-toolbar" aria-label={t("pda.navigation")}>
-        <button type="button" onClick={() => setView("home")}>← {t("pda.navigation.home")}</button>
-        <strong>{t(view === "check" ? "pda.navigation.check" : view === "lookup" ? "pda.navigation.lookup" : view === "count" ? "pda.navigation.count" : view === "history" ? "pda.navigation.history" : view === "work" ? "pda.navigation.work" : "pda.navigation.replenishment")}</strong>
+        <button type="button" onClick={goHome}>← {t("pda.navigation.home")}</button>
+        <strong>{moduleTitle}</strong>
       </nav>}
-      <div className="pda-module-view" hidden={view !== "check"}>
+      <Suspense fallback={<PdaModuleLoading locale={locale} moduleTitle={moduleTitle} />}>
+      {view === "check" && <div className="pda-module-view">
         <GoodsCheckPanel
           locale={locale}
           token={session.accessToken}
@@ -342,8 +380,8 @@ function PdaWorkspace({
           suppliers={suppliers}
           separateWorkflow
         />
-      </div>
-      <div className="pda-module-view" hidden={view !== "lookup"}>
+      </div>}
+      {view === "lookup" && <div className="pda-module-view">
         <PdaProductLookup
           token={session.accessToken}
           locale={locale}
@@ -351,19 +389,20 @@ function PdaWorkspace({
           storeName={identity.storeName}
           t={t}
         />
-      </div>
-      <div className="pda-module-view" hidden={view !== "replenishment"}>
+      </div>}
+      {view === "replenishment" && <div className="pda-module-view">
         <PdaReplenishment token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
-      </div>
-      <div className="pda-module-view" hidden={view !== "count"}>
+      </div>}
+      {view === "count" && <div className="pda-module-view">
         <PdaStockCount token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
-      </div>
-      <div className="pda-module-view" hidden={view !== "history"}>
+      </div>}
+      {view === "history" && <div className="pda-module-view">
         <PdaHistory token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
-      </div>
-      <div className="pda-module-view" hidden={view !== "work"}>
+      </div>}
+      {view === "work" && <div className="pda-module-view">
         <PdaWorkboard token={session.accessToken} locale={locale} warehouses={warehouses} />
-      </div>
+      </div>}
+      </Suspense>
     </main>
   );
 }

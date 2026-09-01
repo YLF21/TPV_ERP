@@ -166,4 +166,15 @@ class StockControllerContractTest {
                 .contains("STOCK_ADJUST")
                 .doesNotContain("GESTION_ALMACEN");
     }
+
+    @Test
+    void exposesAtomicBatchTransferWithWarehousePermission() throws NoSuchMethodException {
+        var method = StockController.class.getDeclaredMethod(
+                "transferBatch", StockController.BatchTransferRequest.class, Authentication.class);
+
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/transfers/batch");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_TRANSFER", "GESTION_ALMACEN", "hasRole('ADMIN')");
+    }
 }

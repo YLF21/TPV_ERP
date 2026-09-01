@@ -13,6 +13,7 @@ import com.tpverp.backend.document.TicketGeneratedVoucherAlreadyUsedException;
 import com.tpverp.backend.document.TicketNotFoundException;
 import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
+import com.tpverp.backend.security.application.TerminalDisabledException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.sales.SaleOperationAuthorizationDeniedException;
@@ -120,6 +121,13 @@ public class ApiExceptionHandler {
             AuthenticationFailedException exception,
             HttpServletRequest request) {
         return systemProblem(HttpStatus.UNAUTHORIZED, SystemErrorCode.AUTHENTICATION_FAILED, request);
+    }
+
+    @ExceptionHandler(TerminalDisabledException.class)
+    ProblemDetail terminalDisabled(
+            TerminalDisabledException exception,
+            HttpServletRequest request) {
+        return systemProblem(HttpStatus.FORBIDDEN, SystemErrorCode.TERMINAL_DISABLED, request);
     }
 
     @ExceptionHandler(SaleOperationAuthorizationDeniedException.class)

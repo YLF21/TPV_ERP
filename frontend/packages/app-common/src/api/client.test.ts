@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiConnectionError, ApiError, apiRequest, checkBackendConnection } from "./client";
+import {
+  ApiConnectionError, ApiError, apiProblemCode, apiRequest, checkBackendConnection, classifyApiFailure
+} from "./client";
 
 describe("apiRequest", () => {
   afterEach(() => {
@@ -109,6 +111,16 @@ describe("apiRequest", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
     await expect(apiRequest("/auth/login")).rejects.toBeInstanceOf(ApiConnectionError);
+  });
+
+  it("classifies structured API failures centrally", () => {
+    const disabled = new ApiError("disabled", 403, { code: "TERMINAL_DISABLED" });
+
+    expect(apiProblemCode(disabled)).toBe("TERMINAL_DISABLED");
+    expect(classifyApiFailure(disabled)).toBe("terminal-disabled");
+    expect(classifyApiFailure(new ApiError("expired", 401))).toBe("authentication");
+    expect(classifyApiFailure(new ApiConnectionError())).toBe("offline");
+    expect(classifyApiFailure(new ApiError("server", 503))).toBe("server");
   });
 
   it("reports backend connection availability from a probe request", async () => {

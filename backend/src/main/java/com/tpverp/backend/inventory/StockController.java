@@ -14,8 +14,10 @@ import com.tpverp.backend.document.template.RenderedDocumentView;
 import com.tpverp.backend.shared.api.PagedResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -220,6 +222,16 @@ public class StockController {
                 request.quantity(), authentication);
     }
 
+    @PostMapping("/transfers/batch")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_TRANSFER + "','" + GESTION_ALMACEN + "')")
+    public InventoryService.BatchTransferResult transferBatch(
+            @Valid @RequestBody BatchTransferRequest request, Authentication authentication) {
+        return service.transferBatch(request.transfers().stream()
+                .map(item -> new InventoryService.TransferCommand(
+                        item.productId(), item.sourceWarehouseId(), item.targetWarehouseId(), item.quantity()))
+                .toList(), authentication);
+    }
+
     @PostMapping("/snapshots/rebuild")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_ADJUST + "')")
     public StockSnapshotRebuildResult rebuildSnapshots() {
@@ -238,5 +250,9 @@ public class StockController {
             @NotNull UUID sourceWarehouseId,
             @NotNull UUID targetWarehouseId,
             @NotNull @Positive BigDecimal quantity) {
+    }
+
+    public record BatchTransferRequest(
+            @NotEmpty @Size(max = 100) List<@Valid TransferRequest> transfers) {
     }
 }

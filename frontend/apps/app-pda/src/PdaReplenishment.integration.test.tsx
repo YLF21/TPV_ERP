@@ -29,7 +29,12 @@ const translations: Record<string, string> = {
   "pda.replenishment.suggested": "Reponer",
   "pda.replenishment.from": "Desde",
   "pda.replenishment.replenishSelected": "Reponer seleccionados",
-  "pda.replenishment.bulkCompleted": "Se han repuesto {count} productos."
+  "pda.replenishment.bulkCompleted": "Se han repuesto {count} productos.",
+  "pda.replenishment.bulkReviewTitle": "Revisar reposición",
+  "pda.replenishment.bulkReviewHelp": "Se aplicarán todos juntos.",
+  "pda.replenishment.bulkCancel": "Volver",
+  "pda.replenishment.bulkConfirm": "Confirmar todos",
+  "pda.replenishment.bulkAtomicError": "No se aplicó ningún movimiento."
 };
 
 const warehouses = [
@@ -84,13 +89,17 @@ describe("PdaReplenishment", () => {
           { product: { id: "p2", code: "TE", name: "Té", stockMin: 3, stockMax: 7 }, stock: [{ productId: "p2", warehouseId: "shop", quantity: 0 }, { productId: "p2", warehouseId: "reserve", quantity: 8 }] }
         ]
       });
-      if (path === "/stock/transfers") {
-        const productId = String(options?.body?.productId);
+      if (path === "/stock/transfers/batch") {
+        const transfers = options?.body?.transfers as Array<Record<string, unknown>>;
         return Promise.resolve({
-          sourceWarehouseId: "reserve",
-          targetWarehouseId: "shop",
-          sourceQuantity: productId === "p1" ? 11 : 1,
-          targetQuantity: productId === "p1" ? 10 : 7
+          batchId: "batch-1",
+          transfers: transfers.map((item) => ({
+            productId: item.productId,
+            sourceWarehouseId: "reserve",
+            targetWarehouseId: "shop",
+            sourceQuantity: item.productId === "p1" ? 13 : 1,
+            targetQuantity: item.productId === "p1" ? 8 : 7
+          }))
         });
       }
       throw new Error(`Unexpected path: ${path}`);
@@ -102,11 +111,39 @@ describe("PdaReplenishment", () => {
     fireEvent.click(screen.getByRole("button", { name: "Seleccionar disponibles" }));
     fireEvent.click(screen.getByRole("button", { name: "Reponer seleccionados (2)" }));
 
+    const dialog = await screen.findByRole("dialog", { name: "Revisar reposición" });
+    expect(dialog.textContent).toContain("CAFE");
+    expect(dialog.textContent).toContain("Té");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar todos" }));
+
     await waitFor(() => {
-      const transfers = apiRequestMock.mock.calls.filter(([path]) => path === "/stock/transfers");
-      expect(transfers).toHaveLength(2);
-      expect(transfers.map(([, options]) => options.body.quantity)).toEqual([7, 9]);
+      const batches = apiRequestMock.mock.calls.filter(([path]) => path === "/stock/transfers/batch");
+      expect(batches).toHaveLength(1);
+      expect(batches[0]?.[1]?.body?.transfers).toEqual([
+        { productId: "p2", sourceWarehouseId: "reserve", targetWarehouseId: "shop", quantity: 7 },
+        { productId: "p1", sourceWarehouseId: "reserve", targetWarehouseId: "shop", quantity: 9 }
+      ]);
     });
     expect((await screen.findByRole("status")).textContent).toContain("Se han repuesto 2 productos.");
+  });
+
+  it("keeps the review open and reports that no movement was applied when the batch fails", async () => {
+    apiRequestMock.mockImplementation((path?: string) => {
+      if (!path) return Promise.resolve(undefined);
+      if (path?.startsWith("/stock/page?")) return Promise.resolve({ hasMore: false, nextCursor: null, items: [
+        { product: { id: "p1", code: "CAFE", name: "Café", stockMin: 4, stockMax: 10 }, stock: [{ productId: "p1", warehouseId: "shop", quantity: 1 }, { productId: "p1", warehouseId: "reserve", quantity: 20 }] }
+      ] });
+      if (path === "/stock/transfers/batch") return Promise.reject(new Error("stock_changed"));
+      throw new Error(`Unexpected path: ${path}`);
+    });
+
+    renderReplenishment();
+    await screen.findByText("Café");
+    fireEvent.click(screen.getByRole("button", { name: "Seleccionar disponibles" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reponer seleccionados (1)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmar todos" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("No se aplicó ningún movimiento.");
+    expect(screen.getByRole("dialog", { name: "Revisar reposición" })).not.toBeNull();
   });
 });

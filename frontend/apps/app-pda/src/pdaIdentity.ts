@@ -1,6 +1,8 @@
 import type { TerminalContext } from "@tpverp/app-common";
+import { clearPdaDeviceData } from "./PdaWorkQueue";
 
 export const PDA_IDENTITY_STORAGE_KEY = "tpverp.pda.identity.v1";
+export const PDA_DISABLED_IDENTITY_STORAGE_KEY = "tpverp.pda.disabledIdentity.v1";
 
 export type PdaIdentity = TerminalContext & {
   pendingApproval: boolean;
@@ -39,5 +41,13 @@ export function writePdaIdentity(storage: IdentityStorage, identity: PdaIdentity
 }
 
 export function clearPdaIdentity(storage: IdentityStorage) {
+  if (storage.getItem(PDA_IDENTITY_STORAGE_KEY)) storage.setItem(PDA_IDENTITY_STORAGE_KEY, "");
+  storage.removeItem(PDA_IDENTITY_STORAGE_KEY);
+  if (typeof window !== "undefined" && storage === window.localStorage) clearPdaDeviceData();
+}
+
+export function quarantineDisabledPdaIdentity(storage: IdentityStorage) {
+  const current = storage.getItem(PDA_IDENTITY_STORAGE_KEY);
+  if (current) storage.setItem(PDA_DISABLED_IDENTITY_STORAGE_KEY, current);
   storage.removeItem(PDA_IDENTITY_STORAGE_KEY);
 }

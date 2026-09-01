@@ -63,6 +63,13 @@ export function canAccessApp(permissions: Permission[], app: AppKind): boolean {
       || permissions.includes("GESTION_ALMACEN")
       || permissions.includes("GESTION_CUENTAS");
   }
+  if (app === "pda") {
+    return permissions.includes("GESTION_ALMACEN")
+      || permissions.includes("STOCK_READ")
+      || permissions.includes("STOCK_ADJUST")
+      || permissions.includes("STOCK_TRANSFER")
+      || permissions.includes("PRODUCTS_READ");
+  }
   return permissions.includes("APP_GESTION_ACCESS");
 }
 

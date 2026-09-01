@@ -1,4 +1,4 @@
-export type AppKind = "venta" | "gestion";
+export type AppKind = "venta" | "gestion" | "pda";
 
 export type Permission =
   | "ADMIN"

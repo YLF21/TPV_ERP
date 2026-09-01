@@ -1,18 +1,28 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultHardwareConfig } from "@tpverp/app-common";
 import { PdaProductLookup } from "./PdaProductLookup";
 
 const apiRequestMock = vi.hoisted(() => vi.fn());
+const hardwareMock = vi.hoisted(() => ({
+  getHardwareConfig: vi.fn(),
+  printProductLabel: vi.fn()
+}));
 
 vi.mock("@tpverp/app-common", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tpverp/app-common")>()),
-  apiRequest: apiRequestMock
+  apiRequest: apiRequestMock,
+  getHardwareBridge: () => hardwareMock
 }));
 
 describe("PdaProductLookup label printing", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     apiRequestMock.mockReset();
+    hardwareMock.getHardwareConfig.mockReset().mockResolvedValue(defaultHardwareConfig);
+    hardwareMock.printProductLabel.mockReset().mockResolvedValue({ ok: true });
     Object.defineProperty(window, "print", { configurable: true, value: vi.fn() });
   });
 
@@ -53,6 +63,45 @@ describe("PdaProductLookup label printing", () => {
     expect(screen.getAllByLabelText("8412345678901")).toHaveLength(2);
 
     fireEvent.click(printButton);
+    await waitFor(() => expect(hardwareMock.printProductLabel).toHaveBeenCalledOnce());
+    expect(hardwareMock.printProductLabel.mock.calls[0][0]).toEqual(expect.objectContaining({
+      version: 2,
+      kind: "SEQUENTIAL",
+      storeName: "TIENDA PRUEBAS",
+      profile: expect.objectContaining({ widthMm: 50, heightMm: 30 }),
+      items: [expect.objectContaining({ copies: 1, product: expect.objectContaining({ barcode: "8412345678901" }) })]
+    }));
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it("offers browser printing explicitly when native hardware is unavailable", async () => {
+    hardwareMock.printProductLabel.mockResolvedValue({
+      ok: false, code: "HARDWARE_UNAVAILABLE", message: "unavailable"
+    });
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path.startsWith("/products/sale/price-consultation")) return Promise.resolve({
+        productId: "product-1", code: "CAFE", name: "Café molido", salePrice: 3.5, activePriceType: "VENTA"
+      });
+      if (path === "/stock?productId=product-1") return Promise.resolve([]);
+      if (path === "/products/product-1") return Promise.resolve({ barcode: "8412345678901" });
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    const labels: Record<string, string> = {
+      "goodsCheck.productCode": "Código",
+      "pda.lookup.search": "Consultar",
+      "pda.lookup.printLabel": "Imprimir etiqueta",
+      "pda.lookup.nativePrintError": "Error nativo",
+      "pda.lookup.browserPrintFallback": "Imprimir con navegador"
+    };
+    render(<PdaProductLookup token="token" locale="es" warehouses={[]} storeName="TIENDA" t={(key) => labels[key] ?? key} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código" }), { target: { value: "8412345678901" } });
+    fireEvent.click(screen.getByRole("button", { name: "Consultar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Imprimir etiqueta" }));
+
+    const fallback = await screen.findByRole("button", { name: "Imprimir con navegador" });
+    expect(screen.getByRole("alert").textContent).toContain("HARDWARE_UNAVAILABLE");
+    expect(window.print).not.toHaveBeenCalled();
+    fireEvent.click(fallback);
     await waitFor(() => expect(window.print).toHaveBeenCalledOnce());
   });
 });

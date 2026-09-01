@@ -80,12 +80,17 @@ public class AuthenticationService {
 			String userName,
 			String password) {
 		var terminal = terminalRepository.findById(terminalId)
-				.filter(value -> value.isAprobada() && value.isActiva())
 				.orElseThrow(AuthenticationFailedException::new);
 		if (!passwordEncoder.matches(
 						terminalCredential == null ? "" : terminalCredential,
 						terminal.getCredentialHash())) {
 			throw new AuthenticationFailedException();
+		}
+		if (!terminal.isAprobada()) {
+			throw new AuthenticationFailedException();
+		}
+		if (!terminal.isActiva()) {
+			throw new TerminalDisabledException();
 		}
 		var normalizedName = userName == null ? "" : userName.trim().toUpperCase(Locale.ROOT);
 		var user = usuarioRepository.findByEmpresaIdAndUserName(

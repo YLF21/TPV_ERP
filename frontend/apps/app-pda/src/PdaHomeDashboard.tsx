@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, type LocaleCode } from "@tpverp/app-common";
-import { buildReplenishmentSuggestions, pdaReplenishmentPagePath, type StockItem } from "./PdaReplenishment";
-import { isAssignedToCurrentUser, readLastWork, readPdaWorkQueue } from "./PdaWorkQueue";
+import { buildReplenishmentSuggestions, pdaReplenishmentPagePath, type StockItem } from "./PdaReplenishmentUtils";
+import { hydrateLastWork, hydratePdaWorkQueue, isAssignedToCurrentUser, readLastWork, readPdaWorkQueue } from "./PdaWorkQueue";
 
 type WarehouseOption = { id: string; name?: string | null; nombre?: string | null; defaultWarehouse?: boolean; active?: boolean };
 type GoodsCheck = { status: string };
@@ -57,6 +57,15 @@ export function PdaHomeDashboard({ token, locale, warehouses, onOpen }: { token?
   }, [activeWarehouses, c.error, targetWarehouseId, token]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    void Promise.all([hydratePdaWorkQueue(), hydrateLastWork()]).then(([storedQueue, storedWork]) => {
+      if (!active) return;
+      setQueue(storedQueue);
+      setLastWork(storedWork);
+    });
+    return () => { active = false; };
+  }, []);
   useEffect(() => { const timer=window.setInterval(()=>void load(),60_000); return()=>clearInterval(timer); }, [load]);
   useEffect(() => {
     const up = () => { setOnline(true); void load(); }; const down = () => setOnline(false);
