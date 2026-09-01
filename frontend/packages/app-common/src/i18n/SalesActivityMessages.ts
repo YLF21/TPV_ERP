@@ -3,6 +3,7 @@ import type { LocaleCode } from "../types";
 const messages = {
   es: {
     date: "Fecha de consulta",
+    day: "Fecha",
     netSales: "Total de ventas netas",
     paymentMethods: "Métodos de pago",
     sales: "Ventas",
@@ -59,10 +60,16 @@ const messages = {
     operationFailed: "No se pudo completar la operación.",
     reconciliation: "Desglose conciliado",
     reconciliationHelp: "La suma de los métodos visibles coincide con el total neto.",
-    currentPeriod: "Periodo seleccionado"
+    currentPeriod: "Periodo seleccionado",
+    currentCollections: "Cobros actuales", newPendingAmount: "Nuevo pendiente",
+    priorDebtCollections: "Cobros de deudas anteriores", realCashInflow: "Entrada real de caja",
+    openingCashFund: "Fondo inicial", cashEntries: "Entradas de caja",
+    cashWithdrawals: "Retiradas de caja", expectedCash: "Efectivo esperado",
+    cashSection: "Caja", salesSection: "Ventas", refundsSection: "Devoluciones",
+    operationsSection: "Operativa del día"
   },
   en: {
-    date: "Query date", netSales: "Net sales total", paymentMethods: "Payment methods",
+    date: "Query date", day: "Date", netSales: "Net sales total", paymentMethods: "Payment methods",
     sales: "Sales", returns: "Returns", cancelled: "Cancelled", pendingDocuments: "Pending",
     users: "Summary by user",
     noDocuments: "No documents", noActivity: "There is no sales activity for this date.",
@@ -81,10 +88,15 @@ const messages = {
     ticketPrinterUnavailable: "The ticket printer is only available from the APP VENTA desktop application.",
     operationFailed: "The operation could not be completed.", reconciliation: "Reconciled breakdown",
     reconciliationHelp: "The visible payment methods add up to the net total.",
-    currentPeriod: "Selected period"
+    currentPeriod: "Selected period", currentCollections: "Current collections", newPendingAmount: "New pending",
+    priorDebtCollections: "Previous-debt collections", realCashInflow: "Actual cash inflow",
+    openingCashFund: "Opening cash fund", cashEntries: "Cash entries",
+    cashWithdrawals: "Cash withdrawals", expectedCash: "Expected cash",
+    cashSection: "Cash", salesSection: "Sales", refundsSection: "Refunds",
+    operationsSection: "Daily operations"
   },
   zh: {
-    date: "查询日期", netSales: "净销售总额", paymentMethods: "付款方式", sales: "销售",
+    date: "查询日期", day: "日期", netSales: "净销售总额", paymentMethods: "付款方式", sales: "销售",
     returns: "退货", cancelled: "已取消", pendingDocuments: "待处理", users: "按用户汇总", noDocuments: "无单据",
     noActivity: "该日期没有销售活动。", cash: "现金", card: "银行卡", transfer: "转账",
     voucher: "代金券", pending: "待收款", other: "其他", print: "打印", excel: "Excel",
@@ -99,7 +111,11 @@ const messages = {
     exportSuccess: "文件已成功生成。", printSuccess: "报表已发送至打印机。",
     ticketPrinterUnavailable: "小票打印机仅可在 APP VENTA 桌面应用中使用。",
     operationFailed: "无法完成操作。", reconciliation: "已核对的明细",
-    reconciliationHelp: "显示的付款方式合计与净总额一致。", currentPeriod: "所选期间"
+    reconciliationHelp: "显示的付款方式合计与净总额一致。", currentPeriod: "所选期间",
+    currentCollections: "当前收款", newPendingAmount: "新增待收款", priorDebtCollections: "历史欠款收款",
+    realCashInflow: "实际现金流入", openingCashFund: "期初现金", cashEntries: "现金存入",
+    cashWithdrawals: "现金取出", expectedCash: "应有现金", cashSection: "现金",
+    salesSection: "销售", refundsSection: "退款", operationsSection: "当日运营"
   }
 } as const;
 

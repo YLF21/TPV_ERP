@@ -3,6 +3,7 @@ package com.tpverp.backend.excel;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.document.SalesActivityDocumentRowView;
+import com.tpverp.backend.document.SalesActivityPrintGrouping;
 import com.tpverp.backend.document.SalesActivityReportService;
 import com.tpverp.backend.document.SalesDailySummaryView;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -40,7 +41,10 @@ public class SalesActivityExcelExportService {
     }
 
     public byte[] daily(LocalDate date) {
-        var summary = reports.daily(date);
+        return daily(reports.daily(date));
+    }
+
+    public byte[] daily(SalesDailySummaryView summary) {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("Resumen diario");
             var styles = styles(workbook);
@@ -57,12 +61,16 @@ public class SalesActivityExcelExportService {
                 row = summaryBlock(sheet, row, user.userName(), user.netSalesTotal(),
                         user.paymentMethods(), user.counts(), styles);
             }
+            if (summary.operations() != null) {
+                row++;
+                row = commercialBlock(sheet, row, summary.operations(), styles);
+            }
             sheet.setColumnWidth(0, 28 * 256);
             sheet.setColumnWidth(1, 42 * 256);
             sheet.setColumnWidth(2, 18 * 256);
             workbook.write(output);
             audit.record("DAILY_SALES_EXPORTED", AuditResult.EXITO,
-                    Map.of("date", date.toString(), "format", "XLSX"));
+                    Map.of("date", summary.date().toString(), "format", "XLSX"));
             return output.toByteArray();
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo generar el Excel de ventas diarias", exception);
@@ -70,14 +78,24 @@ public class SalesActivityExcelExportService {
     }
 
     public byte[] documents(LocalDate from, LocalDate to) {
-        var values = reports.allDocuments(from, to);
+        return documents(from, to, SalesActivityPrintGrouping.DOCUMENT);
+    }
+
+    public byte[] documents(
+            LocalDate from, LocalDate to, SalesActivityPrintGrouping grouping) {
+        var values = grouping == SalesActivityPrintGrouping.DAY
+                ? null : reports.allDocuments(from, to);
+        var dailyValues = grouping == SalesActivityPrintGrouping.DAY
+                ? reports.allDailyDocuments(from, to) : null;
         var store = organization.currentStore();
         var zone = ZoneId.of(store.getTimezone());
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("Documentos de ventas");
             var styles = styles(workbook);
             var header = sheet.createRow(0);
-            String[] columns = {"Fecha", "Hora", "Número de ticket", "Número de factura",
+            String[] columns = grouping == SalesActivityPrintGrouping.DAY
+                    ? new String[] {"Fecha", "Nº tickets", "Nº facturas", "Ventas totales"}
+                    : new String[] {"Fecha", "Hora", "Número de ticket", "Número de factura",
                     "Usuario", "Método de pago", "Estado", "Total"};
             for (int column = 0; column < columns.length; column++) {
                 var cell = header.createCell(column);
@@ -85,7 +103,17 @@ public class SalesActivityExcelExportService {
                 cell.setCellStyle(styles.header());
             }
             int rowIndex = 1;
-            for (var value : values) {
+            if (grouping == SalesActivityPrintGrouping.DAY) {
+                for (var value : dailyValues) {
+                    var row = sheet.createRow(rowIndex++);
+                    row.createCell(0).setCellValue(DATE.format(value.date()));
+                    row.createCell(1).setCellValue(value.ticketCount());
+                    row.createCell(2).setCellValue(value.invoiceCount());
+                    var total = row.createCell(3);
+                    total.setCellValue(value.total().doubleValue());
+                    total.setCellStyle(styles.money());
+                }
+            } else for (var value : values) {
                 var row = sheet.createRow(rowIndex++);
                 row.createCell(0).setCellValue(DATE.format(value.date()));
                 row.createCell(1).setCellValue(value.occurredAt() == null ? ""
@@ -102,12 +130,19 @@ public class SalesActivityExcelExportService {
             var totals = sheet.createRow(rowIndex);
             totals.createCell(0).setCellValue("TOTALES");
             totals.getCell(0).setCellStyle(styles.header());
-            totals.createCell(2).setCellValue(values.stream()
-                    .filter(value -> !value.ticketNumber().isBlank()).count());
-            totals.createCell(3).setCellValue(values.stream()
-                    .filter(value -> !value.invoiceNumber().isBlank()).count());
-            var total = totals.createCell(7);
-            total.setCellValue(values.stream().map(SalesActivityDocumentRowView::total)
+            int ticketColumn = grouping == SalesActivityPrintGrouping.DAY ? 1 : 2;
+            int invoiceColumn = grouping == SalesActivityPrintGrouping.DAY ? 2 : 3;
+            int totalColumn = grouping == SalesActivityPrintGrouping.DAY ? 3 : 7;
+            totals.createCell(ticketColumn).setCellValue(grouping == SalesActivityPrintGrouping.DAY
+                    ? dailyValues.stream().mapToLong(value -> value.ticketCount()).sum()
+                    : values.stream().filter(value -> !value.ticketNumber().isBlank()).count());
+            totals.createCell(invoiceColumn).setCellValue(grouping == SalesActivityPrintGrouping.DAY
+                    ? dailyValues.stream().mapToLong(value -> value.invoiceCount()).sum()
+                    : values.stream().filter(value -> !value.invoiceNumber().isBlank()).count());
+            var total = totals.createCell(totalColumn);
+            total.setCellValue((grouping == SalesActivityPrintGrouping.DAY
+                    ? dailyValues.stream().map(com.tpverp.backend.document.SalesActivityDailyRowView::total)
+                    : values.stream().map(SalesActivityDocumentRowView::total))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).doubleValue());
             total.setCellStyle(styles.totalMoney());
             for (int column = 0; column < columns.length; column++) {
@@ -118,11 +153,63 @@ public class SalesActivityExcelExportService {
             workbook.write(output);
             audit.record("SALES_DOCUMENTS_EXPORTED", AuditResult.EXITO,
                     Map.of("dateFrom", from.toString(), "dateTo", to.toString(),
-                            "rows", values.size(), "format", "XLSX"));
+                    "rows", grouping == SalesActivityPrintGrouping.DAY
+                            ? dailyValues.size() : values.size(),
+                    "grouping", grouping.name(), "format", "XLSX"));
             return output.toByteArray();
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo generar el Excel de documentos de ventas", exception);
         }
+    }
+
+    private static int commercialBlock(
+            org.apache.poi.ss.usermodel.Sheet sheet,
+            int rowIndex,
+            com.tpverp.backend.document.DailyOperationsSupplement report,
+            Styles styles) {
+        rowIndex = title(sheet, rowIndex, "COBROS, DEVOLUCIONES Y CAJA", styles);
+        rowIndex = pair(sheet, rowIndex, "Cobros actuales", report.collectedCurrent(), styles);
+        rowIndex = pair(sheet, rowIndex, "Nuevo pendiente", report.newPending(), styles);
+        rowIndex = breakdownBlock(sheet, rowIndex, "Cobros de deuda anterior",
+                report.pendingCollectionsByPaymentMethod(), styles);
+        rowIndex = pair(sheet, rowIndex, "Cobros de deuda anterior", report.priorDebtCollected(), styles);
+        rowIndex = breakdownBlock(sheet, rowIndex, "Devoluciones", report.refundsByPaymentMethod(), styles);
+        rowIndex = pair(sheet, rowIndex, "Devoluciones", report.refundsByPaymentMethod().total(), styles);
+        rowIndex = pair(sheet, rowIndex, "Entrada real de caja", report.cashInflow(), styles);
+        if (report.openingCashFund() != null) {
+            rowIndex = pair(sheet, rowIndex, "Fondo inicial", report.openingCashFund(), styles);
+        }
+        rowIndex = pair(sheet, rowIndex, "Entradas", report.cashEntries(), styles);
+        rowIndex = pair(sheet, rowIndex, "Retiradas", report.cashWithdrawals(), styles);
+        if (report.expectedCash() != null) {
+            rowIndex = pair(sheet, rowIndex, "Efectivo esperado", report.expectedCash(), styles);
+        }
+        return rowIndex;
+    }
+
+    private static int breakdownBlock(
+            org.apache.poi.ss.usermodel.Sheet sheet,
+            int rowIndex,
+            String title,
+            com.tpverp.backend.document.DailyPaymentBreakdownView breakdown,
+            Styles styles) {
+        rowIndex = title(sheet, rowIndex, title, styles);
+        rowIndex = optionalPair(sheet, rowIndex, "Efectivo", breakdown.cash(), styles);
+        rowIndex = optionalPair(sheet, rowIndex, "Tarjeta", breakdown.card(), styles);
+        rowIndex = optionalPair(sheet, rowIndex, "Transferencia", breakdown.transfer(), styles);
+        rowIndex = optionalPair(sheet, rowIndex, "Vale", breakdown.voucher(), styles);
+        rowIndex = optionalPair(sheet, rowIndex, "Pendiente", breakdown.pending(), styles);
+        return optionalPair(sheet, rowIndex, "Otros", breakdown.other(), styles);
+    }
+
+    private static int optionalPair(
+            org.apache.poi.ss.usermodel.Sheet sheet,
+            int rowIndex,
+            String label,
+            BigDecimal value,
+            Styles styles) {
+        return value == null || value.signum() == 0
+                ? rowIndex : pair(sheet, rowIndex, label, value, styles);
     }
 
     private static int summaryBlock(

@@ -69,6 +69,14 @@
 				<printWhenExpression><![CDATA["PAYMENT".equals($F{lineType})]]></printWhenExpression>
 				<expression><![CDATA[$F{value}]]></expression>
 			</element>
+			<element kind="textField" uuid="6ca86530-0c89-4f3b-9aa7-79ee90c5f4a3" x="0" y="4" width="100" height="14" fontName="Monospaced" fontSize="8.2" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["CASH".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{label}]]></expression>
+			</element>
+			<element kind="textField" uuid="0a58f73d-3778-43af-a6a4-e6a16fc12549" x="100" y="4" width="90" height="14" fontName="Monospaced" fontSize="8.2" blankWhenNull="true" bold="true" hTextAlign="Right">
+				<printWhenExpression><![CDATA["CASH".equals($F{lineType})]]></printWhenExpression>
+				<expression><![CDATA[$F{value}]]></expression>
+			</element>
 			<element kind="line" uuid="4bc429c3-dd48-426b-a7ab-40242eb4f751" x="0" y="1" width="211" height="1">
 				<printWhenExpression><![CDATA["TOTAL".equals($F{lineType})]]></printWhenExpression>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>

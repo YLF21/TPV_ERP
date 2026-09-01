@@ -29,6 +29,7 @@ import {
   visibleSalesReports,
   SalesReportScreen
 } from "./SalesReportScreen";
+import { SalesActivityPanel } from "./SalesActivityPanel";
 import {
   moveTableColumnByKeyboard,
   reorderTableColumns,
@@ -1006,6 +1007,9 @@ describe("SalesReportScreen", () => {
 
   it("renders the reconciled daily sales summary from the new sales activity API", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-07-16" });
+      }
       if (path.startsWith("/sales-activity/daily")) {
         return Promise.resolve({
           storeId: "store-1",
@@ -1066,6 +1070,9 @@ describe("SalesReportScreen", () => {
 
   it("uses one query date and reloads the daily report when it changes", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-07-16" });
+      }
       if (path.startsWith("/sales-activity/daily")) {
         return Promise.resolve({
           storeId: "store-1", companyName: "EMPRESA", storeCode: "001",
@@ -1101,6 +1108,9 @@ describe("SalesReportScreen", () => {
   it("shows the new daily report error and retries without calculating local totals", async () => {
     let dailyAttempts = 0;
     const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-07-16" });
+      }
       if (path.startsWith("/sales-activity/daily")) {
         dailyAttempts += 1;
         return dailyAttempts === 1
@@ -1125,10 +1135,503 @@ describe("SalesReportScreen", () => {
     expect(request.mock.calls.filter(([path]) => String(path).startsWith("/sales-activity/daily"))).toHaveLength(2);
   });
 
+  it("fails closed when the store does not return a valid current date", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "" });
+      }
+      if (path.startsWith("/sales-activity/daily")) {
+        throw new Error("daily query must wait for a valid store date");
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="daily"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación.");
+    expect(request.mock.calls.filter(([path]) => String(path).startsWith("/sales-activity/daily"))).toHaveLength(0);
+    expect(screen.getByLabelText("Fecha de consulta")).toBeDisabled();
+  });
+
+  it("localizes a persistent filter error when the locale changes", async () => {
+    const request = vi.fn().mockImplementation((path: string) => path === "/sales-activity/filter-options"
+      ? Promise.resolve({ earliestDate: "2026-01-01", currentDate: "not-a-date" })
+      : Promise.resolve([]));
+    const view = render(
+      <SalesActivityPanel
+        app="venta"
+        mode="daily"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación.");
+    view.rerender(
+      <SalesActivityPanel
+        app="venta"
+        mode="daily"
+        locale="en"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("The operation could not be completed.");
+  });
+
+  it("renders operations scalars at zero, hides zero methods, and omits redacted cash totals", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/daily")) {
+        return Promise.resolve({
+          storeId: "store-1", companyName: "EMPRESA", storeCode: "001", date: "2026-08-16",
+          netSalesTotal: "1.00", paymentMethods: [{ method: "PERSONALIZADO", operationCount: 1, amount: "1.00" }],
+          counts: { sales: 1, returns: 0, cancelled: 0, pending: 0 }, users: [],
+          operations: {
+            collectedCurrent: "0.00", newPending: "0.00", priorDebtCollected: "0.00", cashInflow: "0.00",
+            pendingCollectionsByPaymentMethod: { cash: "0.00", card: "0.00", transfer: "0.00", voucher: "0.00", pending: "0.00", other: "0.00" },
+            refundsByPaymentMethod: { cash: "0.00", card: "0.00", transfer: "0.00", voucher: "0.00", pending: "0.00", other: "0.00" },
+            openingCashFund: null, cashEntries: "0.00", cashWithdrawals: "0.00", expectedCash: null
+          }
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="daily"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    const operations = await screen.findByRole("region", { name: "Operativa del día" });
+    expect(operations).toBeVisible();
+    expect(within(operations).getByText("Cobros actuales")).toBeVisible();
+    expect(screen.getByText(/PERSONALIZADO:/)).toBeVisible();
+    expect(within(operations).getByText("Entradas de caja")).toBeVisible();
+    expect(within(operations).queryByText("Efectivo")).not.toBeInTheDocument();
+    expect(within(operations).queryByText("Fondo inicial")).not.toBeInTheDocument();
+    expect(within(operations).queryByText("Efectivo esperado")).not.toBeInTheDocument();
+    expect(within(operations).getAllByText(/0,00/).length).toBeGreaterThan(0);
+    expect(within(operations).getAllByText("Caja")).toHaveLength(1);
+  });
+
+  it("relabels a custom period after a locale change without changing its dates", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
+      }
+      return Promise.resolve([]);
+    });
+    const view = render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    const customPeriod = await screen.findByRole("button", { name: "Periodo personalizado" });
+    await waitFor(() => expect(customPeriod).not.toBeDisabled());
+    fireEvent.click(customPeriod);
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar periodo" }));
+    expect(screen.getAllByText("15/8/2026 — 16/8/2026")[0]).toBeVisible();
+
+    view.rerender(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="en"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+    expect(screen.getAllByText("15/08/2026 — 16/08/2026")[0]).toBeVisible();
+  });
+
+  it("moves a TODAY document range to the server date after midnight", async () => {
+    let dailyRequests = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        dailyRequests += 1;
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-17", dateTo: "2026-08-17",
+          currentDate: "2026-08-17"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="en"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    await waitFor(() => expect(dailyRequests).toBeGreaterThanOrEqual(2));
+    expect(request.mock.calls.filter(([path]) => String(path).startsWith("/sales-activity/documents/by-day")))
+      .toEqual(expect.arrayContaining([
+        ["/sales-activity/documents/by-day?dateFrom=2026-08-17&dateTo=2026-08-17&limit=250", { token: "token" }]
+      ]));
+  });
+
+  it("fails closed when the daily documents response has an invalid current date", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [{ date: "2026-08-16", ticketCount: 1, invoiceCount: 0, total: "10.00" }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 0,
+          total: "10.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "invalid"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación.");
+    expect(screen.getByRole("button", { name: "Hoy" })).toBeDisabled();
+    expect(screen.queryByText("10,00 €")).not.toBeInTheDocument();
+  });
+
+  it("restarts DAY pagination on the server date when load more crosses midnight", async () => {
+    let pageCalls = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        pageCalls += 1;
+        if (pageCalls === 1) {
+          return Promise.resolve({
+            items: [{ date: "2026-08-16", ticketCount: 1, invoiceCount: 0, total: "5.00" }],
+            nextCursor: "next-day-page", hasMore: true, ticketCount: 1, invoiceCount: 0,
+            total: "5.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+          });
+        }
+        if (pageCalls === 2) {
+          return Promise.resolve({
+            items: [{ date: "2026-08-16", ticketCount: 1, invoiceCount: 0, total: "7.00" }],
+            nextCursor: null, hasMore: false, ticketCount: 2, invoiceCount: 0,
+            total: "12.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-17"
+          });
+        }
+        return Promise.resolve({
+          items: [{ date: "2026-08-17", ticketCount: 1, invoiceCount: 0, total: "9.00" }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 0,
+          total: "9.00", dateFrom: "2026-08-17", dateTo: "2026-08-17", currentDate: "2026-08-17"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cargar más" }));
+    await waitFor(() => expect(pageCalls).toBe(3));
+    expect(request.mock.calls).toContainEqual([
+      "/sales-activity/documents/by-day?dateFrom=2026-08-17&dateTo=2026-08-17&limit=250",
+      { token: "token" }
+    ]);
+    expect(screen.getAllByText(/9,00/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/5,00/)).not.toBeInTheDocument();
+  });
+
+  it("fails closed when load more returns an invalid daily documents current date", async () => {
+    let pageCalls = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        pageCalls += 1;
+        return Promise.resolve(pageCalls === 1
+          ? {
+              items: [{ date: "2026-08-16", ticketCount: 1, invoiceCount: 0, total: "5.00" }],
+              nextCursor: "next-day-page", hasMore: true, ticketCount: 1, invoiceCount: 0,
+              total: "5.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+            }
+          : {
+              items: [{ date: "2026-08-16", ticketCount: 1, invoiceCount: 0, total: "7.00" }],
+              nextCursor: null, hasMore: false, ticketCount: 2, invoiceCount: 0,
+              total: "12.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "invalid"
+            });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cargar más" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación.");
+    expect(screen.getByRole("button", { name: "Hoy" })).toBeDisabled();
+    expect(screen.queryByText(/7,00/)).not.toBeInTheDocument();
+  });
+
+  it("moves DOCUMENT TODAY to the server date when the initial page crosses midnight", async () => {
+    let documentCalls = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        documentCalls += 1;
+        return Promise.resolve({
+          items: [{
+            id: `document-${documentCalls}`, date: documentCalls === 1 ? "2026-08-16" : "2026-08-17",
+            occurredAt: "2026-08-17T10:15:00Z", ticketNumber: "T-001", invoiceNumber: "",
+            userName: "ANA", paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO",
+            total: documentCalls === 1 ? "5.00" : "9.00"
+          }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 0,
+          total: documentCalls === 1 ? "5.00" : "9.00",
+          dateFrom: documentCalls === 1 ? "2026-08-16" : "2026-08-17",
+          dateTo: documentCalls === 1 ? "2026-08-16" : "2026-08-17",
+          currentDate: "2026-08-17"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
+    await waitFor(() => expect(documentCalls).toBe(2));
+    expect(request.mock.calls).toContainEqual([
+      "/sales-activity/documents?dateFrom=2026-08-17&dateTo=2026-08-17&limit=250",
+      { token: "token" }
+    ]);
+    expect(screen.getAllByText(/9,00/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/5,00/)).not.toBeInTheDocument();
+  });
+
+  it("restarts DOCUMENT pagination on the server date when load more crosses midnight", async () => {
+    let documentCalls = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        documentCalls += 1;
+        if (documentCalls === 1) {
+          return Promise.resolve({
+            items: [{ id: "document-first", date: "2026-08-16", occurredAt: null,
+              ticketNumber: "T-001", invoiceNumber: "", userName: "ANA",
+              paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "5.00" }],
+            nextCursor: "next-document-page", hasMore: true, ticketCount: 1, invoiceCount: 0,
+            total: "5.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+          });
+        }
+        if (documentCalls === 2) {
+          return Promise.resolve({
+            items: [{ id: "document-stale", date: "2026-08-16", occurredAt: null,
+              ticketNumber: "T-002", invoiceNumber: "", userName: "ANA",
+              paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "7.00" }],
+            nextCursor: null, hasMore: false, ticketCount: 2, invoiceCount: 0,
+            total: "12.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-17"
+          });
+        }
+        return Promise.resolve({
+          items: [{ id: "document-fresh", date: "2026-08-17", occurredAt: null,
+            ticketNumber: "T-003", invoiceNumber: "", userName: "ANA",
+            paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "9.00" }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 0,
+          total: "9.00", dateFrom: "2026-08-17", dateTo: "2026-08-17", currentDate: "2026-08-17"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cargar más" }));
+    await waitFor(() => expect(documentCalls).toBe(3));
+    expect(request.mock.calls).toContainEqual([
+      "/sales-activity/documents?dateFrom=2026-08-17&dateTo=2026-08-17&limit=250",
+      { token: "token" }
+    ]);
+    expect(screen.getAllByText(/9,00/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/5,00/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/7,00/)).not.toBeInTheDocument();
+  });
+
+  it("fails closed when DOCUMENT load more returns an invalid current date", async () => {
+    let documentCalls = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        documentCalls += 1;
+        return Promise.resolve(documentCalls === 1
+          ? {
+              items: [{ id: "document-first", date: "2026-08-16", occurredAt: null,
+                ticketNumber: "T-001", invoiceNumber: "", userName: "ANA",
+                paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "5.00" }],
+              nextCursor: "next-document-page", hasMore: true, ticketCount: 1, invoiceCount: 0,
+              total: "5.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+            }
+          : {
+              items: [{ id: "document-invalid", date: "2026-08-16", occurredAt: null,
+                ticketNumber: "T-002", invoiceNumber: "", userName: "ANA",
+                paymentMethods: ["EFECTIVO"], kind: "SALE", status: "CONFIRMADO", total: "7.00" }],
+              nextCursor: null, hasMore: false, ticketCount: 2, invoiceCount: 0,
+              total: "12.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "invalid"
+            });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="es"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cargar más" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación.");
+    expect(screen.getByRole("button", { name: "Hoy" })).toBeDisabled();
+    expect(screen.queryByText(/5,00/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/7,00/)).not.toBeInTheDocument();
+  });
+
   it("renders the sales document ledger with bottom period filters and Excel-style totals", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
       if (path === "/sales-activity/filter-options") {
         return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [{ date: "2026-08-16", ticketCount: 1, invoiceCount: 2, total: "100.00" }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 2,
+          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
       }
       if (path.startsWith("/sales-activity/documents")) {
         return Promise.resolve({
@@ -1142,7 +1645,7 @@ describe("SalesReportScreen", () => {
             paymentMethods: ["TARJETA"], kind: "SALE", status: "PAGADO", total: "75.00"
           }],
           nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 2,
-          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
         });
       }
       if (path === "/tickets") return Promise.resolve([]);
@@ -1151,6 +1654,15 @@ describe("SalesReportScreen", () => {
 
     render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/sales-activity\/documents\/by-day\?dateFrom=.*&dateTo=.*&limit=250$/),
+      { token: "token" }
+    ));
+    expect(await screen.findByRole("columnheader", { name: "Fecha" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Tickets" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Facturas" })).toBeVisible();
+    expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(screen.getByRole("button", { name: "Por documento" }));
     expect(await screen.findByRole("columnheader", { name: "Número de ticket" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Número de factura" })).toBeVisible();
     expect(screen.getByText("T-001")).toBeVisible();
@@ -1165,15 +1677,74 @@ describe("SalesReportScreen", () => {
     expect(within(dock).getByRole("button", { name: "Periodo personalizado" })).toBeVisible();
   });
 
+  it("localizes integrated document payment methods while preserving custom identifiers", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
+      if (path.startsWith("/sales-activity/documents")) {
+        return Promise.resolve({
+          items: [{
+            id: "document-payment-labels", date: "2026-08-16", occurredAt: "2026-08-16T10:15:00Z",
+            ticketNumber: "T-001", invoiceNumber: "", userName: "ANA",
+            paymentMethods: ["EFECTIVO", "PERSONALIZADO"], kind: "SALE", status: "CONFIRMADO", total: "10.00"
+          }],
+          nextCursor: null, hasMore: false, ticketCount: 1, invoiceCount: 0,
+          total: "10.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    const view = render(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="en"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "By document" }));
+    expect(await screen.findByText("Cash, PERSONALIZADO")).toBeVisible();
+    view.rerender(
+      <SalesActivityPanel
+        app="venta"
+        mode="documents"
+        locale="zh"
+        username="admin"
+        token="token"
+        terminalContext={terminalContext}
+        request={request}
+      />
+    );
+    expect(screen.getByText("现金, PERSONALIZADO")).toBeVisible();
+  });
+
   it("shows direct output shortcuts and document visualization buttons without a print dialog", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
       if (path === "/sales-activity/filter-options") {
         return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
       }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
+        });
+      }
       if (path.startsWith("/sales-activity/documents")) {
         return Promise.resolve({
           items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
-          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
         });
       }
       if (path === "/tickets") return Promise.resolve([]);
@@ -1202,6 +1773,9 @@ describe("SalesReportScreen", () => {
       new Response(new Uint8Array([1, 2, 3]), { status: 200 })
     );
     const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-08-16" });
+      }
       if (path.includes("/sales-activity/daily/render")) {
         return Promise.resolve({
           renderedPdf: { contentType: "application/pdf", base64: window.btoa("pdf") },
@@ -1268,10 +1842,16 @@ describe("SalesReportScreen", () => {
       if (path === "/sales-activity/filter-options") {
         return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
       }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
       if (path.startsWith("/sales-activity/documents")) {
         return Promise.resolve({
           items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
-          total: "15.50", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+          total: "15.50", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
         });
       }
       if (path === "/tickets") return Promise.resolve([]);
@@ -1281,6 +1861,10 @@ describe("SalesReportScreen", () => {
     try {
       render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
       fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/sales-activity\/documents\?dateFrom=.*&dateTo=.*&limit=250$/),
+        { token: "token" }
+      ));
       fireEvent.keyDown(window, { key: "F5" });
 
       await waitFor(() => expect(request).toHaveBeenCalledWith(
@@ -1306,6 +1890,12 @@ describe("SalesReportScreen", () => {
       if (path === "/sales-activity/filter-options") {
         return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
       }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
       if (path.startsWith("/sales-activity/documents")) {
         return Promise.resolve({
           items: [{
@@ -1318,7 +1908,7 @@ describe("SalesReportScreen", () => {
             paymentMethods: ["TARJETA"], kind: "SALE", status: "CONFIRMADO", total: "75.00"
           }],
           nextCursor: null, hasMore: false, ticketCount: 2, invoiceCount: 0,
-          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+          total: "100.00", dateFrom: "2026-08-16", dateTo: "2026-08-16", currentDate: "2026-08-16"
         });
       }
       if (path === "/tickets") return Promise.resolve([]);
@@ -1327,6 +1917,7 @@ describe("SalesReportScreen", () => {
 
     const { container } = render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
     expect(await screen.findByRole("button", { name: "Modificar ancho Número de ticket" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Columnas" })).not.toBeInTheDocument();
     const totalSort = screen.getByRole("button", { name: "Total Ordenar" });

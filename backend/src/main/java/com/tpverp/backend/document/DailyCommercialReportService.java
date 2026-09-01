@@ -118,11 +118,8 @@ public class DailyCommercialReportService {
         var expectedCash = includeSensitiveCashTotals
                 ? cashPosition(store.getId(), to)
                 : null;
-        var periodCashMovements = cashMovements
-                .findAllByTiendaIdAndCreadoEnBetweenOrderByCreadoEnAsc(store.getId(), from, to);
         var openingCashFund = includeSensitiveCashTotals
-                ? Money.euros(expectedCash.subtract(cashMovementBalance(periodCashMovements)))
-                : null;
+                ? cashPosition(store.getId(), from) : null;
         return new DailyCommercialReportView(
                 store.getId(), dateFrom, Money.euros(invoiced), Money.euros(ticketSales),
                 Money.euros(collectedCurrent), Money.euros(newPending),
@@ -160,6 +157,7 @@ public class DailyCommercialReportService {
                 .filter(tender -> warehouseId == null
                         || warehouseId.equals(tender.getRefundDocument().getAlmacenId()))
                 .toList();
+        var derivedInvoiceIds = safeSet(relations.findDerivedSalesInvoiceIds(store.getId(), date));
 
         // Keep the legacy fields stable for existing dashboard consumers.
         var invoicedOrigins = safeSet(relations.findInvoicedOriginIds(store.getId(), date));
@@ -187,14 +185,36 @@ public class DailyCommercialReportService {
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var collectedCurrent = receivableCollectedCurrent.add(ticketCollectedCurrent);
+        var positiveRectificationNet = issued.stream()
+                .filter(document -> document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA)
+                .filter(document -> document.getTotal().signum() > 0)
+                .map(CommercialDocument::getTotal)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var positiveRectificationCollectedCurrent = collected.stream()
+                .filter(payment -> payment.getDocumento().getTipo()
+                        == CommercialDocumentType.RECTIFICATIVA_VENTA)
+                .filter(payment -> payment.getDocumento().getTotal().signum() > 0)
+                .filter(payment -> payment.getDocumento().getFecha().equals(date))
+                .map(DocumentPayment::getImporte)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var collectedCurrent = receivableCollectedCurrent.add(ticketCollectedCurrent)
+                .add(positiveRectificationCollectedCurrent);
         var priorDebtCollected = collected.stream()
                 .filter(payment -> isReceivableSale(payment.getDocumento()))
                 .filter(payment -> payment.getDocumento().getFecha().isBefore(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var legacyNewPending = invoiced.subtract(receivableCollectedCurrent).max(BigDecimal.ZERO);
+        var derivedInvoiceNet = issued.stream()
+                .filter(document -> derivedInvoiceIds.contains(document.getId()))
+                .map(CommercialDocument::getTotal)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var legacyNewPending = invoiced.subtract(receivableCollectedCurrent)
+                .subtract(positiveRectificationNet)
+                .subtract(derivedInvoiceNet).max(BigDecimal.ZERO);
         var monetaryRefunded = refundTenders.stream()
                 .filter(DailyCommercialReportService::isMonetaryRefund)
                 .map(RefundTender::getAmount)
@@ -202,19 +222,44 @@ public class DailyCommercialReportService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var cashInflow = collectedCurrent.add(priorDebtCollected).subtract(monetaryRefunded);
 
-        // New authoritative daily sales: positive tickets plus direct invoices only.
-        var derivedInvoiceIds = safeSet(relations.findDerivedSalesInvoiceIds(store.getId(), date));
+        // New authoritative daily sales are the signed logical documents.
+        // Derived invoices remain represented by their ticket and never
+        // duplicate its amount. Refund tenders only distribute payment methods.
+        var logicalSales = issued.stream()
+                .filter(DailyCommercialReportService::isValidDocument)
+                .filter(document -> document.getTipo() == CommercialDocumentType.TICKET
+                        || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA
+                        || (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                        && !derivedInvoiceIds.contains(document.getId())))
+                .toList();
         var saleDocuments = issued.stream()
                 .filter(DailyCommercialReportService::isValidDocument)
                 .filter(document -> document.getTotal().signum() > 0)
                 .filter(document -> document.getTipo() == CommercialDocumentType.TICKET
+                        || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA
                         || (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
                         && !derivedInvoiceIds.contains(document.getId())))
                 .toList();
         var saleDocumentIds = saleDocuments.stream()
                 .map(CommercialDocument::getId)
                 .collect(java.util.stream.Collectors.toCollection(HashSet::new));
-        var grossSales = saleDocuments.stream()
+        var positiveRectificationDocumentIds = saleDocuments.stream()
+                .filter(document -> document.getTipo()
+                        == CommercialDocumentType.RECTIFICATIVA_VENTA)
+                .map(CommercialDocument::getId)
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        var logicalSaleDocumentIds = logicalSales.stream()
+                .map(CommercialDocument::getId)
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        var ordinaryGrossSales = saleDocuments.stream()
+                .filter(document -> document.getTipo()
+                        != CommercialDocumentType.RECTIFICATIVA_VENTA)
+                .map(CommercialDocument::getTotal)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var positiveRectificationSales = saleDocuments.stream()
+                .filter(document -> document.getTipo()
+                        == CommercialDocumentType.RECTIFICATIVA_VENTA)
                 .map(CommercialDocument::getTotal)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -222,11 +267,27 @@ public class DailyCommercialReportService {
                 .filter(payment -> saleDocumentIds.contains(payment.getDocumento().getId()))
                 .filter(payment -> payment.getDocumento().getFecha().equals(date))
                 .toList();
-        var currentSalePaid = currentSalePayments.stream()
+        var ordinarySalePaid = currentSalePayments.stream()
+                .filter(payment -> !positiveRectificationDocumentIds.contains(
+                        payment.getDocumento().getId()))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var pending = Money.euros(grossSales.subtract(currentSalePaid).max(BigDecimal.ZERO));
+        var positiveRectificationPaid = currentSalePayments.stream()
+                .filter(payment -> positiveRectificationDocumentIds.contains(
+                        payment.getDocumento().getId()))
+                .map(DocumentPayment::getImporte)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // A positive rectification is a signed sale adjustment, not a new
+        // receivable. Its real payments stay in their method and only its
+        // unpaid remainder becomes Other; it must never reduce the pending
+        // balance generated by ordinary sales.
+        var pending = Money.euros(ordinaryGrossSales.subtract(ordinarySalePaid)
+                .max(BigDecimal.ZERO));
+        var unpaidPositiveRectification = Money.euros(
+                positiveRectificationSales.subtract(positiveRectificationPaid)
+                        .max(BigDecimal.ZERO));
 
         var originalPaymentMethods = originalPaymentMethods(refundTenders);
         var salesBuckets = new PaymentBreakdownAccumulator();
@@ -236,13 +297,20 @@ public class DailyCommercialReportService {
         for (var tender : refundTenders) {
             var bucket = refundBucket(tender, originalPaymentMethods);
             refundBuckets.add(bucket, tender.getAmount());
-            salesBuckets.subtract(bucket, tender.getAmount());
+            // A refund tender changes today's sales-method distribution only when
+            // its refund document is itself one of today's logical sales rows.
+            // Tenders from another business date remain in the refund information
+            // block but must not distort today's sales methods.
+            if (tender.getRefundDocument() != null
+                    && logicalSaleDocumentIds.contains(tender.getRefundDocument().getId())) {
+                salesBuckets.subtract(bucket, tender.getAmount());
+            }
         }
-        var totalReturnValue = refundTenders.stream()
-                .map(RefundTender::getAmount)
+        var salesTotal = logicalSales.stream()
+                .map(CommercialDocument::getTotal)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var salesTotal = Money.euros(grossSales.subtract(totalReturnValue));
+        salesBuckets.other = salesBuckets.other.add(unpaidPositiveRectification);
         // Exchange compensation and its return normally cancel. Any durable
         // historical anomaly is surfaced as Other instead of breaking the total.
         salesBuckets.other = salesBuckets.other.add(
@@ -255,7 +323,7 @@ public class DailyCommercialReportService {
                 .forEach(pendingCollectionBuckets::addIncomingPayment);
 
         var periodCashMovements = warehouseId == null
-                ? cashMovements.findAllByTiendaIdAndCreadoEnBetweenOrderByCreadoEnAsc(
+                ? cashMovements.findAllByTiendaIdAndCreadoEnFromInclusiveToExclusiveOrderByCreadoEnAsc(
                         store.getId(), from, to)
                 : List.<CashMovement>of();
         var cashEntries = sumCashMovements(periodCashMovements,
@@ -263,28 +331,31 @@ public class DailyCommercialReportService {
         var cashWithdrawals = sumCashMovements(periodCashMovements,
                 Set.of(CashMovementType.RETIRADA, CashMovementType.RETIRADA_CIERRE,
                         CashMovementType.RETIRADA_ENTRE_SESIONES));
-        var expectedCash = includeCashPosition ? cashPosition(store.getId(), to) : Money.euros("0");
-        var openingCash = includeCashPosition
-                ? Money.euros(expectedCash.subtract(cashMovementBalance(periodCashMovements)))
-                : Money.euros("0");
+        var expectedCash = includeCashPosition ? cashPosition(store.getId(), to) : null;
+        var openingCash = includeCashPosition ? cashPosition(store.getId(), from) : null;
 
         var ticketCount = issued.stream()
                 .filter(DailyCommercialReportService::isValidDocument)
                 .filter(document -> document.getTipo() == CommercialDocumentType.TICKET)
                 .filter(document -> document.getTotal().signum() >= 0)
                 .count();
-        var invoiceCount = issued.stream()
+        var directInvoiceCount = issued.stream()
                 .filter(DailyCommercialReportService::isValidDocument)
-                .filter(document -> document.getTipo() == CommercialDocumentType.FACTURA_VENTA)
-                .filter(document -> document.getTotal().signum() >= 0)
+                .filter(document -> document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA
+                        || (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                        && !derivedInvoiceIds.contains(document.getId())))
                 .count();
+        var invoiceCount = directInvoiceCount
+                + (warehouseId == null
+                ? relations.countActiveInvoicesForSalesActivityTickets(store.getId(), date, date)
+                : 0);
         return new DailyCommercialReportView(
                 store.getId(), date, Money.euros(invoiced), Money.euros(ticketSales),
                 Money.euros(collectedCurrent), Money.euros(legacyNewPending),
                 Money.euros(priorDebtCollected), Money.euros(monetaryRefunded),
                 Money.euros(cashInflow), ticketCount, invoiceCount, salesTotal,
                 salesBuckets.toView(), pendingCollectionBuckets.toView(), refundBuckets.toView(),
-                openingCash, cashEntries, cashWithdrawals, expectedCash, List.of());
+                openingCash, Money.euros(cashEntries), Money.euros(cashWithdrawals), expectedCash, List.of());
     }
 
     private Map<UUID, String> originalPaymentMethods(List<RefundTender> tenders) {
@@ -332,19 +403,6 @@ public class DailyCommercialReportService {
                 .map(CashMovement::getAmount)
                 .map(Money::euros)
                 .reduce(Money.euros("0"), BigDecimal::add);
-    }
-
-    private static BigDecimal cashMovementBalance(List<CashMovement> movements) {
-        var balance = Money.euros("0");
-        for (var movement : movements) {
-            balance = switch (movement.getType()) {
-                case COBRO_EFECTIVO, ENTRADA, ENTRADA_ENTRE_SESIONES ->
-                        balance.add(movement.getAmount());
-                case DEVOLUCION_EFECTIVO, RETIRADA, RETIRADA_CIERRE,
-                        RETIRADA_ENTRE_SESIONES -> balance.subtract(movement.getAmount());
-            };
-        }
-        return Money.euros(balance);
     }
 
     private static Set<UUID> safeSet(Set<UUID> values) {

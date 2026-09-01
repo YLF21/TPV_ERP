@@ -598,6 +598,162 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             @Param("cursorId") String cursorId,
             Pageable pageable);
 
+    /**
+     * Aggregates the same logical rows exposed by {@link #findSalesActivityDocuments}.
+     * Keeping the grouping in the database prevents a wide date range from being
+     * materialized merely to render its daily totals.
+     */
+    @Query("""
+            select document.fecha as date,
+                   sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                            then 1 else 0 end) as ticketCount,
+                   sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                                  or document.tipo = com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA
+                            then 1 else 0 end)
+                     + sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                                  and exists (select relation.documento.id
+                                              from DocumentRelation relation
+                                              where relation.origen.id = document.id
+                                                and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                                                and relation.documento.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                                                and relation.documento.estado not in (
+                                                    com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                                                    com.tpverp.backend.document.DocumentStatus.ANULADO))
+                            then 1 else 0 end) as invoiceCount,
+                   coalesce(sum(
+                       case
+                           when document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                               then 0
+                           else document.total
+                       end), 0) as total
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+            group by document.fecha
+            order by document.fecha desc
+            """)
+    List<SalesActivityDailyProjection> findSalesActivityDaily(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            Pageable pageable);
+
+    @Query("""
+            select document.fecha as date,
+                   sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                            then 1 else 0 end) as ticketCount,
+                   sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                                  or document.tipo = com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA
+                            then 1 else 0 end)
+                     + sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                                  and exists (select relation.documento.id
+                                              from DocumentRelation relation
+                                              where relation.origen.id = document.id
+                                                and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                                                and relation.documento.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                                                and relation.documento.estado not in (
+                                                    com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                                                    com.tpverp.backend.document.DocumentStatus.ANULADO))
+                            then 1 else 0 end) as invoiceCount,
+                   coalesce(sum(
+                       case
+                           when document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                               then 0
+                           else document.total
+                       end), 0) as total
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+              and document.fecha < :cursorDate
+            group by document.fecha
+            order by document.fecha desc
+            """)
+    List<SalesActivityDailyProjection> findSalesActivityDailyAfter(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("cursorDate") LocalDate cursorDate,
+            Pageable pageable);
+
+    @Query("""
+            select sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                            then 1 else 0 end) as ticketCount,
+                   sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                                  or document.tipo = com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA
+                            then 1 else 0 end)
+                     + sum(case when document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                                  and exists (select relation.documento.id
+                                              from DocumentRelation relation
+                                              where relation.origen.id = document.id
+                                                and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                                                and relation.documento.tipo = com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                                                and relation.documento.estado not in (
+                                                    com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                                                    com.tpverp.backend.document.DocumentStatus.ANULADO))
+                            then 1 else 0 end) as invoiceCount,
+                   coalesce(sum(
+                       case
+                           when document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                               then 0
+                           else document.total
+                       end), 0) as total
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.fecha between :from and :to
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA)
+              and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+              and (
+                  document.tipo <> com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA
+                  or document.estado = com.tpverp.backend.document.DocumentStatus.ANULADO
+                  or not exists (
+                      select relation.documento.id
+                      from DocumentRelation relation
+                      where relation.documento.id = document.id
+                        and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                        and relation.origen.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  )
+              )
+            """)
+    SalesActivityDailyTotalsProjection sumSalesActivityDaily(
+            @Param("storeId") UUID storeId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
     @Query("""
             select min(document.fecha)
             from CommercialDocument document

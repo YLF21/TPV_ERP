@@ -305,6 +305,25 @@
   font-size: 12px;
 }
 
+.sales-daily-documents-table th:nth-child(2),
+.sales-daily-documents-table td:nth-child(2),
+.sales-daily-documents-table th:nth-child(3),
+.sales-daily-documents-table td:nth-child(3) {
+  width: 18%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sales-daily-documents-table th:first-child,
+.sales-daily-documents-table td:first-child {
+  width: 34%;
+}
+
+.sales-daily-documents-table th:last-child,
+.sales-daily-documents-table td:last-child {
+  width: 30%;
+}
+
 .sales-documents-table th,
 .sales-documents-table td {
   height: 34px;
@@ -466,6 +485,64 @@
 .sales-activity-notice--success { border-color: #3c8961; color: #256543; }
 .sales-activity-notice--error { border-color: #b74a4a; color: #8a2020; }
 .sales-activity-notice--info { border-color: var(--activity-blue); color: var(--activity-navy); }
+
+.sales-daily-authoritative {
+  border: 1px solid #9aabb9;
+  background: #f7f9fb;
+  padding: 12px;
+}
+
+.sales-daily-authoritative > header,
+.sales-daily-authoritative-cash > div,
+.sales-daily-authoritative-grid > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sales-daily-authoritative > header {
+  border-bottom: 2px solid var(--activity-navy);
+  padding-bottom: 8px;
+  color: var(--activity-navy);
+  font-weight: 700;
+}
+
+.sales-daily-authoritative-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 6px 18px;
+  padding: 10px 0;
+}
+
+.sales-daily-authoritative-cash {
+  border-top: 1px solid #c3ced8;
+  padding-top: 8px;
+}
+
+.sales-daily-authoritative-cash h4 {
+  margin: 0 0 6px;
+  color: var(--activity-navy);
+}
+
+.sales-daily-authoritative-subsections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 16px;
+  border-top: 1px solid #c3ced8;
+  padding-top: 8px;
+}
+
+.sales-daily-authoritative-subsections section > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.sales-daily-authoritative-subsections h4 {
+  margin: 0 0 5px;
+  color: var(--activity-navy);
+}
 
 @media (max-width: 1100px) {
   .sales-activity-filter-dock { flex-wrap: wrap; }

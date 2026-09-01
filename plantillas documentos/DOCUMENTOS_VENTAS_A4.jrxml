@@ -3,6 +3,7 @@
   <query language="jsonql"><![CDATA[lines]]></query>
   <field name="lineType" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="lineType"/></field>
   <field name="label" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="label"/></field>
+  <field name="secondary" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="secondary"/></field>
   <field name="value" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="value"/></field>
   <field name="title" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.title"/></field>
   <field name="companyName" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.companyName"/></field>
@@ -28,7 +29,9 @@
   <detail>
     <band height="26" splitType="Stretch">
       <element kind="textField" uuid="270a4dd9-2265-486b-a89b-70ac03a318ee" x="0" y="2" width="180" height="20" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="StretchHeight" blankWhenNull="true"><expression><![CDATA[$F{label}]]></expression></element>
-      <element kind="textField" uuid="9562370b-6a40-4c04-8615-4108dd3c3ed8" x="185" y="2" width="370" height="20" fontName="SansSerif" fontSize="8.5" hTextAlign="Right" textAdjust="StretchHeight" blankWhenNull="true"><expression><![CDATA[$F{value}]]></expression></element>
+      <element kind="textField" uuid="9562370b-6a40-4c04-8615-4108dd3c3ed8" x="185" y="2" width="370" height="20" fontName="SansSerif" fontSize="8.5" hTextAlign="Right" textAdjust="StretchHeight" blankWhenNull="true"><printWhenExpression><![CDATA[!"DAY".equals($F{lineType})]]></printWhenExpression><expression><![CDATA[$F{value}]]></expression></element>
+      <element kind="textField" uuid="d0f54a55-0b9a-4a0e-8f40-31e995de806d" x="185" y="2" width="240" height="20" fontName="SansSerif" fontSize="8.5" hTextAlign="Right" textAdjust="StretchHeight" blankWhenNull="true"><printWhenExpression><![CDATA["DAY".equals($F{lineType})]]></printWhenExpression><expression><![CDATA[$F{secondary}]]></expression></element>
+      <element kind="textField" uuid="4a559a2d-8f0a-4e65-8ed9-7c5d13b823bb" x="425" y="2" width="130" height="20" fontName="SansSerif" fontSize="8.5" hTextAlign="Right" textAdjust="StretchHeight" blankWhenNull="true"><printWhenExpression><![CDATA["DAY".equals($F{lineType})]]></printWhenExpression><expression><![CDATA[$F{value}]]></expression></element>
       <element kind="line" uuid="dd057dc4-58a9-4a16-b269-637716471482" x="0" y="25" width="555" height="1" forecolor="#D4DEE8"/>
     </band>
   </detail>

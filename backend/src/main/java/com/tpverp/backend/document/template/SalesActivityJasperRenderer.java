@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tpverp.backend.document.SalesActivityDocumentRowView;
+import com.tpverp.backend.document.SalesActivityDailyRowView;
+import com.tpverp.backend.document.DailyPaymentBreakdownView;
+import com.tpverp.backend.document.DailyOperationsSupplement;
 import com.tpverp.backend.document.SalesActivityPrintGrouping;
 import com.tpverp.backend.document.SalesDailySummaryView;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -65,6 +68,9 @@ public class SalesActivityJasperRenderer {
                         user.paymentMethods(), user.counts());
             }
         }
+        if (summary.operations() != null) {
+            appendCommercialSections(lines, summary.operations());
+        }
         return render(root, format == DocumentTemplateFormat.TICKET_80
                 ? "RESUMEN_VENTAS_DIA_TICKET_80.jrxml"
                 : "RESUMEN_VENTAS_DIA_A4.jrxml", format);
@@ -76,6 +82,10 @@ public class SalesActivityJasperRenderer {
             LocalDate to,
             SalesActivityPrintGrouping grouping,
             DocumentTemplateFormat format) {
+        if (grouping == SalesActivityPrintGrouping.DAY) {
+            throw new IllegalArgumentException(
+                    "DAY requiere renderDailyDocuments con agregados del repositorio");
+        }
         var total = rows.stream().map(SalesActivityDocumentRowView::total)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var period = from.equals(to) ? DATE.format(from)
@@ -89,9 +99,74 @@ public class SalesActivityJasperRenderer {
         root.put("grouping", grouping.name());
         var lines = root.putArray("lines");
         if (format == DocumentTemplateFormat.TICKET_80) {
-            appendTicketDocumentLines(lines, rows, grouping);
+            appendTicketDocumentLines(lines, rows);
         } else {
-            appendA4DocumentLines(lines, rows, grouping);
+            appendA4DocumentLines(lines, rows);
+        }
+        return render(root, format == DocumentTemplateFormat.TICKET_80
+                ? "DOCUMENTOS_VENTAS_TICKET_80.jrxml"
+                : "DOCUMENTOS_VENTAS_A4.jrxml", format);
+    }
+
+    private static void appendCommercialSections(
+            ArrayNode lines, DailyOperationsSupplement report) {
+        line(lines, "SECTION", "COBROS DE DEUDA ANTERIOR", "");
+        appendBreakdown(lines, report.pendingCollectionsByPaymentMethod());
+        line(lines, "TOTAL", "COBROS DE DEUDA ANTERIOR", money(report.priorDebtCollected()));
+        line(lines, "SECTION", "DEVOLUCIONES", "");
+        appendBreakdown(lines, report.refundsByPaymentMethod());
+        line(lines, "TOTAL", "DEVOLUCIONES", money(report.refundsByPaymentMethod().total()));
+        line(lines, "SECTION", "CAJA", "");
+        cashLine(lines, "COBROS ACTUALES", report.collectedCurrent());
+        cashLine(lines, "NUEVO PENDIENTE", report.newPending());
+        cashLine(lines, "ENTRADA REAL", report.cashInflow());
+        if (report.openingCashFund() != null) {
+            cashLine(lines, "FONDO INICIAL", report.openingCashFund());
+        }
+        cashLine(lines, "ENTRADAS", report.cashEntries());
+        cashLine(lines, "RETIRADAS", report.cashWithdrawals());
+        if (report.expectedCash() != null) {
+            cashLine(lines, "EFECTIVO ESPERADO", report.expectedCash());
+        }
+    }
+
+    private static void cashLine(ArrayNode lines, String label, BigDecimal amount) {
+        if (amount != null) {
+            line(lines, "CASH", label, money(amount));
+        }
+    }
+
+    private static void appendBreakdown(ArrayNode lines, DailyPaymentBreakdownView breakdown) {
+        paymentLine(lines, "EFECTIVO", breakdown.cash());
+        paymentLine(lines, "TARJETA", breakdown.card());
+        paymentLine(lines, "TRANSFERENCIA", breakdown.transfer());
+        paymentLine(lines, "VALE", breakdown.voucher());
+        paymentLine(lines, "PENDIENTE", breakdown.pending());
+        paymentLine(lines, "OTROS", breakdown.other());
+    }
+
+    private static void paymentLine(ArrayNode lines, String label, BigDecimal amount) {
+        if (amount != null && amount.signum() != 0) {
+            line(lines, "PAYMENT", label, money(amount));
+        }
+    }
+
+    public RenderedReport renderDailyDocuments(
+            List<SalesActivityDailyRowView> rows,
+            LocalDate from,
+            LocalDate to,
+            DocumentTemplateFormat format) {
+        var total = rows.stream().map(SalesActivityDailyRowView::total)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var period = from.equals(to) ? DATE.format(from)
+                : DATE.format(from) + " - " + DATE.format(to);
+        var root = baseModel("DOCUMENTOS DE VENTAS - POR DIA", period, total);
+        root.put("grouping", SalesActivityPrintGrouping.DAY.name());
+        var lines = root.putArray("lines");
+        for (var row : rows) {
+            line(lines, "DAY", DATE.format(row.date()),
+                    "Tickets: " + row.ticketCount() + " | Facturas: " + row.invoiceCount(),
+                    money(row.total()));
         }
         return render(root, format == DocumentTemplateFormat.TICKET_80
                 ? "DOCUMENTOS_VENTAS_TICKET_80.jrxml"
@@ -100,15 +175,9 @@ public class SalesActivityJasperRenderer {
 
     private void appendA4DocumentLines(
             ArrayNode lines,
-            List<SalesActivityDocumentRowView> rows,
-            SalesActivityPrintGrouping grouping) {
-        String previousDate = "";
+            List<SalesActivityDocumentRowView> rows) {
         for (var row : rows) {
             String date = DATE.format(row.date());
-            if (grouping == SalesActivityPrintGrouping.DAY && !date.equals(previousDate)) {
-                line(lines, "SECTION", date, "");
-                previousDate = date;
-            }
             var occurred = row.occurredAt() == null ? "" : row.occurredAt()
                     .atZone(ZoneId.of(organization.currentStore().getTimezone()))
                     .format(DateTimeFormatter.ofPattern("HH:mm"));
@@ -120,23 +189,13 @@ public class SalesActivityJasperRenderer {
                             row.userName(), String.join(", ", row.paymentMethods()),
                             displayStatus(row))
                     .filter(value -> value != null && !value.isBlank()).toList());
-            line(lines, grouping == SalesActivityPrintGrouping.DOCUMENT
-                    ? "DOCUMENT" : "ROW", details, money(row.total()));
+            line(lines, "DOCUMENT", details, money(row.total()));
         }
     }
 
     private static void appendTicketDocumentLines(
             ArrayNode lines,
-            List<SalesActivityDocumentRowView> rows,
-            SalesActivityPrintGrouping grouping) {
-        if (grouping == SalesActivityPrintGrouping.DAY) {
-            var totalsByDate = new LinkedHashMap<LocalDate, BigDecimal>();
-            rows.forEach(row -> totalsByDate.merge(
-                    row.date(), row.total(), BigDecimal::add));
-            totalsByDate.forEach((date, total) ->
-                    line(lines, "DAY", DATE.format(date), money(total)));
-            return;
-        }
+            List<SalesActivityDocumentRowView> rows) {
         LocalDate previousDate = null;
         for (var row : rows) {
             if (!row.date().equals(previousDate)) {
