@@ -3,6 +3,7 @@ package com.tpverp.backend.catalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -227,13 +228,33 @@ class ProductPriceRuleServiceTest {
 
     @Test
     void rulesAreCreatedForTheCurrentCompanyAndCreator() {
+        var forms = List.of(fixedPriceForm("20.00"));
         service.create(new ProductPriceRuleService.ProductPriceRuleCreateRequest(
-                "Tarifa verano", List.of(fixedPriceForm("20.00"))), manager());
+                "Tarifa verano", forms), manager());
 
         ArgumentCaptor<ProductPriceRule> captor = ArgumentCaptor.forClass(ProductPriceRule.class);
-        verify(repository).saveAndFlush(captor.capture());
+        var ordered = inOrder(catalog, repository);
+        ordered.verify(catalog).lockStoreForCatalogMutation(storeId);
+        ordered.verify(catalog).validatePriceRuleCatalogReferences(forms);
+        ordered.verify(repository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getCompanyId()).isEqualTo(companyId);
         assertThat(captor.getValue().getCreatedBy()).isEqualTo(userId);
+    }
+
+    @Test
+    void ruleUpdateLocksStoreBeforeCatalogValidationAndPersistence() {
+        var forms = List.of(fixedPriceForm("21.00"));
+        ProductPriceRule rule = rule(userId, List.of(fixedPriceForm("20.00")));
+        when(repository.findByIdAndCompanyId(rule.getId(), companyId)).thenReturn(Optional.of(rule));
+
+        service.update(rule.getId(), new ProductPriceRuleService.ProductPriceRuleUpdateRequest(
+                rule.getVersion(), "Tarifa actualizada", forms), manager());
+
+        var ordered = inOrder(catalog, repository);
+        ordered.verify(catalog).lockStoreForCatalogMutation(storeId);
+        ordered.verify(catalog).validatePriceRuleCatalogReferences(forms);
+        ordered.verify(repository).findByIdAndCompanyId(rule.getId(), companyId);
+        ordered.verify(repository).saveAndFlush(rule);
     }
 
     @Test

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UserSession } from "@tpverp/app-common";
-import { canManageTaxes, canOpenGestionModule, visibleGestionModules } from "./gestionAccess";
+import { canManageFamilies, canManageTaxes, canOpenGestionModule, visibleGestionModules } from "./gestionAccess";
 
 function session(permissions: UserSession["permissions"]): UserSession {
   return { username: "user", displayName: "USER", permissions };
@@ -9,6 +9,13 @@ function session(permissions: UserSession["permissions"]): UserSession {
 it("allows tax management independently of ADMIN", () => {
   expect(canManageTaxes(session(["TAXES_MANAGE"]))).toBe(false);
   expect(canManageTaxes(session(["APP_GESTION_ACCESS", "TAXES_MANAGE"]))).toBe(true);
+});
+
+it("allows family maintenance only to product managers", () => {
+  expect(canManageFamilies(session(["ADMIN"]))).toBe(true);
+  expect(canManageFamilies(session(["GESTION_PRODUCTO"]))).toBe(true);
+  expect(canManageFamilies(session(["PRODUCTS_WRITE"]))).toBe(true);
+  expect(canManageFamilies(session(["APP_GESTION_ACCESS"]))).toBe(false);
 });
 
 describe("APP GESTION module access", () => {

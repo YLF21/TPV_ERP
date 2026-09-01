@@ -217,6 +217,13 @@ public class Product {
         return subfamilyId;
     }
 
+    /** Moves the product classification; the enclosing transaction supplies
+     * the optimistic version check and increments @Version on flush. */
+    public void moveToClassification(UUID familyId, UUID subfamilyId) {
+        this.familyId = Objects.requireNonNull(familyId, "familyId");
+        this.subfamilyId = subfamilyId;
+    }
+
     public UUID getTaxId() {
         return taxId;
     }

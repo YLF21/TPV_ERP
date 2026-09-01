@@ -89,12 +89,17 @@ public class ProductPriceRuleService {
     public ProductPriceRuleView create(
             ProductPriceRuleCreateRequest request,
             Authentication authentication) {
+        List<ProductPriceRuleForm.Definition> forms =
+                ProductPriceRuleForm.validateAndCopy(request.forms());
+        UUID storeId = organization.currentStore().getId();
+        catalog.lockStoreForCatalogMutation(storeId);
         UUID companyId = organization.currentCompany().getId();
         UserAccount user = organization.currentUser(authentication);
+        catalog.validatePriceRuleCatalogReferences(forms);
         ProductPriceRule rule = new ProductPriceRule(
                 companyId,
                 request.name(),
-                request.forms(),
+                forms,
                 user.getId(),
                 clock.instant());
         repository.saveAndFlush(rule);
@@ -106,11 +111,16 @@ public class ProductPriceRuleService {
             UUID id,
             ProductPriceRuleUpdateRequest request,
             Authentication authentication) {
+        List<ProductPriceRuleForm.Definition> forms =
+                ProductPriceRuleForm.validateAndCopy(request.forms());
+        UUID storeId = organization.currentStore().getId();
+        catalog.lockStoreForCatalogMutation(storeId);
         UUID companyId = organization.currentCompany().getId();
         organization.currentUser(authentication);
+        catalog.validatePriceRuleCatalogReferences(forms);
         ProductPriceRule rule = find(id, companyId);
         requireVersion(rule, request.version());
-        rule.update(request.name(), request.forms(), clock.instant());
+        rule.update(request.name(), forms, clock.instant());
         flushWithOptimisticConflict(rule, request.version());
         return view(rule, userIndex(companyId));
     }

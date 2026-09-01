@@ -36,8 +36,8 @@ class CatalogDomainTest {
         family.rename("bebidas calientes");
         subfamily.rename("cafe molido");
 
-        assertThat(family.getFamilyId()).isEqualTo("BEBIDAS_CALIENTES");
-        assertThat(subfamily.getSubfamilyId()).isEqualTo("CAFE_MOLIDO");
+        assertThat(family.getFamilyId()).isEqualTo("BEBIDAS_FRIAS");
+        assertThat(subfamily.getSubfamilyId()).isEqualTo("AGUA_CON_GAS");
     }
 
     @Test

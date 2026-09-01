@@ -16,6 +16,7 @@ import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import com.tpverp.backend.organization.TicketPrintStyle;
 import com.tpverp.backend.organization.TicketTemplateOrigin;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
+import com.tpverp.backend.persistence.PostgreSqlTestDatabaseCleaner;
 import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -87,7 +88,7 @@ class TicketJasperRendererPostgreSqlTest {
 
     @BeforeEach
     void clearDatabase() {
-        jdbc.execute("truncate table instalacion, empresa cascade");
+        PostgreSqlTestDatabaseCleaner.truncateInstallationAndCompanyGraphs(jdbc, SCHEMA);
     }
 
     @AfterAll

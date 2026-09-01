@@ -2786,6 +2786,122 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .server-setup-license label { display: grid; gap: 5px; color: var(--gestion-navy); font-weight: 850; }
 .server-setup-license input { min-height: 38px; border: 1px solid #7b6747; border-radius: 0; padding: 7px 9px; font: inherit; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 
+/* Family catalogue: compact, keyboard-friendly ERP maintenance workspace. */
+.gestion-families-screen { height: 100%; min-height: 0; padding: 24px 28px 32px; color: var(--gestion-text); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.gestion-families-heading { grid-row: 1; display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; border-bottom: 2px solid #b7c2cd; padding-bottom: 16px; margin-bottom: 18px; }
+.gestion-families-heading h1 { margin: 3px 0 5px; font-size: 26px; letter-spacing: -.02em; }
+.gestion-families-heading p { margin: 0; color: #526577; max-width: 720px; }
+.gestion-section-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #6c7d8f; font-weight: 700; }
+.gestion-families-scope { border: 1px solid #9faebb; background: #eef3f7; color: #31485d; font-size: 12px; font-weight: 700; padding: 7px 10px; white-space: nowrap; }
+.gestion-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.gestion-row-actions button { min-height: 30px; padding: 4px 7px; border: 1px solid #9fadb9; background: #fff; color: #29445a; font-size: 12px; }
+.gestion-row-actions button:hover:not(:disabled) { background: #d7e6ef; }
+.gestion-row-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.gestion-families-state { color: #687b8d; padding: 28px 16px; text-align: center; }
+.gestion-families-state { border: 1px solid #aebdca; background: #f8fafb; }
+.gestion-families-screen > .gestion-error { grid-row: 2; }
+.gestion-families-state, .gestion-families-workspace { grid-row-start: 3; }
+.gestion-families-screen > .gestion-success { grid-row: 4; }
+.gestion-families-dialog { width: min(470px, calc(100vw - 32px)); }
+.gestion-families-dialog form { padding: 18px; }
+.gestion-families-dialog .filter-field { display: grid; gap: 6px; margin-bottom: 15px; }
+.gestion-families-dialog .filter-field > span { font-weight: 700; color: #31485d; }
+.gestion-families-dialog input { min-height: 38px; border: 1px solid #879aa9; border-radius: 0; padding: 8px 10px; font: inherit; text-transform: uppercase; }
+.gestion-families-dialog small { color: #687b8d; font-size: 12px; }
+.gestion-code-composite { display: flex; align-items: stretch; }
+.gestion-code-composite code { display: flex; align-items: center; background: #e8eef3; border: 1px solid #879aa9; border-right: 0; padding: 0 9px; }
+.gestion-code-composite input { flex: 1; }
+.gestion-families-impact { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+.gestion-families-impact div { border: 1px solid #bdcbd6; background: #f3f7f9; padding: 10px; }
+.gestion-families-impact dt { color: #5e7183; font-size: 12px; }
+.gestion-families-impact dd { margin: 5px 0 0; color: #1e3d56; font-size: 21px; font-weight: 700; }
+.gestion-families-dependencies { margin: 8px 0 14px; padding-left: 22px; color: #5d3e2c; }
+.gestion-families-dialog .danger { background: #8e2f2f; border-color: #762626; color: #fff; }
+@media (max-width: 900px) { .gestion-families-heading { flex-direction: column; } }
+
+/* Family classification workspace: dense, keyboard-first ERP surface. */
+.gestion-families-workspace { width: 100%; min-height: 0; height: 100%; display: grid; grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr); grid-template-rows: minmax(0, 1fr); gap: 12px; overflow: hidden; }
+.gestion-families-products-column { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
+.gestion-families-tree-pane, .gestion-families-products { min-width: 0; min-height: 0; border: 1px solid #9eafbc; background: #f8fafb; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+.gestion-families-tree-pane > header, .gestion-families-products-header { padding: 11px 13px; background: #e2e9ef; border-bottom: 1px solid #b4c1cb; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.gestion-families-tree-pane h2, .gestion-families-products h2 { margin: 0 0 3px; color: #20384d; font-size: 16px; }
+.gestion-families-tree-pane header span, .gestion-families-products-header p { margin: 0; color: #617487; font-size: 12px; }
+.gestion-families-tree-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.gestion-families-tree-actions button { border-radius: 0; padding: 7px 9px; }
+.gestion-families-tree, .gestion-families-products-table-wrap { overflow: auto; }
+.gestion-families-tree { padding: 7px; }
+.gestion-family-tree-item { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 4px 7px; border-bottom: 1px solid #d8e0e6; color: #263f54; cursor: pointer; outline: none; }
+.gestion-family-tree-item:hover { background: #edf3f7; }
+.gestion-family-tree-item:focus-visible { box-shadow: inset 0 0 0 2px #175b83; }
+.gestion-family-tree-item.is-selected { background: #dcecf7; border-left: 3px solid #17618c; padding-left: 4px; }
+.gestion-family-tree-toggle { width: 22px; height: 24px; padding: 0; border: 0; background: transparent; color: #1d4b69; font-size: 15px; }
+.gestion-family-tree-code { min-width: 66px; color: #254c68; font-weight: 700; }
+.gestion-family-tree-code code { font-size: 12px; }
+.gestion-family-tree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.gestion-family-tree-item em, .gestion-family-inactive { color: #8a5c25; font-size: 11px; font-style: normal; font-weight: 700; }
+.gestion-family-tree-children { margin-left: 25px; border-left: 1px solid #b7c7d2; }
+.gestion-family-tree-item.is-child { padding-left: 13px; }
+.gestion-family-tree-item .gestion-row-actions { display: flex; gap: 3px; opacity: .78; }
+.gestion-family-tree-item .gestion-row-actions button { padding: 3px 6px; border: 1px solid #a6b5c0; border-radius: 0; background: #fff; color: #35536b; font-size: 11px; }
+.gestion-families-products { grid-template-rows: auto minmax(0, 1fr); }
+.gestion-families-products.has-error { grid-template-rows: auto auto minmax(0, 1fr); }
+.gestion-families-products-header { align-items: flex-start; }
+.gestion-families-page-count { white-space: nowrap; color: #2c526c; font: 700 12px Consolas, monospace; }
+.gestion-families-products-table { min-width: 620px; font-size: var(--gestion-font-body); }
+.gestion-families-products-table th, .gestion-families-products-table td { vertical-align: middle; }
+.gestion-families-products-table th:first-child, .gestion-families-products-table td:first-child { width: 38px; text-align: center; }
+.gestion-families-products-table th:nth-child(2), .gestion-families-products-table td:nth-child(2) { width: 82px; }
+.gestion-families-products-table th:nth-child(3), .gestion-families-products-table td:nth-child(3) { width: 116px; }
+.gestion-families-products-table th:last-child, .gestion-families-products-table td:last-child { width: 150px; }
+.gestion-families-products-table .numeric { text-align: right; }
+.gestion-families-products-table th > .table-layout-sort-button { width: calc(100% + 20px); max-width: none; box-sizing: border-box; }
+.gestion-families-products-table th.numeric > .table-layout-sort-button { justify-content: flex-end; }
+.gestion-families-products-table th .table-layout-sort-indicator { visibility: hidden; opacity: 0; transition: opacity 120ms ease; }
+.gestion-families-products-table th:hover .table-layout-sort-indicator,
+.gestion-families-products-table th:focus-within .table-layout-sort-indicator,
+.gestion-families-products-table .table-layout-sort-button.is-active .table-layout-sort-indicator { visibility: visible; opacity: 1; }
+.gestion-families-products-table tr.is-inactive { color: #77838b; background: #f3f5f6; }
+.gestion-families-products-table td:nth-child(2) { padding: 4px 9px; overflow: hidden; }
+.gestion-family-product-name-cell { min-width: 0; overflow: hidden; }
+.gestion-family-product-name { display: block; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gestion-family-product-thumb { box-sizing: border-box; width: 36px; height: 36px; min-width: 36px; min-height: 36px; max-width: 36px; max-height: 36px; flex: 0 0 36px; border: 1px solid #bdc9d2; background: #edf2f4; display: grid; place-items: center; overflow: hidden; contain: layout paint; color: #557084; font-weight: 700; }
+.gestion-family-product-thumb img { display: block; inline-size: 100% !important; block-size: 100% !important; max-inline-size: 100% !important; max-block-size: 100% !important; object-fit: contain; }
+.gestion-family-product-thumb span { display: grid; inline-size: 100%; block-size: 100%; place-items: center; }
+.gestion-family-inactive { display: block; }
+.gestion-families-product-state { padding: 32px 16px; text-align: center; color: #687b8d; }
+.gestion-families-products-load-more { min-height: 28px; display: grid; place-items: center; padding: 5px 10px; border-top: 1px solid #d5dfe6; background: #f2f6f8; color: #607688; font-size: 11px; font-weight: 700; }
+.gestion-families-selection-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 11px; border-top: 1px solid #c4d0d8; background: #e8eef2; color: #52697a; font-size: 12px; }
+.gestion-families-selection-bar button { border: 1px solid #6d8495; border-radius: 0; background: #f7fafb; color: #214862; padding: 6px 10px; font-weight: 700; }
+.gestion-families-selection-bar { border: 1px solid #9eafbc; border-top: 0; }
+.gestion-families-selection-bar div { display: flex; gap: 5px; }
+.gestion-family-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: stretch; }
+.gestion-family-code-field .gestion-family-combobox { min-width: 0; }
+.gestion-family-code-field .gestion-code-composite { min-width: 112px; }
+.gestion-family-code-field .gestion-code-composite input { width: 52px; }
+.gestion-family-combobox { display: flex; position: relative; }
+.gestion-family-combobox input { min-width: 0; flex: 1; }
+.gestion-family-combobox button { width: 36px; border: 1px solid #173d59; background: #173d59; color: #fff; }
+.gestion-family-combobox-results { position: absolute; z-index: 4; left: 0; right: 0; max-height: 180px; overflow: auto; border: 1px solid #8095a5; background: #fff; box-shadow: 0 3px 9px #182b371f; }
+.gestion-family-combobox-results button { display: block; width: 100%; padding: 8px 10px; border: 0; border-bottom: 1px solid #e0e6ea; background: #fff; text-align: left; color: #23465d; }
+.gestion-family-combobox-results button:hover, .gestion-family-combobox-results button:focus-visible { background: #e4eff6; }
+.gestion-family-move-dialog { width: min(520px, calc(100vw - 32px)); }
+.gestion-family-move-search { display: grid; gap: 5px; margin: 10px 0; color: #31485d; font-weight: 700; }
+.gestion-family-move-search input { min-height: 34px; border: 1px solid #879aa9; border-radius: 0; padding: 6px 8px; font: inherit; }
+.gestion-family-move-tree { max-height: 360px; overflow: auto; border: 1px solid #b1c1cc; background: #f8fafb; padding: 5px; }
+.gestion-family-move-family-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid #dce4e9; }
+.gestion-family-move-family-row > button:not(.gestion-family-move-toggle) { border-bottom: 0; }
+.gestion-family-move-family-row > small { padding-right: 8px; color: var(--gestion-muted); font-size: 11px; }
+.gestion-family-move-toggle { width: 28px !important; padding: 8px 3px !important; color: #1d4b69 !important; font-weight: 900; }
+.gestion-family-move-tree button { display: block; width: 100%; border: 0; border-bottom: 1px solid #dce4e9; background: transparent; padding: 8px; text-align: left; color: #25485f; }
+.gestion-family-move-tree button.is-child { padding-left: 27px; }
+.gestion-family-move-tree button.is-selected, .gestion-family-move-tree button:focus-visible { background: #dcecf7; outline: 2px solid #1a5e87; outline-offset: -2px; }
+.gestion-family-move-selection { margin: 10px 0 0; color: #234c67; font-weight: 700; }
+@media (max-width: 900px) {
+  .gestion-families-screen { height: auto; min-height: 100%; }
+  .gestion-families-workspace { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 42vh) minmax(440px, 58vh); overflow: visible; }
+  .gestion-family-tree-item .gestion-row-actions { opacity: 1; }
+}
+
 @media (max-width: 980px) {
   .gestion-license-heading { display: grid; }
   .gestion-license-heading aside { min-width: 0; }

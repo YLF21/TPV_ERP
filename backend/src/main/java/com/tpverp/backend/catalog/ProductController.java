@@ -49,7 +49,7 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
     public List<ProductView> list() {
         return service.products().stream().map(ProductView::publicView).toList();
     }
@@ -87,7 +87,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
     public ProductView get(@PathVariable UUID productId) {
         return ProductView.publicView(service.product(productId));
     }
@@ -130,6 +130,13 @@ public class ProductController {
         return ProductView.managementView(service.updateProduct(productId, request));
     }
 
+    @PostMapping("/classification/move")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
+    public CatalogService.BulkMoveResult moveClassification(
+            @Valid @RequestBody CatalogService.BulkMoveRequest request) {
+        return service.moveProducts(request);
+    }
+
     @PatchMapping("/{productId}/active")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
     public ProductView setActive(
@@ -162,7 +169,7 @@ public class ProductController {
     // Receives the original image and delegates conversion/storage to the catalog service.
 
     @GetMapping(path = "/{productId}/image", produces = ProductImageService.CONTENT_TYPE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
     public ResponseEntity<byte[]> image(
             @PathVariable UUID productId,
             @RequestParam(defaultValue = "false") boolean thumbnail) {

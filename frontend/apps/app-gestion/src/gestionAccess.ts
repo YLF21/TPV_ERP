@@ -1,4 +1,4 @@
-import type { Permission, UserSession } from "@tpverp/app-common";
+import { hasPermission, type Permission, type UserSession } from "@tpverp/app-common";
 
 export type GestionModuleKey =
   | "gestion.sales"
@@ -41,6 +41,10 @@ export function canManageTaxes(session: UserSession): boolean {
   return session.permissions.includes("ADMIN")
     || (session.permissions.includes("APP_GESTION_ACCESS")
       && session.permissions.includes("TAXES_MANAGE"));
+}
+
+export function canManageFamilies(session: UserSession): boolean {
+  return hasPermission(session, "GESTION_PRODUCTO") || hasPermission(session, "PRODUCTS_WRITE");
 }
 
 export function visibleGestionModules(session: UserSession): GestionModuleKey[] {

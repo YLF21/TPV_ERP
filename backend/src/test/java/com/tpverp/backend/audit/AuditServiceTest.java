@@ -3,6 +3,7 @@ package com.tpverp.backend.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
@@ -10,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,8 +34,8 @@ class AuditServiceTest {
     @BeforeEach
     void setUp() {
         storeId = UUID.randomUUID();
-        when(organization.currentStore()).thenReturn(store);
-        when(store.getId()).thenReturn(storeId);
+        lenient().when(organization.currentStore()).thenReturn(store);
+        lenient().when(store.getId()).thenReturn(storeId);
         service = new AuditService(
                 repository, organization, Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -48,5 +50,23 @@ class AuditServiceTest {
 
         verify(repository).findByTiendaIdAndCreadaEnBetweenOrderByCreadaEnDesc(
                 storeId, from, NOW);
+    }
+
+    @Test
+    void auditPayloadPreservesExplicitNullClassificationValues() {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("before", new LinkedHashMap<>(java.util.Map.of("familyId", "family")));
+        var after = new LinkedHashMap<String, Object>();
+        after.put("familyId", "general");
+        after.put("subfamilyId", null);
+        details.put("after", after);
+
+        var entry = new AuditEntry(store, null, null, "PRODUCT_CLASSIFICATION_BULK_MOVED",
+                AuditResult.EXITO, details, NOW);
+
+        @SuppressWarnings("unchecked")
+        var storedAfter = (java.util.Map<String, Object>) entry.getDatos().get("after");
+        assertThat(storedAfter)
+                .containsEntry("subfamilyId", null);
     }
 }

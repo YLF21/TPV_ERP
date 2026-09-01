@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
+import com.tpverp.backend.persistence.PostgreSqlTestDatabaseCleaner;
 import java.sql.DriverManager;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -60,7 +61,7 @@ class FiscalSubmissionEvidencePostgreSqlTest {
 
     @BeforeEach
     void clean() {
-        jdbc.execute("truncate table instalacion, empresa cascade");
+        PostgreSqlTestDatabaseCleaner.truncateInstallationAndCompanyGraphs(jdbc, SCHEMA);
     }
 
     @AfterAll

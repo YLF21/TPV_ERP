@@ -2,6 +2,7 @@ package com.tpverp.backend.terminal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
+import com.tpverp.backend.persistence.PostgreSqlTestDatabaseCleaner;
 
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -61,7 +62,9 @@ class PaymentTerminalAdjustmentPostgreSqlTest {
     }
 
     @BeforeEach
-    void clearDatabase() { jdbc.execute("truncate table empresa cascade"); }
+    void clearDatabase() {
+        PostgreSqlTestDatabaseCleaner.truncateCompanyGraph(jdbc, SCHEMA);
+    }
 
     @AfterAll
     static void dropSchema() { execute("drop schema if exists " + SCHEMA + " cascade"); }

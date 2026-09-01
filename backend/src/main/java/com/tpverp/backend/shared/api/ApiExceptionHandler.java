@@ -1,5 +1,6 @@
 package com.tpverp.backend.shared.api;
 
+import com.tpverp.backend.catalog.ProductClassificationVersionConflictException;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.FiscalQrUnavailableException;
@@ -360,6 +361,20 @@ public class ApiExceptionHandler {
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language,
                 request);
+    }
+
+    @ExceptionHandler(ProductClassificationVersionConflictException.class)
+    ProblemDetail productClassificationVersionConflict(
+            ProductClassificationVersionConflictException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = messages.system(SystemErrorCode.PRODUCT_VERSION_CONFLICT, language);
+        var response = problem(
+                HttpStatus.CONFLICT, SystemErrorCode.PRODUCT_VERSION_CONFLICT.name(), detail, language, request);
+        response.setProperty("action", "RELOAD_PRODUCTS");
+        response.setProperty("retryable", true);
+        response.setProperty("conflicts", exception.conflicts());
+        return response;
     }
 
     @ExceptionHandler(PaymentSessionClosedException.class)

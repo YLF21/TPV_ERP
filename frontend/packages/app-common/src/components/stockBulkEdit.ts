@@ -156,10 +156,34 @@ export type StockBulkXlsxDownload = {
   fileName: string;
 };
 
+export type StockBulkClassificationCodes = {
+  familyCodes?: Record<string, string>;
+  subfamilyCodes?: Record<string, string>;
+};
+
+export type StockBulkClassificationCatalog = {
+  families: ReadonlyArray<{
+    id: string;
+    familyId?: string | null;
+    familyCode?: string | null;
+    legacyFamilyId?: string | null;
+    name?: string | null;
+  }>;
+  subfamilies: ReadonlyArray<{
+    id: string;
+    familyId?: string | null;
+    subfamilyId?: string | null;
+    subfamilySuffix?: string | null;
+    subfamilyCode?: string | null;
+    legacySubfamilyId?: string | null;
+    name?: string | null;
+  }>;
+};
+
 export type StockBulkImportCatalogs = {
   locale?: LocaleCode;
-  families?: Array<{ id: string; name: string }>;
-  subfamilies?: Array<{ id: string; familyId: string; name: string }>;
+  families?: Array<{ id: string; name: string; code?: string; legacyCode?: string }>;
+  subfamilies?: Array<{ id: string; familyId: string; name: string; code?: string; legacyCode?: string }>;
   taxes?: Array<{ id: string; name: string }>;
 };
 
@@ -212,10 +236,12 @@ const excelFields: Array<{ keys: string[]; field: keyof StockInventoryRow }> = [
 
 const excelReferenceFields = {
   family: {
+    code: ["codigo familia", "código familia", "family code"],
     id: ["familia id", "family id"],
     name: ["familia", "family"]
   },
   subfamily: {
+    code: ["codigo subfamilia", "código subfamilia", "subfamily code"],
     id: ["subfamilia id", "subfamily id"],
     name: ["subfamilia", "subfamily"]
   },
@@ -229,6 +255,7 @@ type StockBulkNamedReference = {
   id: string;
   name: string;
   parentId?: string;
+  normalizedCodes: Set<string>;
   normalizedNames: Set<string>;
 };
 
@@ -603,6 +630,205 @@ export function stockBulkEffectiveProduct(row: StockBulkEditRowData): StockInven
   return { ...row.product, ...changes };
 }
 
+export function stockBulkClassificationCodesForRows(
+  rows: readonly StockBulkEditRowData[],
+  catalog: StockBulkClassificationCatalog
+): StockBulkClassificationCodes {
+  const usedFamilyIds = new Set<string>();
+  const usedSubfamilyIds = new Set<string>();
+  rows.forEach((row) => {
+    const product = stockBulkEffectiveProduct(row);
+    const familyId = text(product?.familyId).trim();
+    const subfamilyId = text(product?.subfamilyId).trim();
+    if (familyId && familyId !== "-") usedFamilyIds.add(familyId);
+    if (subfamilyId && subfamilyId !== "-") usedSubfamilyIds.add(subfamilyId);
+  });
+
+  const allFamilyCodes = new Map(catalog.families.flatMap((family) => {
+    const code = text(family.familyCode ?? family.familyId).trim();
+    return /^\d{3}$/.test(code) ? [[family.id, code] as const] : [];
+  }));
+  const familyCodes = Object.fromEntries(
+    [...usedFamilyIds].flatMap((familyId) => {
+      const code = allFamilyCodes.get(familyId);
+      return code ? [[familyId, code]] : [];
+    })
+  );
+  const subfamilyCodes = Object.fromEntries(
+    catalog.subfamilies.flatMap((subfamily) => {
+      if (!usedSubfamilyIds.has(subfamily.id)) return [];
+      const suffix = text(subfamily.subfamilySuffix ?? subfamily.subfamilyId).trim();
+      const parentCode = allFamilyCodes.get(text(subfamily.familyId).trim()) ?? "";
+      const code = text(
+        subfamily.subfamilyCode
+        ?? (/^\d{3}$/.test(parentCode) && /^\d{3}$/.test(suffix) ? `${parentCode}${suffix}` : "")
+      ).trim();
+      return /^\d{6}$/.test(code) ? [[subfamily.id, code]] : [];
+    })
+  );
+
+  return {
+    ...(usedFamilyIds.size > 0 && Object.keys(familyCodes).length === usedFamilyIds.size
+      ? { familyCodes }
+      : {}),
+    ...(usedSubfamilyIds.size > 0 && Object.keys(subfamilyCodes).length === usedSubfamilyIds.size
+      ? { subfamilyCodes }
+      : {})
+  };
+}
+
+export function shouldClearStockBulkImportedSubfamily(input: {
+  familyColumnMapped: boolean;
+  familyReference: unknown;
+  subfamilyColumnMapped: boolean;
+  subfamilyReference: unknown;
+}) {
+  if (input.subfamilyColumnMapped) {
+    return text(input.subfamilyReference).trim() === "";
+  }
+  return input.familyColumnMapped && text(input.familyReference).trim() !== "";
+}
+
+export type StockBulkImportedClassificationResult =
+  | {
+      ok: true;
+      draft: Pick<Partial<StockInventoryRow>, "familyId" | "familyName" | "subfamilyId" | "subfamilyName">;
+    }
+  | {
+      ok: false;
+      error: "familyMissing" | "subfamilyMissingInFamily";
+      reference: unknown;
+    };
+
+export function resolveStockBulkImportedClassification(input: {
+  currentFamilyId: string;
+  familyColumnMapped: boolean;
+  familyReference: unknown;
+  subfamilyColumnMapped: boolean;
+  subfamilyReference: unknown;
+  catalog: StockBulkClassificationCatalog;
+}): StockBulkImportedClassificationResult {
+  const normalizeReference = (value: unknown) => text(value).trim().toLocaleUpperCase("es");
+  const uuidReference = /^[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}$/;
+  const unique = <T,>(matches: T[]) => matches.length === 1 ? matches[0] : undefined;
+  const familyCode = (family: StockBulkClassificationCatalog["families"][number]) =>
+    normalizeReference(family.familyCode ?? family.familyId);
+  const subfamilyCode = (subfamily: StockBulkClassificationCatalog["subfamilies"][number]) => {
+    const explicit = normalizeReference(subfamily.subfamilyCode);
+    if (explicit) return explicit;
+    const suffix = normalizeReference(subfamily.subfamilySuffix ?? subfamily.subfamilyId);
+    const parent = input.catalog.families.find((family) => family.id === subfamily.familyId);
+    const prefix = parent ? familyCode(parent) : "";
+    return /^\d{3}$/.test(prefix) && /^\d{3}$/.test(suffix) ? `${prefix}${suffix}` : suffix;
+  };
+  const findFamily = (value: unknown) => {
+    const expected = normalizeReference(value);
+    if (/^\d{3}$/.test(expected)) {
+      const codeMatches = input.catalog.families.filter(
+        (family) => familyCode(family) === expected
+      );
+      if (codeMatches.length > 0) return unique(codeMatches);
+    }
+    if (uuidReference.test(expected)) {
+      const idMatches = input.catalog.families.filter(
+        (family) => normalizeReference(family.id) === expected
+      );
+      if (idMatches.length > 0) return unique(idMatches);
+    }
+    const aliasMatches = input.catalog.families.filter((family) => [
+      family.familyId,
+      family.legacyFamilyId
+    ].some((candidate) => normalizeReference(candidate) === expected));
+    if (aliasMatches.length > 0) return unique(aliasMatches);
+    return unique(input.catalog.families.filter(
+      (family) => normalizeReference(family.name) === expected
+    ));
+  };
+  const findSubfamily = (value: unknown, parentId?: string, strictParent = false) => {
+    const expected = normalizeReference(value);
+    const parentScope = parentId
+      ? input.catalog.subfamilies.filter((subfamily) => subfamily.familyId === parentId)
+      : input.catalog.subfamilies;
+    const typedScope = strictParent ? parentScope : input.catalog.subfamilies;
+    if (/^\d{6}$/.test(expected)) {
+      const codeMatches = typedScope.filter(
+        (subfamily) => subfamilyCode(subfamily) === expected
+      );
+      if (codeMatches.length > 0) return unique(codeMatches);
+    }
+    if (uuidReference.test(expected)) {
+      const idMatches = typedScope.filter(
+        (subfamily) => normalizeReference(subfamily.id) === expected
+      );
+      if (idMatches.length > 0) return unique(idMatches);
+    }
+    const aliases = (
+      scope: StockBulkClassificationCatalog["subfamilies"]
+    ) => scope.filter((subfamily) => [
+        subfamily.subfamilySuffix,
+        subfamily.subfamilyId,
+        subfamily.legacySubfamilyId
+      ].some((candidate) => normalizeReference(candidate) === expected));
+    const parentAliasMatches = aliases(parentScope);
+    if (parentAliasMatches.length > 0) return unique(parentAliasMatches);
+    if (!strictParent && parentId) {
+      const globalAliasMatches = aliases(input.catalog.subfamilies);
+      if (globalAliasMatches.length > 0) return unique(globalAliasMatches);
+    }
+    const names = (
+      scope: StockBulkClassificationCatalog["subfamilies"]
+    ) => scope.filter((subfamily) => normalizeReference(subfamily.name) === expected);
+    const parentNameMatches = names(parentScope);
+    if (parentNameMatches.length > 0) return unique(parentNameMatches);
+    return !strictParent && parentId
+      ? unique(names(input.catalog.subfamilies))
+      : undefined;
+  };
+
+  const draft: Pick<Partial<StockInventoryRow>, "familyId" | "familyName" | "subfamilyId" | "subfamilyName"> = {};
+  const hasExplicitFamily = input.familyColumnMapped && normalizeReference(input.familyReference) !== "";
+  let effectiveFamilyId = input.currentFamilyId;
+  if (hasExplicitFamily) {
+    const family = findFamily(input.familyReference);
+    if (!family) {
+      return { ok: false, error: "familyMissing", reference: input.familyReference };
+    }
+    effectiveFamilyId = family.id;
+    draft.familyId = family.id;
+    draft.familyName = text(family.name || family.id);
+  }
+  if (shouldClearStockBulkImportedSubfamily(input)) {
+    draft.subfamilyId = "-";
+    draft.subfamilyName = "-";
+  }
+
+  const hasExplicitSubfamily = input.subfamilyColumnMapped
+    && normalizeReference(input.subfamilyReference) !== "";
+  if (hasExplicitSubfamily) {
+    const subfamily = findSubfamily(
+      input.subfamilyReference,
+      effectiveFamilyId,
+      hasExplicitFamily
+    );
+    if (!subfamily) {
+      return {
+        ok: false,
+        error: "subfamilyMissingInFamily",
+        reference: input.subfamilyReference
+      };
+    }
+    const parent = input.catalog.families.find((family) => family.id === subfamily.familyId);
+    if (!parent) {
+      return { ok: false, error: "familyMissing", reference: subfamily.familyId };
+    }
+    draft.familyId = parent.id;
+    draft.familyName = text(parent.name || parent.id);
+    draft.subfamilyId = subfamily.id;
+    draft.subfamilyName = text(subfamily.name || subfamily.id);
+  }
+  return { ok: true, draft };
+}
+
 export function stockBulkVersionedDeletePath(id: string, version: number) {
   return `/product-bulk-edits/${encodeURIComponent(id)}?version=${encodeURIComponent(String(version))}`;
 }
@@ -628,15 +854,18 @@ export async function requestStockBulkXlsx(
   apiRoot: string,
   token: string,
   content: StockBulkEditRowData[],
-  request: typeof fetch = fetch
+  requestOrCodes: typeof fetch | StockBulkClassificationCodes = fetch,
+  requestWithCodes: typeof fetch = fetch
 ): Promise<StockBulkXlsxDownload> {
+  const request = typeof requestOrCodes === "function" ? requestOrCodes : requestWithCodes;
+  const classificationCodes = typeof requestOrCodes === "function" ? {} : requestOrCodes;
   const response = await request(`${apiRoot}/product-bulk-edits/export`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ content })
+    body: JSON.stringify({ content, ...classificationCodes })
   });
   if (!response.ok) {
     let message = response.statusText || "xlsx_export_error";
@@ -695,7 +924,9 @@ export async function importStockBulkFile(
     catalogs.subfamilies?.map((subfamily) => ({
       id: subfamily.id,
       name: subfamily.name,
-      parentId: subfamily.familyId
+      parentId: subfamily.familyId,
+      code: subfamily.code,
+      legacyCode: subfamily.legacyCode
     }))
   );
   const taxReferences = buildStockBulkReferences(
@@ -871,29 +1102,38 @@ function buildStockBulkReferences(
   idField: "familyId" | "subfamilyId" | "taxId",
   nameField: "familyName" | "subfamilyName" | "taxName",
   parentField?: "familyId",
-  catalog: Array<{ id: string; name: string; parentId?: string }> = []
+  catalog: Array<{ id: string; name: string; parentId?: string; code?: string; legacyCode?: string }> = []
 ) {
   const references = new Map<string, StockBulkNamedReference>();
   const addReference = (
     id: string | null | undefined,
     name: string | null | undefined,
-    parentId?: string
+    parentId?: string,
+    codes: Array<string | null | undefined> = []
   ) => {
     if (!id || !name) return;
     const key = `${normalize(parentId ?? "")}\u0000${normalize(id)}`;
     const existing = references.get(key);
     if (existing) {
       existing.normalizedNames.add(normalize(name));
+      codes.map((code) => normalize(code ?? "")).filter(Boolean)
+        .forEach((code) => existing.normalizedCodes.add(code));
       return;
     }
     references.set(key, {
       id,
       name,
       parentId,
+      normalizedCodes: new Set(codes.map((code) => normalize(code ?? "")).filter(Boolean)),
       normalizedNames: new Set([normalize(name)])
     });
   };
-  catalog.forEach((reference) => addReference(reference.id, reference.name, reference.parentId));
+  catalog.forEach((reference) => addReference(
+    reference.id,
+    reference.name,
+    reference.parentId,
+    [reference.code, reference.legacyCode]
+  ));
   products.forEach((product) => {
     const id = nullableText(product[idField]);
     const name = nullableText(product[nameField]);
@@ -908,26 +1148,30 @@ function resolveStockBulkReference(
   row: number,
   headers: string[],
   cells: unknown[],
-  columns: { readonly id: readonly string[]; readonly name: readonly string[] },
+  columns: { readonly code?: readonly string[]; readonly id: readonly string[]; readonly name: readonly string[] },
   references: StockBulkNamedReference[],
   errors: string[],
   t: ReturnType<typeof createTranslator>,
   parentId?: string
 ): Array<[keyof StockInventoryRow, string]> | undefined {
   const idColumn = findExcelColumn(headers, columns.id);
+  const codeColumn = columns.code ? findExcelColumn(headers, columns.code) : -1;
   const nameColumn = findExcelColumn(headers, columns.name);
+  const code = codeColumn < 0 ? "" : excelCellText(cells[codeColumn]);
   const id = idColumn < 0 ? "" : excelCellText(cells[idColumn]);
   const name = nameColumn < 0 ? "" : excelCellText(cells[nameColumn]);
-  if (!id && !name) return undefined;
+  if (!code && !id && !name) return undefined;
 
   const parentReferences = parentId
     ? references.filter((reference) => normalize(reference.parentId ?? "") === normalize(parentId))
     : references;
-  const matches = id
-    ? parentReferences.filter((reference) => normalize(reference.id) === normalize(id))
-    : parentReferences.filter((reference) => reference.normalizedNames.has(normalize(name)));
+  const matches = code
+    ? parentReferences.filter((reference) => reference.normalizedCodes.has(normalize(code)))
+    : id
+      ? parentReferences.filter((reference) => normalize(reference.id) === normalize(id))
+      : parentReferences.filter((reference) => reference.normalizedNames.has(normalize(name)));
   if (matches.length === 0) {
-    const value = id || name;
+    const value = code || id || name;
     const key = parentId && label === "subfamilia"
       ? "stock.bulkEdit.import.error.subfamilyMissingInFamily"
       : `stock.bulkEdit.import.error.referenceMissing.${label}`;
@@ -938,11 +1182,18 @@ function resolveStockBulkReference(
     errors.push(stockBulkImportMessage(t, "stock.bulkEdit.import.error.referenceAmbiguous", {
       row,
       reference: t(`stock.bulkEdit.import.reference.${label}`),
-      value: id || name
+      value: code || id || name
     }));
     return undefined;
   }
   const match = matches[0];
+  if (id && normalize(match.id) !== normalize(id)) {
+    errors.push(stockBulkImportMessage(t, "stock.bulkEdit.import.error.referenceMismatch", {
+      row,
+      reference: t(`stock.bulkEdit.import.reference.${label}`)
+    }));
+    return undefined;
+  }
   if (name && !match.normalizedNames.has(normalize(name))) {
     errors.push(stockBulkImportMessage(t, "stock.bulkEdit.import.error.referenceMismatch", {
       row,

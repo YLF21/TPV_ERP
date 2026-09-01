@@ -1,14 +1,18 @@
 package com.tpverp.backend.catalog;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.TAXES_MANAGE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,7 +35,10 @@ class CatalogControllerContractTest {
     @Test
     void salesCanReadProductOptionsButOnlyProductManagementCanWriteProducts() throws Exception {
         assertAllows(FamilyController.class, "list", GetMapping.class, VENTA);
+        assertAllows(FamilyController.class, "resolve", GetMapping.class, VENTA, String.class);
         assertAllows(FamilyController.class, "listSubfamilies", GetMapping.class, VENTA, java.util.UUID.class);
+        assertAllows(FamilyController.class, "nextCode", GetMapping.class, PRODUCTS_WRITE);
+        assertAllows(FamilyController.class, "nextSuffix", GetMapping.class, PRODUCTS_WRITE, java.util.UUID.class);
         assertAllows(TaxController.class, "selectable", GetMapping.class, VENTA);
         assertAllows(TaxController.class, "selectable", GetMapping.class, GESTION_ALMACEN);
         assertAllows(TaxController.class, "list", GetMapping.class, TAXES_MANAGE);
@@ -46,6 +53,44 @@ class CatalogControllerContractTest {
                         org.springframework.security.core.Authentication.class)
                 .getAnnotation(PreAuthorize.class).value())
                 .doesNotContain("'" + VENTA + "'");
+    }
+
+    @Test
+    void familyMaintenanceWritesRequireProductManagementAndManualOrderIsGone() throws Exception {
+        assertAllows(FamilyController.class, "create", PostMapping.class,
+                PRODUCTS_WRITE, FamilyController.FamilyRequest.class);
+        assertAllows(FamilyController.class, "rename", PutMapping.class,
+                GESTION_PRODUCTO, java.util.UUID.class, FamilyController.FamilyRequest.class);
+        assertAllows(FamilyController.class, "delete", DeleteMapping.class,
+                PRODUCTS_WRITE, java.util.UUID.class, boolean.class);
+        assertAllows(FamilyController.class, "familyDeleteImpact", GetMapping.class,
+                GESTION_PRODUCTO, java.util.UUID.class);
+        assertThatThrownBy(() -> FamilyController.class.getDeclaredMethod(
+                "reorder", List.class)).isInstanceOf(NoSuchMethodException.class);
+        assertAllows(FamilyController.class, "createSubfamily", PostMapping.class,
+                GESTION_PRODUCTO, java.util.UUID.class, FamilyController.SubfamilyRequest.class);
+        assertAllows(FamilyController.class, "renameSubfamily", PutMapping.class,
+                PRODUCTS_WRITE, java.util.UUID.class, FamilyController.SubfamilyRequest.class);
+        assertAllows(FamilyController.class, "deleteSubfamily", DeleteMapping.class,
+                GESTION_PRODUCTO, java.util.UUID.class, boolean.class);
+        assertAllows(FamilyController.class, "subfamilyDeleteImpact", GetMapping.class,
+                PRODUCTS_WRITE, java.util.UUID.class);
+        assertThatThrownBy(() -> FamilyController.class.getDeclaredMethod(
+                "reorderSubfamilies", java.util.UUID.class, List.class))
+                .isInstanceOf(NoSuchMethodException.class);
+    }
+
+    @Test
+    void familyProductListAndBulkClassificationContractsUseWritePermissions() throws Exception {
+        assertAllows(FamilyController.class, "products", GetMapping.class, PRODUCTS_WRITE,
+                java.util.UUID.class, java.util.UUID.class, Integer.class,
+                String.class, String.class, String.class);
+        assertAllows(ProductController.class, "moveClassification", PostMapping.class, PRODUCTS_WRITE,
+                CatalogService.BulkMoveRequest.class);
+        assertThatThrownBy(() -> ProductController.class.getDeclaredMethod(
+                "thumbnail", java.util.UUID.class)).isInstanceOf(NoSuchMethodException.class);
+        assertAllows(FamilyController.class, "search", GetMapping.class, PRODUCTS_READ,
+                String.class, Integer.class, String.class);
     }
 
     @Test

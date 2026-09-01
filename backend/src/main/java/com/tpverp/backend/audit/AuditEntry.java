@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -91,7 +92,12 @@ public class AuditEntry {
     }
 
     public Map<String, Object> getDatos() {
-        return datos == null ? Map.of() : Map.copyOf(datos);
+        // JSON audit payloads intentionally preserve explicit nulls (for example,
+        // clearing a product subfamily or deleting a catalog node). Map.copyOf
+        // rejects those values even though jsonb represents them correctly.
+        return datos == null
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(datos));
     }
 
     public Instant getCreadaEn() {

@@ -200,10 +200,15 @@ public class DevSampleDataSeeder {
         seedWarehouse(WAREHOUSE_SHOWROOM, "TIENDA Y EXPOSICION");
         seedWarehouse(WAREHOUSE_QUARANTINE, "DEVOLUCIONES Y CUARENTENA");
         jdbc.update("""
-                insert into familia (id, tienda_id, family_id, nombre, predeterminada)
-                values (?, ?, 'GENERAL', 'GENERAL', true)
-                on conflict do nothing
-                """, FAMILY, STORE);
+                insert into familia (id, tienda_id, family_id, family_code, nombre, predeterminada)
+                select ?, ?, 'GENERAL', '000', 'GENERAL', true
+                where not exists (
+                    select 1
+                    from familia
+                    where tienda_id = ?
+                      and (predeterminada or family_code = '000')
+                )
+                """, FAMILY, STORE, STORE);
         jdbc.update("""
                 insert into impuesto_tienda (id, tienda_id, porcentaje, activo, predeterminado)
                 values (?, ?, 21.00, true, true)
@@ -399,17 +404,22 @@ public class DevSampleDataSeeder {
 
     private void seedFamily(int index, String familyName, String subfamilyName) {
         UUID familyId = id("family-demo-" + index);
+        UUID subfamilyId = id("subfamily-demo-" + index);
+        jdbc.update("update familia set nombre = ? where id = ?", familyName, familyId);
         jdbc.update("""
-                insert into familia (id, tienda_id, family_id, nombre, predeterminada)
-                values (?, ?, ?, ?, false)
-                on conflict (id) do update set nombre = excluded.nombre
-                """, familyId, STORE, "DEMO-F%02d".formatted(index + 1), familyName);
+                insert into familia (id, tienda_id, family_id, family_code, nombre, predeterminada)
+                select ?, ?, ?, ?, ?, false
+                where not exists (select 1 from familia where id = ?)
+                """, familyId, STORE, "DEMO-F%02d".formatted(index + 1),
+                "%03d".formatted(index + 1), familyName, familyId);
+        jdbc.update("update subfamilia set nombre = ? where id = ?", subfamilyName, subfamilyId);
         jdbc.update("""
-                insert into subfamilia (id, familia_id, subfamily_id, nombre)
-                values (?, ?, ?, ?)
-                on conflict (id) do update set nombre = excluded.nombre
-                """, id("subfamily-demo-" + index), familyId,
-                "DEMO-SF%02d".formatted(index + 1), subfamilyName);
+                insert into subfamilia (id, familia_id, subfamily_id, subfamily_suffix, subfamily_code, nombre)
+                select ?, ?, ?, ?, ?, ?
+                where not exists (select 1 from subfamilia where id = ?)
+                """, subfamilyId, familyId,
+                "DEMO-SF%02d".formatted(index + 1), "%03d".formatted(index + 1),
+                "%03d%03d".formatted(index + 1, index + 1), subfamilyName, subfamilyId);
     }
 
     private String productNamePrefix(int familyIndex) {

@@ -68,6 +68,46 @@ class FiscalRuntimeGuardInitializerTest {
     }
 
     @Test
+    void v235MarkerIsUpgradedToTheImmutableV236ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v235", "V235", null, null,
+                null, 4, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("235", "236"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v236", "DEV", FiscalProductCapability.DUAL, 5, 0, "V236"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v236", 5L, 0L);
+    }
+
+    @Test
+    void v236MarkerIsUpgradedToTheImmutableV237ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v236", "V236", null, null,
+                null, 5, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("236", "237"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v237", "DEV", FiscalProductCapability.DUAL, 6, 0, "V237"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v237", 6L, 0L);
+    }
+
+    @Test
+    void v237MarkerIsUpgradedToTheImmutableV238ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v237", "V237", null, null,
+                null, 6, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("236", "237", "238"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v238", "DEV", FiscalProductCapability.DUAL, 7, 0, "V238"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v238", 7L, 0L);
+    }
+
+    @Test
     void newReleaseWithTheSameSequenceIsRejectedEvenWithAHigherBuildSequence() {
         var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 5, 99));

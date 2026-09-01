@@ -14,18 +14,25 @@ class FiscalReleaseBuildProfileContractTest {
         var manifest = Files.readString(Path.of("src/main/resources/META-INF/tpv-erp-release.properties"),
                 StandardCharsets.UTF_8);
         var pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
+        var profilesStart = pom.indexOf("<profiles>");
+        assertThat(profilesStart).isPositive();
+        var defaultBuild = pom.substring(0, profilesStart);
+        var releaseProfiles = pom.substring(profilesStart);
         assertThat(manifest).contains("@tpv.release.id@", "@tpv.release.version@",
-                "@tpv.release.capability@").contains("schema.version=V234")
+                "@tpv.release.capability@").contains("schema.version=V238")
                 .contains("release.sequence=@tpv.release.sequence@")
                 .contains("build.sequence=@tpv.release.build.sequence@");
-        assertThat(pom).contains("<tpv.release.id>tpv-erp-dev-v234</tpv.release.id>")
+        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v238</tpv.release.id>")
                 .contains("<tpv.release.version>DEV</tpv.release.version>")
                 .contains("<tpv.release.capability>DUAL</tpv.release.capability>")
+                .contains("<tpv.release.sequence>7</tpv.release.sequence>")
+                .contains("<tpv.release.build.sequence>0</tpv.release.build.sequence>");
+        assertThat(releaseProfiles)
                 .contains("<id>production-release</id>")
-                .contains("<tpv.release.id>tpv-erp-4.2.0</tpv.release.id>")
+                .contains("<tpv.release.id>tpv-erp-4.2.0-v238</tpv.release.id>")
                 .contains("<tpv.release.version>4.2.0</tpv.release.version>")
                 .contains("<tpv.release.capability>VERIFACTU_ONLY</tpv.release.capability>")
-                .contains("<tpv.release.sequence>1</tpv.release.sequence>")
+                .contains("<tpv.release.sequence>4</tpv.release.sequence>")
                 .contains("<tpv.release.build.sequence>1</tpv.release.build.sequence>");
         assertThat(pom).contains("<useDefaultDelimiters>false</useDefaultDelimiters>")
                 .contains("<delimiter>@</delimiter>");

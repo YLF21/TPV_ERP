@@ -5,9 +5,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
@@ -60,7 +63,37 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     List<Product> findAllByStoreIdAndIdIn(UUID storeId, Collection<UUID> ids);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select product from Product product where product.storeId = :storeId and product.id in :ids order by product.id")
+    List<Product> findAllByStoreIdAndIdInForUpdate(
+            @Param("storeId") UUID storeId, @Param("ids") Collection<UUID> ids);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Product product set product.familyId = :familyId, "
+            + "product.subfamilyId = :subfamilyId, product.version = product.version + 1 "
+            + "where product.storeId = :storeId and product.id in :ids")
+    int moveClassification(
+            @Param("storeId") UUID storeId,
+            @Param("ids") Collection<UUID> ids,
+            @Param("familyId") UUID familyId,
+            @Param("subfamilyId") UUID subfamilyId);
+
     List<Product> findByFamilyId(UUID familyId);
+
+    long countByFamilyId(UUID familyId);
+
+    long countBySubfamilyId(UUID subfamilyId);
+
+    @Modifying
+    @Query("update Product product set product.familyId = :generalFamilyId, "
+            + "product.subfamilyId = null, product.version = product.version + 1 "
+            + "where product.familyId = :familyId")
+    int reassignFamilyToGeneral(UUID familyId, UUID generalFamilyId);
+
+    @Modifying
+    @Query("update Product product set product.subfamilyId = null, "
+            + "product.version = product.version + 1 where product.subfamilyId = :subfamilyId")
+    int clearSubfamilyReferences(UUID subfamilyId);
 
     boolean existsByTaxId(UUID taxId);
 }

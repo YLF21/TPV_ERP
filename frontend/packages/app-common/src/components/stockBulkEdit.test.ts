@@ -10,7 +10,10 @@ import {
   mergeStockBulkPurchaseDocumentProducts,
   mergeStockBulkSupplierProducts,
   requestStockBulkXlsx,
+  resolveStockBulkImportedClassification,
+  shouldClearStockBulkImportedSubfamily,
   stageStockBulkPrincipalSupplier,
+  stockBulkClassificationCodesForRows,
   stockBulkDisplayedSupplier,
   stockBulkEffectiveProduct,
   stockOfferPriceFromDiscount,
@@ -230,6 +233,316 @@ describe("stock bulk edit", () => {
     }));
   });
 
+  it("posts readable classification codes beside the legacy UUID references", async () => {
+    const request = vi.fn(async () => new Response(new Blob(["xlsx"]), {
+      headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+    }));
+    const rows = [{
+      id: "row-1",
+      selected: false,
+      query: "A001",
+      product,
+      draft: { ...product }
+    }];
+
+    await requestStockBulkXlsx("/api/v1", "token", rows, {
+      familyCodes: { "family-1": "010" },
+      subfamilyCodes: { "subfamily-1": "010002" }
+    }, request as typeof fetch);
+
+    expect(request).toHaveBeenCalledWith("/api/v1/product-bulk-edits/export", expect.objectContaining({
+      body: JSON.stringify({
+        content: rows,
+        familyCodes: { "family-1": "010" },
+        subfamilyCodes: { "subfamily-1": "010002" }
+      })
+    }));
+  });
+
+  it("exports classification codes only for UUIDs referenced by the selected rows", () => {
+    const unrelatedSubfamilies = Array.from({ length: 5_001 }, (_, index) => ({
+      id: `unused-subfamily-${index}`,
+      familyId: "unused-family",
+      subfamilySuffix: String(index % 1_000).padStart(3, "0"),
+      subfamilyCode: `999${String(index % 1_000).padStart(3, "0")}`
+    }));
+
+    const codes = stockBulkClassificationCodesForRows([{
+      id: "row-1",
+      selected: false,
+      query: "A001",
+      product,
+      draft: { ...product }
+    }], {
+      families: [
+        { id: "family-1", familyCode: "010" },
+        { id: "unused-family", familyCode: "999" }
+      ],
+      subfamilies: [
+        { id: "subfamily-1", familyId: "family-1", subfamilySuffix: "002" },
+        ...unrelatedSubfamilies
+      ]
+    });
+
+    expect(codes).toEqual({
+      familyCodes: { "family-1": "010" },
+      subfamilyCodes: { "subfamily-1": "010002" }
+    });
+  });
+
+  it("clears imported subfamilies per row without treating an unmapped column as blank", () => {
+    expect(shouldClearStockBulkImportedSubfamily({
+      familyColumnMapped: false,
+      familyReference: undefined,
+      subfamilyColumnMapped: true,
+      subfamilyReference: ""
+    })).toBe(true);
+    expect(shouldClearStockBulkImportedSubfamily({
+      familyColumnMapped: true,
+      familyReference: "010",
+      subfamilyColumnMapped: false,
+      subfamilyReference: undefined
+    })).toBe(true);
+    expect(shouldClearStockBulkImportedSubfamily({
+      familyColumnMapped: false,
+      familyReference: undefined,
+      subfamilyColumnMapped: false,
+      subfamilyReference: undefined
+    })).toBe(false);
+    expect(shouldClearStockBulkImportedSubfamily({
+      familyColumnMapped: true,
+      familyReference: "010",
+      subfamilyColumnMapped: true,
+      subfamilyReference: "010002"
+    })).toBe(false);
+  });
+
+  it("moves a classified product to family 002 and clears a blank mapped subfamily", () => {
+    const catalog = {
+      families: [
+        { id: "family-001", familyCode: "001", name: "COCINA" },
+        { id: "family-002", familyCode: "002", name: "ELECTRONICA" }
+      ],
+      subfamilies: [{
+        id: "subfamily-001001",
+        familyId: "family-001",
+        subfamilyCode: "001001",
+        subfamilySuffix: "001",
+        name: "UTENSILIOS"
+      }]
+    };
+
+    expect(resolveStockBulkImportedClassification({
+      currentFamilyId: "family-001",
+      familyColumnMapped: true,
+      familyReference: "002",
+      subfamilyColumnMapped: true,
+      subfamilyReference: "",
+      catalog
+    })).toEqual({
+      ok: true,
+      draft: {
+        familyId: "family-002",
+        familyName: "ELECTRONICA",
+        subfamilyId: "-",
+        subfamilyName: "-"
+      }
+    });
+
+    expect(resolveStockBulkImportedClassification({
+      currentFamilyId: "family-001",
+      familyColumnMapped: false,
+      familyReference: undefined,
+      subfamilyColumnMapped: false,
+      subfamilyReference: undefined,
+      catalog
+    })).toEqual({ ok: true, draft: {} });
+  });
+
+  it("prefers commercial codes over names that contain the same numeric value", () => {
+    const catalog = {
+      families: [
+        { id: "family-code", familyCode: "001", familyId: "COCINA", name: "COCINA" },
+        { id: "family-name", familyCode: "002", familyId: "DOS", name: "001" }
+      ],
+      subfamilies: [
+        {
+          id: "subfamily-code",
+          familyId: "family-code",
+          subfamilyCode: "001001",
+          subfamilySuffix: "001",
+          subfamilyId: "UTENSILIOS",
+          name: "UTENSILIOS"
+        },
+        {
+          id: "subfamily-name",
+          familyId: "family-code",
+          subfamilyCode: "001002",
+          subfamilySuffix: "002",
+          subfamilyId: "OTRA",
+          name: "001001"
+        }
+      ]
+    };
+
+    expect(resolveStockBulkImportedClassification({
+      currentFamilyId: "family-name",
+      familyColumnMapped: true,
+      familyReference: "001",
+      subfamilyColumnMapped: true,
+      subfamilyReference: "001001",
+      catalog
+    })).toEqual({
+      ok: true,
+      draft: {
+        familyId: "family-code",
+        familyName: "COCINA",
+        subfamilyId: "subfamily-code",
+        subfamilyName: "UTENSILIOS"
+      }
+    });
+  });
+
+  it("prefers legacy aliases over colliding names and keeps the selected family scope", () => {
+    const catalog = {
+      families: [
+        { id: "family-alias", familyCode: "010", familyId: "LEGACY_FAMILY", name: "COCINA" },
+        { id: "family-name", familyCode: "020", familyId: "OTHER", name: "LEGACY_FAMILY" }
+      ],
+      subfamilies: [
+        {
+          id: "subfamily-alias",
+          familyId: "family-alias",
+          subfamilyCode: "010001",
+          subfamilySuffix: "001",
+          subfamilyId: "LEGACY_CHILD",
+          name: "UTENSILIOS"
+        },
+        {
+          id: "subfamily-name",
+          familyId: "family-alias",
+          subfamilyCode: "010002",
+          subfamilySuffix: "002",
+          subfamilyId: "OTHER_CHILD",
+          name: "LEGACY_CHILD"
+        },
+        {
+          id: "same-alias-other-family",
+          familyId: "family-name",
+          subfamilyCode: "020001",
+          subfamilySuffix: "001",
+          subfamilyId: "LEGACY_CHILD",
+          name: "OTRA"
+        }
+      ]
+    };
+
+    expect(resolveStockBulkImportedClassification({
+      currentFamilyId: "family-name",
+      familyColumnMapped: true,
+      familyReference: "LEGACY_FAMILY",
+      subfamilyColumnMapped: true,
+      subfamilyReference: "LEGACY_CHILD",
+      catalog
+    })).toEqual({
+      ok: true,
+      draft: {
+        familyId: "family-alias",
+        familyName: "COCINA",
+        subfamilyId: "subfamily-alias",
+        subfamilyName: "UTENSILIOS"
+      }
+    });
+  });
+
+  it("prefers internal UUIDs over aliases and names with the same value", () => {
+    const familyUuid = "11111111-1111-4111-8111-111111111111";
+    const subfamilyUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const catalog = {
+      families: [
+        { id: familyUuid, familyCode: "030", familyId: "FAMILY_UUID", name: "HOGAR" },
+        { id: "22222222-2222-4222-8222-222222222222", familyCode: "040", familyId: familyUuid, name: familyUuid }
+      ],
+      subfamilies: [
+        {
+          id: subfamilyUuid,
+          familyId: familyUuid,
+          subfamilyCode: "030001",
+          subfamilySuffix: "001",
+          subfamilyId: "SUBFAMILY_UUID",
+          name: "TEXTIL"
+        },
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          familyId: familyUuid,
+          subfamilyCode: "030002",
+          subfamilySuffix: "002",
+          subfamilyId: subfamilyUuid,
+          name: subfamilyUuid
+        }
+      ]
+    };
+
+    expect(resolveStockBulkImportedClassification({
+      currentFamilyId: "",
+      familyColumnMapped: true,
+      familyReference: familyUuid,
+      subfamilyColumnMapped: true,
+      subfamilyReference: subfamilyUuid,
+      catalog
+    })).toEqual({
+      ok: true,
+      draft: {
+        familyId: familyUuid,
+        familyName: "HOGAR",
+        subfamilyId: subfamilyUuid,
+        subfamilyName: "TEXTIL"
+      }
+    });
+  });
+
+  it("resolves a six-digit subfamily code globally when no family column is mapped", () => {
+    const catalog = {
+      families: [
+        { id: "family-001", familyCode: "001", name: "COCINA" },
+        { id: "family-002", familyCode: "002", name: "ELECTRONICA" }
+      ],
+      subfamilies: [
+        {
+          id: "local-name-collision",
+          familyId: "family-001",
+          subfamilyCode: "001001",
+          subfamilySuffix: "001",
+          name: "002001"
+        },
+        {
+          id: "remote-code",
+          familyId: "family-002",
+          subfamilyCode: "002001",
+          subfamilySuffix: "001",
+          name: "CABLES"
+        }
+      ]
+    };
+
+    expect(resolveStockBulkImportedClassification({
+      currentFamilyId: "family-001",
+      familyColumnMapped: false,
+      familyReference: undefined,
+      subfamilyColumnMapped: true,
+      subfamilyReference: "002001",
+      catalog
+    })).toEqual({
+      ok: true,
+      draft: {
+        familyId: "family-002",
+        familyName: "ELECTRONICA",
+        subfamilyId: "remote-code",
+        subfamilyName: "CABLES"
+      }
+    });
+  });
+
   it("imports every editable Spanish XLSX column including references and typed values", async () => {
     const targetReferences = {
       ...product,
@@ -357,6 +670,35 @@ describe("stock bulk edit", () => {
       familyId: "family-new",
       subfamilyId: "subfamily-new",
       taxId: "tax-new"
+    }));
+  });
+
+  it("resolves readable family and subfamily codes to UUID references", async () => {
+    readSheetMock.mockResolvedValueOnce([
+      ["Codigo", "Codigo familia", "Codigo subfamilia"],
+      ["A001", "010", "010002"]
+    ] as never);
+
+    const rows = await importStockBulkFile(
+      new File(["xlsx"], "productos.xlsx"),
+      [product],
+      {
+        families: [{ id: "family-2", name: "Alimentacion", code: "010", legacyCode: "ALIMENTACION" }],
+        subfamilies: [{
+          id: "subfamily-2",
+          familyId: "family-2",
+          name: "Conservas",
+          code: "010002",
+          legacyCode: "CONSERVAS"
+        }]
+      }
+    );
+
+    expect(rows[0].draft).toEqual(expect.objectContaining({
+      familyId: "family-2",
+      familyName: "Alimentacion",
+      subfamilyId: "subfamily-2",
+      subfamilyName: "Conservas"
     }));
   });
 
