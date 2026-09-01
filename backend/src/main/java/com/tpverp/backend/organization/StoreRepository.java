@@ -28,7 +28,6 @@ public interface StoreRepository extends JpaRepository<Store, UUID> {
     @Query("""
             select store
             from Store store
-            join fetch store.empresa
             where store.id = :storeId
             """)
     Optional<Store> findByIdForUpdate(UUID storeId);

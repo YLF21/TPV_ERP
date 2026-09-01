@@ -8,6 +8,7 @@ import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.catalog.SubfamilyRepository;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.DocumentLineType;
+import com.tpverp.backend.organization.StoreRepository;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.HashSet;
@@ -30,16 +31,25 @@ public class PromotionCatalogGateway {
     private final StoreTaxRepository taxes;
     private final FamilyRepository families;
     private final SubfamilyRepository subfamilies;
+    private final StoreRepository stores;
 
     public PromotionCatalogGateway(
             ProductRepository products,
             StoreTaxRepository taxes,
             FamilyRepository families,
-            SubfamilyRepository subfamilies) {
+            SubfamilyRepository subfamilies,
+            StoreRepository stores) {
         this.products = products;
         this.taxes = taxes;
         this.families = families;
         this.subfamilies = subfamilies;
+        this.stores = stores;
+    }
+
+    @Transactional
+    public void lockStoreForCatalogMutation(UUID storeId) {
+        stores.findByIdForUpdate(storeId)
+                .orElseThrow(() -> new IllegalArgumentException("Tienda no encontrada"));
     }
 
     @Transactional(readOnly = true)

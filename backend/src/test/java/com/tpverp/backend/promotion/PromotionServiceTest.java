@@ -60,6 +60,9 @@ class PromotionServiceTest {
 
         var duplicate = service().duplicate(original.id());
 
+        var duplicateOrder = inOrder(catalog, promotions);
+        duplicateOrder.verify(catalog).lockStoreForCatalogMutation(any());
+        duplicateOrder.verify(promotions).findByIdAndEmpresaId(original.id(), company.getId());
         var saved = ArgumentCaptor.forClass(Promotion.class);
         verify(promotions).save(saved.capture());
         assertThat(duplicate.id()).isNotEqualTo(original.id());
@@ -237,6 +240,32 @@ class PromotionServiceTest {
                 });
         assertThat(view.targets()).containsExactly(new PromotionService.PromotionTargetRequest(
                 PromotionTargetType.PRODUCT, productId));
+    }
+
+    @Test
+    void locksStoreBeforeValidatingAndSavingATargetedPromotion() {
+        currentCompany();
+        when(promotions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        UUID familyId = UUID.randomUUID();
+
+        service().create(new PromotionService.PromotionRequest(
+                "Oferta familia",
+                PromotionType.SECOND_UNIT_PERCENT,
+                LocalDate.of(2026, 7, 1),
+                null,
+                PromotionScope.FAMILY,
+                PromotionCustomerSegment.ALL,
+                null,
+                null,
+                null,
+                new BigDecimal("50.00"),
+                List.of(new PromotionService.PromotionTargetRequest(
+                        PromotionTargetType.FAMILY, familyId))));
+
+        var ordered = inOrder(catalog, targets);
+        ordered.verify(catalog).lockStoreForCatalogMutation(any());
+        ordered.verify(catalog).validateTargets(any(), any());
+        ordered.verify(targets).saveAll(any());
     }
 
     @Test

@@ -8364,6 +8364,97 @@ textarea {
   outline-offset: -2px;
 }
 
+.stock-family-search {
+  display: grid;
+  gap: 5px;
+  color: #31485d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stock-family-search input {
+  min-height: 36px;
+  border: 1px solid #879aa9;
+  border-radius: 0;
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.stock-family-search small {
+  color: var(--tpv-v3-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Dense business-id control used by the product editor. */
+.product-family-business-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.product-family-business-control input {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  padding: 6px 8px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+
+.product-family-explore-button {
+  min-width: 92px;
+  min-height: 34px;
+  border: 1px solid var(--tpv-v3-line) !important;
+  padding: 6px 10px;
+  font-weight: 900;
+}
+
+.product-family-business-summary {
+  display: block;
+  min-height: 16px;
+  margin-top: 4px;
+  color: var(--tpv-v3-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stock-family-choice,
+.stock-subfamily-list button {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-family-choice > span,
+.stock-subfamily-list button > span {
+  color: var(--tpv-v3-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stock-family-choice:hover > span,
+.stock-family-choice:focus-visible > span,
+.stock-subfamily-list button:hover > span,
+.stock-subfamily-list button:focus-visible > span,
+.stock-subfamily-list button.selected > span {
+  color: #ffffff;
+}
+
+.stock-subfamily-list p {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--tpv-v3-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .stock-row {
   min-height: 48px;
   display: grid;

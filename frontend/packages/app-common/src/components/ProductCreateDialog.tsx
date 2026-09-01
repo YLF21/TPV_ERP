@@ -1,11 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { ApiError, apiRequest } from "../api/client";
+import { ApiConnectionError, ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import deleteImageIcon from "../assets/product/delete.png";
 import { enterNavigationIntent } from "./keyboardNavigation";
+import {
+  familyBusinessCode,
+  loadFamilyCatalog,
+  loadFamilySubfamilies,
+  resolveFamilyBusinessCode,
+  searchFamilyHierarchy,
+  sortFamilyCatalog,
+  type FamilyCatalogResolution,
+  type FamilyCatalogView,
+  type SubfamilyCatalogView,
+  type FamilyHierarchySearchView,
+} from "../catalog/familyCatalogApi";
 
 export type ProductCreateDialogProps = {
   open: boolean;
@@ -15,6 +27,12 @@ export type ProductCreateDialogProps = {
   editProduct?: ProductCreateEditProduct | null;
   initialForm?: Partial<ProductCreateFormState>;
   createProduct?: (
+    body: ReturnType<typeof buildCreateProductRequest>,
+    token: string,
+    headers?: Record<string, string>,
+  ) => Promise<ProductCreateResponse>;
+  updateProduct?: (
+    productId: string,
     body: ReturnType<typeof buildCreateProductRequest>,
     token: string,
     headers?: Record<string, string>,
@@ -37,6 +55,8 @@ export type ProductCreateFormState = {
   active: boolean;
   familyId: string;
   subfamilyId: string;
+  /** Display-only business identifier; the save request keeps UUID ids. */
+  familyBusinessCode: string;
   taxId: string;
   productType: ProductTypeCode;
   priceUseMode: PriceUseModeCode;
@@ -84,6 +104,7 @@ export type ProductCreateFieldName =
   | "active"
   | "familyId"
   | "subfamilyId"
+  | "familyBusinessCode"
   | "taxId"
   | "productType"
   | "priceUseMode"
@@ -109,17 +130,8 @@ export type ProductCreateFieldName =
   | "offerActive"
   | "offerRange";
 
-type FamilyView = {
-  id: string;
-  name?: string | null;
-  defaultFamily?: boolean | null;
-};
-
-type SubfamilyView = {
-  id: string;
-  name?: string | null;
-  familyId?: string | null;
-};
+type FamilyView = FamilyCatalogView;
+type SubfamilyView = SubfamilyCatalogView;
 
 type TaxView = {
   id: string;
@@ -138,6 +150,15 @@ type ProductSelectOption = {
   value: string;
   label: string;
 };
+
+function normalizeFamilySearch(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFC")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, "")
+    .toLowerCase();
+}
 
 export type ProductSupplierView = {
   supplierId: string;
@@ -211,6 +232,7 @@ export function createDefaultProductForm(): ProductCreateFormState {
     active: true,
     familyId: "",
     subfamilyId: "",
+    familyBusinessCode: "",
     taxId: "",
     productType: "UNIT",
     priceUseMode: "NORMAL",
@@ -403,6 +425,9 @@ export function productCreateValidationErrors(
   if (!form.familyId) {
     errors.push("familyId");
   }
+  if (form.familyBusinessCode.trim() && !/^\d{3}(?:\d{3})?$/.test(form.familyBusinessCode.trim())) {
+    errors.push("familyBusinessCode");
+  }
   if (!form.taxId) {
     errors.push("taxId");
   }
@@ -457,6 +482,9 @@ export function canLeaveProductField(form: ProductCreateFormState, fieldName: st
   }
   if (fieldName === "familyId") {
     return Boolean(form.familyId);
+  }
+  if (fieldName === "familyBusinessCode") {
+    return !form.familyBusinessCode.trim() || /^\d{3}(?:\d{3})?$/.test(form.familyBusinessCode.trim());
   }
   if (fieldName === "taxId") {
     return Boolean(form.taxId);
@@ -718,7 +746,9 @@ export async function saveProductWithOptionalImage({
 }
 
 export function productCreateErrorMessage(error: unknown, fallback: string, conflictFallback = fallback) {
-  if (error instanceof TypeError || (error instanceof Error && error.message === "Failed to write request")) {
+  if (error instanceof ApiConnectionError
+    || error instanceof TypeError
+    || (error instanceof Error && error.message === "Failed to write request")) {
     return fallback;
   }
   if (error instanceof ApiError && error.status === 409) {
@@ -765,18 +795,23 @@ export function ProductCreateDialog({
   editProduct,
   initialForm,
   createProduct,
+  updateProduct,
   uploadImage,
   onClose,
   onCreated
 }: ProductCreateDialogProps) {
-  const t = createTranslator(locale);
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const requestHeaders = operationalAuthorizationId
     ? { "X-Operational-Authorization": operationalAuthorizationId }
     : undefined;
   const initialFormSignature = JSON.stringify(initialForm ?? {});
   const [form, setForm] = useState<ProductCreateFormState>(() => createProductFormFromInitial(editProduct, initialForm));
   const [families, setFamilies] = useState<FamilyView[]>([]);
-  const [subfamilies, setSubfamilies] = useState<SubfamilyView[]>([]);
+  const [familySubfamilies, setFamilySubfamilies] = useState<Record<string, SubfamilyView[]>>({});
+  const [expandedFamilyIds, setExpandedFamilyIds] = useState<Record<string, boolean>>({});
+  const [loadingFamilyIds, setLoadingFamilyIds] = useState<Record<string, boolean>>({});
+  const [familyLoadErrors, setFamilyLoadErrors] = useState<Record<string, string>>({});
+  const [familyBusinessCodeStatus, setFamilyBusinessCodeStatus] = useState<"idle" | "incomplete" | "resolving" | "valid" | "invalid">("idle");
   const [taxes, setTaxes] = useState<TaxView[]>([]);
   const [products, setProducts] = useState<ProductIdentifierView[]>([]);
   const [status, setStatus] = useState("");
@@ -784,6 +819,16 @@ export function ProductCreateDialog({
   const [touchedErrors, setTouchedErrors] = useState<string[]>([]);
   const [openDropdown, setOpenDropdown] = useState("");
   const [familyPickerOpen, setFamilyPickerOpen] = useState(false);
+  const [familyPickerSearch, setFamilyPickerSearch] = useState("");
+  const [familyPickerFocusKey, setFamilyPickerFocusKey] = useState("");
+  const [familySearchResults, setFamilySearchResults] = useState<FamilyHierarchySearchView[] | null>(null);
+  const [familySearchSubfamilies, setFamilySearchSubfamilies] = useState<Record<string, SubfamilyView[]>>({});
+  const [familySearchLoading, setFamilySearchLoading] = useState(false);
+  const [familySearchHasMore, setFamilySearchHasMore] = useState(false);
+  const [familySearchNextCursor, setFamilySearchNextCursor] = useState("");
+  const [familySearchError, setFamilySearchError] = useState("");
+  const [familySearchRetry, setFamilySearchRetry] = useState(0);
+  const [fullyLoadedFamilyIds, setFullyLoadedFamilyIds] = useState<Set<string>>(new Set());
   const [selectedProductFamily, setSelectedProductFamily] = useState({ familyId: "", subfamilyId: "" });
   const [offerPickerOpen, setOfferPickerOpen] = useState(false);
   const [offerRangeStart, setOfferRangeStart] = useState<string | null>(null);
@@ -797,8 +842,227 @@ export function ProductCreateDialog({
   const [selectedPrincipalSupplierId, setSelectedPrincipalSupplierId] = useState("");
   const [supplierSaving, setSupplierSaving] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const familyResolveRequestRef = useRef(0);
+  const resolvedSubfamilyRef = useRef(new Set<string>());
+  const familySubfamiliesRequestRef = useRef(new Map<string, Promise<SubfamilyView[]>>());
+  const familySearchRequestRef = useRef(0);
   const selectedFamily = useMemo(() => families.find((family) => family.id === form.familyId), [families, form.familyId]);
-  const selectedSubfamily = useMemo(() => subfamilies.find((subfamily) => subfamily.id === form.subfamilyId), [subfamilies, form.subfamilyId]);
+  const selectedSubfamily = useMemo(
+    () => Object.values(familySubfamilies).flat().find((subfamily) => subfamily.id === form.subfamilyId),
+    [familySubfamilies, form.subfamilyId]
+  );
+  function collapsePartialFamilyBranches() {
+    setExpandedFamilyIds((current) => {
+      let changed = false;
+      const next = { ...current };
+      Object.keys(next).forEach((familyId) => {
+        if (next[familyId] && !fullyLoadedFamilyIds.has(familyId)) {
+          next[familyId] = false;
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }
+  useEffect(() => {
+    const requestId = ++familySearchRequestRef.current;
+    if (!familyPickerOpen || !token) {
+      collapsePartialFamilyBranches();
+      setFamilySearchResults(null);
+      setFamilySearchSubfamilies({});
+      setFamilySearchLoading(false);
+      setFamilySearchNextCursor("");
+      setFamilySearchError("");
+      return;
+    }
+    const query = normalizeFamilySearch(familyPickerSearch.trim());
+    if (!query) {
+      collapsePartialFamilyBranches();
+      setFamilySearchResults(null);
+      setFamilySearchSubfamilies({});
+      setFamilySearchLoading(false);
+      setFamilySearchNextCursor("");
+      setFamilySearchError("");
+      setFamilySearchHasMore(false);
+      return;
+    }
+    if (Array.from(query).length < 2) {
+      collapsePartialFamilyBranches();
+      setFamilySearchResults(null);
+      setFamilySearchSubfamilies({});
+      setFamilySearchLoading(false);
+      setFamilySearchNextCursor("");
+      setFamilySearchError("");
+      setFamilySearchHasMore(false);
+      return;
+    }
+    setFamilySearchLoading(true);
+    setFamilySearchError("");
+    const timer = window.setTimeout(() => {
+      void searchFamilyHierarchy(query, token, 50)
+        .then((page) => {
+          if (requestId !== familySearchRequestRef.current) return;
+          setFamilySearchResults(page.items);
+          setFamilySearchHasMore(page.hasMore);
+          setFamilySearchNextCursor(page.nextCursor);
+          setFamilySearchError("");
+          setFamilySearchLoading(false);
+          const matchingFamilies = new Set(
+            page.items
+              .filter((row) => row.kind === "SUBFAMILY")
+              .map((row) => row.familyId)
+              .filter((id): id is string => Boolean(id)),
+          );
+          if (matchingFamilies.size > 0) {
+            setExpandedFamilyIds((current) => {
+              const next = { ...current };
+              matchingFamilies.forEach((id) => { next[id] = true; });
+              return next;
+            });
+          }
+          setFamilySearchSubfamilies(() => {
+            const next: Record<string, SubfamilyView[]> = {};
+            for (const row of page.items) {
+              if (row.kind !== "SUBFAMILY" || !row.familyId || !row.id) continue;
+              const existing = next[row.familyId] ?? [];
+              if (existing.some((child) => child.id === row.id)) continue;
+              next[row.familyId] = sortFamilyCatalog([...existing, {
+                id: row.id,
+                familyId: row.familyId,
+                subfamilyId: row.subfamilyId,
+                subfamilyCode: row.code,
+                subfamilySuffix: row.suffix,
+                name: row.name,
+              }]);
+            }
+            return next;
+          });
+        })
+        .catch(() => {
+          if (requestId === familySearchRequestRef.current) {
+            setFamilySearchResults(null);
+            setFamilySearchSubfamilies({});
+            setFamilySearchLoading(false);
+            setFamilySearchHasMore(false);
+            setFamilySearchNextCursor("");
+            setFamilySearchError(t("product.family.searchError"));
+          }
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [familyPickerOpen, familyPickerSearch, familySearchRetry, locale, token]);
+
+  const loadMoreFamilySearch = useCallback(() => {
+    const query = normalizeFamilySearch(familyPickerSearch.trim());
+    if (!familyPickerOpen || !token || !familySearchHasMore || familySearchLoading || !familySearchNextCursor) return;
+    const requestId = ++familySearchRequestRef.current;
+    setFamilySearchLoading(true);
+    setFamilySearchError("");
+    void searchFamilyHierarchy(query, token, 50, familySearchNextCursor)
+      .then((page) => {
+        if (requestId !== familySearchRequestRef.current) return;
+        setFamilySearchResults((current) => {
+          const merged = new Map((current ?? []).map((row) => [`${row.kind}:${row.id}`, row]));
+          page.items.forEach((row) => merged.set(`${row.kind}:${row.id}`, row));
+          return Array.from(merged.values());
+        });
+        setFamilySearchHasMore(page.hasMore);
+        setFamilySearchNextCursor(page.nextCursor);
+        setFamilySearchError("");
+        setFamilySearchLoading(false);
+        setFamilySearchSubfamilies((current) => {
+          const next = { ...current };
+          for (const row of page.items) {
+            if (row.kind !== "SUBFAMILY" || !row.familyId || !row.id) continue;
+            const existing = next[row.familyId] ?? [];
+            if (!existing.some((child) => child.id === row.id)) {
+              next[row.familyId] = sortFamilyCatalog([...existing, {
+                id: row.id,
+                familyId: row.familyId,
+                subfamilyId: row.subfamilyId,
+                subfamilyCode: row.code,
+                subfamilySuffix: row.suffix,
+                name: row.name,
+              }]);
+            }
+          }
+          return next;
+        });
+      })
+      .catch((error) => {
+        if (requestId !== familySearchRequestRef.current) return;
+        setFamilySearchLoading(false);
+        setFamilySearchHasMore(false);
+        setFamilySearchNextCursor("");
+        setFamilySearchError(t("product.family.searchError"));
+        setStatus(t("product.family.searchError"));
+      });
+  }, [familyPickerOpen, familyPickerSearch, familySearchHasMore, familySearchLoading, familySearchNextCursor, locale, token]);
+  const familyPickerRows = useMemo(() => {
+    const query = normalizeFamilySearch(familyPickerSearch);
+    if (!query) return families;
+    if (familySearchResults) {
+      const matchingIds = new Set<string>();
+      familySearchResults.forEach((row) => {
+        const familyId = row.kind === "FAMILY" ? row.id : row.familyId;
+        if (familyId) matchingIds.add(familyId);
+      });
+      return families.filter((family) => matchingIds.has(family.id));
+    }
+    return families.filter((family) => {
+      const familyMatch = normalizeFamilySearch(
+        `${family.familyCode ?? family.familyId ?? ""} ${family.name ?? ""}`,
+      ).includes(query);
+      const children = familySubfamilies[family.id] ?? [];
+      return (
+        familyMatch ||
+        children.some((subfamily) =>
+          normalizeFamilySearch(
+            `${subfamily.subfamilyCode ?? subfamily.subfamilyId ?? ""} ${subfamily.name ?? ""}`,
+          ).includes(query),
+        )
+      );
+    });
+  }, [families, familyPickerSearch, familySearchResults, familySubfamilies]);
+  const familyPickerTreeItems = useMemo(() => {
+    const query = normalizeFamilySearch(familyPickerSearch);
+    return familyPickerRows.flatMap((family) => {
+      const familyKey = `family:${family.id}`;
+      const familyMatch = normalizeFamilySearch(`${family.familyCode ?? family.familyId ?? ""} ${family.name ?? ""}`).includes(query);
+      const loadedChildren = familySearchResults
+        ? familySearchSubfamilies[family.id] ?? []
+        : familySubfamilies[family.id] ?? [];
+      const children = !expandedFamilyIds[family.id]
+        ? []
+        : loadedChildren.filter((subfamily) => !query || familyMatch || normalizeFamilySearch(`${subfamily.subfamilyCode ?? subfamily.subfamilyId ?? ""} ${subfamily.name ?? ""}`).includes(query));
+      return [
+        { key: familyKey, kind: "family" as const, familyId: family.id },
+        ...children.map((subfamily) => ({ key: `subfamily:${subfamily.id}`, kind: "subfamily" as const, familyId: family.id }))
+      ];
+    });
+  }, [expandedFamilyIds, families, familyPickerRows, familyPickerSearch, familySearchResults, familySearchSubfamilies, familySubfamilies]);
+  useEffect(() => {
+    if (!familyPickerOpen) return;
+    if (familyPickerTreeItems.some((item) => item.key === familyPickerFocusKey)) return;
+    setFamilyPickerFocusKey(familyPickerTreeItems[0]?.key ?? "");
+  }, [familyPickerFocusKey, familyPickerOpen, familyPickerTreeItems]);
+  useEffect(() => {
+    // A remote result may temporarily expand a family with only matching
+    // children. Once the search is cleared, collapse those partial branches
+    // so the next expand always loads the complete local branch.
+    if (normalizeFamilySearch(familyPickerSearch) || !familySearchResults) return;
+    setExpandedFamilyIds((current) => {
+      let changed = false;
+      const next = { ...current };
+      Object.keys(next).forEach((familyId) => {
+        if (next[familyId] && !fullyLoadedFamilyIds.has(familyId)) {
+          next[familyId] = false;
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [familyPickerSearch, familySearchResults, fullyLoadedFamilyIds]);
   const selectedTax = useMemo(() => taxes.find((tax) => tax.id === form.taxId), [taxes, form.taxId]);
   const selectedPriceUseMode = normalizePriceUseMode(form);
   const offerActive = isOfferPriceUseMode(selectedPriceUseMode);
@@ -808,14 +1072,69 @@ export function ProductCreateDialog({
   const validationErrors = productCreateValidationErrors(form, products, editProduct?.id);
   const invalidFields = new Set(validationErrors);
 
+  function loadFamilySubfamiliesOnce(familyId: string, currentToken: string) {
+    const key = `${currentToken}:${familyId}`;
+    const existing = familySubfamiliesRequestRef.current.get(key);
+    if (existing) {
+      return existing;
+    }
+    const request = loadFamilySubfamilies(familyId, currentToken);
+    familySubfamiliesRequestRef.current.set(key, request);
+    const clearRequest = () => {
+      if (familySubfamiliesRequestRef.current.get(key) === request) {
+        familySubfamiliesRequestRef.current.delete(key);
+      }
+    };
+    request.then(clearRequest, clearRequest);
+    return request;
+  }
+
+  function loadFamilyChildren(familyId: string) {
+    if (!token) return;
+    setFamilyLoadErrors((current) => {
+      if (!current[familyId]) return current;
+      const next = { ...current };
+      delete next[familyId];
+      return next;
+    });
+    setLoadingFamilyIds((current) => ({ ...current, [familyId]: true }));
+    void loadFamilySubfamiliesOnce(familyId, token)
+      .then((rows) => {
+        setFamilySubfamilies((current) => ({ ...current, [familyId]: sortFamilyCatalog(rows) }));
+        setFullyLoadedFamilyIds((current) => new Set(current).add(familyId));
+      })
+      .catch((error) => setFamilyLoadErrors((current) => ({
+        ...current,
+        [familyId]: productCreateErrorMessage(error, t("product.family.loadError")),
+      })))
+      .finally(() => setLoadingFamilyIds((current) => ({ ...current, [familyId]: false })));
+  }
+
   function resetDialogState() {
+    ++familyResolveRequestRef.current;
+    ++familySearchRequestRef.current;
     setForm(createProductFormFromInitial(editProduct, initialForm));
     setStatus("");
     setTouchedErrors([]);
     setSaving(false);
     setOpenDropdown("");
     setFamilyPickerOpen(false);
+    setFamilyPickerSearch("");
+    setFamilyPickerFocusKey("");
+    setFamilySearchResults(null);
+    setFamilySearchSubfamilies({});
+    setFamilySearchLoading(false);
+    setFamilySearchHasMore(false);
+    setFamilySearchNextCursor("");
+    setFamilySearchError("");
     setSelectedProductFamily({ familyId: "", subfamilyId: "" });
+    setFamilySubfamilies({});
+    setFullyLoadedFamilyIds(new Set());
+    resolvedSubfamilyRef.current.clear();
+    setExpandedFamilyIds({});
+    setLoadingFamilyIds({});
+    setFamilyLoadErrors({});
+    setFamilyBusinessCodeStatus("idle");
     setOfferPickerOpen(false);
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
@@ -828,13 +1147,30 @@ export function ProductCreateDialog({
   }
 
   function closeProductDialog() {
+    ++familyResolveRequestRef.current;
+    ++familySearchRequestRef.current;
     setForm(createDefaultProductForm());
     setStatus("");
     setTouchedErrors([]);
     setSaving(false);
     setOpenDropdown("");
     setFamilyPickerOpen(false);
+    setFamilyPickerSearch("");
+    setFamilyPickerFocusKey("");
+    setFamilySearchResults(null);
+    setFamilySearchSubfamilies({});
+    setFamilySearchLoading(false);
+    setFamilySearchHasMore(false);
+    setFamilySearchNextCursor("");
+    setFamilySearchError("");
     setSelectedProductFamily({ familyId: "", subfamilyId: "" });
+    setFamilySubfamilies({});
+    setFullyLoadedFamilyIds(new Set());
+    resolvedSubfamilyRef.current.clear();
+    setExpandedFamilyIds({});
+    setLoadingFamilyIds({});
+    setFamilyLoadErrors({});
+    setFamilyBusinessCodeStatus("idle");
     setOfferPickerOpen(false);
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
@@ -851,16 +1187,33 @@ export function ProductCreateDialog({
     if (!open) {
       return;
     }
+    ++familyResolveRequestRef.current;
+    ++familySearchRequestRef.current;
     const nextForm = createProductFormFromInitial(editProduct, initialForm);
     setForm(nextForm);
     setSelectedProductFamily({
       familyId: nextForm.familyId,
       subfamilyId: nextForm.subfamilyId
     });
+    setFamilySubfamilies({});
+    resolvedSubfamilyRef.current.clear();
+    setFullyLoadedFamilyIds(new Set());
+    setExpandedFamilyIds({});
+    setLoadingFamilyIds({});
+    setFamilyLoadErrors({});
+    setFamilyBusinessCodeStatus(nextForm.familyBusinessCode.trim() ? "incomplete" : "idle");
     setStatus("");
     setSaving(false);
     setOpenDropdown("");
     setFamilyPickerOpen(false);
+    setFamilyPickerSearch("");
+    setFamilySearchResults(null);
+    setFamilySearchSubfamilies({});
+    setFamilySearchLoading(false);
+    setFamilySearchHasMore(false);
+    setFamilySearchNextCursor("");
+    setFamilySearchError("");
+    setFamilyPickerFocusKey("");
     setOfferPickerOpen(false);
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
@@ -934,22 +1287,14 @@ export function ProductCreateDialog({
       setStatus("");
       try {
         const [nextFamilies, nextTaxes, nextProducts] = await Promise.all([
-          apiRequest<FamilyView[]>("/families", { token }),
+          loadFamilyCatalog(token),
           apiRequest<TaxView[]>("/taxes/selectable", { token }),
           apiRequest<ProductIdentifierView[]>("/products", { token })
         ]);
-        const nextSubfamilies = (await Promise.all(nextFamilies.map(async (family) => {
-          try {
-            return await apiRequest<SubfamilyView[]>(`/families/${encodeURIComponent(family.id)}/subfamilies`, { token });
-          } catch {
-            return [] as SubfamilyView[];
-          }
-        }))).flat();
         if (cancelled) {
           return;
         }
-        setFamilies(nextFamilies);
-        setSubfamilies(nextSubfamilies);
+        setFamilies(sortFamilyCatalog(nextFamilies));
         setTaxes(nextTaxes);
         setProducts(nextProducts);
         setForm((current) => applyProductRequiredDefaults(current, nextFamilies, nextTaxes));
@@ -965,6 +1310,62 @@ export function ProductCreateDialog({
       cancelled = true;
     };
   }, [open, token, locale]);
+
+  useEffect(() => {
+    const resolvedKey = `${form.familyId}:${form.subfamilyId}`;
+    if (!open || !token || !form.familyId || !form.subfamilyId
+      || familySubfamilies[form.familyId]
+      || resolvedSubfamilyRef.current.has(resolvedKey)
+      || familyBusinessCodeStatus === "resolving"
+      || familyBusinessCodeStatus === "valid") {
+      return;
+    }
+    let cancelled = false;
+    setLoadingFamilyIds((current) => ({ ...current, [form.familyId]: true }));
+    void loadFamilySubfamiliesOnce(form.familyId, token)
+      .then((rows) => {
+        if (!cancelled) {
+          setFamilySubfamilies((current) => ({ ...current, [form.familyId]: sortFamilyCatalog(rows) }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFamilyBusinessCodeStatus("invalid");
+          setTouchedErrors((current) => current.includes("familyBusinessCode") ? current : [...current, "familyBusinessCode"]);
+          setFamilyLoadErrors((current) => ({ ...current, [form.familyId]: t("product.family.loadError") }));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingFamilyIds((current) => ({ ...current, [form.familyId]: false }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token, form.familyId, form.subfamilyId, familySubfamilies, familyBusinessCodeStatus, locale]);
+
+  useEffect(() => {
+    if (!open || !form.familyId) {
+      return;
+    }
+    const family = families.find((candidate) => candidate.id === form.familyId);
+    const subfamily = form.subfamilyId
+      ? familySubfamilies[form.familyId]?.find((candidate) => candidate.id === form.subfamilyId)
+      : undefined;
+    if (form.subfamilyId && !subfamily) {
+      return;
+    }
+    const code = familyBusinessCode(family, subfamily);
+    const familyCode = familyBusinessCode(family);
+    const currentCode = form.familyBusinessCode.trim();
+    const canAutofill = !currentCode
+      || (familyBusinessCodeStatus === "valid" && currentCode === familyCode);
+    if (code && canAutofill && currentCode !== code) {
+      setForm((current) => current.familyBusinessCode === code ? current : { ...current, familyBusinessCode: code });
+      setFamilyBusinessCodeStatus("valid");
+    }
+  }, [open, form.familyId, form.subfamilyId, form.familyBusinessCode, familyBusinessCodeStatus, families, familySubfamilies]);
 
   useEffect(() => {
     if (!open || familyPickerOpen) {
@@ -990,6 +1391,7 @@ export function ProductCreateDialog({
           return;
         }
         if (familyPickerOpen) {
+          ++familySearchRequestRef.current;
           setFamilyPickerOpen(false);
           return;
         }
@@ -1225,15 +1627,170 @@ export function ProductCreateDialog({
     setSelectedProductFamily({ familyId, subfamilyId });
   }
 
-  function applyProductFamilySelection() {
+  function resolutionIds(resolution: FamilyCatalogResolution, code: string) {
+    const family = resolution.family;
+    const subfamily = resolution.subfamily;
+    const familyId = family?.id ?? "";
+    const subfamilyId = code.length === 3 ? "" : subfamily?.id ?? "";
+    const resolvedFamilyCode = familyBusinessCode(family);
+    if (
+      !familyId ||
+      (code.length === 6 &&
+        (!subfamilyId ||
+          !resolvedFamilyCode ||
+          !code.startsWith(resolvedFamilyCode)))
+    ) {
+      return null;
+    }
+    return { familyId, subfamilyId, family, subfamily };
+  }
+
+  async function resolveFamilyCode(rawCode = form.familyBusinessCode, showError = false) {
+    const code = rawCode.replace(/\D/g, "").slice(0, 6);
+    if (code.length !== 3 && code.length !== 6) {
+      setFamilyBusinessCodeStatus(code.length === 0 ? "idle" : "incomplete");
+      if (showError && code.length > 0) {
+        setTouchedErrors((current) => current.includes("familyBusinessCode") ? current : [...current, "familyBusinessCode"]);
+        setStatus(t("product.family.required"));
+      }
+      return false;
+    }
+    const requestId = ++familyResolveRequestRef.current;
+    setFamilyBusinessCodeStatus("resolving");
+    setStatus("");
+    try {
+      const resolution = await resolveFamilyBusinessCode(code, token);
+      if (requestId !== familyResolveRequestRef.current) {
+        return false;
+      }
+      const ids = resolutionIds(resolution, code);
+      if (!ids) {
+        setFamilyBusinessCodeStatus("invalid");
+        setTouchedErrors((current) => current.includes("familyBusinessCode") ? current : [...current, "familyBusinessCode"]);
+        setStatus(t("product.family.invalid"));
+        return false;
+      }
+      setForm((current) => ({
+        ...current,
+        familyId: ids.familyId,
+        subfamilyId: ids.subfamilyId,
+        familyBusinessCode: code
+      }));
+      setSelectedProductFamily({ familyId: ids.familyId, subfamilyId: ids.subfamilyId });
+      const resolvedSubfamily = ids.subfamily;
+      if (resolvedSubfamily) {
+        resolvedSubfamilyRef.current.add(`${ids.familyId}:${resolvedSubfamily.id}`);
+        setFamilySubfamilies((current) => {
+          const merged = new Map<string, SubfamilyView>();
+          for (const subfamily of current[ids.familyId] ?? []) {
+            merged.set(subfamily.id, subfamily);
+          }
+          merged.set(resolvedSubfamily.id, resolvedSubfamily);
+          return { ...current, [ids.familyId]: sortFamilyCatalog(Array.from(merged.values())) };
+        });
+      }
+      setTouchedErrors((current) => current.filter((error) => error !== "familyBusinessCode"));
+      setStatus("");
+      setFamilyBusinessCodeStatus("valid");
+      return true;
+    } catch (error) {
+      if (requestId === familyResolveRequestRef.current) {
+        setFamilyBusinessCodeStatus("invalid");
+        setTouchedErrors((current) => current.includes("familyBusinessCode") ? current : [...current, "familyBusinessCode"]);
+        setStatus(productCreateErrorMessage(error, t("product.family.invalid")));
+      }
+      return false;
+    }
+  }
+
+  function commitFamilySelection(familyId: string, subfamilyId = "") {
+    ++familyResolveRequestRef.current;
+    const family = families.find((candidate) => candidate.id === familyId);
+    const subfamily = (familySearchResults
+      ? familySearchSubfamilies[familyId]
+      : familySubfamilies[familyId]
+    )?.find((candidate) => candidate.id === subfamilyId);
+    if (!family || (subfamilyId && !subfamily)) {
+      setFamilyBusinessCodeStatus("invalid");
+      setTouchedErrors((current) => current.includes("familyBusinessCode")
+        ? current
+        : [...current, "familyBusinessCode"]);
+      setStatus(t(subfamilyId ? "product.family.loadError" : "product.family.invalid"));
+      return;
+    }
+    const code = familyBusinessCode(family, subfamily);
+    setSelectedProductFamily({ familyId, subfamilyId });
     setForm((current) => ({
       ...current,
-      familyId: selectedProductFamily.familyId,
-      subfamilyId: selectedProductFamily.subfamilyId
+      familyId,
+      subfamilyId,
+      familyBusinessCode: code
     }));
+    setFamilyBusinessCodeStatus(code ? "valid" : "incomplete");
     setFamilyPickerOpen(false);
+    setFamilyPickerSearch("");
     setOpenDropdown("");
-    focusAdjacentProductFieldAfterRender("familyId");
+    focusAdjacentProductFieldAfterRender("familyBusinessCode");
+  }
+
+  function toggleFamily(familyId: string) {
+    const expanding = !expandedFamilyIds[familyId];
+    setExpandedFamilyIds((current) => ({ ...current, [familyId]: expanding }));
+    if (!expanding || fullyLoadedFamilyIds.has(familyId) || loadingFamilyIds[familyId] || !token) {
+      return;
+    }
+    loadFamilyChildren(familyId);
+  }
+
+  function focusFamilyPickerItem(key: string) {
+    setFamilyPickerFocusKey(key);
+    window.requestAnimationFrame(() => {
+      Array.from(document.querySelectorAll<HTMLElement>("[data-family-tree-key]"))
+        .find((element) => element.dataset.familyTreeKey === key)
+        ?.focus();
+    });
+  }
+
+  function handleFamilyPickerTreeKeyDown(
+    event: KeyboardEvent<HTMLElement>,
+    key: string,
+    familyId: string,
+    kind: "family" | "subfamily",
+  ) {
+    const index = familyPickerTreeItems.findIndex((item) => item.key === key);
+    if (index < 0) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitFamilySelection(
+        familyId,
+        kind === "subfamily" ? key.replace(/^subfamily:/, "") : "",
+      );
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const offset = event.key === "ArrowDown" ? 1 : -1;
+      const next = familyPickerTreeItems[index + offset];
+      if (next) focusFamilyPickerItem(next.key);
+      return;
+    }
+    if (event.key === "ArrowRight" && kind === "family") {
+      event.preventDefault();
+      if (!expandedFamilyIds[familyId]) toggleFamily(familyId);
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (kind === "subfamily") {
+        focusFamilyPickerItem(`family:${familyId}`);
+      } else if (expandedFamilyIds[familyId]) {
+        toggleFamily(familyId);
+      }
+    }
+  }
+
+  function applyProductFamilySelection() {
+    commitFamilySelection(selectedProductFamily.familyId, selectedProductFamily.subfamilyId);
   }
 
   function selectOfferDate(date: Date, advanceAfterSelection = false) {
@@ -1420,10 +1977,21 @@ export function ProductCreateDialog({
   async function submitProduct(closeAfterSave: boolean) {
     const formForSave = applyProductRequiredDefaults(form, families, taxes);
     const nextErrors = productCreateValidationErrors(formForSave, products, editProduct?.id);
-    if (saving || !token || nextErrors.length > 0) {
-      setTouchedErrors(nextErrors);
+    const familyCodeInvalid = Boolean(formForSave.familyId)
+      && (!/^\d{3}(?:\d{3})?$/.test(formForSave.familyBusinessCode.trim()) || familyBusinessCodeStatus !== "valid");
+    const allErrors = familyCodeInvalid && !nextErrors.includes("familyBusinessCode")
+      ? [...nextErrors, "familyBusinessCode"]
+      : nextErrors;
+    if (saving || !token || allErrors.length > 0) {
+      setTouchedErrors(allErrors);
       setForm(formForSave);
-      setStatus(nextErrors.includes("identifierDuplicate") ? t("product.create.duplicateIdentifier") : t("product.create.required"));
+      setStatus(
+        familyCodeInvalid
+          ? familyBusinessCodeStatus === "resolving"
+            ? t("product.family.resolving")
+            : familyBusinessCodeStatus === "invalid" ? t("product.family.invalid") : t("product.family.required")
+          : allErrors.includes("identifierDuplicate") ? t("product.create.duplicateIdentifier") : t("product.create.required")
+      );
       return;
     }
     setForm(formForSave);
@@ -1438,6 +2006,7 @@ export function ProductCreateDialog({
         initialData: editProduct?.initialData,
         requestHeaders,
         createProduct,
+        updateProduct,
         uploadImage,
       });
       onCreated?.(result.product);
@@ -1589,23 +2158,63 @@ export function ProductCreateDialog({
               <textarea data-product-field data-product-field-name="description" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
             </label>
             <div className="product-create-row product-create-row-family-tax">
-              <div className={`filter-field product-family-field ${familyPickerOpen ? "open" : ""} ${fieldClass("familyId")}`}>
-                <span>{requiredLabel("stock.column.family", true)}</span>
-                <button
-                  type="button"
-                  className="filter-select-button"
-                  data-product-field
-                  data-product-field-name="familyId"
-                  aria-expanded={familyPickerOpen}
-                  onClick={() => {
-                    setOpenDropdown("");
-                    setSelectedProductFamily({ familyId: form.familyId, subfamilyId: form.subfamilyId });
-                    setFamilyPickerOpen(true);
-                  }}
-                >
-                  <span>{selectedSubfamily?.name ?? selectedFamily?.name ?? t("product.create.select")}</span>
-                  <span className="filter-control-arrow">v</span>
-                </button>
+              <div className={`filter-field product-family-field ${familyPickerOpen ? "open" : ""} ${fieldClass("familyBusinessCode")}`}>
+                <span>{requiredLabel("stock.column.family")} · {requiredLabel("product.field.familyBusinessCode", true)}</span>
+                <div className="product-family-business-control">
+                  <input
+                    data-product-field
+                    data-product-field-name="familyBusinessCode"
+                    aria-label={t("product.field.familyBusinessCode")}
+                    aria-busy={familyBusinessCodeStatus === "resolving"}
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder={t("product.field.familyBusinessCodePlaceholder")}
+                    value={form.familyBusinessCode}
+                    aria-invalid={familyBusinessCodeStatus === "invalid"
+                      || (touchedErrors.includes("familyBusinessCode") && invalidFields.has("familyBusinessCode"))}
+                    aria-describedby={status ? "product-create-status" : undefined}
+                    onChange={(event) => {
+                      const value = event.target.value.replace(/\D/g, "").slice(0, 6);
+                      ++familyResolveRequestRef.current;
+                      updateField("familyBusinessCode", value);
+                      setTouchedErrors((current) => current.filter((error) => error !== "familyBusinessCode"));
+                      setStatus("");
+                      const complete = value.length === 3 || value.length === 6;
+                      setFamilyBusinessCodeStatus(value.length === 0 ? "idle" : complete ? "resolving" : "incomplete");
+                      if (complete) {
+                        void resolveFamilyCode(value);
+                      }
+                    }}
+                    onBlur={(event) => void resolveFamilyCode(event.currentTarget.value, true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void resolveFamilyCode(event.currentTarget.value, true);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="filter-select-button product-family-explore-button"
+                    data-product-field
+                    data-product-field-name="familyBusinessCode"
+                    aria-expanded={familyPickerOpen}
+                    onClick={() => {
+                      ++familyResolveRequestRef.current;
+                      setOpenDropdown("");
+                      setSelectedProductFamily({ familyId: form.familyId, subfamilyId: form.subfamilyId });
+                      setFamilyPickerSearch("");
+                      setFamilyPickerFocusKey("");
+                      setFamilyPickerOpen(true);
+                    }}
+                  >
+                    {t("product.family.explore")}
+                  </button>
+                </div>
+                <small className="product-family-business-summary">
+                  {selectedSubfamily?.name ?? selectedFamily?.name ?? t("product.create.select")}
+                  {familyBusinessCodeStatus === "resolving" && ` · ${t("product.family.resolving")}`}
+                </small>
               </div>
               {renderDropdown(
                 "tax",
@@ -1902,7 +2511,27 @@ export function ProductCreateDialog({
           </aside>
         </div>
 
-        {status && <p className="product-create-status">{status}</p>}
+        {form.familyId && familyLoadErrors[form.familyId] && (
+          <p className="product-create-status" role="alert">
+            {familyLoadErrors[form.familyId]}
+            <button
+              type="button"
+              onClick={() => loadFamilyChildren(form.familyId)}
+            >
+              {t("product.family.searchRetry")}
+            </button>
+          </p>
+        )}
+        {status && (
+          <p
+            id="product-create-status"
+            className="product-create-status"
+            role={familyBusinessCodeStatus === "invalid" ? "alert" : "status"}
+            aria-live="polite"
+          >
+            {status}
+          </p>
+        )}
         <footer className="filter-actions">
           <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
           <button type="button" disabled={saving} onClick={() => void submitProduct(true)}>
@@ -1915,97 +2544,161 @@ export function ProductCreateDialog({
           <section className="filter-dialog stock-family-dialog">
             <header className="filter-header">
               <h2 id="product-family-title">{t("stock.column.family")}</h2>
-              <button type="button" onClick={() => setFamilyPickerOpen(false)}>{t("common.close")}</button>
+              <button type="button" onClick={() => {
+                ++familyResolveRequestRef.current;
+                ++familySearchRequestRef.current;
+                setFamilyPickerOpen(false);
+              }}>{t("common.close")}</button>
             </header>
-            <div className="stock-family-list">
-              {families.length === 0 && <p>{t("stock.filter.noFamilies")}</p>}
-              {families.map((family) => {
-                const familySubfamilies = subfamilies.filter((subfamily) => subfamily.familyId === family.id);
+            <label className="stock-family-search">
+              <span>{t("product.family.search")}</span>
+              <input
+                type="search"
+                value={familyPickerSearch}
+                placeholder={t("stock.column.family")}
+                onChange={(event) => setFamilyPickerSearch(event.target.value)}
+                aria-label={t("product.family.search")}
+                aria-controls="product-family-tree"
+              />
+              <small>{t("product.family.searchHint")}</small>
+              {Array.from(normalizeFamilySearch(familyPickerSearch.trim())).length === 1 && (
+                <small>{t("product.family.searchMinChars")}</small>
+              )}
+              {familySearchLoading && <small role="status">{t("product.family.searchLoading")}</small>}
+              {familySearchError && <small role="alert">{familySearchError}</small>}
+              {familySearchError && (
+                <button type="button" onClick={() => setFamilySearchRetry((value) => value + 1)}>
+                  {t("product.family.searchRetry")}
+                </button>
+              )}
+              {!familySearchLoading && familyPickerSearch.trim() && familySearchResults && familyPickerRows.length === 0 && (
+                <small>{t("product.family.searchEmpty")}</small>
+              )}
+              {!familySearchLoading && familySearchHasMore && (
+                <>
+                  <small>{t("product.family.searchMore")}</small>
+                  <button type="button" disabled={familySearchLoading} onClick={loadMoreFamilySearch}>
+                    {t("product.family.searchMoreButton")}
+                  </button>
+                </>
+              )}
+            </label>
+            <div className="stock-family-list" id="product-family-tree" role="tree">
+              {familyPickerRows.length === 0 && <p>{t("stock.filter.noFamilies")}</p>}
+              {familyPickerRows.map((family) => {
+                const subfamilies = (familySearchResults
+                  ? familySearchSubfamilies[family.id]
+                  : familySubfamilies[family.id]) ?? [];
+                const expanded = Boolean(expandedFamilyIds[family.id]);
+                const query = normalizeFamilySearch(familyPickerSearch);
+                const familyMatches = normalizeFamilySearch(`${family.familyCode ?? family.familyId ?? ""} ${family.name ?? ""}`).includes(query);
+                const visibleSubfamilies = !query || familyMatches
+                  ? subfamilies
+                  : subfamilies.filter((subfamily) => normalizeFamilySearch(`${subfamily.subfamilyCode ?? subfamily.subfamilyId ?? ""} ${subfamily.name ?? ""}`).includes(query));
                 const selected = selectedProductFamily.familyId === family.id && !selectedProductFamily.subfamilyId;
                 return (
                   <div className="stock-family-group" key={family.id}>
-                    <div className={`stock-family-row ${selected ? "selected" : ""}`}>
-                      <button type="button" className="stock-family-expand" disabled>
-                        {familySubfamilies.length > 0 ? "v" : ""}
+                    <div
+                      className={`stock-family-row ${selected ? "selected" : ""}`}
+                      role="treeitem"
+                      aria-level={1}
+                      aria-expanded={expanded}
+                      aria-owns={`product-family-group:${family.id}`}
+                      aria-selected={selected}
+                      tabIndex={familyPickerFocusKey === `family:${family.id}` || (!familyPickerFocusKey && familyPickerTreeItems[0]?.key === `family:${family.id}`) ? 0 : -1}
+                      data-family-tree-key={`family:${family.id}`}
+                      onFocus={() => setFamilyPickerFocusKey(`family:${family.id}`)}
+                      onKeyDown={(event) => handleFamilyPickerTreeKeyDown(event, `family:${family.id}`, family.id, "family")}
+                    >
+                      <button
+                        type="button"
+                        className="stock-family-expand"
+                        tabIndex={-1}
+                        aria-label={t(expanded ? "product.family.collapse" : "product.family.expand")}
+                        aria-expanded={expanded}
+                        onClick={() => toggleFamily(family.id)}
+                      >
+                        {loadingFamilyIds[family.id] ? "…" : expanded ? "v" : ">"}
                       </button>
                       <button
                         type="button"
                         className="stock-family-choice"
+                        tabIndex={-1}
                         onClick={() => selectFamily(family.id)}
-                        onDoubleClick={() => {
-                          setSelectedProductFamily({ familyId: family.id, subfamilyId: "" });
-                          setForm((current) => ({ ...current, familyId: family.id, subfamilyId: "" }));
-                          setFamilyPickerOpen(false);
-                          focusAdjacentProductFieldAfterRender("familyId");
-                        }}
+                        onDoubleClick={() => commitFamilySelection(family.id)}
                         onKeyDown={(event) => {
-                          const intent = enterNavigationIntent(event.key, {
-                            shiftKey: event.shiftKey,
-                            altKey: event.altKey,
-                            ctrlKey: event.ctrlKey,
-                            metaKey: event.metaKey,
-                            isComposing: event.nativeEvent.isComposing
-                          });
-                          if (!intent) return;
-                          event.preventDefault();
-                          setFamilyPickerOpen(false);
-                          if (intent === "next") {
-                            setSelectedProductFamily({ familyId: family.id, subfamilyId: "" });
-                            setForm((current) => ({ ...current, familyId: family.id, subfamilyId: "" }));
+                          event.stopPropagation();
+                          handleFamilyPickerTreeKeyDown(event, `family:${family.id}`, family.id, "family");
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            commitFamilySelection(family.id);
                           }
-                          focusAdjacentProductFieldAfterRender("familyId", intent === "previous");
                         }}
                       >
-                        {family.name}
+                        <span>{String(family.familyCode ?? family.familyId ?? "").padStart(3, "0")}</span>
+                        <strong>{family.name}</strong>
                       </button>
                     </div>
-                    {familySubfamilies.length > 0 && (
-                      <div className="stock-subfamily-list">
-                        {familySubfamilies.map((subfamily) => {
+                    {expanded && (
+                      <div
+                        className="stock-subfamily-list"
+                        role="group"
+                        id={`product-family-group:${family.id}`}
+                      >
+                        {visibleSubfamilies.length === 0 && !loadingFamilyIds[family.id] && (
+                          <p>{t("product.family.noSubfamilies")}</p>
+                        )}
+                        {visibleSubfamilies.map((subfamily) => {
                           const subfamilySelected = selectedProductFamily.familyId === family.id
                             && selectedProductFamily.subfamilyId === subfamily.id;
                           return (
                             <button
                               type="button"
+                              role="treeitem"
+                              aria-level={2}
+                              aria-selected={subfamilySelected}
+                              tabIndex={familyPickerFocusKey === `subfamily:${subfamily.id}` ? 0 : -1}
+                              data-family-tree-key={`subfamily:${subfamily.id}`}
                               className={subfamilySelected ? "selected" : ""}
                               key={subfamily.id}
                               onClick={() => selectFamily(family.id, subfamily.id)}
-                              onDoubleClick={() => {
-                                setSelectedProductFamily({ familyId: family.id, subfamilyId: subfamily.id });
-                                setForm((current) => ({ ...current, familyId: family.id, subfamilyId: subfamily.id }));
-                                setFamilyPickerOpen(false);
-                                focusAdjacentProductFieldAfterRender("familyId");
-                              }}
+                              onFocus={() => setFamilyPickerFocusKey(`subfamily:${subfamily.id}`)}
+                              onDoubleClick={() => commitFamilySelection(family.id, subfamily.id)}
                               onKeyDown={(event) => {
-                                const intent = enterNavigationIntent(event.key, {
-                                  shiftKey: event.shiftKey,
-                                  altKey: event.altKey,
-                                  ctrlKey: event.ctrlKey,
-                                  metaKey: event.metaKey,
-                                  isComposing: event.nativeEvent.isComposing
-                                });
-                                if (!intent) return;
-                                event.preventDefault();
-                                setFamilyPickerOpen(false);
-                                if (intent === "next") {
-                                  setSelectedProductFamily({ familyId: family.id, subfamilyId: subfamily.id });
-                                  setForm((current) => ({ ...current, familyId: family.id, subfamilyId: subfamily.id }));
+                                event.stopPropagation();
+                                handleFamilyPickerTreeKeyDown(event, `subfamily:${subfamily.id}`, family.id, "subfamily");
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitFamilySelection(family.id, subfamily.id);
                                 }
-                                focusAdjacentProductFieldAfterRender("familyId", intent === "previous");
                               }}
                             >
-                              {subfamily.name}
+                              <span>{String(subfamily.subfamilyCode ?? subfamily.subfamilyId ?? "").padStart(6, "0")}</span>
+                              <strong>{subfamily.name}</strong>
                             </button>
                           );
                         })}
                       </div>
+                    )}
+                    {familyLoadErrors[family.id] && (
+                      <p className="gestion-error" role="alert">
+                        {familyLoadErrors[family.id]}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExpandedFamilyIds((current) => ({ ...current, [family.id]: true }));
+                            loadFamilyChildren(family.id);
+                          }}
+                        >
+                          {t("product.family.searchRetry")}
+                        </button>
+                      </p>
                     )}
                   </div>
                 );
               })}
             </div>
             <footer className="filter-actions">
-              <button type="button" onClick={() => setSelectedProductFamily({ familyId: "", subfamilyId: "" })}>{t("salesReport.filter.clear")}</button>
               <button type="button" onClick={applyProductFamilySelection}>{t("stock.filter.apply")}</button>
             </footer>
           </section>

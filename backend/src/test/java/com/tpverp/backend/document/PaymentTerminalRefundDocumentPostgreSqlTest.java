@@ -12,6 +12,7 @@ import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
+import com.tpverp.backend.persistence.PostgreSqlTestDatabaseCleaner;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
@@ -117,7 +118,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
 
     @BeforeEach
     void clearDatabase() {
-        jdbc.execute("truncate table instalacion, empresa cascade");
+        PostgreSqlTestDatabaseCleaner.truncateInstallationAndCompanyGraphs(jdbc, SCHEMA);
         when(installationStatus.status()).thenReturn(
                 new com.tpverp.backend.installation.InstallationStatusService
                         .InstallationStatus(

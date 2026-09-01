@@ -1,6 +1,20 @@
 export { authenticate, authenticateRemote, canAccessApp, hasPermission } from "./auth/auth";
 export { apiRequest, checkBackendConnection, ApiConnectionError, ApiError } from "./api/client";
 export { apiBaseUrl, devTerminalContext } from "./api/runtime";
+export {
+  familyBusinessCode,
+  familyResolvePath,
+  familySubfamiliesPath,
+  loadFamilyCatalog,
+  loadFamilySubfamilies,
+  resolveFamilyBusinessCode,
+  sortFamilyCatalog,
+} from "./catalog/familyCatalogApi";
+export type {
+  FamilyCatalogResolution,
+  FamilyCatalogView,
+  SubfamilyCatalogView,
+} from "./catalog/familyCatalogApi";
 export { loadTerminalIdentity, resolveTerminalIdentity } from "./terminalIdentity";
 export type { TerminalIdentityBridge, TerminalIdentityLoadResult } from "./terminalIdentity";
 export { AppFrame } from "./components/AppFrame";
@@ -16,6 +30,7 @@ export type { StockViewKey } from "./components/stockAccess";
 export { visibleWarehouseSectionsForSession, warehouseSections } from "./components/warehouseAccess";
 export type { WarehouseSection } from "./components/warehouseAccess";
 export { TableLayoutHeaderCell } from "./components/TableLayoutHeaderCell";
+export { ProductThumbnail } from "./components/ProductThumbnail";
 export { TableSortButton } from "./components/TableSortButton";
 export {
   compareTableSortValues,

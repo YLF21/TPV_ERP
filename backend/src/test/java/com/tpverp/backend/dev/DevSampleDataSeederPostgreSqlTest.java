@@ -233,6 +233,54 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
+    void reseedsCatalogTwiceAfterV238WithoutReclaimingIssuedCodes() {
+        int familyClaims = jdbc.queryForObject(
+                "select count(*) from familia_codigo_reservado", Integer.class);
+        int subfamilyClaims = jdbc.queryForObject(
+                "select count(*) from subfamilia_codigo_reservado", Integer.class);
+        jdbc.update("update familia set nombre = 'NOMBRE TEMPORAL' where family_id = 'DEMO-F01'");
+        jdbc.update("update subfamilia set nombre = 'NOMBRE TEMPORAL' "
+                + "where subfamily_id = 'DEMO-SF01'");
+
+        seeder.seed();
+        seeder.seed();
+
+        assertThat(jdbc.queryForObject(
+                "select nombre from familia where family_id = 'DEMO-F01'", String.class))
+                .isEqualTo("BEBIDAS");
+        assertThat(jdbc.queryForObject(
+                "select nombre from subfamilia where subfamily_id = 'DEMO-SF01'", String.class))
+                .isEqualTo("DESTACADOS");
+        assertThat(jdbc.queryForObject(
+                "select count(*) from familia_codigo_reservado", Integer.class))
+                .isEqualTo(familyClaims);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from subfamilia_codigo_reservado", Integer.class))
+                .isEqualTo(subfamilyClaims);
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from familia
+                where tienda_id = (select id from tienda where codigo_tienda = '001')
+                  and predeterminada and family_code = '000'
+                """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from familia f
+                left join familia_codigo_reservado r
+                  on r.tienda_id = f.tienda_id and r.family_code = f.family_code
+                where r.tienda_id is null
+                """, Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from subfamilia sf
+                left join subfamilia_codigo_reservado r
+                  on r.familia_id = sf.familia_id
+                 and r.subfamily_suffix = sf.subfamily_suffix
+                where r.familia_id is null
+                """, Integer.class)).isZero();
+    }
+
+    @Test
     void usesTheConfiguredBaseDateForRecentDemoPeriods() {
         assertThat(seeder.seedDate()).isEqualTo(LocalDate.of(2026, 8, 2));
         assertThat(jdbc.queryForObject("""

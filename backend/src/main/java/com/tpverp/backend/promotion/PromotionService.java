@@ -91,7 +91,9 @@ public class PromotionService {
         }
         var scope = request.scope() == null ? PromotionScope.SALE : request.scope();
         var requestedTargets = validatedTargets(scope, request.targets());
-        catalog.validateTargets(organization.currentStore().getId(), targetReferences(requestedTargets));
+        UUID storeId = organization.currentStore().getId();
+        catalog.lockStoreForCatalogMutation(storeId);
+        catalog.validateTargets(storeId, targetReferences(requestedTargets));
         var promotion = Promotion.draft(companyId(), request.name(), request.type(), request.startDate());
         applyRequest(promotion, request);
         var saved = promotions.save(promotion);
@@ -106,9 +108,16 @@ public class PromotionService {
 
     @Transactional
     public PromotionView duplicate(UUID id) {
+        UUID storeId = organization.currentStore().getId();
+        catalog.lockStoreForCatalogMutation(storeId);
         var source = promotion(id);
+        var sourceTargets = targets.findByPromocionId(source.id());
+        catalog.validateTargets(storeId, sourceTargets.stream()
+                .map(target -> new PromotionCatalogGateway.TargetReference(
+                        target.type(), target.targetId()))
+                .toList());
         var duplicate = promotions.save(source.duplicateDraft());
-        var duplicatedTargets = targets.findByPromocionId(source.id()).stream()
+        var duplicatedTargets = sourceTargets.stream()
                 .map(target -> new PromotionTarget(duplicate.id(), target.type(), target.targetId()))
                 .toList();
         if (!duplicatedTargets.isEmpty()) {

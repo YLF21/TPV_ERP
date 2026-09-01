@@ -13,6 +13,7 @@ import com.tpverp.backend.catalog.StoreTax;
 import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.catalog.SubfamilyRepository;
 import com.tpverp.backend.document.DocumentLineCommand;
+import com.tpverp.backend.organization.StoreRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +30,7 @@ class PromotionCatalogGatewayTest {
     @Mock StoreTaxRepository taxes;
     @Mock FamilyRepository families;
     @Mock SubfamilyRepository subfamilies;
+    @Mock StoreRepository stores;
     @Mock Product product;
     @Mock StoreTax tax;
 
@@ -111,6 +113,6 @@ class PromotionCatalogGatewayTest {
     }
 
     private PromotionCatalogGateway gateway() {
-        return new PromotionCatalogGateway(products, taxes, families, subfamilies);
+        return new PromotionCatalogGateway(products, taxes, families, subfamilies, stores);
     }
 }

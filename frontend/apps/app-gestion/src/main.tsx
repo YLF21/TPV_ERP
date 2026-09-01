@@ -1,5 +1,6 @@
 import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { useMemo } from "react";
 import {
   AppFrame,
   LoginScreen,
@@ -20,7 +21,7 @@ import {
 } from "@tpverp/app-common";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
-import { canManageTaxes, visibleGestionModules } from "./gestionAccess";
+import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
@@ -33,6 +34,7 @@ import { MemberCategoriesScreen } from "./MemberCategoriesScreen";
 import { InternalEanSettingsScreen } from "./InternalEanSettingsScreen";
 import { SecurityAdministrationScreen } from "./SecurityAdministrationScreen";
 import { TerminalManagementScreen } from "./TerminalManagementScreen";
+import { FamiliesScreen } from "./FamiliesScreen";
 
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({
@@ -112,7 +114,7 @@ const LicenseSaasManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -203,6 +205,7 @@ function App() {
         onOpenDocumentPrintSettings={() => setModule("documentPrintSettings")}
         onOpenVoucherSettings={() => setModule("voucherSettings")}
         onOpenLicenses={() => setModule("licenses")}
+        onOpenFamilies={() => setModule("families")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
@@ -242,6 +245,7 @@ function GestionScreen({
   onOpenDocumentPrintSettings,
   onOpenVoucherSettings,
   onOpenLicenses,
+  onOpenFamilies,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -273,11 +277,12 @@ function GestionScreen({
   onOpenDocumentPrintSettings: () => void;
   onOpenVoucherSettings: () => void;
   onOpenLicenses: () => void;
+  onOpenFamilies: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
 }) {
-  const t = createTranslator(locale);
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const modules = visibleGestionModules(session);
   const verifactuAllowed = modules.includes("gestion.verifactu");
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
@@ -291,10 +296,12 @@ function GestionScreen({
     || (module === "licenses" && !canReadLicenses)
     || (module === "documentTemplates" && !canManageDocumentTemplates)
     || (module === "vouchers" && !modules.includes("gestion.sales"))
+    || (module === "families" && !canManageFamilies(session))
     ? "dashboard"
     : module;
   const canManageProducts = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_PRODUCTO");
+  const canManageFamiliesForSession = canManageFamilies(session);
   const reports = visibleSalesReports(session).all;
   const stockViews = visibleStockViewsForSession(session);
   const warehouseSections = visibleWarehouseSectionsForSession(session);
@@ -459,7 +466,7 @@ function GestionScreen({
     ...(securityChildren.length > 0
       ? [{ key: "security", label: t("gestion.security.navigation"), children: securityChildren }]
       : []),
-    ...(canConfigurePaymentMethods || canManageTaxesForSession || canManageDocumentTemplates || canReadLicenses
+    ...(canConfigurePaymentMethods || canManageTaxesForSession || canManageDocumentTemplates || canReadLicenses || canManageFamiliesForSession
       ? [{
           key: "configuration",
           label: t("gestion.configuration.navigation"),
@@ -498,7 +505,11 @@ function GestionScreen({
           }, {
             key: "internalEan",
             label: t("gestion.internalEan.navigation"),
-             onOpen: onOpenInternalEan
+            onOpen: onOpenInternalEan
+           }] : []), ...(canManageFamiliesForSession ? [{
+             key: "families",
+             label: t("gestion.families.navigation"),
+             onOpen: onOpenFamilies
            }] : [])]
         }]
       : [])
@@ -620,6 +631,8 @@ function GestionScreen({
     content = <VoucherSettingsScreen session={session} storeName={terminalContext.storeName} t={t} />;
   } else if (effectiveModule === "licenses" && canReadLicenses) {
     content = <LicenseSaasManagementScreen locale={locale} session={session} storeName={terminalContext.storeName} t={t} />;
+  } else if (effectiveModule === "families" && canManageFamiliesForSession) {
+    content = <FamiliesScreen session={session} t={t} />;
   } else {
     content = (
       <GestionDashboard

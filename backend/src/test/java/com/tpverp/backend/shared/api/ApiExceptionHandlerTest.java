@@ -1,6 +1,7 @@
 package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
+import com.tpverp.backend.catalog.ProductClassificationVersionConflictException;
 import com.tpverp.backend.document.FiscalQrUnavailableException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.PaymentSessionClosedException;
@@ -49,6 +50,26 @@ class ApiExceptionHandlerTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void exposesAllProductVersionConflictsWithReloadActionInEveryLocale() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US");
+        var first = UUID.randomUUID();
+        var second = UUID.randomUUID();
+        var problem = handler.productClassificationVersionConflict(
+                new ProductClassificationVersionConflictException(List.of(
+                        new ProductClassificationVersionConflictException.Conflict(first, 2, 3),
+                        new ProductClassificationVersionConflictException.Conflict(second, 1, 4))),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("PRODUCT_VERSION_CONFLICT", problem.getProperties().get("code"));
+        assertEquals("RELOAD_PRODUCTS", problem.getProperties().get("action"));
+        assertEquals(true, problem.getProperties().get("retryable"));
+        assertEquals(2, ((List<?>) problem.getProperties().get("conflicts")).size());
+        assertEquals("Some products changed. Reload the products and try again.", problem.getDetail());
     }
 
     @Test

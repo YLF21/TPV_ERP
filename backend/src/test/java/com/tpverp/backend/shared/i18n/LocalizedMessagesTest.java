@@ -24,6 +24,16 @@ class LocalizedMessagesTest {
     }
 
     @Test
+    void translatesProductVersionConflictInEveryLanguage() {
+        assertEquals("Algunos productos han cambiado. Recarga la lista e inténtalo de nuevo.",
+                messages.system(SystemErrorCode.PRODUCT_VERSION_CONFLICT, SupportedLanguage.ES));
+        assertEquals("Some products changed. Reload the products and try again.",
+                messages.system(SystemErrorCode.PRODUCT_VERSION_CONFLICT, SupportedLanguage.EN));
+        assertEquals("部分商品已发生变化。请重新加载商品后重试。",
+                messages.system(SystemErrorCode.PRODUCT_VERSION_CONFLICT, SupportedLanguage.ZH));
+    }
+
+    @Test
     void buildsRequiredFieldMessagesFromReusableParts() {
         assertEquals("Nombre de producto es obligatorio",
                 messages.required(FieldKey.PRODUCT_NAME, SupportedLanguage.ES));

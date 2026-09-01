@@ -7,7 +7,11 @@ import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
@@ -38,21 +42,29 @@ class ProductBulkXlsxServiceTest {
         ProductBulkEditContent.Row row = row(productId, supplier);
 
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        service.export(new ProductBulkXlsxContent(List.of(row)), output);
+        service.export(new ProductBulkXlsxContent(
+                List.of(row),
+                ProductBulkXlsxContent.HeaderLanguage.ES,
+                Map.of(row.product().familyId(), "010"),
+                Map.of(row.product().subfamilyId(), "010002")), output);
         byte[] bytes = output.toByteArray();
 
         assertThat(bytes).startsWith((byte) 'P', (byte) 'K');
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             assertThat(workbook.getNumberOfSheets()).isEqualTo(2);
             var products = workbook.getSheet("Productos");
-            assertThat(products.getRow(0).getLastCellNum()).isEqualTo((short) 36);
+            assertThat(products.getRow(0).getLastCellNum()).isEqualTo((short) 38);
             assertThat(products.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Codigo");
             assertThat(products.getRow(0).getCell(5).getStringCellValue()).isEqualTo("Precio compra");
             assertThat(products.getRow(0).getCell(11).getStringCellValue()).isEqualTo("Usar precio");
             assertThat(products.getRow(1).getCell(7).getCellType()).isEqualTo(CellType.NUMERIC);
             assertThat(products.getRow(1).getCell(7).getNumericCellValue()).isEqualTo(12.50);
-            assertThat(products.getRow(1).getCell(29).getCellType()).isEqualTo(CellType.BOOLEAN);
-            assertThat(products.getRow(1).getCell(29).getBooleanCellValue()).isTrue();
+            assertThat(products.getRow(0).getCell(23).getStringCellValue()).isEqualTo("Codigo familia");
+            assertThat(products.getRow(1).getCell(23).getStringCellValue()).isEqualTo("010");
+            assertThat(products.getRow(0).getCell(26).getStringCellValue()).isEqualTo("Codigo subfamilia");
+            assertThat(products.getRow(1).getCell(26).getStringCellValue()).isEqualTo("010002");
+            assertThat(products.getRow(1).getCell(31).getCellType()).isEqualTo(CellType.BOOLEAN);
+            assertThat(products.getRow(1).getCell(31).getBooleanCellValue()).isTrue();
             assertThat(DateUtil.isCellDateFormatted(products.getRow(1).getCell(13))).isTrue();
 
             var suppliers = workbook.getSheet("Proveedores");
@@ -84,6 +96,30 @@ class ProductBulkXlsxServiceTest {
             assertThat(products.getRow(0).getCell(11).getStringCellValue())
                     .isEqualTo("Price use");
             assertThat(products.getColumnWidth(0)).isEqualTo(16 * 256);
+        }
+    }
+
+    @Test
+    void resolvesOmittedHierarchyMapsThroughStoreAuthoritativeCatalog() throws Exception {
+        UUID productId = UUID.randomUUID();
+        ProductBulkEditContent.Row row = row(productId, null);
+        UUID familyId = UUID.fromString(row.product().familyId());
+        UUID subfamilyId = UUID.fromString(row.product().subfamilyId());
+        CatalogService catalog = mock(CatalogService.class);
+        when(catalog.resolveBulkExportCodes(List.of(row), Map.of(), Map.of()))
+                .thenReturn(new CatalogService.BulkExportCodes(
+                        Map.of(familyId.toString(), "010"),
+                        Map.of(subfamilyId.toString(), "010002")));
+        ProductBulkXlsxService exporting = new ProductBulkXlsxService(catalog);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        exporting.export(new ProductBulkXlsxContent(List.of(row)), output);
+
+        verify(catalog).resolveBulkExportCodes(List.of(row), Map.of(), Map.of());
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(output.toByteArray()))) {
+            var products = workbook.getSheet("Productos");
+            assertThat(products.getRow(1).getCell(23).getStringCellValue()).isEqualTo("010");
+            assertThat(products.getRow(1).getCell(26).getStringCellValue()).isEqualTo("010002");
         }
     }
 
@@ -130,7 +166,7 @@ class ProductBulkXlsxServiceTest {
                 "P-1",
                 product,
                 ProductBulkEditContent.ProductData.empty(),
-                List.of(supplier),
+                supplier == null ? List.of() : List.of(supplier),
                 null);
     }
 }

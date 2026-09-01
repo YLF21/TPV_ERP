@@ -16,7 +16,7 @@ public class CommercialBootstrapService {
 
     @Transactional
     public void initialize() {
-        jdbc.queryForList("select id, empresa_id from tienda").forEach(row -> {
+        jdbc.queryForList("select id, empresa_id from tienda order by id").forEach(row -> {
             initializeStore(row);
             ensureOpenPriceProduct((UUID) row.get("id"));
         });
@@ -76,14 +76,22 @@ public class CommercialBootstrapService {
     private void initializeStore(Map<String, Object> row) {
         UUID storeId = (UUID) row.get("id");
         UUID companyId = (UUID) row.get("empresa_id");
+        jdbc.queryForObject(
+                "select id from tienda where id = ? for update",
+                UUID.class,
+                storeId);
         jdbc.update(
                 "insert into almacen (id, tienda_id, nombre, predeterminado, activo) "
                         + "values (?, ?, 'GENERAL', true, true) on conflict do nothing",
                 storeId,
                 storeId);
         jdbc.update(
-                "insert into familia (id, tienda_id, family_id, nombre, predeterminada) "
-                        + "values (?, ?, 'GENERAL', 'GENERAL', true) on conflict do nothing",
+                "insert into familia (id, tienda_id, family_id, family_code, nombre, predeterminada) "
+                        + "select ?, ?, 'GENERAL', '000', 'GENERAL', true "
+                        + "where not exists ("
+                        + "select 1 from familia "
+                        + "where tienda_id = ? and (predeterminada or family_code = '000'))",
+                storeId,
                 storeId,
                 storeId);
         jdbc.update(

@@ -3,6 +3,7 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
+import com.tpverp.backend.persistence.PostgreSqlTestDatabaseCleaner;
 
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -82,7 +83,7 @@ class FiscalChainPostgreSqlTest {
 
     @BeforeEach
     void clearDatabase() {
-        jdbc.execute("truncate table instalacion, empresa cascade");
+        PostgreSqlTestDatabaseCleaner.truncateInstallationAndCompanyGraphs(jdbc, SCHEMA);
     }
 
     @AfterAll

@@ -9,6 +9,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.FillPatternType;
@@ -22,6 +23,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class ProductBulkXlsxService {
 
+    private final CatalogService catalog;
+
+    public ProductBulkXlsxService() {
+        this.catalog = null;
+    }
+
+    @Autowired
+    public ProductBulkXlsxService(CatalogService catalog) {
+        this.catalog = catalog;
+    }
+
     private static final int ROW_WINDOW = 100;
     private static final String[] PRODUCT_HEADERS_ES = {
         "Codigo", "Codigo de barra", "Codigo barra 2", "Nombre", "Descripcion",
@@ -29,7 +41,8 @@ public class ProductBulkXlsxService {
         "Precio mayor", "Precio oferta", "Usar precio", "Descuento oferta",
         "Oferta desde", "Oferta hasta", "Referencia proveedor", "Comentarios",
         "Producto ID", "Version", "Imagen ID", "Almacen ID", "Tipo producto",
-        "Tipo descuento", "Familia ID", "Familia", "Subfamilia ID", "Subfamilia",
+        "Tipo descuento", "Codigo familia", "Familia ID", "Familia",
+        "Codigo subfamilia", "Subfamilia ID", "Subfamilia",
         "Impuesto ID", "Impuesto", "Impuestos incluidos", "Oferta activa",
         "Almacen", "Cantidad", "Cantidad total", "Fila ID", "Seleccionado"
     };
@@ -39,7 +52,8 @@ public class ProductBulkXlsxService {
         "Wholesale price", "Offer price", "Price use", "Offer discount",
         "Offer from", "Offer until", "Supplier reference", "Comments",
         "Product ID", "Version", "Image ID", "Warehouse ID", "Product type",
-        "Discount type", "Family ID", "Family", "Subfamily ID", "Subfamily",
+        "Discount type", "Family code", "Family ID", "Family",
+        "Subfamily code", "Subfamily ID", "Subfamily",
         "Tax ID", "Tax", "Taxes included", "Offer active", "Warehouse",
         "Quantity", "Total quantity", "Row ID", "Selected"
     };
@@ -57,6 +71,14 @@ public class ProductBulkXlsxService {
     };
 
     public void export(ProductBulkXlsxContent request, OutputStream output) {
+        java.util.Map<String, String> familyCodes = request.familyCodes();
+        java.util.Map<String, String> subfamilyCodes = request.subfamilyCodes();
+        if (catalog != null) {
+            CatalogService.BulkExportCodes resolved = catalog.resolveBulkExportCodes(
+                    request.content(), familyCodes, subfamilyCodes);
+            familyCodes = resolved.familyCodes();
+            subfamilyCodes = resolved.subfamilyCodes();
+        }
         SXSSFWorkbook workbook = new SXSSFWorkbook(ROW_WINDOW);
         workbook.setCompressTempFiles(true);
         try (workbook) {
@@ -67,7 +89,7 @@ public class ProductBulkXlsxService {
             writeProducts(
                     workbook.createSheet(english ? "Products" : "Productos"),
                     request.content(), english ? PRODUCT_HEADERS_EN : PRODUCT_HEADERS_ES,
-                    headerStyle, dateStyle);
+                    familyCodes, subfamilyCodes, headerStyle, dateStyle);
             writeSuppliers(
                     workbook.createSheet(english ? "Suppliers" : "Proveedores"),
                     request.content(), english ? SUPPLIER_HEADERS_EN : SUPPLIER_HEADERS_ES,
@@ -85,6 +107,8 @@ public class ProductBulkXlsxService {
             Sheet sheet,
             List<ProductBulkEditContent.Row> content,
             String[] headers,
+            java.util.Map<String, String> familyCodes,
+            java.util.Map<String, String> subfamilyCodes,
             CellStyle headerStyle,
             CellStyle dateStyle) {
         writeHeader(sheet, headers, headerStyle);
@@ -119,8 +143,10 @@ public class ProductBulkXlsxService {
             text(row, column++, product.warehouseId());
             text(row, column++, product.productType());
             text(row, column++, product.backendDiscountType());
+            text(row, column++, codeFor(familyCodes, product.familyId()));
             text(row, column++, product.familyId());
             text(row, column++, product.familyName());
+            text(row, column++, codeFor(subfamilyCodes, product.subfamilyId()));
             text(row, column++, product.subfamilyId());
             text(row, column++, product.subfamilyName());
             text(row, column++, product.taxId());
@@ -134,6 +160,10 @@ public class ProductBulkXlsxService {
             bool(row, column, value.selected());
         }
         finish(sheet, headers.length, rowNumber);
+    }
+
+    private static String codeFor(java.util.Map<String, String> values, String id) {
+        return id == null ? null : values.get(id.trim());
     }
 
     private static void writeSuppliers(

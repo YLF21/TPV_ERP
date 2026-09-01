@@ -11,7 +11,11 @@ import static org.mockito.Mockito.never;
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.promotion.PromotionTargetReference;
+import com.tpverp.backend.promotion.PromotionTargetRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -19,6 +23,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +44,10 @@ class CatalogServiceTest {
     @Mock private ProductPriceHistoryRepository priceHistoryRepository;
     @Mock private StockLevelRepository stockRepository;
     @Mock private StockMovementRepository movementRepository;
+    @Mock private PromotionTargetRepository promotionTargetRepository;
+    @Mock private ProductPriceRuleRepository productPriceRuleRepository;
+    @Mock private StoreRepository storeRepository;
+    @Mock private Company company;
     @Mock private Store store;
 
     private CatalogService service;
@@ -77,6 +86,248 @@ class CatalogServiceTest {
     }
 
     @Test
+    void validatesBulkExportCodesInBulkAndRejectsAFalseOrForeignCode() {
+        Family family = Family.general(storeId);
+        when(familyRepository.findByStoreIdAndIdIn(storeId, List.of(family.getId())))
+                .thenReturn(List.of(family));
+
+        service.validateBulkExportCodes(
+                Map.of(family.getId().toString(), "000"), Map.of());
+        assertThatThrownBy(() -> service.validateBulkExportCodes(
+                Map.of(family.getId().toString(), "999"), Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("familyCodes");
+        verify(familyRepository, org.mockito.Mockito.times(2))
+                .findByStoreIdAndIdIn(storeId, List.of(family.getId()));
+    }
+
+    @Test
+    void nextFamilyCodeSkipsActiveAndReservedCodes() {
+        Family general = Family.general(storeId);
+        Family used = new Family(storeId, "Bebidas", false);
+        used.assignCode("001");
+        when(familyRepository.findByStoreIdOrderByFamilyCodeAscIdAsc(storeId))
+                .thenReturn(List.of(general, used));
+        when(familyRepository.findReservedFamilyCodes(storeId)).thenReturn(List.of("002"));
+
+        assertThat(service.nextFamilyCode()).isEqualTo("003");
+    }
+
+    @Test
+    void createsManualFamilyCodeAndUsesItAsTheNewLegacyAlias() {
+        Family general = Family.general(storeId);
+        when(familyRepository.existsByStoreIdAndNombreIgnoreCase(storeId, "BEBIDAS")).thenReturn(false);
+        when(familyRepository.findByStoreIdOrderByFamilyCodeAscIdAsc(storeId))
+                .thenReturn(List.of(general));
+        when(familyRepository.findReservedFamilyCodes(storeId)).thenReturn(List.of());
+        when(familyRepository.save(any(Family.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Family created = service.createFamily(" bebidas ", "007");
+
+        assertThat(created.getFamilyCode()).isEqualTo("007");
+        assertThat(created.getFamilyId()).isEqualTo("007");
+    }
+
+    @Test
+    void resolvesStoreScopedCompositeCodeIntoNestedFamilyAndSubfamilyReferences() {
+        Family family = new Family(storeId, "Bebidas", false);
+        family.assignCode("007");
+        Subfamily child = new Subfamily(family.getId(), "Cafe");
+        child.assignCode("007", "012");
+        when(subfamilyRepository.findByStoreIdAndSubfamilyCode(storeId, "007012"))
+                .thenReturn(Optional.of(child));
+        when(familyRepository.findById(family.getId())).thenReturn(Optional.of(family));
+
+        var resolved = service.resolve(" 007012 ");
+
+        assertThat(resolved.family().familyCode()).isEqualTo("007");
+        assertThat(resolved.subfamily().subfamilyCode()).isEqualTo("007012");
+        assertThat(resolved.subfamily().subfamilySuffix()).isEqualTo("012");
+    }
+
+    @Test
+    void operationalResolverRejectsLegacyAliasesAndInternalUuids() {
+        assertThatThrownBy(() -> service.resolve("LEGACY"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("3 o 6 digitos");
+        assertThatThrownBy(() -> service.resolve(UUID.randomUUID().toString()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("3 o 6 digitos");
+    }
+
+    @Test
+    void renamePreservesLegacyAliases() {
+        Family general = Family.general(storeId);
+        Family first = new Family(storeId, "Primera", false);
+        first.assignCode("007");
+        Family second = new Family(storeId, "Segunda", false);
+        second.assignCode("008");
+        when(familyRepository.findById(first.getId())).thenReturn(Optional.of(first));
+        service.renameFamily(first.getId(), "Renombrada");
+        assertThat(first.getFamilyId()).isEqualTo("007");
+        assertThat(first.getFamilyCode()).isEqualTo("007");
+
+    }
+
+    @Test
+    void requiresExplicitProductConfirmationBeforeFamilyCleanup() {
+        Family general = Family.general(storeId);
+        Family family = new Family(storeId, "Bebidas", false);
+        family.assignCode("007");
+        when(familyRepository.findById(family.getId())).thenReturn(Optional.of(family));
+        when(subfamilyRepository.findByFamilyIdOrderBySubfamilySuffixAscSubfamilyCodeAscIdAsc(family.getId()))
+                .thenReturn(List.of());
+        when(productRepository.countByFamilyId(family.getId())).thenReturn(3L, 3L, 0L);
+
+        assertThatThrownBy(() -> service.deleteFamily(family.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("confirma");
+        verify(familyRepository, never()).delete(any(Family.class));
+
+        when(familyRepository.findByStoreIdAndPredeterminadaTrue(storeId))
+                .thenReturn(Optional.of(general));
+        service.deleteFamily(family.getId(), true);
+        verify(productRepository).reassignFamilyToGeneral(family.getId(), general.getId());
+        verify(familyRepository).delete(family);
+    }
+
+    @Test
+    void deleteImpactDeduplicatesOnePromotionAndRuleAcrossFamilyDescendants() {
+        CatalogService serviceWithDependencies = new CatalogService(
+                organization, taxRepository, warehouseRepository, familyRepository,
+                subfamilyRepository, productRepository, identifierRepository,
+                priceHistoryRepository, stockRepository, movementRepository,
+                promotionTargetRepository, productPriceRuleRepository, storeRepository,
+                Clock.systemUTC());
+        Family family = new Family(storeId, "Bebidas", false);
+        family.assignCode("007");
+        Subfamily child = new Subfamily(family.getId(), "Cafe");
+        child.assignCode("007", "001");
+        UUID promotionId = UUID.randomUUID();
+        UUID ruleId = UUID.randomUUID();
+        var promotionFamily = org.mockito.Mockito.mock(PromotionTargetReference.class);
+        var promotionChild = org.mockito.Mockito.mock(PromotionTargetReference.class);
+        when(promotionFamily.getPromotionId()).thenReturn(promotionId);
+        when(promotionFamily.getPromotionName()).thenReturn("Oferta");
+        when(promotionFamily.getType()).thenReturn(com.tpverp.backend.promotion.PromotionTargetType.FAMILY);
+        when(promotionFamily.getTargetId()).thenReturn(family.getId());
+        when(promotionChild.getPromotionId()).thenReturn(promotionId);
+        when(promotionChild.getPromotionName()).thenReturn("Oferta");
+        when(promotionChild.getType()).thenReturn(com.tpverp.backend.promotion.PromotionTargetType.SUBFAMILY);
+        when(promotionChild.getTargetId()).thenReturn(child.getId());
+        var rule1 = org.mockito.Mockito.mock(ProductPriceRuleReference.class);
+        var rule2 = org.mockito.Mockito.mock(ProductPriceRuleReference.class);
+        when(rule1.getRuleId()).thenReturn(ruleId);
+        when(rule1.getRuleName()).thenReturn("Regla");
+        when(rule2.getRuleId()).thenReturn(ruleId);
+        when(rule2.getRuleName()).thenReturn("Regla");
+        when(familyRepository.findById(family.getId())).thenReturn(Optional.of(family));
+        when(subfamilyRepository.findByFamilyIdOrderBySubfamilySuffixAscSubfamilyCodeAscIdAsc(family.getId()))
+                .thenReturn(List.of(child));
+        when(productRepository.countByFamilyId(family.getId())).thenReturn(0L);
+        when(promotionTargetRepository.findFamilyOrSubfamilyReferences(any(), any()))
+                .thenReturn(List.of(promotionFamily, promotionChild));
+        when(productPriceRuleRepository.findFamilyOrSubfamilyReferences(any(), any()))
+                .thenReturn(List.of(rule1, rule2));
+        when(organization.currentCompany()).thenReturn(company);
+        when(company.getId()).thenReturn(UUID.randomUUID());
+
+        var impact = serviceWithDependencies.familyDeleteImpact(family.getId());
+
+        assertThat(impact.promotionCount()).isEqualTo(1);
+        assertThat(impact.priceRuleCount()).isEqualTo(1);
+        assertThat(impact.dependencies()).hasSize(2);
+        assertThat(impact.isBlocked()).isTrue();
+    }
+
+    @Test
+    void locksAndRevalidatesDependenciesImmediatelyBeforeDeletingAFamily() {
+        CatalogService serviceWithDependencies = new CatalogService(
+                organization, taxRepository, warehouseRepository, familyRepository,
+                subfamilyRepository, productRepository, identifierRepository,
+                priceHistoryRepository, stockRepository, movementRepository,
+                promotionTargetRepository, productPriceRuleRepository, storeRepository,
+                Clock.systemUTC());
+        UUID companyId = UUID.randomUUID();
+        Family general = Family.general(storeId);
+        Family family = new Family(storeId, "Bebidas", false);
+        family.assignCode("007");
+        var lateReference = org.mockito.Mockito.mock(PromotionTargetReference.class);
+        when(lateReference.getPromotionId()).thenReturn(UUID.randomUUID());
+        when(lateReference.getPromotionName()).thenReturn("Oferta concurrente");
+        when(lateReference.getType())
+                .thenReturn(com.tpverp.backend.promotion.PromotionTargetType.FAMILY);
+        when(lateReference.getTargetId()).thenReturn(family.getId());
+        when(organization.currentCompany()).thenReturn(company);
+        when(company.getId()).thenReturn(companyId);
+        when(storeRepository.findByIdForUpdate(storeId)).thenReturn(Optional.of(store));
+        when(familyRepository.findByIdForUpdate(family.getId())).thenReturn(Optional.of(family));
+        when(familyRepository.findByStoreIdAndPredeterminadaTrue(storeId))
+                .thenReturn(Optional.of(general));
+        when(subfamilyRepository.findByFamilyIdOrderBySubfamilySuffixAscSubfamilyCodeAscIdAsc(family.getId()))
+                .thenReturn(List.of());
+        when(productRepository.countByFamilyId(family.getId())).thenReturn(0L);
+        when(promotionTargetRepository.findFamilyOrSubfamilyReferences(companyId, List.of(family.getId())))
+                .thenReturn(List.of(), List.of(lateReference));
+        when(productPriceRuleRepository.findFamilyOrSubfamilyReferences(any(), any()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> serviceWithDependencies.deleteFamily(family.getId(), true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("aparecieron referencias");
+
+        verify(storeRepository).findByIdForUpdate(storeId);
+        verify(productRepository).reassignFamilyToGeneral(family.getId(), general.getId());
+        verify(familyRepository, never()).delete(family);
+    }
+
+    @Test
+    void refusesFamilyDeleteWhenProductsRemainAfterBulkReassignment() {
+        CatalogService serviceWithStoreMutex = new CatalogService(
+                organization, taxRepository, warehouseRepository, familyRepository,
+                subfamilyRepository, productRepository, identifierRepository,
+                priceHistoryRepository, stockRepository, movementRepository,
+                null, null, storeRepository, Clock.systemUTC());
+        Family general = Family.general(storeId);
+        Family family = new Family(storeId, "Bebidas", false);
+        family.assignCode("007");
+        when(storeRepository.findByIdForUpdate(storeId)).thenReturn(Optional.of(store));
+        when(familyRepository.findByIdForUpdate(family.getId())).thenReturn(Optional.of(family));
+        when(familyRepository.findByStoreIdAndPredeterminadaTrue(storeId))
+                .thenReturn(Optional.of(general));
+        when(subfamilyRepository.findByFamilyIdOrderBySubfamilySuffixAscSubfamilyCodeAscIdAsc(
+                family.getId())).thenReturn(List.of());
+        when(productRepository.countByFamilyId(family.getId())).thenReturn(1L, 1L);
+
+        assertThatThrownBy(() -> serviceWithStoreMutex.deleteFamily(family.getId(), true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("aparecieron referencias");
+
+        verify(productRepository).reassignFamilyToGeneral(family.getId(), general.getId());
+        verify(familyRepository, never()).delete(family);
+    }
+
+    @Test
+    void rejectsPriceRuleReferencesOutsideTheAuthenticatedStore() {
+        UUID missingFamilyId = UUID.randomUUID();
+        ProductPriceRuleForm.Definition form = new ProductPriceRuleForm.Definition(
+                ProductPriceRuleForm.Scope.FAMILY,
+                List.of(new ProductPriceRuleForm.ReferenceCondition(
+                        ProductPriceRuleForm.ReferenceField.FAMILY,
+                        ProductPriceRuleForm.SetComparator.IN,
+                        List.of(missingFamilyId))),
+                List.of(new ProductPriceRuleForm.FixedPriceAction(
+                        ProductPriceRuleForm.PriceField.SALE_PRICE,
+                        new BigDecimal("2.50"))));
+        when(familyRepository.findByStoreIdAndIdIn(storeId, java.util.Set.of(missingFamilyId)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.validatePriceRuleCatalogReferences(List.of(form)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tienda actual");
+    }
+
+    @Test
     void onlyReturnsActiveTaxesForProductSelection() {
         var active = new StoreTax(storeId, new BigDecimal("7"), false);
         var inactive = new StoreTax(storeId, new BigDecimal("21"), false);
@@ -91,7 +342,7 @@ class CatalogServiceTest {
         var family = Family.general(storeId);
         var subfamily = new Subfamily(family.getId(), "Cafe");
         when(familyRepository.findById(family.getId())).thenReturn(Optional.of(family));
-        when(subfamilyRepository.findByFamilyIdOrderByNombre(family.getId())).thenReturn(List.of(subfamily));
+        when(subfamilyRepository.findByFamilyIdOrderBySubfamilySuffixAscSubfamilyCodeAscIdAsc(family.getId())).thenReturn(List.of(subfamily));
 
         assertThat(service.subfamilies(family.getId())).containsExactly(subfamily);
     }

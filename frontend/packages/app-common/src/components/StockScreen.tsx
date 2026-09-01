@@ -16,6 +16,7 @@ import {
 import type { Icon } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
+import { ProductThumbnail as AuthenticatedProductThumbnail } from "./ProductThumbnail";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
@@ -37,7 +38,9 @@ import {
   mergeStockBulkPurchaseDocumentProducts,
   mergeStockBulkSupplierProducts,
   requestStockBulkXlsx,
+  resolveStockBulkImportedClassification,
   stageStockBulkPrincipalSupplier,
+  stockBulkClassificationCodesForRows,
   stockBulkDisplayedSupplier,
   stockBulkEffectiveProduct,
   stockOfferPriceFromDiscount,
@@ -251,12 +254,19 @@ type WarehouseView = {
 
 type FamilyView = {
   id: string;
+  familyId?: string | null;
+  familyCode?: string | null;
+  legacyFamilyId?: string | null;
   name?: string | null;
 };
 
 type SubfamilyView = {
   id: string;
   familyId?: string | null;
+  subfamilyId?: string | null;
+  subfamilySuffix?: string | null;
+  subfamilyCode?: string | null;
+  legacySubfamilyId?: string | null;
   name?: string | null;
 };
 
@@ -700,46 +710,16 @@ function ProductThumbnail({ product, token, className = "" }: {
   token: string;
   className?: string;
 }) {
-  const [source, setSource] = useState("");
-
-  useEffect(() => {
-    if (!product?.imageId || !token) {
-      setSource("");
-      return;
-    }
-    let active = true;
-    let objectUrl = "";
-    void fetch(`${apiBaseUrl}/products/${encodeURIComponent(product.productId)}/image?thumbnail=true`, {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then((response) => {
-      if (!response.ok) {
-        throw new Error("product_image_unavailable");
-      }
-      return response.blob();
-    }).then((blob) => {
-      if (!active) {
-        return;
-      }
-      objectUrl = URL.createObjectURL(blob);
-      setSource(objectUrl);
-    }).catch(() => {
-      if (active) {
-        setSource("");
-      }
-    });
-    return () => {
-      active = false;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [product?.imageId, product?.productId, token]);
-
-  const fallback = product?.name?.slice(0, 1).toLocaleUpperCase() || "-";
+  if (!product) return null;
   return (
-    <div className={`bulk-image ${className}`.trim()}>
-      {source ? <img src={source} alt={product?.name ?? ""} /> : <span>{fallback}</span>}
-    </div>
+    <AuthenticatedProductThumbnail
+      productId={product.productId}
+      imageId={product.imageId}
+      name={product.name}
+      token={token}
+      className={`bulk-image ${className}`.trim()}
+      alt={product.name ?? ""}
+    />
   );
 }
 
@@ -3845,10 +3825,13 @@ export function StockScreen({
     if (!session.accessToken || bulkBusy) return;
     setBulkBusy(true);
     try {
+      const content = currentBulkContent();
+      const classificationCodes = stockBulkClassificationCodesForRows(content, stockCatalog);
       const download = await requestStockBulkXlsx(
         apiBaseUrl,
         session.accessToken,
-        currentBulkContent()
+        content,
+        classificationCodes
       );
       const url = URL.createObjectURL(download.blob);
       const anchor = document.createElement("a");
@@ -3868,6 +3851,10 @@ export function StockScreen({
 
   function importSharedBulkRows(rows: SharedExcelImportAcceptedRow[], _metadata: SharedExcelImportMetadata) {
     const productsById = new Map(bulkProducts.map((product) => [product.productId, product]));
+    const referenceError = (key: string, row: number, value: unknown) => t(key)
+      .replace("{row}", String(row))
+      .replace("{value}", String(value ?? ""));
+    const importErrors: string[] = [];
     const imported = rows.flatMap((row, index) => {
       const product = row.product ? productsById.get(row.product.id) : undefined;
       if (!product) return [];
@@ -3879,6 +3866,26 @@ export function StockScreen({
           (draft as Record<string, unknown>)[field] = value;
         }
       });
+
+      const classification = resolveStockBulkImportedClassification({
+        currentFamilyId: product.familyId,
+        familyColumnMapped: Boolean(row.updateFields.familyId),
+        familyReference: row.draft.familyId,
+        subfamilyColumnMapped: Boolean(row.updateFields.subfamilyId),
+        subfamilyReference: row.draft.subfamilyId,
+        catalog: stockCatalog
+      });
+      if (!classification.ok) {
+        importErrors.push(referenceError(
+          classification.error === "familyMissing"
+            ? "stock.bulkEdit.import.error.referenceMissing.familia"
+            : "stock.bulkEdit.import.error.subfamilyMissingInFamily",
+          row.rowNumber,
+          classification.reference
+        ));
+        return [];
+      }
+      Object.assign(draft, classification.draft);
       return [{
         id: `bulk-excel-${product.productId}-${row.rowNumber}-${index}`,
         selected: false,
@@ -3887,6 +3894,10 @@ export function StockScreen({
         draft
       }];
     });
+    if (importErrors.length > 0) {
+      setBulkStatus(importErrors.slice(0, 10).join("\n"));
+      return;
+    }
     if (imported.length === 0) {
       setBulkStatus(t("stock.bulkEdit.importNoMatches"));
       return;

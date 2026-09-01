@@ -17,10 +17,15 @@ class CommercialBootstrapServiceTest {
         var jdbc = Mockito.mock(JdbcTemplate.class);
         var storeId = UUID.randomUUID();
         var companyId = UUID.randomUUID();
-        when(jdbc.queryForList("select id, empresa_id from tienda"))
+        when(jdbc.queryForList("select id, empresa_id from tienda order by id"))
                 .thenReturn(List.of(Map.of("id", storeId, "empresa_id", companyId)));
 
         new CommercialBootstrapService(jdbc).initialize();
+
+        verify(jdbc).queryForObject(
+                "select id from tienda where id = ? for update",
+                UUID.class,
+                storeId);
 
         verify(jdbc).update(
                 "insert into almacen (id, tienda_id, nombre, predeterminado, activo) "
@@ -28,8 +33,12 @@ class CommercialBootstrapServiceTest {
                 storeId,
                 storeId);
         verify(jdbc).update(
-                "insert into familia (id, tienda_id, family_id, nombre, predeterminada) "
-                        + "values (?, ?, 'GENERAL', 'GENERAL', true) on conflict do nothing",
+                "insert into familia (id, tienda_id, family_id, family_code, nombre, predeterminada) "
+                        + "select ?, ?, 'GENERAL', '000', 'GENERAL', true "
+                        + "where not exists ("
+                        + "select 1 from familia "
+                        + "where tienda_id = ? and (predeterminada or family_code = '000'))",
+                storeId,
                 storeId,
                 storeId);
         verify(jdbc).update(
