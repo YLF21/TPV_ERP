@@ -9,13 +9,11 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
 public class AdminAuthInterceptor implements HandlerInterceptor {
-
-    private static final String ACCOUNT_SCOPE = "";
-
     private final SaasAdminUserRepository users;
     private final AdminPasswordHasher passwords;
     private final LoginAttemptLimiter attempts;
     private final SaasSessionTokenStore sessions;
+    private final LocalAdminCredentialPolicy localCredentials;
     private final boolean legacyBasicAuthEnabled;
 
     public AdminAuthInterceptor(
@@ -23,30 +21,42 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             AdminPasswordHasher passwords,
             LoginAttemptLimiter attempts,
             SaasSessionTokenStore sessions,
+            LocalAdminCredentialPolicy localCredentials,
             @Value("${tpv.saas.legacy-basic-auth-enabled:false}") boolean legacyBasicAuthEnabled) {
         this.users = users;
         this.passwords = passwords;
         this.attempts = attempts;
         this.sessions = sessions;
+        this.localCredentials = localCredentials;
         this.legacyBasicAuthEnabled = legacyBasicAuthEnabled;
     }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         String authorization = request.getHeader("Authorization");
         String sessionUsername = sessions.username(
                 SaasAuthenticationController.bearer(authorization), "admin").orElse(null);
         BasicCredentials credentials = legacyBasicAuthEnabled ? BasicCredentials.parse(authorization) : null;
         String username = sessionUsername != null ? sessionUsername : credentials == null ? null : credentials.username();
         String password = credentials == null ? null : credentials.password();
+        String remoteAddress = SaasAuthenticationController.remoteAddress(request);
         if (username == null) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin requeridas");
             return false;
         }
         if (sessionUsername == null
-                && attempts.blocked("admin-account", username, ACCOUNT_SCOPE)) {
+                && attempts.blocked("admin-account", username, remoteAddress)) {
             response.setHeader("Retry-After", Long.toString(LoginAttemptLimiter.BLOCK_DURATION.toSeconds()));
             response.sendError(429, "Demasiados intentos de autenticacion");
+            return false;
+        }
+
+        if (sessionUsername == null && !localCredentials.permits(username, password)) {
+            attempts.failure("admin-account", username, remoteAddress);
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin invalidas");
             return false;
         }
 
@@ -54,13 +64,17 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if (user == null || !user.isActive()
                 || (sessionUsername == null && !passwords.matches(password, user.getPasswordHash()))) {
             if (sessionUsername == null) {
-                attempts.failure("admin-account", username, ACCOUNT_SCOPE);
+                attempts.failure("admin-account", username, remoteAddress);
             }
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin invalidas");
             return false;
         }
         if (sessionUsername == null) {
-            attempts.success("admin-account", username, ACCOUNT_SCOPE);
+            attempts.success("admin-account", username, remoteAddress);
+        }
+        if (user.isMustChangePassword()) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Cambio de password obligatorio");
+            return false;
         }
         if (sessionUsername == null && passwords.needsUpgrade(user.getPasswordHash())) {
             user.changePasswordHash(passwords.hash(password));
@@ -99,7 +113,8 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if (path.contains("/tickets") && ("POST".equals(method) || "PUT".equals(method))) {
             return AdminPermission.MANAGE_SUPPORT_TICKETS;
         }
-        if (path.contains("/invoices") && ("POST".equals(method) || "PUT".equals(method))) {
+        if ((path.contains("/invoices") || path.contains("/reconciliations"))
+                && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
             return AdminPermission.MANAGE_BILLING;
         }
         if ((path.contains("/sales-documents") || path.contains("/inventory-")) && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {

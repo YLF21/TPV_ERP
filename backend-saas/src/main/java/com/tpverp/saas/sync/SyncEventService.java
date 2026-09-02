@@ -8,6 +8,8 @@ import com.tpverp.saas.license.SaasInstallation;
 import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.TokenHasher;
 import com.tpverp.saas.fiscal.FiscalStatusSyncProjector;
+import com.tpverp.saas.plan.PlanLimitService;
+import com.tpverp.saas.plan.PlanResource;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -49,6 +51,7 @@ public class SyncEventService {
     private final TokenHasher tokens;
     private final ObjectWriter canonicalPayloadWriter;
     private final MemberWalletSyncProjector walletProjector;
+    private final PlanLimitService planLimits;
     private final Clock clock;
 
     public SyncEventService(
@@ -58,6 +61,7 @@ public class SyncEventService {
             TokenHasher tokens,
             ObjectMapper mapper,
             MemberWalletSyncProjector walletProjector,
+            PlanLimitService planLimits,
             Clock clock) {
         this.installations = installations;
         this.events = events;
@@ -66,6 +70,7 @@ public class SyncEventService {
         this.canonicalPayloadWriter = mapper.writer()
                 .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
         this.walletProjector = walletProjector;
+        this.planLimits = planLimits;
         this.clock = clock;
     }
 
@@ -100,6 +105,7 @@ public class SyncEventService {
             throw MemberWalletSyncProjector.conflict(error);
         }
 
+        planLimits.requireCapacity(installation.getCompany().getId(), PlanResource.SYNC_EVENTS_DAILY);
         InstantHolder received = new InstantHolder(clock.instant());
         SaasSyncEvent event = new SaasSyncEvent(
                 request.eventId(),

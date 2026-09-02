@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17
+    image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
     container_name: tpv-erp-saas-postgres
     restart: unless-stopped
     environment:
@@ -14,6 +14,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    cpus: ${TPV_SAAS_POSTGRES_CPU_LIMIT:-1.0}
+    mem_limit: ${TPV_SAAS_POSTGRES_MEMORY_LIMIT:-1g}
+    pids_limit: ${TPV_SAAS_POSTGRES_PIDS_LIMIT:-200}
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: ${TPV_SAAS_LOG_MAX_SIZE:-10m}
+        max-file: ${TPV_SAAS_LOG_MAX_FILES:-3}
+    networks:
+      - saas-data
 
   saas-backend:
     build:
@@ -29,8 +41,8 @@ services:
       TPV_SAAS_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tpv_erp_saas}
       TPV_SAAS_DB_USERNAME: ${POSTGRES_USER:-tpv_erp_saas}
       TPV_SAAS_DB_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env}
-      TPV_SAAS_ADMIN_DEFAULT_ALLOWED: ${TPV_SAAS_ADMIN_DEFAULT_ALLOWED:-false}
       TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED: ${TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED:-false}
+      TPV_SAAS_SESSION_LIFETIME: ${TPV_SAAS_SESSION_LIFETIME:-PT8H}
       TPV_SAAS_SECRET_ENCRYPTION_KEY: ${TPV_SAAS_SECRET_ENCRYPTION_KEY:?Define TPV_SAAS_SECRET_ENCRYPTION_KEY in .env}
       TPV_SAAS_CORS_ALLOWED_ORIGINS: ${TPV_SAAS_CORS_ALLOWED_ORIGINS:-http://localhost:8088}
       TPV_SAAS_FORWARD_HEADERS_STRATEGY: ${TPV_SAAS_FORWARD_HEADERS_STRATEGY:-framework}
@@ -39,8 +51,27 @@ services:
         condition: service_healthy
     expose:
       - "8090"
+    read_only: true
+    cpus: ${TPV_SAAS_BACKEND_CPU_LIMIT:-1.0}
+    mem_limit: ${TPV_SAAS_BACKEND_MEMORY_LIMIT:-768m}
+    pids_limit: ${TPV_SAAS_BACKEND_PIDS_LIMIT:-200}
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: ${TPV_SAAS_LOG_MAX_SIZE:-10m}
+        max-file: ${TPV_SAAS_LOG_MAX_FILES:-3}
+    stop_grace_period: 30s
+    networks:
+      - saas-data
+      - saas-edge
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8090/actuator/health"]
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8090/actuator/health >/dev/null && curl --fail --silent http://127.0.0.1:8090/actuator/saasSecurity >/dev/null"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -53,15 +84,38 @@ services:
     container_name: tpv-erp-saas-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${TPV_SAAS_WEB_PORT:-8088}:80"
+      - "127.0.0.1:${TPV_SAAS_WEB_PORT:-8088}:8080"
     depends_on:
       saas-backend:
         condition: service_healthy
+    read_only: true
+    cpus: ${TPV_SAAS_FRONTEND_CPU_LIMIT:-0.5}
+    mem_limit: ${TPV_SAAS_FRONTEND_MEMORY_LIMIT:-128m}
+    pids_limit: ${TPV_SAAS_FRONTEND_PIDS_LIMIT:-100}
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: ${TPV_SAAS_LOG_MAX_SIZE:-10m}
+        max-file: ${TPV_SAAS_LOG_MAX_FILES:-3}
+    stop_grace_period: 15s
+    networks:
+      - saas-edge
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8080/"]
       interval: 15s
       timeout: 5s
       retries: 5
 
 volumes:
   tpv_erp_saas_pgdata:
+
+networks:
+  saas-edge:
+  saas-data:
+    internal: true

@@ -16,11 +16,34 @@ spring:
 
 tpv:
   saas:
-    admin-default-allowed: ${TPV_SAAS_ADMIN_DEFAULT_ALLOWED:false}
     legacy-basic-auth-enabled: ${TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED:false}
+    bootstrap-admin-password: ${TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD:}
+    sessions:
+      lifetime: ${TPV_SAAS_SESSION_LIFETIME:PT8H}
+    security-notifications:
+      required: ${TPV_SAAS_SECURITY_NOTIFICATIONS_REQUIRED:true}
+      max-attempts: ${TPV_SAAS_SECURITY_NOTIFICATIONS_MAX_ATTEMPTS:8}
+      claim-lease: ${TPV_SAAS_SECURITY_NOTIFICATIONS_CLAIM_LEASE:PT2M}
+    integrations:
+      required: ${TPV_SAAS_INTEGRATIONS_REQUIRED:true}
+      max-delivery-attempts: ${TPV_SAAS_INTEGRATIONS_MAX_DELIVERY_ATTEMPTS:8}
+      claim-lease: ${TPV_SAAS_INTEGRATIONS_CLAIM_LEASE:PT2M}
+    outbox:
+      critical-backlog: ${TPV_SAAS_OUTBOX_CRITICAL_BACKLOG:1000}
+    password-reset:
+      lifetime: ${TPV_SAAS_PASSWORD_RESET_LIFETIME:PT30M}
     operational-incidents:
       category-bootstrap-inactivity: ${TPV_SAAS_CATEGORY_BOOTSTRAP_INACTIVITY:PT1H}
     cors:
       allowed-origins: ${TPV_SAAS_CORS_ALLOWED_ORIGINS:}
     secrets:
       encryption-key: ${TPV_SAAS_SECRET_ENCRYPTION_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,saasSecurity
+  endpoint:
+    health:
+      show-details: never

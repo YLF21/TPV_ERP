@@ -18,8 +18,12 @@ payment-terminal-bridge/**/target/
 .codex/
 .superpowers/brainstorm/
 .codex-runtime/
+.codex-tmp/
 .codex-video-analysis/
 artifacts/
+# Generated audit evidence is local; publish only curated conclusions in docs.
+/audits/
+/frontend-saas/design-qa.md
 exportaciones/
 *.jasper
 plantillas documentos/logo_empresa_pruebas.png

@@ -1,6 +1,8 @@
 package com.tpverp.saas.license;
 
 import com.tpverp.saas.admin.LoginAttemptLimiter;
+import com.tpverp.saas.admin.SaasAuthenticationController;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,8 +15,6 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/license")
 public class LicenseController {
-
-    private static final String PAIRING_CODE_SCOPE = "";
 
     private final LicenseLinkService linkService;
     private final LicenseValidationService validationService;
@@ -33,21 +33,23 @@ public class LicenseController {
     public LicenseSaasLinkResponse link(
             @Valid @RequestBody LicenseSaasLinkRequest request,
             @RequestHeader(name = "X-TPV-Installation-Token", required = false) String previousToken,
-            @RequestHeader(name = "X-TPV-Link-Recovery-Token", required = false) String recoveryToken) {
+            @RequestHeader(name = "X-TPV-Link-Recovery-Token", required = false) String recoveryToken,
+            HttpServletRequest httpRequest) {
         String pairingCode = pairingAttemptKey(request.pairingCode());
-        if (attempts.blocked("license-link-code", pairingCode, PAIRING_CODE_SCOPE)) {
+        String remoteAddress = SaasAuthenticationController.remoteAddress(httpRequest);
+        if (attempts.blocked("license-link-code", pairingCode, remoteAddress)) {
             throw new ResponseStatusException(
                     HttpStatus.TOO_MANY_REQUESTS,
                     "Demasiados intentos de enlace; vuelva a intentarlo mas tarde");
         }
         try {
             LicenseSaasLinkResponse response = linkService.link(request, previousToken, recoveryToken);
-            attempts.success("license-link-code", pairingCode, PAIRING_CODE_SCOPE);
+            attempts.success("license-link-code", pairingCode, remoteAddress);
             return response;
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode().is4xxClientError()
                     && exception.getStatusCode() != HttpStatus.TOO_MANY_REQUESTS) {
-                attempts.failure("license-link-code", pairingCode, PAIRING_CODE_SCOPE);
+                attempts.failure("license-link-code", pairingCode, remoteAddress);
             }
             throw exception;
         }

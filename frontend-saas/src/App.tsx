@@ -1,5 +1,6 @@
 import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, extractApiErrorMessage } from "./lib/api";
+import { api, ApiError, extractApiErrorMessage, setUnauthorizedHandler } from "./lib/api";
+import { formatCurrency as formatCurrencyValue, formatQuantity as formatQuantityValue, isCurrentSelection, isCurrentSessionRequest, outstandingAmount, paginateRows, shouldInvalidateSession } from "./lib/frontend-runtime.mjs";
 import type {
   AdminNotification,
   AdminSession,
@@ -19,6 +20,7 @@ import type {
   ErpSupplier,
   ErpWarehouse,
   IntegrationEndpoint,
+  InvoiceFiscalDetail,
   InventoryMovement,
   InventoryStock,
   InstallationSummary,
@@ -43,7 +45,9 @@ import type {
   FiscalProvisioning,
   VerifactuActivationPolicy,
   FiscalStatusAdmin,
-  FiscalCompanyStatusAdmin
+  FiscalCompanyStatusAdmin,
+  PaymentReconciliation,
+  PlanUsage
 } from "./lib/types";
 
 type View = "dashboard" | "licenses" | "sync" | "fiscal" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "subscriptions" | "reports";
@@ -53,6 +57,7 @@ type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
 type TenantAssignableRoleName = "MANAGER" | "VIEWER" | "BILLING";
 type Language = "es" | "en" | "zh";
 type AuthMode = "admin" | "tenant";
+let activeLocale = "es-ES";
 
 const LANGUAGE_OPTIONS: Array<{ value: Language; label: string; short: string }> = [
   { value: "es", label: "Español", short: "ES" },
@@ -93,6 +98,20 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     username: "Usuario",
     password: "Password",
     enter: "Entrar",
+    passwordChangeTitle: "Cambia tu password inicial",
+    passwordChangeHelp: "Define una password nueva de al menos 12 caracteres antes de continuar.",
+    confirmPassword: "Confirmar password",
+    changeOwnPassword: "Cambiar password",
+    passwordsDoNotMatch: "Las passwords no coinciden.",
+    passwordTooShort: "La nueva password debe tener al menos 12 caracteres.",
+    forgotPassword: "Recuperar acceso",
+    recoveryRequest: "Solicitar recuperación",
+    recoveryToken: "Token de recuperación",
+    recoveryGeneric: "Si la cuenta existe, recibirás instrucciones por el canal seguro configurado.",
+    recoveryConfirm: "Restablecer password",
+    recoveryCompleted: "Password restablecida. Ya puedes iniciar sesión.",
+    backToLogin: "Volver al acceso",
+    passwordChanged: "Password actualizada. Iniciando sesión...",
     validLicenses: "Licencias validas",
     blocked: "Bloqueadas",
     installations: "Instalaciones",
@@ -406,6 +425,23 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     registerPayment: "Registrar pago",
     paymentMethod: "Metodo de pago",
     paymentReference: "Referencia",
+    planUsage: "Consumo y límites del plan",
+    usedOfLimit: "{used} de {limit}",
+    reconciliations: "Conciliaciones",
+    provider: "Proveedor",
+    externalReference: "Referencia externa",
+    bookedAt: "Fecha contable",
+    createReconciliation: "Registrar conciliación",
+    reconciliationCreated: "Conciliación registrada.",
+    invalidReconciliation: "Revisa importe (máximo 2 decimales), moneda ISO y referencia.",
+    noReconciliations: "No hay conciliaciones para esta empresa.",
+    invoiceFiscalDetail: "Detalle fiscal de factura",
+    viewFiscalDetail: "Ver fiscal",
+    fiscalYear: "Ejercicio fiscal",
+    series: "Serie",
+    taxBase: "Base imponible",
+    taxAmount: "Cuota fiscal",
+    closeDetail: "Cerrar detalle",
     tenantUsers: "Usuarios cliente",
     createTenantUser: "Crear usuario cliente",
     tenantUserCreated: "Usuario cliente creado.",
@@ -485,7 +521,17 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     forbiddenAction: "No tienes permiso para realizar esta accion.",
     invalidCredentials: "Credenciales incorrectas o sesion no valida.",
     networkError: "No se pudo conectar con el backend SaaS.",
-    pendingInvoices: "Facturas pendientes"
+    pendingInvoices: "Facturas pendientes",
+    sessionExpired: "La sesion ha caducado. Vuelve a iniciar sesion.",
+    retry: "Reintentar",
+    technicalDegraded: "No disponible",
+    paymentExceedsOutstanding: "El pago supera el saldo pendiente.",
+    confirmDestructive: "Esta accion puede afectar datos activos. Deseas continuar?",
+    tenantMasterCreate: "Crear maestro",
+    previousPage: "Anterior",
+    nextPage: "Siguiente",
+    pageLabel: "Pagina",
+    filterRecords: "Filtrar registros"
   },
   en: {
     administration: "Administration",
@@ -516,6 +562,21 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     username: "User",
     password: "Password",
     enter: "Sign in",
+    passwordChangeTitle: "Change your initial password",
+    passwordChangeHelp: "Set a new password of at least 12 characters before continuing.",
+    newPassword: "New password",
+    confirmPassword: "Confirm password",
+    changeOwnPassword: "Change password",
+    passwordsDoNotMatch: "Passwords do not match.",
+    passwordTooShort: "The new password must be at least 12 characters.",
+    forgotPassword: "Recover access",
+    recoveryRequest: "Request recovery",
+    recoveryToken: "Recovery token",
+    recoveryGeneric: "If the account exists, instructions will be sent through the configured secure channel.",
+    recoveryConfirm: "Reset password",
+    recoveryCompleted: "Password reset. You can now sign in.",
+    backToLogin: "Back to sign in",
+    passwordChanged: "Password updated. Signing in...",
     validLicenses: "Valid licenses",
     blocked: "Blocked",
     installations: "Installations",
@@ -800,7 +861,150 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     noBillingData: "No billing data.",
     dueSoon: "Renewal soon",
     overdue: "Overdue",
-    paid: "Paid"
+    paid: "Paid",
+    sessionExpired: "Your session has expired. Sign in again.",
+    retry: "Retry",
+    technicalDegraded: "Unavailable",
+    paymentExceedsOutstanding: "The payment exceeds the outstanding balance.",
+    confirmDestructive: "This action can affect active data. Do you want to continue?",
+    tenantMasterCreate: "Create master record",
+    previousPage: "Previous",
+    nextPage: "Next",
+    pageLabel: "Page",
+    filterRecords: "Filter records",
+    operations: "Operations",
+    subscriptions: "Subscriptions",
+    reports: "Reports",
+    clientPortal: "Customer portal",
+    myCompany: "My company",
+    tenantWelcome: "Operational overview of your SaaS",
+    myLicenses: "My licenses",
+    myStores: "My stores",
+    mySupport: "My support",
+    myMasters: "My master data",
+    tenantAccess: "Customer access",
+    tenantRole: "Customer role",
+    createSupportRequest: "Create request",
+    supportRequestCreated: "Support request created.",
+    noTenantTickets: "You have no open tickets.",
+    tenantInitialAccess: "Initial customer access",
+    tenantInitialAccessHint: "Give these credentials to the customer for their first sign-in.",
+    initialPassword: "Initial password",
+    realBilling: "Billing",
+    invoices: "Invoices",
+    invoiceNumber: "Invoice number",
+    concept: "Concept",
+    amount: "Amount",
+    currency: "Currency",
+    issuedAt: "Issued",
+    dueAt: "Due date",
+    paidAmount: "Paid",
+    createInvoice: "Create invoice",
+    registerPayment: "Register payment",
+    paymentMethod: "Payment method",
+    paymentReference: "Reference",
+    planUsage: "Plan usage and limits",
+    usedOfLimit: "{used} of {limit}",
+    reconciliations: "Reconciliations",
+    provider: "Provider",
+    externalReference: "External reference",
+    bookedAt: "Booked at",
+    createReconciliation: "Add reconciliation",
+    reconciliationCreated: "Reconciliation added.",
+    invalidReconciliation: "Check amount (maximum 2 decimals), ISO currency and reference.",
+    noReconciliations: "No reconciliations for this company.",
+    invoiceFiscalDetail: "Invoice fiscal detail",
+    viewFiscalDetail: "View fiscal",
+    fiscalYear: "Fiscal year",
+    series: "Series",
+    taxBase: "Tax base",
+    taxAmount: "Tax amount",
+    closeDetail: "Close detail",
+    tenantUsers: "Customer users",
+    createTenantUser: "Create customer user",
+    tenantUserCreated: "Customer user created.",
+    tenantUserUpdated: "Customer user updated.",
+    tenantUserDisabled: "Customer user disabled.",
+    changePassword: "Change password",
+    noTenantUsers: "No customer users for this company.",
+    erpMasters: "ERP master data",
+    erpMastersSubtitle: "Customers, products, suppliers and warehouses",
+    customers: "Customers",
+    products: "Products",
+    suppliers: "Suppliers",
+    warehouses: "Warehouses",
+    code: "Code",
+    name: "Name",
+    email: "Email",
+    phone: "Phone",
+    sku: "SKU",
+    category: "Category",
+    price: "Price",
+    taxRate: "Tax rate",
+    minStock: "Minimum stock",
+    address: "Address",
+    createCustomer: "Create customer",
+    createProduct: "Create product",
+    createSupplier: "Create supplier",
+    createWarehouse: "Create warehouse",
+    masterCreated: "Master record created.",
+    masterDisabled: "Master record disabled.",
+    mastersBackendPending: "Master-data service is not available. Retry after updating the SaaS backend.",
+    noMasterData: "No master data.",
+    csvTools: "Import or export CSV",
+    exportCsv: "Export CSV",
+    importCsv: "Import CSV",
+    csvFile: "CSV file",
+    csvInvalid: "Select a non-empty CSV file.",
+    confirmCsvImport: "Importing may overwrite existing records with the same code. Continue?",
+    csvImported: "CSV processed: {processed}; inserted: {inserted}; updated: {updated}.",
+    realOperations: "ERP operations",
+    realOperationsSubtitle: "Sales and inventory movements",
+    salesDocuments: "Sales documents",
+    documentNumber: "Document number",
+    customerCode: "Customer code",
+    issueSale: "Issue sale",
+    inventoryMovements: "Inventory movements",
+    movementType: "Movement type",
+    stockCurrent: "Current stock",
+    reason: "Reason",
+    createMovement: "Create movement",
+    subscriptionsTitle: "Subscriptions",
+    subscriptionsSubtitle: "Plans, cycles and renewals",
+    billingCycle: "Billing cycle",
+    nextBillingAt: "Next billing",
+    startedAt: "Start date",
+    cancelSubscription: "Cancel subscription",
+    createSubscription: "Create subscription",
+    integrations: "Integrations",
+    integrationsSubtitle: "External endpoints and synchronization",
+    integrationType: "Integration type",
+    targetUrl: "Target URL",
+    apiKey: "API key",
+    apiKeyPreview: "API key",
+    lastSyncAt: "Last synchronization",
+    markSynced: "Mark synchronized",
+    createIntegration: "Create integration",
+    advancedReports: "Advanced reports",
+    advancedReportsSubtitle: "Consolidated business metrics",
+    subscriptionMrr: "Subscription MRR",
+    invoicedTotal: "Total invoiced",
+    paidTotal: "Total paid",
+    salesTotal: "Total sales",
+    activeIntegrations: "Active integrations",
+    itemCreated: "Record created.",
+    itemUpdated: "Record updated.",
+    phase11Pending: "This feature requires the latest SaaS backend migration.",
+    noPermissionAction: "Your user does not have permission for this action.",
+    invalidAmount: "Enter a valid numeric amount.",
+    invalidUrl: "Enter a valid URL.",
+    duplicateCode: "A record with this code already exists in this company.",
+    backendNotUpdated: "This feature is not active in the SaaS backend. Apply the latest migrations.",
+    resourceNotFound: "The requested resource was not found.",
+    forbiddenAction: "You do not have permission to perform this action.",
+    invalidCredentials: "Incorrect credentials or invalid session.",
+    networkError: "Could not connect to the SaaS backend.",
+    pendingInvoices: "Pending invoices"
   },
   zh: {
     administration: "管理",
@@ -1003,6 +1207,18 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
   }
 };
 
+const reportedTranslationFallbacks = new Set<string>();
+
+function translate(language: Language, key: string) {
+  const translated = TRANSLATIONS[language][key];
+  if (translated) return translated;
+  if (language !== "es" && !reportedTranslationFallbacks.has(`${language}:${key}`)) {
+    reportedTranslationFallbacks.add(`${language}:${key}`);
+    console.warn(`[i18n] Missing ${language} translation for "${key}", using Spanish fallback.`);
+  }
+  return (language === "zh" ? TRANSLATIONS.en[key] : undefined) ?? TRANSLATIONS.es[key] ?? key;
+}
+
 const I18nContext = createContext<{
   language: Language;
   setLanguage: (language: Language) => void;
@@ -1047,8 +1263,10 @@ function emptyFiscalAddress(): FiscalAddress {
 
 export default function App() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
+  const [pendingPasswordChange, setPendingPasswordChange] = useState<{ credentials: Credentials; currentPassword: string } | null>(null);
   const [language, setLanguageState] = useState<Language>(() => readLanguage());
-  const [activeView, setActiveView] = useState<View>("dashboard");
+  activeLocale = localeFor(language);
+  const [activeView, setActiveView] = useState<View>(() => readViewFromLocation());
   const [data, setData] = useState<DashboardData | null>(null);
   const [tenantData, setTenantData] = useState<TenantPortalData | null>(null);
   const [session, setSession] = useState<AdminSession | null>(null);
@@ -1056,6 +1274,13 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [navigationQuery, setNavigationQuery] = useState("");
+  const navigationSearchRef = useRef<HTMLInputElement | null>(null);
+  const refreshRequestId = useRef(0);
+  const credentialsRef = useRef<Credentials | null>(credentials);
+  const pendingPasswordChangeRef = useRef<{ credentials: Credentials; currentPassword: string } | null>(pendingPasswordChange);
+  credentialsRef.current = credentials;
+  pendingPasswordChangeRef.current = pendingPasswordChange;
   const i18n = useMemo(
     () => ({
       language,
@@ -1063,13 +1288,76 @@ export default function App() {
         localStorage.setItem("tpv-saas-language", nextLanguage);
         setLanguageState(nextLanguage);
       },
-      t: (key: string) => TRANSLATIONS[language][key] ?? TRANSLATIONS.es[key] ?? key
+      t: (key: string) => translate(language, key)
     }),
     [language]
   );
-  const visibleData = useMemo(() => (data ? filterDashboardData(data, searchQuery) : null), [data, searchQuery]);
+  const navigationItems = useMemo<Array<{ view: View; label: string }>>(() => [
+    { view: "dashboard", label: i18n.t("dashboard") },
+    { view: "licenses", label: i18n.t("licenses") },
+    { view: "sync", label: i18n.t("sync") },
+    { view: "fiscal", label: i18n.t("fiscal") },
+    { view: "users", label: i18n.t("users") },
+    { view: "support", label: i18n.t("supportCenter") },
+    { view: "health", label: i18n.t("customerHealth") },
+    { view: "billing", label: i18n.t("billing") },
+    { view: "masters", label: i18n.t("masters") },
+    { view: "operations", label: i18n.t("operations") },
+    { view: "subscriptions", label: i18n.t("subscriptions") },
+    { view: "reports", label: i18n.t("reports") },
+    { view: "audit", label: i18n.t("audit") }
+  ], [i18n]);
+  const visibleNavigationItems = navigationItems.filter((item) =>
+    item.label.toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase())
+  );  const visibleData = useMemo(() => (data ? filterDashboardData(data, searchQuery) : null), [data, searchQuery]);
   const permissions = useMemo(() => new Set(session?.permissions ?? []), [session]);
 
+  function navigate(view: View) {
+    setActiveView(view);
+    const nextHash = `#/${view}`;
+    if (window.location.hash !== nextHash) window.history.pushState({ view }, "", nextHash);
+  }
+
+  useEffect(() => {
+    const syncView = () => setActiveView(readViewFromLocation());
+    if (!window.location.hash) window.history.replaceState({ view: activeView }, "", `#/${activeView}`);
+    window.addEventListener("popstate", syncView);
+    window.addEventListener("hashchange", syncView);
+    return () => { window.removeEventListener("popstate", syncView); window.removeEventListener("hashchange", syncView); };
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler((failedCredentials) => {
+      if (!shouldInvalidateSession(
+        failedCredentials.accessToken,
+        credentialsRef.current?.accessToken,
+        pendingPasswordChangeRef.current?.credentials.accessToken
+      )) return;
+      refreshRequestId.current += 1;
+      credentialsRef.current = null;
+      pendingPasswordChangeRef.current = null;
+      setCredentials(null);
+      setPendingPasswordChange(null);
+      setData(null);
+      setTenantData(null);
+      setSession(null);
+      setAuthMode(null);
+      setLoading(false);
+      setNotice({ type: "error", text: i18n.t("sessionExpired") });
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [i18n]);
+
+  useEffect(() => {
+    function focusNavigation(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
+        event.preventDefault();
+        navigationSearchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", focusNavigation);
+    return () => window.removeEventListener("keydown", focusNavigation);
+  }, []);
   useEffect(() => {
     if (credentials) {
       void refresh(credentials);
@@ -1078,48 +1366,50 @@ export default function App() {
 
   async function refresh(activeCredentials = credentials) {
     if (!activeCredentials) return;
+    const requestId = ++refreshRequestId.current;
+    const isCurrent = () => isCurrentSessionRequest(
+      requestId,
+      refreshRequestId.current,
+      activeCredentials.accessToken,
+      credentialsRef.current?.accessToken
+    );
     setLoading(true);
     try {
-      const [dashboard, nextSession] = await Promise.all([
-        api.dashboard(activeCredentials),
-        api.session(activeCredentials)
-      ]);
-      setData(dashboard);
-      setTenantData(null);
-      setSession(nextSession);
-      setAuthMode("admin");
-      setNotice(null);
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-        try {
-          const nextTenantData = await api.tenantPortal(activeCredentials);
-          setTenantData(nextTenantData);
-          setData(null);
-          setSession(null);
-          setAuthMode("tenant");
-          setNotice(null);
-          return;
-        } catch (tenantError) {
-          setNotice({ type: "error", text: errorMessage(tenantError) });
-        }
-        setCredentials(null);
+      if (activeCredentials.mode === "tenant") {
+        const nextTenantData = await api.tenantPortal(activeCredentials);
+        if (!isCurrent()) return;
+        setTenantData(nextTenantData); setData(null); setSession(null); setAuthMode("tenant");
+        setNotice(nextTenantData.loadErrors.length > 0 ? { type: "error", text: nextTenantData.loadErrors.join(" · ") } : null);
       } else {
-        setNotice({ type: "error", text: errorMessage(error) });
+        const [dashboard, nextSession] = await Promise.all([api.dashboard(activeCredentials), api.session(activeCredentials)]);
+        if (!isCurrent()) return;
+        setData(dashboard); setTenantData(null); setSession(nextSession); setAuthMode("admin"); setNotice(null);
       }
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (error instanceof ApiError && error.status === 401) {
+        credentialsRef.current = null;
+        setCredentials(null);
+      }
+      setNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
-
   async function login(nextCredentials: LoginCredentials) {
     setLoading(true);
     setNotice(null);
     try {
       const authenticated = await api.login(nextCredentials);
-      setCredentials({
-        username: authenticated.username,
-        accessToken: authenticated.accessToken
-      });
+      const next: Credentials = { username: authenticated.username, accessToken: authenticated.accessToken, mode: authenticated.mode };
+      if (authenticated.passwordChangeRequired) {
+        const pending = { credentials: next, currentPassword: nextCredentials.password };
+        pendingPasswordChangeRef.current = pending;
+        setPendingPasswordChange(pending);
+        return;
+      }
+      credentialsRef.current = next;
+      setCredentials(next);
     } catch (error) {
       setNotice({ type: "error", text: errorMessage(error) });
     } finally {
@@ -1127,22 +1417,69 @@ export default function App() {
     }
   }
 
+  async function completeRequiredPasswordChange(newPassword: string, confirmation: string) {
+    if (!pendingPasswordChange) return;
+    if (newPassword.length < 12) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
+    if (newPassword !== confirmation) { setNotice({ type: "error", text: i18n.t("passwordsDoNotMatch") }); return; }
+    setLoading(true); setNotice(null);
+    try {
+      await api.changeOwnPassword(pendingPasswordChange.credentials, { currentPassword: pendingPasswordChange.currentPassword, newPassword });
+      const authenticated = await api.login({ username: pendingPasswordChange.credentials.username, password: newPassword });
+      const next: Credentials = { username: authenticated.username, accessToken: authenticated.accessToken, mode: authenticated.mode };
+      pendingPasswordChangeRef.current = null;
+      credentialsRef.current = next;
+      setPendingPasswordChange(null);
+      setNotice({ type: "success", text: i18n.t("passwordChanged") });
+      setCredentials(next);
+    } catch (error) { setNotice({ type: "error", text: errorMessage(error) }); }
+    finally { setLoading(false); }
+  }
+
+  async function requestRecovery(username: string) {
+    setLoading(true); setNotice(null);
+    try { await api.requestPasswordRecovery(username.trim()); setNotice({ type: "success", text: i18n.t("recoveryGeneric") }); }
+    catch (error) { setNotice({ type: "error", text: errorMessage(error) }); }
+    finally { setLoading(false); }
+  }
+
+  async function confirmRecovery(token: string, newPassword: string, confirmation: string) {
+    if (newPassword.length < 12) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
+    if (newPassword !== confirmation) { setNotice({ type: "error", text: i18n.t("passwordsDoNotMatch") }); return; }
+    setLoading(true); setNotice(null);
+    try { await api.confirmPasswordRecovery({ token: token.trim(), newPassword }); setNotice({ type: "success", text: i18n.t("recoveryCompleted") }); }
+    catch (error) { setNotice({ type: "error", text: errorMessage(error) }); }
+    finally { setLoading(false); }
+  }
+
   function logout() {
-    if (credentials) {
-      void api.logout(credentials).catch(() => undefined);
-    }
+    const activeCredentials = credentialsRef.current ?? pendingPasswordChangeRef.current?.credentials;
+    refreshRequestId.current += 1;
+    credentialsRef.current = null;
+    pendingPasswordChangeRef.current = null;
+    if (activeCredentials) void api.logout(activeCredentials).catch(() => undefined);
     setCredentials(null);
+    setPendingPasswordChange(null);
     setData(null);
     setTenantData(null);
     setSession(null);
     setAuthMode(null);
     setNotice(null);
+    setLoading(false);
+    window.history.replaceState({ view: "dashboard" }, "", "#/dashboard");
+  }
+
+  if (pendingPasswordChange) {
+    return (
+      <I18nContext.Provider value={i18n}>
+        <RequiredPasswordChangeScreen username={pendingPasswordChange.credentials.username} loading={loading} notice={notice} onSubmit={completeRequiredPasswordChange} onCancel={logout} />
+      </I18nContext.Provider>
+    );
   }
 
   if (!credentials) {
     return (
       <I18nContext.Provider value={i18n}>
-        <LoginScreen onLogin={login} loading={loading} notice={notice} />
+        <LoginScreen onLogin={login} onRequestRecovery={requestRecovery} onConfirmRecovery={confirmRecovery} loading={loading} notice={notice} />
       </I18nContext.Provider>
     );
   }
@@ -1161,39 +1498,43 @@ export default function App() {
       />
     ) : (
     <div className="app-shell">
-      <header className="app-header" aria-label={i18n.t("mainNavigation")}>
-        <div className="brand">
-          <span className="brand-mark">TPV</span>
-          <div>
-            <strong>ERP SaaS</strong>
-            <span>{i18n.t("administration")}</span>
-          </div>
+      <header className="app-system-bar">
+        <div className="system-product">
+          <strong>APP SAAS</strong>
+          <span>Administracion central de empresas y tiendas</span>
         </div>
-        <nav className="nav-list top-nav-list">
-          <NavButton active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")} label={i18n.t("dashboard")} />
-          <NavButton active={activeView === "licenses"} onClick={() => setActiveView("licenses")} label={i18n.t("licenses")} />
-          <NavButton active={activeView === "sync"} onClick={() => setActiveView("sync")} label={i18n.t("sync")} />
-          <NavButton active={activeView === "fiscal"} onClick={() => setActiveView("fiscal")} label={i18n.t("fiscal")} />
-          <NavButton active={activeView === "users"} onClick={() => setActiveView("users")} label={i18n.t("users")} />
-          <NavButton active={activeView === "support"} onClick={() => setActiveView("support")} label={i18n.t("supportCenter")} />
-          <NavButton active={activeView === "health"} onClick={() => setActiveView("health")} label={i18n.t("customerHealth")} />
-          <NavButton active={activeView === "billing"} onClick={() => setActiveView("billing")} label={i18n.t("billing")} />
-          <NavButton active={activeView === "masters"} onClick={() => setActiveView("masters")} label={i18n.t("masters")} />
-          <NavButton active={activeView === "operations"} onClick={() => setActiveView("operations")} label={i18n.t("operations")} />
-          <NavButton active={activeView === "subscriptions"} onClick={() => setActiveView("subscriptions")} label={i18n.t("subscriptions")} />
-          <NavButton active={activeView === "reports"} onClick={() => setActiveView("reports")} label={i18n.t("reports")} />
-          <NavButton active={activeView === "audit"} onClick={() => setActiveView("audit")} label={i18n.t("audit")} />
-        </nav>
-        <div className="app-actions" aria-label="Panel actions">
+        <div className="system-session">
+          <strong>{session?.username ?? credentials.username}</strong>
+          <span>Servidor SaaS</span>
           <LanguageSelector variant="floating" />
-          <button className="login-round-action" type="button" aria-label={i18n.t("logout")} onClick={logout}>
-            <svg className="power-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M12 3v8" />
-              <path d="M7.05 7.05a7 7 0 1 0 9.9 0" />
-            </svg>
+          <button className="session-logout" type="button" onClick={logout}>
+            {i18n.t("logout")}
           </button>
         </div>
       </header>
+
+      <aside className="app-header" aria-label={i18n.t("mainNavigation")}>
+        <div className="brand">
+          <div>
+            <strong>APP SAAS</strong>
+            <span>Gestion central TPV ERP</span>
+          </div>
+        </div>
+        <div className="saas-nav-search">
+          <input ref={navigationSearchRef} type="search" value={navigationQuery} placeholder="Buscar modulo o pantalla" aria-label="Buscar modulo o pantalla" onChange={(event) => setNavigationQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setNavigationQuery(""); event.currentTarget.blur(); } }} />
+          <kbd>Ctrl K</kbd>
+        </div>
+        <nav className="nav-list top-nav-list">
+          {visibleNavigationItems.map((item) => (
+            <NavButton key={item.view} active={activeView === item.view} onClick={() => { navigate(item.view); setNavigationQuery(""); }} label={item.label} />
+          ))}
+          {visibleNavigationItems.length === 0 && <p className="saas-nav-empty">Sin resultados</p>}
+        </nav>
+        <footer className="app-context-footer" aria-label="Contexto SaaS">
+          <strong>{session?.username ?? credentials.username}</strong>
+          <span>{viewTitle(activeView, i18n.t)}</span>
+        </footer>
+      </aside>
 
       <main className="main-panel">
         <header className="topbar">
@@ -1206,7 +1547,7 @@ export default function App() {
           </button>
         </header>
 
-        {data && (
+        {data && activeView !== "dashboard" && (
           <div className="global-search" role="search">
             <input
               value={searchQuery}
@@ -1228,7 +1569,7 @@ export default function App() {
           <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : (
           <>
-            {activeView === "dashboard" && <Dashboard data={visibleData} onNavigate={setActiveView} />}
+            {activeView === "dashboard" && <Dashboard data={visibleData} onNavigate={navigate} />}
             {activeView === "licenses" && (
               <LicensesView
                 credentials={credentials}
@@ -1278,17 +1619,13 @@ export default function App() {
               <SubscriptionsView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
             )}
             {activeView === "reports" && (
-              <ReportsView credentials={credentials} permissions={permissions} onNotice={setNotice} />
+              <ReportsView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
             )}
             {activeView === "audit" && <AuditView audit={visibleData.audit} />}
           </>
         )}
       </main>
-      <footer className="app-context-footer" aria-label="Contexto SaaS">
-        <span>ERP SaaS</span>
-        <strong>{i18n.t("sessionContext")}: {session?.username ?? credentials.username}</strong>
-        <strong>{i18n.t("moduleContext")}: {viewTitle(activeView, i18n.t)}</strong>
-      </footer>
+
     </div>
     )}
     </I18nContext.Provider>
@@ -1297,75 +1634,121 @@ export default function App() {
 
 function LoginScreen({
   onLogin,
+  onRequestRecovery,
+  onConfirmRecovery,
   loading,
   notice
 }: {
   onLogin: (credentials: LoginCredentials) => Promise<void>;
+  onRequestRecovery: (username: string) => Promise<void>;
+  onConfirmRecovery: (token: string, newPassword: string, confirmation: string) => Promise<void>;
   loading: boolean;
   notice: Notice;
 }) {
-  const { t } = useI18n();
-  const [username, setUsername] = useState("admin");
+  const { t, language } = useI18n();
+  const [username, setUsername] = useState("ADMIN");
   const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "request" | "confirm">("login");
+  const [recoveryToken, setRecoveryToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    void onLogin({ username: username.trim(), password });
+    if (mode === "request") void onRequestRecovery(username);
+    else if (mode === "confirm") void onConfirmRecovery(recoveryToken, newPassword, confirmation);
+    else void onLogin({ username: username.trim(), password });
   }
 
   return (
     <main className="login-page">
-      <div className="login-actions" aria-label="Login actions">
-        <LanguageSelector variant="floating" />
-        <button className="login-round-action" type="button" aria-label={t("logout")} onClick={() => {
-          setUsername("");
-          setPassword("");
-        }}>
-          <svg className="power-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 3v8" />
-            <path d="M7.05 7.05a7 7 0 1 0 9.9 0" />
-          </svg>
-        </button>
-      </div>
-
-      <header className="login-heading">
-        <h1>Tienda Principal</h1>
-        <p>Terminal: 01</p>
+      <header className="saas-login-topbar">
+        <strong className="saas-login-brand">APP SAAS</strong>
+        <span className="saas-login-context">Administracion central</span>
+        <span className="saas-login-terminal">Servidor SaaS</span>
+        <div className="saas-login-tools">
+          <LanguageSelector variant="floating" />
+          <LoginClock language={language} />
+        </div>
       </header>
 
       <section className="login-panel" aria-label={t("adminAccess")}>
+        <header className="login-panel-heading">
+          <strong>APP SAAS</strong>
+          <span>Administracion central - Servidor SaaS</span>
+        </header>
         {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
         <form className="stack-form" onSubmit={submit}>
           <label>
-            {t("username")}
+            <span>{t("username")}</span>
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
               placeholder={t("username")}
+              autoFocus
               required
             />
           </label>
-          <label>
-            {t("password")}
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              autoComplete="current-password"
-              placeholder={t("password")}
-              required
-            />
-          </label>
-          <button className="primary-button" type="submit" disabled={loading}>
-            {t("enter")}
-          </button>
+          {mode === "login" && <label><span>{t("password")}</span><input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" placeholder={t("password")} required /></label>}
+          {mode === "confirm" && <>
+            <label><span>{t("recoveryToken")}</span><input value={recoveryToken} onChange={(event) => setRecoveryToken(event.target.value)} autoComplete="one-time-code" required minLength={32} /></label>
+            <label><span>{t("newPassword")}</span><input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" autoComplete="new-password" required minLength={12} /></label>
+            <label><span>{t("confirmPassword")}</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" required minLength={12} /></label>
+          </>}
+          <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
+          <div className="form-actions login-recovery-actions">
+            {mode === "login" ? <button className="secondary-button" type="button" onClick={() => setMode("request")}>{t("forgotPassword")}</button> : <button className="secondary-button" type="button" onClick={() => setMode("login")}>{t("backToLogin")}</button>}
+            {mode !== "confirm" && <button className="secondary-button" type="button" onClick={() => setMode("confirm")}>{t("recoveryToken")}</button>}
+          </div>
         </form>
       </section>
     </main>
   );
 }
 
+function RequiredPasswordChangeScreen({ username, loading, notice, onSubmit, onCancel }: {
+  username: string; loading: boolean; notice: Notice;
+  onSubmit: (newPassword: string, confirmation: string) => Promise<void>; onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  return <main className="login-page"><section className="login-panel" aria-labelledby="password-change-title">
+    <header className="login-panel-heading"><strong>APP SAAS</strong><span>{username}</span></header>
+    <form className="stack-form" onSubmit={(event) => { event.preventDefault(); void onSubmit(newPassword, confirmation); }}>
+      <h1 id="password-change-title">{t("passwordChangeTitle")}</h1><p>{t("passwordChangeHelp")}</p>
+      {notice && <div className={`notice ${notice.type}`} role="status">{notice.text}</div>}
+      <label><span>{t("newPassword")}</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={12} required autoFocus /></label>
+      <label><span>{t("confirmPassword")}</span><input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={12} required /></label>
+      <button className="primary-button" type="submit" disabled={loading}>{t("changeOwnPassword")}</button>
+      <button className="secondary-button" type="button" onClick={onCancel}>{t("logout")}</button>
+    </form>
+  </section></main>;
+}
+
+function LoginClock({ language }: { language: Language }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const locale = language === "zh" ? "zh-CN" : language === "en" ? "en-GB" : "es-ES";
+  return (
+    <time className="saas-login-clock" dateTime={now.toISOString()}>
+      {new Intl.DateTimeFormat(locale, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      }).format(now)}
+    </time>
+  );
+}
 function TenantPortal({
   credentials,
   data,
@@ -1388,6 +1771,32 @@ function TenantPortal({
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("NORMAL");
   const [busy, setBusy] = useState(false);
+  const [tenantSection, setTenantSection] = useState(() => {
+    const id = window.location.hash.slice(1);
+    return ["tenant-company", "tenant-licenses", "tenant-masters", "tenant-support"].includes(id) ? id : "tenant-company";
+  });
+
+  function navigateTenantSection(id: string) {
+    setTenantSection(id);
+    const nextHash = `#${id}`;
+    if (window.location.hash !== nextHash) window.history.pushState({ tenantSection: id }, "", nextHash);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  useEffect(() => {
+    if (!data) return;
+    const syncSection = () => {
+      const id = window.location.hash.slice(1);
+      if (["tenant-company", "tenant-licenses", "tenant-masters", "tenant-support"].includes(id)) {
+        setTenantSection(id);
+        document.getElementById(id)?.scrollIntoView({ block: "start" });
+      } else {
+        setTenantSection("tenant-company");
+      }
+    };
+    syncSection(); window.addEventListener("popstate", syncSection); window.addEventListener("hashchange", syncSection);
+    return () => { window.removeEventListener("popstate", syncSection); window.removeEventListener("hashchange", syncSection); };
+  }, [data]);
 
   async function submitTicket(event: FormEvent) {
     event.preventDefault();
@@ -1416,11 +1825,10 @@ function TenantPortal({
             <span>{t("clientPortal")}</span>
           </div>
         </div>
-        <nav className="nav-list top-nav-list tenant-top-nav">
-          <span>{t("myCompany")}</span>
-          <span>{t("myLicenses")}</span>
-          <span>{t("myMasters")}</span>
-          <span>{t("mySupport")}</span>
+        <nav className="nav-list top-nav-list tenant-top-nav" aria-label={t("mainNavigation")}>
+          {[["tenant-company", t("myCompany")], ["tenant-licenses", t("myLicenses")], ["tenant-masters", t("myMasters")], ["tenant-support", t("mySupport")]].map(([id, label]) => (
+            <button type="button" key={id} aria-current={tenantSection === id ? "page" : undefined} onClick={() => navigateTenantSection(id)}>{label}</button>
+          ))}
         </nav>
         <div className="app-actions" aria-label="Tenant actions">
           <LanguageSelector variant="floating" />
@@ -1449,7 +1857,7 @@ function TenantPortal({
           <EmptyState text={loading ? t("loadingSaas") : t("noLoadedData")} />
         ) : (
           <div className="view-grid tenant-view">
-            <section className="metric-grid tenant-metrics">
+            <section id="tenant-company" className="metric-grid tenant-metrics">
               <Metric label={t("licenses")} value={data.dashboard.licenses} />
               <Metric label={t("stores")} value={data.dashboard.stores} />
               <Metric label={t("installations")} value={data.dashboard.installations} />
@@ -1458,7 +1866,7 @@ function TenantPortal({
               <Metric label={t("monthlyPrice")} value={data.dashboard.monthlyPrice ?? "-"} detail={data.dashboard.renewalDate ? `${t("renewalDate")}: ${formatDate(data.dashboard.renewalDate)}` : undefined} />
             </section>
 
-            <section className="content-section">
+            <section id="tenant-licenses" className="content-section">
               <SectionHeader title={t("myLicenses")} subtitle={`${data.licenses.length} ${t("records")}`} />
               <LicenseTable licenses={data.licenses} compact />
             </section>
@@ -1468,8 +1876,12 @@ function TenantPortal({
               <InvoiceTable invoices={data.invoices} />
             </section>
 
-            <section className="content-section">
+            <section id="tenant-masters" className="content-section">
               <SectionHeader title={t("myMasters")} subtitle={t("erpMastersSubtitle")} />
+              {(data.session.roleName === "OWNER" || data.session.roleName === "MANAGER") && <>
+                <TenantMasterCreate credentials={credentials} onRefresh={onRefresh} onNotice={onNotice} />
+                <TenantMasterCsvTools credentials={credentials} onRefresh={onRefresh} onNotice={onNotice} />
+              </>}
               <div className="tenant-master-grid">
                 <div>
                   <h3>{t("customers")}</h3>
@@ -1490,7 +1902,7 @@ function TenantPortal({
               </div>
             </section>
 
-            <section className="content-section two-column tenant-two-column">
+            <section id="tenant-support" className="content-section two-column tenant-two-column">
               <div>
                 <SectionHeader title={t("myStores")} subtitle={`${data.stores.length} ${t("records")}`} />
                 <div className="tenant-store-list">
@@ -1537,6 +1949,104 @@ function TenantPortal({
   );
 }
 
+function TenantMasterCsvTools({ credentials, onRefresh, onNotice }: { credentials: Credentials; onRefresh: () => void; onNotice: (notice: Notice) => void }) {
+  const { t } = useI18n();
+  const [resource, setResource] = useState<MasterMode>("customers");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState<"import" | "export" | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function exportCsv() {
+    setBusy("export");
+    try {
+      const csv = await api.exportTenantMasterCsv(credentials, resource);
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=UTF-8" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `${resource}.csv`; link.click();
+      URL.revokeObjectURL(url);
+      onNotice(null);
+    } catch (error) { onNotice({ type: "error", text: errorMessage(error) }); }
+    finally { setBusy(null); }
+  }
+
+  async function importCsv(event: FormEvent) {
+    event.preventDefault();
+    if (!file || !file.name.toLowerCase().endsWith(".csv") || file.size === 0) {
+      onNotice({ type: "error", text: t("csvInvalid") }); return;
+    }
+    setBusy("import");
+    try {
+      const csv = await file.text();
+      if (!csv.trim()) { onNotice({ type: "error", text: t("csvInvalid") }); return; }
+      if (!window.confirm(t("confirmCsvImport"))) return;
+      const result = await api.importTenantMasterCsv(credentials, resource, csv);
+      setFile(null); if (fileRef.current) fileRef.current.value = "";
+      onNotice({ type: "success", text: t("csvImported").replace("{processed}", String(result.processed)).replace("{inserted}", String(result.inserted)).replace("{updated}", String(result.updated)) });
+      onRefresh();
+    } catch (error) { onNotice({ type: "error", text: errorMessage(error) }); }
+    finally { setBusy(null); }
+  }
+
+  return <form className="compact-form-grid" onSubmit={importCsv} aria-label={t("csvTools")}>
+    <label>{t("masters")}<select className="control-input" value={resource} onChange={(event) => { setResource(event.target.value as MasterMode); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>
+      <option value="customers">{t("customers")}</option><option value="products">{t("products")}</option><option value="suppliers">{t("suppliers")}</option><option value="warehouses">{t("warehouses")}</option>
+    </select></label>
+    <label>{t("csvFile")}<input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
+    <button className="secondary-button" type="button" disabled={busy !== null} onClick={() => void exportCsv()}>{t("exportCsv")}</button>
+    <button className="primary-button" type="submit" disabled={busy !== null || !file}>{t("importCsv")}</button>
+  </form>;
+}
+
+function TenantMasterCreate({ credentials, onRefresh, onNotice }: { credentials: Credentials; onRefresh: () => void; onNotice: (notice: Notice) => void }) {
+  const { t } = useI18n();
+  const [mode, setMode] = useState<MasterMode>("customers");
+  const [party, setParty] = useState({ code: "", name: "", taxId: "", email: "", phone: "" });
+  const [product, setProduct] = useState({ sku: "", name: "", category: "", price: "0.00", taxRate: "21.00", minStock: "0.00" });
+  const [warehouse, setWarehouse] = useState({ code: "", name: "", address: "" });
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      if (mode === "customers") await api.createTenantErpCustomer(credentials, party);
+      else if (mode === "products") await api.createTenantErpProduct(credentials, product);
+      else if (mode === "suppliers") await api.createTenantErpSupplier(credentials, party);
+      else await api.createTenantErpWarehouse(credentials, warehouse);
+      setParty({ code: "", name: "", taxId: "", email: "", phone: "" });
+      setProduct({ sku: "", name: "", category: "", price: "0.00", taxRate: "21.00", minStock: "0.00" });
+      setWarehouse({ code: "", name: "", address: "" });
+      onNotice({ type: "success", text: t("masterCreated") });
+      onRefresh();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally { setBusy(false); }
+  }
+
+  return <form className="compact-form-grid masters-form tenant-master-create" onSubmit={submit}>
+    <Segmented value={mode} options={[["customers", t("customers")], ["products", t("products")], ["suppliers", t("suppliers")], ["warehouses", t("warehouses")]]} onChange={(value) => setMode(value as MasterMode)} />
+    {mode === "products" ? <>
+      <Input label={t("sku")} value={product.sku} onChange={(sku) => setProduct({ ...product, sku })} required />
+      <Input label={t("name")} value={product.name} onChange={(name) => setProduct({ ...product, name })} required />
+      <Input label={t("category")} value={product.category} onChange={(category) => setProduct({ ...product, category })} />
+      <Input label={t("price")} value={product.price} onChange={(price) => setProduct({ ...product, price })} required />
+      <Input label={t("taxRate")} value={product.taxRate} onChange={(taxRate) => setProduct({ ...product, taxRate })} required />
+      <Input label={t("minStock")} value={product.minStock} onChange={(minStock) => setProduct({ ...product, minStock })} required />
+    </> : mode === "warehouses" ? <>
+      <Input label={t("code")} value={warehouse.code} onChange={(code) => setWarehouse({ ...warehouse, code })} required />
+      <Input label={t("name")} value={warehouse.name} onChange={(name) => setWarehouse({ ...warehouse, name })} required />
+      <Input label={t("address")} value={warehouse.address} onChange={(address) => setWarehouse({ ...warehouse, address })} />
+    </> : <>
+      <Input label={t("code")} value={party.code} onChange={(code) => setParty({ ...party, code })} required />
+      <Input label={t("name")} value={party.name} onChange={(name) => setParty({ ...party, name })} required />
+      <Input label={t("taxId")} value={party.taxId} onChange={(taxId) => setParty({ ...party, taxId })} />
+      <Input label={t("email")} type="email" value={party.email} onChange={(email) => setParty({ ...party, email })} />
+      <Input label={t("phone")} value={party.phone} onChange={(phone) => setParty({ ...party, phone })} />
+    </>}
+    <button className="primary-button" type="submit" disabled={busy}>{busy ? t("saving") : t("tenantMasterCreate")}</button>
+  </form>;
+}
+
 function TenantTicketList({ tickets }: { tickets: SupportTicket[] }) {
   const { t } = useI18n();
   if (tickets.length === 0) return <EmptyState text={t("noTenantTickets")} />;
@@ -1563,9 +2073,14 @@ function TenantTicketList({ tickets }: { tickets: SupportTicket[] }) {
 
 function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
+  const filtered = invoices.filter((invoice) => [invoice.number, invoice.concept, invoice.status, invoice.companyName].some((value) => normalizeSearch(value).includes(normalizeSearch(query))));
+  const paging = usePagination(filtered);
   if (invoices.length === 0) return <EmptyState text={t("noBillingData")} />;
   return (
-    <div className="table-wrap">
+    <>
+      <div className="toolbar table-filter"><Input label={t("filterRecords")} value={query} onChange={setQuery} /></div>
+      <div className="table-wrap">
       <table>
         <thead>
           <tr>
@@ -1578,15 +2093,15 @@ function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
           </tr>
         </thead>
         <tbody>
-          {invoices.map((invoice) => (
+          {paging.rows.map((invoice) => (
             <tr key={invoice.id}>
               <td>
                 <strong>{invoice.number}</strong>
                 <small>{formatDate(invoice.issuedAt)}</small>
               </td>
               <td>{invoice.concept}</td>
-              <td>{formatMoney(invoice.amount)} {invoice.currency}</td>
-              <td>{formatMoney(invoice.paidAmount)} {invoice.currency}</td>
+              <td>{formatCurrency(invoice.amount, invoice.currency)}</td>
+              <td>{formatCurrency(invoice.paidAmount, invoice.currency)}</td>
               <td>
                 <StatusPill status={billingStatusLabel(invoice.status, t)} tone={invoice.status === "PAGADA" ? "ok" : "warning"} />
               </td>
@@ -1595,7 +2110,9 @@ function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+      <PaginationControls {...paging} />
+    </>
   );
 }
 
@@ -1607,70 +2124,85 @@ function Dashboard({ data, onNavigate }: { data: DashboardData; onNavigate: (vie
   const lastEvent = data.events[0];
   const alerts = operationalAlerts(data, t);
   const report = data.advancedReport;
-  const activeSubscriptions = data.subscriptions?.filter((item) => item.status === "ACTIVA").length ?? "-";
-  const activeIntegrations = report?.activeIntegrations ?? data.integrations?.filter((item) => item.status === "ACTIVA").length ?? "-";
-  const moduleCards: Array<{ view: View; label: string; detail: string; value: string | number }> = [
-    { view: "licenses", label: t("licenses"), detail: t("licensesCompanies"), value: data.licenses.length },
-    { view: "sync", label: t("sync"), detail: t("syncSubtitle"), value: data.events.length },
-    { view: "support", label: t("supportCenter"), detail: t("supportTicketsSubtitle"), value: alerts.length },
-    { view: "health", label: t("customerHealth"), detail: t("healthSubtitle"), value: blockedLicenses },
-    { view: "billing", label: t("billing"), detail: t("billingSubtitle"), value: report ? formatMoney(report.invoicedTotal) : data.salesSummary.total },
-    { view: "masters", label: t("masters"), detail: t("erpMastersSubtitle"), value: data.stockCurrent.length },
-    { view: "operations", label: t("operations"), detail: t("realOperationsSubtitle"), value: data.events.length },
-    { view: "subscriptions", label: t("subscriptions"), detail: t("subscriptionsSubtitle"), value: activeSubscriptions },
-    { view: "reports", label: t("reports"), detail: t("advancedReportsSubtitle"), value: activeIntegrations }
-  ];
 
   return (
-    <div className="view-grid">
-      <section className="launch-pad" aria-label={t("launchPad")}>
-        <SectionHeader title={t("launchPad")} subtitle={t("launchPadSubtitle")} />
-        <div className="module-grid">
-          {moduleCards.map((card) => (
-            <button className="module-card" type="button" key={card.view} onClick={() => onNavigate(card.view)}>
-              <span>{card.label}</span>
-              <strong>{card.value}</strong>
-              <small>{card.detail}</small>
-            </button>
-          ))}
-        </div>
+    <div className="view-grid saas-dashboard">
+      <section className="saas-dashboard-summary-strip" aria-label={t("dashboard")}>
+        <article className="saas-dashboard-panel license-summary">
+          <header><strong>{t("licensesCompanies")}</strong></header>
+          <div className="saas-dashboard-panel-body saas-license-summary-body">
+            <div className="saas-main-metric">
+              <span>{t("validLicenses")}</span>
+              <strong>{activeLicenses}</strong>
+              <small>{`${data.licenses.length} ${t("total")}`}</small>
+            </div>
+            <dl>
+              <div><dt>{t("blocked")}</dt><dd>{blockedLicenses}</dd></div>
+              <div><dt>{t("installations")}</dt><dd>{data.installations.length}</dd></div>
+            </dl>
+            <footer><button type="button" onClick={() => onNavigate("licenses")}>{t("licensesCompanies")}</button></footer>
+          </div>
+        </article>
+
+        <article className="saas-dashboard-panel sync-summary">
+          <header><strong>{t("sync")}</strong></header>
+          <div className="saas-dashboard-panel-body saas-summary-content">
+            <div className="saas-promotion-count"><strong>{data.events.length}</strong><span>{t("events")}</span></div>
+            <div className="saas-summary-facts">
+              <span>{t("syncedSales")}</span>
+              <strong>{report?.salesDocuments ?? data.salesSummary.documentCount}</strong>
+            </div>
+            <footer><button type="button" onClick={() => onNavigate("sync")}>{t("sync")}</button></footer>
+          </div>
+        </article>
+
+        <article className="saas-dashboard-panel alert-summary">
+          <header><strong>{t("alerts")}</strong></header>
+          <div className="saas-dashboard-panel-body saas-summary-content">
+            <div className="saas-control-alert-counts">
+              <div><strong>{alerts.length}</strong><span>{t("alerts")}</span></div>
+              <div><strong>{blockedLicenses}</strong><span>{t("blocked")}</span></div>
+            </div>
+            <div className="saas-summary-facts">
+              <span>{t("activeUsers")}</span>
+              <strong>{activeUsers}</strong>
+            </div>
+            <footer><button type="button" onClick={() => onNavigate("health")}>{t("viewDetail")}</button></footer>
+          </div>
+        </article>
       </section>
 
-      <section className="metric-grid">
-        <Metric label={t("validLicenses")} value={activeLicenses} />
-        <Metric label={t("blocked")} value={blockedLicenses} tone="warning" />
-        <Metric label={t("installations")} value={data.installations.length} />
-        <Metric label={t("activeUsers")} value={activeUsers} />
-        <Metric label={t("syncedSales")} value={report?.salesDocuments ?? data.salesSummary.documentCount} detail={`${formatMoney(report?.salesTotal ?? data.salesSummary.total)} ${t("total")}`} />
-        <Metric label={t("invoices")} value={report?.invoices ?? "-"} detail={report ? `${t("paidTotal")}: ${formatMoney(report.paidTotal)}` : undefined} />
-        <Metric label={t("subscriptionMrr")} value={formatMoney(report?.subscriptionMrr ?? "0")} />
-        <Metric label={t("activeIntegrations")} value={activeIntegrations} />
-      </section>
+      <div className="saas-dashboard-main-grid">
+        <section className="saas-dashboard-panel recent-licenses-panel">
+          <header><strong>{t("recentLicenses")}</strong></header>
+          <div className="saas-dashboard-panel-body">
+            <LicenseTable licenses={data.licenses.slice(0, 8)} compact />
+          </div>
+        </section>
 
-      <section className="content-section">
-        <SectionHeader title={t("alerts")} subtitle={t("alertsSubtitle")} />
-        <AlertList alerts={alerts} />
-      </section>
-
-      <section className="content-section">
-        <SectionHeader title={t("recentLicenses")} subtitle={t("recentLicensesSubtitle")} />
-        <LicenseTable licenses={data.licenses.slice(0, 8)} compact />
-      </section>
-
-      <section className="content-section two-column">
-        <div>
-          <SectionHeader title={t("lastEvent")} subtitle={lastEvent ? formatDate(lastEvent.receivedAt) : t("noEvents")} />
-          {lastEvent ? <EventLine event={lastEvent} /> : <EmptyState text={t("noSyncedEventsYet")} />}
-        </div>
-        <div>
-          <SectionHeader title={t("audit")} subtitle={t("auditRecent")} />
-          <AuditList audit={data.audit.slice(0, 5)} />
-        </div>
-      </section>
+        <section className="saas-dashboard-activity" aria-labelledby="saas-dashboard-activity-title">
+          <h2 id="saas-dashboard-activity-title">{t("recentActivity")}</h2>
+          <div className="saas-dashboard-activity-body">
+            <article className="saas-dashboard-panel">
+              <header><strong>{t("lastEvent")}</strong></header>
+              <div className="saas-dashboard-panel-body activity-panel-body">
+                {lastEvent ? <EventLine event={lastEvent} /> : <EmptyState text={t("noSyncedEventsYet")} />}
+                <footer><button type="button" onClick={() => onNavigate("sync")}>{t("sync")}</button></footer>
+              </div>
+            </article>
+            <article className="saas-dashboard-panel">
+              <header><strong>{t("audit")}</strong></header>
+              <div className="saas-dashboard-panel-body activity-panel-body">
+                <AuditList audit={data.audit.slice(0, 3)} />
+                <footer><button type="button" onClick={() => onNavigate("audit")}>{t("audit")}</button></footer>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
-
 function LicensesView({
   credentials,
   licenses,
@@ -1690,7 +2222,7 @@ function LicensesView({
 }) {
   const { t } = useI18n();
   const [companyForm, setCompanyForm] = useState<CreateCompanyRequest>(initialCompanyForm);
-  const [pairingCode, setPairingCode] = useState<PairingCodeResponse | null>(null);
+  const [pairingCode, setPairingCode] = useState<(Omit<PairingCodeResponse, "expiresAt"> & { expiresAt: string | null }) | null>(null);
   const [tenantAccess, setTenantAccess] = useState<{ username: string; password: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => licenses[0]?.companyId ?? "");
@@ -1720,7 +2252,7 @@ function LicensesView({
       setPairingCode({
         licenseReference: response.licenseReference,
         pairingCode: response.pairingCode,
-        expiresAt: addDays(new Date(), 7).toISOString()
+        expiresAt: null
       });
       setTenantAccess({ username: response.tenantUsername, password: response.tenantInitialPassword });
       setCompanyForm(initialCompanyForm);
@@ -1740,6 +2272,7 @@ function LicensesView({
         ? canUnblockLicense
         : canGenerateCode;
     if (!permitted) return;
+    if ((action === "block" || action === "unblock") && !window.confirm(t("confirmDestructive"))) return;
     setBusy(`${action}:${reference}`);
     try {
       if (action === "block") {
@@ -2086,25 +2619,29 @@ function FiscalStatusView({ credentials, licenses, onNotice }: {
   const [companyRows, setCompanyRows] = useState<FiscalCompanyStatusAdmin[]>([]);
   const [companyId, setCompanyId] = useState("");
   const [loading, setLoading] = useState(false);
+  const fiscalRequestId = useRef(0);
   const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
   const visibleRows = rows.filter((row) => !companyId || row.companyId === companyId);
 
   useEffect(() => { void load(); }, [credentials.username, companyId]);
 
   async function load() {
+    const requestId = ++fiscalRequestId.current;
+    const requestedCompanyId = companyId;
     setLoading(true);
     try {
       const [nextRows, nextCompanyRows] = await Promise.all([
         api.fiscalStatus(credentials, companyId || undefined),
         companyId ? Promise.resolve([] as FiscalCompanyStatusAdmin[]) : api.fiscalCompanyStatus(credentials)
       ]);
+      if (requestId !== fiscalRequestId.current || requestedCompanyId !== companyId) return;
       setRows(nextRows);
       setCompanyRows(nextCompanyRows);
       onNotice(null);
     } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
+      if (requestId === fiscalRequestId.current && requestedCompanyId === companyId) onNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setLoading(false);
+      if (requestId === fiscalRequestId.current) setLoading(false);
     }
   }
 
@@ -2185,6 +2722,7 @@ function SyncView({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [loading, setLoading] = useState(false);
+  const syncRequestId = useRef(0);
 
   const companyOptions = useMemo(() => uniqueCompanies(licenses), [licenses]);
   const companyNames = useMemo(
@@ -2202,9 +2740,12 @@ function SyncView({
   }, [mode, companyId, canViewIncidents]);
 
   async function load() {
+    const requestId = ++syncRequestId.current;
+    const requestedMode = mode;
+    const requestedCompanyId = companyId;
     setLoading(true);
     try {
-      const selectedCompanyId = companyId || undefined;
+      const selectedCompanyId = requestedCompanyId || undefined;
       const allEventsPromise = api.events(credentials, selectedCompanyId);
       const incidentsPromise = canViewIncidents
         ? api.operationalIncidents(credentials, selectedCompanyId)
@@ -2223,6 +2764,7 @@ function SyncView({
         projectionStatusPromise,
         selectedDataPromise
       ]);
+      if (requestId !== syncRequestId.current || requestedMode !== mode || requestedCompanyId !== companyId) return;
       setHealthEvents(nextHealthEvents);
       setIncidents(nextIncidents);
       setProjectionStatus(nextProjectionStatus);
@@ -2231,9 +2773,9 @@ function SyncView({
       if (mode === "stock") setStock(selectedData as StockSnapshot[]);
       onNotice(null);
     } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
+      if (requestId === syncRequestId.current && requestedMode === mode && requestedCompanyId === companyId) onNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setLoading(false);
+      if (requestId === syncRequestId.current) setLoading(false);
     }
   }
 
@@ -2414,6 +2956,10 @@ function UsersView({
   const companyOptions = useMemo(() => uniqueCompanies(licenses), [licenses]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "request" | "confirm">("login");
+  const [recoveryToken, setRecoveryToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [roleName, setRoleName] = useState<SaasAdminRoleName>("ADMIN");
   const [tenantCompanyId, setTenantCompanyId] = useState("");
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
@@ -2466,6 +3012,7 @@ function UsersView({
   }
 
   async function deactivate(user: string) {
+    if (!window.confirm(t("confirmDestructive"))) return;
     setBusy(user);
     try {
       await api.deactivateUser(credentials, user);
@@ -2546,6 +3093,7 @@ function UsersView({
   }
 
   async function deactivateTenantUser(user: string) {
+    if (!window.confirm(t("confirmDestructive"))) return;
     const companyId = tenantCompanyId;
     if (!ownsSelectedTenantUser(companyId, user)) {
       onNotice({ type: "error", text: t("companySelectionChanged") });
@@ -2902,7 +3450,23 @@ function BillingView({
     dueAt: toLocalInput(addDays(new Date(), 30))
   });
   const [paymentForm, setPaymentForm] = useState({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
+  const [planUsage, setPlanUsage] = useState<PlanUsage | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [reconciliations, setReconciliations] = useState<PaymentReconciliation[]>([]);
+  const [reconciliationError, setReconciliationError] = useState<string | null>(null);
+  const [reconciliationForm, setReconciliationForm] = useState({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toLocalInput(new Date()), notes: "" });
+  const [fiscalInvoiceId, setFiscalInvoiceId] = useState("");
+  const [fiscalDetail, setFiscalDetail] = useState<InvoiceFiscalDetail | null>(null);
+  const [fiscalError, setFiscalError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [reconciliationBusy, setReconciliationBusy] = useState(false);
+  const [fiscalBusy, setFiscalBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const invoiceRequestId = useRef(0);
+  const billingExtrasRequestId = useRef(0);
+  const fiscalRequestId = useRef(0);
+  const selectedBillingCompanyRef = useRef(selectedCompanyId);
+  selectedBillingCompanyRef.current = selectedCompanyId;
   const canManage = permissions.has("MANAGE_BILLING");
   const visibleCompanies = (summary?.companies ?? []).filter((company) => visibleCompanyIds.size === 0 || visibleCompanyIds.has(company.companyId));
   const orderedCompanies = visibleCompanies.slice().sort((left, right) => Number(right.overdue) - Number(left.overdue) || Number(right.renewalDueSoon) - Number(left.renewalDueSoon) || left.companyName.localeCompare(right.companyName));
@@ -2929,9 +3493,11 @@ function BillingView({
   }, [orderedCompanies, selectedCompanyId]);
 
   useEffect(() => {
-    if (selectedCompanyId) {
-      void loadInvoices(selectedCompanyId);
-    }
+    invoiceRequestId.current += 1; billingExtrasRequestId.current += 1; fiscalRequestId.current += 1;
+    setInvoices([]); setPlanUsage(null); setReconciliations([]); setFiscalDetail(null);
+    setPlanError(null); setReconciliationError(null); setFiscalError(null); setFiscalInvoiceId("");
+    setPaymentForm({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
+    if (selectedCompanyId) void loadInvoices(selectedCompanyId);
   }, [selectedCompanyId]);
 
   async function loadBilling() {
@@ -2944,13 +3510,33 @@ function BillingView({
   }
 
   async function loadInvoices(companyId: string) {
+    const requestId = ++invoiceRequestId.current;
     try {
-      setInvoices(await api.billingInvoices(credentials, companyId));
+      const response = await api.billingInvoices(credentials, companyId);
+      if (requestId !== invoiceRequestId.current || !isCurrentSelection(companyId, selectedBillingCompanyRef.current)) return;
+      setInvoices(response);
+      setLoadError(null);
       onNotice(null);
+      void loadBillingExtras(companyId);
     } catch (error) {
+      if (requestId !== invoiceRequestId.current || !isCurrentSelection(companyId, selectedBillingCompanyRef.current)) return;
       setInvoices([]);
-      onNotice({ type: "error", text: errorMessage(error) });
+      const message = errorMessage(error);
+      setLoadError(message);
+      onNotice({ type: "error", text: message });
     }
+  }
+
+  async function loadBillingExtras(companyId: string) {
+    const requestId = ++billingExtrasRequestId.current;
+    const [planResult, reconciliationResult] = await Promise.allSettled([
+      api.planUsage(credentials, companyId), api.paymentReconciliations(credentials, companyId)
+    ]);
+    if (requestId !== billingExtrasRequestId.current || !isCurrentSelection(companyId, selectedBillingCompanyRef.current)) return;
+    if (planResult.status === "fulfilled") { setPlanUsage(planResult.value); setPlanError(null); }
+    else { setPlanUsage(null); setPlanError(errorMessage(planResult.reason)); }
+    if (reconciliationResult.status === "fulfilled") { setReconciliations(reconciliationResult.value); setReconciliationError(null); }
+    else { setReconciliations([]); setReconciliationError(errorMessage(reconciliationResult.reason)); }
   }
 
   async function createInvoice(event: FormEvent) {
@@ -2992,6 +3578,15 @@ function BillingView({
   async function registerPayment(event: FormEvent) {
     event.preventDefault();
     if (!paymentForm.invoiceId) return;
+    const selectedInvoice = invoices.find((invoice) => invoice.id === paymentForm.invoiceId && invoice.companyId === selectedCompanyId);
+    if (!selectedInvoice) {
+      onNotice({ type: "error", text: t("companySelectionChanged") });
+      return;
+    }
+    if (parseAmount(paymentForm.amount) > outstandingAmount(selectedInvoice)) {
+      onNotice({ type: "error", text: t("paymentExceedsOutstanding") });
+      return;
+    }
     if (!canManage) {
       onNotice({ type: "error", text: t("noPermissionAction") });
       return;
@@ -3017,6 +3612,46 @@ function BillingView({
     } finally {
       setBusy(null);
     }
+  }
+
+  async function createReconciliation(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedCompanyId || !canManage) { onNotice({ type: "error", text: t("noPermissionAction") }); return; }
+    if (!/^\d+(?:\.\d{1,2})?$/.test(reconciliationForm.amount) || !isPositiveAmount(reconciliationForm.amount)
+        || !/^[A-Za-z]{3}$/.test(reconciliationForm.currency) || !reconciliationForm.externalReference.trim()
+        || reconciliationForm.externalReference.length > 160 || reconciliationForm.notes.length > 500) {
+      onNotice({ type: "error", text: t("invalidReconciliation") }); return;
+    }
+    const requestedCompanyId = selectedCompanyId;
+    setReconciliationBusy(true);
+    try {
+      await api.createPaymentReconciliation(credentials, requestedCompanyId, {
+        paymentId: null, ...reconciliationForm,
+        provider: reconciliationForm.provider,
+        currency: reconciliationForm.currency.toUpperCase(),
+        externalReference: reconciliationForm.externalReference.trim(),
+        bookedAt: new Date(reconciliationForm.bookedAt).toISOString()
+      });
+      if (!isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) return;
+      setReconciliationForm({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toLocalInput(new Date()), notes: "" });
+      await loadBillingExtras(requestedCompanyId);
+      onNotice({ type: "success", text: t("reconciliationCreated") });
+    } catch (error) { if (isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) onNotice({ type: "error", text: errorMessage(error) }); }
+    finally { setReconciliationBusy(false); }
+  }
+
+  async function loadFiscalDetail(invoiceId = fiscalInvoiceId) {
+    const invoice = invoices.find((item) => item.id === invoiceId && item.companyId === selectedCompanyId);
+    if (!invoice) return;
+    const requestedCompanyId = selectedCompanyId;
+    const requestId = ++fiscalRequestId.current;
+    setFiscalBusy(true); setFiscalError(null); setFiscalDetail(null);
+    try {
+      const detail = await api.invoiceFiscalDetail(credentials, invoiceId);
+      if (requestId !== fiscalRequestId.current || !isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current) || detail.companyId !== requestedCompanyId) return;
+      setFiscalDetail(detail);
+    } catch (error) { if (requestId === fiscalRequestId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setFiscalError(errorMessage(error)); }
+    finally { if (requestId === fiscalRequestId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setFiscalBusy(false); }
   }
 
   return (
@@ -3078,6 +3713,7 @@ function BillingView({
 
       <section className="content-section">
         <SectionHeader title={t("realBilling")} subtitle={t("invoices")} />
+        {loadError && <RetryError message={loadError} onRetry={() => selectedCompanyId && void loadInvoices(selectedCompanyId)} />}
         <div className="toolbar">
           <select value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}>
             {orderedCompanies.map((company) => (
@@ -3085,6 +3721,11 @@ function BillingView({
             ))}
           </select>
         </div>
+        <SectionHeader title={t("planUsage")} subtitle={planUsage?.planName ?? "-"} />
+        {planError && <RetryError message={planError} onRetry={() => selectedCompanyId && void loadBillingExtras(selectedCompanyId)} />}
+        {planUsage && <div className="metric-grid">
+          {Object.entries(planUsage.limits).map(([resource, limit]) => <Metric key={resource} label={resource.replaceAll("_", " ")} value={t("usedOfLimit").replace("{used}", String(planUsage.usage[resource] ?? 0)).replace("{limit}", String(limit))} tone={(planUsage.usage[resource] ?? 0) >= limit ? "warning" : undefined} />)}
+        </div>}
         {canManage && (
           <>
             <form className="compact-form-grid" onSubmit={createInvoice}>
@@ -3105,13 +3746,13 @@ function BillingView({
                   onChange={(event) => {
                     const invoiceId = event.target.value;
                     const invoice = invoices.find((value) => value.id === invoiceId);
-                    setPaymentForm({ ...paymentForm, invoiceId, amount: invoice ? invoice.amount : paymentForm.amount });
+                    setPaymentForm({ ...paymentForm, invoiceId, amount: invoice ? String(outstandingAmount(invoice)) : "" });
                   }}
                 >
                   <option value="">{t("pending")}</option>
                   {invoices.map((invoice) => (
                     <option value={invoice.id} key={invoice.id}>
-                      {invoice.number} - {formatMoney(invoice.amount)} {invoice.currency}
+                      {invoice.number} - {formatCurrency(invoice.amount, invoice.currency)}
                     </option>
                   ))}
                 </select>
@@ -3124,6 +3765,38 @@ function BillingView({
           </>
         )}
         <InvoiceTable invoices={invoices} />
+
+        <SectionHeader title={t("invoiceFiscalDetail")} subtitle={fiscalDetail ? `${fiscalDetail.series}-${fiscalDetail.number}` : ""} />
+        {fiscalError && <RetryError message={fiscalError} onRetry={() => void loadFiscalDetail()} />}
+        <div className="toolbar">
+          <select className="control-input" value={fiscalInvoiceId} onChange={(event) => { setFiscalInvoiceId(event.target.value); setFiscalDetail(null); setFiscalError(null); }}>
+            <option value="">{t("invoices")}</option>
+            {invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} - {formatCurrency(invoice.amount, invoice.currency)}</option>)}
+          </select>
+          <button className="secondary-button" type="button" disabled={!fiscalInvoiceId || fiscalBusy} onClick={() => void loadFiscalDetail()}>{t("viewFiscalDetail")}</button>
+        </div>
+        {fiscalDetail && <div className="metric-grid">
+          <Metric label={t("series")} value={fiscalDetail.series} /><Metric label={t("fiscalYear")} value={fiscalDetail.fiscalYear} />
+          <Metric label={t("taxRegime")} value={fiscalDetail.taxRegime} /><Metric label={t("taxBase")} value={formatCurrency(fiscalDetail.taxBase, fiscalDetail.currency)} />
+          <Metric label={t("taxRate")} value={`${formatQuantity(fiscalDetail.taxRate)}%`} /><Metric label={t("taxAmount")} value={formatCurrency(fiscalDetail.taxAmount, fiscalDetail.currency)} />
+          <Metric label={t("total")} value={formatCurrency(fiscalDetail.total, fiscalDetail.currency)} />
+        </div>}
+
+        <SectionHeader title={t("reconciliations")} subtitle={`${reconciliations.length} ${t("records")}`} />
+        {reconciliationError && <RetryError message={reconciliationError} onRetry={() => selectedCompanyId && void loadBillingExtras(selectedCompanyId)} />}
+        {canManage && <form className="compact-form-grid" onSubmit={createReconciliation}>
+          <label>{t("provider")}<select className="control-input" value={reconciliationForm.provider} onChange={(event) => setReconciliationForm({ ...reconciliationForm, provider: event.target.value })}><option value="MANUAL_BANK">MANUAL_BANK</option><option value="MANUAL_GATEWAY">MANUAL_GATEWAY</option></select></label>
+          <Input label={t("externalReference")} value={reconciliationForm.externalReference} onChange={(externalReference) => setReconciliationForm({ ...reconciliationForm, externalReference })} required />
+          <Input label={t("amount")} value={reconciliationForm.amount} onChange={(amount) => setReconciliationForm({ ...reconciliationForm, amount })} required />
+          <Input label={t("currency")} value={reconciliationForm.currency} onChange={(currency) => setReconciliationForm({ ...reconciliationForm, currency })} required />
+          <Input label={t("bookedAt")} type="datetime-local" value={reconciliationForm.bookedAt} onChange={(bookedAt) => setReconciliationForm({ ...reconciliationForm, bookedAt })} required />
+          <Input label={t("notes")} value={reconciliationForm.notes} onChange={(notes) => setReconciliationForm({ ...reconciliationForm, notes })} />
+          <button className="primary-button" type="submit" disabled={reconciliationBusy}>{t("createReconciliation")}</button>
+        </form>}
+        {reconciliations.length === 0 ? <EmptyState text={t("noReconciliations")} /> : <div className="table-wrap"><table>
+          <thead><tr><th>{t("provider")}</th><th>{t("externalReference")}</th><th>{t("amount")}</th><th>{t("bookedAt")}</th><th>{t("status")}</th></tr></thead>
+          <tbody>{reconciliations.map((item) => <tr key={item.id}><td>{item.provider}</td><td>{item.externalReference}</td><td>{formatCurrency(item.amount, item.currency)}</td><td>{formatDate(item.bookedAt)}</td><td><StatusPill status={item.status} tone={item.status === "MATCHED" ? "ok" : "muted"} /></td></tr>)}</tbody>
+        </table></div>}
       </section>
     </div>
   );
@@ -3168,6 +3841,10 @@ function OperationsView({
     movedAt: toLocalInput(new Date())
   });
   const [busy, setBusy] = useState(false);
+  const [operationsLoadError, setOperationsLoadError] = useState<string | null>(null);
+  const operationsRequestId = useRef(0);
+  const selectedOperationsCompanyRef = useRef(companyId);
+  selectedOperationsCompanyRef.current = companyId;
   const canManage = permissions.has("MANAGE_OPERATIONS");
   const filteredSales = sales.filter((item) => !salesStatusFilter || item.status === salesStatusFilter);
   const filteredMovements = movements.filter((item) =>
@@ -3182,21 +3859,28 @@ function OperationsView({
   }, [companies, companyId]);
 
   useEffect(() => {
+    operationsRequestId.current += 1;
+    setSales([]); setMovements([]); setStock([]);
     if (companyId) void loadOperations(companyId);
   }, [companyId]);
 
   async function loadOperations(nextCompanyId: string) {
+    const requestId = ++operationsRequestId.current;
     try {
       const [nextSales, nextMovements, nextStock] = await Promise.all([
         api.salesDocuments(credentials, nextCompanyId),
         api.inventoryMovements(credentials, nextCompanyId),
         api.inventoryStock(credentials, nextCompanyId)
       ]);
+      if (requestId !== operationsRequestId.current || !isCurrentSelection(nextCompanyId, selectedOperationsCompanyRef.current)) return;
       setSales(nextSales);
       setMovements(nextMovements);
       setStock(nextStock);
+      setOperationsLoadError(null);
       onNotice(null);
     } catch (error) {
+      if (requestId !== operationsRequestId.current || !isCurrentSelection(nextCompanyId, selectedOperationsCompanyRef.current)) return;
+      setOperationsLoadError(errorMessage(error));
       if (isRecoverableBackendDataError(error)) {
         setSales([]);
         setMovements([]);
@@ -3271,6 +3955,7 @@ function OperationsView({
     <div className="view-grid">
       <section className="content-section">
         <SectionHeader title={t("realOperations")} subtitle={t("realOperationsSubtitle")} />
+        {operationsLoadError && <RetryError message={operationsLoadError} onRetry={() => companyId && void loadOperations(companyId)} />}
         <div className="toolbar">
           <label className="toolbar-field">
             {t("company")}
@@ -3292,6 +3977,8 @@ function OperationsView({
         </div>
         {canManage && (
           <form className="compact-form-grid" onSubmit={createSale}>
+            <Input label={t("store")} value={saleForm.storeId} onChange={(storeId) => setSaleForm({ ...saleForm, storeId })} />
+            <Select label={t("status")} value={saleForm.status} options={["CONFIRMADA", "BORRADOR", "ANULADA"]} onChange={(status) => setSaleForm({ ...saleForm, status })} />
             <Input label={t("documentNumber")} value={saleForm.documentNumber} onChange={(documentNumber) => setSaleForm({ ...saleForm, documentNumber })} required />
             <Input label={t("customerCode")} value={saleForm.customerCode} onChange={(customerCode) => setSaleForm({ ...saleForm, customerCode })} />
             <Input label={t("amount")} value={saleForm.total} onChange={(total) => setSaleForm({ ...saleForm, total })} required />
@@ -3400,6 +4087,7 @@ function SubscriptionsView({
   }
 
   async function cancel(id: string) {
+    if (!window.confirm(t("confirmDestructive"))) return;
     setBusy(true);
     try {
       await api.cancelSubscription(credentials, id);
@@ -3436,6 +4124,8 @@ function SubscriptionsView({
               ))}
             </select>
           </label>
+          <Select label={t("status")} value={form.status} options={["ACTIVA", "PAUSADA"]} onChange={(status) => setForm({ ...form, status })} />
+          <Input label={t("startedAt")} type="datetime-local" value={form.startedAt} onChange={(startedAt) => setForm({ ...form, startedAt })} required />
           <Input label={t("plan")} value={form.planName} onChange={(planName) => setForm({ ...form, planName })} required />
           <Input label={t("billingCycle")} value={form.billingCycle} onChange={(billingCycle) => setForm({ ...form, billingCycle })} required />
           <Input label={t("amount")} value={form.amount} onChange={(amount) => setForm({ ...form, amount })} required />
@@ -3451,14 +4141,17 @@ function SubscriptionsView({
 
 function ReportsView({
   credentials,
+  licenses,
   permissions,
   onNotice
 }: {
   credentials: Credentials;
+  licenses: LicenseSummary[];
   permissions: Set<string>;
   onNotice: (notice: Notice) => void;
 }) {
   const { t } = useI18n();
+  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
   const [report, setReport] = useState<AdvancedReport | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationEndpoint[]>([]);
   const [integrationFilter, setIntegrationFilter] = useState("");
@@ -3551,6 +4244,8 @@ function ReportsView({
         </div>
         {canManage && (
           <form className="compact-form-grid" onSubmit={createIntegration}>
+            <label>{t("company")}<select className="control-input" value={form.companyId} onChange={(event) => setForm({ ...form, companyId: event.target.value })}><option value="">{t("allCompanies")}</option>{companies.map((company) => <option key={company.companyId} value={company.companyId}>{company.companyName}</option>)}</select></label>
+            <Select label={t("status")} value={form.status} options={["ACTIVA", "INACTIVA"]} onChange={(status) => setForm({ ...form, status })} />
             <Input label={t("name")} value={form.name} onChange={(name) => setForm({ ...form, name })} required />
             <Input label={t("integrationType")} value={form.integrationType} onChange={(integrationType) => setForm({ ...form, integrationType })} required />
             <Input label={t("targetUrl")} value={form.targetUrl} onChange={(targetUrl) => setForm({ ...form, targetUrl })} />
@@ -3584,7 +4279,7 @@ function SimpleSalesTable({ sales }: { sales: SalesDocument[] }) {
             <tr key={item.id}>
               <td><strong>{item.documentNumber}</strong></td>
               <td>{item.customerCode || "-"}</td>
-              <td>{formatMoney(item.total)} {item.currency}</td>
+              <td>{formatCurrency(item.total, item.currency)}</td>
               <td><StatusPill status={item.status} tone={item.status === "ANULADA" ? "warning" : "ok"} /></td>
               <td>{formatDate(item.issuedAt)}</td>
             </tr>
@@ -3618,7 +4313,7 @@ function SimpleStockTable({ stock, movements }: { stock: InventoryStock[]; movem
                   <tr key={`${item.warehouseCode}-${item.productSku}`}>
                     <td>{item.warehouseCode}</td>
                     <td>{item.productSku}</td>
-                    <td>{formatMoney(item.quantity)}</td>
+                    <td>{formatQuantity(item.quantity)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3648,7 +4343,7 @@ function SimpleStockTable({ stock, movements }: { stock: InventoryStock[]; movem
                     <td>{item.warehouseCode}</td>
                     <td>{item.productSku}</td>
                     <td>{item.movementType}</td>
-                    <td>{formatMoney(item.quantity)}</td>
+                    <td>{formatQuantity(item.quantity)}</td>
                     <td>{formatDate(item.movedAt)}</td>
                   </tr>
                 ))}
@@ -3692,7 +4387,7 @@ function SubscriptionsTable({
               <td>{item.companyName}</td>
               <td>{item.planName}</td>
               <td>{item.billingCycle}</td>
-              <td>{formatMoney(item.amount)} {item.currency}</td>
+              <td>{formatCurrency(item.amount, item.currency)}</td>
               <td><StatusPill status={item.status} tone={item.status === "ACTIVA" ? "ok" : "muted"} /></td>
               <td>{item.nextBillingAt ? formatDate(item.nextBillingAt) : "-"}</td>
               {canManage && (
@@ -3780,6 +4475,10 @@ function MastersView({
   const [productForm, setProductForm] = useState({ sku: "", name: "", category: "", price: "0.00", taxRate: "21.00", minStock: "0.00" });
   const [warehouseForm, setWarehouseForm] = useState({ code: "", name: "", address: "" });
   const [busy, setBusy] = useState(false);
+  const [mastersLoadError, setMastersLoadError] = useState<string | null>(null);
+  const mastersRequestId = useRef(0);
+  const selectedMastersCompanyRef = useRef(companyId);
+  selectedMastersCompanyRef.current = companyId;
   const canManage = permissions.has("MANAGE_ERP_MASTERS");
 
   useEffect(() => {
@@ -3789,17 +4488,21 @@ function MastersView({
   }, [companies, companyId]);
 
   useEffect(() => {
-    if (!companyId) return;
-    void loadMasters(companyId);
+    mastersRequestId.current += 1;
+    setCustomers([]); setProducts([]); setSuppliers([]); setWarehouses([]);
+    if (companyId) void loadMasters(companyId);
   }, [companyId]);
 
   async function loadMasters(nextCompanyId: string) {
+    setMastersLoadError(null);
+    const requestId = ++mastersRequestId.current;
     const [nextCustomers, nextProducts, nextSuppliers, nextWarehouses] = await Promise.all([
-      loadMasterList(() => api.erpCustomers(credentials, nextCompanyId)),
-      loadMasterList(() => api.erpProducts(credentials, nextCompanyId)),
-      loadMasterList(() => api.erpSuppliers(credentials, nextCompanyId)),
-      loadMasterList(() => api.erpWarehouses(credentials, nextCompanyId))
+      loadMasterList(() => api.erpCustomers(credentials, nextCompanyId), requestId, nextCompanyId),
+      loadMasterList(() => api.erpProducts(credentials, nextCompanyId), requestId, nextCompanyId),
+      loadMasterList(() => api.erpSuppliers(credentials, nextCompanyId), requestId, nextCompanyId),
+      loadMasterList(() => api.erpWarehouses(credentials, nextCompanyId), requestId, nextCompanyId)
     ]);
+    if (requestId !== mastersRequestId.current || !isCurrentSelection(nextCompanyId, selectedMastersCompanyRef.current)) return;
     setCustomers(nextCustomers);
     setProducts(nextProducts);
     setSuppliers(nextSuppliers);
@@ -3807,14 +4510,14 @@ function MastersView({
     onNotice(null);
   }
 
-  async function loadMasterList<T>(loader: () => Promise<T[]>): Promise<T[]> {
+  async function loadMasterList<T>(loader: () => Promise<T[]>, requestId: number, requestedCompanyId: string): Promise<T[]> {
     try {
       return await loader();
     } catch (error) {
-      if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
-        return [];
-      }
-      onNotice({ type: "error", text: errorMessage(error) });
+      if (requestId !== mastersRequestId.current || !isCurrentSelection(requestedCompanyId, selectedMastersCompanyRef.current)) return [];
+      const message = isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error) ? t("mastersBackendPending") : errorMessage(error);
+      setMastersLoadError(message);
+      onNotice({ type: "error", text: message });
       return [];
     }
   }
@@ -3851,7 +4554,7 @@ function MastersView({
   }
 
   async function deactivateMaster(id: string) {
-    if (!companyId) return;
+    if (!companyId || !window.confirm(t("confirmDestructive"))) return;
     setBusy(true);
     try {
       if (mode === "customers") {
@@ -3875,6 +4578,7 @@ function MastersView({
   return (
     <section className="content-section">
       <SectionHeader title={t("erpMasters")} subtitle={t("erpMastersSubtitle")} />
+      {mastersLoadError && <RetryError message={mastersLoadError} onRetry={() => companyId && void loadMasters(companyId)} />}
       <div className="toolbar">
         <Segmented
           value={mode}
@@ -4098,6 +4802,9 @@ function SupportView({
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("NORMAL");
   const [busy, setBusy] = useState<string | null>(null);
+  const ticketRequestId = useRef(0);
+  const selectedSupportCompanyRef = useRef(companyId);
+  selectedSupportCompanyRef.current = companyId;
   const canManage = permissions.has("MANAGE_SUPPORT_TICKETS");
   const filteredTickets = tickets.filter((ticket) =>
     (!statusFilter || ticket.status === statusFilter) &&
@@ -4115,9 +4822,10 @@ function SupportView({
   }, [credentials.username]);
 
   useEffect(() => {
-    if (companyId) {
-      void loadTickets(companyId);
-    }
+    ticketRequestId.current += 1;
+    setTickets([]);
+    setCommentsByTicket({});
+    if (companyId) void loadTickets(companyId);
   }, [companyId]);
 
   async function loadOverview() {
@@ -4152,11 +4860,14 @@ function SupportView({
   }
 
   async function loadTickets(nextCompanyId: string) {
+    const requestId = ++ticketRequestId.current;
     try {
       const nextTickets = await api.supportTickets(credentials, nextCompanyId);
+      if (requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
       setTickets(nextTickets);
-      await loadTicketComments(nextTickets);
+      await loadTicketComments(nextTickets, requestId);
     } catch (error) {
+      if (requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
       if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
         setTickets([]);
         setCommentsByTicket({});
@@ -4167,7 +4878,7 @@ function SupportView({
     }
   }
 
-  async function loadTicketComments(nextTickets: SupportTicket[]) {
+  async function loadTicketComments(nextTickets: SupportTicket[], requestId = ticketRequestId.current) {
     const entries = await Promise.all(
       nextTickets.map(async (ticket) => {
         try {
@@ -4178,7 +4889,7 @@ function SupportView({
         }
       })
     );
-    setCommentsByTicket(Object.fromEntries(entries));
+    if (requestId === ticketRequestId.current) setCommentsByTicket(Object.fromEntries(entries));
   }
 
   async function createTicket(event: FormEvent) {
@@ -4229,11 +4940,13 @@ function SupportView({
   }
 
   async function markNotificationRead(notificationId: string) {
+    const removed = notifications.find((notification) => notification.id === notificationId);
     try {
       setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
       await api.markNotificationRead(credentials, notificationId);
       onNotice({ type: "success", text: t("notificationRead") });
     } catch (error) {
+      if (removed) setNotifications((current) => current.some((item) => item.id === removed.id) ? current : [removed, ...current]);
       if (!isMissingPhase3Endpoint(error) && !isRecoverableBackendDataError(error)) {
         onNotice({ type: "error", text: errorMessage(error) });
       }
@@ -4242,8 +4955,9 @@ function SupportView({
 
   return (
     <div className="view-grid">
+      {!saasStatus && !technicalStatus && <RetryError message={t("technicalDegraded")} onRetry={() => void loadOverview()} />}
       <section className="metric-grid support-metrics">
-        <Metric label={t("backendStatus")} value={t("technicalOk")} detail={saasStatus ? `${saasStatus.apiVersion} · ${saasStatus.expectedMigration}` : technicalStatus ? `${t("generatedAt")} ${formatDate(technicalStatus.generatedAt)}` : t("loadingSaas")} />
+        <Metric label={t("backendStatus")} value={saasStatus || technicalStatus ? t("technicalOk") : t("technicalDegraded")} detail={saasStatus ? `${saasStatus.apiVersion} · ${saasStatus.expectedMigration}` : technicalStatus ? `${t("generatedAt")} ${formatDate(technicalStatus.generatedAt)}` : t("loadingSaas")} />
         <Metric label={t("company")} value={technicalStatus?.companies ?? "-"} />
         <Metric label={t("licenses")} value={technicalStatus?.licenses ?? "-"} />
         <Metric label={t("eventsToday")} value={technicalStatus?.eventsToday ?? "-"} />
@@ -4455,11 +5169,16 @@ function LicenseTable({
   onSelectCompany?: (companyId: string) => void;
 }) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
+  const filtered = compact ? licenses : licenses.filter((license) => [license.licenseReference, license.companyName, license.taxId].some((value) => normalizeSearch(value).includes(normalizeSearch(query))));
+  const paging = usePagination(filtered);
   const showActionColumn = Boolean(onAction
     && (showPairingAction || showBlockAction || showUnblockAction));
   if (licenses.length === 0) return <EmptyState text={t("noLicenses")} />;
   return (
-    <div className="table-wrap">
+    <>
+      {!compact && <div className="toolbar table-filter"><Input label={t("filterRecords")} value={query} onChange={setQuery} /></div>}
+      <div className="table-wrap">
       <table>
         <thead>
           <tr>
@@ -4472,7 +5191,7 @@ function LicenseTable({
           </tr>
         </thead>
         <tbody>
-          {licenses.map((license) => (
+          {paging.rows.map((license) => (
             <tr
               key={license.licenseReference}
               className={[
@@ -4530,7 +5249,9 @@ function LicenseTable({
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+      {!compact && <PaginationControls {...paging} />}
+    </>
   );
 }
 
@@ -4542,7 +5263,7 @@ function PairingCodePanel({ pairingCode, onCopy }: { pairingCode: PairingCodeRes
         <span>{t("activePairingCode")}</span>
         <strong>{pairingCode.pairingCode}</strong>
         <small>
-          {pairingCode.licenseReference} - {t("expires")} {formatDate(pairingCode.expiresAt)}
+          {pairingCode.licenseReference}{pairingCode.expiresAt ? ` - ${t("expires")} ${formatDate(pairingCode.expiresAt)}` : ""}
         </small>
       </div>
       <button className="secondary-button" type="button" onClick={onCopy}>
@@ -5052,13 +5773,20 @@ function InstallationHealth({ installation }: { installation: InstallationSummar
 
 function EventsTable({ events }: { events: SyncEventView[] }) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
+  const filtered = events.filter((event) => [event.entityType, event.entityId, event.operation, event.projectionStatus, eventSummary(event)].some((value) => normalizeSearch(value).includes(normalizeSearch(query))));
+  const paging = usePagination(filtered);
   if (events.length === 0) return <EmptyState text={t("noEventsForFilter")} />;
   return (
-    <div className="event-list">
-      {events.map((event) => (
+    <>
+      <div className="toolbar table-filter"><Input label={t("filterRecords")} value={query} onChange={setQuery} /></div>
+      <div className="event-list">
+      {paging.rows.map((event) => (
         <EventLine key={event.eventId} event={event} />
       ))}
-    </div>
+      </div>
+      <PaginationControls {...paging} />
+    </>
   );
 }
 
@@ -5112,9 +5840,11 @@ function OperationalIncidentsTable({
   onCancel: (incident: OperationalIncident) => void;
 }) {
   const { t } = useI18n();
+  const paging = usePagination(rows);
   if (rows.length === 0) return <EmptyState text={t("noOperationalIncidents")} />;
   return (
-    <div className="table-wrap operational-incident-table">
+    <>
+      <div className="table-wrap operational-incident-table">
       <table>
         <thead>
           <tr>
@@ -5130,7 +5860,7 @@ function OperationalIncidentsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((incident) => (
+          {paging.rows.map((incident) => (
             <tr key={`${incident.incidentType}-${incident.targetId}`} className={busyTargetId === incident.targetId ? "is-busy" : undefined}>
               <td>
                 <strong>{companyNames.get(incident.companyId) ?? incident.companyId}</strong>
@@ -5174,7 +5904,9 @@ function OperationalIncidentsTable({
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+      <PaginationControls {...paging} />
+    </>
   );
 }
 
@@ -5232,7 +5964,7 @@ function AuditList({ audit, expanded = false }: { audit: AuditLog[]; expanded?: 
 
 function NavButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
-    <button className={active ? "nav-button active" : "nav-button"} type="button" onClick={onClick}>
+    <button className={active ? "nav-button active" : "nav-button"} type="button" aria-current={active ? "page" : undefined} onClick={onClick}>
       {label}
     </button>
   );
@@ -5261,6 +5993,28 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle: string })
 
 function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>;
+}
+
+function RetryError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useI18n();
+  return <div className="notice error retry-error" role="alert"><span>{message}</span><button className="small-button" type="button" onClick={onRetry}>{t("retry")}</button></div>;
+}
+
+function usePagination<T>(rows: T[], pageSize = 20) {
+  const [page, setPage] = useState(1);
+  const pagination = paginateRows(rows, page, pageSize);
+  useEffect(() => setPage((current) => Math.min(current, pagination.pages)), [pagination.pages]);
+  return { ...pagination, setPage };
+}
+
+function PaginationControls({ page, pages, total, pageSize, setPage }: ReturnType<typeof usePagination<unknown>>) {
+  const { t } = useI18n();
+  if (total <= pageSize) return null;
+  return <nav className="pagination-controls" aria-label={t("pageLabel")}>
+    <button className="small-button" type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>{t("previousPage")}</button>
+    <span>{t("pageLabel")} {page} / {pages} | {total}</span>
+    <button className="small-button" type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>{t("nextPage")}</button>
+  </nav>;
 }
 
 function StatusPill({ status, tone }: { status: string; tone: "ok" | "warning" | "muted" }) {
@@ -5378,8 +6132,20 @@ function Segmented({ value, options, onChange }: { value: string; options: [stri
 function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floating" }) {
   const { language, setLanguage, t } = useI18n();
   const [open, setOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement | null>(null);
+  const menuId = useMemo(() => `language-menu-${variant}`, [variant]);
   const current = LANGUAGE_OPTIONS.find((option) => option.value === language) ?? LANGUAGE_OPTIONS[0];
   const isFloating = variant === "floating";
+
+  useEffect(() => {
+    function dismiss(event: MouseEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent && event.key === "Escape" && selectorRef.current?.querySelector(".language-menu")) { setOpen(false); selectorRef.current.querySelector<HTMLButtonElement>(".language-trigger")?.focus(); }
+      if (event instanceof MouseEvent && !selectorRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", dismiss);
+    return () => { document.removeEventListener("mousedown", dismiss); document.removeEventListener("keydown", dismiss); };
+  }, []);
 
   function choose(nextLanguage: Language) {
     setLanguage(nextLanguage);
@@ -5387,9 +6153,9 @@ function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floa
   }
 
   return (
-    <div className={`language-selector language-selector-${variant}`}>
+    <div ref={selectorRef} className={`language-selector language-selector-${variant}`}>
       {!isFloating && <span>{t("language")}</span>}
-      <button className="language-trigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+      <button className="language-trigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="true" aria-controls={menuId} aria-label={t("language")}>
         {isFloating ? (
           <svg className="language-globe" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="9" />
@@ -5405,14 +6171,13 @@ function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floa
         )}
       </button>
       {open && (
-        <div className="language-menu" role="listbox">
+        <div id={menuId} className="language-menu" role="group" aria-label={t("language")}>
           {LANGUAGE_OPTIONS.map((option) => (
             <button
               key={option.value}
               className={option.value === language ? "active" : ""}
               type="button"
-              role="option"
-              aria-selected={option.value === language}
+              aria-pressed={option.value === language}
               onClick={() => choose(option.value)}
             >
               <span>{option.label}</span>
@@ -5423,6 +6188,17 @@ function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floa
       )}
     </div>
   );
+}
+
+const VALID_VIEWS: View[] = ["dashboard", "licenses", "sync", "fiscal", "users", "audit", "support", "health", "billing", "masters", "operations", "subscriptions", "reports"];
+
+function readViewFromLocation(): View {
+  const candidate = window.location.hash.replace(/^#\/?/, "") as View;
+  return VALID_VIEWS.includes(candidate) ? candidate : "dashboard";
+}
+
+function localeFor(language: Language) {
+  return language === "zh" ? "zh-CN" : language === "en" ? "en-GB" : "es-ES";
 }
 
 function readLanguage(): Language {
@@ -5501,9 +6277,16 @@ function isValidUrl(value: string) {
   }
 }
 
+function formatCurrency(value: string | number, currency = "EUR") {
+  return formatCurrencyValue(value, currency, activeLocale);
+}
+
+function formatQuantity(value: string | number) {
+  return formatQuantityValue(value, activeLocale);
+}
+
 function formatMoney(value: string | number) {
-  const amount = typeof value === "number" ? value : parseAmount(value);
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(amount);
+  return formatCurrency(value, "EUR");
 }
 
 function filterDashboardData(data: DashboardData, query: string): DashboardData {
@@ -5671,9 +6454,13 @@ function stringPayload(value: unknown) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-ES", {
-    dateStyle: "short",
-    timeStyle: "short"
+  return new Intl.DateTimeFormat(activeLocale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short"
   }).format(new Date(value));
 }
 

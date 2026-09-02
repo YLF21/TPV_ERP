@@ -24,10 +24,11 @@ public class SaasCorsConfiguration implements WebMvcConfigurer {
         if (origins.length == 0) {
             return;
         }
-        registry.addMapping("/api/v1/**")
+        registry.addMapping("/api/**")
                 .allowedOrigins(origins)
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
+                .exposedHeaders("Retry-After")
                 .maxAge(3600);
     }
 }

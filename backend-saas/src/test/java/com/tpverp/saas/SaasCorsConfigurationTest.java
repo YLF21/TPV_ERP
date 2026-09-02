@@ -20,17 +20,21 @@ class SaasCorsConfigurationTest {
     @LocalServerPort int port;
 
     @Test
-    void permitePreflightSoloParaOrigenConfigurado() throws Exception {
-        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/license/link"))
-                .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
-                .header("Origin", "https://panel.example.com")
-                .header("Access-Control-Request-Method", "POST")
-                .build();
+    void permitePreflightV1YV2SoloParaOrigenConfigurado() throws Exception {
+        for (String path : java.util.List.of(
+                "/api/v1/license/link",
+                "/api/v2/loyalty/member-wallet/reservations")) {
+            var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                    .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                    .header("Origin", "https://panel.example.com")
+                    .header("Access-Control-Request-Method", "POST")
+                    .build();
 
-        var response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            var response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.headers().firstValue("access-control-allow-origin"))
-                .contains("https://panel.example.com");
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.headers().firstValue("access-control-allow-origin"))
+                    .contains("https://panel.example.com");
+        }
     }
 }

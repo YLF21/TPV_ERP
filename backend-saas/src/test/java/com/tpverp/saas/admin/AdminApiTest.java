@@ -100,7 +100,7 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V37__saas_admin_query_indexes");
+                .isEqualTo("V48__outbox_claims_and_delivery_safety");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
                 "operational-incidents");
@@ -1012,6 +1012,8 @@ class AdminApiTest {
         assertThat(invoice.get("status").asText()).isEqualTo("PENDIENTE");
         assertThat(invoice.get("paidAmount").asText()).isEqualTo("0.00");
 
+        markInvoiceNotApplicable(invoice.get("id").asText());
+
         mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoice.get("id").asText())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1327,6 +1329,163 @@ class AdminApiTest {
         var warehouses = mapper.readTree(warehousesResult.getResponse().getContentAsString());
         assertThat(warehouses).hasSize(1);
         assertThat(warehouses.get(0).get("code").asText()).isEqualTo("ALM-1");
+    }
+
+    @Test
+    void rechazaDocumentoDeVentaConTiendaDeOtraEmpresa() throws Exception {
+        CreateCompanyResponse companyA = createCompany("B91000010");
+        CreateCompanyResponse companyB = createCompany("B91000020");
+
+        mvc.perform(post("/api/v1/admin/companies/{companyId}/sales-documents", companyA.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "storeId": "%s",
+                                  "documentNumber": "VENTA-AJENA-1",
+                                  "customerCode": "CLI-1",
+                                  "total": "10.00",
+                                  "currency": "EUR",
+                                  "status": "CONFIRMADA",
+                                  "issuedAt": "2026-09-01T10:00:00Z"
+                                }
+                                """.formatted(companyB.storeId())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void pagoEsIdempotenteYNoPermiteSuperarLaFactura() throws Exception {
+        CreateCompanyResponse company = createCompany("B92000010");
+        var invoiceResult = mvc.perform(post("/api/v1/admin/companies/{companyId}/invoices", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "number": "INV-INTEGRITY-1",
+                                  "concept": "Integridad",
+                                  "amount": "100.00",
+                                  "currency": "EUR",
+                                  "issuedAt": "2026-09-01T10:00:00Z",
+                                  "dueAt": "2026-10-01T10:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        UUID invoiceId = UUID.fromString(mapper.readTree(
+                invoiceResult.getResponse().getContentAsString()).get("id").asText());
+        mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoiceId)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": "1.00",
+                                  "method": "TRANSFERENCIA",
+                                  "paidAt": "2026-09-01T10:30:00Z",
+                                  "reference": "BLOCK-PENDING"
+                                }
+                                """))
+                .andExpect(status().isConflict());
+        markInvoiceNotApplicable(invoiceId.toString());
+
+        String payment = """
+                {
+                  "amount": "60.00",
+                  "method": "TRANSFERENCIA",
+                  "paidAt": "2026-09-01T11:00:00Z",
+                  "reference": "IDEMPOTENT-1"
+                }
+                """;
+        var first = mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoiceId)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payment))
+                .andExpect(status().isOk())
+                .andReturn();
+        var replay = mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoiceId)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payment))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(mapper.readTree(first.getResponse().getContentAsString()).get("id"))
+                .isEqualTo(mapper.readTree(replay.getResponse().getContentAsString()).get("id"));
+
+        mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoiceId)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payment.replace("60.00", "50.00").replace("IDEMPOTENT-1", "OVERPAY-1")))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void integracionLocalConservaHistorialEIdempotencia() throws Exception {
+        CreateCompanyResponse company = createCompany("B93000010");
+        var created = mvc.perform(post("/api/v1/admin/integrations")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "companyId": "%s",
+                                  "name": "Export local",
+                                  "integrationType": "ACCOUNTING_EXPORT",
+                                  "status": "ACTIVA",
+                                  "targetUrl": null,
+                                  "apiKey": null
+                                }
+                                """.formatted(company.companyId())))
+                .andExpect(status().isOk())
+                .andReturn();
+        UUID integrationId = UUID.fromString(mapper.readTree(
+                created.getResponse().getContentAsString()).get("id").asText());
+
+        for (int replay = 0; replay < 2; replay++) {
+            mvc.perform(post("/api/v1/admin/integrations/{integrationId}/sync", integrationId)
+                            .header("Authorization", basic("admin", "admin"))
+                            .header("Idempotency-Key", "export-september"))
+                    .andExpect(status().isOk());
+        }
+        var historyResult = mvc.perform(get("/api/v1/admin/integrations/{integrationId}/runs", integrationId)
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var history = mapper.readTree(historyResult.getResponse().getContentAsString());
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0).get("status").asText()).isEqualTo("PENDING");
+        assertThat(history.get(0).get("deliveryMode").asText()).isEqualTo("LOCAL_OUTBOX");
+        assertThat(history.get(0).get("payload").asText()).contains("\"schemaVersion\":1");
+    }
+
+    @Test
+    void notificacionLeidaPermaneceMarcadaYNoAceptaIdsInventados() throws Exception {
+        CreateCompanyResponse company = createCompany("B94000010");
+        mvc.perform(post("/api/v1/admin/licenses/{reference}/block", company.licenseReference())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
+        String notificationId = "license-blocked-" + company.licenseReference();
+
+        mvc.perform(put("/api/v1/admin/notifications/{notificationId}/read", notificationId)
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
+        var notificationsResult = mvc.perform(get("/api/v1/admin/notifications")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var notifications = mapper.readTree(notificationsResult.getResponse().getContentAsString());
+        assertThat(notifications).anySatisfy(notification -> {
+            assertThat(notification.get("id").asText()).isEqualTo(notificationId);
+            assertThat(notification.get("read").asBoolean()).isTrue();
+        });
+
+        mvc.perform(put("/api/v1/admin/notifications/{notificationId}/read", "inventada")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isNotFound());
+    }
+    private void markInvoiceNotApplicable(String invoiceId) throws Exception {
+        mvc.perform(put("/api/v1/admin/invoices/{invoiceId}/fiscal", invoiceId)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fiscalStatus\":\"NOT_APPLICABLE\"}"))
+                .andExpect(status().isOk());
     }
 
     private CreateCompanyRequest request(String taxId) {

@@ -20,6 +20,7 @@ import com.tpverp.saas.license.SaasStore;
 import com.tpverp.saas.license.SaasStoreRepository;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.tenant.SaasTenantUserRepository;
 import jakarta.persistence.LockModeType;
 import java.time.Clock;
@@ -56,7 +57,7 @@ class AdminServicePairingLockTest {
         var service = new AdminService(
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
-                audit, sessions, jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+                audit, sessions, mock(PlanLimitService.class), jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
 
         var company = new SaasCompany(
                 UUID.randomUUID(), "Empresa", "B12345674",
@@ -112,7 +113,7 @@ class AdminServicePairingLockTest {
         var service = new AdminService(
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
-                audit, sessions, jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+                audit, sessions, mock(PlanLimitService.class), jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
         when(adminUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(tenantUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(passwordHasher.hash("password-segura")).thenReturn("hash");

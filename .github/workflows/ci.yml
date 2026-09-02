@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
         env:
           POSTGRES_DB: tpv_erp_test
           POSTGRES_USER: tpv_erp_test
@@ -35,8 +35,8 @@ jobs:
           - license-issuer
           - payment-terminal-bridge
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
         with:
           distribution: temurin
           java-version: "25"
@@ -48,6 +48,13 @@ jobs:
           TPV_TEST_DB_USERNAME: tpv_erp_test
           TPV_TEST_DB_PASSWORD: admin
         run: mvn --batch-mode --no-transfer-progress verify
+      - name: Upload SaaS coverage
+        if: always() && matrix.module == 'backend-saas'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: backend-saas-jacoco
+          path: backend-saas/target/site/jacoco/
+          if-no-files-found: warn
 
   javascript:
     runs-on: ubuntu-latest
@@ -59,10 +66,10 @@ jobs:
           - frontend
           - frontend-saas
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "24"
+          node-version: "22.16.0"
           cache: npm
           cache-dependency-path: ${{ matrix.module }}/package-lock.json
       - name: Install
@@ -74,3 +81,152 @@ jobs:
       - name: Build
         working-directory: ${{ matrix.module }}
         run: npm run build
+
+  release-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_PASSWORD: ci-compose-validation-only
+      TPV_SAAS_SECRET_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      TPV_SAAS_CORS_ALLOWED_ORIGINS: https://saas.example.test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Validate production Compose
+        run: docker compose --env-file backend-saas/.env.production.example -f backend-saas/docker-compose.yml config --quiet
+      - name: Build pinned production images
+        run: docker compose --env-file backend-saas/.env.production.example -f backend-saas/docker-compose.yml build --pull
+      - name: Validate Flyway migration inventory
+        shell: python
+        run: |
+          from collections import Counter
+          from pathlib import Path
+          import re
+
+          root = Path("backend-saas/src/main/resources/db/migration")
+          candidates = sorted(path.name for path in root.glob("V*.sql"))
+          if not candidates:
+              raise SystemExit("No Flyway migrations found")
+          invalid = [name for name in candidates if not re.fullmatch(r"V[0-9]+__[A-Za-z0-9_]+\.sql", name)]
+          if invalid:
+              raise SystemExit(f"Invalid Flyway names: {invalid}")
+          files = candidates
+          versions = [int(name[1:name.index("__")]) for name in files]
+          duplicates = sorted(version for version, count in Counter(versions).items() if count > 1)
+          if duplicates:
+              raise SystemExit(f"Duplicate Flyway versions: {duplicates}")
+          print(f"Validated {len(files)} unique Flyway migrations; latest V{max(versions)}")
+
+  saas-e2e:
+    needs: [java, javascript, release-config]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+        env:
+          POSTGRES_DB: tpv_erp_saas_e2e
+          POSTGRES_USER: tpv_erp_saas_e2e
+          POSTGRES_PASSWORD: e2e-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tpv_erp_saas_e2e -d tpv_erp_saas_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22.16.0"
+          cache: npm
+          cache-dependency-path: frontend-saas/package-lock.json
+      - name: Install SaaS frontend and browser
+        working-directory: frontend-saas
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Start SaaS backend
+        working-directory: backend-saas
+        env:
+          SPRING_PROFILES_ACTIVE: local
+          TPV_SAAS_PORT: "8090"
+          TPV_SAAS_DB_URL: jdbc:postgresql://127.0.0.1:5432/tpv_erp_saas_e2e
+          TPV_SAAS_DB_USERNAME: tpv_erp_saas_e2e
+          TPV_SAAS_DB_PASSWORD: e2e-only
+          TPV_SAAS_SECRET_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          TPV_SAAS_CORS_ALLOWED_ORIGINS: http://127.0.0.1:5175
+        run: |
+          mvn --batch-mode --no-transfer-progress spring-boot:run > ../saas-backend-e2e.log 2>&1 &
+          echo $! > ../saas-backend-e2e.pid
+      - name: Start SaaS frontend
+        working-directory: frontend-saas
+        run: |
+          npm run dev -- --port 5175 > ../saas-frontend-e2e.log 2>&1 &
+          echo $! > ../saas-frontend-e2e.pid
+      - name: Wait for functional readiness
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8090/actuator/health >/dev/null \
+              && curl --fail --silent http://127.0.0.1:8090/actuator/saasSecurity >/dev/null \
+              && curl --fail --silent http://127.0.0.1:5175/ >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -n 200 saas-backend-e2e.log || true
+          tail -n 100 saas-frontend-e2e.log || true
+          exit 1
+      - name: SaaS browser smoke
+        working-directory: frontend-saas
+        env:
+          SAAS_E2E_URL: http://127.0.0.1:5175/
+          SAAS_E2E_USERNAME: ADMIN
+          SAAS_E2E_PASSWORD: "0000"
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: failure()
+        with:
+          name: saas-e2e-logs
+          path: |
+            saas-backend-e2e.log
+            saas-frontend-e2e.log
+
+  security-artifacts:
+    needs: [java, javascript]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22.16.0"
+          cache: npm
+          cache-dependency-path: frontend-saas/package-lock.json
+      - name: Generate backend CycloneDX SBOM
+        working-directory: backend-saas
+        run: mvn --batch-mode --no-transfer-progress org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeBom -DskipTests -DoutputFormat=json
+      - name: Audit frontend dependencies and generate SBOM
+        working-directory: frontend-saas
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npm sbom --sbom-format=cyclonedx > ../frontend-saas.cdx.json
+      - name: Upload dependency inventories
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: saas-sbom
+          path: |
+            backend-saas/target/bom.json
+            frontend-saas.cdx.json
+          if-no-files-found: error

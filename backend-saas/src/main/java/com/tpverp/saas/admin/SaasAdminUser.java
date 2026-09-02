@@ -23,6 +23,9 @@ public class SaasAdminUser {
     @Column(nullable = false)
     private boolean active;
 
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -55,6 +58,18 @@ public class SaasAdminUser {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void requirePasswordChange() {
+        mustChangePassword = true;
+    }
+
+    public void passwordChanged() {
+        mustChangePassword = false;
     }
 
     public void changePasswordHash(String passwordHash) {

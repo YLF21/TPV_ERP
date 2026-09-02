@@ -11,8 +11,7 @@ class LoginAttemptLimiterTest {
 
     @Test
     void blocksAfterFiveFailuresAndSuccessClearsFailures() {
-        var limiter = new LoginAttemptLimiter(
-                Clock.fixed(Instant.parse("2026-07-30T12:00:00Z"), ZoneOffset.UTC));
+        var limiter = limiter(new InMemorySecurityStateStore());
 
         for (int index = 0; index < LoginAttemptLimiter.MAX_FAILURES - 1; index++) {
             limiter.failure("admin", "User", "127.0.0.1");
@@ -29,18 +28,22 @@ class LoginAttemptLimiterTest {
     }
 
     @Test
-    void doesNotEvictActivePartialFailuresWhenTheMapReachesCleanupThreshold() {
-        var limiter = new LoginAttemptLimiter(
-                Clock.fixed(Instant.parse("2026-07-30T12:00:00Z"), ZoneOffset.UTC));
+    void isolatesFailuresByRemoteAddressAndSharesThemAcrossNodes() {
+        var state = new InMemorySecurityStateStore();
+        var firstNode = limiter(state);
+        var secondNode = limiter(state);
 
-        for (int index = 0; index < LoginAttemptLimiter.MAX_FAILURES - 1; index++) {
-            limiter.failure("login-account", "target", "");
-        }
-        for (int index = 0; index < 9_999; index++) {
-            limiter.failure("login-account", "random-" + index, "");
+        for (int index = 0; index < LoginAttemptLimiter.MAX_FAILURES; index++) {
+            firstNode.failure("login-account", "target", "203.0.113.10");
         }
 
-        limiter.failure("login-account", "target", "");
-        assertThat(limiter.blocked("login-account", "target", "")).isTrue();
+        assertThat(secondNode.blocked("login-account", "target", "203.0.113.10")).isTrue();
+        assertThat(secondNode.blocked("login-account", "target", "203.0.113.11")).isFalse();
+        assertThat(secondNode.blocked("login-account", "other", "203.0.113.10")).isFalse();
+    }
+
+    private static LoginAttemptLimiter limiter(SecurityStateStore state) {
+        return new LoginAttemptLimiter(
+                Clock.fixed(Instant.parse("2026-07-30T12:00:00Z"), ZoneOffset.UTC), state);
     }
 }

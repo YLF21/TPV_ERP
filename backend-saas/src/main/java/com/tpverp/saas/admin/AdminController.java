@@ -1,5 +1,7 @@
 package com.tpverp.saas.admin;
 
+import com.tpverp.saas.plan.PlanUsageResponse;
+
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -8,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
@@ -63,6 +66,11 @@ public class AdminController {
             @PathVariable UUID companyId,
             @Valid @RequestBody UpdateCompanyOperationsRequest request) {
         return service.updateCompanyOperations(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/plan-usage")
+    public PlanUsageResponse planUsage(@PathVariable UUID companyId) {
+        return service.planUsage(companyId);
     }
 
     @GetMapping("/companies/{companyId}/tenant-users")
@@ -169,6 +177,18 @@ public class AdminController {
         return service.deactivateErpWarehouse(companyId, id);
     }
 
+    @GetMapping("/invoices/{invoiceId}/fiscal")
+    public InvoiceFiscalDetailResponse invoiceFiscalDetail(@PathVariable UUID invoiceId) {
+        return service.invoiceFiscalDetail(invoiceId);
+    }
+
+    @PutMapping("/invoices/{invoiceId}/fiscal")
+    public InvoiceFiscalDetailResponse updateInvoiceFiscal(
+            @PathVariable UUID invoiceId,
+            @Valid @RequestBody UpdateInvoiceFiscalRequest request) {
+        return service.updateInvoiceFiscal(invoiceId, request);
+    }
+
     @PostMapping("/invoices/{invoiceId}/payments")
     public BillingPaymentResponse createBillingPayment(
             @PathVariable UUID invoiceId,
@@ -233,8 +253,15 @@ public class AdminController {
     }
 
     @PostMapping("/integrations/{integrationId}/sync")
-    public IntegrationEndpointResponse markIntegrationSynced(@PathVariable UUID integrationId) {
-        return service.markIntegrationSynced(integrationId);
+    public IntegrationEndpointResponse markIntegrationSynced(
+            @PathVariable UUID integrationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
+        return service.executeIntegration(integrationId, idempotencyKey);
+    }
+
+    @GetMapping("/integrations/{integrationId}/runs")
+    public List<IntegrationRunResponse> integrationRuns(@PathVariable UUID integrationId) {
+        return service.integrationRuns(integrationId);
     }
 
     @GetMapping("/reports/advanced")

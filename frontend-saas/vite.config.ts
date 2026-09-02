@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   cacheDir: "vite-cache",
   server: {
-    port: 5174,
+    port: 5175,
     proxy: {
       "/api": {
         target: "http://localhost:8090",

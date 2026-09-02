@@ -1,5 +1,6 @@
 package com.tpverp.saas.admin;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -24,7 +25,7 @@ class AdminProductionGuardTest {
 
         assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("TPV_SAAS_ADMIN_DEFAULT_ALLOWED");
+                .hasMessageContaining("Credenciales iniciales");
     }
 
     @Test
@@ -59,13 +60,29 @@ class AdminProductionGuardTest {
     }
 
     @Test
-    void permiteCredencialesPorDefectoSinPerfilParaDesarrolloLocal() {
+    void bloqueaCredencialesPorDefectoSinPerfilExplicitoLocal() {
         when(users.findAll()).thenReturn(List.of(
                 user("admin", DEFAULT_ADMIN_HASH, true),
                 user("viewer", DEFAULT_ADMIN_HASH, true)));
 
-        assertThatCode(() -> new AdminProductionGuard(users, Set.of(), false).run())
-                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of(), false).run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD");
+    }
+
+    @Test
+    void bootstrapSeguroRotaAdminYDesactivaViewerSeed() {
+        SaasAdminUser admin = user("admin", DEFAULT_ADMIN_HASH, true);
+        SaasAdminUser viewer = user("viewer", DEFAULT_ADMIN_HASH, true);
+        when(users.findAll()).thenReturn(List.of(admin, viewer));
+
+        new AdminProductionGuard(users, new AdminPasswordHasher(), Set.of(),
+                "production-encryption-key", "production-database-password",
+                "bootstrap-password-segura").run();
+
+        assertThat(new AdminPasswordHasher().matches("bootstrap-password-segura", admin.getPasswordHash())).isTrue();
+        assertThat(admin.isMustChangePassword()).isTrue();
+        assertThat(viewer.isActive()).isFalse();
     }
 
     @Test
@@ -89,13 +106,27 @@ class AdminProductionGuardTest {
     }
 
     @Test
-    void overrideExplicitoPermiteTemporalmenteCredencialesSeedEnProduccion() {
+    void overrideNoPermiteCredencialesInsegurasEnProduccion() {
         when(users.findAll()).thenReturn(List.of(
                 user("admin", DEFAULT_ADMIN_HASH, true),
                 user("viewer", DEFAULT_ADMIN_HASH, true)));
 
-        assertThatCode(() -> new AdminProductionGuard(users, Set.of("prod"), true).run())
-                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), true).run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Credenciales iniciales");
+    }
+
+    @Test
+    void bloqueaAdmin0000YLaCombinacionProdLocal() {
+        String localHash = new AdminPasswordHasher().hash("0000");
+        when(users.findAll()).thenReturn(List.of(user("ADMIN", localHash, true)));
+
+        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Credenciales iniciales");
+        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod", "local"), false).run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("prod y local");
     }
 
     @Test

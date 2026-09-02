@@ -16,6 +16,9 @@ import com.tpverp.saas.license.SpanishTaxId;
 import com.tpverp.saas.tenant.SaasTenantUser;
 import com.tpverp.saas.tenant.SaasTenantUserRepository;
 import com.tpverp.saas.tenant.TenantRole;
+import com.tpverp.saas.plan.PlanLimitService;
+import com.tpverp.saas.plan.PlanResource;
+import com.tpverp.saas.plan.PlanUsageResponse;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.math.BigDecimal;
@@ -32,6 +35,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -47,6 +51,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class AdminService {
 
     private static final String CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final Set<String> PAYMENT_METHODS = Set.of(
+            "TRANSFERENCIA", "TARJETA", "DOMICILIACION", "EFECTIVO", "AJUSTE");
+    private static final Set<String> INTEGRATION_TYPES = Set.of("WEBHOOK", "ACCOUNTING_EXPORT");
 
     private final SaasCompanyRepository companies;
     private final SaasStoreRepository stores;
@@ -59,6 +66,7 @@ public class AdminService {
     private final IntegrationSecretCipher integrationSecrets;
     private final AdminAuditService audit;
     private final SaasSessionTokenStore sessions;
+    private final PlanLimitService planLimits;
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
@@ -75,6 +83,7 @@ public class AdminService {
             IntegrationSecretCipher integrationSecrets,
             AdminAuditService audit,
             SaasSessionTokenStore sessions,
+            PlanLimitService planLimits,
             JdbcTemplate jdbc,
             Clock clock) {
         this.companies = companies;
@@ -88,6 +97,7 @@ public class AdminService {
         this.integrationSecrets = integrationSecrets;
         this.audit = audit;
         this.sessions = sessions;
+        this.planLimits = planLimits;
         this.jdbc = jdbc;
         this.clock = clock;
     }
@@ -231,11 +241,17 @@ public class AdminService {
     }
 
     @Transactional(readOnly = true)
+    public PlanUsageResponse planUsage(UUID companyId) {
+        ensureCompanyExists(companyId);
+        return planLimits.usage(companyId);
+    }
+
+    @Transactional(readOnly = true)
     public SaasStatusResponse status() {
         return new SaasStatusResponse(
                 clock.instant(),
                 "saas-api-v1",
-                "V37__saas_admin_query_indexes",
+                currentMigration(),
                 List.of(
                         "licenses",
                         "installations",
@@ -311,20 +327,66 @@ public class AdminService {
                 "Revisar facturación",
                 rs.getString("billing_status"),
                 now), sqlTimestamp(now.plus(Duration.ofDays(15))));
-        return java.util.stream.Stream.of(licenseNotifications, installationNotifications, billingNotifications)
+        List<AdminNotificationResponse> overdueInvoiceNotifications = jdbc.query("""
+                select i.id, i.company_id, c.name, i.number
+                from saas_billing_invoice i
+                join saas_company c on c.id = i.company_id
+                left join saas_billing_payment p on p.invoice_id = i.id
+                where i.due_at < ?
+                group by i.id, i.company_id, c.name, i.number, i.amount
+                having coalesce(sum(cast(p.amount as decimal(19,2))), 0) < cast(i.amount as decimal(19,2))
+                """, (rs, rowNum) -> new AdminNotificationResponse(
+                "invoice-overdue-" + rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class), rs.getString("name"), "DANGER",
+                "Factura vencida", rs.getString("number"), now), sqlTimestamp(now));
+        List<AdminNotificationResponse> urgentTicketNotifications = jdbc.query("""
+                select t.id, t.company_id, c.name, t.title
+                from saas_support_ticket t
+                join saas_company c on c.id = t.company_id
+                where t.priority = 'URGENTE' and t.status <> 'CERRADO'
+                """, (rs, rowNum) -> new AdminNotificationResponse(
+                "ticket-urgent-" + rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class), rs.getString("name"), "DANGER",
+                "Ticket urgente abierto", rs.getString("title"), now));
+        List<AdminNotificationResponse> staleStoreNotifications = jdbc.query("""
+                select s.id, s.company_id, c.name, s.code, max(i.last_validated_at) as last_validated_at
+                from saas_store s
+                join saas_company c on c.id = s.company_id
+                left join saas_installation i on i.store_id = s.id
+                group by s.id, s.company_id, c.name, s.code
+                having max(i.last_validated_at) is null or max(i.last_validated_at) < ?
+                """, (rs, rowNum) -> new AdminNotificationResponse(
+                "store-stale-" + rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class), rs.getString("name"), "WARNING",
+                "Tienda sin validacion reciente", rs.getString("code"), now),
+                sqlTimestamp(now.minus(Duration.ofHours(48))));        Set<String> readIds = Set.copyOf(jdbc.queryForList(
+                "select notification_id from saas_admin_notification_read where username = ?",
+                String.class,
+                currentAdminUsername()));
+        return java.util.stream.Stream.of(licenseNotifications, installationNotifications, billingNotifications,
+                        overdueInvoiceNotifications, urgentTicketNotifications, staleStoreNotifications)
                 .flatMap(List::stream)
+                .map(notification -> new AdminNotificationResponse(
+                        notification.id(), notification.companyId(), notification.companyName(),
+                        notification.severity(), notification.title(), notification.detail(),
+                        notification.createdAt(), readIds.contains(notification.id())))
                 .sorted(Comparator.comparing(AdminNotificationResponse::severity).thenComparing(AdminNotificationResponse::companyName))
                 .toList();
     }
 
     @Transactional
     public void markNotificationRead(String notificationId) {
+        String normalizedId = notificationId == null ? "" : notificationId.trim();
+        boolean exists = notifications().stream().anyMatch(notification -> notification.id().equals(normalizedId));
+        if (!exists) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notificacion no existe o ya no esta activa");
+        }
         jdbc.update("""
                 insert into saas_admin_notification_read(username, notification_id, read_at)
                 values (?, ?, ?)
                 on conflict (username, notification_id) do update set read_at = excluded.read_at
-                """, currentAdminUsername(), notificationId, sqlTimestamp(clock.instant()));
-        audit.log("READ_NOTIFICATION", "ADMIN_NOTIFICATION", notificationId);
+                """, currentAdminUsername(), normalizedId, sqlTimestamp(clock.instant()));
+        audit.log("READ_NOTIFICATION", "ADMIN_NOTIFICATION", normalizedId);
     }
 
     @Transactional(readOnly = true)
@@ -544,9 +606,14 @@ public class AdminService {
     public CompanyOperationsResponse updateCompanyOperations(UUID companyId, UpdateCompanyOperationsRequest request) {
         ensureCompanyExists(companyId);
         Instant now = clock.instant();
-        String planName = defaultText(request.planName(), "STANDARD");
-        String billingStatus = defaultText(request.billingStatus(), "PENDIENTE");
-        String supportStatus = defaultText(request.supportStatus(), "NORMAL");
+        String planName = planLimits.requireKnownPlan(request.planName());
+        String billingStatus = requireOneOf(request.billingStatus(), "PENDIENTE",
+                Set.of("PAGADO", "PENDIENTE", "VENCIDO", "IMPAGADO"));
+        String supportStatus = requireOneOf(request.supportStatus(), "NORMAL",
+                Set.of("NORMAL", "ATENCION", "BLOQUEADO"));
+        if (request.monthlyPrice() != null && !request.monthlyPrice().isBlank()) {
+            requirePositiveMoney(request.monthlyPrice(), "Precio mensual no valido");
+        }
         int updated = jdbc.update("""
                 update saas_company_operations
                 set plan_name = ?, billing_status = ?, renewal_date = ?, monthly_price = ?,
@@ -613,7 +680,7 @@ public class AdminService {
                 request.title().trim(),
                 blankToNull(request.description()),
                 "ABIERTO",
-                defaultText(request.priority(), "NORMAL"),
+                requireOneOf(request.priority(), "NORMAL", Set.of("NORMAL", "ALTA", "URGENTE")),
                 currentAdminUsername(),
                 sqlTimestamp(now),
                 sqlTimestamp(now));
@@ -624,8 +691,10 @@ public class AdminService {
     @Transactional
     public SupportTicketResponse updateSupportTicket(UUID ticketId, UpdateSupportTicketRequest request) {
         SupportTicketResponse existing = supportTicket(ticketId);
-        String status = defaultText(request.status(), existing.status());
-        String priority = defaultText(request.priority(), existing.priority());
+        String status = requireOneOf(request.status(), existing.status(),
+                Set.of("ABIERTO", "EN_CURSO", "RESUELTO"));
+        String priority = requireOneOf(request.priority(), existing.priority(),
+                Set.of("NORMAL", "ALTA", "URGENTE"));
         jdbc.update("""
                 update saas_support_ticket
                 set status = ?, priority = ?, updated_at = ?
@@ -728,6 +797,7 @@ public class AdminService {
 
     @Transactional
     public TenantUserResponse createTenantUser(UUID companyId, CreateTenantUserRequest request) {
+        planLimits.requireCapacity(companyId, PlanResource.TENANT_USERS);
         SaasCompany company = companies.findById(companyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
         String username = request.username().trim();
@@ -798,47 +868,140 @@ public class AdminService {
         try {
             jdbc.update("""
                     insert into saas_billing_invoice(
-                        id, company_id, number, concept, amount, currency, status, issued_at, due_at, created_at)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, company_id, number, concept, amount, currency, status, issued_at, due_at, created_at,
+                        series, fiscal_year, tax_regime, tax_base, tax_rate, tax_amount)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     invoiceId,
                     companyId,
                     request.number().trim(),
                     request.concept().trim(),
                     money(request.amount()),
-                    defaultText(request.currency(), "EUR"),
+                    requireCurrency(request.currency()),
                     "PENDIENTE",
                     sqlTimestamp(request.issuedAt()),
                     sqlTimestamp(request.dueAt()),
-                    sqlTimestamp(clock.instant()));
+                    sqlTimestamp(clock.instant()),
+                    invoiceSeries(request.number()),
+                    request.issuedAt().atZone(ZoneOffset.UTC).getYear(),
+                    jdbc.queryForObject("select tax_regime from saas_company where id = ?", String.class, companyId),
+                    null, null, null);
             audit.log("CREATE_BILLING_INVOICE", "COMPANY", companyId.toString());
             return billingInvoice(invoiceId);
         } catch (BadSqlGrammarException exception) {
             if (missingBillingTables(exception)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Facturacion pendiente de migrar. Reinicia el backend SaaS para aplicar V9.", exception);
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Facturacion pendiente de migrar. Reinicia el backend SaaS para aplicar las migraciones.", exception);
             }
             throw exception;
         }
     }
 
+    @Transactional(readOnly = true)
+    public InvoiceFiscalDetailResponse invoiceFiscalDetail(UUID invoiceId) {
+        return jdbc.query("""
+                select id, company_id, number, series, fiscal_year, tax_regime,
+                       fiscal_status, tax_base, tax_rate, tax_amount, amount, currency
+                from saas_billing_invoice where id = ?
+                """, (rs, rowNum) -> new InvoiceFiscalDetailResponse(
+                rs.getObject("id", UUID.class), rs.getObject("company_id", UUID.class),
+                rs.getString("number"), rs.getString("series"), rs.getInt("fiscal_year"),
+                rs.getString("tax_regime"), rs.getString("fiscal_status"), nullableMoney(rs.getString("tax_base")),
+                nullableMoney(rs.getString("tax_rate")), nullableMoney(rs.getString("tax_amount")),
+                money(rs.getString("amount")), rs.getString("currency")), invoiceId).stream()
+                .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe"));
+    }
+    @Transactional
+    public InvoiceFiscalDetailResponse updateInvoiceFiscal(UUID invoiceId, UpdateInvoiceFiscalRequest request) {
+        BigDecimal invoiceAmount = jdbc.query("select amount from saas_billing_invoice where id = ? for update",
+                rs -> rs.next() ? amount(rs.getString("amount")) : null, invoiceId);
+        if (invoiceAmount == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe");
+        }
+        String status = requireOneOf(request.fiscalStatus(), "CALCULATED",
+                Set.of("CALCULATED", "NOT_APPLICABLE"));
+        String taxBase = null;
+        String taxRate = null;
+        String taxAmount = null;
+        if ("CALCULATED".equals(status)) {
+            if (request.taxBase() == null || request.taxRate() == null || request.taxAmount() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Base, tipo y cuota fiscal son obligatorios");
+            }
+            BigDecimal base = amount(request.taxBase());
+            BigDecimal rate = amount(request.taxRate());
+            BigDecimal tax = amount(request.taxAmount());
+            if (base.signum() < 0 || rate.signum() < 0 || tax.signum() < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Importes fiscales no validos");
+            }
+            BigDecimal expectedTax = base.multiply(rate)
+                    .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+            if (expectedTax.compareTo(tax.setScale(2, java.math.RoundingMode.HALF_UP)) != 0
+                    || base.add(tax).setScale(2, java.math.RoundingMode.HALF_UP).compareTo(invoiceAmount) != 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "El desglose fiscal no coincide con el total de la factura");
+            }
+            taxBase = money(base.toPlainString());
+            taxRate = money(rate.toPlainString());
+            taxAmount = money(tax.toPlainString());
+        } else if (request.taxBase() != null || request.taxRate() != null || request.taxAmount() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Una factura no sujeta no debe incluir importes fiscales");
+        }
+        jdbc.update("""
+                update saas_billing_invoice
+                   set fiscal_status = ?, tax_base = ?, tax_rate = ?, tax_amount = ?
+                 where id = ?
+                """, status, taxBase, taxRate, taxAmount, invoiceId);
+        audit.log("UPDATE_INVOICE_FISCAL", "BILLING_INVOICE", invoiceId.toString());
+        return invoiceFiscalDetail(invoiceId);
+    }
     @Transactional
     public BillingPaymentResponse createBillingPayment(UUID invoiceId, CreateBillingPaymentRequest request) {
-        BillingInvoiceResponse invoice = billingInvoice(invoiceId);
+        InvoicePaymentState invoice = jdbc.query("select amount, fiscal_status from saas_billing_invoice where id = ? for update",
+                rs -> rs.next() ? new InvoicePaymentState(amount(rs.getString("amount")),
+                        rs.getString("fiscal_status")) : null, invoiceId);
+        if (invoice == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe");
+        }
+        if ("PENDING_TAX_DATA".equals(invoice.fiscalStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La factura no puede cobrarse hasta completar sus datos fiscales");
+        }
+        BigDecimal invoiceAmount = invoice.amount();
         requirePositiveMoney(request.amount(), "Importe de pago no valido");
+        String reference = blankToNull(request.reference());
+        if (reference != null) {
+            BillingPaymentResponse existing = paymentByReference(invoiceId, reference);
+            if (existing != null) {
+                if (!money(request.amount()).equals(existing.amount())
+                        || !requireOneOf(request.method(), "TRANSFERENCIA", PAYMENT_METHODS).equals(existing.method())
+                        || !request.paidAt().equals(existing.paidAt())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "La referencia de pago ya existe con datos diferentes");
+                }
+                return existing;
+            }
+        }
+        BigDecimal paidAmount = paidAmount(invoiceId);
+        BigDecimal paymentAmount = amount(request.amount());
+        if (paidAmount.add(paymentAmount).compareTo(invoiceAmount) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El pago supera el saldo pendiente de la factura");
+        }
         UUID paymentId = UUID.randomUUID();
         Instant now = clock.instant();
-        jdbc.update("""
-                insert into saas_billing_payment(id, invoice_id, amount, method, reference, paid_at, created_at)
-                values (?, ?, ?, ?, ?, ?, ?)
-                """,
-                paymentId,
-                invoiceId,
-                money(request.amount()),
-                defaultText(request.method(), "TRANSFERENCIA"),
-                blankToNull(request.reference()),
-                sqlTimestamp(request.paidAt()),
-                sqlTimestamp(now));
-        updateInvoiceStatus(invoiceId, amount(invoice.amount()));
+        try {
+            jdbc.update("""
+                    insert into saas_billing_payment(id, invoice_id, amount, method, reference, paid_at, created_at)
+                    values (?, ?, ?, ?, ?, ?, ?)
+                    """, paymentId, invoiceId, money(request.amount()),
+                    requireOneOf(request.method(), "TRANSFERENCIA", PAYMENT_METHODS), reference,
+                    sqlTimestamp(request.paidAt()), sqlTimestamp(now));
+        } catch (DataIntegrityViolationException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Pago duplicado o superior al saldo pendiente", exception);
+        }
+        updateInvoiceStatus(invoiceId, invoiceAmount);
         audit.log("CREATE_BILLING_PAYMENT", "BILLING_INVOICE", invoiceId.toString());
         return billingPayment(paymentId);
     }
@@ -865,6 +1028,11 @@ public class AdminService {
     public SalesDocumentResponse createSalesDocument(UUID companyId, CreateSalesDocumentRequest request) {
         ensureCompanyExists(companyId);
         requirePositiveMoney(request.total(), "Total de venta no valido");
+        if (request.storeId() != null) {
+            ensureStoreBelongsToCompany(request.storeId(), companyId);
+        }
+        String saleStatus = requireOneOf(request.status(), "CONFIRMADA",
+                Set.of("BORRADOR", "CONFIRMADA", "ANULADA"));
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 insert into saas_sales_document(
@@ -877,8 +1045,8 @@ public class AdminService {
                 request.documentNumber().trim(),
                 blankToNull(request.customerCode()),
                 money(request.total()),
-                defaultText(request.currency(), "EUR"),
-                defaultText(request.status(), "CONFIRMADA"),
+                requireCurrency(request.currency()),
+                saleStatus,
                 sqlTimestamp(request.issuedAt()),
                 sqlTimestamp(clock.instant()));
         audit.log("CREATE_SALES_DOCUMENT", "COMPANY", companyId.toString());
@@ -917,7 +1085,8 @@ public class AdminService {
                 companyId,
                 request.warehouseCode().trim(),
                 request.productSku().trim(),
-                defaultText(request.movementType(), "ENTRADA"),
+                requireOneOf(request.movementType(), "ENTRADA",
+                        Set.of("ENTRADA", "SALIDA", "VENTA", "AJUSTE_POSITIVO", "AJUSTE_NEGATIVO")),
                 money(request.quantity()),
                 blankToNull(request.reason()),
                 sqlTimestamp(request.movedAt()),
@@ -980,10 +1149,10 @@ public class AdminService {
                 id,
                 companyId,
                 request.planName().trim(),
-                defaultText(request.status(), "ACTIVA"),
-                defaultText(request.billingCycle(), "MENSUAL"),
+                requireOneOf(request.status(), "ACTIVA", Set.of("ACTIVA", "SUSPENDIDA", "CANCELADA")),
+                requireOneOf(request.billingCycle(), "MENSUAL", Set.of("MENSUAL", "TRIMESTRAL", "ANUAL")),
                 money(request.amount()),
-                defaultText(request.currency(), "EUR"),
+                requireCurrency(request.currency()),
                 sqlTimestamp(request.startedAt()),
                 sqlTimestamp(request.nextBillingAt()),
                 sqlTimestamp(clock.instant()));
@@ -1042,8 +1211,8 @@ public class AdminService {
                 id,
                 request.companyId(),
                 request.name().trim(),
-                defaultText(request.integrationType(), "WEBHOOK"),
-                defaultText(request.status(), "ACTIVA"),
+                requireOneOf(request.integrationType(), "WEBHOOK", INTEGRATION_TYPES),
+                requireOneOf(request.status(), "ACTIVA", Set.of("ACTIVA", "PAUSADA")),
                 blankToNull(request.targetUrl()),
                 integrationSecrets.encrypt(request.apiKey()),
                 sqlTimestamp(clock.instant()));
@@ -1051,12 +1220,61 @@ public class AdminService {
         return integration(id);
     }
 
-    @Transactional
-    public IntegrationEndpointResponse markIntegrationSynced(UUID integrationId) {
-        jdbc.update("update saas_integration_endpoint set last_sync_at = ? where id = ?",
-                sqlTimestamp(clock.instant()), integrationId);
-        audit.log("SYNC_INTEGRATION", "INTEGRATION", integrationId.toString());
-        return integration(integrationId);
+    public IntegrationEndpointResponse executeIntegration(UUID integrationId, String idempotencyKey) {
+        IntegrationEndpointResponse endpoint = integration(integrationId);
+        String key = normalizeIdempotencyKey(idempotencyKey);
+        IntegrationRunResponse latest = latestIntegrationRun(integrationId, key);
+        if (latest != null && Set.of("PENDING", "PROCESSING", "SUCCEEDED").contains(latest.status())) {
+            return endpoint;
+        }
+        int attempt = latest == null ? 1 : latest.attempt() + 1;
+        UUID runId = UUID.randomUUID();
+        Instant startedAt = clock.instant();
+        try {
+            jdbc.update("""
+                    insert into saas_integration_run(
+                        id, integration_id, idempotency_key, attempt, status, delivery_mode, started_at)
+                    values (?, ?, ?, ?, 'RUNNING', 'LOCAL_OUTBOX', ?)
+                    """, runId, integrationId, key, attempt, sqlTimestamp(startedAt));
+        } catch (DataIntegrityViolationException exception) {
+            IntegrationRunResponse concurrent = latestIntegrationRun(integrationId, key);
+            if (concurrent != null && Set.of("PENDING", "PROCESSING", "SUCCEEDED").contains(concurrent.status())) {
+                return integration(integrationId);
+            }
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La ejecucion de integracion ya esta en curso", exception);
+        }
+        if (!"ACTIVA".equals(endpoint.status())) {
+            failIntegrationRun(runId, "INTEGRATION_INACTIVE", "La integracion no esta activa");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La integracion no esta activa");
+        }
+        try {
+            String payload = buildLocalIntegrationPayload(endpoint);
+            Instant completedAt = clock.instant();
+            jdbc.update("""
+                    update saas_integration_run
+                    set status = 'PENDING', payload = ?, completed_at = null, next_attempt_at = ?
+                    where id = ? and status = 'RUNNING'
+                    """, payload, sqlTimestamp(completedAt), runId);
+
+            audit.log("EXECUTE_LOCAL_INTEGRATION", "INTEGRATION",
+                    integrationId + "; run=" + runId + "; key=" + key);
+            return integration(integrationId);
+        } catch (ResponseStatusException exception) {
+            failIntegrationRun(runId, "VALIDATION_ERROR", "No se pudo generar la entrega local");
+            throw exception;
+        } catch (RuntimeException exception) {
+            failIntegrationRun(runId, "LOCAL_EXECUTION_ERROR", "No se pudo generar la entrega local");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No se pudo ejecutar la integracion local", exception);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<IntegrationRunResponse> integrationRuns(UUID integrationId) {
+        integration(integrationId);
+        return jdbc.query(integrationRunSql("where integration_id = ?"),
+                (rs, rowNum) -> integrationRun(rs), integrationId);
     }
 
     @Transactional(readOnly = true)
@@ -1106,6 +1324,7 @@ public class AdminService {
 
     @Transactional
     public ErpCustomerResponse createErpCustomer(UUID companyId, CreateErpCustomerRequest request) {
+        planLimits.requireCapacity(companyId, PlanResource.MASTER_RECORDS);
         ensureCompanyExists(companyId);
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -1149,6 +1368,7 @@ public class AdminService {
 
     @Transactional
     public ErpProductResponse createErpProduct(UUID companyId, CreateErpProductRequest request) {
+        planLimits.requireCapacity(companyId, PlanResource.MASTER_RECORDS);
         ensureCompanyExists(companyId);
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -1193,6 +1413,7 @@ public class AdminService {
 
     @Transactional
     public ErpSupplierResponse createErpSupplier(UUID companyId, CreateErpSupplierRequest request) {
+        planLimits.requireCapacity(companyId, PlanResource.MASTER_RECORDS);
         ensureCompanyExists(companyId);
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -1236,6 +1457,7 @@ public class AdminService {
 
     @Transactional
     public ErpWarehouseResponse createErpWarehouse(UUID companyId, CreateErpWarehouseRequest request) {
+        planLimits.requireCapacity(companyId, PlanResource.MASTER_RECORDS);
         ensureCompanyExists(companyId);
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -1313,6 +1535,14 @@ public class AdminService {
         }
     }
 
+    private void ensureStoreBelongsToCompany(UUID storeId, UUID companyId) {
+        SaasStore store = stores.findById(storeId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tienda no existe"));
+        if (!store.getCompany().getId().equals(companyId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "La tienda no pertenece a la empresa indicada");
+        }
+    }
     private static CompanyOperationsResponse defaultOperations(UUID companyId) {
         return new CompanyOperationsResponse(companyId, "STANDARD", "PENDIENTE", null, "", "NORMAL", "", "", "");
     }
@@ -1321,6 +1551,22 @@ public class AdminService {
         return value == null || value.isBlank() ? defaultValue : value.trim().toUpperCase(Locale.ROOT);
     }
 
+    private static String requireOneOf(String value, String defaultValue, Set<String> allowed) {
+        String normalized = defaultText(value, defaultValue);
+        if (!allowed.contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Valor no permitido: " + normalized);
+        }
+        return normalized;
+    }
+
+    private static String requireCurrency(String value) {
+        String currency = defaultText(value, "EUR");
+        if (!currency.matches("[A-Z]{3}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Moneda no valida");
+        }
+        return currency;
+    }
     private static TenantRole tenantRole(String value) {
         try {
             return TenantRole.parse(value);
@@ -1508,11 +1754,108 @@ public class AdminService {
                 rs.getTimestamp("created_at").toInstant());
     }
 
+    private IntegrationRunResponse latestIntegrationRun(UUID integrationId, String idempotencyKey) {
+        return jdbc.query(integrationRunSql("where integration_id = ? and idempotency_key = ?"),
+                (rs, rowNum) -> integrationRun(rs), integrationId, idempotencyKey).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static String integrationRunSql(String where) {
+        return """
+                select id, integration_id, idempotency_key, attempt, status, delivery_mode,
+                       payload, error_code, error_message, started_at, completed_at
+                from saas_integration_run
+                """ + where + " order by attempt desc, started_at desc";
+    }
+
+    private static IntegrationRunResponse integrationRun(ResultSet rs) throws SQLException {
+        return new IntegrationRunResponse(
+                rs.getObject("id", UUID.class),
+                rs.getObject("integration_id", UUID.class),
+                rs.getString("idempotency_key"),
+                rs.getInt("attempt"),
+                rs.getString("status"),
+                rs.getString("delivery_mode"),
+                rs.getString("payload"),
+                rs.getString("error_code"),
+                rs.getString("error_message"),
+                rs.getTimestamp("started_at").toInstant(),
+                rs.getTimestamp("completed_at") == null ? null : rs.getTimestamp("completed_at").toInstant());
+    }
+
+    private void failIntegrationRun(UUID runId, String errorCode, String message) {
+        jdbc.update("""
+                update saas_integration_run
+                set status = 'FAILED', error_code = ?, error_message = ?, completed_at = ?
+                where id = ? and status = 'RUNNING'
+                """, errorCode, message, sqlTimestamp(clock.instant()), runId);
+    }
+
+    private String buildLocalIntegrationPayload(IntegrationEndpointResponse endpoint) {
+        UUID companyId = endpoint.companyId();
+        long invoices = scopedCount("saas_billing_invoice", companyId);
+        long sales = scopedCount("saas_sales_document", companyId);
+        long movements = scopedCount("saas_inventory_movement", companyId);
+        String invoiced = scopedMoney("saas_billing_invoice", "amount", companyId);
+        String sold = scopedMoney("saas_sales_document", "total", companyId);
+        return String.format(Locale.ROOT,
+                "{\"schemaVersion\":1,\"mode\":\"LOCAL_OUTBOX\",\"integrationType\":\"%s\","
+                        + "\"companyId\":%s,\"invoices\":%d,\"invoicedTotal\":\"%s\","
+                        + "\"sales\":%d,\"salesTotal\":\"%s\",\"inventoryMovements\":%d}",
+                endpoint.integrationType(),
+                companyId == null ? "null" : "\"" + companyId + "\"",
+                invoices, invoiced, sales, sold, movements);
+    }
+
+    private long scopedCount(String table, UUID companyId) {
+        String sql = "select count(*) from " + table + (companyId == null ? "" : " where company_id = ?");
+        Long value = companyId == null
+                ? jdbc.queryForObject(sql, Long.class)
+                : jdbc.queryForObject(sql, Long.class, companyId);
+        return value == null ? 0 : value;
+    }
+
+    private String scopedMoney(String table, String column, UUID companyId) {
+        String sql = "select coalesce(sum(cast(" + column + " as decimal(19,2))), 0) from " + table
+                + (companyId == null ? "" : " where company_id = ?");
+        Object value = companyId == null
+                ? jdbc.queryForObject(sql, Object.class)
+                : jdbc.queryForObject(sql, Object.class, companyId);
+        return money(value == null ? null : value.toString());
+    }
+
+    private static String normalizeIdempotencyKey(String value) {
+        if (value == null || value.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        String normalized = value.trim();
+        if (normalized.length() > 120 || !normalized.matches("[A-Za-z0-9._:-]+")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Idempotency-Key no valido");
+        }
+        return normalized;
+    }
+    private static String invoiceSeries(String number) {
+        String value = number == null ? "GENERAL" : number.trim().toUpperCase(Locale.ROOT);
+        int separator = value.indexOf('-');
+        String series = separator > 0 ? value.substring(0, separator) : "GENERAL";
+        series = series.replaceAll("[^A-Z0-9_]", "");
+        if (series.isBlank()) {
+            return "GENERAL";
+        }
+        return series.substring(0, Math.min(series.length(), 24));
+    }
     private static String invoiceSql(String where) {
         return """
                 select i.id, i.company_id, c.name as company_name, i.number, i.concept,
                        i.amount, i.currency, i.status, i.issued_at, i.due_at, i.created_at,
-                       coalesce(sum(cast(p.amount as decimal(19,2))), 0) as paid_amount
+                       coalesce(sum(cast(p.amount as decimal(19,2))), 0) as paid_amount,
+                       case
+                           when coalesce(sum(cast(p.amount as decimal(19,2))), 0) >= cast(i.amount as decimal(19,2)) then 'PAGADA'
+                           when coalesce(sum(cast(p.amount as decimal(19,2))), 0) > 0 then 'PARCIAL'
+                           when i.due_at < current_timestamp then 'VENCIDA'
+                           else 'PENDIENTE'
+                       end as effective_status
                 from saas_billing_invoice i
                 join saas_company c on c.id = i.company_id
                 left join saas_billing_payment p on p.invoice_id = i.id
@@ -1533,12 +1876,37 @@ public class AdminService {
                 money(rs.getString("amount")),
                 money(rs.getString("paid_amount")),
                 rs.getString("currency"),
-                rs.getString("status"),
+                rs.getString("effective_status"),
                 rs.getTimestamp("issued_at").toInstant(),
                 rs.getTimestamp("due_at").toInstant(),
                 rs.getTimestamp("created_at").toInstant());
     }
 
+    private BillingPaymentResponse paymentByReference(UUID invoiceId, String reference) {
+        return jdbc.query("""
+                select id, invoice_id, amount, method, reference, paid_at, created_at
+                from saas_billing_payment
+                where invoice_id = ? and reference = ?
+                """, (rs, rowNum) -> new BillingPaymentResponse(
+                rs.getObject("id", UUID.class),
+                rs.getObject("invoice_id", UUID.class),
+                money(rs.getString("amount")),
+                rs.getString("method"),
+                rs.getString("reference"),
+                rs.getTimestamp("paid_at").toInstant(),
+                rs.getTimestamp("created_at").toInstant()), invoiceId, reference).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private BigDecimal paidAmount(UUID invoiceId) {
+        BigDecimal value = jdbc.queryForObject("""
+                select coalesce(sum(cast(amount as decimal(19,2))), 0)
+                from saas_billing_payment
+                where invoice_id = ?
+                """, (rs, rowNum) -> amount(rs.getString(1)), invoiceId);
+        return value == null ? BigDecimal.ZERO : value;
+    }
     private void updateInvoiceStatus(UUID invoiceId, BigDecimal invoiceAmount) {
         BigDecimal paidAmount = jdbc.queryForObject("""
                 select coalesce(sum(cast(amount as decimal(19,2))), 0)
@@ -1582,6 +1950,22 @@ public class AdminService {
         return table && missingRelation;
     }
 
+    private String currentMigration() {
+        try {
+            String script = jdbc.query("""
+                    select script from flyway_schema_history
+                    where success = true and version is not null
+                    order by installed_rank desc
+                    limit 1
+                    """, rs -> rs.next() ? rs.getString("script") : null);
+            if (script == null || script.isBlank()) {
+                return "UNAVAILABLE";
+            }
+            return script.endsWith(".sql") ? script.substring(0, script.length() - 4) : script;
+        } catch (RuntimeException exception) {
+            return "UNAVAILABLE";
+        }
+    }
     private long count(String sql) {
         Long value = jdbc.queryForObject(sql, Long.class);
         return value == null ? 0 : value;
@@ -1879,6 +2263,9 @@ public class AdminService {
         }
     }
 
+    private static String nullableMoney(String value) {
+        return value == null ? null : money(value);
+    }
     private static String money(String value) {
         return amount(value).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
@@ -1994,14 +2381,16 @@ public class AdminService {
         }
         String initialPassword = newInitialPassword();
         try {
-            tenantUsers.saveAndFlush(new SaasTenantUser(
+            SaasTenantUser initialUser = new SaasTenantUser(
                     UUID.randomUUID(),
                     company,
                     username,
                     passwordHasher.hash(initialPassword),
                     "OWNER",
                     true,
-                    now));
+                    now);
+            initialUser.requirePasswordChange();
+            tenantUsers.saveAndFlush(initialUser);
         } catch (DataIntegrityViolationException exception) {
             throw usernameConflict(exception);
         }
@@ -2043,4 +2432,7 @@ public class AdminService {
 
     private record TenantInitialAccess(String username, String initialPassword) {
     }
+    private record InvoicePaymentState(BigDecimal amount, String fiscalStatus) {
+    }
+
 }

@@ -21,6 +21,7 @@ import type {
   ErpSupplier,
   ErpWarehouse,
   IntegrationEndpoint,
+  InvoiceFiscalDetail,
   InventoryMovement,
   InventoryStock,
   InstallationSummary,
@@ -47,11 +48,20 @@ import type {
   TaxpayerType,
   VerifactuActivationPolicy,
   FiscalStatusAdmin,
-  FiscalCompanyStatusAdmin
+  FiscalCompanyStatusAdmin,
+  LoginResponse,
+  MasterImportResult,
+  PaymentReconciliation,
+  PlanUsage
 } from "./types";
 import { extractApiErrorMessage } from "./problem-detail.mjs";
 
 const API_BASE = import.meta.env.VITE_SAAS_API_BASE_URL ?? "";
+let unauthorizedHandler: ((credentials: Credentials) => void) | null = null;
+
+export function setUnauthorizedHandler(handler: ((credentials: Credentials) => void) | null) {
+  unauthorizedHandler = handler;
+}
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -76,6 +86,38 @@ function authHeader(credentials: Credentials) {
   return `Bearer ${credentials.accessToken}`;
 }
 
+async function publicPost<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ApiError(response.status, text || response.statusText || "Error de comunicacion");
+  }
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+async function requestText(credentials: Credentials, path: string, options: { method?: "GET" | "POST"; body?: string } = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: options.method ?? "GET",
+    headers: {
+      Authorization: authHeader(credentials),
+      ...(options.body !== undefined ? { "Content-Type": "text/csv;charset=UTF-8" } : {})
+    },
+    body: options.body
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    if (response.status === 401) unauthorizedHandler?.(credentials);
+    throw new ApiError(response.status, text || response.statusText || "Error de comunicacion");
+  }
+  return response.text();
+}
+
 async function request<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: options.method ?? "GET",
@@ -88,6 +130,7 @@ async function request<T>(credentials: Credentials, path: string, options: Reque
 
   if (!response.ok) {
     const text = await response.text();
+    if (response.status === 401) unauthorizedHandler?.(credentials);
     throw new ApiError(response.status, text || response.statusText || "Error de comunicacion");
   }
 
@@ -100,22 +143,20 @@ async function request<T>(credentials: Credentials, path: string, options: Reque
 }
 
 export const api = {
-  async login(credentials: LoginCredentials) {
-    const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: credentials.username, password: credentials.password })
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new ApiError(response.status, text || response.statusText || "Error de autenticacion");
-    }
-    return response.json() as Promise<{
-      username: string;
-      accessToken: string;
-      mode: "admin" | "tenant";
-      expiresAt: string;
-    }>;
+  login(credentials: LoginCredentials) {
+    return publicPost<LoginResponse>("/api/v1/auth/login", credentials);
+  },
+
+  changeOwnPassword(credentials: Credentials, payload: { currentPassword: string; newPassword: string }) {
+    return request<void>(credentials, "/api/v1/auth/password/change", { method: "POST", body: payload });
+  },
+
+  requestPasswordRecovery(username: string) {
+    return publicPost<void>("/api/v1/auth/password/recovery/request", { username });
+  },
+
+  confirmPasswordRecovery(payload: { token: string; newPassword: string }) {
+    return publicPost<void>("/api/v1/auth/password/recovery/confirm", payload);
   },
 
   async logout(credentials: Credentials) {
@@ -262,6 +303,33 @@ export const api = {
     payload: { number: string; concept: string; amount: string; currency: string; issuedAt: string; dueAt: string }
   ) {
     return request<BillingInvoice>(credentials, `/api/v1/admin/companies/${companyId}/invoices`, {
+      method: "POST",
+      body: payload
+    });
+  },
+
+  invoiceFiscalDetail(credentials: Credentials, invoiceId: string) {
+    return request<InvoiceFiscalDetail>(credentials, `/api/v1/admin/invoices/${encodeURIComponent(invoiceId)}/fiscal`);
+  },
+
+  planUsage(credentials: Credentials, companyId: string) {
+    return request<PlanUsage>(credentials, `/api/v1/admin/companies/${encodeURIComponent(companyId)}/plan-usage`);
+  },
+
+  paymentReconciliations(credentials: Credentials, companyId: string) {
+    return request<PaymentReconciliation[]>(credentials, `/api/v1/admin/companies/${encodeURIComponent(companyId)}/reconciliations`);
+  },
+
+  createPaymentReconciliation(credentials: Credentials, companyId: string, payload: {
+    paymentId: string | null;
+    provider: string;
+    externalReference: string;
+    amount: string;
+    currency: string;
+    bookedAt: string;
+    notes: string;
+  }) {
+    return request<PaymentReconciliation>(credentials, `/api/v1/admin/companies/${encodeURIComponent(companyId)}/reconciliations`, {
       method: "POST",
       body: payload
     });
@@ -627,32 +695,27 @@ export const api = {
     return request<FiscalCompanyStatusAdmin[]>(credentials, "/api/v1/admin/fiscal-status/companies");
   },
 
-  tenantPortal(credentials: Credentials): Promise<TenantPortalData> {
-    return Promise.all([
-      this.tenantSession(credentials),
-      this.tenantDashboard(credentials),
-      this.tenantLicenses(credentials),
-      this.tenantStores(credentials),
-      this.tenantTickets(credentials),
-      this.tenantInvoices(credentials),
-      this.tenantErpCustomers(credentials),
-      this.tenantErpProducts(credentials),
-      this.tenantErpSuppliers(credentials),
-      this.tenantErpWarehouses(credentials)
-    ]).then(([session, dashboard, licenses, stores, tickets, invoices, customers, products, suppliers, warehouses]) => ({
-      session,
-      dashboard,
-      licenses,
-      stores,
-      tickets,
-      invoices,
-      customers,
-      products,
-      suppliers,
-      warehouses
-    }));
+  async tenantPortal(credentials: Credentials): Promise<TenantPortalData> {
+    const results = await Promise.allSettled([
+      this.tenantSession(credentials), this.tenantDashboard(credentials), this.tenantLicenses(credentials),
+      this.tenantStores(credentials), this.tenantTickets(credentials), this.tenantInvoices(credentials),
+      this.tenantErpCustomers(credentials), this.tenantErpProducts(credentials),
+      this.tenantErpSuppliers(credentials), this.tenantErpWarehouses(credentials)
+    ]);
+    const required = results.slice(0, 2);
+    const requiredFailure = required.find((result) => result.status === "rejected");
+    if (requiredFailure?.status === "rejected") throw requiredFailure.reason;
+    const value = <T>(index: number, fallback: T): T => results[index].status === "fulfilled"
+      ? (results[index] as PromiseFulfilledResult<T>).value : fallback;
+    const loadErrors = results.slice(2).flatMap((result, index) => result.status === "rejected"
+      ? [`${["licenses", "stores", "tickets", "invoices", "customers", "products", "suppliers", "warehouses"][index]}: ${result.reason instanceof Error ? result.reason.message : "Error de carga"}`]
+      : []);
+    return {
+      session: value<TenantSession>(0, undefined as never), dashboard: value<TenantDashboard>(1, undefined as never),
+      licenses: value(2, []), stores: value(3, []), tickets: value(4, []), invoices: value(5, []),
+      customers: value(6, []), products: value(7, []), suppliers: value(8, []), warehouses: value(9, []), loadErrors
+    };
   },
-
   tenantSession(credentials: Credentials) {
     return request<TenantSession>(credentials, "/api/v1/tenant/me");
   },
@@ -679,6 +742,22 @@ export const api = {
 
   tenantErpCustomers(credentials: Credentials) {
     return request<ErpCustomer[]>(credentials, "/api/v1/tenant/erp/customers");
+  },
+
+  async exportTenantMasterCsv(credentials: Credentials, resource: string) {
+    const text = await requestText(credentials, `/api/v1/tenant/erp/${encodeURIComponent(resource)}/csv`);
+    if (!text.trim()) throw new ApiError(502, "El servidor devolvio una respuesta CSV vacia");
+    return text;
+  },
+
+  async importTenantMasterCsv(credentials: Credentials, resource: string, csv: string) {
+    const text = await requestText(credentials, `/api/v1/tenant/erp/${encodeURIComponent(resource)}/csv`, { method: "POST", body: csv });
+    if (!text.trim()) throw new ApiError(502, "El servidor devolvio una respuesta vacia al importar CSV");
+    try {
+      return JSON.parse(text) as MasterImportResult;
+    } catch {
+      throw new ApiError(502, "El servidor devolvio un resultado de importacion CSV invalido");
+    }
   },
 
   createTenantErpCustomer(credentials: Credentials, payload: { code: string; name: string; taxId: string; email: string; phone: string }) {

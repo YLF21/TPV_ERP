@@ -6,5 +6,10 @@ public record SaasLoginResponse(
         String username,
         String accessToken,
         String mode,
-        Instant expiresAt) {
+        Instant expiresAt,
+        boolean passwordChangeRequired) {
+
+    public SaasLoginResponse(String username, String accessToken, String mode, Instant expiresAt) {
+        this(username, accessToken, mode, expiresAt, false);
+    }
 }

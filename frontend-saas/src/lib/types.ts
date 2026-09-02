@@ -14,11 +14,58 @@ export type SyncOperation = "CREAR" | "ACTUALIZAR" | "BORRAR" | "ANULAR" | "CONF
 export type Credentials = {
   username: string;
   accessToken: string;
+  mode: "admin" | "tenant";
 };
 
 export type LoginCredentials = {
   username: string;
   password: string;
+};
+
+export type LoginResponse = Credentials & {
+  expiresAt: string;
+  passwordChangeRequired: boolean;
+};
+
+export type PlanUsage = {
+  companyId: string;
+  planName: string;
+  usage: Record<string, number>;
+  limits: Record<string, number>;
+};
+
+export type InvoiceFiscalDetail = {
+  invoiceId: string;
+  companyId: string;
+  number: string;
+  series: string;
+  fiscalYear: number;
+  taxRegime: string;
+  taxBase: string;
+  taxRate: string;
+  taxAmount: string;
+  total: string;
+  currency: string;
+};
+
+export type PaymentReconciliation = {
+  id: string;
+  companyId: string;
+  paymentId: string | null;
+  provider: string;
+  externalReference: string;
+  amount: string;
+  currency: string;
+  bookedAt: string;
+  status: string;
+  notes: string | null;
+  createdAt: string;
+};
+
+export type MasterImportResult = {
+  processed: number;
+  inserted: number;
+  updated: number;
 };
 
 export type AdminSession = {
@@ -162,7 +209,7 @@ export type FiscalCompanyStatusAdmin = {
 export type PairingCodeResponse = {
   licenseReference: string;
   pairingCode: string;
-  expiresAt: string;
+  expiresAt: string | null;
 };
 
 export type AdminLicenseResponse = {
@@ -397,6 +444,7 @@ export type TenantPortalData = {
   products: ErpProduct[];
   suppliers: ErpSupplier[];
   warehouses: ErpWarehouse[];
+  loadErrors: string[];
 };
 
 export type SyncEventView = {

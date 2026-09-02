@@ -20,6 +20,8 @@ import com.tpverp.saas.license.SaasCompanyRepository;
 import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.SaasLicense;
 import com.tpverp.saas.license.SaasLicenseRepository;
+import com.tpverp.saas.plan.PlanLimitService;
+import com.tpverp.saas.plan.PlanResource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -44,6 +46,7 @@ public class TenantService {
     private final SaasLicenseRepository licenses;
     private final SaasInstallationRepository installations;
     private final JdbcTemplate jdbc;
+    private final PlanLimitService planLimits;
     private final Clock clock;
 
     public TenantService(
@@ -51,11 +54,13 @@ public class TenantService {
             SaasLicenseRepository licenses,
             SaasInstallationRepository installations,
             JdbcTemplate jdbc,
+            PlanLimitService planLimits,
             Clock clock) {
         this.companies = companies;
         this.licenses = licenses;
         this.installations = installations;
         this.jdbc = jdbc;
+        this.planLimits = planLimits;
         this.clock = clock;
     }
 
@@ -147,6 +152,7 @@ public class TenantService {
 
     @Transactional
     public ErpCustomerResponse createErpCustomer(CreateErpCustomerRequest request) {
+        planLimits.requireCapacity(TenantContextHolder.current().companyId(), PlanResource.MASTER_RECORDS);
         UUID companyId = TenantContextHolder.current().companyId();
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -178,6 +184,7 @@ public class TenantService {
 
     @Transactional
     public ErpProductResponse createErpProduct(CreateErpProductRequest request) {
+        planLimits.requireCapacity(TenantContextHolder.current().companyId(), PlanResource.MASTER_RECORDS);
         UUID companyId = TenantContextHolder.current().companyId();
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -210,6 +217,7 @@ public class TenantService {
 
     @Transactional
     public ErpSupplierResponse createErpSupplier(CreateErpSupplierRequest request) {
+        planLimits.requireCapacity(TenantContextHolder.current().companyId(), PlanResource.MASTER_RECORDS);
         UUID companyId = TenantContextHolder.current().companyId();
         UUID id = UUID.randomUUID();
         jdbc.update("""
@@ -241,6 +249,7 @@ public class TenantService {
 
     @Transactional
     public ErpWarehouseResponse createErpWarehouse(CreateErpWarehouseRequest request) {
+        planLimits.requireCapacity(TenantContextHolder.current().companyId(), PlanResource.MASTER_RECORDS);
         UUID companyId = TenantContextHolder.current().companyId();
         UUID id = UUID.randomUUID();
         jdbc.update("""
