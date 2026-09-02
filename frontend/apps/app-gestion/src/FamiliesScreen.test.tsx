@@ -468,7 +468,104 @@ describe("FamiliesScreen", () => {
     );
   });
 
-  it("opens Add subfamily blank without a selected node and preselects the family cursor", async () => {
+  it("uses the formal modal shell and accessible close controls for family actions", async () => {
+    const request = vi.fn(
+      async (path: string, options?: { method?: string; body?: unknown }) => {
+        if (path === "/families") return families;
+        if (path === "/families/next-code") return { familyCode: "003" };
+        if (path === "/families/drinks/subfamilies") return [];
+        if (path === DRINK_PRODUCTS_NAME_ASC)
+          return {
+            items: [
+              {
+                id: "p1",
+                code: "A",
+                name: "Agua producto",
+                salePrice: 1,
+                active: true,
+                familyId: "drinks",
+                subfamilyId: "",
+                version: 1,
+              },
+            ],
+            hasMore: false,
+          };
+        if (path === "/families/drinks/delete-impact")
+          return { products: 1, promotions: 0, rules: 0, blocked: false };
+        return options?.method === "POST" ? undefined : [];
+      },
+    );
+    renderScreen(request as unknown as typeof apiRequest);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Añadir familia" }),
+    );
+    const editorDialog = await screen.findByRole("dialog", {
+      name: "Añadir familia",
+    });
+    expect(editorDialog).toHaveClass(
+      "gestion-security-dialog",
+      "gestion-family-editor-dialog",
+      "gestion-family-editor-family",
+      "is-create",
+    );
+    expect(editorDialog.parentElement).toHaveClass("gestion-modal-backdrop");
+    const editorClose = within(editorDialog).getByRole("button", {
+      name: "Cerrar",
+    });
+    expect(editorClose).toHaveAttribute("title", "Cerrar");
+    expect(editorClose).toHaveTextContent("×");
+    fireEvent.click(within(editorDialog).getByRole("button", { name: "Cancelar" }));
+
+    fireEvent.click(await screen.findByText("Bebidas"));
+    fireEvent.click(await screen.findByLabelText("Seleccionar Agua producto"));
+    fireEvent.click(screen.getByRole("button", { name: "Mover" }));
+    const moveDialog = await screen.findByRole("dialog", {
+      name: "Mover productos",
+    });
+    expect(moveDialog).toHaveClass(
+      "gestion-security-dialog",
+      "gestion-family-move-dialog",
+    );
+    expect(moveDialog.parentElement).toHaveClass("gestion-modal-backdrop");
+    const moveClose = within(moveDialog).getByRole("button", { name: "Cerrar" });
+    expect(moveClose).toHaveAttribute("title", "Cerrar");
+    expect(moveClose).toHaveTextContent("×");
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "Cancelar" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar de familia" }));
+    const generalDialog = await screen.findByRole("dialog", {
+      name: "Eliminar de familia",
+    });
+    expect(generalDialog).toHaveClass(
+      "gestion-security-dialog",
+      "gestion-family-general-dialog",
+    );
+    const generalClose = within(generalDialog).getByRole("button", {
+      name: "Cerrar",
+    });
+    expect(generalClose).toHaveAttribute("title", "Cerrar");
+    expect(generalClose).toHaveTextContent("×");
+    fireEvent.click(generalClose);
+
+    const family = screen.getByRole("treeitem", { name: /001.*Bebidas/ });
+    fireEvent.click(within(family).getByRole("button", { name: "Eliminar" }));
+    const impactDialog = await screen.findByRole("dialog", {
+      name: "Impacto de la eliminación",
+    });
+    expect(impactDialog).toHaveClass(
+      "gestion-security-dialog",
+      "gestion-family-impact-dialog",
+      "has-related-products",
+    );
+    const impactClose = within(impactDialog).getByRole("button", {
+      name: "Cerrar",
+    });
+    expect(impactClose).toHaveAttribute("title", "Cerrar");
+    expect(impactClose).toHaveTextContent("×");
+  });
+
+  it("opens Add subfamily blank for GENERAL and anchors its list below the family field", async () => {
     const request = vi.fn(async (path: string) => {
       if (path === "/families") return families;
       if (path === "/families/drinks/subfamilies") return subfamilies;
@@ -478,11 +575,19 @@ describe("FamiliesScreen", () => {
     });
     renderScreen(request as unknown as typeof apiRequest);
     fireEvent.click(
+      await screen.findByRole("treeitem", { name: /000.*GENERAL/ }),
+    );
+    fireEvent.click(
       await screen.findByRole("button", { name: "Añadir subfamilia" }),
     );
     const combo = await screen.findByRole("combobox");
     expect(combo).toHaveValue("");
     expect(combo).toHaveAttribute("aria-expanded", "true");
+    const listbox = screen.getByRole("listbox");
+    expect(combo.parentElement).toHaveClass("gestion-family-combobox");
+    expect(combo.parentElement).toContainElement(listbox);
+    expect(getComputedStyle(listbox).top).toBe("100%");
+    expect(getComputedStyle(listbox).width).toBe("100%");
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     fireEvent.click(screen.getByText("Bebidas"));
     await screen.findByText("Agua");

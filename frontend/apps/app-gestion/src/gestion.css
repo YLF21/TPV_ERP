@@ -2802,7 +2802,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-families-screen > .gestion-error { grid-row: 2; }
 .gestion-families-state, .gestion-families-workspace { grid-row-start: 3; }
 .gestion-families-screen > .gestion-success { grid-row: 4; }
-.gestion-families-dialog { width: min(470px, calc(100vw - 32px)); }
+.gestion-families-dialog { width: min(470px, 100%); }
 .gestion-families-dialog form { padding: 18px; }
 .gestion-families-dialog .filter-field { display: grid; gap: 6px; margin-bottom: 15px; }
 .gestion-families-dialog .filter-field > span { font-weight: 700; color: #31485d; }
@@ -2881,10 +2881,10 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-family-combobox { display: flex; position: relative; }
 .gestion-family-combobox input { min-width: 0; flex: 1; }
 .gestion-family-combobox button { width: 36px; border: 1px solid #173d59; background: #173d59; color: #fff; }
-.gestion-family-combobox-results { position: absolute; z-index: 4; left: 0; right: 0; max-height: 180px; overflow: auto; border: 1px solid #8095a5; background: #fff; box-shadow: 0 3px 9px #182b371f; }
+.gestion-family-combobox-results { position: absolute; z-index: 4; top: 100%; left: 0; width: 100%; box-sizing: border-box; max-height: 180px; overflow: auto; border: 1px solid #8095a5; background: #fff; box-shadow: 0 3px 9px #182b371f; }
 .gestion-family-combobox-results button { display: block; width: 100%; padding: 8px 10px; border: 0; border-bottom: 1px solid #e0e6ea; background: #fff; text-align: left; color: #23465d; }
 .gestion-family-combobox-results button:hover, .gestion-family-combobox-results button:focus-visible { background: #e4eff6; }
-.gestion-family-move-dialog { width: min(520px, calc(100vw - 32px)); }
+.gestion-family-move-dialog { width: min(520px, 100%); }
 .gestion-family-move-search { display: grid; gap: 5px; margin: 10px 0; color: #31485d; font-weight: 700; }
 .gestion-family-move-search input { min-height: 34px; border: 1px solid #879aa9; border-radius: 0; padding: 6px 8px; font: inherit; }
 .gestion-family-move-tree { max-height: 360px; overflow: auto; border: 1px solid #b1c1cc; background: #f8fafb; padding: 5px; }
@@ -2896,6 +2896,130 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-family-move-tree button.is-child { padding-left: 27px; }
 .gestion-family-move-tree button.is-selected, .gestion-family-move-tree button:focus-visible { background: #dcecf7; outline: 2px solid #1a5e87; outline-offset: -2px; }
 .gestion-family-move-selection { margin: 10px 0 0; color: #234c67; font-weight: 700; }
+
+/* Family dialogs: reuse the formal APP GESTIÓN modal shell. */
+.gestion-security-dialog.gestion-families-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  color: var(--gestion-text);
+}
+
+.gestion-family-editor-dialog { grid-template-rows: auto minmax(0, 1fr); }
+.gestion-families-dialog > header {
+  gap: 12px;
+}
+
+.gestion-families-dialog > header button {
+  min-width: 30px;
+  min-height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  border-radius: 0;
+  line-height: 1;
+}
+
+.gestion-families-dialog > header button:hover:not(:disabled),
+.gestion-families-dialog > header button:focus-visible {
+  background: rgba(255,255,255,.13);
+  outline: 2px solid #b8d7f2;
+  outline-offset: 2px;
+}
+
+.gestion-families-dialog > header button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.gestion-families-dialog > form { min-height: 0; overflow: auto; }
+.gestion-families-dialog > form > .gestion-error { margin: 0 0 12px; }
+.gestion-family-modal-body {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow: auto;
+}
+.gestion-family-modal-body > p {
+  margin: 0;
+  padding: 0;
+  color: var(--gestion-text);
+  font-size: var(--gestion-font-body);
+  line-height: 1.45;
+}
+.gestion-family-modal-body > .gestion-error { margin: 0; padding: 0; }
+
+.gestion-family-move-dialog > .gestion-family-modal-body,
+.gestion-family-general-dialog > .gestion-family-modal-body,
+.gestion-family-impact-dialog > .gestion-family-modal-body { padding: 18px; }
+.gestion-family-move-dialog .gestion-family-move-search { margin: 0; }
+.gestion-family-move-dialog .gestion-family-move-selection,
+.gestion-family-impact-dialog .gestion-families-impact,
+.gestion-family-impact-dialog .gestion-families-dependencies,
+.gestion-family-impact-dialog .gestion-family-confirm { margin-top: 0; margin-bottom: 0; }
+
+.gestion-families-dialog > .gestion-family-actions,
+.gestion-families-dialog > form > .gestion-family-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 11px 18px;
+  border-top: 1px solid var(--gestion-border);
+  background: #edf1f5;
+}
+
+.gestion-families-dialog > form > .gestion-family-actions { margin: 18px -18px -18px; }
+
+.gestion-families-dialog > .gestion-family-actions button,
+.gestion-families-dialog > form > .gestion-family-actions button {
+  min-width: 112px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--gestion-border-dark);
+  border-radius: 0;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gestion-families-dialog > .gestion-family-actions button.primary,
+.gestion-families-dialog > form > .gestion-family-actions button.primary {
+  border-color: var(--gestion-navy);
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-families-dialog > .gestion-family-actions button.danger,
+.gestion-families-dialog > form > .gestion-family-actions button.danger {
+  border-color: #9f2f2f;
+  background: #a92d2d;
+  color: #fff;
+}
+
+.gestion-families-dialog > .gestion-family-actions button:hover:not(:disabled),
+.gestion-families-dialog > form > .gestion-family-actions button:hover:not(:disabled),
+.gestion-families-dialog > .gestion-family-actions button:focus-visible,
+.gestion-families-dialog > form > .gestion-family-actions button:focus-visible {
+  outline: 2px solid #4c8fca;
+  outline-offset: 2px;
+}
+
+.gestion-families-dialog > .gestion-family-actions button:disabled,
+.gestion-families-dialog > form > .gestion-family-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+@media (max-width: 600px) {
+  .gestion-families-dialog > .gestion-family-actions,
+  .gestion-families-dialog > form > .gestion-family-actions { flex-wrap: wrap; }
+  .gestion-families-dialog > .gestion-family-actions button,
+  .gestion-families-dialog > form > .gestion-family-actions button { flex: 1 1 0; }
+  .gestion-family-impact-dialog .gestion-families-impact { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 900px) {
   .gestion-families-screen { height: auto; min-height: 100%; }
   .gestion-families-workspace { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 42vh) minmax(440px, 58vh); overflow: visible; }
