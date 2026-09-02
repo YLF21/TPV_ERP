@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import {
   ApiError,
@@ -213,6 +214,49 @@ function sortSubfamilies(rows: Subfamily[]) {
     (left, right) =>
       left.subfamilyCode.localeCompare(right.subfamilyCode) ||
       left.name.localeCompare(right.name, "es", { sensitivity: "base" }),
+  );
+}
+
+function FamilyModal({
+  title,
+  titleId,
+  className,
+  closeLabel,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  titleId: string;
+  className: string;
+  closeLabel: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="gestion-modal-backdrop" role="presentation">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`gestion-security-dialog gestion-families-dialog ${className}`}
+      >
+        <header>
+          <h2 id={titleId}>{title}</h2>
+          <button
+            type="button"
+            aria-label={closeLabel}
+            title={closeLabel}
+            disabled={busy}
+            onClick={onClose}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </header>
+        {children}
+      </section>
+    </div>
   );
 }
 
@@ -1793,263 +1837,243 @@ export function FamiliesScreen({
         </p>
       )}
       {editor && (
-        <div
-          className="filter-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="families-editor-title"
+        <FamilyModal
+          title={
+            editor.id
+              ? t("gestion.families.edit")
+              : editor.kind === "family"
+                ? t("gestion.families.newFamily")
+                : t("gestion.families.newSubfamily")
+          }
+          titleId="families-editor-title"
+          className={`gestion-family-editor-dialog gestion-family-editor-${editor.kind} ${editor.id ? "is-edit" : "is-create"}`}
+          closeLabel={t("common.close")}
+          busy={busy}
+          onClose={() => setEditor(null)}
         >
-          <section className="filter-dialog gestion-families-dialog">
-            <header className="filter-header">
-              <h2 id="families-editor-title">
-                {editor.id
-                  ? t("gestion.families.edit")
-                  : editor.kind === "family"
-                    ? t("gestion.families.newFamily")
-                    : t("gestion.families.newSubfamily")}
-              </h2>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setEditor(null)}
-              >
-                {t("common.close")}
-              </button>
-            </header>
+          <form onSubmit={(event) => void save(event)}>
             {error && (
               <p className="gestion-error" role="alert">
                 {error}
               </p>
             )}
-            <form onSubmit={(event) => void save(event)}>
-              {editor.kind === "family" ? (
-                <>
-                  <label className="filter-field">
-                    <span>{t("gestion.families.familyCode")}</span>
-                    <input
-                      inputMode="numeric"
-                      maxLength={3}
-                      disabled={Boolean(editor.id)}
-                      value={editor.code}
-                      onChange={(event) =>
-                        setEditor({
-                          ...editor,
-                          code: event.target.value
-                            .replace(/\D/g, "")
-                            .slice(0, 3),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="filter-field">
-                    <span>{t("party.name")}</span>
-                    <input
-                      autoFocus
-                      maxLength={64}
-                      value={editor.name}
-                      onChange={(event) =>
-                        setEditor({
-                          ...editor,
-                          name: event.target.value.toLocaleUpperCase(),
-                        })
-                      }
-                    />
-                  </label>
-                </>
-              ) : (
-                <>
-                  <label className="filter-field gestion-family-code-field">
-                    <span>{t("gestion.families.familyCode")}</span>
-                    <div className="gestion-family-code-row">
-                      <div className="gestion-family-combobox">
-                        <input
-                          autoFocus
-                          disabled={Boolean(editor.id)}
-                          role="combobox"
-                          aria-expanded={!editor.id && familyComboOpen}
-                          aria-controls="families-parent-options"
-                          aria-activedescendant={
-                            familyComboActiveId || undefined
-                          }
-                          value={editor.familySearch}
-                          onFocus={() =>
-                            !editor.id &&
-                            !editor.familyId &&
-                            setFamilyComboOpen(true)
-                          }
-                          onChange={(event) =>
-                            (() => {
-                              setFamilyComboActiveId("");
-                              setEditor({
-                                ...editor,
-                                familySearch: event.target.value,
-                                familyId: "",
-                                suffix: "",
-                              });
-                            })()
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              setFamilyComboOpen(false);
-                              return;
-                            }
-                            if (event.key === "ArrowDown") {
-                              event.preventDefault();
-                              setFamilyComboOpen(true);
-                              const option =
-                                document.querySelector<HTMLElement>(
-                                  "#families-parent-options [role=option]",
-                                );
-                              if (option) setFamilyComboActiveId(option.id);
-                            }
-                            if (event.key === "Enter" && familyComboActiveId) {
-                              event.preventDefault();
-                              document
-                                .getElementById(familyComboActiveId)
-                                ?.click();
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          aria-label={t("gestion.families.openFamilySelector")}
-                          disabled={Boolean(editor.id)}
-                          onClick={() => {
-                            setFamilyComboOpen((current) => !current);
+            {editor.kind === "family" ? (
+              <>
+                <label className="filter-field">
+                  <span>{t("gestion.families.familyCode")}</span>
+                  <input
+                    inputMode="numeric"
+                    maxLength={3}
+                    disabled={Boolean(editor.id)}
+                    value={editor.code}
+                    onChange={(event) =>
+                      setEditor({
+                        ...editor,
+                        code: event.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 3),
+                      })
+                    }
+                  />
+                </label>
+                <label className="filter-field">
+                  <span>{t("party.name")}</span>
+                  <input
+                    autoFocus
+                    maxLength={64}
+                    value={editor.name}
+                    onChange={(event) =>
+                      setEditor({
+                        ...editor,
+                        name: event.target.value.toLocaleUpperCase(),
+                      })
+                    }
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label className="filter-field gestion-family-code-field">
+                  <span>{t("gestion.families.familyCode")}</span>
+                  <div className="gestion-family-code-row">
+                    <div className="gestion-family-combobox">
+                      <input
+                        autoFocus
+                        disabled={Boolean(editor.id)}
+                        role="combobox"
+                        aria-expanded={!editor.id && familyComboOpen}
+                        aria-controls="families-parent-options"
+                        aria-activedescendant={
+                          familyComboActiveId || undefined
+                        }
+                        value={editor.familySearch}
+                        onFocus={() =>
+                          !editor.id &&
+                          !editor.familyId &&
+                          setFamilyComboOpen(true)
+                        }
+                        onChange={(event) =>
+                          (() => {
                             setFamilyComboActiveId("");
                             setEditor({
                               ...editor,
-                              familySearch: "",
+                              familySearch: event.target.value,
                               familyId: "",
                               suffix: "",
                             });
-                          }}
-                        >
-                          ▾
-                        </button>
-                      </div>
-                      <div className="gestion-code-composite">
-                        <code>
-                          {editor.familyId
-                            ? (familyById.get(editor.familyId)?.familyCode ??
-                              "")
-                            : ""}
-                        </code>
-                        <input
-                          inputMode="numeric"
-                          maxLength={3}
-                          disabled={Boolean(editor.id)}
-                          value={editor.suffix}
-                          aria-label={t("gestion.families.subfamilySuffix")}
-                          onChange={(event) => {
-                            suffixRef.current += 1;
-                            setEditor({
-                              ...editor,
-                              suffix: event.target.value
-                                .replace(/\D/g, "")
-                                .slice(0, 3),
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <small>
-                      {translated(t, "gestion.families.fullCode", {
-                        code: editor.familyId
-                          ? `${familyById.get(editor.familyId)?.familyCode ?? ""}${editor.suffix}`
-                          : "",
-                      })}
-                    </small>
-                    {!editor.id && familyComboOpen && (
-                      <div
-                        className="gestion-family-combobox-results"
-                        role="listbox"
-                        id="families-parent-options"
+                          })()
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            setFamilyComboOpen(false);
+                            return;
+                          }
+                          if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            setFamilyComboOpen(true);
+                            const option =
+                              document.querySelector<HTMLElement>(
+                                "#families-parent-options [role=option]",
+                              );
+                            if (option) setFamilyComboActiveId(option.id);
+                          }
+                          if (event.key === "Enter" && familyComboActiveId) {
+                            event.preventDefault();
+                            document
+                              .getElementById(familyComboActiveId)
+                              ?.click();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label={t("gestion.families.openFamilySelector")}
+                        disabled={Boolean(editor.id)}
+                        onClick={() => {
+                          setFamilyComboOpen((current) => !current);
+                          setFamilyComboActiveId("");
+                          setEditor({
+                            ...editor,
+                            familySearch: "",
+                            familyId: "",
+                            suffix: "",
+                          });
+                        }}
                       >
-                        {families
-                          .filter(
-                            (family) =>
-                              !family.defaultFamily &&
-                              normalizeSearch(
-                                `${family.familyCode} ${family.name}`,
-                              ).includes(normalizeSearch(editor.familySearch)),
-                          )
-                          .map((family) => (
-                            <button
-                              type="button"
-                              role="option"
-                              key={family.id}
-                              id={`families-parent-option-${family.id}`}
-                              onClick={() => {
-                                suffixRef.current += 1;
-                                setFamilyComboActiveId("");
-                                setEditor({
-                                  ...editor,
-                                  familyId: family.id,
-                                  familySearch: `${family.familyCode} — ${family.name}`,
-                                  suffix: "",
-                                });
-                                setFamilyComboOpen(false);
-                                void requestSuffix(family.id);
-                              }}
-                            >
-                              {family.familyCode} — {family.name}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </label>
-                  <label className="filter-field">
-                    <span>{t("party.name")}</span>
-                    <input
-                      maxLength={64}
-                      value={editor.name}
-                      onChange={(event) =>
-                        setEditor({
-                          ...editor,
-                          name: event.target.value.toLocaleUpperCase(),
-                        })
-                      }
-                    />
-                  </label>
-                </>
-              )}
-              <footer className="filter-actions">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setEditor(null)}
-                >
-                  {t("common.cancel")}
-                </button>
-                <button type="submit" className="primary" disabled={busy}>
-                  {t("common.save")}
-                </button>
-              </footer>
-            </form>
-          </section>
-        </div>
-      )}
-      {moveOpen && (
-        <div
-          className="filter-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="families-move-title"
-        >
-          <section className="filter-dialog gestion-families-dialog gestion-family-move-dialog">
-            <header className="filter-header">
-              <h2 id="families-move-title">
-                {t("gestion.families.moveTitle")}
-              </h2>
+                        ▾
+                      </button>
+                      {!editor.id && familyComboOpen && (
+                        <div
+                          className="gestion-family-combobox-results"
+                          role="listbox"
+                          id="families-parent-options"
+                        >
+                          {families
+                            .filter(
+                              (family) =>
+                                !family.defaultFamily &&
+                                normalizeSearch(
+                                  `${family.familyCode} ${family.name}`,
+                                ).includes(normalizeSearch(editor.familySearch)),
+                            )
+                            .map((family) => (
+                              <button
+                                type="button"
+                                role="option"
+                                key={family.id}
+                                id={`families-parent-option-${family.id}`}
+                                onClick={() => {
+                                  suffixRef.current += 1;
+                                  setFamilyComboActiveId("");
+                                  setEditor({
+                                    ...editor,
+                                    familyId: family.id,
+                                    familySearch: `${family.familyCode} — ${family.name}`,
+                                    suffix: "",
+                                  });
+                                  setFamilyComboOpen(false);
+                                  void requestSuffix(family.id);
+                                }}
+                              >
+                                {family.familyCode} — {family.name}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="gestion-code-composite">
+                      <code>
+                        {editor.familyId
+                          ? (familyById.get(editor.familyId)?.familyCode ??
+                            "")
+                          : ""}
+                      </code>
+                      <input
+                        inputMode="numeric"
+                        maxLength={3}
+                        disabled={Boolean(editor.id)}
+                        value={editor.suffix}
+                        aria-label={t("gestion.families.subfamilySuffix")}
+                        onChange={(event) => {
+                          suffixRef.current += 1;
+                          setEditor({
+                            ...editor,
+                            suffix: event.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 3),
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <small>
+                    {translated(t, "gestion.families.fullCode", {
+                      code: editor.familyId
+                        ? `${familyById.get(editor.familyId)?.familyCode ?? ""}${editor.suffix}`
+                        : "",
+                    })}
+                  </small>
+                </label>
+                <label className="filter-field">
+                  <span>{t("party.name")}</span>
+                  <input
+                    maxLength={64}
+                    value={editor.name}
+                    onChange={(event) =>
+                      setEditor({
+                        ...editor,
+                        name: event.target.value.toLocaleUpperCase(),
+                      })
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <footer className="gestion-family-actions">
               <button
                 type="button"
                 disabled={busy}
-                onClick={closeMove}
+                onClick={() => setEditor(null)}
               >
-                {t("common.close")}
+                {t("common.cancel")}
               </button>
-            </header>
+              <button type="submit" className="primary" disabled={busy}>
+                {t("common.save")}
+              </button>
+            </footer>
+          </form>
+        </FamilyModal>
+      )}
+      {moveOpen && (
+        <FamilyModal
+          title={t("gestion.families.moveTitle")}
+          titleId="families-move-title"
+          className="gestion-family-move-dialog"
+          closeLabel={t("common.close")}
+          busy={busy}
+          onClose={closeMove}
+        >
+          <div className="gestion-family-modal-body">
             <p>
               {translated(t, "gestion.families.moveDescription", {
                 count: selectedProductIds.size,
@@ -2246,41 +2270,38 @@ export function FamiliesScreen({
                 })}
               </p>
             )}
-            <footer className="filter-actions">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={closeMove}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={busy || !moveTargetDetails}
-                onClick={() => {
-                  if (moveTargetDetails) void performMove(moveTarget);
-                }}
-              >
-                {t("gestion.families.move")}
-              </button>
-            </footer>
-          </section>
-        </div>
+          </div>
+          <footer className="gestion-family-actions">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={closeMove}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || !moveTargetDetails}
+              onClick={() => {
+                if (moveTargetDetails) void performMove(moveTarget);
+              }}
+            >
+              {t("gestion.families.move")}
+            </button>
+          </footer>
+        </FamilyModal>
       )}
       {generalConfirm && (
-        <div
-          className="filter-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="families-general-title"
+        <FamilyModal
+          title={t("gestion.families.moveGeneralTitle")}
+          titleId="families-general-title"
+          className="gestion-family-general-dialog"
+          closeLabel={t("common.close")}
+          busy={busy}
+          onClose={() => setGeneralConfirm(false)}
         >
-          <section className="filter-dialog gestion-families-dialog">
-            <header className="filter-header">
-              <h2 id="families-general-title">
-                {t("gestion.families.moveGeneralTitle")}
-              </h2>
-            </header>
+          <div className="gestion-family-modal-body">
             <p>
               {translated(t, "gestion.families.moveGeneralConfirm", {
                 count: selectedProductIds.size,
@@ -2291,46 +2312,36 @@ export function FamiliesScreen({
                 {error}
               </p>
             )}
-            <footer className="filter-actions">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setGeneralConfirm(false)}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="danger"
-                disabled={busy}
-                onClick={() => void performMove(null, true)}
-              >
-                {t("gestion.families.moveGeneral")}
-              </button>
-            </footer>
-          </section>
-        </div>
+          </div>
+          <footer className="gestion-family-actions">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setGeneralConfirm(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="danger"
+              disabled={busy}
+              onClick={() => void performMove(null, true)}
+            >
+              {t("gestion.families.moveGeneral")}
+            </button>
+          </footer>
+        </FamilyModal>
       )}
       {impact && (
-        <div
-          className="filter-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="families-impact-title"
+        <FamilyModal
+          title={t("gestion.families.deleteImpactTitle")}
+          titleId="families-impact-title"
+          className={`gestion-family-impact-dialog ${impact.data.products > 0 ? "has-related-products" : "has-no-related-products"}`}
+          closeLabel={t("common.close")}
+          busy={busy}
+          onClose={() => setImpact(null)}
         >
-          <section className="filter-dialog gestion-families-dialog">
-            <header className="filter-header">
-              <h2 id="families-impact-title">
-                {t("gestion.families.deleteImpactTitle")}
-              </h2>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setImpact(null)}
-              >
-                {t("common.close")}
-              </button>
-            </header>
+          <div className="gestion-family-modal-body">
             <p>{t("gestion.families.deleteImpactWarning")}</p>
             {error && (
               <p className="gestion-error" role="alert">
@@ -2380,35 +2391,35 @@ export function FamiliesScreen({
                 </label>
               )
             )}
-            <footer className="filter-actions">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setImpact(null)}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="danger"
-                disabled={
-                  busy ||
-                  impact.data.blocked ||
-                  impact.data.promotions > 0 ||
-                  impact.data.rules > 0 ||
-                  (impact.data.products > 0 && !confirmDelete)
-                }
-                onClick={() => void confirmDeletion()}
-              >
-                {impact.data.blocked ||
+          </div>
+          <footer className="gestion-family-actions">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setImpact(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="danger"
+              disabled={
+                busy ||
+                impact.data.blocked ||
                 impact.data.promotions > 0 ||
-                impact.data.rules > 0
-                  ? t("gestion.families.deleteBlockedButton")
-                  : t("common.delete")}
-              </button>
-            </footer>
-          </section>
-        </div>
+                impact.data.rules > 0 ||
+                (impact.data.products > 0 && !confirmDelete)
+              }
+              onClick={() => void confirmDeletion()}
+            >
+              {impact.data.blocked ||
+              impact.data.promotions > 0 ||
+              impact.data.rules > 0
+                ? t("gestion.families.deleteBlockedButton")
+                : t("common.delete")}
+            </button>
+          </footer>
+        </FamilyModal>
       )}
     </section>
   );
