@@ -5,7 +5,7 @@ RUN npm --prefix frontend-saas ci
 COPY frontend-saas ./frontend-saas
 RUN npm --prefix frontend-saas run build
 
-FROM nginxinc/nginx-unprivileged:1.29.1-alpine3.22@sha256:27985295bdb22a1ef8f712863210bd5877c0f3006494a593e86b3fe0fa55467e
+FROM nginxinc/nginx-unprivileged:1.29.3-alpine3.22@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99
 COPY --chown=101:101 frontend-saas/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --chown=101:101 --from=build /workspace/frontend-saas/dist /usr/share/nginx/html
 USER 101:101
