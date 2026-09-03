@@ -27,7 +27,7 @@ class SaasAuthenticationApiTest {
 
     @BeforeEach
     void clearAdminLoginAttempts() {
-        attempts.success("admin-account", "admin", "");
+        attempts.success("login-account", "admin", "");
     }
 
     @Test
