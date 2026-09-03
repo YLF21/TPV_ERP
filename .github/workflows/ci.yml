@@ -50,7 +50,7 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress verify
       - name: Upload SaaS coverage
         if: always() && matrix.module == 'backend-saas'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: backend-saas-jacoco
           path: backend-saas/target/site/jacoco/
@@ -189,7 +189,7 @@ jobs:
           SAAS_E2E_USERNAME: ADMIN
           SAAS_E2E_PASSWORD: "0000"
         run: npm run test:e2e
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: saas-e2e-logs
@@ -223,7 +223,7 @@ jobs:
           npm audit --audit-level=high
           npm sbom --sbom-format=cyclonedx > ../frontend-saas.cdx.json
       - name: Upload dependency inventories
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: saas-sbom
           path: |
