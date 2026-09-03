@@ -1,5 +1,6 @@
 package com.tpverp.saas.admin;
 
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.Map;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
@@ -30,7 +31,7 @@ public class SaasSecurityEndpoint {
 
     private long count(String sql, boolean timeParameter) {
         Long value = timeParameter
-                ? jdbc.queryForObject(sql, Long.class, clock.instant())
+                ? jdbc.queryForObject(sql, Long.class, Timestamp.from(clock.instant()))
                 : jdbc.queryForObject(sql, Long.class);
         return value == null ? 0 : value;
     }
