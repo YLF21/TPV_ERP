@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,6 +23,12 @@ class SaasAuthenticationApiTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
+    @Autowired LoginAttemptLimiter attempts;
+
+    @BeforeEach
+    void clearAdminLoginAttempts() {
+        attempts.success("admin-account", "admin", "");
+    }
 
     @Test
     void exchangesPasswordForOpaqueRevocableBearerToken() throws Exception {
