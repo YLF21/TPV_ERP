@@ -99,7 +99,7 @@ class JdbcSecurityStateStore implements SecurityStateStore {
                         when (case
                             when saas_login_attempt.last_failure_at <= ? then 1
                             else saas_login_attempt.failures + 1
-                        end) >= ? then ?
+                        end) >= ? then cast(? as timestamp with time zone)
                         else null
                     end
                 returning failures, last_failure_at, blocked_until

@@ -277,7 +277,7 @@ public class AdminService {
         List<AdminNotificationResponse> licenseNotifications = licenses.findAll().stream()
                 .flatMap(license -> {
                     java.util.stream.Stream<AdminNotificationResponse> stream = java.util.stream.Stream.empty();
-                    if ("BLOQUEADA_MANUAL".equals(license.getStatus())) {
+                    if (license.getStatus() == LicenseSaasStatus.BLOQUEADA_MANUAL) {
                         stream = java.util.stream.Stream.concat(stream, java.util.stream.Stream.of(new AdminNotificationResponse(
                                 "license-blocked-" + license.getReference(),
                                 license.getCompany().getId(),

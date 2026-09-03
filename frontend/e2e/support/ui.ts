@@ -19,7 +19,7 @@ export async function openStock(page: Page, app: "venta" | "gestion") {
     await page.keyboard.press("F2");
   } else {
     const stockGroup = page.locator(".gestion-nav-item.group").filter({
-      has: page.getByRole("button", { name: "Stock", exact: true })
+      has: page.getByRole("button", { name: "Productos", exact: true })
     }).first();
     await stockGroup.locator(":scope > button").click();
     await stockGroup.locator(".gestion-nav-children")

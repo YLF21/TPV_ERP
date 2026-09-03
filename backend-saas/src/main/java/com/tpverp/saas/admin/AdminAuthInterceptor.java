@@ -9,6 +9,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
 public class AdminAuthInterceptor implements HandlerInterceptor {
+
+    private static final String ACCOUNT_SCOPE = "";
     private final SaasAdminUserRepository users;
     private final AdminPasswordHasher passwords;
     private final LoginAttemptLimiter attempts;
@@ -42,20 +44,19 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         BasicCredentials credentials = legacyBasicAuthEnabled ? BasicCredentials.parse(authorization) : null;
         String username = sessionUsername != null ? sessionUsername : credentials == null ? null : credentials.username();
         String password = credentials == null ? null : credentials.password();
-        String remoteAddress = SaasAuthenticationController.remoteAddress(request);
         if (username == null) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin requeridas");
             return false;
         }
         if (sessionUsername == null
-                && attempts.blocked("admin-account", username, remoteAddress)) {
+                && attempts.blocked("admin-account", username, ACCOUNT_SCOPE)) {
             response.setHeader("Retry-After", Long.toString(LoginAttemptLimiter.BLOCK_DURATION.toSeconds()));
             response.sendError(429, "Demasiados intentos de autenticacion");
             return false;
         }
 
         if (sessionUsername == null && !localCredentials.permits(username, password)) {
-            attempts.failure("admin-account", username, remoteAddress);
+            attempts.failure("admin-account", username, ACCOUNT_SCOPE);
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin invalidas");
             return false;
         }
@@ -64,13 +65,13 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if (user == null || !user.isActive()
                 || (sessionUsername == null && !passwords.matches(password, user.getPasswordHash()))) {
             if (sessionUsername == null) {
-                attempts.failure("admin-account", username, remoteAddress);
+                attempts.failure("admin-account", username, ACCOUNT_SCOPE);
             }
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin invalidas");
             return false;
         }
         if (sessionUsername == null) {
-            attempts.success("admin-account", username, remoteAddress);
+            attempts.success("admin-account", username, ACCOUNT_SCOPE);
         }
         if (user.isMustChangePassword()) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Cambio de password obligatorio");

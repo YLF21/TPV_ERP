@@ -3,6 +3,7 @@ package com.tpverp.saas.admin;
 import com.tpverp.saas.tenant.SaasTenantUser;
 import com.tpverp.saas.tenant.SaasTenantUserRepository;
 import java.security.SecureRandom;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -104,14 +105,14 @@ public class PasswordLifecycleService {
                 insert into saas_password_reset_token
                 (id, realm, username_key, token_hash, requested_at, expires_at, requested_address)
                 values (?, ?, ?, ?, ?, ?, ?)
-                """, UUID.randomUUID(), realm, canonicalUsername, SaasSessionTokenStore.hash(token), now,
-                now.plus(resetLifetime), safeAddress(remoteAddress));
+                """, UUID.randomUUID(), realm, canonicalUsername, SaasSessionTokenStore.hash(token), timestamp(now),
+                timestamp(now.plus(resetLifetime)), safeAddress(remoteAddress));
         UUID notificationId = UUID.randomUUID();
         jdbc.update("""
                 insert into saas_security_notification_outbox
                 (id, idempotency_key, event_type, realm, username_key, encrypted_payload, status, created_at)
                 values (?, ?, 'PASSWORD_RESET_REQUESTED', ?, ?, ?, 'PENDING', ?)
-                """, notificationId, notificationId.toString(), realm, canonicalUsername, cipher.encrypt(token), now);
+                """, notificationId, notificationId.toString(), realm, canonicalUsername, cipher.encrypt(token), timestamp(now));
     }
 
     @Transactional
@@ -123,14 +124,14 @@ public class PasswordLifecycleService {
                 where token_hash = ? and consumed_at is null and expires_at > ?
                 for update
                 """, rs -> rs.next() ? new ResetIdentity(rs.getString(1), rs.getString(2)) : null,
-                SaasSessionTokenStore.hash(token), now);
+                SaasSessionTokenStore.hash(token), timestamp(now));
         if (identity == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado");
         }
         int consumed = jdbc.update("""
                 update saas_password_reset_token set consumed_at = ?
                 where token_hash = ? and consumed_at is null
-                """, now, SaasSessionTokenStore.hash(token));
+                """, timestamp(now), SaasSessionTokenStore.hash(token));
         if (consumed != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado");
         }
@@ -171,7 +172,11 @@ public class PasswordLifecycleService {
         jdbc.update("""
                 update saas_password_reset_token set consumed_at = ?
                 where realm = ? and lower(username_key) = lower(?) and consumed_at is null
-                """, now, realm, username);
+                """, timestamp(now), realm, username);
+    }
+
+    private static Timestamp timestamp(Instant value) {
+        return Timestamp.from(value);
     }
 
     private void verifyCurrent(String password, String hash) {

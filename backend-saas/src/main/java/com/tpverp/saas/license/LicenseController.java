@@ -16,6 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/license")
 public class LicenseController {
 
+    private static final String CODE_SCOPE = "";
+
     private final LicenseLinkService linkService;
     private final LicenseValidationService validationService;
     private final LoginAttemptLimiter attempts;
@@ -36,20 +38,19 @@ public class LicenseController {
             @RequestHeader(name = "X-TPV-Link-Recovery-Token", required = false) String recoveryToken,
             HttpServletRequest httpRequest) {
         String pairingCode = pairingAttemptKey(request.pairingCode());
-        String remoteAddress = SaasAuthenticationController.remoteAddress(httpRequest);
-        if (attempts.blocked("license-link-code", pairingCode, remoteAddress)) {
+        if (attempts.blocked("license-link-code", pairingCode, CODE_SCOPE)) {
             throw new ResponseStatusException(
                     HttpStatus.TOO_MANY_REQUESTS,
                     "Demasiados intentos de enlace; vuelva a intentarlo mas tarde");
         }
         try {
             LicenseSaasLinkResponse response = linkService.link(request, previousToken, recoveryToken);
-            attempts.success("license-link-code", pairingCode, remoteAddress);
+            attempts.success("license-link-code", pairingCode, CODE_SCOPE);
             return response;
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode().is4xxClientError()
                     && exception.getStatusCode() != HttpStatus.TOO_MANY_REQUESTS) {
-                attempts.failure("license-link-code", pairingCode, remoteAddress);
+                attempts.failure("license-link-code", pairingCode, CODE_SCOPE);
             }
             throw exception;
         }

@@ -934,6 +934,7 @@ class AdminApiTest {
     @Test
     void portalClienteConsultaSusDatosYCreaTicket() throws Exception {
         CreateCompanyResponse company = createCompany("B44112233");
+        String tenantPassword = activateTenant(company);
         mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -949,7 +950,7 @@ class AdminApiTest {
                 .andExpect(status().isOk());
 
         var sessionResult = mvc.perform(get("/api/v1/tenant/me")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword)))
                 .andExpect(status().isOk())
                 .andReturn();
         var session = mapper.readTree(sessionResult.getResponse().getContentAsString());
@@ -958,7 +959,7 @@ class AdminApiTest {
         assertThat(session.get("roleName").asText()).isEqualTo("OWNER");
 
         var dashboardResult = mvc.perform(get("/api/v1/tenant/dashboard")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword)))
                 .andExpect(status().isOk())
                 .andReturn();
         var dashboard = mapper.readTree(dashboardResult.getResponse().getContentAsString());
@@ -968,7 +969,7 @@ class AdminApiTest {
         assertThat(dashboard.get("monthlyPrice").asText()).isEqualTo("49.90");
 
         mvc.perform(post("/api/v1/tenant/tickets")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword()))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateSupportTicketRequest(
                                 "Consulta cliente",
@@ -992,20 +993,20 @@ class AdminApiTest {
     @Test
     void fase8GestionaFacturasPagosYPortalClienteLasConsulta() throws Exception {
         CreateCompanyResponse company = createCompany("B77889911");
+        String tenantPassword = activateTenant(company);
+        Instant issuedAt = Instant.now().minus(Duration.ofDays(1));
+        Instant dueAt = issuedAt.plus(Duration.ofDays(30));
 
         var invoiceResult = mvc.perform(post("/api/v1/admin/companies/{companyId}/invoices", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "number": "SaaS-2026-0001",
-                                  "concept": "Suscripcion julio",
-                                  "amount": "79.90",
-                                  "currency": "EUR",
-                                  "issuedAt": "2026-07-01T00:00:00Z",
-                                  "dueAt": "2026-07-31T00:00:00Z"
-                                }
-                                """))
+                        .content(mapper.writeValueAsString(new CreateBillingInvoiceRequest(
+                                "SaaS-2026-0001",
+                                "Suscripcion mensual",
+                                "79.90",
+                                "EUR",
+                                issuedAt,
+                                dueAt))))
                 .andExpect(status().isOk())
                 .andReturn();
         var invoice = mapper.readTree(invoiceResult.getResponse().getContentAsString());
@@ -1017,14 +1018,11 @@ class AdminApiTest {
         mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoice.get("id").asText())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "amount": "79.90",
-                                  "method": "TRANSFERENCIA",
-                                  "paidAt": "2026-07-05T10:00:00Z",
-                                  "reference": "TR-001"
-                                }
-                                """))
+                        .content(mapper.writeValueAsString(new CreateBillingPaymentRequest(
+                                "79.90",
+                                "TRANSFERENCIA",
+                                issuedAt.plus(Duration.ofHours(1)),
+                                "TR-001"))))
                 .andExpect(status().isOk());
 
         var adminInvoicesResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/invoices", company.companyId())
@@ -1036,7 +1034,7 @@ class AdminApiTest {
         assertThat(adminInvoices.get(0).get("paidAmount").asText()).isEqualTo("79.90");
 
         var tenantInvoicesResult = mvc.perform(get("/api/v1/tenant/invoices")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword)))
                 .andExpect(status().isOk())
                 .andReturn();
         var tenantInvoices = mapper.readTree(tenantInvoicesResult.getResponse().getContentAsString());
@@ -1187,7 +1185,8 @@ class AdminApiTest {
                 .andExpect(status().isUnauthorized());
 
         CreateCompanyResponse company = createCompany("B77990033");
-        String firstTenantToken = loginToken(company.tenantUsername(), company.tenantInitialPassword());
+        String currentTenantPassword = activateTenant(company);
+        String firstTenantToken = loginToken(company.tenantUsername(), currentTenantPassword);
         mvc.perform(get("/api/v1/tenant/me")
                         .header("Authorization", "Bearer " + firstTenantToken))
                 .andExpect(status().isOk());
@@ -1287,9 +1286,10 @@ class AdminApiTest {
     @Test
     void fase9PortalClienteGestionaSusMaestrosErp() throws Exception {
         CreateCompanyResponse company = createCompany("B90110033");
+        String tenantPassword = activateTenant(company);
 
         mvc.perform(post("/api/v1/tenant/erp/suppliers")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword()))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -1303,7 +1303,7 @@ class AdminApiTest {
                 .andExpect(status().isOk());
 
         mvc.perform(post("/api/v1/tenant/erp/warehouses")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword()))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -1315,7 +1315,7 @@ class AdminApiTest {
                 .andExpect(status().isOk());
 
         var suppliersResult = mvc.perform(get("/api/v1/tenant/erp/suppliers")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword)))
                 .andExpect(status().isOk())
                 .andReturn();
         var suppliers = mapper.readTree(suppliersResult.getResponse().getContentAsString());
@@ -1323,7 +1323,7 @@ class AdminApiTest {
         assertThat(suppliers.get(0).get("code").asText()).isEqualTo("PROV-1");
 
         var warehousesResult = mvc.perform(get("/api/v1/tenant/erp/warehouses")
-                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                        .header("Authorization", basic(company.tenantUsername(), tenantPassword)))
                 .andExpect(status().isOk())
                 .andReturn();
         var warehouses = mapper.readTree(warehousesResult.getResponse().getContentAsString());
@@ -1576,6 +1576,18 @@ class AdminApiTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), SaasLoginResponse.class).accessToken();
+    }
+
+    private String activateTenant(CreateCompanyResponse company) throws Exception {
+        String activatedPassword = "activated-tenant-pass";
+        String initialToken = loginToken(company.tenantUsername(), company.tenantInitialPassword());
+        mvc.perform(post("/api/v1/auth/password/change")
+                        .header("Authorization", "Bearer " + initialToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new PasswordLifecycleController.ChangePasswordRequest(
+                                company.tenantInitialPassword(), activatedPassword))))
+                .andExpect(status().isNoContent());
+        return activatedPassword;
     }
 
     private static String erpCustomerJson(String code) {
