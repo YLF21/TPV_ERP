@@ -1,5 +1,8 @@
 package com.tpverp.backend.party;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequireGestionGroup(GestionGroup.CONFIGURACION)
 public class MemberSmtpSettingsController {
 
     private final MemberSmtpSettingsService service;

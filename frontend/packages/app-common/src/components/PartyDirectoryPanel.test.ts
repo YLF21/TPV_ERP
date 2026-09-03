@@ -12,6 +12,7 @@ import {
   partyDirectoryGridTemplate,
   partyDirectoryColumnDefinitions,
   partyDirectoryPreferenceStorageKey,
+  partyManagementPagePath,
   PartyDirectoryPanel,
   partyFormFromView,
   sortPartyDirectoryEntries,
@@ -187,6 +188,15 @@ describe("PartyDirectoryPanel", () => {
       .toBe("tpv.party.directory.gestion.admin.customers");
     expect(partyDirectoryPreferenceStorageKey("venta", "admin", "customers"))
       .not.toBe(partyDirectoryPreferenceStorageKey("gestion", "admin", "customers"));
+  });
+
+  it("builds bounded cursor pages for administrator directories", () => {
+    expect(partyManagementPagePath("customers", " Ana ", "active", "next/page"))
+      .toBe("/customers/management/page?size=50&cursor=next%2Fpage&search=Ana&active=true&sort=name&direction=asc");
+    expect(partyManagementPagePath("suppliers", "", "all"))
+      .toBe("/suppliers/management/page?size=50&sort=name&direction=asc");
+    expect(partyManagementPagePath("customers", "", "all", null, { column: "document", direction: "desc" }))
+      .toBe("/customers/management/page?size=50&sort=document&direction=desc");
   });
 
   it("offers only active customers that are not active members", () => {

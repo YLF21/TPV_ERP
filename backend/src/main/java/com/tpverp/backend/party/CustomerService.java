@@ -376,6 +376,7 @@ public class CustomerService {
 
     public record CustomerView(
             UUID id,
+            long version,
             String clientId,
             String fiscalName,
             DocumentType documentType,
@@ -416,7 +417,7 @@ public class CustomerService {
                     ? category.getDiscountPercent()
                     : BigDecimal.ZERO.setScale(2);
             return new CustomerView(
-                    customer.getId(), customer.getClientId(), customer.getFiscalName(),
+                    customer.getId(), customer.getVersion(), customer.getClientId(), customer.getFiscalName(),
                     customer.getDocumentType(),
                     customer.getDocumentNumber(), customer.getFiscalAddress(),
                     customer.getPhone(), customer.getEmail(), customer.getNotes(),

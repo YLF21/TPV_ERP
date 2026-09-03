@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ApiConnectionError, ApiError, apiProblemCode, apiRequest, checkBackendConnection, classifyApiFailure
+  ApiConnectionError, ApiError, apiProblemCode, apiRequest, checkBackendConnection, classifyApiFailure,
+  gestionGroupLockedEvent,
 } from "./client";
 
 describe("apiRequest", () => {
@@ -91,6 +92,23 @@ describe("apiRequest", () => {
         formIndexes: [0, 2]
       }
     } satisfies Partial<ApiError>);
+  });
+
+  it("notifies the shell when the backend invalidates a protected group", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("dispatchEvent", dispatchEvent);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "GESTION_GROUP_LOCKED",
+      group: "CONFIGURACION",
+    }), { status: 403, headers: { "Content-Type": "application/problem+json" } })));
+
+    await expect(apiRequest("/products/1/retire")).rejects.toMatchObject({
+      status: 403,
+      problem: { code: "GESTION_GROUP_LOCKED" },
+    });
+    expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: gestionGroupLockedEvent,
+    }));
   });
 
   it("hides internal server details and includes the trace reference", async () => {

@@ -256,6 +256,10 @@ public class Customer {
         return activo;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     public Company getCompany() {
         return company;
     }

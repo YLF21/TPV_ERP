@@ -51,7 +51,7 @@ class BearerSessionFilterTest {
         assertThat(authenticated).isNotNull();
         assertThat(authenticated.getPrincipal()).isSameAs(user);
         assertThat(authenticated.getDetails()).isEqualTo(new OperationalSessionContext(
-                terminal.getId(), terminal.getTienda().getId()));
+                session.getId(), terminal.getId(), terminal.getTienda().getId()));
     }
 
     @Test
@@ -71,7 +71,8 @@ class BearerSessionFilterTest {
 
         var authenticated = SecurityContextHolder.getContext().getAuthentication();
         assertThat(authenticated).isNotNull();
-        assertThat(authenticated.getDetails()).isNull();
+        assertThat(authenticated.getDetails()).isEqualTo(new OperationalSessionContext(
+                session.getId(), null, null));
     }
 
     @Test

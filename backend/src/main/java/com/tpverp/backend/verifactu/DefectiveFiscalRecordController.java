@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import java.util.List;
 import java.util.UUID;
 import jakarta.validation.Valid;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/verifactu/defective-records")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class DefectiveFiscalRecordController {
 
     private final DefectiveFiscalRecordService service;

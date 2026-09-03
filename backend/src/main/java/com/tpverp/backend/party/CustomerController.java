@@ -109,13 +109,6 @@ public class CustomerController {
         return service.deactivateMember(id);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_DELETE','GESTION_CLIENTE_PROVEEDOR')")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        service.delete(id);
-        return ResponseEntity.noContent().build();
-    }
-
     @PostMapping("/{id}/validate-fiscal")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.CustomerView validateFiscalData(@PathVariable UUID id) {

@@ -1,5 +1,8 @@
 package com.tpverp.backend.organization;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/invoice-print-configuration")
 @PreAuthorize("hasRole('ADMIN')")
+@RequireGestionGroup(GestionGroup.CONFIGURACION)
 public class InvoicePrintConfigurationController {
 
     private final InvoicePrintConfigurationService service;

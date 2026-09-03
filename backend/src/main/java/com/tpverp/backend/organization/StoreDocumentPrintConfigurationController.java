@@ -1,5 +1,8 @@
 package com.tpverp.backend.organization;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -17,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/store-document-print-configuration")
+@RequireGestionGroup(GestionGroup.CONFIGURACION)
 public class StoreDocumentPrintConfigurationController {
 
     private final StoreDocumentPrintConfigurationService service;

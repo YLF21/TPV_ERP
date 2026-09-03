@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/auth/password")
 public class PasswordLifecycleController {
 
+    private static final String ACCOUNT_SCOPE = "";
+
     private final PasswordLifecycleService service;
     private final LoginAttemptLimiter attempts;
 
@@ -39,11 +41,11 @@ public class PasswordLifecycleController {
             @Valid @RequestBody RecoveryRequest request,
             HttpServletRequest httpRequest) {
         String address = SaasAuthenticationController.remoteAddress(httpRequest);
-        if (attempts.blocked("password-recovery", request.username(), address)) {
+        if (attempts.blocked("password-recovery", request.username(), ACCOUNT_SCOPE)) {
             return;
         }
         service.requestReset(request.username(), address);
-        attempts.failure("password-recovery", request.username(), address);
+        attempts.failure("password-recovery", request.username(), ACCOUNT_SCOPE);
     }
 
     @PostMapping("/recovery/confirm")

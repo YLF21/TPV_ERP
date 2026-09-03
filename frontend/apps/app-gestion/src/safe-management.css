@@ -1,0 +1,231 @@
+.gestion-safe-management {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  background: #f4f7fa;
+}
+
+.gestion-safe-management-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid #c8d4df;
+  background: #ffffff;
+}
+
+.gestion-safe-management-heading h2,
+.gestion-safe-management-heading p {
+  margin: 0;
+}
+
+.gestion-safe-management-heading h2 {
+  color: #102f50;
+  font-size: 21px;
+}
+
+.gestion-safe-management-heading p {
+  margin-top: 4px;
+  color: #587089;
+  font-size: 13px;
+}
+
+.gestion-safe-management-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 22px 0;
+  border-bottom: 1px solid #b9c8d6;
+  background: #e9f0f6;
+}
+
+.gestion-safe-management-tabs button {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  background: transparent;
+  color: #35516a;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gestion-safe-management-tabs button:hover,
+.gestion-safe-management-tabs button:focus-visible {
+  background: #f7fafc;
+  color: #123f67;
+}
+
+.gestion-safe-management-tabs button.selected {
+  border-color: #9fb3c8;
+  background: #ffffff;
+  color: #0b5e96;
+}
+
+.gestion-safe-management > [role="tabpanel"] {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 22px 22px;
+}
+
+.representative-management {
+  display: grid;
+  gap: 12px;
+}
+
+.representative-management-table {
+  min-width: 820px;
+  overflow: hidden;
+  border: 1px solid #b8c7d5;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.representative-management-row {
+  display: grid;
+  grid-template-columns: 110px minmax(210px, 1.2fr) 150px minmax(220px, 1fr) 100px;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 1px solid #d9e1e8;
+  background: #ffffff;
+  color: #243b53;
+  text-align: left;
+}
+
+button.representative-management-row {
+  cursor: pointer;
+}
+
+button.representative-management-row:hover,
+button.representative-management-row:focus-visible {
+  background: #edf6fc;
+  outline: 2px solid #2f7dbd;
+  outline-offset: -2px;
+}
+
+.representative-management-row.header {
+  min-height: 38px;
+  background: #dfe9f2;
+  color: #173f67;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.representative-management-row > span,
+.representative-management-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.representative-management-dialog {
+  width: min(860px, calc(100vw - 56px));
+}
+
+.representative-management-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px 22px 0;
+}
+
+.representative-management-form > label,
+.representative-link-editor > label {
+  display: grid;
+  gap: 5px;
+  color: #334e68;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.representative-management-form input,
+.representative-link-editor input,
+.representative-link-editor select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #102a43;
+}
+
+.representative-management-form-wide,
+.representative-supplier-links,
+.representative-management-form > .product-create-status,
+.representative-management-form > .filter-actions {
+  grid-column: 1 / -1;
+}
+
+.representative-supplier-links {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #c8d4df;
+  border-radius: 5px;
+  background: #f7fafc;
+}
+
+.representative-supplier-links h4,
+.representative-supplier-links p {
+  margin: 0;
+}
+
+.representative-supplier-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #d4dee7;
+  background: #ffffff;
+}
+
+.representative-supplier-link button,
+.representative-link-editor button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #8fa7bc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #173f67;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.representative-link-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr) auto auto;
+  align-items: end;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.representative-primary-link {
+  grid-template-columns: auto auto !important;
+  align-items: center;
+  min-height: 40px;
+}
+
+.representative-primary-link input {
+  width: 18px;
+  min-height: 18px;
+}
+
+@media (max-width: 1180px) {
+  .representative-management-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .representative-link-editor {
+    grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.3fr);
+  }
+}

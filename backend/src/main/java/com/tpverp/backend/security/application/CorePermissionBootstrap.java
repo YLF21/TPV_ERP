@@ -21,7 +21,6 @@ public class CorePermissionBootstrap {
     public static final String CONTROL_RULES_MANAGE = "CONTROL_RULES_MANAGE";
     public static final String PRODUCTS_READ = "PRODUCTS_READ";
     public static final String PRODUCTS_WRITE = "PRODUCTS_WRITE";
-    public static final String PRODUCTS_DELETE = "PRODUCTS_DELETE";
     public static final String GESTION_PRODUCTO = "GESTION_PRODUCTO";
     public static final String GESTION_ALMACEN = "GESTION_ALMACEN";
     public static final String TAXES_MANAGE = "TAXES_MANAGE";
@@ -31,10 +30,8 @@ public class CorePermissionBootstrap {
     public static final String STOCK_TRANSFER = "STOCK_TRANSFER";
     public static final String CUSTOMERS_READ = "CUSTOMERS_READ";
     public static final String CUSTOMERS_WRITE = "CUSTOMERS_WRITE";
-    public static final String CUSTOMERS_DELETE = "CUSTOMERS_DELETE";
     public static final String SUPPLIERS_READ = "SUPPLIERS_READ";
     public static final String SUPPLIERS_WRITE = "SUPPLIERS_WRITE";
-    public static final String SUPPLIERS_DELETE = "SUPPLIERS_DELETE";
     public static final String GESTION_CLIENTE_PROVEEDOR = "GESTION_CLIENTE_PROVEEDOR";
     public static final String VENTA = "VENTA";
     public static final String GESTION_VENTAS = "GESTION_VENTAS";
@@ -89,7 +86,6 @@ public class CorePermissionBootstrap {
                 permission(CONTROL_RULES_MANAGE, "control.permissions.rules.manage", "CONTROL"),
                 permission(PRODUCTS_READ, "catalog.permissions.read", "CATALOG"),
                 permission(PRODUCTS_WRITE, "catalog.permissions.write", "CATALOG"),
-                permission(PRODUCTS_DELETE, "catalog.permissions.delete", "CATALOG"),
                 permission(GESTION_PRODUCTO, "catalog.permissions.productManagement", "CATALOG"),
                 permission(GESTION_ALMACEN, "inventory.permissions.warehouseManagement", "INVENTORY"),
                 permission(TAXES_MANAGE, "catalog.permissions.taxes", "CATALOG"),
@@ -99,10 +95,8 @@ public class CorePermissionBootstrap {
                 permission(STOCK_TRANSFER, "inventory.permissions.transfer", "INVENTORY"),
                 permission(CUSTOMERS_READ, "party.permissions.customers.read", "PARTY"),
                 permission(CUSTOMERS_WRITE, "party.permissions.customers.write", "PARTY"),
-                permission(CUSTOMERS_DELETE, "party.permissions.customers.delete", "PARTY"),
                 permission(SUPPLIERS_READ, "party.permissions.suppliers.read", "PARTY"),
                 permission(SUPPLIERS_WRITE, "party.permissions.suppliers.write", "PARTY"),
-                permission(SUPPLIERS_DELETE, "party.permissions.suppliers.delete", "PARTY"),
                 permission(GESTION_CLIENTE_PROVEEDOR, "party.permissions.management", "PARTY"),
                 permission(VENTA, "document.permissions.sales.operate", "DOCUMENTS"),
                 permission(GESTION_VENTAS, "document.permissions.sales.manage", "DOCUMENTS"),

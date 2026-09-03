@@ -8363,6 +8363,7 @@ textarea {
   outline: 2px solid #244e86;
   outline-offset: -2px;
 }
+.app-titlebar-error { margin-left: auto; color: #ffd3d3; font-size: 12px; font-weight: 800; }
 
 .stock-family-search {
   display: grid;
@@ -25958,4 +25959,122 @@ textarea:focus,
   .goods-check-extra-summary { min-height: 56px; }
   .goods-check-progress span,
   .goods-check-progress small { font-size: 10px; }
+}
+
+/* APP GESTIÓN safe-retirement flow. Kept shared because product and party
+   management reuse the production Stock/Party components. */
+.safe-retirement-dialog {
+  width: min(620px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 48px));
+}
+
+.safe-retirement-content {
+  display: grid;
+  gap: 16px;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.safe-retirement-content > p {
+  margin: 0;
+  color: #334e68;
+  line-height: 1.5;
+}
+
+.safe-retirement-outcome {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid #d7a446;
+  border-left: 5px solid #b7791f;
+  border-radius: 7px;
+  background: #fffaf0;
+  color: #5f3b08;
+}
+
+.safe-retirement-outcome--hard_deleted {
+  border-color: #d99292;
+  border-left-color: #a82929;
+  background: #fff4f4;
+  color: #771d1d;
+}
+
+.safe-retirement-outcome strong {
+  font-size: 15px;
+}
+
+.safe-retirement-outcome span,
+.safe-retirement-reasons {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.safe-retirement-reasons {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 22px;
+  color: #3f5368;
+}
+
+.filter-actions .safe-retirement-confirm,
+.safe-retirement-open {
+  border-color: #a82929;
+  background: #fff4f4;
+  color: #8f2020;
+}
+
+.filter-actions .safe-retirement-confirm:hover:not(:disabled),
+.filter-actions .safe-retirement-confirm:focus-visible,
+.safe-retirement-open:hover:not(:disabled),
+.safe-retirement-open:focus-visible {
+  border-color: #7b1717;
+  background: #a82929;
+  color: #ffffff;
+}
+
+.safe-retirement-open:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.safe-management-notice {
+  margin: 10px 16px;
+}
+
+.party-directory-pagination {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+.party-directory-pagination button {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid #9fb3c8;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #173f67;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.party-directory-pagination button:hover:not(:disabled),
+.party-directory-pagination button:focus-visible {
+  border-color: #2f6f9f;
+  background: #edf6fc;
+}
+
+.party-directory-pagination button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .safe-retirement-dialog,
+  .safe-retirement-dialog * {
+    scroll-behavior: auto;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
 }

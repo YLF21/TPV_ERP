@@ -1,5 +1,8 @@
 package com.tpverp.backend.catalog;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
@@ -49,18 +52,21 @@ public class TaxController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + TAXES_MANAGE + "')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public StoreTax create(@Valid @RequestBody TaxRequest request) {
         return service.createTax(request.percentage());
     }
 
     @PutMapping("/{taxId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + TAXES_MANAGE + "')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public StoreTax update(@PathVariable UUID taxId, @Valid @RequestBody TaxRequest request) {
         return service.updateTax(taxId, request.percentage());
     }
 
     @DeleteMapping("/{taxId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + TAXES_MANAGE + "')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public org.springframework.http.ResponseEntity<Void> delete(@PathVariable UUID taxId) {
         service.deleteTax(taxId);
         return org.springframework.http.ResponseEntity.noContent().build();
@@ -68,12 +74,14 @@ public class TaxController {
 
     @PatchMapping("/{taxId}/default")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + TAXES_MANAGE + "')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public StoreTax markDefault(@PathVariable UUID taxId) {
         return service.setDefaultTax(taxId);
     }
 
     @PatchMapping("/{taxId}/active")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + TAXES_MANAGE + "')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public StoreTax setActive(@PathVariable UUID taxId, @Valid @RequestBody ActiveRequest request) {
         return service.setTaxActive(taxId, request.active());
     }

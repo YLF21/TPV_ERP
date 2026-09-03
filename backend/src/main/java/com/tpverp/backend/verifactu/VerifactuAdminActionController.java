@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/verifactu/admin")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class VerifactuAdminActionController {
 
     private final VerifactuManualRetryService retries;

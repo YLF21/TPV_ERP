@@ -75,7 +75,7 @@ class StockReadPermissionContractTest {
         UUID id = UUID.randomUUID();
 
         mvc.perform(delete("/api/v1/products/{id}", id).with(stockReader()).with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isMethodNotAllowed());
         mvc.perform(delete("/api/v1/families/{id}", id).with(stockReader()).with(csrf()))
                 .andExpect(status().isForbidden());
         mvc.perform(delete("/api/v1/taxes/{id}", id).with(stockReader()).with(csrf()))

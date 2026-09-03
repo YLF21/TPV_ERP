@@ -1,5 +1,8 @@
 package com.tpverp.backend.licensing.api;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import com.tpverp.backend.licensing.application.LicensePreview;
 import com.tpverp.backend.licensing.application.LicenseService;
 import com.tpverp.backend.licensing.LicenseSaasLinkResult;
@@ -44,6 +47,7 @@ public class LicenseController {
 
     @PostMapping("/preview")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LICENSES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public LicensePreview preview(@Valid @RequestBody LicenseFileRequest request) {
         requireLocalFileActivationEnabled();
         return licenseService.preview(request.license());
@@ -51,6 +55,7 @@ public class LicenseController {
 
     @PostMapping("/activate")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public LicensePreview activate(@Valid @RequestBody ActivateLicenseRequest request) {
         requireLocalFileActivationEnabled();
         return licenseService.activate(request.license(), request.confirmationHash());
@@ -58,6 +63,7 @@ public class LicenseController {
 
     @PostMapping("/link-saas")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public LinkSaasResponse linkSaas(@Valid @RequestBody LinkSaasRequest request) {
         return LinkSaasResponse.from(saasLink.link(request.pairingCode(), request.localStoreId()));
     }
@@ -71,12 +77,14 @@ public class LicenseController {
 
     @PostMapping("/validate-saas")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public LicenseSaasValidationResponse validateSaas() {
         return saasValidation.validateActiveLicense();
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LICENSES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public List<LicenseService.LicenseHistoryItem> history() {
         return licenseService.history();
     }

@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/verifactu/admin/records")
 @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ'))")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class FiscalRecordReadController {
 
     private final FiscalRecordReadService service;

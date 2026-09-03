@@ -1,5 +1,8 @@
 package com.tpverp.backend.security.api;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import com.tpverp.backend.security.application.SecurityAdministrationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -33,12 +36,14 @@ public class SecurityAdministrationController {
 
     @GetMapping("/users")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public List<SecurityAdministrationService.UserItem> users() {
         return service.users();
     }
 
     @PostMapping("/users")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.UserItem createUser(
             @Valid @RequestBody CreateUserRequest request) {
         return service.createUser(request.name(), request.userName(), request.password(), request.roleId());
@@ -46,6 +51,7 @@ public class SecurityAdministrationController {
 
     @PutMapping("/users/{userId}/role")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.UserItem changeRole(
             @PathVariable UUID userId,
             @Valid @RequestBody ChangeRoleRequest request) {
@@ -54,6 +60,7 @@ public class SecurityAdministrationController {
 
     @PatchMapping("/users/{userId}/active")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public ResponseEntity<Void> setActive(
             @PathVariable UUID userId,
             @Valid @RequestBody ActiveRequest request) {
@@ -63,6 +70,7 @@ public class SecurityAdministrationController {
 
     @PatchMapping("/users/{userId}/name")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.UserItem changeUserName(
             @PathVariable UUID userId,
             @Valid @RequestBody UserNameRequest request) {
@@ -71,6 +79,7 @@ public class SecurityAdministrationController {
 
     @PatchMapping("/users/{userId}/identity")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.UserItem changeUserIdentity(
             @PathVariable UUID userId,
             @Valid @RequestBody UserIdentityRequest request) {
@@ -79,6 +88,7 @@ public class SecurityAdministrationController {
 
     @PutMapping("/users/{userId}/password")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public ResponseEntity<Void> resetPassword(
             @PathVariable UUID userId,
             @Valid @RequestBody ResetPasswordRequest request) {
@@ -88,6 +98,7 @@ public class SecurityAdministrationController {
 
     @PutMapping("/users/{userId}/discount-policy")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.UserItem changeDiscountPolicy(
             @PathVariable UUID userId,
             @Valid @RequestBody DiscountPolicyRequest request) {
@@ -96,6 +107,7 @@ public class SecurityAdministrationController {
 
     @PutMapping("/users/{userId}/stores")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.UserItem replaceStoreAccess(
             @PathVariable UUID userId,
             @Valid @RequestBody StoreAccessRequest request) {
@@ -110,18 +122,21 @@ public class SecurityAdministrationController {
 
     @GetMapping("/roles/options")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public List<SecurityAdministrationService.RoleOption> roleOptions() {
         return service.roleOptions();
     }
 
     @GetMapping("/permissions/catalog")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public List<SecurityAdministrationService.PermissionItem> permissionCatalog() {
         return service.permissionCatalog();
     }
 
     @PutMapping("/users/admin/password")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public ResponseEntity<Void> changeAdminPassword(
             @Valid @RequestBody ChangeAdminPasswordRequest request) {
         service.changeAdminPassword(request.currentPassword(), request.newPassword());
@@ -130,6 +145,7 @@ public class SecurityAdministrationController {
 
     @PostMapping("/roles")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.RoleItem createRole(
             @Valid @RequestBody CreateRoleRequest request) {
         return service.createRole(request.name());
@@ -137,6 +153,7 @@ public class SecurityAdministrationController {
 
     @PatchMapping("/roles/{roleId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.RoleItem renameRole(
             @PathVariable UUID roleId,
             @Valid @RequestBody RoleNameRequest request) {
@@ -145,6 +162,7 @@ public class SecurityAdministrationController {
 
     @DeleteMapping("/roles/{roleId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId) {
         service.deleteRole(roleId);
         return ResponseEntity.noContent().build();
@@ -152,6 +170,7 @@ public class SecurityAdministrationController {
 
     @PutMapping("/roles/{roleId}/permissions")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SecurityAdministrationService.RoleItem assignPermissions(
             @PathVariable UUID roleId,
             @Valid @RequestBody PermissionsRequest request) {

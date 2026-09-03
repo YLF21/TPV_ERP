@@ -35,6 +35,8 @@ export type ApiFailureKind =
   | "server"
   | "unknown";
 
+export const gestionGroupLockedEvent = "tpv:gestion-group-locked";
+
 export function apiProblemCode(error: unknown): string | undefined {
   if (!(error instanceof ApiError)) return undefined;
   const code = error.problem?.code;
@@ -96,6 +98,10 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     }
     if (response.status >= 500) {
       message = "No se pudo completar la operación";
+    }
+    if (response.status === 403 && problem?.code === "GESTION_GROUP_LOCKED"
+      && typeof globalThis.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
+      globalThis.dispatchEvent(new CustomEvent(gestionGroupLockedEvent, { detail: problem }));
     }
     throw new ApiError(traceId ? `${message} (Ref: ${traceId})` : message, response.status, problem, traceId);
   }

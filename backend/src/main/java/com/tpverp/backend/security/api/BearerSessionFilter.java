@@ -53,11 +53,10 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 						var securityContext = SecurityContextHolder.createEmptyContext();
 						var authentication = new UsernamePasswordAuthenticationToken(
 								user, token, authorities);
-						if (session.getTerminal() != null) {
-							authentication.setDetails(new OperationalSessionContext(
-									session.getTerminal().getId(),
-									session.getTerminal().getTienda().getId()));
-						}
+						authentication.setDetails(new OperationalSessionContext(
+								session.getId(),
+								session.getTerminal() == null ? null : session.getTerminal().getId(),
+								session.getTerminal() == null ? null : session.getTerminal().getTienda().getId()));
 						securityContext.setAuthentication(authentication);
 						SecurityContextHolder.setContext(securityContext);
 					});

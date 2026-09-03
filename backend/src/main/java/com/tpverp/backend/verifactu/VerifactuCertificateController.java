@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
@@ -20,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/verifactu/admin/certificates")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class VerifactuCertificateController {
 
     private static final long MAX_CERTIFICATE_BYTES = 10L * 1024 * 1024;

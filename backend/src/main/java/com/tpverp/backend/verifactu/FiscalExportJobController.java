@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.APP_GESTION_ACCESS;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VERIFACTU_MANAGE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VERIFACTU_READ;
@@ -27,6 +30,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 @RequestMapping("/api/v1/fiscal/export-jobs")
 @PreAuthorize("hasRole('ADMIN') or (hasAuthority('" + APP_GESTION_ACCESS + "') and "
         + "hasAuthority('" + VERIFACTU_READ + "') and hasAuthority('" + VERIFACTU_MANAGE + "'))")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class FiscalExportJobController {
     private final FiscalExportJobService jobs;
     private final FiscalExportJobLauncher launcher;

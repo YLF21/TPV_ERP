@@ -35,6 +35,7 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         var session = authentication != null
                 && authentication.getDetails() instanceof OperationalSessionContext operational
+                && operational.isOperational()
                 ? operational : null;
         OperationalMode mode = session == null
                 ? statusService.status().mode()

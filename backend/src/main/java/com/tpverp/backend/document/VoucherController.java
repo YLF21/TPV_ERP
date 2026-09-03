@@ -1,5 +1,8 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -112,12 +115,14 @@ public class VoucherController {
 
     @GetMapping("/configuration")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public VoucherManagementService.ConfigurationView configuration() {
         return management.configuration();
     }
 
     @org.springframework.web.bind.annotation.PutMapping("/configuration")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public VoucherManagementService.ConfigurationView updateConfiguration(
             @RequestBody @jakarta.validation.Valid VoucherConfigurationRequest request,
             org.springframework.security.core.Authentication authentication) {

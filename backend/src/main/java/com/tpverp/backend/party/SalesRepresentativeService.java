@@ -53,6 +53,16 @@ public class SalesRepresentativeService {
     }
 
     @Transactional
+    public void deactivate(UUID id) {
+        representative(id).deactivate();
+    }
+
+    @Transactional
+    public void activate(UUID id) {
+        representative(id).activate();
+    }
+
+    @Transactional
     public void delete(UUID id) {
         SalesRepresentative representative = representative(id);
         if (links.existsByRepresentativeId(id)) {
@@ -71,15 +81,15 @@ public class SalesRepresentativeService {
     }
 
     public record SalesRepresentativeView(
-            UUID id, String commercialId, String name, String phone,
-            String email, String otherContact) {
+            UUID id, long version, String commercialId, String name, String phone,
+            String email, String otherContact, boolean active) {
 
         static SalesRepresentativeView from(SalesRepresentative representative) {
             return new SalesRepresentativeView(
-                    representative.getId(), representative.getCommercialId(),
+                    representative.getId(), representative.getVersion(), representative.getCommercialId(),
                     representative.getName(),
                     representative.getPhone(), representative.getEmail(),
-                    representative.getOtherContact());
+                    representative.getOtherContact(), representative.isActive());
         }
     }
 }
