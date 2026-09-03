@@ -3,10 +3,13 @@ import { createRoot } from "react-dom/client";
 import { useMemo } from "react";
 import {
   AppFrame,
+  ApiError,
+  apiRequest,
   LoginScreen,
   PromotionListScreen,
   createTranslator,
   devTerminalContext,
+  gestionGroupLockedEvent,
   loadTerminalIdentity,
   userCanManageWarehouses,
   visibleSalesReports,
@@ -26,15 +29,13 @@ import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
-import { PaymentMethodSettingsScreen } from "./PaymentMethodSettingsScreen";
-import { TaxSettingsScreen } from "./TaxSettingsScreen";
-import { SalesOperationSecurityScreen } from "./SalesOperationSecurityScreen";
-import { MemberLoyaltySettingsScreen } from "./MemberLoyaltySettingsScreen";
 import { MemberCategoriesScreen } from "./MemberCategoriesScreen";
-import { InternalEanSettingsScreen } from "./InternalEanSettingsScreen";
-import { SecurityAdministrationScreen } from "./SecurityAdministrationScreen";
-import { TerminalManagementScreen } from "./TerminalManagementScreen";
 import { FamiliesScreen } from "./FamiliesScreen";
+import {
+  gestionNavigationGroups,
+  type GestionGroupLock,
+} from "./gestionNavigation";
+import { GestionGroupUnlockDialog } from "./GestionGroupUnlockDialog";
 
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({
@@ -45,6 +46,52 @@ const StockScreen = lazy(() =>
 const SalesReportScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SalesReportScreen").then(({ SalesReportScreen }) => ({
     default: SalesReportScreen
+  }))
+);
+
+const SupplierManagement = lazy(() =>
+  import("./SupplierManagementScreen").then(({ SupplierManagementScreen }) => ({
+    default: SupplierManagementScreen
+  }))
+);
+
+const PaymentMethodSettingsScreen = lazy(() =>
+  import("./PaymentMethodSettingsScreen").then(({ PaymentMethodSettingsScreen }) => ({
+    default: PaymentMethodSettingsScreen
+  }))
+);
+
+const TaxSettingsScreen = lazy(() =>
+  import("./TaxSettingsScreen").then(({ TaxSettingsScreen }) => ({ default: TaxSettingsScreen }))
+);
+
+const SalesOperationSecurityScreen = lazy(() =>
+  import("./SalesOperationSecurityScreen").then(({ SalesOperationSecurityScreen }) => ({
+    default: SalesOperationSecurityScreen
+  }))
+);
+
+const MemberLoyaltySettingsScreen = lazy(() =>
+  import("./MemberLoyaltySettingsScreen").then(({ MemberLoyaltySettingsScreen }) => ({
+    default: MemberLoyaltySettingsScreen
+  }))
+);
+
+const InternalEanSettingsScreen = lazy(() =>
+  import("./InternalEanSettingsScreen").then(({ InternalEanSettingsScreen }) => ({
+    default: InternalEanSettingsScreen
+  }))
+);
+
+const SecurityAdministrationScreen = lazy(() =>
+  import("./SecurityAdministrationScreen").then(({ SecurityAdministrationScreen }) => ({
+    default: SecurityAdministrationScreen
+  }))
+);
+
+const TerminalManagementScreen = lazy(() =>
+  import("./TerminalManagementScreen").then(({ TerminalManagementScreen }) => ({
+    default: TerminalManagementScreen
   }))
 );
 
@@ -114,7 +161,7 @@ const LicenseSaasManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families" | "productManagement" | "customerManagement" | "supplierManagement";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -132,6 +179,8 @@ function App() {
   const [salesReport, setSalesReport] = useState("salesReport.dailySales");
   const [stockSelection, setStockSelection] = useState<StockSelection>({ key: "stock.current", view: "stock.current" });
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
+  const [logoutError, setLogoutError] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,9 +210,34 @@ function App() {
         locale={locale}
         terminalContext={terminalContext}
         onLocaleChange={setLocale}
-        onLogin={setSession}
+        onLogin={(nextSession) => {
+          setModule("dashboard");
+          setSession(nextSession);
+        }}
       />
     );
+  }
+
+  const activeSession = session;
+
+  async function handleLogout() {
+    if (logoutBusy) return;
+    setLogoutBusy(true);
+    setLogoutError(false);
+    try {
+      await apiRequest<void>("/auth/logout", { method: "POST", token: activeSession.accessToken });
+      setModule("dashboard");
+      setSession(null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setModule("dashboard");
+        setSession(null);
+      } else {
+        setLogoutError(true);
+      }
+    } finally {
+      setLogoutBusy(false);
+    }
   }
 
   return (
@@ -172,11 +246,13 @@ function App() {
       locale={locale}
       session={session}
       onLocaleChange={setLocale}
-      onLogout={() => setSession(null)}
+      onLogout={handleLogout}
+      logoutError={logoutError ? "gestion.logoutError" : undefined}
+      logoutBusy={logoutBusy}
     >
       <GestionScreen
         locale={locale}
-        session={session}
+        session={activeSession}
         terminalContext={terminalContext}
         module={module}
         salesReport={salesReport}
@@ -206,12 +282,15 @@ function App() {
         onOpenVoucherSettings={() => setModule("voucherSettings")}
         onOpenLicenses={() => setModule("licenses")}
         onOpenFamilies={() => setModule("families")}
+        onOpenProductManagement={() => setModule("productManagement")}
+        onOpenCustomerManagement={() => setModule("customerManagement")}
+        onOpenSupplierManagement={() => setModule("supplierManagement")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
         }}
         onLocaleChange={setLocale}
-        onLogout={() => setSession(null)}
+        onLogout={() => { void handleLogout(); }}
       />
     </AppFrame>
   );
@@ -246,6 +325,9 @@ function GestionScreen({
   onOpenVoucherSettings,
   onOpenLicenses,
   onOpenFamilies,
+  onOpenProductManagement,
+  onOpenCustomerManagement,
+  onOpenSupplierManagement,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -278,6 +360,9 @@ function GestionScreen({
   onOpenVoucherSettings: () => void;
   onOpenLicenses: () => void;
   onOpenFamilies: () => void;
+  onOpenProductManagement: () => void;
+  onOpenCustomerManagement: () => void;
+  onOpenSupplierManagement: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
@@ -289,6 +374,15 @@ function GestionScreen({
   const canManageTaxesForSession = canManageTaxes(session);
   const canReadLicenses = canConfigurePaymentMethods || session.permissions.includes("LICENSES_MANAGE");
   const canManageDocumentTemplates = modules.includes("gestion.documentTemplates");
+  const canManageProducts = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_PRODUCTO");
+  const canReadCustomers = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
+    || session.permissions.includes("CUSTOMERS_READ");
+  const canReadSuppliers = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
+    || session.permissions.includes("GESTION_ALMACEN")
+    || session.permissions.includes("SUPPLIERS_READ");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
     || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "memberLoyaltySettings" || module === "memberCategories" || module === "internalEan" || module === "documentPrintSettings" || module === "voucherSettings")
       && !canConfigurePaymentMethods)
@@ -297,21 +391,19 @@ function GestionScreen({
     || (module === "documentTemplates" && !canManageDocumentTemplates)
     || (module === "vouchers" && !modules.includes("gestion.sales"))
     || (module === "families" && !canManageFamilies(session))
+    || ((module === "productManagement" || module === "customerManagement" || module === "supplierManagement")
+      && !canConfigurePaymentMethods)
     ? "dashboard"
     : module;
-  const canManageProducts = session.permissions.includes("ADMIN")
-    || session.permissions.includes("GESTION_PRODUCTO");
   const canManageFamiliesForSession = canManageFamilies(session);
   const reports = visibleSalesReports(session).all;
   const stockViews = visibleStockViewsForSession(session);
   const warehouseSections = visibleWarehouseSectionsForSession(session);
-  const canReadCustomers = session.permissions.includes("ADMIN")
-    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
-    || session.permissions.includes("CUSTOMERS_READ");
-  const canReadSuppliers = session.permissions.includes("ADMIN")
-    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
-    || session.permissions.includes("GESTION_ALMACEN")
-    || session.permissions.includes("SUPPLIERS_READ");
+  const [unlockedGroups, setUnlockedGroups] = useState<Set<GestionGroupLock>>(() => new Set());
+  const [unlockRequest, setUnlockRequest] = useState<{
+    group: GestionGroupLock;
+    resolve: (allowed: boolean) => void;
+  } | null>(null);
   const stockChildren: GestionNavigationItem[] = [
     ...stockViews.map((view) => ({
       key: view,
@@ -407,6 +499,9 @@ function GestionScreen({
       : []),
     ...(modules.includes("gestion.roles")
       ? [{ key: "roles", label: t("gestion.roles.navigation"), onOpen: onOpenRoles }]
+      : []),
+    ...(canConfigurePaymentMethods
+      ? [{ key: "salesOperationSecurity", label: t("gestion.salesOperationSecurity.navigation"), onOpen: onOpenSalesOperationSecurity }]
       : [])
   ];
 
@@ -427,7 +522,7 @@ function GestionScreen({
       : [])
   ];
 
-  const navigation: GestionNavigationItem[] = [
+  const legacyNavigation: GestionNavigationItem[] = [
     { key: "dashboard", label: t("gestion.dashboard"), onOpen: onOpenDashboard },
     ...(verifactuAllowed
       ? [{ key: "verifactu", label: t("verifactu.management.navigation"), onOpen: onOpenVerifactu }]
@@ -466,7 +561,7 @@ function GestionScreen({
     ...(securityChildren.length > 0
       ? [{ key: "security", label: t("gestion.security.navigation"), children: securityChildren }]
       : []),
-    ...(canConfigurePaymentMethods || canManageTaxesForSession || canManageDocumentTemplates || canReadLicenses || canManageFamiliesForSession
+    ...(canConfigurePaymentMethods || canManageTaxesForSession || canManageDocumentTemplates || canReadLicenses || canManageFamiliesForSession || canManageProducts || canReadCustomers || canReadSuppliers
       ? [{
           key: "configuration",
           label: t("gestion.configuration.navigation"),
@@ -510,16 +605,109 @@ function GestionScreen({
              key: "families",
              label: t("gestion.families.navigation"),
              onOpen: onOpenFamilies
+          }] : []), ...(canConfigurePaymentMethods ? [{
+             key: "productManagement",
+             label: t("gestion.products"),
+             onOpen: onOpenProductManagement
+           }] : []), ...(canConfigurePaymentMethods ? [{
+             key: "customerManagement",
+             label: t("gestion.customers"),
+             onOpen: onOpenCustomerManagement
+           }] : []), ...(canConfigurePaymentMethods ? [{
+             key: "supplierManagement",
+             label: t("gestion.suppliers"),
+             onOpen: onOpenSupplierManagement
            }] : [])]
         }]
       : [])
   ];
+
+  const legacyDestinations = new Map<string, GestionNavigationItem>();
+  function collectLegacyDestinations(items: GestionNavigationItem[]) {
+    items.forEach((item) => {
+      if (item.onOpen) legacyDestinations.set(item.key, item);
+      if (item.children) collectLegacyDestinations(item.children);
+    });
+  }
+  collectLegacyDestinations(legacyNavigation);
+  const destinationAliases: Record<string, string> = {
+    "cash.dailySales": "salesReport.dailySales",
+    "sales.vouchers": "vouchers",
+    "salesReport.vouchers": "vouchers",
+    "supplierReport.inputInvoices": "salesReport.inputInvoices",
+    "supplierReport.inputDeliveryNotes": "salesReport.inputDeliveryNotes",
+    "supplierReport.inputWarehouse": "salesReport.inputWarehouse",
+    "supplierReport.purchaseDeliveryNotes": "stock.warehouse.purchaseDeliveryNotes",
+    "supplierReport.purchaseInvoices": "stock.warehouse.purchaseInvoices",
+    "memberCategories.configuration": "memberCategories",
+    "families.configuration": "families",
+  };
+  const navigation: GestionNavigationItem[] = gestionNavigationGroups.flatMap((group) => {
+    const destinations = group.destinations
+      .map((registered) => {
+        const source = legacyDestinations.get(registered.key)
+          ?? legacyDestinations.get(destinationAliases[registered.key] ?? "");
+        if (!source?.onOpen) return null;
+        return {
+          key: registered.key,
+          label: t(registered.labelKey),
+          icon: registered.icon,
+          lock: registered.lock,
+          onOpen: source.onOpen,
+        } satisfies GestionNavigationItem;
+      })
+      .filter((item) => item !== null) as GestionNavigationItem[];
+    if (group.direct && destinations.length === 1) {
+      return destinations;
+    }
+    return destinations.length > 0 ? [{
+      key: group.key,
+      label: t(group.labelKey),
+      icon: group.icon,
+      lock: group.lock,
+      children: destinations,
+    }] : [];
+  });
 
   const activeKey = effectiveModule === "sales"
     ? salesReport
     : effectiveModule === "stock"
       ? stockSelection.key
       : effectiveModule;
+
+  function requestOpenDestination(item: GestionNavigationItem): boolean | Promise<boolean> {
+    if (!item.lock || unlockedGroups.has(item.lock)) return true;
+    return new Promise<boolean>((resolve) => setUnlockRequest({ group: item.lock!, resolve }));
+  }
+
+  function completeUnlock() {
+    if (!unlockRequest) return;
+    const group = unlockRequest.group;
+    const resolve = unlockRequest.resolve;
+    setUnlockedGroups((current) => new Set(current).add(group));
+    setUnlockRequest(null);
+    resolve(true);
+  }
+
+  function cancelUnlock() {
+    if (!unlockRequest) return;
+    unlockRequest.resolve(false);
+    setUnlockRequest(null);
+  }
+
+  function lockedGroupFallback() {
+    setUnlockedGroups(new Set());
+    cancelUnlock();
+    onOpenDashboard();
+  }
+
+  useEffect(() => {
+    const handleLockedGroup = () => {
+      if (!unlockRequest) lockedGroupFallback();
+    };
+    window.addEventListener(gestionGroupLockedEvent, handleLockedGroup);
+    return () => window.removeEventListener(gestionGroupLockedEvent, handleLockedGroup);
+  });
 
   let content;
   if (effectiveModule === "verifactu" && verifactuAllowed) {
@@ -633,6 +821,38 @@ function GestionScreen({
     content = <LicenseSaasManagementScreen locale={locale} session={session} storeName={terminalContext.storeName} t={t} />;
   } else if (effectiveModule === "families" && canManageFamiliesForSession) {
     content = <FamiliesScreen session={session} t={t} />;
+  } else if (effectiveModule === "productManagement" && canConfigurePaymentMethods) {
+    content = (
+      <StockScreen
+        app="gestion"
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        onBack={onOpenDashboard}
+        onLogout={onLogout}
+        onLocaleChange={onLocaleChange}
+        embedded
+        initialView="stock.current"
+        allowSafeRetirement
+      />
+    );
+  } else if (effectiveModule === "customerManagement" && canConfigurePaymentMethods) {
+    content = (
+      <StockScreen
+        app="gestion"
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        onBack={onOpenDashboard}
+        onLogout={onLogout}
+        onLocaleChange={onLocaleChange}
+        embedded
+        initialPartyDirectory="customers"
+        allowSafeRetirement
+      />
+    );
+  } else if (effectiveModule === "supplierManagement" && canConfigurePaymentMethods) {
+    content = <SupplierManagement session={session} locale={locale} />;
   } else {
     content = (
       <GestionDashboard
@@ -648,12 +868,28 @@ function GestionScreen({
   }
 
   return (
-    <GestionShell session={session} t={t} activeKey={activeKey} navigation={navigation}>
+    <GestionShell
+      session={session}
+      t={t}
+      activeKey={activeKey}
+      navigation={navigation}
+      requestOpenDestination={requestOpenDestination}
+    >
       <section className="gestion-module-stage">
         <Suspense fallback={<div className="gestion-module-loading">{t("common.loading")}</div>}>
           {content}
         </Suspense>
       </section>
+      {unlockRequest && (
+        <GestionGroupUnlockDialog
+          group={unlockRequest.group}
+          session={session}
+          t={t}
+          onUnlocked={completeUnlock}
+          onLocked={lockedGroupFallback}
+          onCancel={cancelUnlock}
+        />
+      )}
     </GestionShell>
   );
 }

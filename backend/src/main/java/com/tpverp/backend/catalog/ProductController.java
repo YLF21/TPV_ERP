@@ -1,6 +1,5 @@
 package com.tpverp.backend.catalog;
 
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_DELETE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
@@ -142,13 +141,6 @@ public class ProductController {
     public ProductView setActive(
             @PathVariable UUID productId, @Valid @RequestBody TaxController.ActiveRequest request) {
         return ProductView.managementView(service.setProductActive(productId, request.active()));
-    }
-
-    @DeleteMapping("/{productId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_DELETE + "','" + GESTION_PRODUCTO + "')")
-    public ResponseEntity<Void> delete(@PathVariable UUID productId) {
-        service.deleteProduct(productId);
-        return ResponseEntity.noContent().build();
     }
 
     @PutMapping(path = "/{productId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -1,5 +1,8 @@
 package com.tpverp.backend.catalog;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/internal-ean/configuration")
+@RequireGestionGroup(GestionGroup.CONFIGURACION)
 public class InternalEanConfigurationController {
 
     private final InternalEanConfigurationService service;

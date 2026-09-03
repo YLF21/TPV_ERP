@@ -10,6 +10,8 @@ type AppFrameProps = {
   session: UserSession;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
+  logoutError?: string;
+  logoutBusy?: boolean;
   children: ReactNode;
 };
 
@@ -19,7 +21,7 @@ const languageOptions: Array<{ code: LocaleCode; label: string }> = [
   { code: "zh", label: "中文" }
 ];
 
-export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, children }: AppFrameProps) {
+export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, logoutError, logoutBusy, children }: AppFrameProps) {
   const t = createTranslator(locale);
   const [languageOpen, setLanguageOpen] = useState(false);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
@@ -65,7 +67,10 @@ export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, 
             </section>
           )}
         </div>
-        <button type="button" onClick={onLogout}>{t("common.logout")}</button>
+        <button type="button" onClick={() => void onLogout()} disabled={logoutBusy}>
+          {logoutBusy ? t("common.loading") : t("common.logout")}
+        </button>
+        {logoutError && <span role="alert" className="app-titlebar-error">{t(logoutError)}</span>}
       </header>
       {children}
     </div>

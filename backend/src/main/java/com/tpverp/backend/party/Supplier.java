@@ -191,4 +191,12 @@ public class Supplier {
     public boolean isActive() {
         return activo;
     }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public Company getCompany() {
+        return company;
+    }
 }

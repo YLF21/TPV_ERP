@@ -1,5 +1,8 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -33,6 +36,7 @@ public class PaymentMethodController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public PaymentMethodView create(@Valid @RequestBody CreatePaymentMethodRequest request) {
         return PaymentMethodView.from(service.create(
                 request.companyId(), request.name(), request.protectedMethod(),
@@ -41,6 +45,7 @@ public class PaymentMethodController {
 
     @PatchMapping("/{id}/active")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public PaymentMethodView setActive(
             @PathVariable UUID id,
             @Valid @RequestBody ActiveRequest request) {
@@ -49,6 +54,7 @@ public class PaymentMethodController {
 
     @PatchMapping("/{id}/configuration")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public PaymentMethodView configure(
             @PathVariable UUID id,
             @Valid @RequestBody ConfigureRequest request) {

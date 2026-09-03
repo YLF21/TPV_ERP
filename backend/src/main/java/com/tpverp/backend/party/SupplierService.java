@@ -87,6 +87,9 @@ public class SupplierService {
             UUID supplierId, UUID representativeId, boolean primary) {
         Supplier supplier = supplier(supplierId);
         SalesRepresentative representative = representative(representativeId);
+        if (!representative.isActive()) {
+            throw new IllegalStateException("No se puede asignar un comercial inactivo");
+        }
         SupplierRepresentative link = supplier.linkRepresentative(representative, primary);
         links.save(link);
         return RepresentativeLinkView.from(link);
@@ -131,6 +134,7 @@ public class SupplierService {
 
     public record SupplierView(
             UUID id,
+            long version,
             String supplierId,
             String legalName,
             String tradeName,
@@ -145,7 +149,7 @@ public class SupplierService {
 
         static SupplierView from(Supplier supplier) {
             return new SupplierView(
-                    supplier.getId(), supplier.getSupplierId(), supplier.getLegalName(),
+                    supplier.getId(), supplier.getVersion(), supplier.getSupplierId(), supplier.getLegalName(),
                     supplier.getTradeName(),
                     supplier.getDocumentType(), supplier.getDocumentNumber(),
                     supplier.getFiscalAddress(), supplier.getPhone(), supplier.getEmail(),

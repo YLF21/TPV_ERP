@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.context.annotation.Profile;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("fiscal-dev")
 @RequestMapping("/api/v1/dev/fiscal-sandbox")
 @PreAuthorize("hasRole('ADMIN')")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class FiscalSandboxController {
 
     private final FiscalRuntimeProperties runtime;

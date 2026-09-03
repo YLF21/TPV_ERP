@@ -71,6 +71,10 @@ public class UserSession {
         return tokenHash;
     }
 
+    public UUID getId() {
+        return id;
+    }
+
     public UserAccount getUsuario() {
         return usuario;
     }

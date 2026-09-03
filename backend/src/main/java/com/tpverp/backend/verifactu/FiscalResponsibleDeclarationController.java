@@ -1,5 +1,8 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.springframework.http.CacheControl;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/fiscal/responsible-declaration")
+@RequireGestionGroup(GestionGroup.FISCAL)
 public class FiscalResponsibleDeclarationController {
 
     private final FiscalResponsibleDeclarationService declarations;

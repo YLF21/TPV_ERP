@@ -131,6 +131,7 @@ class AuthenticationServiceTest {
 		service().changePassword("token", "0000", "1234");
 
 		assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+		assertThat(user.getAuthVersion()).isEqualTo(1);
 		assertThat(session.isActiva()).isTrue();
 	}
 

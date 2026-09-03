@@ -9,11 +9,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
 
 @RestController
 @RequestMapping("/api/v1/sales-representatives")
@@ -38,6 +41,7 @@ public class SalesRepresentativeController {
     }
 
     @PostMapping
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public SalesRepresentativeService.SalesRepresentativeView create(
             @Valid @RequestBody SalesRepresentativeRequest request) {
@@ -45,6 +49,7 @@ public class SalesRepresentativeController {
     }
 
     @PutMapping("/{id}")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public SalesRepresentativeService.SalesRepresentativeView update(
             @PathVariable UUID id,
@@ -52,10 +57,19 @@ public class SalesRepresentativeController {
         return service.update(id, request.command());
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_DELETE','GESTION_CLIENTE_PROVEEDOR')")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        service.delete(id);
+    @PatchMapping("/{id}/deactivate")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
+    public ResponseEntity<Void> deactivate(@PathVariable UUID id) {
+        service.deactivate(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/activate")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
+    public ResponseEntity<Void> activate(@PathVariable UUID id) {
+        service.activate(id);
         return ResponseEntity.noContent().build();
     }
 

@@ -108,6 +108,20 @@ class FiscalRuntimeGuardInitializerTest {
     }
 
     @Test
+    void v238MarkerIsUpgradedToTheImmutableV240ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v238", "V238", null, null,
+                null, 7, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("238", "239", "240"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v240", "DEV", FiscalProductCapability.DUAL, 8, 0, "V240"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v240", 8L, 0L);
+    }
+
+    @Test
     void newReleaseWithTheSameSequenceIsRejectedEvenWithAHigherBuildSequence() {
         var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 5, 99));

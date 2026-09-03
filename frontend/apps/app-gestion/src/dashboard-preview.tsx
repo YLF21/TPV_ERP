@@ -4,6 +4,7 @@ import "../../../packages/app-common/src/styles/tpv.css";
 import { GestionDashboard, type DashboardDataSource } from "./GestionDashboard";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import type { DashboardWidgetLayout } from "./dashboardModel";
+import { gestionNavigationGroups } from "./gestionNavigation";
 import "./gestion.css";
 
 const t = createTranslator("es");
@@ -46,24 +47,31 @@ const dataSource: DashboardDataSource = {
   ]
 };
 
-const navigation: GestionNavigationItem[] = [
-  { key: "dashboard", label: t("gestion.dashboard"), onOpen: () => undefined },
-  { key: "verifactu", label: "VERI*FACTU", onOpen: () => undefined },
-  { key: "controlAlerts", label: "Alertas de control", onOpen: () => undefined },
-  { key: "sales", label: t("gestion.sales"), children: [{ key: "sales.daily", label: "Ventas diarias", onOpen: () => undefined }] },
-  { key: "stock", label: t("gestion.stock"), children: [{ key: "stock.current", label: "Stock actual", onOpen: () => undefined }] },
-  { key: "warehouse", label: "Almacén", children: [{ key: "warehouse.management", label: "Gestión de almacén", onOpen: () => undefined }] },
-  { key: "customers", label: t("gestion.customers"), onOpen: () => undefined },
-  { key: "partners", label: "Miembros", onOpen: () => undefined },
-  { key: "suppliers", label: t("gestion.suppliers"), onOpen: () => undefined },
-  { key: "promotions", label: "Promociones", onOpen: () => undefined },
-  { key: "security", label: "Seguridad", children: [{ key: "security.users", label: "Usuarios", onOpen: () => undefined }] },
-  { key: "settings", label: "Configuración", children: [{ key: "settings.general", label: "General", onOpen: () => undefined }] }
-];
+const navigation = gestionNavigationGroups.reduce<GestionNavigationItem[]>((items, group) => {
+  const destinations = group.destinations.map((destination) => ({
+    key: destination.key,
+    label: t(destination.labelKey),
+    icon: destination.icon,
+    lock: destination.lock,
+    onOpen: () => undefined
+  } satisfies GestionNavigationItem));
+  if (group.direct && destinations.length === 1) {
+    items.push(destinations[0]);
+    return items;
+  }
+  items.push({
+    key: group.key,
+    label: t(group.labelKey),
+    icon: group.icon,
+    lock: group.lock,
+    children: destinations
+  });
+  return items;
+}, []);
 
 createRoot(document.getElementById("root")!).render(
   <AppFrame titleKey="gestion.title" locale="es" session={session} onLocaleChange={() => undefined} onLogout={() => undefined}>
-    <GestionShell session={session} t={t} activeKey="dashboard" navigation={navigation}>
+    <GestionShell session={session} t={t} activeKey="salesReport.invoices" navigation={navigation}>
       <GestionDashboard
         session={session}
         t={t}

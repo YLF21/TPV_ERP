@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Gauge, ShieldCheck, Ticket } from "@phosphor-icons/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "@tpverp/app-common";
 import { GestionShell } from "./GestionShell";
@@ -12,9 +13,87 @@ const session: UserSession = {
   permissions: ["ADMIN"]
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 describe("GestionShell", () => {
+  it("centers navigable destinations except Control fiscal without changing group headers", () => {
+    render(
+      <GestionShell
+        session={session}
+        t={(key) => key}
+        activeKey="dashboard"
+        navigation={[
+          { key: "dashboard", label: "Resumen", icon: Gauge, onOpen: vi.fn() },
+          { key: "verifactu", label: "Control fiscal", icon: ShieldCheck, lock: "FISCAL", onOpen: vi.fn() },
+          {
+            key: "sales",
+            label: "Documentos cliente",
+            icon: Ticket,
+            children: [{ key: "tickets", label: "Tickets", icon: Ticket, onOpen: vi.fn() }]
+          }
+        ]}
+      >
+        <section>Contenido</section>
+      </GestionShell>
+    );
+
+    const directDestination = screen.getByRole("button", { name: "Resumen" });
+    const fiscalDestination = screen.getByRole("button", { name: "Control fiscal" });
+    const groupHeader = screen.getByRole("button", { name: "Documentos cliente" });
+
+    expect(directDestination).toHaveClass("gestion-nav-destination");
+    expect(directDestination.querySelector("svg")).toHaveAttribute("width", "20");
+    expect(fiscalDestination).not.toHaveClass("gestion-nav-destination");
+    expect(fiscalDestination).toHaveClass("gestion-nav-standard");
+    expect(fiscalDestination.querySelector("svg")).toHaveAttribute("width", "16");
+    expect(groupHeader).not.toHaveClass("gestion-nav-destination");
+    expect(groupHeader.querySelector("svg")).toHaveAttribute("width", "16");
+
+    fireEvent.click(groupHeader);
+    const childDestination = screen.getByRole("button", { name: "Tickets" });
+    expect(childDestination).toHaveClass("gestion-nav-destination");
+    expect(childDestination.querySelector("svg")).toHaveAttribute("width", "20");
+    expect(childDestination.querySelector(".gestion-nav-destination-label")).toHaveTextContent("Tickets");
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "gestion.navigationSearch" }), {
+      target: { value: "control fiscal" }
+    });
+    const fiscalSearchResult = screen.getByRole("button", { name: "Control fiscal" });
+    expect(fiscalSearchResult).toHaveClass("gestion-nav-standard");
+    expect(fiscalSearchResult).not.toHaveClass("gestion-nav-destination");
+  });
+
+  it("resizes the navigation with an accessible keyboard separator and persists the user preference", () => {
+    render(
+      <GestionShell
+        session={session}
+        t={(key) => key}
+        activeKey="dashboard"
+        navigation={[{ key: "dashboard", label: "Resumen", icon: Gauge, onOpen: vi.fn() }]}
+      >
+        <section>Contenido</section>
+      </GestionShell>
+    );
+
+    const separator = screen.getByRole("separator", { name: "gestion.navigationResize" });
+    const shell = separator.closest(".gestion-screen");
+    expect(separator).toHaveAttribute("aria-valuenow", "238");
+
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+    expect(separator).toHaveAttribute("aria-valuenow", "254");
+    expect(shell).toHaveStyle({ "--gestion-navigation-width": "254px" });
+    expect(window.localStorage.getItem("tpv-erp:gestion-navigation-width:ADMIN")).toBe("254");
+
+    fireEvent.keyDown(separator, { key: "Home" });
+    expect(separator).toHaveAttribute("aria-valuenow", "210");
+
+    fireEvent.keyDown(separator, { key: "End" });
+    expect(separator).toHaveAttribute("aria-valuenow", "420");
+  });
+
   it("keeps one sidebar and expands grouped module options", () => {
     const openTickets = vi.fn();
     render(
@@ -179,5 +258,34 @@ describe("GestionShell", () => {
 
     expect(openTickets).toHaveBeenCalledOnce();
     expect(search).toHaveValue("");
+  });
+
+  it("does not open a protected destination until the backend-session unlock succeeds", async () => {
+    const openFiscal = vi.fn();
+    let resolveUnlock: ((allowed: boolean) => void) | undefined;
+    const requestOpenDestination = vi.fn(() => new Promise<boolean>((resolve) => {
+      resolveUnlock = resolve;
+    }));
+    render(
+      <GestionShell
+        session={session}
+        t={(key) => key}
+        activeKey="dashboard"
+        navigation={[
+          { key: "dashboard", label: "Resumen", onOpen: vi.fn() },
+          { key: "verifactu", label: "Control fiscal", lock: "FISCAL", onOpen: openFiscal },
+        ]}
+        requestOpenDestination={requestOpenDestination}
+      >
+        <section>Contenido</section>
+      </GestionShell>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Control fiscal" }));
+    expect(requestOpenDestination).toHaveBeenCalledWith(expect.objectContaining({ lock: "FISCAL" }));
+    expect(openFiscal).not.toHaveBeenCalled();
+
+    await act(async () => resolveUnlock?.(true));
+    expect(openFiscal).toHaveBeenCalledOnce();
   });
 });

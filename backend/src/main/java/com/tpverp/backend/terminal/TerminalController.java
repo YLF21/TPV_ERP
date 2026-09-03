@@ -1,5 +1,8 @@
 package com.tpverp.backend.terminal;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import com.tpverp.backend.security.domain.UserAccount;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -46,6 +49,7 @@ public class TerminalController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public List<TerminalRegistrationService.TerminalItem> list() {
         return service.list();
     }
@@ -62,12 +66,14 @@ public class TerminalController {
 
     @PostMapping("/{terminalId}/approve")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public TerminalRegistrationService.TerminalItem approve(@PathVariable UUID terminalId) {
         return service.approve(terminalId);
     }
 
     @PostMapping("/{terminalId}/pairing-code")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public TerminalRegistrationService.PairingCodeResult createPairingCode(
             @PathVariable UUID terminalId) {
         return service.createPdaPairingCode(terminalId);
@@ -75,6 +81,7 @@ public class TerminalController {
 
     @PostMapping("/{terminalId}/deactivate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public ResponseEntity<Void> deactivate(@PathVariable UUID terminalId) {
         service.deactivate(terminalId);
         return ResponseEntity.noContent().build();

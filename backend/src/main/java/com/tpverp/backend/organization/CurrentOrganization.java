@@ -22,7 +22,8 @@ public class CurrentOrganization {
     public Store currentStore() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof UserAccount user) {
-            if (authentication.getDetails() instanceof OperationalSessionContext operational) {
+            if (authentication.getDetails() instanceof OperationalSessionContext operational
+                    && operational.isOperational()) {
                 return stores.findWithCompanyById(operational.storeId())
                         .orElseThrow(() -> storeNotInitialized());
             }

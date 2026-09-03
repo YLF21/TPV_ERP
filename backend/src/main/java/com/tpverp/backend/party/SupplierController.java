@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
 
 @RestController
 @RequestMapping("/api/v1/suppliers")
@@ -67,14 +69,8 @@ public class SupplierController {
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_DELETE','GESTION_CLIENTE_PROVEEDOR')")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        service.delete(id);
-        return ResponseEntity.noContent().build();
-    }
-
     @PutMapping("/{id}/sales-representatives/{representativeId}")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public SupplierService.RepresentativeLinkView linkRepresentative(
             @PathVariable UUID id,
@@ -84,6 +80,7 @@ public class SupplierController {
     }
 
     @DeleteMapping("/{id}/sales-representatives/{representativeId}")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public ResponseEntity<Void> unlinkRepresentative(
             @PathVariable UUID id,

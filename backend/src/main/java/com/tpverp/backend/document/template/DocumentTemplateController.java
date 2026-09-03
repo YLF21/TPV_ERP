@@ -1,5 +1,8 @@
 package com.tpverp.backend.document.template;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,6 +29,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/v1/document-templates")
 @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
         + "hasAuthority('DOCUMENT_TEMPLATES_MANAGE'))")
+@RequireGestionGroup(GestionGroup.CONFIGURACION)
 public class DocumentTemplateController {
 
     private final DocumentTemplateCatalogService service;

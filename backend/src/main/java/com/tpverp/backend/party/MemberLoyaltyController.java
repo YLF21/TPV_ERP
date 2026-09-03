@@ -1,5 +1,8 @@
 package com.tpverp.backend.party;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -131,12 +134,14 @@ public class MemberLoyaltyController {
 
     @GetMapping("/api/v1/member-settings")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public MemberLoyaltyService.MemberSettingsView settings() {
         return service.settings();
     }
 
     @PutMapping("/api/v1/member-settings")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.CONFIGURACION)
     public MemberLoyaltyService.MemberSettingsView updateSettings(
             @Valid @RequestBody SettingsRequest request) {
         return service.updateSettings(request.command());

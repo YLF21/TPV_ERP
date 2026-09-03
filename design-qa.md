@@ -260,3 +260,32 @@ final result: passed
 - Vitest de pantallas afectadas: 332 pruebas superadas.
 - Compilación de `@tpverp/app-venta`: superada.
 - `git diff --check`: sin errores de espacios.
+
+---
+
+# Design QA — barra lateral reajustable de APP GESTIÓN
+
+final result: passed
+
+## Fuente de verdad
+
+- Diseño combinado aprobado: `C:/Users/YLF/.codex/generated_images/01a06234-1037-70f2-b947-4b195ac8c5c1/exec-765bf1b9-3132-4bd8-8ad0-a5122fb4aa0d.png`.
+- Captura de la implementación: `artifacts/design-qa/gestion-sidebar-resizable.png`.
+- Comparación conjunta: `artifacts/design-qa/gestion-sidebar-reference-vs-implementation.png`.
+- Previsualización local: `http://127.0.0.1:5174/dashboard-preview.html`.
+
+## Comprobaciones
+
+- Se mantienen Resumen y Alertas de control con icono y texto centrados.
+- Los grupos conservan el formato horizontal, con mayor contraste, separadores y marcador cian para el grupo activo.
+- Los destinos muestran icono centrado sobre el texto; Control fiscal conserva el formato compacto solicitado.
+- El scrollbar es estrecho, integrado en la paleta azul y sin canal blanco del sistema.
+- El menú se reajusta entre 210 px y 420 px mediante arrastre; también admite flechas, Inicio y Fin desde teclado.
+- La anchura elegida se guarda por usuario en almacenamiento local.
+- Se eliminó completamente el bloque inferior con el usuario y `Base local de tienda`.
+- La captura no presenta errores de consola y mantiene el contenido operativo sin solapamientos.
+
+## Validación automatizada
+
+- Vitest focalizado: 2 archivos y 10 pruebas superadas.
+- Compilación de APP GESTIÓN: superada.

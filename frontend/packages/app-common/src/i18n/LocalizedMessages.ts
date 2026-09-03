@@ -12,6 +12,8 @@ import { salesOperationSecurityMessages } from "./SalesOperationSecurityMessages
 import { cashClosureMessages } from "./CashClosureMessages";
 import { cashCurrentBalanceMessages } from "./CashCurrentBalanceMessages";
 import { licenseMessages } from "./LicenseMessages";
+import { safeManagementMessages } from "./SafeManagementMessages";
+import { gestionNavigationMessages } from "./GestionNavigationMessages";
 import type { AppKind } from "../types";
 
 declare const __TPV_APP_KIND__: AppKind | "test";
@@ -23,9 +25,9 @@ const buildAppKind = typeof __TPV_APP_KIND__ === "undefined" ? "test" : __TPV_AP
 const managementMessages = buildAppKind === "venta"
   ? { es: {}, en: {}, zh: {} }
   : {
-      es: { ...verifactuManagementMessages("es"), ...licenseMessages("es") },
-      en: { ...verifactuManagementMessages("en"), ...licenseMessages("en") },
-      zh: { ...verifactuManagementMessages("zh"), ...licenseMessages("zh") }
+      es: { ...verifactuManagementMessages("es"), ...licenseMessages("es"), ...safeManagementMessages("es"), ...gestionNavigationMessages("es") },
+      en: { ...verifactuManagementMessages("en"), ...licenseMessages("en"), ...safeManagementMessages("en"), ...gestionNavigationMessages("en") },
+      zh: { ...verifactuManagementMessages("zh"), ...licenseMessages("zh"), ...safeManagementMessages("zh"), ...gestionNavigationMessages("zh") }
     };
 
 export const messages: Record<LocaleCode, Record<string, string>> = {

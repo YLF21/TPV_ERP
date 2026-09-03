@@ -32,7 +32,6 @@ class CorePermissionBootstrapTest {
                 "CONTROL_RULES_MANAGE",
                 "PRODUCTS_READ",
                 "PRODUCTS_WRITE",
-                "PRODUCTS_DELETE",
                 "GESTION_PRODUCTO",
                 "GESTION_ALMACEN",
                 "STOCK_ADJUST",
@@ -63,6 +62,8 @@ class CorePermissionBootstrapTest {
                 "VERIFACTU_READ",
                 "VERIFACTU_CORRECT",
                 "VERIFACTU_MANAGE");
+        assertThat(saved).extracting(Permission::getCodigo).doesNotContain(
+                "PRODUCTS_DELETE", "CUSTOMERS_DELETE", "SUPPLIERS_DELETE");
         assertThat(saved)
                 .filteredOn(permission -> permission.getCodigo().startsWith("VERIFACTU_"))
                 .extracting(Permission::getGrupo)

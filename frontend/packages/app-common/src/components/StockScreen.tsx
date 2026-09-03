@@ -30,6 +30,7 @@ import { ModuleNavItem } from "./ModuleNavItem";
 import { StockSalesHistoryPanel } from "./StockSalesHistoryPanel";
 import { StockSettingsDialog } from "./StockSettingsDialog";
 import type { StockSettingsView } from "./StockSettingsDialog";
+import { SafeRetirementDialog, type RetirementResult } from "./SafeRetirementDialog";
 import {
   buildStockBulkSupplierPrincipalAssignments,
   buildStockBulkSupplierAssignments,
@@ -192,6 +193,7 @@ type StockScreenProps = {
   initialPartyDirectory?: PartyDirectoryKind | null;
   initialSettingsMode?: "configuration" | null;
   onOpenCustomerReceivables?: (customerId: string) => void;
+  allowSafeRetirement?: boolean;
 };
 
 type StockItemView = {
@@ -1993,7 +1995,8 @@ export function StockScreen({
   initialView = "stock.current",
   initialPartyDirectory = null,
   initialSettingsMode = null,
-  onOpenCustomerReceivables
+  onOpenCustomerReceivables,
+  allowSafeRetirement = false
 }: StockScreenProps) {
   const t = createTranslator(locale);
   const stockTitle = t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
@@ -2060,6 +2063,8 @@ export function StockScreen({
   const [selectedFamily, setSelectedFamily] = useState({ family: "", subfamily: "" });
   const [selectedStockIndex, setSelectedStockIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<StockInventoryRow | null>(null);
+  const [retirementRow, setRetirementRow] = useState<StockInventoryRow | null>(null);
+  const [retirementNotice, setRetirementNotice] = useState("");
   const [detailTab, setDetailTab] = useState<StockDetailTab>("stock");
   const [editingProduct, setEditingProduct] = useState<ProductCreateEditProduct | null>(null);
   const [stockPromotions, setStockPromotions] = useState<PromotionView[]>([]);
@@ -2841,6 +2846,19 @@ export function StockScreen({
     } else {
       setDetailTab(tab);
     }
+  }
+
+  function openProductRetirement() {
+    if (!detailRow || !allowSafeRetirement || !session.permissions.includes("ADMIN") || detailRow.code === "0") return;
+    setRetirementNotice("");
+    setRetirementRow(detailRow);
+    setDetailRow(null);
+  }
+
+  async function completeProductRetirement(result: RetirementResult) {
+    setRetirementRow(null);
+    setRetirementNotice(t(`safeManagement.result.${result.outcome}`));
+    setStockRefreshCounter((current) => current + 1);
   }
 
   function handleStockTableKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -6955,8 +6973,9 @@ export function StockScreen({
               )}
             </header>
           )}
+          {retirementNotice && <p className="product-create-status safe-management-notice" role="status">{retirementNotice}</p>}
           {partyDirectory ? (
-            <PartyDirectoryPanel key={partyDirectory} app={app} kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} />
+            <PartyDirectoryPanel key={partyDirectory} app={app} kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} allowSafeRetirement={allowSafeRetirement} />
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-top-sales-toolbar">
@@ -7476,6 +7495,17 @@ export function StockScreen({
                   {t("stock.detail.editTab")}
                 </button>
               )}
+              {allowSafeRetirement && session.permissions.includes("ADMIN") && (
+                <button
+                  type="button"
+                  className="safe-retirement-open"
+                  onClick={openProductRetirement}
+                  disabled={detailRow.code === "0"}
+                  title={detailRow.code === "0" ? t("safeManagement.retirement.reason.PROTECTED_SYSTEM_PRODUCT") : undefined}
+                >
+                  {t("safeManagement.action.retire")}
+                </button>
+              )}
             </div>
             <div className="stock-detail-content">
               <div className="stock-detail-primary">
@@ -7549,6 +7579,20 @@ export function StockScreen({
           </section>
         </div>
       )}
+
+      {retirementRow && <SafeRetirementDialog
+        open
+        entityPath="products"
+        entityId={retirementRow.productId}
+        entityLabel={`${retirementRow.code} · ${retirementRow.name}`}
+        locale={locale}
+        token={session.accessToken}
+        onClose={() => {
+          setRetirementRow(null);
+          setDetailRow(retirementRow);
+        }}
+        onRetired={completeProductRetirement}
+      />}
 
       <ProductCreateDialog
         open={productCreateOpen}

@@ -1,5 +1,8 @@
 package com.tpverp.backend.security.sales;
 
+import com.tpverp.backend.security.gestion.GestionGroup;
+import com.tpverp.backend.security.gestion.RequireGestionGroup;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
@@ -37,6 +40,7 @@ public class SaleOperationSecurityController {
 
     @PutMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SaleOperationSecurityService.ConfigurationView update(
             @Valid @RequestBody UpdateRequest request) {
         return service.update(
@@ -46,6 +50,7 @@ public class SaleOperationSecurityController {
 
     @PostMapping("/reset")
     @PreAuthorize("hasRole('ADMIN')")
+    @RequireGestionGroup(GestionGroup.SEGURIDAD)
     public SaleOperationSecurityService.ConfigurationView reset(
             @Valid @RequestBody ResetRequest request) {
         return service.reset(request.expectedVersion());

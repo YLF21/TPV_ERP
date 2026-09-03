@@ -33,10 +33,10 @@
 		<jasperreports.version>7.0.8</jasperreports.version>
 		<dss.version>6.4</dss.version>
 		<!-- Default artifact is the non-promotable DEV laboratory build. -->
-		<tpv.release.id>tpv-erp-dev-v238</tpv.release.id>
+		<tpv.release.id>tpv-erp-dev-v240</tpv.release.id>
 		<tpv.release.version>DEV</tpv.release.version>
 		<tpv.release.capability>DUAL</tpv.release.capability>
-		<tpv.release.sequence>7</tpv.release.sequence>
+		<tpv.release.sequence>8</tpv.release.sequence>
 		<tpv.release.build.sequence>0</tpv.release.build.sequence>
 		<tpv.release.commit.hash></tpv.release.commit.hash>
 		<tpv.release.declaration.hash></tpv.release.declaration.hash>
@@ -314,10 +314,10 @@
 			<id>production-release</id>
 			<properties>
 				<!-- 4.2.0 was already persisted with V235; each schema release has a new immutable identity. -->
-				<tpv.release.id>tpv-erp-4.2.0-v238</tpv.release.id>
+				<tpv.release.id>tpv-erp-4.2.0-v240</tpv.release.id>
 				<tpv.release.version>4.2.0</tpv.release.version>
 				<tpv.release.capability>VERIFACTU_ONLY</tpv.release.capability>
-				<tpv.release.sequence>4</tpv.release.sequence>
+				<tpv.release.sequence>5</tpv.release.sequence>
 				<tpv.release.build.sequence>1</tpv.release.build.sequence>
 			</properties>
 			<build>

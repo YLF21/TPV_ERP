@@ -76,6 +76,9 @@ public class UserAccount {
     @Version
     private long version;
 
+    @Column(name = "auth_version", nullable = false)
+    private long authVersion;
+
     protected UserAccount() {
     }
 
@@ -118,6 +121,10 @@ public class UserAccount {
 
     public Role getRol() {
         return rol;
+    }
+
+    public long getAuthVersion() {
+        return authVersion;
     }
 
     public Store getTienda() {
@@ -176,11 +183,13 @@ public class UserAccount {
             throw new IllegalStateException("El usuario ADMIN no puede cambiar de rol");
         }
         this.rol = Objects.requireNonNull(nuevoRol, "nuevoRol");
+        this.authVersion++;
     }
 
     public void cambiarPassword(String nuevoPasswordHash) {
         this.passwordHash = required(nuevoPasswordHash, "nuevoPasswordHash");
         this.mustChangePassword = false;
+        this.authVersion++;
     }
 
     public void requirePasswordChange() {

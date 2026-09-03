@@ -9,6 +9,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { clampTableColumnWidth, visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { SafeRetirementDialog, type RetirementResult } from "./SafeRetirementDialog";
 
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
 export type PartyStatusFilter = "all" | "active" | "inactive";
@@ -27,6 +28,7 @@ export type PartyDirectoryPanelProps = {
   locale: LocaleCode;
   session: UserSession;
   onOpenCustomerReceivables?: (customerId: string) => void;
+  allowSafeRetirement?: boolean;
 };
 
 const sharedPartyColumnDefinitions = [
@@ -63,6 +65,7 @@ type FiscalAddress = { address?: string | null; postalCode?: string | null; city
 
 export type CustomerView = {
   id: string; clientId: string; fiscalName: string; documentType: string; documentNumber: string;
+  version?: number | null;
   address?: FiscalAddress | null; phone?: string | null; email?: string | null; notes?: string | null;
   discount?: number | string | null; isMember: boolean; numMember?: string | null; memberSince?: string | null;
   memberUuid?: string | null;
@@ -74,6 +77,7 @@ export type CustomerView = {
 
 export type SupplierView = {
   id: string; supplierId: string; legalName: string; tradeName?: string | null; documentType: string;
+  version?: number | null;
   documentNumber: string; address?: FiscalAddress | null; phone?: string | null; email?: string | null;
   notes?: string | null; active: boolean;
 };
@@ -86,6 +90,12 @@ export type MemberDirectoryView = {
 };
 
 export type PartyDirectoryEntry = CustomerView | SupplierView | MemberDirectoryView;
+
+type PartyManagementPage<T> = {
+  items: T[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+};
 
 export type PartyForm = {
   name: string; tradeName: string; documentType: string; documentNumber: string; phone: string; email: string;
@@ -262,7 +272,30 @@ export function memberActivationPath(customerId: string, action: "activate" | "d
   return `/customers/${customerId}/member/${action}`;
 }
 
-export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOpenCustomerReceivables }: PartyDirectoryPanelProps) {
+export function partyManagementPagePath(
+  entityPath: "customers" | "suppliers",
+  query: string,
+  statusFilter: PartyStatusFilter,
+  cursor: string | null = null,
+  sort: PartyDirectorySort = { column: "name", direction: "asc" }
+): string {
+  const parameters = new URLSearchParams({ size: "50" });
+  if (cursor) parameters.set("cursor", cursor);
+  if (query.trim()) parameters.set("search", query.trim());
+  if (statusFilter !== "all") parameters.set("active", String(statusFilter === "active"));
+  parameters.set("sort", sort.column);
+  parameters.set("direction", sort.direction);
+  return `/${entityPath}/management/page?${parameters.toString()}`;
+}
+
+export function PartyDirectoryPanel({
+  app = "venta",
+  kind,
+  locale,
+  session,
+  onOpenCustomerReceivables,
+  allowSafeRetirement = false
+}: PartyDirectoryPanelProps) {
   const t = createTranslator(locale);
   const initialPreferences = readPartyDirectoryPreferences(app, session.username, kind);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
@@ -283,10 +316,15 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
   const [initialForm, setInitialForm] = useState<PartyForm>(emptyPartyForm);
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [retirementOpen, setRetirementOpen] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const endpoint = kind === "suppliers" ? "/suppliers" : kind === "members" ? "/members" : "/customers";
   const isSupplier = kind === "suppliers";
   const isMember = kind === "members";
+  const managementMode = allowSafeRetirement && !isMember;
   const title = t(`party.${kind}.title`);
   const canWrite = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
@@ -357,10 +395,32 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     </span>;
   }
 
-  async function load(clearStatus = true) {
-    setLoading(true); setLoadError(false); if (clearStatus) setStatus("");
+  function managementPagePath(cursor: string | null = null) {
+    return partyManagementPagePath(isSupplier ? "suppliers" : "customers", query, statusFilter, cursor, sort);
+  }
+
+  async function load(clearStatus = true, append = false, propagateError = false) {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    setLoadError(false); if (clearStatus) setStatus("");
     try {
-      if (isSupplier) setSuppliers(await apiRequest<SupplierView[]>(endpoint, { token: session.accessToken }));
+      if (managementMode && isSupplier) {
+        const page = await apiRequest<PartyManagementPage<SupplierView>>(managementPagePath(append ? nextCursor : null), { token: session.accessToken });
+        setSuppliers((current) => append ? [...current, ...page.items] : page.items);
+        setNextCursor(page.nextCursor ?? null);
+        setHasMore(Boolean(page.hasMore));
+      }
+      else if (managementMode) {
+        const [page, channelRows] = await Promise.all([
+          apiRequest<PartyManagementPage<CustomerView>>(managementPagePath(append ? nextCursor : null), { token: session.accessToken }),
+          apiRequest<CommercialChannelOption[]>("/commercial-contact-channels", { token: session.accessToken })
+        ]);
+        setCustomers((current) => append ? [...current, ...page.items] : page.items);
+        setChannels(channelRows.filter((channel) => channel.active));
+        setNextCursor(page.nextCursor ?? null);
+        setHasMore(Boolean(page.hasMore));
+      }
+      else if (isSupplier) setSuppliers(await apiRequest<SupplierView[]>(endpoint, { token: session.accessToken }));
       else if (isMember) {
         const [memberRows, customerRows] = await Promise.all([
           apiRequest<MemberDirectoryView[]>(endpoint, { token: session.accessToken }),
@@ -376,11 +436,27 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
         ]);
         setCustomers(customerRows); setChannels(channelRows.filter((channel) => channel.active));
       }
-    } catch (error) { setLoadError(true); setStatus(error instanceof Error ? error.message : t("party.loadError")); }
-    finally { setLoading(false); }
+    } catch (error) {
+      setLoadError(true);
+      setStatus(error instanceof Error ? error.message : t("party.loadError"));
+      if (propagateError) throw error;
+    }
+    finally {
+      if (append) setLoadingMore(false);
+      else setLoading(false);
+    }
   }
 
-  useEffect(() => { void load(); }, [kind, session.accessToken]);
+  useEffect(() => {
+    if (managementMode) return;
+    void load();
+  }, [kind, managementMode, session.accessToken]);
+
+  useEffect(() => {
+    if (!managementMode) return;
+    const timeoutId = window.setTimeout(() => void load(), 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [kind, managementMode, query, session.accessToken, sort.column, sort.direction, statusFilter]);
 
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
@@ -394,10 +470,10 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     }
   }, [app, kind, query, session.username, sort, statusFilter]);
 
-  const rows = useMemo(
-    () => sortPartyDirectoryEntries(filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale), kind, sort, locale),
-    [customers, members, suppliers, query, statusFilter, kind, locale, sort]
-  );
+  const rows = useMemo(() => {
+    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale);
+    return managementMode ? filtered : sortPartyDirectoryEntries(filtered, kind, sort, locale);
+  }, [customers, members, suppliers, query, statusFilter, kind, locale, managementMode, sort]);
   const memberCandidates = useMemo(
     () => availableMemberCustomers(customers, memberCandidateQuery, locale),
     [customers, memberCandidateQuery, locale]
@@ -471,6 +547,20 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
       setDialogOpen(false); setMemberCandidateId(null); await load(false); setStatus(t("party.saveSuccess"));
     } catch (error) { setStatus(error instanceof Error ? error.message : t("party.saveError")); }
     finally { setSaving(false); }
+  }
+
+  function openSafeRetirement() {
+    if (!selected || isMember || !allowSafeRetirement || !session.permissions.includes("ADMIN")) return;
+    setDialogOpen(false);
+    setRetirementOpen(true);
+  }
+
+  async function completeSafeRetirement(result: RetirementResult) {
+    await load(false, false, true);
+    setRetirementOpen(false);
+    setDialogOpen(false);
+    setSelectedId(null);
+    setStatus(t(`safeManagement.result.${result.outcome}`));
   }
 
   const selectedMember = isMember ? selected as MemberDirectoryView | null : null;
@@ -591,6 +681,11 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
       })}
       {!loading && !loadError && rows.length === 0 && <div className="party-directory-state"><span>{t("party.empty")}</span>{canWrite && <button type="button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}</div>}
     </div>
+    {!loading && !loadError && managementMode && hasMore && <div className="party-directory-pagination">
+      <button type="button" onClick={() => void load(false, true)} disabled={loadingMore || !nextCursor}>
+        {t(loadingMore ? "safeManagement.pagination.loading" : "safeManagement.pagination.more")}
+      </button>
+    </div>}
     {status && !dialogOpen && !loadError && <p className="product-create-status party-directory-toast" role="status">{status}</p>}
 
     {dialogOpen && <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="party-form-title">
@@ -612,9 +707,22 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
           {isMember && selected && (selected as CustomerView).memberUuid && (
             <MemberLoyaltyPanel app={app} memberId={(selected as CustomerView).memberUuid!} session={session} t={t} />
           )}
-          <footer className="filter-actions">{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+          <footer className="filter-actions">{selected && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
         </form>}
       </section>
     </div>}
+    {retirementOpen && selected && !isMember && <SafeRetirementDialog
+      open
+      entityPath={isSupplier ? "suppliers" : "customers"}
+      entityId={selected.id}
+      entityLabel={isSupplier ? (selected as SupplierView).legalName : (selected as CustomerView).fiscalName}
+      locale={locale}
+      token={session.accessToken}
+      onClose={() => {
+        setRetirementOpen(false);
+        setDialogOpen(true);
+      }}
+      onRetired={completeSafeRetirement}
+    />}
   </>;
 }

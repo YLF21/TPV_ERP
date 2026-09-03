@@ -2,6 +2,7 @@ export { authenticate, authenticateRemote, canAccessApp, hasPermission } from ".
 export {
   apiRequest,
   apiProblemCode,
+  gestionGroupLockedEvent,
   checkBackendConnection,
   classifyApiFailure,
   ApiConnectionError,
@@ -53,7 +54,15 @@ export type { TableSort, TableSortDirection, TableSortValue } from "./components
 export { useTableLayoutPreference } from "./components/useTableLayoutPreference";
 export { tableLayoutGridTemplate, visibleTableColumns } from "./components/tableLayoutPreferences";
 export type { TableColumnDefinition } from "./components/tableLayoutPreferences";
+export { PartyDirectoryPanel } from "./components/PartyDirectoryPanel";
 export type { PartyDirectoryKind } from "./components/PartyDirectoryPanel";
+export { SafeRetirementDialog } from "./components/SafeRetirementDialog";
+export type {
+  RetirementEntityPath,
+  RetirementImpact,
+  RetirementOutcome,
+  RetirementResult
+} from "./components/SafeRetirementDialog";
 export {
   createHardwareUnavailableResult,
   createTestTicket,

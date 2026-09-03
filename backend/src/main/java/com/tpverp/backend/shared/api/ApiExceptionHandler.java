@@ -16,10 +16,15 @@ import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.TerminalDisabledException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.gestion.GestionGroupInvalidPasswordException;
+import com.tpverp.backend.security.gestion.GestionGroupLockedException;
+import com.tpverp.backend.security.gestion.GestionGroupUnlockThrottledException;
 import com.tpverp.backend.security.sales.SaleOperationAuthorizationDeniedException;
 import com.tpverp.backend.security.sales.SaleOperationAuthorizationThrottledException;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
+import com.tpverp.backend.management.SafeManagementRetirementService.SafeRetirementStaleStateException;
+import com.tpverp.backend.management.SafeManagementRetirementService.ProtectedSystemProductException;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralException;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceReservationConflictException;
 import com.tpverp.backend.party.MemberBalanceOfficialSyncRequiredException;
@@ -128,6 +133,53 @@ public class ApiExceptionHandler {
             TerminalDisabledException exception,
             HttpServletRequest request) {
         return systemProblem(HttpStatus.FORBIDDEN, SystemErrorCode.TERMINAL_DISABLED, request);
+    }
+
+    @ExceptionHandler(GestionGroupInvalidPasswordException.class)
+    ProblemDetail gestionGroupInvalidPassword(
+            GestionGroupInvalidPasswordException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "The current password or PIN is incorrect";
+            case ZH -> "当前密码或 PIN 不正确";
+            default -> "La contraseña o el PIN actual no es correcto";
+        };
+        return problem(HttpStatus.FORBIDDEN, GestionGroupInvalidPasswordException.CODE,
+                detail, language, request);
+    }
+
+    @ExceptionHandler(GestionGroupLockedException.class)
+    ProblemDetail gestionGroupLocked(
+            GestionGroupLockedException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "This APP GESTION group must be unlocked before use";
+            case ZH -> "使用此 APP GESTION 分组前必须先解锁";
+            default -> "Este grupo de APP GESTIÓN debe desbloquearse antes de utilizarlo";
+        };
+        var result = problem(HttpStatus.FORBIDDEN, GestionGroupLockedException.CODE,
+                detail, language, request);
+        result.setProperty("group", exception.group().name());
+        return result;
+    }
+
+    @ExceptionHandler(GestionGroupUnlockThrottledException.class)
+    ProblemDetail gestionGroupUnlockThrottled(
+            GestionGroupUnlockThrottledException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "Too many failed attempts; wait before trying again";
+            case ZH -> "失败次数过多，请稍后重试";
+            default -> "Demasiados intentos fallidos; espera antes de volver a intentarlo";
+        };
+        var result = problem(HttpStatus.TOO_MANY_REQUESTS,
+                GestionGroupUnlockThrottledException.CODE, detail, language, request);
+        result.setProperty("blockedUntil", exception.blockedUntil().toString());
+        result.setProperty("retryAfterSeconds", exception.retryAfterSeconds());
+        return result;
     }
 
     @ExceptionHandler(SaleOperationAuthorizationDeniedException.class)
@@ -369,6 +421,32 @@ public class ApiExceptionHandler {
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language,
                 request);
+    }
+
+    @ExceptionHandler(SafeRetirementStaleStateException.class)
+    ProblemDetail safeRetirementStaleState(
+            SafeRetirementStaleStateException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "The record changed while it was being retired. Refresh and try again.";
+            case ZH -> "记录在停用过程中发生了变化。请刷新后重试。";
+            default -> "El registro cambió durante la retirada. Actualiza y vuelve a intentarlo.";
+        };
+        return problem(HttpStatus.CONFLICT, "STALE_STATE", detail, language, request);
+    }
+
+    @ExceptionHandler(ProtectedSystemProductException.class)
+    ProblemDetail protectedSystemProduct(
+            ProtectedSystemProductException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "The system product with code 0 cannot be retired.";
+            case ZH -> "代码为 0 的系统商品不能停用。";
+            default -> "El producto de sistema con código 0 no se puede retirar.";
+        };
+        return problem(HttpStatus.CONFLICT, "PROTECTED_SYSTEM_PRODUCT", detail, language, request);
     }
 
     @ExceptionHandler(ProductClassificationVersionConflictException.class)

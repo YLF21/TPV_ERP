@@ -38,6 +38,9 @@ public class SalesRepresentative {
     @Column(name = "otro_contacto")
     private String otherContact;
 
+    @Column(nullable = false)
+    private boolean activo = true;
+
     @Version
     private long version;
 
@@ -91,5 +94,25 @@ public class SalesRepresentative {
 
     public String getOtherContact() {
         return otherContact;
+    }
+
+    public boolean isActive() {
+        return activo;
+    }
+
+    public void deactivate() {
+        activo = false;
+    }
+
+    public void activate() {
+        activo = true;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public Company getCompany() {
+        return company;
     }
 }
