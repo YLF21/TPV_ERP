@@ -1,4 +1,5 @@
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { roundUnitPrice } from "../money";
 import type { LocaleCode } from "../types";
 import type { StockInventoryRow } from "./StockScreen";
 import { excelCellText, findExcelColumn, findExcelColumns, readExcelSheet } from "./excelImport";
@@ -201,21 +202,30 @@ export type StockBulkProductUpdate = {
     name: string;
     description: string | null;
     comments: string | null;
-    purchasePrice: number;
+    purchasePrice: string;
     taxesIncluded: boolean;
     code: string | null;
     barcode: string | null;
     barcode2: string | null;
-    salePrice: number;
-    memberPrice: number | null;
-    wholesalePrice: number | null;
-    offerPrice: number | null;
-    offerDiscountPercent: number | null;
-    purchaseDiscountPercent: number | null;
+    salePrice: string;
+    memberPrice: string | null;
+    wholesalePrice: string | null;
+    offerPrice: string | null;
+    offerDiscountPercent: string | null;
+    purchaseDiscountPercent: string | null;
     offerActive: boolean;
     offerFrom: string | null;
     offerUntil: string | null;
+    stockMin: string | null;
+    stockMax: string | null;
+    packageQuantity: string | null;
+    requiresSerialNumber?: boolean | null;
   };
+};
+
+export type StockBulkProductCreate = {
+  rowId: string;
+  product: StockBulkProductUpdate["product"];
 };
 
 const excelFields: Array<{ keys: string[]; field: keyof StockInventoryRow }> = [
@@ -260,7 +270,8 @@ type StockBulkNamedReference = {
 };
 
 export function stockBulkRowsChanged(rows: StockBulkEditRowData[]) {
-  return rows.some((row) => row.pendingSupplier || row.principalSupplierChanged || (row.product && Object.keys(row.draft).some((key) => {
+  return rows.some((row) => (!row.product && (row.query.trim() || Object.keys(row.draft).length > 0))
+    || row.pendingSupplier || row.principalSupplierChanged || (row.product && Object.keys(row.draft).some((key) => {
     const field = key as keyof StockInventoryRow;
     return text(row.draft[field]) !== text(row.product?.[field]);
   })));
@@ -272,7 +283,7 @@ export function stockOfferPriceFromDiscount(salePrice: unknown, discountPercent:
   if (sale === null || discount === null || sale < 0 || discount < 0 || discount > 100) {
     return null;
   }
-  return Math.max(0, sale - sale * discount / 100).toFixed(2);
+  return roundUnitPrice(Math.max(0, sale - sale * discount / 100)).toFixed(3).replace(/(\.\d{2})0$/, "$1");
 }
 
 export function validateStockBulkRows(rows: StockBulkEditRowData[]): StockBulkValidationError[] {
@@ -350,6 +361,56 @@ export function validateStockBulkRows(rows: StockBulkEditRowData[]): StockBulkVa
       add(row.id, "offerUntil", "invalidDate");
     }
   });
+
+  // MISSING Excel rows are real bulk-edit rows. They are validated here so
+  // ProductBulkEdit cannot silently discard an invalid create draft.
+  rows.filter((row) => !row.product && (row.query.trim() || Object.keys(row.draft).length > 0))
+    .forEach((row) => {
+      const value = <K extends keyof StockInventoryRow>(field: K) => row.draft[field];
+      ([("familyId"), ("taxId"), ("productType"), ("name")] as const).forEach((field) => {
+        if (nullableText(value(field)) === null) add(row.id, field, "required");
+      });
+      if (nullableText(value("code")) === null && nullableText(value("barcode")) === null) {
+        add(row.id, "productId", "required");
+      }
+      (["purchasePrice", "salePrice"] as const).forEach((field) => {
+        const raw = nullableText(value(field));
+        if (raw !== null) {
+          const number = parsedNumber(raw);
+          if (number === null || number < 0) add(row.id, field, "invalidNumber");
+        }
+      });
+      (["memberPrice", "wholesalePrice", "offerPrice"] as const).forEach((field) => {
+        const raw = nullableText(value(field));
+        if (raw !== null) {
+          const number = parsedNumber(raw);
+          if (number === null || number < 0) add(row.id, field, "invalidNumber");
+        }
+      });
+      (["purchaseDiscountPercent", "offerDiscountPercent"] as const).forEach((field) => {
+        const raw = nullableText(value(field));
+        if (raw !== null) {
+          const number = parsedNumber(raw);
+          if (number === null || number < 0 || number > 100) add(row.id, field, "invalidPercentage");
+        }
+      });
+      const priceUseMode = normalizedPriceUse(value("discountType"));
+      if (priceUseMode === "OFFER_PRICE" && nullableText(value("offerPrice")) === null) {
+        add(row.id, "offerPrice", "offerPriceRequired");
+      }
+      if (priceUseMode === "OFFER_DISCOUNT" && nullableText(value("offerDiscountPercent")) === null) {
+        add(row.id, "offerDiscountPercent", "offerDiscountRequired");
+      }
+      const offerFrom = nullableText(value("offerFrom"));
+      const offerUntil = nullableText(value("offerUntil"));
+      if ((priceUseMode === "OFFER_PRICE" || priceUseMode === "OFFER_DISCOUNT") && offerFrom === null) {
+        add(row.id, "offerFrom", "offerFromRequired");
+      }
+      if (offerFrom !== null && !isIsoDate(offerFrom)) add(row.id, "offerFrom", "invalidDate");
+      if (offerUntil !== null && (!isIsoDate(offerUntil) || offerFrom === null || offerUntil < offerFrom)) {
+        add(row.id, "offerUntil", "invalidDate");
+      }
+    });
 
   return errors;
 }
@@ -572,17 +633,18 @@ export function buildStockBulkUpdates(rows: StockBulkEditRowData[]): StockBulkPr
   })).map((row) => {
     const value = <K extends keyof StockInventoryRow>(field: K) => row.draft[field] ?? row.product?.[field];
     const priceUseMode = normalizedPriceUse(value("discountType"));
-    const originalDiscountType = String(row.product?.backendDiscountType ?? "NORMAL");
-    const discountType = priceUseMode === "NORMAL" && originalDiscountType === "NONE"
+    const requestedBackendDiscountType = String(value("backendDiscountType") ?? "NORMAL");
+    const discountType = priceUseMode === "NORMAL" && requestedBackendDiscountType === "NONE"
       ? "NONE"
       : priceUseMode === "MEMBER_PRICE"
         ? "MEMBER_PRICE"
         : priceUseMode === "OFFER_PRICE" || priceUseMode === "OFFER_DISCOUNT"
           ? "DISCOUNT_PRICE"
           : "NORMAL";
-    const salePrice = numberValue(value("salePrice"));
-    const offerDiscountPercent = nullableNumber(value("offerDiscountPercent"));
-    const calculatedOfferPrice = priceUseMode === "OFFER_DISCOUNT"
+    const salePrice = decimalValue(value("salePrice"));
+    const offerDiscountPercent = nullableDecimal(value("offerDiscountPercent"));
+    const explicitOfferPrice = nullableDecimal(value("offerPrice"));
+    const calculatedOfferPrice = priceUseMode === "OFFER_DISCOUNT" && explicitOfferPrice === null
       ? stockOfferPriceFromDiscount(salePrice, offerDiscountPercent)
       : null;
     return {
@@ -599,22 +661,25 @@ export function buildStockBulkUpdates(rows: StockBulkEditRowData[]): StockBulkPr
         name: requiredText(value("name"), "name"),
         description: nullableText(value("description")),
         comments: nullableText(value("comments")),
-        purchasePrice: numberValue(value("purchasePrice")),
+        purchasePrice: decimalValue(value("purchasePrice")),
         taxesIncluded: booleanValue(value("taxesIncluded")),
         code: nullableText(value("code")),
         barcode: nullableText(value("barcode")),
         barcode2: nullableText(value("barcode2")),
         salePrice,
-        memberPrice: nullableNumber(value("memberPrice")),
-        wholesalePrice: nullableNumber(value("wholesalePrice")),
-        offerPrice: calculatedOfferPrice === null
-          ? nullableNumber(value("offerPrice"))
-          : Number(calculatedOfferPrice),
+        memberPrice: nullableDecimal(value("memberPrice")),
+        wholesalePrice: nullableDecimal(value("wholesalePrice")),
+        offerPrice: explicitOfferPrice ?? calculatedOfferPrice,
         offerDiscountPercent,
-        purchaseDiscountPercent: nullableNumber(value("purchaseDiscountPercent")),
+        purchaseDiscountPercent: nullableDecimal(value("purchaseDiscountPercent")),
         offerActive: priceUseMode === "OFFER_PRICE" || priceUseMode === "OFFER_DISCOUNT",
         offerFrom: nullableText(value("offerFrom")),
-        offerUntil: nullableText(value("offerUntil"))
+        offerUntil: nullableText(value("offerUntil")),
+        stockMin: nullableDecimal(value("stockMin")),
+        stockMax: nullableDecimal(value("stockMax")),
+        packageQuantity: nullableDecimal(value("packageQuantity")),
+        requiresSerialNumber: value("requiresSerialNumber") === undefined
+          ? null : booleanValue(value("requiresSerialNumber"))
       }
     };
   });
@@ -628,6 +693,63 @@ export function stockBulkEffectiveProduct(row: StockBulkEditRowData): StockInven
     Object.entries(row.draft).filter(([, value]) => value !== null && value !== undefined)
   ) as Partial<StockInventoryRow>;
   return { ...row.product, ...changes };
+}
+
+/** Converts non-empty MISSING rows into the server create contract. */
+export function buildStockBulkCreates(rows: StockBulkEditRowData[]): StockBulkProductCreate[] {
+  return rows
+    .filter((row) => !row.product && (row.query.trim() || Object.keys(row.draft).length > 0))
+    .map((row) => {
+      const value = <K extends keyof StockInventoryRow>(field: K) => row.draft[field];
+      const priceUseMode = normalizedPriceUse(value("discountType")) || "NORMAL";
+      const backendDiscountType = nullableText(value("backendDiscountType"))
+        ?? (priceUseMode === "MEMBER_PRICE"
+          ? "MEMBER_PRICE"
+          : priceUseMode === "NORMAL" ? "NORMAL" : "DISCOUNT_PRICE");
+      const offerActiveRaw = value("offerActive");
+      return {
+        rowId: row.id,
+        product: {
+          active: value("active") === undefined ? true : booleanValue(value("active")),
+          familyId: requiredText(value("familyId"), "familyId"),
+          subfamilyId: nullableText(value("subfamilyId")),
+          taxId: requiredText(value("taxId"), "taxId"),
+          productType: requiredText(value("productType"), "productType"),
+          discountType: backendDiscountType,
+          priceUseMode,
+          name: requiredText(value("name"), "name"),
+          description: nullableText(value("description")),
+          comments: nullableText(value("comments")),
+          purchasePrice: decimalValue(value("purchasePrice")),
+          taxesIncluded: value("taxesIncluded") === undefined
+            ? true : booleanValue(value("taxesIncluded")),
+          code: nullableText(value("code")),
+          barcode: nullableText(value("barcode")),
+          barcode2: nullableText(value("barcode2")),
+          salePrice: decimalValue(value("salePrice")),
+          memberPrice: optionalCreatePrice(value("memberPrice")),
+          wholesalePrice: optionalCreatePrice(value("wholesalePrice")),
+          offerPrice: optionalCreatePrice(value("offerPrice")),
+          offerDiscountPercent: nullableDecimal(value("offerDiscountPercent")),
+          purchaseDiscountPercent: nullableDecimal(value("purchaseDiscountPercent")),
+          offerActive: offerActiveRaw === undefined
+            ? priceUseMode === "OFFER_PRICE" || priceUseMode === "OFFER_DISCOUNT"
+            : booleanValue(offerActiveRaw),
+          offerFrom: nullableText(value("offerFrom")),
+          offerUntil: nullableText(value("offerUntil")),
+          stockMin: nullableDecimal(value("stockMin")),
+          stockMax: nullableDecimal(value("stockMax")),
+          packageQuantity: nullableDecimal(value("packageQuantity")),
+          requiresSerialNumber: value("requiresSerialNumber") === undefined
+            ? null : booleanValue(value("requiresSerialNumber"))
+        }
+      };
+    });
+}
+
+function optionalCreatePrice(value: unknown) {
+  const decimal = nullableDecimal(value);
+  return decimal === null || Number(decimal) === 0 ? null : decimal;
 }
 
 export function stockBulkClassificationCodesForRows(
@@ -1254,9 +1376,9 @@ function nullableText(value: unknown) {
   return !normalized || normalized === "-" ? null : normalized;
 }
 
-function numberValue(value: unknown) {
-  const number = Number(text(value).replace(",", "."));
-  return Number.isFinite(number) ? number : 0;
+function decimalValue(value: unknown) {
+  const normalized = text(value).trim().replace(",", ".");
+  return normalized && Number.isFinite(Number(normalized)) ? normalized : "0";
 }
 
 function parsedNumber(value: unknown) {
@@ -1268,17 +1390,17 @@ function parsedNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
-function nullableNumber(value: unknown) {
+function nullableDecimal(value: unknown) {
   const normalized = nullableText(value);
   if (normalized === null) {
     return null;
   }
-  const number = Number(normalized.replace(",", "."));
-  return Number.isFinite(number) ? number : null;
+  const decimal = normalized.replace(",", ".");
+  return Number.isFinite(Number(decimal)) ? decimal : null;
 }
 
 function booleanValue(value: unknown) {
-  return value === true || ["true", "yes", "si", "common.yes"].includes(normalize(text(value)));
+  return value === true || ["true", "yes", "si", "1", "common.yes"].includes(normalize(text(value)));
 }
 
 function isIsoDate(value: string) {

@@ -378,6 +378,42 @@ public final class ProductBulkEditContent {
             String active,
             String packageQuantity) {
 
+        /**
+         * Creates the persisted representation used by a bulk-edit row.  The
+         * factory deliberately only exposes catalog state; warehouse-only
+         * fields remain empty and can therefore not be forged by a create row.
+         */
+        public static ProductData fromProduct(Product product) {
+            if (product == null) {
+                return empty();
+            }
+            return new ProductData(
+                    product.getId(), product.getVersion(), product.getImageId() == null
+                            ? null : product.getImageId().toString(), null,
+                    product.getCode(), product.getBarcode(), product.getBarcode2(),
+                    product.getName(), product.getDescription(), product.getComments(),
+                    string(product.getPurchasePrice()), string(product.getPurchaseDiscountPercent()),
+                    string(product.getSalePrice()), string(product.getMemberPrice()),
+                    string(product.getWholesalePrice()), string(product.getOfferPrice()),
+                    string(product.getOfferDiscountPercent()), enumName(product.getProductType()),
+                    enumName(product.getPriceUseMode()), enumName(product.getDiscountType()),
+                    string(product.getFamilyId()), null, string(product.getSubfamilyId()), null,
+                    string(product.getTaxId()), null, Boolean.toString(product.isTaxesIncluded()),
+                    Boolean.toString(product.isOfferActive()),
+                    product.getOfferFrom() == null ? null : product.getOfferFrom().toString(),
+                    product.getOfferUntil() == null ? null : product.getOfferUntil().toString(),
+                    null, null, null, string(product.getStockMin()), string(product.getStockMax()),
+                    Boolean.toString(product.isActive()), string(product.getPackageQuantity()));
+        }
+
+        private static String string(Object value) {
+            return value == null ? null : value.toString();
+        }
+
+        private static String enumName(Enum<?> value) {
+            return value == null ? null : value.name();
+        }
+
         public ProductData(
                 UUID productId,
                 Long version,

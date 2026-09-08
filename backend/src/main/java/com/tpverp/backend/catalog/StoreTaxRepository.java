@@ -10,6 +10,8 @@ public interface StoreTaxRepository extends JpaRepository<StoreTax, UUID> {
 
     List<StoreTax> findByStoreIdOrderByPorcentaje(UUID storeId);
 
+    List<StoreTax> findByStoreIdAndIdIn(UUID storeId, java.util.Collection<UUID> ids);
+
     Optional<StoreTax> findByStoreIdAndPorcentaje(UUID storeId, BigDecimal percentage);
 
     Optional<StoreTax> findByStoreIdAndPredeterminadoTrue(UUID storeId);

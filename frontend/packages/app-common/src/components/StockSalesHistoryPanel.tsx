@@ -503,7 +503,7 @@ export function StockSalesHistoryPanel({
                     {column.key === "status" && row.status}
                     {column.key === "customer" && (row.customerName || row.customerId || "-")}
                     {column.key === "quantity" && formatProductQuantity(row.quantity, productType, locale)}
-                    {column.key === "unitPrice" && numberFormatter.format(Number(row.unitPrice) || 0)}
+                    {column.key === "unitPrice" && formatHistoryUnitPrice(row.unitPrice, numberFormatter)}
                     {column.key === "discount" && `${numberFormatter.format(Number(row.discountPercent) || 0)}%`}
                     {column.key === "total" && numberFormatter.format(Number(row.lineTotal) || 0)}
                     {column.key === "user" && (row.userName || row.userId || "-")}
@@ -535,6 +535,12 @@ export function StockSalesHistoryPanel({
   );
 }
 
+function formatHistoryUnitPrice(value: number, formatter: Intl.NumberFormat) {
+  return new Intl.NumberFormat(formatter.resolvedOptions().locale, {
+    minimumFractionDigits: 2, maximumFractionDigits: 3,
+  }).format(Number(value) || 0);
+}
+
 function formattedHistoryCell(
   row: StockSalesHistoryRow,
   column: StockSalesHistoryColumnKey,
@@ -548,7 +554,7 @@ function formattedHistoryCell(
   if (column === "status") return row.status;
   if (column === "customer") return row.customerName || row.customerId || "";
   if (column === "quantity") return formatProductQuantity(row.quantity, productType, locale);
-  if (column === "unitPrice") return numberFormatter.format(Number(row.unitPrice) || 0);
+  if (column === "unitPrice") return formatHistoryUnitPrice(row.unitPrice, numberFormatter);
   if (column === "discount") return `${numberFormatter.format(Number(row.discountPercent) || 0)}%`;
   if (column === "total") return numberFormatter.format(Number(row.lineTotal) || 0);
   if (column === "user") return row.userName || row.userId || "";

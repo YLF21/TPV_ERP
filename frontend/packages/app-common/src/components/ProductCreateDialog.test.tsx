@@ -437,7 +437,7 @@ describe("ProductCreateDialog", () => {
     vi.unstubAllGlobals();
   });
 
-  it("clears the subfamily UUID when resolving a three-digit family code", async () => {
+  it("clears the subfamily UUID and saves on the first click after a resolved code loses focus", async () => {
     const updateProduct = vi.fn().mockResolvedValue({ id: "product-1" });
     const family = {
       id: "family-1",
@@ -497,6 +497,11 @@ describe("ProductCreateDialog", () => {
     await waitFor(() =>
       expect(view.container.textContent).not.toContain("Resolviendo..."),
     );
+    await waitFor(() => expect(businessId).toHaveAttribute("aria-busy", "false"));
+    const resolutionCount = fetchMock.mock.calls.filter(([input]) => String(input).includes("/families/resolve?code=123")).length;
+    fireEvent.blur(businessId);
+    expect(businessId).toHaveAttribute("aria-busy", "false");
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/families/resolve?code=123"))).toHaveLength(resolutionCount);
     fireEvent.click(
       Array.from(view.container.querySelectorAll("button")).find((button) =>
         button.textContent?.includes("Guardar"),
@@ -831,6 +836,8 @@ describe("ProductCreateDialog", () => {
     const businessId = view.container.querySelector<HTMLInputElement>(
       'input[data-product-field-name="familyBusinessCode"]',
     )!;
+    // Start a real edit; blurring the already resolved default no longer refetches it.
+    fireEvent.change(businessId, { target: { value: "12" } });
     fireEvent.change(businessId, { target: { value: "123" } });
     fireEvent.blur(businessId);
     await waitFor(() =>

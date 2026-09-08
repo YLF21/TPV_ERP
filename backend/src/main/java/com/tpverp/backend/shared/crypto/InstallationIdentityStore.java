@@ -10,6 +10,7 @@ import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.security.Signature;
 import java.util.HexFormat;
 
 public final class InstallationIdentityStore {
@@ -39,6 +40,31 @@ public final class InstallationIdentityStore {
 			return create(publicPath, privatePath);
 		} catch (IOException | GeneralSecurityException exception) {
 			throw new IllegalStateException("message.installation.identity_load_failed", exception);
+		}
+	}
+
+	/** Signs installation-scoped application claims with the persisted RSA identity. */
+	public byte[] sign(byte[] payload) {
+		try {
+			var signature = Signature.getInstance("SHA256withRSA");
+			signature.initSign(loadOrCreate().privateKey());
+			signature.update(payload);
+			return signature.sign();
+		} catch (GeneralSecurityException exception) {
+			throw new IllegalStateException("message.installation.identity_sign_failed", exception);
+		}
+	}
+
+	/** Verifies claims against the persisted installation public key. */
+	public boolean verify(byte[] payload, byte[] signed) {
+		if (payload == null || signed == null) return false;
+		try {
+			var signature = Signature.getInstance("SHA256withRSA");
+			signature.initVerify(loadOrCreate().publicKey());
+			signature.update(payload);
+			return signature.verify(signed);
+		} catch (GeneralSecurityException exception) {
+			return false;
 		}
 	}
 

@@ -57,10 +57,10 @@ class WarehouseDocumentExcelExportServiceTest {
         when(output.getDate()).thenReturn(LocalDate.of(2026, 8, 9));
         when(output.getStatus()).thenReturn(WarehouseOutputStatus.CONFIRMADA);
         when(output.getLines()).thenReturn(List.of(line));
+        when(line.getQuantity()).thenReturn(10);
+        when(line.getSaleUnitPrice()).thenReturn(new BigDecimal("2.208"));
+        when(line.getSaleTotal()).thenReturn(new BigDecimal("22.08"));
         when(line.getProductId()).thenReturn(productId);
-        when(line.getQuantity()).thenReturn(1);
-        when(line.getSaleUnitPrice()).thenReturn(new BigDecimal("12.10"));
-        when(line.getSaleTotal()).thenReturn(new BigDecimal("12.10"));
         when(products.findAllByStoreIdAndIdIn(store.getId(), List.of(productId))).thenReturn(List.of(product));
         when(product.getId()).thenReturn(productId);
         when(product.getCode()).thenReturn("DEV-CAFE");
@@ -79,6 +79,10 @@ class WarehouseDocumentExcelExportServiceTest {
             assertThat(sheet.getRow(0).getCell(4).getStringCellValue()).isEqualTo("Salida de almacén");
             assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Código");
             assertThat(sheet.getRow(7).getCell(0).getStringCellValue()).isEqualTo("DEV-CAFE");
+            assertThat(sheet.getRow(7).getCell(3).getNumericCellValue()).isEqualTo(2.208);
+            assertThat(sheet.getRow(7).getCell(3).getCellStyle().getDataFormatString()).contains("0.00#");
+            assertThat(sheet.getRow(7).getCell(4).getNumericCellValue()).isEqualTo(22.08);
+            assertThat(sheet.getRow(7).getCell(4).getCellStyle().getDataFormatString()).doesNotContain("0.00#");
             assertThat(workbook.getFontAt(sheet.getRow(0).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
                     .isTrue();
             assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())

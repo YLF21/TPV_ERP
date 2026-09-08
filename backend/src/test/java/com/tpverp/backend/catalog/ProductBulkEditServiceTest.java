@@ -297,6 +297,251 @@ class ProductBulkEditServiceTest {
     }
 
     @Test
+    void appliesMissingStockRowThroughOneBoundCreateAndReturnsPersistedProduct() {
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.ProductData draft = createDraft(familyId, taxId);
+        ProductBulkEditContent.Row missing = new ProductBulkEditContent.Row(
+                "excel-row-17", false, "NEW-17", null, draft, List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision Excel", List.of(missing), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        Product created = new Product(storeId, familyId, null, taxId,
+                "Nuevo producto", null, BigDecimal.ZERO, true);
+        created.replaceIdentifier(IdentifierType.CODIGO, "NEW-17");
+        created.setPrice(PriceTier.VENTA, BigDecimal.ZERO);
+        CatalogService.ProductRequest createRequest = request(draft, "Nuevo producto");
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(catalog.createProductsFromImport(List.of(createRequest))).thenReturn(List.of(created));
+
+        ProductBulkEditView applied = service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(), List.of(), List.of(), List.of(missing),
+                        List.of(new ProductBulkEditService.BulkProductCreate("excel-row-17", createRequest))),
+                managerAuthentication());
+
+        verify(catalog).createProductsFromImport(List.of(createRequest));
+        assertThat(applied.content()).singleElement().satisfies(row -> {
+            assertThat(row.product()).isNotNull();
+            assertThat(row.product().productId()).isEqualTo(created.getId());
+            assertThat(row.draft()).isEqualTo(ProductBulkEditContent.ProductData.empty());
+        });
+    }
+
+    @Test
+    void rejectsMissingRowWithoutExactCreateBindingBeforeCatalogWrite() {
+        ProductBulkEditContent.ProductData draft = createDraft(UUID.randomUUID(), UUID.randomUUID());
+        ProductBulkEditContent.Row missing = new ProductBulkEditContent.Row(
+                "excel-row-17", false, "NEW-17", null, draft, List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision Excel", List.of(missing), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(), List.of(), List.of(), List.of(missing), List.of()),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("crea");
+        verify(catalog, never()).createProductsFromImport(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void rejectsCreateWhenClientChangesPersistedMissingDraft() {
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.ProductData persistedDraft = createDraft(familyId, taxId);
+        ProductBulkEditContent.Row persistedRow = new ProductBulkEditContent.Row(
+                "excel-row-17", false, "NEW-17", null, persistedDraft, List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision Excel", List.of(persistedRow), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        ProductBulkEditContent.ProductData alteredDraft = new ProductBulkEditContent.ProductData(
+                null, null, null, null, persistedDraft.code(), persistedDraft.barcode(), persistedDraft.barcode2(),
+                "Nombre manipulado", persistedDraft.description(), persistedDraft.comments(),
+                persistedDraft.purchasePrice(), persistedDraft.purchaseDiscountPercent(), persistedDraft.salePrice(),
+                persistedDraft.memberPrice(), persistedDraft.wholesalePrice(), persistedDraft.offerPrice(),
+                persistedDraft.offerDiscountPercent(), persistedDraft.productType(), persistedDraft.discountType(),
+                persistedDraft.backendDiscountType(), persistedDraft.familyId(), persistedDraft.familyName(),
+                persistedDraft.subfamilyId(), persistedDraft.subfamilyName(), persistedDraft.taxId(), persistedDraft.taxName(),
+                persistedDraft.taxesIncluded(), persistedDraft.offerActive(), persistedDraft.offerFrom(), persistedDraft.offerUntil(),
+                persistedDraft.warehouseName(), persistedDraft.quantity(), persistedDraft.totalQuantity(),
+                persistedDraft.stockMin(), persistedDraft.stockMax(), persistedDraft.active(), persistedDraft.packageQuantity());
+        ProductBulkEditContent.Row alteredRow = new ProductBulkEditContent.Row(
+                persistedRow.id(), false, persistedRow.query(), null, alteredDraft, List.of(), null);
+        CatalogService.ProductRequest createRequest = request(persistedDraft, "Nuevo producto");
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(), List.of(), List.of(), List.of(alteredRow),
+                        List.of(new ProductBulkEditService.BulkProductCreate("excel-row-17", createRequest))),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("snapshot guardado");
+        verify(catalog, never()).createProductsFromImport(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void appliesExistingUpdateAndMissingCreateAsOneBulkOperation() {
+        UUID existingId = UUID.randomUUID();
+        ProductBulkEditContent.Row existingRow = row("existing", existingId);
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.ProductData missingDraft = createDraft(familyId, taxId);
+        ProductBulkEditContent.Row missingRow = new ProductBulkEditContent.Row(
+                "missing", false, "NEW-17", null, missingDraft, List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision mixta", List.of(existingRow, missingRow), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        CatalogService.ProductRequest updateRequest = request(existingRow.effectiveProduct(), existingRow.effectiveProduct().name());
+        CatalogService.BulkProductUpdate update = new CatalogService.BulkProductUpdate(existingId, 0L, updateRequest);
+        CatalogService.ProductRequest createRequest = request(missingDraft, "Nuevo producto");
+        Product updated = org.mockito.Mockito.mock(Product.class);
+        when(updated.getId()).thenReturn(existingId);
+        when(updated.getVersion()).thenReturn(1L);
+        Product created = new Product(storeId, familyId, null, taxId, "Nuevo producto", null, BigDecimal.ZERO, true);
+        created.replaceIdentifier(IdentifierType.CODIGO, "NEW-17");
+        created.setPrice(PriceTier.VENTA, BigDecimal.ZERO);
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(catalog.updateProducts(List.of(update))).thenReturn(List.of(updated));
+        when(catalog.createProductsFromImport(List.of(createRequest))).thenReturn(List.of(created));
+
+        ProductBulkEditView applied = service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(update), List.of(), List.of(),
+                        List.of(existingRow, missingRow),
+                        List.of(new ProductBulkEditService.BulkProductCreate("missing", createRequest))),
+                managerAuthentication());
+
+        verify(catalog).updateProducts(List.of(update));
+        verify(catalog).createProductsFromImport(List.of(createRequest));
+        assertThat(applied.content()).extracting(ProductBulkEditContent.Row::id)
+                .containsExactly("existing", "missing");
+        assertThat(applied.content().get(1).product().productId()).isEqualTo(created.getId());
+    }
+
+    @Test
+    void rejectsPayloadThatOmitsOneOfTwoPersistedMissingCreates() {
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.Row first = new ProductBulkEditContent.Row(
+                "missing-1", false, "NEW-1", null, createDraft(familyId, taxId), List.of(), null);
+        ProductBulkEditContent.Row second = new ProductBulkEditContent.Row(
+                "missing-2", false, "NEW-2", null, createDraft(familyId, taxId), List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision Excel", List.of(first, second), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        CatalogService.ProductRequest firstRequest = request(first.draft(), "Nuevo producto");
+        ProductBulkEditContent.Row vacated = new ProductBulkEditContent.Row(
+                second.id(), false, second.query(), null, ProductBulkEditContent.ProductData.empty(), List.of(), null);
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(), List.of(), List.of(), List.of(first, vacated),
+                        List.of(new ProductBulkEditService.BulkProductCreate("missing-1", firstRequest))),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("snapshot guardado");
+        verify(catalog, never()).createProductsFromImport(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void rejectsCreateWhenSubmittedMissingContentDiffersFromPersistedSnapshot() {
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.Row persisted = new ProductBulkEditContent.Row(
+                "missing-1", false, "NEW-1", null, createDraft(familyId, taxId), List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision Excel", List.of(persisted), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        ProductBulkEditContent.ProductData changedDraft = createDraft(familyId, taxId).withActive("common.no");
+        ProductBulkEditContent.Row changed = new ProductBulkEditContent.Row(
+                persisted.id(), false, persisted.query(), null, changedDraft, List.of(), null);
+        CatalogService.ProductRequest request = request(persisted.draft(), "Nuevo producto");
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(), List.of(), List.of(), List.of(changed),
+                        List.of(new ProductBulkEditService.BulkProductCreate("missing-1", request))),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("snapshot guardado");
+        verify(catalog, never()).createProductsFromImport(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void createThenUpdateFailureLeavesMixedBulkEditPendingAndDoesNotFinalize() {
+        UUID existingId = UUID.randomUUID();
+        ProductBulkEditContent.Row existing = row("existing", existingId);
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.Row missing = new ProductBulkEditContent.Row(
+                "missing", false, "NEW-17", null, createDraft(familyId, taxId), List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision mixta", List.of(existing, missing), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        CatalogService.BulkProductUpdate update = new CatalogService.BulkProductUpdate(
+                existingId, 0L, request(existing.effectiveProduct(), existing.effectiveProduct().name()));
+        CatalogService.ProductRequest createRequest = request(missing.draft(), "Nuevo producto");
+        Product created = new Product(storeId, familyId, null, taxId, "Nuevo producto", null, BigDecimal.ZERO, true);
+        created.replaceIdentifier(IdentifierType.CODIGO, "NEW-17");
+        created.setPrice(PriceTier.VENTA, BigDecimal.ZERO);
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(catalog.createProductsFromImport(List.of(createRequest))).thenReturn(List.of(created));
+        when(catalog.updateProducts(List.of(update))).thenThrow(new IllegalArgumentException("colision"));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(update), List.of(), List.of(),
+                        List.of(existing, missing),
+                        List.of(new ProductBulkEditService.BulkProductCreate("missing", createRequest))),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("colision");
+        assertThat(edit.getEstado()).isEqualTo(ProductBulkEditStatus.PENDING);
+        verify(repository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+        verify(images, never()).deleteAll(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void identifierCollisionDuringCreateLeavesBulkEditPendingAndSkipsUpdates() {
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        ProductBulkEditContent.Row missing = new ProductBulkEditContent.Row(
+                "missing", false, "NEW-17", null, createDraft(familyId, taxId), List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision Excel", List.of(missing), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        CatalogService.ProductRequest createRequest = request(missing.draft(), "Nuevo producto");
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(catalog.createProductsFromImport(List.of(createRequest)))
+                .thenThrow(new IllegalArgumentException("IDENTIFIER_DUPLICATE"));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(), List.of(), List.of(), List.of(missing),
+                        List.of(new ProductBulkEditService.BulkProductCreate("missing", createRequest))),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("IDENTIFIER_DUPLICATE");
+        assertThat(edit.getEstado()).isEqualTo(ProductBulkEditStatus.PENDING);
+        verify(catalog, never()).updateProducts(org.mockito.ArgumentMatchers.anyList());
+        verify(repository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void rejectsAnyProductOutsideThePersistedBulkEditList() {
         UUID listedProductId = UUID.randomUUID();
         UUID externalProductId = UUID.randomUUID();
@@ -321,7 +566,7 @@ class ProductBulkEditServiceTest {
                         List.of(listedRow, externalRow)),
                 managerAuthentication()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("no coincide con los productos guardados en la lista");
+                .hasMessageContaining("filas guardadas");
 
         verify(catalog, never()).updateProducts(org.mockito.ArgumentMatchers.any());
         verify(productSuppliers, never()).linkProducts(
@@ -608,8 +853,20 @@ class ProductBulkEditServiceTest {
 
     private static CatalogService.ProductRequest request(
             ProductBulkEditContent.ProductData value, String name) {
-        Boolean active = value.active() == null ? null : Boolean.valueOf(value.active());
+        // ProductData's legacy constructor leaves active unset, while the
+        // persisted representation treats that missing value as active. Keep
+        // the request fixture aligned with the service's compatibility rule.
+        Boolean active = value.active() == null ? Boolean.TRUE : Boolean.valueOf(value.active());
         return request(value, name, active);
+    }
+
+    private static ProductBulkEditContent.ProductData createDraft(UUID familyId, UUID taxId) {
+        return new ProductBulkEditContent.ProductData(
+                null, null, null, null, "NEW-17", null, null, "Nuevo producto", null, null,
+                "0", "0", "0", null, null, null, null, ProductType.UNIT.name(),
+                "NORMAL", DiscountType.NORMAL.name(), familyId.toString(), "General", null, null,
+                taxId.toString(), "IGIC", "true", "false", null, null, null, null, null, null,
+                null, "true", "1");
     }
 
     private static CatalogService.ProductRequest request(
@@ -637,7 +894,7 @@ class ProductBulkEditServiceTest {
                 value.offerUntil() == null ? null : LocalDate.parse(value.offerUntil()),
                 value.stockMin() == null ? null : new BigDecimal(value.stockMin()),
                 value.stockMax() == null ? null : new BigDecimal(value.stockMax()),
-                null,
+                value.packageQuantity() == null ? null : new BigDecimal(value.packageQuantity()),
                 active);
     }
 

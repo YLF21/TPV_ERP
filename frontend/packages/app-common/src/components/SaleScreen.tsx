@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
 import { hasPermission } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -962,8 +963,10 @@ export function saleLineSubtotal(line: SaleLine, activeMember = false, wholesale
   if (line.previousTicketImportOrigin) {
     return line.previousTicketImportOrigin.historicalTotal;
   }
-  return saleLineUnitPrice(line, activeMember, wholesaleMode) * line.quantity
-    * (1 - effectiveSaleLineDiscount(line) / 100);
+  const gross = saleLineUnitPrice(line, activeMember, wholesaleMode) * line.quantity;
+  const grossCents = Math.sign(gross) * Math.round((Math.abs(gross) + Number.EPSILON) * 100);
+  const discountCents = Math.sign(grossCents) * Math.round(Math.abs(grossCents) * effectiveSaleLineDiscount(line) / 100);
+  return (grossCents - discountCents) / 100;
 }
 
 export function updateSaleLineSerialNumbers(
@@ -1006,8 +1009,8 @@ export function updateSaleLineTemporaryPrice(
   authorization?: SaleLine["temporaryPriceAuthorization"],
 ) {
   if (value != null) {
-    const hasMoreThanTwoDecimals = Math.abs(value * 100 - Math.round(value * 100)) > 1e-9;
-    if (!Number.isFinite(value) || value <= 0 || hasMoreThanTwoDecimals) {
+    const hasMoreThanThreeDecimals = Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-9;
+    if (!Number.isFinite(value) || value <= 0 || hasMoreThanThreeDecimals) {
       throw new Error("invalid_temporary_price");
     }
   }
@@ -1451,7 +1454,7 @@ export function effectiveSaleProductPrice(
     if (Number.isFinite(explicitOfferPrice)) return explicitOfferPrice;
     if (mode === "OFFER_DISCOUNT") {
       const discount = salePriceNumber(product.offerDiscountPercent);
-      if (discount >= 0 && discount <= 100) return salePrice * (1 - discount / 100);
+      if (discount >= 0 && discount <= 100) return roundUnitPrice(salePrice * (1 - discount / 100));
     }
   }
   return salePrice;
@@ -1583,7 +1586,7 @@ export function pendingSaleDraftForCustomer(
         line,
         customer.activeMember === true,
         wholesaleMode,
-      ).toFixed(2),
+      ).toFixed(3).replace(/(\.\d{2})0$/, "$1"),
       // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
       discount: line.discountPercent.toFixed(2), ...saleProductFiscalSnapshot(line.product),
       serialNumbers: line.serialNumbers ?? [],
@@ -2641,7 +2644,7 @@ export function SaleScreen({
     const totalAmount = confirmedDisplayLine
       ? finiteAmount(confirmedDisplayLine.commercialSubtotal)
       : historicalTotal;
-    const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${totalAmount == null ? t("sale.quote.loading") : formatSaleAmount(totalAmount)}`;
+    const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice, 3)} ${discountText} ${totalAmount == null ? t("sale.quote.loading") : formatSaleAmount(totalAmount)}`;
     const cartLineId = saleCartLineIdentity(localLine);
     const selected = selectedLineId === cartLineId;
     const touchQuantityLocked = paymentLocked
@@ -2744,7 +2747,7 @@ export function SaleScreen({
       if (column === "salePrice") {
         return (
           <td className="sale-cart-number sale-cart-sale-price" data-column-key={column} key={column}>
-            {formatSaleAmount(displayedSalePrice)} €
+            {formatSaleAmount(displayedSalePrice, 3)} €
             {saleCartTaxLabelVisible(effectiveTaxIncluded) && (
               <small className="sale-cart-tax-excluded">{t("sale.cart.taxExcluded")}</small>
             )}
@@ -2768,7 +2771,7 @@ export function SaleScreen({
               <>
                 <small>{specialLabel}</small>
                 <strong>
-                  {formatSaleAmount(specialPrice.unitPrice)} €
+                  {formatSaleAmount(specialPrice.unitPrice, 3)} €
                   <span>{t("sale.cart.perUnit")}</span>
                 </strong>
               </>
@@ -5623,7 +5626,7 @@ export function SaleScreen({
                         activeMember,
                         currentSaleDate(),
                         wholesaleMode,
-                      )),
+                      ), 3),
                     })
                   : ""}
               </small>
@@ -6906,10 +6909,10 @@ function SaleActionDialog({
   );
 }
 
-function formatSaleAmount(value: number | string | null | undefined) {
+function formatSaleAmount(value: number | string | null | undefined, maximumFractionDigits = 2) {
   return Number(value ?? 0).toLocaleString("es-ES", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits
   });
 }
 

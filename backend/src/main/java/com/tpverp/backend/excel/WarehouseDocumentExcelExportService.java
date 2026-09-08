@@ -70,6 +70,7 @@ public class WarehouseDocumentExcelExportService {
         try (var workbook = new XSSFWorkbook()) {
             var sheet = workbook.createSheet("Entrada almacén");
         var money = moneyStyle(workbook);
+        var unitPrice = unitPriceStyle(workbook);
         var metadataLabel = metadataLabelStyle(workbook);
         var metadataValue = metadataValueStyle(workbook);
         var tableHeader = tableHeaderStyle(workbook);
@@ -87,7 +88,7 @@ public class WarehouseDocumentExcelExportService {
                 text(data, 0, product == null ? line.getProductId().toString() : product.getCode());
                 text(data, 1, product == null ? line.getProductId().toString() : product.getName());
                 data.createCell(2).setCellValue(line.getQuantity().doubleValue());
-                money(data, 3, line.getPurchaseUnitPrice(), money);
+                money(data, 3, line.getPurchaseUnitPrice(), unitPrice);
                 money(data, 4, line.getPurchaseTotal(), money);
             }
             row++;
@@ -106,6 +107,7 @@ public class WarehouseDocumentExcelExportService {
         try (var workbook = new XSSFWorkbook()) {
             var sheet = workbook.createSheet("Salida almacén");
         var money = moneyStyle(workbook);
+        var unitPrice = unitPriceStyle(workbook);
         var metadataLabel = metadataLabelStyle(workbook);
         var metadataValue = metadataValueStyle(workbook);
         var tableHeader = tableHeaderStyle(workbook);
@@ -123,7 +125,7 @@ public class WarehouseDocumentExcelExportService {
                 text(data, 0, product == null ? line.getProductId().toString() : product.getCode());
                 text(data, 1, product == null ? line.getProductId().toString() : product.getName());
                 data.createCell(2).setCellValue(line.getQuantity());
-                money(data, 3, line.getSaleUnitPrice(), money);
+                money(data, 3, line.getSaleUnitPrice(), unitPrice);
                 money(data, 4, line.getSaleTotal(), money);
             }
             row++;
@@ -158,6 +160,12 @@ public class WarehouseDocumentExcelExportService {
     private Map<UUID, Product> products(java.util.List<UUID> ids, UUID storeId) {
         return products.findAllByStoreIdAndIdIn(storeId, ids).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
+    }
+
+    private static CellStyle unitPriceStyle(Workbook workbook) {
+        var style = workbook.createCellStyle();
+        style.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00# [$€-es-ES]"));
+        return style;
     }
 
     private static CellStyle moneyStyle(Workbook workbook) {

@@ -1,5 +1,7 @@
 function escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value, unitPrice = false) => unitPrice
+  ? Number(value || 0).toFixed(3).replace(/(\.\d{2})0$/, "$1")
+  : Number(value || 0).toFixed(2);
 function renderTicketHtml(ticket) {
   if (typeof ticket?.documentRaster === "string" && ticket.documentRaster.startsWith("data:image/")) {
     return `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:0;size:80mm auto}html,body{width:80mm;margin:0;padding:0;background:#fff}img{display:block;width:80mm;height:auto;margin:0}</style></head><body><img src="${escapeHtml(ticket.documentRaster)}" alt=""></body></html>`;
@@ -12,7 +14,7 @@ function renderTicketHtml(ticket) {
     const identity = `${x.code ? `<div class="code">${escapeHtml(x.code)}</div>` : ""}${escapeHtml(x.name)}${serials}`;
     return giftReceipt
       ? `<tr><td>${identity}</td><td class="right">${escapeHtml(x.quantity)}</td></tr>`
-      : `<tr><td>${identity}</td><td class="right">${escapeHtml(x.quantity)}</td><td class="right">${money(x.price)}</td><td class="right">${money(x.total)}</td></tr>`;
+      : `<tr><td>${identity}</td><td class="right">${escapeHtml(x.quantity)}</td><td class="right">${money(x.price, true)}</td><td class="right">${money(x.total)}</td></tr>`;
   }).join("");
   const payments = (ticket.payments || []).map((x) => `<div class="row"><span>${escapeHtml(x.method)}${x.reference ? `<small>${escapeHtml(x.reference)}</small>` : ""}</span><strong>${money(x.amount)}</strong></div>`).join("");
   const details = (ticket.details || []).map((x) => `<div class="detail"><span>${escapeHtml(x.label)}</span><strong>${escapeHtml(x.value)}</strong></div>`).join("");

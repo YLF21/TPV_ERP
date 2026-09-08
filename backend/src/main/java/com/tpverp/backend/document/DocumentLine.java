@@ -77,7 +77,7 @@ public class DocumentLine {
     private String nombre;
     @Column(length = 16)
     private String tarifa;
-    @Column(name = "precio_unitario", nullable = false, precision = 19, scale = 2)
+    @Column(name = "precio_unitario", nullable = false, precision = 20, scale = 3)
     private BigDecimal precioUnitario;
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal descuento;
@@ -166,7 +166,8 @@ public class DocumentLine {
         this.codigoBarras = barcode(codigoBarras);
         this.nombre = required(nombre, "nombre");
         this.tarifa = optional(tarifa);
-        this.precioUnitario = nonNegative(precioUnitario, "precioUnitario");
+        this.precioUnitario = Money.exactUnitPrice(Objects.requireNonNull(precioUnitario, "precioUnitario"));
+        if (this.precioUnitario.signum() < 0) throw new IllegalArgumentException("precioUnitario no puede ser negativo");
         this.descuento = Money.validPercentage(descuento);
         this.impuestosIncluidos = impuestosIncluidos;
         this.regimenImpuesto = taxRegime(regimenImpuesto);

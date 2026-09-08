@@ -33,6 +33,7 @@ import {
   stockDetailKeyAction,
   nextStockSelectedIndex,
   normalizeStockBulkContent,
+  stockBulkContentRows,
   hydrateStockBulkProductActivation,
   backendDiscountTypeForPriceUse,
   stockRowToProductEdit,
@@ -48,6 +49,7 @@ import {
   stockBenefitPercent,
   stockPriceFromBenefit,
   stockPriceBelowCost,
+  stockBulkProductFromPreviewDatabaseData,
   selectStockInventoryRows,
   userCanManageStockProducts,
   userCanManageWarehouses,
@@ -59,6 +61,7 @@ import {
 import type { TerminalContext, UserSession } from "../types";
 
 const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
+const excelImportCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/shared-excel-import.css"), "utf8");
 
 const session: UserSession = {
   username: "admin",
@@ -72,6 +75,54 @@ const terminalContext: TerminalContext = {
 };
 
 describe("StockScreen", () => {
+  it("hydrates an existing preview product outside the current page", () => {
+    const product = stockBulkProductFromPreviewDatabaseData({
+      id: "product-outside-page",
+      version: 7,
+      code: "A-700",
+      barcode: "843000700",
+      name: "Fuera de página",
+      purchasePrice: "12.34",
+      salePrice: "20",
+      priceUseMode: "NORMAL",
+      discountType: "0",
+      familyId: "family-1",
+      subfamilyId: "subfamily-1",
+      taxId: "tax-1",
+      taxesIncluded: "1"
+    }, {
+      families: [{ id: "family-1", name: "Bebidas" }],
+      subfamilies: [{ id: "subfamily-1", name: "Café" }],
+      taxes: [{ id: "tax-1", name: "IVA", percentage: 21 }]
+    });
+    expect(product).toEqual(expect.objectContaining({
+      productId: "product-outside-page",
+      version: 7,
+      code: "A-700",
+      name: "Fuera de página",
+      familyName: "Bebidas",
+      subfamilyName: "Café",
+      taxName: "IVA",
+      quantity: 0
+    }));
+    expect(stockBulkProductFromPreviewDatabaseData(null)).toBeUndefined();
+  });
+
+  it("uses fresh imported master values and version while retaining page inventory", () => {
+    const current = stockBulkProductFromPreviewDatabaseData({ id: "product-1", version: 1, name: "Old", purchasePrice: "10" })!;
+    current.quantity = 45;
+    current.totalQuantity = 60;
+    current.warehouseId = "warehouse-1";
+    current.warehouseName = "Principal";
+    const refreshed = stockBulkProductFromPreviewDatabaseData({
+      id: "product-1", version: 2, name: "Saved from Excel", purchasePrice: "12"
+    }, {}, current);
+    expect(refreshed).toEqual(expect.objectContaining({
+      version: 2, name: "Saved from Excel", purchasePrice: "12",
+      quantity: 45, totalQuantity: 60, warehouseId: "warehouse-1", warehouseName: "Principal"
+    }));
+  });
+
   it("keeps sticky stock content below chrome and stock/product modals above it", () => {
     expect(tpvCss).toContain("--tpv-layer-content: 2;");
     expect(tpvCss).toContain("--tpv-layer-chrome: 35;");
@@ -81,6 +132,17 @@ describe("StockScreen", () => {
     expect(tpvCss).toMatch(/\.stock-detail-overlay \{[\s\S]*?z-index: var\(--tpv-layer-overlay\);/);
     expect(tpvCss).toMatch(/\.stock-screen \.filter-overlay \{[\s\S]*?z-index: var\(--tpv-layer-overlay\);/);
     expect(tpvCss).toMatch(/\.product-create-overlay \{[\s\S]*?z-index: var\(--tpv-layer-modal\) !important;/);
+  });
+
+  it("keeps Excel preview horizontal scrolling stable after mapping rows became divs", () => {
+    expect(excelImportCss).toMatch(/\.shared-excel-preview \{[\s\S]*?overflow-x: scroll;[\s\S]*?scrollbar-gutter: stable;/);
+    expect(excelImportCss).toMatch(/\.shared-excel-review-viewport \{[\s\S]*?overflow: scroll;[\s\S]*?scrollbar-gutter: stable;/);
+    expect(excelImportCss).toMatch(/\.shared-excel-results section \{[\s\S]*?overflow: visible;/);
+    expect(excelImportCss).toContain(".shared-excel-mapping .shared-excel-mapping-row:nth-child(1)");
+    expect(excelImportCss).not.toContain(".shared-excel-mapping label:nth-child");
+    expect(excelImportCss).toMatch(/\.shared-excel-results thead th \{[\s\S]*?position: sticky;[\s\S]*?top: 0;[\s\S]*?background: #263f63;/);
+    expect(excelImportCss).toContain("grid-template-rows: repeat(9, minmax(32px, max-content));");
+    expect(excelImportCss).toMatch(/\.shared-excel-preview tbody tr:nth-child\(even\) \{[\s\S]*?background: #[0-9a-f]{6};/i);
   });
 
   it("serializes server sorting and warehouse scope for paged inventory", () => {
@@ -886,6 +948,10 @@ describe("StockScreen", () => {
     expect(selectedStockBulkProductIds(rows)).toEqual([]);
     expect(selectedStockBulkProductIds(setAllStockBulkRowsSelected(rows, true))).toEqual([row.productId]);
     expect(setAllStockBulkRowsSelected(rows, true).map((value) => value.selected)).toEqual([true, false]);
+    expect(stockBulkContentRows([
+      { id: "missing", selected: false, query: "NEW-17", draft: { name: "Nuevo" } },
+      { id: "tail", selected: false, query: "", draft: {} }
+    ])).toHaveLength(1);
   });
 
   it("hydrates activation in legacy bulk drafts from the current product", () => {
