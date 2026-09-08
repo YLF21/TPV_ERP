@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 class ProductionReadinessMigrationContractTest {
 
@@ -78,6 +79,17 @@ class ProductionReadinessMigrationContractTest {
                 "saas_integration_run",
                 "payload <> '__PURGED__'");
         assertThat(sql).doesNotContain("alter table", "drop index");
+    }
+
+    @Test
+    void flywayUsesSessionLockForConcurrentPostgresqlIndexes() throws IOException {
+        var application = new ClassPathResource("application.yml");
+        String yaml = application.getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(yaml).contains(
+                "flyway:",
+                "postgresql:",
+                "transactional-lock: false");
     }
 
     private String migration(String filename) throws IOException {

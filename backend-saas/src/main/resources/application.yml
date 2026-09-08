@@ -9,6 +9,9 @@ spring:
     url: ${TPV_SAAS_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_saas}
     username: ${TPV_SAAS_DB_USERNAME:tpv_erp_saas}
     password: ${TPV_SAAS_DB_PASSWORD:}
+  flyway:
+    postgresql:
+      transactional-lock: false
   jpa:
     hibernate:
       ddl-auto: validate
