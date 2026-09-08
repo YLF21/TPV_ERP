@@ -60,6 +60,8 @@ type ErpSelectProps = {
   className?: string;
   placeholder?: string;
   title?: string;
+  /** Optional editable text; selection still uses the same accessible option menu. */
+  editable?: { text: string; onChange: (text: string) => void; label: string; maxLength?: number };
   "aria-label"?: string;
   "aria-labelledby"?: string;
 };
@@ -111,6 +113,7 @@ export function ErpSelect({
   className,
   placeholder = "-",
   title,
+  editable,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy
 }: ErpSelectProps) {
@@ -118,6 +121,7 @@ export function ErpSelect({
   const listboxId = `${id ?? generatedId}-listbox`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [open, setOpen] = useState(false);
@@ -141,7 +145,7 @@ export function ErpSelect({
 
   function closeMenu(restoreFocus = false) {
     setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
+    if (restoreFocus) (editable ? inputRef.current : triggerRef.current)?.focus();
   }
 
   function selectOption(index: number) {
@@ -160,7 +164,7 @@ export function ErpSelect({
   useEffect(() => {
     if (!open) return;
     const positionPopover = () => {
-      const trigger = triggerRef.current;
+      const trigger = editable ? rootRef.current : triggerRef.current;
       const popover = popoverRef.current;
       if (!trigger || !popover) return;
       const layout = erpSelectPopoverLayout(
@@ -182,7 +186,7 @@ export function ErpSelect({
       window.removeEventListener("resize", positionPopover);
       window.removeEventListener("scroll", positionPopover, true);
     };
-  }, [open, options.length]);
+  }, [open, options.length, Boolean(editable)]);
 
   useOutsidePointerDown(open, rootRef, () => setOpen(false));
 
@@ -190,7 +194,7 @@ export function ErpSelect({
     if (disabled) setOpen(false);
   }, [disabled]);
 
-  function handleTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+  function handleTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement | HTMLInputElement>) {
     if (event.key === "Enter" && event.shiftKey && onNavigatePrevious) {
       event.preventDefault();
       closeMenu();
@@ -251,16 +255,39 @@ export function ErpSelect({
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
   }
 
-  const rootClassName = ["erp-select", open ? "erp-select--open" : "", disabled ? "erp-select--disabled" : "", className]
+  const rootClassName = ["erp-select", editable ? "erp-select--editable" : "", open ? "erp-select--open" : "", disabled ? "erp-select--disabled" : "", className]
     .filter(Boolean)
     .join(" ");
 
   return (
     <div className={rootClassName} ref={rootRef} onBlur={handleBlur}>
+      {editable && <input
+        ref={inputRef}
+        id={id}
+        type="text"
+        role="combobox"
+        aria-label={editable.label}
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-haspopup="listbox"
+        aria-autocomplete="none"
+        autoComplete="off"
+        spellCheck={false}
+        title={title ?? selectedOption?.label}
+        disabled={disabled}
+        value={editable.text}
+        maxLength={editable.maxLength}
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => { closeMenu(); editable.onChange(event.target.value); }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !open) { event.preventDefault(); openMenu(); }
+          else handleTriggerKeyDown(event);
+        }}
+      />}
       <button
         type="button"
         className="erp-select__trigger"
-        id={id}
+        id={editable ? undefined : id}
         ref={triggerRef}
         disabled={disabled}
         title={title}
@@ -272,7 +299,7 @@ export function ErpSelect({
         onClick={() => open ? closeMenu() : openMenu()}
         onKeyDown={handleTriggerKeyDown}
       >
-        <span className="erp-select__value">{selectedOption?.label ?? placeholder}</span>
+        {!editable && <span className="erp-select__value">{selectedOption?.label ?? placeholder}</span>}
         <span className="erp-select__arrow" aria-hidden="true" />
       </button>
       {open && (

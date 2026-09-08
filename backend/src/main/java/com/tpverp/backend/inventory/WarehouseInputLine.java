@@ -32,7 +32,7 @@ public class WarehouseInputLine {
     @Column(nullable = false, precision = 19, scale = 3)
     private BigDecimal cantidad;
 
-    @Column(name = "precio_unitario_compra", nullable = false, precision = 19, scale = 2)
+    @Column(name = "precio_unitario_compra", nullable = false, precision = 20, scale = 3)
     private BigDecimal purchaseUnitPrice = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 5, scale = 2)
@@ -81,7 +81,7 @@ public class WarehouseInputLine {
         this.productId = Objects.requireNonNull(productId, "productId");
         this.productName = requiredProductName(productName);
         this.cantidad = quantity(quantity);
-        this.purchaseUnitPrice = Money.euros(Objects.requireNonNull(unitPrice, "unitPrice"));
+        this.purchaseUnitPrice = Money.exactUnitPrice(Objects.requireNonNull(unitPrice, "unitPrice"));
         if (this.purchaseUnitPrice.signum() < 0) {
             throw new IllegalArgumentException("El precio de compra no puede ser negativo");
         }
@@ -136,7 +136,7 @@ public class WarehouseInputLine {
     }
 
     void snapshotPurchaseUnitPrice(BigDecimal purchaseUnitPrice) {
-        var normalized = Money.euros(Objects.requireNonNull(purchaseUnitPrice, "purchaseUnitPrice"));
+        var normalized = Money.exactUnitPrice(Objects.requireNonNull(purchaseUnitPrice, "purchaseUnitPrice"));
         if (normalized.signum() < 0) {
             throw new IllegalArgumentException("El precio de compra no puede ser negativo");
         }

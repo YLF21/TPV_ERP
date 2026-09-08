@@ -150,7 +150,7 @@ public class SaleLineDeletionService {
             SaleLineDeletionCommand line) {
         var id = UUID.randomUUID();
         var quantity = quantity(line.quantity());
-        var unitPrice = Money.euros(line.unitPrice());
+        var unitPrice = Money.exactUnitPrice(line.unitPrice());
         var total = Money.euros(unitPrice.multiply(BigDecimal.valueOf(quantity)));
         var productId = Objects.requireNonNull(line.productId(), "productId");
         var code = clean(line.code());

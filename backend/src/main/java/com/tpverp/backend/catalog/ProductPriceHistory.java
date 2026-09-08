@@ -26,7 +26,7 @@ public class ProductPriceHistory {
     @Column(nullable = false, length = 16)
     private ProductPriceHistoryType tipo;
 
-    @Column(precision = 19, scale = 2)
+    @Column(precision = 20, scale = 3)
     private BigDecimal importe;
 
     @Column(name = "actualizado_en", nullable = false)

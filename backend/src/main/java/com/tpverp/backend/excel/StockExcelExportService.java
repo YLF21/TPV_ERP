@@ -412,11 +412,11 @@ public class StockExcelExportService {
                 case "tax" -> percentage(cell, result.getBigDecimal("tax_percentage"));
                 case "taxIncluded" -> text(cell, yesNo(result.getBoolean("taxes_included"), language));
                 case "packageQuantity" -> decimal(cell, result.getBigDecimal("package_quantity"), styles.quantity());
-                case "purchasePrice" -> decimal(cell, result.getBigDecimal("purchase_price"), styles.money());
-                case "salePrice" -> decimal(cell, result.getBigDecimal("sale_price"), styles.money());
-                case "memberPrice" -> decimal(cell, result.getBigDecimal("member_price"), styles.money());
-                case "wholesalePrice" -> decimal(cell, result.getBigDecimal("wholesale_price"), styles.money());
-                case "offerPrice" -> decimal(cell, result.getBigDecimal("offer_price"), styles.money());
+                case "purchasePrice" -> decimal(cell, result.getBigDecimal("purchase_price"), styles.unitPrice());
+                case "salePrice" -> decimal(cell, result.getBigDecimal("sale_price"), styles.unitPrice());
+                case "memberPrice" -> decimal(cell, result.getBigDecimal("member_price"), styles.unitPrice());
+                case "wholesalePrice" -> decimal(cell, result.getBigDecimal("wholesale_price"), styles.unitPrice());
+                case "offerPrice" -> decimal(cell, result.getBigDecimal("offer_price"), styles.unitPrice());
                 case "offerActive" -> text(cell, yesNo(result.getBoolean("offer_active"), language));
                 case "offerFrom" -> date(cell, result.getObject("offer_from", LocalDate.class), styles.date());
                 case "offerUntil" -> date(cell, result.getObject("offer_until", LocalDate.class), styles.date());
@@ -791,9 +791,9 @@ public class StockExcelExportService {
         }
     }
 
-    private record Styles(CellStyle header, CellStyle money, CellStyle quantity, CellStyle date) {
+    private record Styles(CellStyle header, CellStyle money, CellStyle unitPrice, CellStyle quantity, CellStyle date) {
         private Styles(SXSSFWorkbook workbook) {
-            this(header(workbook), number(workbook, "#,##0.00 \"€\""),
+            this(header(workbook), number(workbook, "#,##0.00 \"€\""), number(workbook, "#,##0.00# \"€\""),
                     number(workbook, "#,##0"), number(workbook, "yyyy-mm-dd"));
         }
 

@@ -10,7 +10,7 @@ const labels = {
   product: "Producto",
   price: "Precio de venta",
   placeholder: "0,00",
-  invalid: "Introduce un precio mayor que 0 con un máximo de 2 decimales",
+  invalid: "Introduce un precio mayor que 0 con un máximo de 3 decimales",
   cancel: "Cancelar",
   accept: "Aceptar",
 };
@@ -18,7 +18,7 @@ const labels = {
 afterEach(cleanup);
 
 describe("SaleOpenPriceDialog", () => {
-  it("accepts positive prices with comma or dot and at most two decimals", () => {
+  it("accepts positive prices with comma or dot and at most three decimals", () => {
     expect(parseSaleOpenPrice(" 12,50 ")).toBe(12.5);
     expect(parseSaleOpenPrice("0.01")).toBe(0.01);
     expect(parseSaleOpenPrice("101.")).toBe(101);
@@ -27,7 +27,10 @@ describe("SaleOpenPriceDialog", () => {
     expect(parseSaleOpenPrice("0,1")).toBe(0.1);
     expect(parseSaleOpenPrice("0")).toBeNull();
     expect(parseSaleOpenPrice("-1")).toBeNull();
-    expect(parseSaleOpenPrice("1.001")).toBeNull();
+    expect(parseSaleOpenPrice("1.001")).toBe(1.001);
+    expect(parseSaleOpenPrice("2,208")).toBe(2.208);
+    expect(parseSaleOpenPrice("0.001")).toBe(0.001);
+    expect(parseSaleOpenPrice("1.0001")).toBeNull();
     expect(parseSaleOpenPrice("texto")).toBeNull();
   });
 
@@ -41,9 +44,9 @@ describe("SaleOpenPriceDialog", () => {
     />);
 
     const input = screen.getByLabelText("Precio de venta");
-    fireEvent.change(input, { target: { value: "1,001" } });
+    fireEvent.change(input, { target: { value: "1,0001" } });
     fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("máximo de 2 decimales");
+    expect(screen.getByRole("alert")).toHaveTextContent("máximo de 3 decimales");
     expect(onAccept).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: "7," } });

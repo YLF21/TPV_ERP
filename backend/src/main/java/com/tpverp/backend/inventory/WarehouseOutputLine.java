@@ -29,7 +29,7 @@ public class WarehouseOutputLine {
     @Column(nullable = false)
     private int cantidad;
 
-    @Column(name = "precio_unitario_venta", nullable = false, precision = 19, scale = 2)
+    @Column(name = "precio_unitario_venta", nullable = false, precision = 20, scale = 3)
     private BigDecimal saleUnitPrice = BigDecimal.ZERO;
 
     @Version
@@ -50,7 +50,7 @@ public class WarehouseOutputLine {
         this.outputId = Objects.requireNonNull(outputId, "outputId");
         this.productId = Objects.requireNonNull(productId, "productId");
         this.cantidad = quantity;
-        this.saleUnitPrice = Money.euros(Objects.requireNonNull(saleUnitPrice, "saleUnitPrice"));
+        this.saleUnitPrice = Money.exactUnitPrice(Objects.requireNonNull(saleUnitPrice, "saleUnitPrice"));
         if (this.saleUnitPrice.signum() < 0) {
             throw new IllegalArgumentException("El precio de venta no puede ser negativo");
         }
@@ -82,7 +82,7 @@ public class WarehouseOutputLine {
     }
 
     void snapshotSaleUnitPrice(BigDecimal saleUnitPrice) {
-        var normalized = Money.euros(Objects.requireNonNull(saleUnitPrice, "saleUnitPrice"));
+        var normalized = Money.exactUnitPrice(Objects.requireNonNull(saleUnitPrice, "saleUnitPrice"));
         if (normalized.signum() < 0) {
             throw new IllegalArgumentException("El precio de venta no puede ser negativo");
         }

@@ -3,6 +3,8 @@ package com.tpverp.backend.party;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -22,6 +24,10 @@ public interface SupplierRepository extends JpaRepository<Supplier, UUID> {
             UUID companyId, DocumentType documentType, String documentNumber);
 
     Optional<Supplier> findByIdAndCompanyId(UUID id, UUID companyId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select supplier from Supplier supplier where supplier.id = :id and supplier.company.id = :companyId")
+    Optional<Supplier> findByIdAndCompanyIdForUpdate(UUID id, UUID companyId);
 
     @Query(value = """
             select exists(select 1 from documento where proveedor_id = :supplierId)

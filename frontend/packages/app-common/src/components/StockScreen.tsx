@@ -15,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "../api/client";
+import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
 import { ProductThumbnail as AuthenticatedProductThumbnail } from "./ProductThumbnail";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -34,6 +35,7 @@ import { SafeRetirementDialog, type RetirementResult } from "./SafeRetirementDia
 import {
   buildStockBulkSupplierPrincipalAssignments,
   buildStockBulkSupplierAssignments,
+  buildStockBulkCreates,
   buildStockBulkUpdates,
   hydrateStockBulkSupplierData,
   mergeStockBulkPurchaseDocumentProducts,
@@ -274,6 +276,8 @@ type SubfamilyView = {
 
 type TaxView = {
   id: string;
+  defaultTax?: boolean;
+  active?: boolean;
   percentage?: number | string | null;
   name?: string | null;
 };
@@ -1127,6 +1131,11 @@ export function normalizeStockBulkContent(rows: StockBulkEditRowData[]) {
   });
 }
 
+/** Keeps imported MISSING drafts; only the completely empty tail is omitted. */
+export function stockBulkContentRows(rows: StockBulkEditRowData[]) {
+  return rows.filter((row) => row.product || row.query.trim() || Object.keys(row.draft).length > 0);
+}
+
 export function stockBulkProductRowIds(rows: StockBulkEditRowData[]) {
   return rows.flatMap((row) => row.product ? [row.id] : []);
 }
@@ -1188,6 +1197,22 @@ export function nextStockSelectedIndex(currentIndex: number, rowCount: number, k
     return Math.max(0, currentIndex - 1);
   }
   return currentIndex;
+}
+
+function isSharedExcelPriceField(field: string) {
+  return ["purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice"].includes(field);
+}
+
+function sharedExcelPriceUseMode(value: string): BulkPriceUseMode {
+  const normalized = value.trim().toUpperCase();
+  const mapped = ({ "1": "NORMAL", "2": "MEMBER_PRICE", "3": "OFFER_PRICE", "4": "OFFER_DISCOUNT" } as Record<string, BulkPriceUseMode>)[normalized];
+  if (mapped) return mapped;
+  if (normalized === "MEMBER_PRICE" || normalized === "OFFER_PRICE" || normalized === "OFFER_DISCOUNT") return normalized;
+  return "NORMAL";
+}
+
+function sharedExcelBoolean(value: string) {
+  return ["1", "SI", "SÍ", "TRUE", "YES", "COMMON.YES"].includes(value.trim().toUpperCase());
 }
 
 function uniqueStockOptions(rows: StockInventoryRow[], valueKey: keyof StockInventoryRow, labelKey: keyof StockInventoryRow) {
@@ -1332,6 +1357,93 @@ function promotionAppliesToProduct(promotion: PromotionView, product: ProductVie
   ) || (
     target.type === "SUBFAMILY" && target.targetId === product.subfamilyId
   ));
+}
+
+/**
+ * Rehydrates an existing product returned by the authoritative Excel preview.
+ * Stock is paged, so an existing product may not be present in bulkProducts;
+ * databaseData is only accepted for an EXISTING row and never creates a
+ * product from a MISSING row.
+ */
+export function stockBulkProductFromPreviewDatabaseData(
+  databaseData: Record<string, unknown> | null | undefined,
+  catalog: {
+    families?: readonly { id: string; name?: string | null }[];
+    subfamilies?: readonly { id: string; name?: string | null }[];
+    taxes?: readonly { id: string; name?: string | null; percentage?: number | string | null }[];
+  } = {},
+  current?: StockInventoryRow
+): StockInventoryRow | undefined {
+  const id = valueText(databaseData?.id);
+  if (!id) return undefined;
+  const text = (key: string, fallback = "") => valueText(databaseData?.[key] ?? fallback);
+  const priceUseMode = text("priceUseMode", "NORMAL");
+  const storedDiscountType = text("discountType", "0");
+  const flag = (key: string, fallback = "") => {
+    const value = databaseData?.[key];
+    if (value === null || value === undefined || value === "") return fallback;
+    return [true, "1", "true", "SI", "SÍ", "YES", "COMMON.YES"].includes(String(value).trim().toUpperCase())
+      ? "common.yes"
+      : "common.no";
+  };
+  const booleanValue = (key: string) => {
+    const value = databaseData?.[key];
+    return value === true || ["1", "true", "SI", "SÍ", "YES", "COMMON.YES"].includes(String(value ?? "").trim().toUpperCase());
+  };
+  const familyId = text("familyId");
+  const subfamilyId = text("subfamilyId");
+  const taxId = text("taxId");
+  const family = (catalog.families ?? []).find((candidate) => candidate.id === familyId);
+  const subfamily = (catalog.subfamilies ?? []).find((candidate) => candidate.id === subfamilyId);
+  const tax = (catalog.taxes ?? []).find((candidate) => candidate.id === taxId);
+  const taxName = tax?.name || (tax?.percentage == null ? taxId : String(tax.percentage) + "%") || "-";
+  return {
+    productId: id,
+    active: flag("active", "common.yes"),
+    version: Number(databaseData?.version ?? 0),
+    imageId: databaseData?.imageId == null ? null : String(databaseData.imageId),
+    warehouseId: current?.warehouseId ?? "",
+    code: text("code"),
+    barcode: text("barcode"),
+    barcode2: text("barcode2"),
+    name: text("name", id),
+    description: text("description"),
+    comments: text("comments"),
+    purchasePrice: text("purchasePrice"),
+    purchaseDiscountPercent: text("purchaseDiscountPercent"),
+    packageQuantity: text("packageQuantity", "1"),
+    stockMin: text("stockMin"),
+    stockMax: text("stockMax"),
+    supplierName: current?.supplierName ?? "",
+    salePrice: text("salePrice"),
+    memberPrice: text("memberPrice"),
+    wholesalePrice: text("wholesalePrice"),
+    offerPrice: text("offerPrice"),
+    offerDiscountPercent: text("offerDiscountPercent"),
+    productType: text("productType"),
+    requiresSerialNumber: booleanValue("requiresSerialNumber"),
+    discountType: priceUseMode,
+    backendDiscountType: storedDiscountType === "1"
+      ? "NONE"
+      : backendDiscountTypeForPriceUse(priceUseMode as BulkPriceUseMode, "NORMAL"),
+    familyId,
+    familyName: family?.name || familyId,
+    subfamilyId,
+    subfamilyName: subfamily?.name || subfamilyId,
+    taxId,
+    taxName,
+    taxesIncluded: flag("taxesIncluded", "common.no"),
+    offerActive: flag("offerActive", "common.no"),
+    offerFrom: text("offerFrom"),
+    offerUntil: text("offerUntil"),
+    promotionNames: current?.promotionNames ?? "-",
+    promotionTypes: current?.promotionTypes ?? "-",
+    promotionStatuses: current?.promotionStatuses ?? "-",
+    promotionValidity: current?.promotionValidity ?? "-",
+    warehouseName: current?.warehouseName ?? "-",
+    quantity: current?.quantity ?? 0,
+    totalQuantity: current?.totalQuantity ?? 0
+  };
 }
 
 export function selectStockInventoryRows(
@@ -3369,12 +3481,12 @@ export function StockScreen({
         }
         return editor.priceField === "offerPrice"
           ? {
-            offerPrice: price.toFixed(2),
+            offerPrice: roundUnitPrice(price).toFixed(3),
             discountType: "OFFER_PRICE",
             backendDiscountType: "DISCOUNT_PRICE",
             offerActive: "common.yes"
           }
-          : { [editor.priceField]: price.toFixed(2) };
+          : { [editor.priceField]: roundUnitPrice(price).toFixed(3) };
       }, [editor.priceField, ...(editor.priceField === "offerPrice"
         ? ["discountType" as const, "offerActive" as const]
         : [])]);
@@ -3445,7 +3557,7 @@ export function StockScreen({
   }
 
   function currentBulkContent() {
-    return normalizeStockBulkContent(bulkRows.filter((row) => row.product));
+    return normalizeStockBulkContent(stockBulkContentRows(bulkRows));
   }
 
   async function reloadBulkDrafts() {
@@ -3685,6 +3797,7 @@ export function StockScreen({
       return;
     }
     const updates = buildStockBulkUpdates(bulkRows);
+    const creates = buildStockBulkCreates(bulkRows);
     const supplierAssignments = buildStockBulkSupplierAssignments(bulkRows);
     const supplierPrincipalAssignments = buildStockBulkSupplierPrincipalAssignments(bulkRows);
     const imageSnapshot = cloneStockBulkImageSnapshot(bulkImageSnapshotRef.current);
@@ -3697,6 +3810,7 @@ export function StockScreen({
       return;
     }
     const hasCatalogChanges = updates.length > 0
+      || creates.length > 0
       || supplierAssignments.length > 0
       || supplierPrincipalAssignments.length > 0;
     if (!hasCatalogChanges && imageAssignments.length === 0) {
@@ -3721,6 +3835,7 @@ export function StockScreen({
           body: {
             version: draft.version,
             updates,
+            creates,
             supplierAssignments,
             supplierPrincipalAssignments,
             content: appliedContent
@@ -3867,29 +3982,64 @@ export function StockScreen({
     }
   }
 
-  function importSharedBulkRows(rows: SharedExcelImportAcceptedRow[], _metadata: SharedExcelImportMetadata) {
+  function importSharedBulkRows(rows: SharedExcelImportAcceptedRow[], metadata?: SharedExcelImportMetadata) {
+    const importMetadata = metadata ?? { formulas: [] };
     const productsById = new Map(bulkProducts.map((product) => [product.productId, product]));
     const referenceError = (key: string, row: number, value: unknown) => t(key)
       .replace("{row}", String(row))
       .replace("{value}", String(value ?? ""));
     const importErrors: string[] = [];
     const imported = rows.flatMap((row, index) => {
-      const product = row.product ? productsById.get(row.product.id) : undefined;
-      if (!product) return [];
+      const pageProduct = row.product ? productsById.get(row.product.id) : undefined;
+      const isMissing = row.status === "missing";
+      // Master buttons can have changed this product since the Stock page loaded.
+      const product = (!isMissing && row.databaseData
+        ? stockBulkProductFromPreviewDatabaseData(row.databaseData, stockCatalog, pageProduct)
+        : undefined) ?? pageProduct;
+      if (!isMissing && row.status !== "error" && !product) {
+        importErrors.push(referenceError(
+          "stock.bulkEdit.import.error.productMissing",
+          row.rowNumber,
+          row.draft.code || row.draft.barcode || row.rowNumber
+        ));
+        return [];
+      }
       const draft: Partial<StockInventoryRow> = {};
-      Object.entries(row.updateFields).forEach(([field, enabled]) => {
+      const sourceFields = isMissing
+        ? Object.keys(row.draft).map((field) => [field, true] as const)
+        : Object.entries(row.updateFields);
+      sourceFields.forEach(([field, enabled]) => {
         if (!enabled) return;
         const value = row.draft[field as keyof typeof row.draft];
         if (value !== undefined && value !== "") {
-          (draft as Record<string, unknown>)[field] = value;
+          if (importMetadata.skipZeroPriceUpdate && isSharedExcelPriceField(field) && Number(String(value).replace(",", ".")) === 0) {
+            return;
+          }
+          if (field === "priceUseMode") {
+            draft.discountType = sharedExcelPriceUseMode(String(value));
+          } else if (field === "discountType") {
+            const prohibited = sharedExcelBoolean(String(value));
+            draft.backendDiscountType = prohibited ? "NONE" : backendDiscountTypeForPriceUse(
+              sharedExcelPriceUseMode(row.draft.priceUseMode || product?.discountType || "NORMAL") as BulkPriceUseMode,
+              product?.backendDiscountType ?? product?.discountType ?? "NORMAL"
+            );
+          } else if (field === "taxesIncluded") {
+            draft.taxesIncluded = sharedExcelBoolean(String(value)) ? "common.yes" : "common.no";
+          } else {
+            (draft as Record<string, unknown>)[field] = value;
+          }
         }
       });
 
       const classification = resolveStockBulkImportedClassification({
-        currentFamilyId: product.familyId,
-        familyColumnMapped: Boolean(row.updateFields.familyId),
+        currentFamilyId: product?.familyId ?? "",
+        familyColumnMapped: isMissing
+          ? row.draft.familyId !== undefined
+          : Boolean(row.updateFields.familyId),
         familyReference: row.draft.familyId,
-        subfamilyColumnMapped: Boolean(row.updateFields.subfamilyId),
+        subfamilyColumnMapped: isMissing
+          ? row.draft.subfamilyId !== undefined
+          : Boolean(row.updateFields.subfamilyId),
         subfamilyReference: row.draft.subfamilyId,
         catalog: stockCatalog
       });
@@ -3904,6 +4054,15 @@ export function StockScreen({
         return [];
       }
       Object.assign(draft, classification.draft);
+      if (!product) {
+        const query = String(draft.code ?? draft.barcode ?? draft.name ?? row.draft.name ?? row.rowNumber);
+        return [{
+          id: `bulk-excel-missing-${row.rowNumber}-${index}`,
+          selected: false,
+          query,
+          draft
+        }];
+      }
       return [{
         id: `bulk-excel-${product.productId}-${row.rowNumber}-${index}`,
         selected: false,
@@ -4984,7 +5143,7 @@ export function StockScreen({
       if (nextPrice === null || nextPrice < 0) {
         return;
       }
-      updateBulkDraft(row.id, priceKey, nextPrice.toFixed(2));
+      updateBulkDraft(row.id, priceKey, roundUnitPrice(nextPrice).toFixed(3));
     }
 
     return (
@@ -6539,7 +6698,17 @@ export function StockScreen({
           currentPurchasePrice={(product) => bulkProducts.find((candidate) => candidate.productId === product.id)?.purchasePrice}
           onClose={() => setBulkExcelImportOpen(false)}
           onImportAccepted={importSharedBulkRows}
+          taxOptions={stockCatalog.taxes.map((tax) => ({
+            id: tax.id,
+            defaultTax: tax.defaultTax,
+            active: tax.active,
+            value: tax.id,
+            label: [tax.name, tax.percentage == null ? null : `${tax.percentage}%`].filter(Boolean).join(" · ") || tax.id
+          }))}
+          showDocumentPriceSource={false}
           terminalContext={terminalContext}
+          token={session.accessToken}
+          context="STOCK"
         />
         <StockBulkFilterDialog
           open={bulkFilterOpen}

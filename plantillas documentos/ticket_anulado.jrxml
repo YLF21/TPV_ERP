@@ -203,7 +203,7 @@ ORDER BY dl.posicion NULLS LAST
 				<expression><![CDATA[$F{total_linea} == null ? "" : new java.text.DecimalFormat("#,##0.00").format($F{total_linea}) + " €"]]></expression>
 			</element>
 			<element kind="textField" uuid="663f5172-109c-4cb3-80cf-52533e248840" style="Texto" x="10" y="16" width="190" height="13" textAdjust="StretchHeight">
-				<expression><![CDATA[($F{precio_unitario} == null ? "" : "Precio unitario: " + new java.text.DecimalFormat("#,##0.00").format($F{precio_unitario}) + " €") + ($F{numeros_serie} == null ? "" : " · S/N: " + $F{numeros_serie})]]></expression>
+				<expression><![CDATA[($F{precio_unitario} == null ? "" : "Precio unitario: " + new java.text.DecimalFormat("#,##0.00#").format($F{precio_unitario}) + " €") + ($F{numeros_serie} == null ? "" : " · S/N: " + $F{numeros_serie})]]></expression>
 			</element>
 		</band>
 	</detail>

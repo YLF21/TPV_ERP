@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
@@ -357,6 +358,25 @@ class CatalogServiceTest {
         var updated = service.updateTax(tax.getId(), new BigDecimal("10"));
 
         assertThat(updated.getPercentage()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void locksStoreBeforeReadingTaxForCatalogTaxMutation() {
+        CatalogService serviceWithStoreLock = new CatalogService(
+                organization, taxRepository, warehouseRepository, familyRepository,
+                subfamilyRepository, productRepository, identifierRepository,
+                priceHistoryRepository, stockRepository, movementRepository,
+                promotionTargetRepository, productPriceRuleRepository, storeRepository,
+                Clock.systemUTC());
+        when(storeRepository.findByIdForUpdate(storeId)).thenReturn(Optional.of(store));
+        when(taxRepository.findByStoreIdAndPorcentaje(storeId, new BigDecimal("10")))
+                .thenReturn(Optional.empty());
+
+        serviceWithStoreLock.createTax(new BigDecimal("10"));
+
+        var order = inOrder(storeRepository, taxRepository);
+        order.verify(storeRepository).findByIdForUpdate(storeId);
+        order.verify(taxRepository).findByStoreIdAndPorcentaje(storeId, new BigDecimal("10"));
     }
 
     @Test

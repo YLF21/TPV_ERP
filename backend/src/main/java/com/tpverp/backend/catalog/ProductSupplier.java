@@ -40,7 +40,7 @@ public class ProductSupplier {
     @Column(nullable = false)
     private boolean principal;
 
-    @Column(name = "precio_compra_bruto", precision = 19, scale = 2)
+    @Column(name = "precio_compra_bruto", precision = 20, scale = 3)
     private BigDecimal grossPurchasePrice;
 
     @Column(name = "descuento_compra", precision = 5, scale = 2)
@@ -121,12 +121,12 @@ public class ProductSupplier {
         }
         BigDecimal discount = purchaseDiscount == null ? BigDecimal.ZERO : purchaseDiscount;
         return grossPurchasePrice.multiply(BigDecimal.ONE.subtract(discount.movePointLeft(2)))
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
     }
     public Instant getLastEntryAt() { return lastEntryAt; }
 
     private static BigDecimal nonNegative(BigDecimal value, String field) {
-        BigDecimal normalized = Objects.requireNonNull(value, field).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal normalized = com.tpverp.backend.document.Money.exactUnitPrice(Objects.requireNonNull(value, field));
         if (normalized.signum() < 0) {
             throw new IllegalArgumentException(field + " no puede ser negativo");
         }

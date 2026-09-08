@@ -12,7 +12,9 @@ import {
   findExcelColumn,
   findExcelColumns,
   normalizeExcelHeader,
-  readExcelTable
+  parseExcelDate,
+  readExcelTable,
+  excelImportLimits
 } from "./excelImport";
 
 vi.mock("read-excel-file/browser", () => ({
@@ -23,7 +25,7 @@ const readSheetMock = vi.mocked(readSheet);
 
 describe("excelImport", () => {
   it("defines a shared accept list for Excel import controls", () => {
-    expect(excelImportAccept).toBe(".xlsx,.xls,.csv");
+    expect(excelImportAccept).toBe(".xlsx,.xls");
   });
 
   it("normalizes headers and exposes rows as objects", () => {
@@ -49,6 +51,16 @@ describe("excelImport", () => {
     expect(excelCellText(new Date(2026, 6, 14))).toBe("2026-07-14");
     expect(excelCellText(null)).toBe("");
     expect(normalizeExcelHeader(" Código  de   barras ")).toBe("codigo de barras");
+  });
+
+  it("normalizes Spanish Excel date formats and rejects impossible dates", () => {
+    expect(parseExcelDate("05-09-26")).toBe("2026-09-05");
+    expect(parseExcelDate("05-09-2026")).toBe("2026-09-05");
+    expect(parseExcelDate("2026-09-05")).toBe("2026-09-05");
+    expect(parseExcelDate("29-02-2028")).toBe("2028-02-29");
+    expect(parseExcelDate("31-04-2026")).toBeNull();
+    expect(parseExcelDate("1-1-24")).toBeNull();
+    expect(parseExcelDate("2026-9-5")).toBeNull();
   });
 
   it("converts between Excel column letters and indexes", () => {
@@ -103,6 +115,29 @@ describe("excelImport", () => {
         draft: expect.objectContaining({ purchasePrice: "0", salePrice: "0" })
       })
     ]);
+  });
+
+  it("detects only identity rows, accepts existing products without a name, and requires name for new products", () => {
+    const rows = classifyExcelProductRows(
+      [["Código", "Nombre", "Precio"], ["", "", "5"], ["A001", "", "5"], ["NEW", "", "5"], ["", "Solo nombre", "5"]],
+      { code: "A", name: "B", salePrice: "C" },
+      [{ id: "p1", code: "A001" }]
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.rowNumber).toBe(3);
+    expect(rows[0]?.status).toBe("accepted");
+    expect(rows[1]?.errors).toContain("nameRequired");
+    expect(rows[2]?.errors).toContain("identifierRequired");
+  });
+
+  it("reports a visible blocking row when detected-row limit is exceeded", () => {
+    const rows = classifyExcelProductRows(
+      [["Código"], ...Array.from({ length: excelImportLimits.maxDetectedRows + 1 }, (_, i) => [`P${i}`])],
+      { code: "A" },
+      []
+    );
+    expect(rows).toHaveLength(excelImportLimits.maxDetectedRows + 1);
+    expect(rows.at(-1)).toEqual(expect.objectContaining({ status: "error", errors: ["tooManyDetectedRows"] }));
   });
 
   it("reads a file through the common table adapter", async () => {
