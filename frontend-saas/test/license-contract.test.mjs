@@ -66,6 +66,16 @@ test("company detail discards stale operations and fiscal provisioning responses
   assert.match(source, /saved\.companyId !== companyId/);
 });
 
+test("company operations failures are retryable and never create writable defaults", async () => {
+  const source = await readFile(appSourceUrl, "utf8");
+  const detail = source.slice(source.indexOf("function CompanyDetail("), source.indexOf("function AlertList("));
+
+  assert.match(detail, /operationsLoadError && <RetryError/);
+  assert.match(detail, /retainCompanyOperationsAfterFailure/);
+  assert.match(detail, /operationsStale \|\| operationsLoadError/);
+  assert.doesNotMatch(detail, /defaultCompanyOperations/);
+});
+
 test("tenant user management keeps responses and mutations scoped to the selected company", async () => {
   const source = await readFile(appSourceUrl, "utf8");
   const usersView = source.slice(source.indexOf("function UsersView("), source.indexOf("function AuditView("));

@@ -98,6 +98,9 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
                 && "POST".equals(method)) {
             return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
         }
+        if (path.startsWith("/api/v1/admin/outbox/")) {
+            return AdminPermission.MANAGE_OPERATIONS;
+        }
         if (path.startsWith("/api/v2/admin/")
                 && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
             return AdminPermission.MANAGE_OPERATIONS;

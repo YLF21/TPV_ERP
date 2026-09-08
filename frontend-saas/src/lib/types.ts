@@ -41,11 +41,25 @@ export type InvoiceFiscalDetail = {
   series: string;
   fiscalYear: number;
   taxRegime: string;
-  taxBase: string;
-  taxRate: string;
-  taxAmount: string;
+  fiscalStatus: "PENDING_TAX_DATA" | "CALCULATED" | "NOT_APPLICABLE";
+  taxBase: string | null;
+  taxRate: string | null;
+  taxAmount: string | null;
+  reason: string | null;
+  legalBasis: string | null;
+  evidenceReference: string | null;
   total: string;
   currency: string;
+};
+
+export type UpdateInvoiceFiscalRequest = {
+  fiscalStatus: "CALCULATED" | "NOT_APPLICABLE";
+  taxBase: string | null;
+  taxRate: string | null;
+  taxAmount: string | null;
+  reason: string | null;
+  legalBasis: string | null;
+  evidenceReference: string | null;
 };
 
 export type PaymentReconciliation = {
@@ -60,6 +74,20 @@ export type PaymentReconciliation = {
   status: string;
   notes: string | null;
   createdAt: string;
+};
+
+export type OutboxFailure = {
+  id: string;
+  channel: "SECURITY" | "INTEGRATION";
+  subject: string;
+  attempts: number;
+  error: string | null;
+  failedAt: string;
+};
+
+export type OutboxFailurePage = {
+  items: OutboxFailure[];
+  nextCursor: string | null;
 };
 
 export type MasterImportResult = {

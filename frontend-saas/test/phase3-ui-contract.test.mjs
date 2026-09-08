@@ -39,3 +39,20 @@ test("invoice fiscal detail and manual reconciliation stay company and permissio
   assert.match(app, /paymentId: null/);
   assert.match(app, /reconciliationError && <RetryError/);
 });
+
+test("V49 fiscal evidence is editable, nullable and blocks pending invoice payments", async () => {
+  const [app, api] = await sources;
+  const types = await readFile(new URL("../src/lib/types.ts", import.meta.url), "utf8");
+  assert.match(types, /fiscalStatus: "PENDING_TAX_DATA" \| "CALCULATED" \| "NOT_APPLICABLE"/);
+  for (const field of ["taxBase", "taxRate", "taxAmount", "reason", "legalBasis", "evidenceReference"]) {
+    assert.match(types, new RegExp(`${field}: string \\| null`));
+  }
+  assert.match(api, /updateInvoiceFiscal/);
+  assert.match(api, /method: "PUT"/);
+  assert.match(app, /canInvoiceBePaid\(fiscalStates\[selectedInvoice\.id\]\)/);
+  assert.match(app, /disabled=\{!canInvoiceBePaid\(fiscalStates\[invoice\.id\]\)\}/);
+  assert.match(app, /fiscalDetail\.taxBase === null \? t\(fiscalDetail\.fiscalStatus === "PENDING_TAX_DATA"/);
+  assert.match(app, /fiscalDetail\.evidenceReference && <Metric/);
+  assert.match(app, /form className="compact-form-grid" onSubmit=\{saveFiscalDecision\} aria-label=\{t\("fiscalDecision"\)\}/);
+  assert.match(app, /reason: calculated \? null : fiscalForm\.reason\.trim\(\)/);
+});

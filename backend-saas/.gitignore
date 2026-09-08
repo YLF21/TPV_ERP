@@ -3,3 +3,9 @@ target/
 .env.*
 !.env.example
 !.env.production.example
+
+# Operational PostgreSQL backups are generated locally by the release runbook.
+# Keep the rule anchored so SQL fixtures under src/test remain visible to Git.
+/backups/
+/*.dump
+/*.dump.sha256

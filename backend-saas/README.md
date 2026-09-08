@@ -17,6 +17,9 @@ de datos. Para desarrollo sin contenedor web se puede ejecutar
 `.\mvnw.cmd spring-boot:run` y `npm.cmd run dev` por separado.
 El lanzador `.cmd` evita depender de la politica de ejecucion de scripts de
 PowerShell y comprueba la salud del backend antes de anunciar el panel.
+El override activa los perfiles `dev,local`: `.env.example` contiene únicamente
+credenciales de laboratorio y no exige bootstrap ni webhooks productivos. El
+acceso administrativo del Compose DEV es `ADMIN` / `0000`.
 
 Para conectar una instalacion local del ERP al SaaS publicado por Compose,
 arranca el backend local con los perfiles `dev,saas-dev` (y
@@ -31,6 +34,10 @@ Compose; se puede cambiar con `TPV_LICENSE_SAAS_URL`.
 - `TPV_SAAS_DB_USERNAME`: usuario PostgreSQL.
 - `TPV_SAAS_DB_PASSWORD`: password PostgreSQL.
 - `TPV_SAAS_SECRET_ENCRYPTION_KEY`: clave AES-256 en Base64 (exactamente 32 bytes) para cifrar credenciales de integraciones. El valor del `.env.example` solo es válido para DEV local.
+- `TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD`: password temporal robusto para sustituir la credencial seed de `admin` en el primer arranque productivo; se conserva exclusivamente en el gestor de secretos y debe rotarse después del bootstrap.
+- `TPV_SAAS_SECURITY_WEBHOOK_URL` / `SECRET` y `TPV_SAAS_INTEGRATION_WEBHOOK_URL` / `SECRET`: contrato reservado para los futuros canales autorizados. La imagen actual no registra esos proveedores y definir las variables no habilita entregas ni readiness.
+- `TPV_SAAS_WEBHOOK_CONNECT_TIMEOUT` y `TPV_SAAS_WEBHOOK_REQUEST_TIMEOUT`: valores reservados para esos proveedores; por defecto `PT3S` y `PT10S`.
+- `TPV_SAAS_SECURITY_PAYLOAD_RETENTION`, `TPV_SAAS_INTEGRATION_PAYLOAD_RETENTION`, `TPV_SAAS_PAYLOAD_PURGE_BATCH_SIZE` y `TPV_SAAS_SECURITY_PAYLOAD_PURGE_DELAY`: retencion de payloads cifrados terminales, tamano de lote y frecuencia del job de purga; por defecto `P30D`, `P30D`, 500 filas y 24 horas. Nunca purga filas `PENDING`, `PROCESSING` o `FAILED`.
 - `TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED`: compatibilidad temporal con HTTP Basic; por defecto `false`.
 - `TPV_SAAS_SESSION_LIFETIME`: duración fija de cada token Bearer; por defecto `PT8H`.
 - `TPV_SAAS_CORS_ALLOWED_ORIGINS`: origenes web permitidos, separados por coma. Vacio no abre CORS; el override DEV limita el acceso a `127.0.0.1:8088` y `localhost:8088`.
@@ -71,6 +78,11 @@ igual que en APP VENTA y APP GESTION. Esta credencial no se carga en producción
 - `PUT /api/v1/admin/users/{username}/password`
 - `DELETE /api/v1/admin/users/{username}`
 - `GET /api/v1/admin/audit`
+- `GET /api/v1/admin/outbox/failures`
+- `POST /api/v1/admin/outbox/security/{id}/requeue`
+- `POST /api/v1/admin/outbox/security/{id}/acknowledge`
+- `POST /api/v1/admin/outbox/integrations/{id}/requeue`
+- `POST /api/v1/admin/outbox/integrations/{id}/acknowledge`
 - `POST /api/v1/license/link`
 - `POST /api/v1/license/validate`
 - `POST /api/v1/sync/events`
@@ -116,7 +128,9 @@ Variables minimas:
 
 ```powershell
 Copy-Item .env.production.example .env.production
-# Edita .env.production y define passwords, una clave AES-256 aleatoria y el origen HTTPS real.
+# Edita .env.production y define passwords, una clave AES-256 aleatoria,
+# el bootstrap inicial y el origen HTTPS real. Las variables webhook quedan
+# vacías hasta que exista un proveedor expresamente autorizado.
 ```
 
 El Compose base fuerza siempre el perfil `prod`; solo
@@ -155,10 +169,28 @@ aportar un certificado válido, redirección HTTP a HTTPS, HSTS emitido únicame
 sobre HTTPS, límites de tamaño y frecuencia y sobrescritura de cabeceras
 `Forwarded`/`X-Forwarded-*`. No se debe publicar directamente el puerto interno.
 
-En una base nueva, el bootstrap debe hacerse sin tráfico público: cambie directamente
-las credenciales seed de `admin` y `viewer` (o desactive la cuenta que no se use)
-antes de arrancar con `prod`. No existe override para credenciales inseguras. El guard no escribe
-usuarios, passwords ni hashes en el log de rechazo.
+En una base nueva, el bootstrap debe hacerse sin tráfico público. El primer arranque
+con `prod` exige `TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD`: rota el usuario `admin`, obliga
+a cambiar de password en el primer login y desactiva el usuario `viewer` seed. Después
+del bootstrap se retira este secreto temporal del contenedor y del gestor de secretos. No existe
+override para credenciales inseguras y el guard no escribe usuarios, passwords ni hashes
+en el log de rechazo.
+
+La entrega externa continúa deliberadamente fail-closed. Antes de registrar los
+proveedores se deben aprobar destinos HTTPS concretos o una allowlist, el envío del
+token de recuperación de un solo uso y de los payloads de integración, el esquema
+HMAC, idempotencia, timeouts y tratamiento de errores. Hasta incorporar y probar esos
+proveedores, `/actuator/health` queda fuera de servicio y Compose no abre el panel;
+rellenar las variables reservadas no cambia este estado.
+
+Los administradores con `MANAGE_OPERATIONS` pueden inspeccionar fallos sin exponer
+payloads ni secretos mediante
+`GET /api/v1/admin/outbox/failures?channel=SECURITY|INTEGRATION&limit=1..100&cursor=<opaco>`;
+la respuesta paginada contiene `items` y `nextCursor`. Un fallo puede
+reintentarse con `POST /api/v1/admin/outbox/{security|integrations}/{id}/requeue`
+o reconocerse como resuelto con la ruta equivalente `/acknowledge`; ambos cuerpos
+requieren `{"reason":"motivo operativo verificable"}` y generan auditoria. Requeue
+conserva la misma clave de idempotencia; acknowledge es terminal y no reenvia datos.
 
 ## Puerta de release
 
@@ -166,9 +198,10 @@ Una entrega solo es apta para producción cuando se cumplen todos estos puntos:
 
 1. El commit de release contiene todas las migraciones y fuentes necesarias y
    no incluye `.env`, claves, dumps ni evidencias generadas bajo `audits/`.
-2. Se completa `RELEASE_CHECKLIST.md`. CI termina verde, incluido el E2E SaaS
-   con PostgreSQL real, build de imágenes fijadas por digest, auditoría de
-   dependencias, SBOM y migraciones Flyway aplicadas desde cero.
+2. Se completa `RELEASE_CHECKLIST.md`. CI termina verde, incluidos AdminApi y
+   permisos outbox con PostgreSQL, el E2E autónomo fiscal/outbox y el smoke de
+   readiness/autenticación contra backend real, build de imágenes fijadas por
+   digest, auditoría de dependencias, SBOM y migraciones Flyway desde cero.
 3. `docker compose ... config --quiet` se ejecuta con variables productivas
    inyectadas por el gestor de secretos, nunca desde el repositorio.
 4. Las migraciones se ensayan primero sobre una restauración reciente y se
@@ -176,6 +209,29 @@ Una entrega solo es apta para producción cuando se cumplen todos estos puntos:
 5. Tras arrancar, `/actuator/health` y `/actuator/saasSecurity` responden 2xx
    desde la red interna. El proxy HTTPS supera además una comprobación de
    certificado, HSTS, cabeceras de seguridad y rate limiting.
+
+CI publica `saas-release-evidence` con el SHA del candidato, hashes de Compose,
+Dockerfiles, Nginx y V49-V52, además del inventario local de imágenes. Si se
+configura la variable de repositorio `TPV_SAAS_PUBLIC_URL`, el gate exige HTTPS y
+HSTS reales. `TPV_SAAS_APPROVED_RPO` y `TPV_SAAS_APPROVED_RTO` se registran solo
+como entradas aprobadas; CI declara explícitamente que no ejecuta restore ni
+rollback y que tampoco convierte esos valores en evidencia medida.
+
+El artefacto distingue también el alcance: la UI fiscal/outbox se prueba de forma
+autónoma y reproducible; AdminApi, persistencia y permisos outbox se validan en el
+job PostgreSQL; el navegador contra backend real cubre readiness y autenticación.
+No se etiqueta ese último smoke como E2E fiscal/outbox real.
+
+### Ventana de migración V49-V52
+
+V49 reconstruye los índices activos de entrega y V50 reemplaza constraints y
+actualiza claims huérfanos, por lo que ambos se ensayan con el volumen real y una
+ventana de bloqueo medida. V51 y V52 contienen exclusivamente `CREATE INDEX CONCURRENTLY`:
+Flyway la ejecuta fuera de transacción y no se debe envolver manualmente en
+`BEGIN/COMMIT` ni mezclar con DDL transaccional. Durante V51/V52 se monitorizan
+`pg_stat_progress_create_index` y `pg_index.indisvalid`. Si una interrupción deja
+el índice inválido, se elimina mediante `DROP INDEX CONCURRENTLY IF EXISTS
+idx_saas_security_outbox_terminal_retention` antes de reparar/reintentar Flyway.
 
 Comprobación TLS mínima desde una máquina exterior al despliegue:
 
@@ -235,6 +291,13 @@ con control de acceso y una segunda ubicación. No se almacenan junto a
 `.env.production` ni a la clave AES de la aplicación. Política mínima inicial:
 siete copias diarias, cuatro semanales y doce mensuales; ajústese a las
 obligaciones contractuales y legales.
+
+Los backups creados antes de la purga pueden conservar payloads cifrados durante
+toda su propia retención. Por ello la política de copias no puede superar la
+retención legal acordada sin una excepción documentada. El job de aplicación
+tombstonea `encrypted_payload` solo en eventos terminales `DELIVERED` o
+`ACKNOWLEDGED` con antigüedad mayor que `TPV_SAAS_SECURITY_PAYLOAD_RETENTION`;
+nunca purga `PENDING`, `PROCESSING` o `FAILED`, y cada lote queda auditado.
 
 Antes de producción se registran y aprueban dos objetivos medidos:
 

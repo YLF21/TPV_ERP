@@ -22,3 +22,12 @@ test("authenticated requests use an opaque bearer token instead of the password"
   assert.match(source, /Bearer \$\{credentials\.accessToken\}/);
   assert.doesNotMatch(source, /btoa/);
 });
+
+test("all API transports have a bounded abortable timeout", async () => {
+  const source = await readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const REQUEST_TIMEOUT_MS = 20_000/);
+  assert.match(source, /new AbortController\(\)/);
+  assert.equal((source.match(/fetchWithTimeout\(`/g) ?? []).length, 4);
+  assert.equal((source.match(/\bfetch\(/g) ?? []).length, 1);
+});

@@ -18,6 +18,15 @@ test("frontend SaaS shows RFC 9457 detail for actionable API errors", async () =
   assert.match(appSource, /extractApiErrorMessage\(error\.message\)/);
 });
 
+test("server errors are sanitized before problem details can reach the UI", async () => {
+  const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const serverGuard = appSource.indexOf("if (error.status >= 500)", appSource.indexOf("function errorMessage"));
+  const detailExtraction = appSource.indexOf("extractApiErrorMessage(error.message)", appSource.indexOf("function errorMessage"));
+  assert.ok(serverGuard > 0 && serverGuard < detailExtraction);
+  assert.match(appSource, /\[502, 503, 504\]\.includes\(error\.status\).*serviceUnavailable/);
+  assert.match(appSource, /error\.status >= 500.*internalServerError/);
+});
+
 test("legacy fallbacks remain supported but HTML responses are never shown", () => {
   assert.equal(extractApiErrorMessage(JSON.stringify({ message: "Respuesta legacy" })), "Respuesta legacy");
   assert.equal(extractApiErrorMessage(JSON.stringify({ error: "Not Found" })), "Not Found");

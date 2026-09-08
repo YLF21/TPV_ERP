@@ -3,36 +3,25 @@
 Este manifiesto separa los archivos que forman el producto de los artefactos
 locales. No sustituye la revisión del diff ni autoriza un despliegue.
 
-## Inventario pendiente de versionar
+## Estado e inventario del candidato
 
-La fotografía usada para preparar este manifiesto contenía 64 archivos sin
-seguimiento. `frontend-saas/design-qa.md` es el único artefacto local de ese
-grupo y queda ignorado. Los otros 63 son parte del cambio funcional. También se
-deben incluir este manifiesto y `.github/dependabot.yml`, creados durante el
-endurecimiento de release.
+Estado auditado el 2026-09-08: `main` estaba sincronizada con `origin/main`, pero
+los workflows `CI` y `Quality` del HEAD estaban rojos por una prueba de APP
+GESTIÓN. El pipeline candidato separa ahora los gates SaaS, ejecuta E2E autónomo
+y real y valida los contratos fiscal V49, recuperación V50 y retención V51/V52; aún debe ejecutarse remotamente y
+terminar verde antes del merge.
 
-### Incluir en el commit
+El producto SaaS candidato contiene migraciones Flyway `V1` a `V52` (con los
+huecos deliberados documentados por sus ubicaciones de perfil). El delta de
+release debe contener de forma autocontenida las migraciones V49, V50, V51 y V52, sus
+fuentes y pruebas, el contrato fail-closed de los futuros webhooks,
+Compose, ambos ejemplos de entorno, CI, Dependabot y esta documentación. Los
+proveedores webhook no forman parte del candidato actual. No se deben modificar fuentes de
+`backend/` ni `frontend/` para cerrar este release SaaS.
 
-- `.github/dependabot.yml` y `backend-saas/RELEASE_CHECKLIST.md`.
-- `backend-saas/OPERATIONS_PHASE2.md`.
-- Los 29 archivos sin seguimiento bajo
-  `backend-saas/src/main/java/com/tpverp/saas/`: cabeceras de seguridad, estado
-  persistente, ciclo de password, canales/outbox, conciliación, CSV y límites
-  de plan. Son dependencias de fuentes ya modificadas y no son opcionales.
-- `backend-saas/src/main/resources/application-local.yml`.
-- `backend-saas/src/main/resources/db/local/R__saas_local_admin_credentials.sql`.
-- Las migraciones `V43` a `V47` bajo
-  `backend-saas/src/main/resources/db/migration/`.
-- Los 18 archivos sin seguimiento bajo `backend-saas/src/test/`, incluido
-  `src/test/resources/db/test/R__test_admin_password_change_bypass.sql`.
-- `frontend-saas/e2e/saas-smoke.mjs`.
-- `frontend-saas/src/lib/frontend-runtime.d.mts` y
-  `frontend-saas/src/lib/frontend-runtime.mjs`.
-- Los cinco archivos sin seguimiento bajo `frontend-saas/test/`.
-- Todos los archivos ya seguidos que aparecen modificados en `git status`.
-
-Antes de preparar el commit se vuelve a contar el inventario. Cualquier archivo
-nuevo exige clasificación explícita; no se usa `git add .` a ciegas.
+Antes de preparar el commit se revisa el inventario real con
+`git status --short --untracked-files=all`. Cualquier archivo nuevo exige
+clasificación explícita; no se usa `git add .` a ciegas.
 
 ### No incluir
 
@@ -45,23 +34,42 @@ nuevo exige clasificación explícita; no se usa `git add .` a ciegas.
 
 ## Gate de commit/push
 
-- [ ] V47 y todas las migraciones aplican desde una base PostgreSQL vacía.
+- [ ] V49, V50, V51, V52 y todas las migraciones aplican desde una base PostgreSQL vacía.
+- [ ] V49 y V50 aplican sobre una copia con outboxes voluminosos dentro de la
+      ventana aprobada. V49 reconstruye índices de entrega y V50 reemplaza
+      constraints y recupera claims huérfanos; se han medido sus bloqueos y duración.
+- [ ] V51 y V52 se ejecutan fuera de transacción como migraciones aisladas: contienen
+      únicamente `CREATE INDEX CONCURRENTLY`, no queda un índice `INVALID` y su
+      reintento/limpieza ante interrupción está ensayado.
 - [ ] Las mismas migraciones aplican sobre una restauración anonimizada reciente.
 - [ ] `git status --short --untracked-files=all` no muestra archivos sin clasificar.
 - [ ] `git diff --check` no informa errores.
 - [ ] La revisión staged confirma que no hay secretos ni artefactos locales.
-- [ ] CI completa está verde: Java, JavaScript, Compose, imágenes, E2E,
-      auditoría de dependencias, SBOM y cobertura.
+- [ ] CI completa está verde: Java, JavaScript, Compose DEV/producción, imágenes,
+      E2E autónomo fiscal/outbox, E2E de readiness/autenticación con backend real,
+      AdminApi y permisos outbox con PostgreSQL, auditoría de dependencias, SBOM
+      y cobertura.
+- [ ] El artefacto `saas-release-evidence` corresponde al SHA candidato, contiene
+      hashes e inventario de imágenes y no marca TLS, restore o RPO/RTO como
+      validados cuando no se aportó infraestructura/evidencia real.
+- [ ] Antes de crear un tag `saas-v*` están definidas las referencias reales
+      `TPV_SAAS_PUBLIC_URL`, `TPV_SAAS_RESTORE_EVIDENCE`,
+      `TPV_SAAS_ROLLBACK_EVIDENCE`, `TPV_SAAS_APPROVED_RPO`,
+      `TPV_SAAS_APPROVED_RTO` y `TPV_SAAS_RPO_RTO_EVIDENCE`; el tag falla si falta alguna.
 - [ ] El commit se crea en una rama de release/revisión, no directamente sobre
       `main`, y el push no se realiza hasta revisar el diff final.
 
 ## Gate de producción
 
 - [ ] `.env.production` procede del gestor de secretos y pasa el guard de
-      credenciales, clave AES-256 y CORS HTTPS.
+      credenciales, bootstrap inicial, clave AES-256 y CORS HTTPS.
+- [ ] Existe un proveedor externo expresamente autorizado para cada canal
+      requerido; las variables webhook reservadas por sí solas no cumplen este gate.
 - [ ] Los digests de imágenes del release quedan registrados y disponibles para
       rollback.
 - [ ] Existe backup previo con SHA-256, copia cifrada externa y restore ensayado.
+- [ ] La retención de payloads cifrados está aprobada; la purga conserva solo el
+      tombstone no sensible y nunca modifica filas PENDING, PROCESSING o FAILED.
 - [ ] RPO y RTO están aprobados y medidos.
 - [ ] El proxy exterior supera certificado, redirección HTTPS, HSTS, cabeceras y
       rate limiting.
@@ -76,8 +84,15 @@ nuevo exige clasificación explícita; no se usa `git add .` a ciegas.
 ```powershell
 git status --short --untracked-files=all
 git diff --check
+docker compose --env-file backend-saas/.env.example -f backend-saas/docker-compose.yml -f backend-saas/docker-compose.dev.yml config --quiet
 docker compose --env-file backend-saas/.env.production -f backend-saas/docker-compose.yml config --quiet
 docker compose --env-file backend-saas/.env.production -f backend-saas/docker-compose.yml build --pull
 Push-Location backend-saas; .\mvnw.cmd verify; Pop-Location
-Push-Location frontend-saas; npm ci; npm test; npm run build; Pop-Location
+Push-Location frontend-saas; npm ci; npm test; npm run test:e2e; npm run build; Pop-Location
 ```
+
+V51 y V52 no se deben ejecutar manualmente dentro de `BEGIN/COMMIT`: PostgreSQL prohíbe
+`CREATE INDEX CONCURRENTLY` en una transacción y Flyway la detecta como no
+transaccional. Durante la ventana se monitorizan `pg_stat_progress_create_index`
+y `pg_index.indisvalid`; una interrupción puede dejar un índice inválido que debe
+eliminarse con `DROP INDEX CONCURRENTLY IF EXISTS` antes de reintentar Flyway.

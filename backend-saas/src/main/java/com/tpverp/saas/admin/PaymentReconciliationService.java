@@ -45,6 +45,13 @@ public class PaymentReconciliationService {
         if (companies == null || companies == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe");
         }
+        String provider = request.provider().trim().toUpperCase(Locale.ROOT);
+        String externalReference = request.externalReference().trim();
+        lock("reconciliation-reference", companyId + ":" + provider + ":" + externalReference);
+        if (request.paymentId() != null) {
+            lock("reconciliation-payment", request.paymentId().toString());
+        }
+        rejectDuplicate(companyId, request.paymentId(), provider, externalReference);
         String amount = new BigDecimal(request.amount()).setScale(2).toPlainString();
         String currency = request.currency().trim().toUpperCase(Locale.ROOT);
         String status = "PENDING";
@@ -72,12 +79,12 @@ public class PaymentReconciliationService {
                         id, company_id, payment_id, provider, external_reference, amount, currency,
                         booked_at, status, notes, created_at)
                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, id, companyId, request.paymentId(), request.provider().trim().toUpperCase(Locale.ROOT),
-                    request.externalReference().trim(), amount, currency, Timestamp.from(request.bookedAt()),
+                    """, id, companyId, request.paymentId(), provider,
+                    externalReference, amount, currency, Timestamp.from(request.bookedAt()),
                     status, blank(request.notes()), Timestamp.from(clock.instant()));
         } catch (DataIntegrityViolationException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "La referencia externa ya fue conciliada", exception);
+                    "No se pudo registrar la conciliacion por una restriccion de integridad", exception);
         }
         return byId(id);
     }
@@ -102,6 +109,41 @@ public class PaymentReconciliationService {
 
     private static String blank(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean exists(String sql, Object... args) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(sql, Boolean.class, args));
+    }
+
+    private void rejectDuplicate(UUID companyId, UUID paymentId, String provider, String externalReference) {
+        if (paymentId != null && exists("""
+                select exists(
+                    select 1 from saas_payment_reconciliation
+                    where payment_id = ? and status = 'MATCHED')
+                """, paymentId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El pago ya tiene una conciliacion MATCHED");
+        }
+        if (exists("""
+                select exists(
+                    select 1 from saas_payment_reconciliation
+                    where company_id = ? and provider = ? and external_reference = ?)
+                """, companyId, provider, externalReference)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La referencia externa ya fue conciliada para este proveedor");
+        }
+    }
+
+    private void lock(String namespace, String value) {
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            try (var statement = connection.prepareStatement(
+                    "select pg_advisory_xact_lock(hashtextextended(?::text, hashtext(?)))")) {
+                statement.setString(1, value);
+                statement.setString(2, namespace);
+                statement.execute();
+            }
+            return null;
+        });
     }
 
     private record PaymentMatch(String amount, String currency) {

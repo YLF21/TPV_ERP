@@ -126,7 +126,39 @@ class AdminProductionGuardTest {
                 .hasMessageContaining("Credenciales iniciales");
         assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod", "local"), false).run())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod y local");
+                .hasMessageContaining("perfil prod");
+    }
+
+    @Test
+    void bloqueaProduccionCombinadaConCualquierPerfilPermisivo() {
+        for (String permissive : Set.of("local", "test", "dev", "demo")) {
+            assertThatThrownBy(() -> new AdminProductionGuard(
+                    users, Set.of("prod", permissive), false).run())
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("perfil prod")
+                    .hasMessageContaining(permissive);
+        }
+    }
+
+    @Test
+    void permitePerfilDevAisladoSinExigirSecretosProductivos() {
+        when(users.findAll()).thenReturn(List.of(user("admin", DEFAULT_ADMIN_HASH, true)));
+
+        assertThatCode(() -> new AdminProductionGuard(
+                users, Set.of("dev"), false,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "replace-with-a-strong-database-password").run())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void noPermiteQueDevDesactiveElGuardDeStaging() {
+        assertThatThrownBy(() -> new AdminProductionGuard(
+                users, Set.of("staging", "dev"), false,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "replace-with-a-strong-database-password").run())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no pueden combinarse");
     }
 
     @Test

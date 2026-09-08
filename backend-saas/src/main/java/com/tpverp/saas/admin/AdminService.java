@@ -900,21 +900,27 @@ public class AdminService {
     public InvoiceFiscalDetailResponse invoiceFiscalDetail(UUID invoiceId) {
         return jdbc.query("""
                 select id, company_id, number, series, fiscal_year, tax_regime,
-                       fiscal_status, tax_base, tax_rate, tax_amount, amount, currency
+                       fiscal_status, tax_base, tax_rate, tax_amount,
+                       fiscal_reason, fiscal_legal_basis, fiscal_evidence_reference,
+                       amount, currency
                 from saas_billing_invoice where id = ?
                 """, (rs, rowNum) -> new InvoiceFiscalDetailResponse(
                 rs.getObject("id", UUID.class), rs.getObject("company_id", UUID.class),
                 rs.getString("number"), rs.getString("series"), rs.getInt("fiscal_year"),
                 rs.getString("tax_regime"), rs.getString("fiscal_status"), nullableMoney(rs.getString("tax_base")),
                 nullableMoney(rs.getString("tax_rate")), nullableMoney(rs.getString("tax_amount")),
+                rs.getString("fiscal_reason"), rs.getString("fiscal_legal_basis"),
+                rs.getString("fiscal_evidence_reference"),
                 money(rs.getString("amount")), rs.getString("currency")), invoiceId).stream()
                 .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe"));
     }
     @Transactional
     public InvoiceFiscalDetailResponse updateInvoiceFiscal(UUID invoiceId, UpdateInvoiceFiscalRequest request) {
-        BigDecimal invoiceAmount = jdbc.query("select amount from saas_billing_invoice where id = ? for update",
-                rs -> rs.next() ? amount(rs.getString("amount")) : null, invoiceId);
-        if (invoiceAmount == null) {
+        InvoiceFiscalState current = jdbc.query(
+                "select amount, fiscal_status from saas_billing_invoice where id = ? for update",
+                rs -> rs.next() ? new InvoiceFiscalState(
+                        amount(rs.getString("amount")), rs.getString("fiscal_status")) : null, invoiceId);
+        if (current == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe");
         }
         String status = requireOneOf(request.fiscalStatus(), "CALCULATED",
@@ -922,6 +928,9 @@ public class AdminService {
         String taxBase = null;
         String taxRate = null;
         String taxAmount = null;
+        String reason = null;
+        String legalBasis = null;
+        String evidenceReference = null;
         if ("CALCULATED".equals(status)) {
             if (request.taxBase() == null || request.taxRate() == null || request.taxAmount() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -936,36 +945,64 @@ public class AdminService {
             BigDecimal expectedTax = base.multiply(rate)
                     .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
             if (expectedTax.compareTo(tax.setScale(2, java.math.RoundingMode.HALF_UP)) != 0
-                    || base.add(tax).setScale(2, java.math.RoundingMode.HALF_UP).compareTo(invoiceAmount) != 0) {
+                    || base.add(tax).setScale(2, java.math.RoundingMode.HALF_UP)
+                    .compareTo(current.amount()) != 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "El desglose fiscal no coincide con el total de la factura");
             }
             taxBase = money(base.toPlainString());
             taxRate = money(rate.toPlainString());
             taxAmount = money(tax.toPlainString());
-        } else if (request.taxBase() != null || request.taxRate() != null || request.taxAmount() != null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Una factura no sujeta no debe incluir importes fiscales");
+        } else {
+            if (request.taxBase() != null || request.taxRate() != null || request.taxAmount() != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Una factura no sujeta no debe incluir importes fiscales");
+            }
+            reason = FiscalEvidencePolicy.require(request.reason(), "Motivo fiscal", 10);
+            legalBasis = FiscalEvidencePolicy.require(request.legalBasis(), "Base legal", 8);
+            evidenceReference = FiscalEvidencePolicy.require(
+                    request.evidenceReference(), "Referencia de evidencia", 8);
         }
         jdbc.update("""
                 update saas_billing_invoice
-                   set fiscal_status = ?, tax_base = ?, tax_rate = ?, tax_amount = ?
+                   set fiscal_status = ?, tax_base = ?, tax_rate = ?, tax_amount = ?,
+                       fiscal_reason = ?, fiscal_legal_basis = ?, fiscal_evidence_reference = ?
                  where id = ?
-                """, status, taxBase, taxRate, taxAmount, invoiceId);
+                """, status, taxBase, taxRate, taxAmount, reason, legalBasis, evidenceReference, invoiceId);
+        jdbc.update("""
+                insert into saas_invoice_fiscal_decision_audit(
+                    id, invoice_id, previous_status, new_status, reason, legal_basis,
+                    evidence_reference, changed_by, changed_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), invoiceId, current.status(), status, reason, legalBasis,
+                evidenceReference, audit.currentUsername(), sqlTimestamp(clock.instant()));
         audit.log("UPDATE_INVOICE_FISCAL", "BILLING_INVOICE", invoiceId.toString());
         return invoiceFiscalDetail(invoiceId);
     }
     @Transactional
     public BillingPaymentResponse createBillingPayment(UUID invoiceId, CreateBillingPaymentRequest request) {
-        InvoicePaymentState invoice = jdbc.query("select amount, fiscal_status from saas_billing_invoice where id = ? for update",
+        InvoicePaymentState invoice = jdbc.query("""
+                select amount, fiscal_status, fiscal_reason, fiscal_legal_basis,
+                       fiscal_evidence_reference
+                from saas_billing_invoice where id = ? for update
+                """,
                 rs -> rs.next() ? new InvoicePaymentState(amount(rs.getString("amount")),
-                        rs.getString("fiscal_status")) : null, invoiceId);
+                        rs.getString("fiscal_status"), rs.getString("fiscal_reason"),
+                        rs.getString("fiscal_legal_basis"),
+                        rs.getString("fiscal_evidence_reference")) : null, invoiceId);
         if (invoice == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe");
         }
         if ("PENDING_TAX_DATA".equals(invoice.fiscalStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La factura no puede cobrarse hasta completar sus datos fiscales");
+        }
+        if ("NOT_APPLICABLE".equals(invoice.fiscalStatus())
+                && (blankToNull(invoice.reason()) == null
+                || blankToNull(invoice.legalBasis()) == null
+                || blankToNull(invoice.evidenceReference()) == null)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La factura no sujeta requiere motivo, base legal y evidencia antes del cobro");
         }
         BigDecimal invoiceAmount = invoice.amount();
         requirePositiveMoney(request.amount(), "Importe de pago no valido");
@@ -1255,7 +1292,7 @@ public class AdminService {
                     update saas_integration_run
                     set status = 'PENDING', payload = ?, completed_at = null, next_attempt_at = ?
                     where id = ? and status = 'RUNNING'
-                    """, payload, sqlTimestamp(completedAt), runId);
+                    """, integrationSecrets.encrypt(payload), sqlTimestamp(completedAt), runId);
 
             audit.log("EXECUTE_LOCAL_INTEGRATION", "INTEGRATION",
                     integrationId + "; run=" + runId + "; key=" + key);
@@ -1764,7 +1801,7 @@ public class AdminService {
     private static String integrationRunSql(String where) {
         return """
                 select id, integration_id, idempotency_key, attempt, status, delivery_mode,
-                       payload, error_code, error_message, started_at, completed_at
+                       error_code, error_message, started_at, completed_at
                 from saas_integration_run
                 """ + where + " order by attempt desc, started_at desc";
     }
@@ -1777,7 +1814,7 @@ public class AdminService {
                 rs.getInt("attempt"),
                 rs.getString("status"),
                 rs.getString("delivery_mode"),
-                rs.getString("payload"),
+                null,
                 rs.getString("error_code"),
                 rs.getString("error_message"),
                 rs.getTimestamp("started_at").toInstant(),
@@ -2432,7 +2469,15 @@ public class AdminService {
 
     private record TenantInitialAccess(String username, String initialPassword) {
     }
-    private record InvoicePaymentState(BigDecimal amount, String fiscalStatus) {
+    private record InvoicePaymentState(
+            BigDecimal amount,
+            String fiscalStatus,
+            String reason,
+            String legalBasis,
+            String evidenceReference) {
+    }
+
+    private record InvoiceFiscalState(BigDecimal amount, String status) {
     }
 
 }

@@ -1,6 +1,6 @@
 import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, extractApiErrorMessage, setUnauthorizedHandler } from "./lib/api";
-import { formatCurrency as formatCurrencyValue, formatQuantity as formatQuantityValue, isCurrentSelection, isCurrentSessionRequest, outstandingAmount, paginateRows, shouldInvalidateSession } from "./lib/frontend-runtime.mjs";
+import { canInvoiceBePaid, formatCurrency as formatCurrencyValue, formatQuantity as formatQuantityValue, isCurrentAuthRequest, isCurrentSelection, isCurrentSessionRequest, outstandingAmount, paginateRows, retainCompanyOperationsAfterFailure, settleWithConcurrency, shouldInvalidateSession, validateFiscalDecision } from "./lib/frontend-runtime.mjs";
 import type {
   AdminNotification,
   AdminSession,
@@ -26,6 +26,7 @@ import type {
   InstallationSummary,
   LicenseSummary,
   OperationalIncident,
+  OutboxFailure,
   PairingCodeResponse,
   SaasStatus,
   SalesDocument,
@@ -50,7 +51,7 @@ import type {
   PlanUsage
 } from "./lib/types";
 
-type View = "dashboard" | "licenses" | "sync" | "fiscal" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "subscriptions" | "reports";
+type View = "dashboard" | "licenses" | "sync" | "fiscal" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "outbox" | "subscriptions" | "reports";
 type Notice = { type: "success" | "error"; text: string } | null;
 type LicenseAction = "block" | "unblock" | "pairing";
 type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
@@ -437,6 +438,19 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     noReconciliations: "No hay conciliaciones para esta empresa.",
     invoiceFiscalDetail: "Detalle fiscal de factura",
     viewFiscalDetail: "Ver fiscal",
+    fiscalStatus: "Estado fiscal",
+    fiscalPendingPayment: "Completa la decisión fiscal antes de registrar el pago.",
+    fiscalDecision: "Decisión fiscal",
+    fiscalCalculated: "Impuestos calculados",
+    fiscalNotApplicable: "No sujeto / no aplicable",
+    fiscalReason: "Motivo fiscal",
+    legalBasis: "Base legal",
+    evidenceReference: "Referencia de evidencia",
+    saveFiscalDecision: "Guardar decisión fiscal",
+    invalidFiscalDecision: "Completa los importes fiscales o aporta motivo, base legal y evidencia verificable.",
+    fiscalDecisionSaved: "Decisión fiscal guardada.",
+    fiscalValuePending: "Pendiente de decisión",
+    fiscalValueNotApplicable: "No aplica",
     fiscalYear: "Ejercicio fiscal",
     series: "Serie",
     taxBase: "Base imponible",
@@ -531,7 +545,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     previousPage: "Anterior",
     nextPage: "Siguiente",
     pageLabel: "Pagina",
-    filterRecords: "Filtrar registros"
+    filterRecords: "Filtrar registros",
+    outboxRecovery: "Recuperación de entregas",
+    outboxRecoverySubtitle: "Fallos de notificaciones e integraciones que requieren intervención",
+    outboxChannel: "Canal",
+    outboxSubject: "Asunto",
+    outboxAttempts: "Intentos",
+    outboxError: "Último error",
+    outboxFailedAt: "Fecha del fallo",
+    outboxNoFailures: "No hay entregas fallidas.",
+    outboxRequeue: "Reencolar",
+    outboxAcknowledge: "Reconocer",
+    outboxResolutionReason: "Motivo de resolución",
+    outboxConfirm: "Confirma la resolución de este fallo operativo.",
+    outboxResolved: "Fallo operativo actualizado.",
+    outboxReasonInvalid: "El motivo debe contener entre 5 y 500 caracteres.",
+    fiscalVerificationFailed: "No se pudo verificar el estado fiscal de {count} factura(s). Los pagos permanecen bloqueados.",
+    fiscalVerifying: "Verificando estado fiscal",
+    serviceUnavailable: "El servicio SaaS no está disponible temporalmente. Vuelve a intentarlo.",
+    internalServerError: "El servicio SaaS no pudo completar la operación. Vuelve a intentarlo."
   },
   en: {
     administration: "Administration",
@@ -872,6 +904,24 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     nextPage: "Next",
     pageLabel: "Page",
     filterRecords: "Filter records",
+    outboxRecovery: "Delivery recovery",
+    outboxRecoverySubtitle: "Notification and integration failures requiring intervention",
+    outboxChannel: "Channel",
+    outboxSubject: "Subject",
+    outboxAttempts: "Attempts",
+    outboxError: "Last error",
+    outboxFailedAt: "Failure time",
+    outboxNoFailures: "There are no failed deliveries.",
+    outboxRequeue: "Requeue",
+    outboxAcknowledge: "Acknowledge",
+    outboxResolutionReason: "Resolution reason",
+    outboxConfirm: "Confirm the resolution of this operational failure.",
+    outboxResolved: "Operational failure updated.",
+    outboxReasonInvalid: "The reason must contain between 5 and 500 characters.",
+    fiscalVerificationFailed: "The fiscal status of {count} invoice(s) could not be verified. Payments remain blocked.",
+    fiscalVerifying: "Verifying fiscal status",
+    serviceUnavailable: "The SaaS service is temporarily unavailable. Try again.",
+    internalServerError: "The SaaS service could not complete the operation. Try again.",
     operations: "Operations",
     subscriptions: "Subscriptions",
     reports: "Reports",
@@ -915,6 +965,19 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     noReconciliations: "No reconciliations for this company.",
     invoiceFiscalDetail: "Invoice fiscal detail",
     viewFiscalDetail: "View fiscal",
+    fiscalStatus: "Fiscal status",
+    fiscalPendingPayment: "Complete the fiscal decision before registering payment.",
+    fiscalDecision: "Fiscal decision",
+    fiscalCalculated: "Calculated taxes",
+    fiscalNotApplicable: "Not applicable",
+    fiscalReason: "Fiscal reason",
+    legalBasis: "Legal basis",
+    evidenceReference: "Evidence reference",
+    saveFiscalDecision: "Save fiscal decision",
+    invalidFiscalDecision: "Complete the tax amounts or provide a verifiable reason, legal basis and evidence.",
+    fiscalDecisionSaved: "Fiscal decision saved.",
+    fiscalValuePending: "Pending decision",
+    fiscalValueNotApplicable: "Not applicable",
     fiscalYear: "Fiscal year",
     series: "Series",
     taxBase: "Tax base",
@@ -1277,6 +1340,7 @@ export default function App() {
   const [navigationQuery, setNavigationQuery] = useState("");
   const navigationSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshRequestId = useRef(0);
+  const authRequestId = useRef(0);
   const credentialsRef = useRef<Credentials | null>(credentials);
   const pendingPasswordChangeRef = useRef<{ credentials: Credentials; currentPassword: string } | null>(pendingPasswordChange);
   credentialsRef.current = credentials;
@@ -1303,6 +1367,7 @@ export default function App() {
     { view: "billing", label: i18n.t("billing") },
     { view: "masters", label: i18n.t("masters") },
     { view: "operations", label: i18n.t("operations") },
+    { view: "outbox", label: i18n.t("outboxRecovery") },
     { view: "subscriptions", label: i18n.t("subscriptions") },
     { view: "reports", label: i18n.t("reports") },
     { view: "audit", label: i18n.t("audit") }
@@ -1334,6 +1399,7 @@ export default function App() {
         pendingPasswordChangeRef.current?.credentials.accessToken
       )) return;
       refreshRequestId.current += 1;
+      authRequestId.current += 1;
       credentialsRef.current = null;
       pendingPasswordChangeRef.current = null;
       setCredentials(null);
@@ -1397,11 +1463,16 @@ export default function App() {
     }
   }
   async function login(nextCredentials: LoginCredentials) {
+    const requestId = ++authRequestId.current;
     setLoading(true);
     setNotice(null);
     try {
       const authenticated = await api.login(nextCredentials);
       const next: Credentials = { username: authenticated.username, accessToken: authenticated.accessToken, mode: authenticated.mode };
+      if (!isCurrentAuthRequest(requestId, authRequestId.current)) {
+        void api.logout(next).catch(() => undefined);
+        return;
+      }
       if (authenticated.passwordChangeRequired) {
         const pending = { credentials: next, currentPassword: nextCredentials.password };
         pendingPasswordChangeRef.current = pending;
@@ -1411,9 +1482,9 @@ export default function App() {
       credentialsRef.current = next;
       setCredentials(next);
     } catch (error) {
-      setNotice({ type: "error", text: errorMessage(error) });
+      if (isCurrentAuthRequest(requestId, authRequestId.current)) setNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setLoading(false);
+      if (isCurrentAuthRequest(requestId, authRequestId.current)) setLoading(false);
     }
   }
 
@@ -1421,18 +1492,25 @@ export default function App() {
     if (!pendingPasswordChange) return;
     if (newPassword.length < 12) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
     if (newPassword !== confirmation) { setNotice({ type: "error", text: i18n.t("passwordsDoNotMatch") }); return; }
+    const pending = pendingPasswordChange;
+    const requestId = ++authRequestId.current;
     setLoading(true); setNotice(null);
     try {
-      await api.changeOwnPassword(pendingPasswordChange.credentials, { currentPassword: pendingPasswordChange.currentPassword, newPassword });
-      const authenticated = await api.login({ username: pendingPasswordChange.credentials.username, password: newPassword });
+      await api.changeOwnPassword(pending.credentials, { currentPassword: pending.currentPassword, newPassword });
+      if (!isCurrentAuthRequest(requestId, authRequestId.current)) return;
+      const authenticated = await api.login({ username: pending.credentials.username, password: newPassword });
       const next: Credentials = { username: authenticated.username, accessToken: authenticated.accessToken, mode: authenticated.mode };
+      if (!isCurrentAuthRequest(requestId, authRequestId.current)) {
+        void api.logout(next).catch(() => undefined);
+        return;
+      }
       pendingPasswordChangeRef.current = null;
       credentialsRef.current = next;
       setPendingPasswordChange(null);
       setNotice({ type: "success", text: i18n.t("passwordChanged") });
       setCredentials(next);
-    } catch (error) { setNotice({ type: "error", text: errorMessage(error) }); }
-    finally { setLoading(false); }
+    } catch (error) { if (isCurrentAuthRequest(requestId, authRequestId.current)) setNotice({ type: "error", text: errorMessage(error) }); }
+    finally { if (isCurrentAuthRequest(requestId, authRequestId.current)) setLoading(false); }
   }
 
   async function requestRecovery(username: string) {
@@ -1454,6 +1532,7 @@ export default function App() {
   function logout() {
     const activeCredentials = credentialsRef.current ?? pendingPasswordChangeRef.current?.credentials;
     refreshRequestId.current += 1;
+    authRequestId.current += 1;
     credentialsRef.current = null;
     pendingPasswordChangeRef.current = null;
     if (activeCredentials) void api.logout(activeCredentials).catch(() => undefined);
@@ -1563,7 +1642,7 @@ export default function App() {
           </div>
         )}
 
-        {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
+        {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
 
         {!visibleData ? (
           <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
@@ -1614,6 +1693,9 @@ export default function App() {
             )}
             {activeView === "operations" && (
               <OperationsView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+            )}
+            {activeView === "outbox" && (
+              <OutboxRecoveryView credentials={credentials} permissions={permissions} onNotice={setNotice} />
             )}
             {activeView === "subscriptions" && (
               <SubscriptionsView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
@@ -1677,7 +1759,7 @@ function LoginScreen({
           <strong>APP SAAS</strong>
           <span>Administracion central - Servidor SaaS</span>
         </header>
-        {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
+        {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
         <form className="stack-form" onSubmit={submit}>
           <label>
             <span>{t("username")}</span>
@@ -1698,8 +1780,8 @@ function LoginScreen({
           </>}
           <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
           <div className="form-actions login-recovery-actions">
-            {mode === "login" ? <button className="secondary-button" type="button" onClick={() => setMode("request")}>{t("forgotPassword")}</button> : <button className="secondary-button" type="button" onClick={() => setMode("login")}>{t("backToLogin")}</button>}
-            {mode !== "confirm" && <button className="secondary-button" type="button" onClick={() => setMode("confirm")}>{t("recoveryToken")}</button>}
+            {mode === "login" ? <button className="secondary-button" type="button" disabled={loading} onClick={() => setMode("request")}>{t("forgotPassword")}</button> : <button className="secondary-button" type="button" disabled={loading} onClick={() => setMode("login")}>{t("backToLogin")}</button>}
+            {mode !== "confirm" && <button className="secondary-button" type="button" disabled={loading} onClick={() => setMode("confirm")}>{t("recoveryToken")}</button>}
           </div>
         </form>
       </section>
@@ -1718,11 +1800,11 @@ function RequiredPasswordChangeScreen({ username, loading, notice, onSubmit, onC
     <header className="login-panel-heading"><strong>APP SAAS</strong><span>{username}</span></header>
     <form className="stack-form" onSubmit={(event) => { event.preventDefault(); void onSubmit(newPassword, confirmation); }}>
       <h1 id="password-change-title">{t("passwordChangeTitle")}</h1><p>{t("passwordChangeHelp")}</p>
-      {notice && <div className={`notice ${notice.type}`} role="status">{notice.text}</div>}
+      {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
       <label><span>{t("newPassword")}</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={12} required autoFocus /></label>
       <label><span>{t("confirmPassword")}</span><input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={12} required /></label>
       <button className="primary-button" type="submit" disabled={loading}>{t("changeOwnPassword")}</button>
-      <button className="secondary-button" type="button" onClick={onCancel}>{t("logout")}</button>
+      <button className="secondary-button" type="button" disabled={loading} onClick={onCancel}>{t("logout")}</button>
     </form>
   </section></main>;
 }
@@ -1851,7 +1933,7 @@ function TenantPortal({
           </button>
         </header>
 
-        {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
+        {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
 
         {!data ? (
           <EmptyState text={loading ? t("loadingSaas") : t("noLoadedData")} />
@@ -3457,6 +3539,12 @@ function BillingView({
   const [reconciliationForm, setReconciliationForm] = useState({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toLocalInput(new Date()), notes: "" });
   const [fiscalInvoiceId, setFiscalInvoiceId] = useState("");
   const [fiscalDetail, setFiscalDetail] = useState<InvoiceFiscalDetail | null>(null);
+  const [fiscalStates, setFiscalStates] = useState<Record<string, InvoiceFiscalDetail | null>>({});
+  const [fiscalStatesLoadError, setFiscalStatesLoadError] = useState<string | null>(null);
+  const [fiscalForm, setFiscalForm] = useState({
+    fiscalStatus: "CALCULATED" as "CALCULATED" | "NOT_APPLICABLE",
+    taxBase: "", taxRate: "", taxAmount: "", reason: "", legalBasis: "", evidenceReference: ""
+  });
   const [fiscalError, setFiscalError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [reconciliationBusy, setReconciliationBusy] = useState(false);
@@ -3464,7 +3552,9 @@ function BillingView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const invoiceRequestId = useRef(0);
   const billingExtrasRequestId = useRef(0);
+  const fiscalStatesRequestId = useRef(0);
   const fiscalRequestId = useRef(0);
+  const billingContextId = useRef(0);
   const selectedBillingCompanyRef = useRef(selectedCompanyId);
   selectedBillingCompanyRef.current = selectedCompanyId;
   const canManage = permissions.has("MANAGE_BILLING");
@@ -3493,9 +3583,11 @@ function BillingView({
   }, [orderedCompanies, selectedCompanyId]);
 
   useEffect(() => {
-    invoiceRequestId.current += 1; billingExtrasRequestId.current += 1; fiscalRequestId.current += 1;
-    setInvoices([]); setPlanUsage(null); setReconciliations([]); setFiscalDetail(null);
-    setPlanError(null); setReconciliationError(null); setFiscalError(null); setFiscalInvoiceId("");
+    billingContextId.current += 1;
+    invoiceRequestId.current += 1; billingExtrasRequestId.current += 1; fiscalRequestId.current += 1; fiscalStatesRequestId.current += 1;
+    setInvoices([]); setPlanUsage(null); setReconciliations([]); setFiscalDetail(null); setFiscalStates({});
+    setPlanError(null); setReconciliationError(null); setFiscalError(null); setFiscalStatesLoadError(null); setFiscalInvoiceId("");
+    setBusy(null); setReconciliationBusy(false); setFiscalBusy(false);
     setPaymentForm({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
     if (selectedCompanyId) void loadInvoices(selectedCompanyId);
   }, [selectedCompanyId]);
@@ -3518,6 +3610,7 @@ function BillingView({
       setLoadError(null);
       onNotice(null);
       void loadBillingExtras(companyId);
+      void loadInvoiceFiscalStates(companyId, response, requestId);
     } catch (error) {
       if (requestId !== invoiceRequestId.current || !isCurrentSelection(companyId, selectedBillingCompanyRef.current)) return;
       setInvoices([]);
@@ -3525,6 +3618,22 @@ function BillingView({
       setLoadError(message);
       onNotice({ type: "error", text: message });
     }
+  }
+
+  async function loadInvoiceFiscalStates(companyId: string, companyInvoices: BillingInvoice[], invoiceLoadRequestId: number) {
+    const requestId = ++fiscalStatesRequestId.current;
+    setFiscalStates({}); setFiscalStatesLoadError(null);
+    const results = await settleWithConcurrency(companyInvoices, (invoice) => api.invoiceFiscalDetail(credentials, invoice.id), 4);
+    if (requestId !== fiscalStatesRequestId.current || invoiceLoadRequestId !== invoiceRequestId.current
+        || !isCurrentSelection(companyId, selectedBillingCompanyRef.current)) return;
+    const next: Record<string, InvoiceFiscalDetail | null> = {};
+    companyInvoices.forEach((invoice, index) => {
+      const result = results[index];
+      next[invoice.id] = result.status === "fulfilled" && result.value.companyId === companyId ? result.value : null;
+    });
+    setFiscalStates(next);
+    const failed = Object.values(next).filter((detail) => detail === null).length;
+    setFiscalStatesLoadError(failed > 0 ? t("fiscalVerificationFailed").replace("{count}", String(failed)) : null);
   }
 
   async function loadBillingExtras(companyId: string) {
@@ -3550,13 +3659,17 @@ function BillingView({
       onNotice({ type: "error", text: t("invalidAmount") });
       return;
     }
+    const requestedCompanyId = selectedCompanyId;
+    const operationContext = billingContextId.current;
+    const isCurrent = () => operationContext === billingContextId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current);
     setBusy("invoice");
     try {
-      await api.createBillingInvoice(credentials, selectedCompanyId, {
+      await api.createBillingInvoice(credentials, requestedCompanyId, {
         ...invoiceForm,
         issuedAt: new Date(invoiceForm.issuedAt).toISOString(),
         dueAt: new Date(invoiceForm.dueAt).toISOString()
       });
+      if (!isCurrent()) return;
       setInvoiceForm({
         number: "",
         concept: "",
@@ -3565,13 +3678,14 @@ function BillingView({
         issuedAt: toLocalInput(new Date()),
         dueAt: toLocalInput(addDays(new Date(), 30))
       });
-      await loadInvoices(selectedCompanyId);
+      await loadInvoices(requestedCompanyId);
+      if (!isCurrent()) return;
       await loadBilling();
-      onNotice({ type: "success", text: t("createInvoice") });
+      if (isCurrent()) onNotice({ type: "success", text: t("createInvoice") });
     } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
+      if (isCurrent()) onNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setBusy(null);
+      if (isCurrent()) setBusy(null);
     }
   }
 
@@ -3581,6 +3695,10 @@ function BillingView({
     const selectedInvoice = invoices.find((invoice) => invoice.id === paymentForm.invoiceId && invoice.companyId === selectedCompanyId);
     if (!selectedInvoice) {
       onNotice({ type: "error", text: t("companySelectionChanged") });
+      return;
+    }
+    if (!canInvoiceBePaid(fiscalStates[selectedInvoice.id])) {
+      onNotice({ type: "error", text: t("fiscalPendingPayment") });
       return;
     }
     if (parseAmount(paymentForm.amount) > outstandingAmount(selectedInvoice)) {
@@ -3595,22 +3713,28 @@ function BillingView({
       onNotice({ type: "error", text: t("invalidAmount") });
       return;
     }
+    const requestedCompanyId = selectedCompanyId;
+    const invoiceId = paymentForm.invoiceId;
+    const operationContext = billingContextId.current;
+    const isCurrent = () => operationContext === billingContextId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current);
     setBusy("payment");
     try {
-      await api.createBillingPayment(credentials, paymentForm.invoiceId, {
+      await api.createBillingPayment(credentials, invoiceId, {
         amount: paymentForm.amount,
         method: paymentForm.method,
         paidAt: new Date().toISOString(),
         reference: paymentForm.reference
       });
+      if (!isCurrent()) return;
       setPaymentForm({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
-      if (selectedCompanyId) await loadInvoices(selectedCompanyId);
+      await loadInvoices(requestedCompanyId);
+      if (!isCurrent()) return;
       await loadBilling();
-      onNotice({ type: "success", text: t("registerPayment") });
+      if (isCurrent()) onNotice({ type: "success", text: t("registerPayment") });
     } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
+      if (isCurrent()) onNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setBusy(null);
+      if (isCurrent()) setBusy(null);
     }
   }
 
@@ -3623,6 +3747,7 @@ function BillingView({
       onNotice({ type: "error", text: t("invalidReconciliation") }); return;
     }
     const requestedCompanyId = selectedCompanyId;
+    const operationContext = billingContextId.current;
     setReconciliationBusy(true);
     try {
       await api.createPaymentReconciliation(credentials, requestedCompanyId, {
@@ -3632,12 +3757,12 @@ function BillingView({
         externalReference: reconciliationForm.externalReference.trim(),
         bookedAt: new Date(reconciliationForm.bookedAt).toISOString()
       });
-      if (!isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) return;
+      if (operationContext !== billingContextId.current || !isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) return;
       setReconciliationForm({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toLocalInput(new Date()), notes: "" });
       await loadBillingExtras(requestedCompanyId);
       onNotice({ type: "success", text: t("reconciliationCreated") });
-    } catch (error) { if (isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) onNotice({ type: "error", text: errorMessage(error) }); }
-    finally { setReconciliationBusy(false); }
+    } catch (error) { if (operationContext === billingContextId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) onNotice({ type: "error", text: errorMessage(error) }); }
+    finally { if (operationContext === billingContextId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setReconciliationBusy(false); }
   }
 
   async function loadFiscalDetail(invoiceId = fiscalInvoiceId) {
@@ -3650,8 +3775,48 @@ function BillingView({
       const detail = await api.invoiceFiscalDetail(credentials, invoiceId);
       if (requestId !== fiscalRequestId.current || !isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current) || detail.companyId !== requestedCompanyId) return;
       setFiscalDetail(detail);
+      setFiscalStates((current) => ({ ...current, [invoiceId]: detail }));
+      setFiscalForm({
+        fiscalStatus: detail.fiscalStatus === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "CALCULATED",
+        taxBase: detail.taxBase ?? "", taxRate: detail.taxRate ?? "", taxAmount: detail.taxAmount ?? "",
+        reason: detail.reason ?? "", legalBasis: detail.legalBasis ?? "", evidenceReference: detail.evidenceReference ?? ""
+      });
     } catch (error) { if (requestId === fiscalRequestId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setFiscalError(errorMessage(error)); }
     finally { if (requestId === fiscalRequestId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setFiscalBusy(false); }
+  }
+
+  async function saveFiscalDecision(event: FormEvent) {
+    event.preventDefault();
+    if (!canManage || !fiscalDetail || !validateFiscalDecision(fiscalForm)) {
+      onNotice({ type: "error", text: canManage ? t("invalidFiscalDecision") : t("noPermissionAction") });
+      return;
+    }
+    const invoiceId = fiscalDetail.invoiceId;
+    const requestedCompanyId = selectedCompanyId;
+    const requestId = ++fiscalRequestId.current;
+    setFiscalBusy(true); setFiscalError(null);
+    try {
+      const calculated = fiscalForm.fiscalStatus === "CALCULATED";
+      const detail = await api.updateInvoiceFiscal(credentials, invoiceId, {
+        fiscalStatus: fiscalForm.fiscalStatus,
+        taxBase: calculated ? fiscalForm.taxBase.trim() : null,
+        taxRate: calculated ? fiscalForm.taxRate.trim() : null,
+        taxAmount: calculated ? fiscalForm.taxAmount.trim() : null,
+        reason: calculated ? null : fiscalForm.reason.trim(),
+        legalBasis: calculated ? null : fiscalForm.legalBasis.trim(),
+        evidenceReference: calculated ? null : fiscalForm.evidenceReference.trim()
+      });
+      if (requestId !== fiscalRequestId.current || !isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)
+          || detail.companyId !== requestedCompanyId || detail.invoiceId !== invoiceId) return;
+      setFiscalDetail(detail);
+      setFiscalStates((current) => ({ ...current, [invoiceId]: detail }));
+      if (paymentForm.invoiceId === invoiceId && !canInvoiceBePaid(detail)) setPaymentForm({ ...paymentForm, invoiceId: "", amount: "" });
+      onNotice({ type: "success", text: t("fiscalDecisionSaved") });
+    } catch (error) {
+      if (requestId === fiscalRequestId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setFiscalError(errorMessage(error));
+    } finally {
+      if (requestId === fiscalRequestId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) setFiscalBusy(false);
+    }
   }
 
   return (
@@ -3715,11 +3880,13 @@ function BillingView({
         <SectionHeader title={t("realBilling")} subtitle={t("invoices")} />
         {loadError && <RetryError message={loadError} onRetry={() => selectedCompanyId && void loadInvoices(selectedCompanyId)} />}
         <div className="toolbar">
-          <select value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}>
+          <label className="toolbar-field">{t("company")}
+          <select aria-label={t("company")} className="control-input" value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}>
             {orderedCompanies.map((company) => (
               <option value={company.companyId} key={company.companyId}>{company.companyName}</option>
             ))}
           </select>
+          </label>
         </div>
         <SectionHeader title={t("planUsage")} subtitle={planUsage?.planName ?? "-"} />
         {planError && <RetryError message={planError} onRetry={() => selectedCompanyId && void loadBillingExtras(selectedCompanyId)} />}
@@ -3751,8 +3918,8 @@ function BillingView({
                 >
                   <option value="">{t("pending")}</option>
                   {invoices.map((invoice) => (
-                    <option value={invoice.id} key={invoice.id}>
-                      {invoice.number} - {formatCurrency(invoice.amount, invoice.currency)}
+                    <option value={invoice.id} key={invoice.id} disabled={!canInvoiceBePaid(fiscalStates[invoice.id])}>
+                      {invoice.number} - {formatCurrency(invoice.amount, invoice.currency)}{!canInvoiceBePaid(fiscalStates[invoice.id]) ? ` — ${t("fiscalStatus")}: ${Object.prototype.hasOwnProperty.call(fiscalStates, invoice.id) ? (fiscalStates[invoice.id]?.fiscalStatus ?? t("technicalDegraded")) : t("fiscalVerifying")}` : ""}
                     </option>
                   ))}
                 </select>
@@ -3767,20 +3934,39 @@ function BillingView({
         <InvoiceTable invoices={invoices} />
 
         <SectionHeader title={t("invoiceFiscalDetail")} subtitle={fiscalDetail ? `${fiscalDetail.series}-${fiscalDetail.number}` : ""} />
+        {fiscalStatesLoadError && <RetryError message={fiscalStatesLoadError} onRetry={() => selectedCompanyId && void loadInvoiceFiscalStates(selectedCompanyId, invoices, invoiceRequestId.current)} />}
         {fiscalError && <RetryError message={fiscalError} onRetry={() => void loadFiscalDetail()} />}
         <div className="toolbar">
-          <select className="control-input" value={fiscalInvoiceId} onChange={(event) => { setFiscalInvoiceId(event.target.value); setFiscalDetail(null); setFiscalError(null); }}>
+          <select aria-label={t("invoiceFiscalDetail")} className="control-input" value={fiscalInvoiceId} onChange={(event) => { setFiscalInvoiceId(event.target.value); setFiscalDetail(null); setFiscalError(null); }}>
             <option value="">{t("invoices")}</option>
             {invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} - {formatCurrency(invoice.amount, invoice.currency)}</option>)}
           </select>
           <button className="secondary-button" type="button" disabled={!fiscalInvoiceId || fiscalBusy} onClick={() => void loadFiscalDetail()}>{t("viewFiscalDetail")}</button>
         </div>
-        {fiscalDetail && <div className="metric-grid">
+        {fiscalDetail && <div className="metric-grid" aria-live="polite">
           <Metric label={t("series")} value={fiscalDetail.series} /><Metric label={t("fiscalYear")} value={fiscalDetail.fiscalYear} />
-          <Metric label={t("taxRegime")} value={fiscalDetail.taxRegime} /><Metric label={t("taxBase")} value={formatCurrency(fiscalDetail.taxBase, fiscalDetail.currency)} />
-          <Metric label={t("taxRate")} value={`${formatQuantity(fiscalDetail.taxRate)}%`} /><Metric label={t("taxAmount")} value={formatCurrency(fiscalDetail.taxAmount, fiscalDetail.currency)} />
+          <Metric label={t("taxRegime")} value={fiscalDetail.taxRegime} /><Metric label={t("fiscalStatus")} value={fiscalDetail.fiscalStatus} />
+          <Metric label={t("taxBase")} value={fiscalDetail.taxBase === null ? t(fiscalDetail.fiscalStatus === "PENDING_TAX_DATA" ? "fiscalValuePending" : "fiscalValueNotApplicable") : formatCurrency(fiscalDetail.taxBase, fiscalDetail.currency)} />
+          <Metric label={t("taxRate")} value={fiscalDetail.taxRate === null ? t(fiscalDetail.fiscalStatus === "PENDING_TAX_DATA" ? "fiscalValuePending" : "fiscalValueNotApplicable") : `${formatQuantity(fiscalDetail.taxRate)}%`} /><Metric label={t("taxAmount")} value={fiscalDetail.taxAmount === null ? t(fiscalDetail.fiscalStatus === "PENDING_TAX_DATA" ? "fiscalValuePending" : "fiscalValueNotApplicable") : formatCurrency(fiscalDetail.taxAmount, fiscalDetail.currency)} />
           <Metric label={t("total")} value={formatCurrency(fiscalDetail.total, fiscalDetail.currency)} />
+          {fiscalDetail.reason && <Metric label={t("fiscalReason")} value={fiscalDetail.reason} />}
+          {fiscalDetail.legalBasis && <Metric label={t("legalBasis")} value={fiscalDetail.legalBasis} />}
+          {fiscalDetail.evidenceReference && <Metric label={t("evidenceReference")} value={fiscalDetail.evidenceReference} />}
         </div>}
+        {fiscalDetail?.fiscalStatus === "PENDING_TAX_DATA" && <p className="notice error" role="alert">{t("fiscalPendingPayment")}</p>}
+        {fiscalDetail && canManage && <form className="compact-form-grid" onSubmit={saveFiscalDecision} aria-label={t("fiscalDecision")}>
+          <label>{t("fiscalDecision")}<select className="control-input" value={fiscalForm.fiscalStatus} onChange={(event) => setFiscalForm({ ...fiscalForm, fiscalStatus: event.target.value as "CALCULATED" | "NOT_APPLICABLE" })}><option value="CALCULATED">{t("fiscalCalculated")}</option><option value="NOT_APPLICABLE">{t("fiscalNotApplicable")}</option></select></label>
+          {fiscalForm.fiscalStatus === "CALCULATED" ? <>
+            <Input label={t("taxBase")} type="number" min={0} step="0.01" value={fiscalForm.taxBase} onChange={(taxBase) => setFiscalForm({ ...fiscalForm, taxBase })} required />
+            <Input label={t("taxRate")} type="number" min={0} step="0.01" value={fiscalForm.taxRate} onChange={(taxRate) => setFiscalForm({ ...fiscalForm, taxRate })} required />
+            <Input label={t("taxAmount")} type="number" min={0} step="0.01" value={fiscalForm.taxAmount} onChange={(taxAmount) => setFiscalForm({ ...fiscalForm, taxAmount })} required />
+          </> : <>
+            <Input label={t("fiscalReason")} value={fiscalForm.reason} onChange={(reason) => setFiscalForm({ ...fiscalForm, reason })} minLength={10} maxLength={500} required />
+            <Input label={t("legalBasis")} value={fiscalForm.legalBasis} onChange={(legalBasis) => setFiscalForm({ ...fiscalForm, legalBasis })} minLength={8} maxLength={500} required />
+            <Input label={t("evidenceReference")} value={fiscalForm.evidenceReference} onChange={(evidenceReference) => setFiscalForm({ ...fiscalForm, evidenceReference })} minLength={8} maxLength={500} required />
+          </>}
+          <button className="primary-button" type="submit" disabled={fiscalBusy}>{t("saveFiscalDecision")}</button>
+        </form>}
 
         <SectionHeader title={t("reconciliations")} subtitle={`${reconciliations.length} ${t("records")}`} />
         {reconciliationError && <RetryError message={reconciliationError} onRetry={() => selectedCompanyId && void loadBillingExtras(selectedCompanyId)} />}
@@ -3803,6 +3989,124 @@ function BillingView({
 }
 
 type MasterMode = "customers" | "products" | "suppliers" | "warehouses";
+
+function OutboxRecoveryView({
+  credentials,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const [channel, setChannel] = useState<"" | "SECURITY" | "INTEGRATION">("");
+  const [items, setItems] = useState<OutboxFailure[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [history, setHistory] = useState<Array<string | null>>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [resolution, setResolution] = useState<{ failure: OutboxFailure; action: "requeue" | "acknowledge"; reason: string } | null>(null);
+  const requestId = useRef(0);
+  const contextId = useRef(0);
+  const canManage = permissions.has("MANAGE_OPERATIONS");
+
+  useEffect(() => {
+    requestId.current += 1;
+    contextId.current += 1;
+    setCursor(null); setNextCursor(null); setHistory([]); setItems([]); setResolution(null); setBusyId(null);
+    void loadFailures(null, channel);
+  }, [channel]);
+
+  async function loadFailures(nextPageCursor: string | null, requestedChannel = channel) {
+    const id = ++requestId.current;
+    setLoading(true); setLoadError(null);
+    try {
+      const page = await api.outboxFailures(credentials, {
+        channel: requestedChannel || undefined,
+        limit: 50,
+        cursor: nextPageCursor || undefined
+      });
+      if (id !== requestId.current || requestedChannel !== channel) return;
+      setItems(page.items);
+      setNextCursor(page.nextCursor);
+      onNotice(null);
+    } catch (error) {
+      if (id !== requestId.current || requestedChannel !== channel) return;
+      setItems([]); setNextCursor(null); setLoadError(errorMessage(error));
+    } finally {
+      if (id === requestId.current && requestedChannel === channel) setLoading(false);
+    }
+  }
+
+  function nextPage() {
+    if (!nextCursor) return;
+    setHistory((current) => [...current, cursor]);
+    setCursor(nextCursor);
+    void loadFailures(nextCursor);
+  }
+
+  function previousPage() {
+    const previous = history.at(-1);
+    if (previous === undefined) return;
+    setHistory((current) => current.slice(0, -1));
+    setCursor(previous);
+    void loadFailures(previous);
+  }
+
+  async function resolveFailure(event: FormEvent) {
+    event.preventDefault();
+    if (!resolution || !canManage) return;
+    const reason = resolution.reason.trim();
+    if (reason.length < 5 || reason.length > 500) {
+      onNotice({ type: "error", text: t("outboxReasonInvalid") });
+      return;
+    }
+    if (!window.confirm(t("outboxConfirm"))) return;
+    const target = resolution.failure;
+    const action = resolution.action;
+    const operationContext = contextId.current;
+    setBusyId(target.id);
+    try {
+      await api.resolveOutboxFailure(credentials, target.channel, target.id, action, reason);
+      if (operationContext !== contextId.current) return;
+      setResolution(null);
+      await loadFailures(cursor);
+      if (operationContext === contextId.current) onNotice({ type: "success", text: t("outboxResolved") });
+    } catch (error) {
+      if (operationContext === contextId.current) onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      if (operationContext === contextId.current) setBusyId(null);
+    }
+  }
+
+  return <section className="content-section" aria-busy={loading}>
+    <SectionHeader title={t("outboxRecovery")} subtitle={t("outboxRecoverySubtitle")} />
+    {loadError && <RetryError message={loadError} onRetry={() => void loadFailures(cursor)} />}
+    <div className="toolbar">
+      <label className="toolbar-field">{t("outboxChannel")}
+        <select className="control-input" value={channel} onChange={(event) => setChannel(event.target.value as "" | "SECURITY" | "INTEGRATION")} disabled={loading || busyId !== null}>
+          <option value="">{t("allStatuses")}</option><option value="SECURITY">SECURITY</option><option value="INTEGRATION">INTEGRATION</option>
+        </select>
+      </label>
+    </div>
+    {loading && items.length === 0 ? <EmptyState text={t("loadingSaas")} /> : items.length === 0 ? <EmptyState text={t("outboxNoFailures")} /> : <div className="table-wrap"><table>
+      <thead><tr><th>{t("outboxChannel")}</th><th>{t("outboxSubject")}</th><th>{t("outboxAttempts")}</th><th>{t("outboxError")}</th><th>{t("outboxFailedAt")}</th><th aria-label={t("operations")} /></tr></thead>
+      <tbody>{items.map((failure) => <tr key={`${failure.channel}-${failure.id}`}>
+        <td><StatusPill status={failure.channel} tone="warning" /></td><td>{failure.subject}</td><td>{failure.attempts}</td><td>{failure.error || t("notAvailable")}</td><td>{formatDate(failure.failedAt)}</td>
+        <td className="table-actions">{canManage ? <><button className="small-button" type="button" disabled={busyId !== null} onClick={() => setResolution({ failure, action: "requeue", reason: "" })}>{t("outboxRequeue")}</button><button className="small-button danger" type="button" disabled={busyId !== null} onClick={() => setResolution({ failure, action: "acknowledge", reason: "" })}>{t("outboxAcknowledge")}</button></> : "-"}</td>
+      </tr>)}</tbody>
+    </table></div>}
+    <nav className="pagination-controls" aria-label={t("pageLabel")}><button className="small-button" type="button" disabled={loading || busyId !== null || history.length === 0} onClick={previousPage}>{t("previousPage")}</button><button className="small-button" type="button" disabled={loading || busyId !== null || !nextCursor} onClick={nextPage}>{t("nextPage")}</button></nav>
+    {resolution && <form className="stack-form" aria-label={t("outboxResolutionReason")} onSubmit={resolveFailure}>
+      <p><strong>{resolution.action === "requeue" ? t("outboxRequeue") : t("outboxAcknowledge")}</strong> · {resolution.failure.channel} · {resolution.failure.subject}</p>
+      <Input label={t("outboxResolutionReason")} value={resolution.reason} onChange={(reason) => setResolution({ ...resolution, reason })} minLength={5} maxLength={500} required disabled={busyId !== null} />
+      <div className="table-actions"><button className="primary-button" type="submit" disabled={busyId !== null}>{resolution.action === "requeue" ? t("outboxRequeue") : t("outboxAcknowledge")}</button><button className="secondary-button" type="button" disabled={busyId !== null} onClick={() => setResolution(null)}>{t("cancel")}</button></div>
+    </form>}
+  </section>;
+}
 
 function OperationsView({
   credentials,
@@ -4124,10 +4428,10 @@ function SubscriptionsView({
               ))}
             </select>
           </label>
-          <Select label={t("status")} value={form.status} options={["ACTIVA", "PAUSADA"]} onChange={(status) => setForm({ ...form, status })} />
+          <Select label={t("status")} value={form.status} options={["ACTIVA", "SUSPENDIDA", "CANCELADA"]} onChange={(status) => setForm({ ...form, status })} />
           <Input label={t("startedAt")} type="datetime-local" value={form.startedAt} onChange={(startedAt) => setForm({ ...form, startedAt })} required />
-          <Input label={t("plan")} value={form.planName} onChange={(planName) => setForm({ ...form, planName })} required />
-          <Input label={t("billingCycle")} value={form.billingCycle} onChange={(billingCycle) => setForm({ ...form, billingCycle })} required />
+          <Select label={t("plan")} value={form.planName} options={["BASIC", "STANDARD", "PREMIUM", "PRO", "ENTERPRISE"]} onChange={(planName) => setForm({ ...form, planName })} />
+          <Select label={t("billingCycle")} value={form.billingCycle} options={["MENSUAL", "TRIMESTRAL", "ANUAL"]} onChange={(billingCycle) => setForm({ ...form, billingCycle })} />
           <Input label={t("amount")} value={form.amount} onChange={(amount) => setForm({ ...form, amount })} required />
           <Input label={t("currency")} value={form.currency} onChange={(currency) => setForm({ ...form, currency })} required />
           <Input label={t("nextBillingAt")} type="datetime-local" value={form.nextBillingAt} onChange={(nextBillingAt) => setForm({ ...form, nextBillingAt })} />
@@ -5404,9 +5708,12 @@ function CompanyDetail({
   const [maxWindows, setMaxWindows] = useState("1");
   const [maxPda, setMaxPda] = useState("0");
   const [operations, setOperations] = useState<CompanyOperations | null>(null);
+  const [operationsLoadError, setOperationsLoadError] = useState<string | null>(null);
+  const [operationsStale, setOperationsStale] = useState(false);
   const [fiscalProvisioning, setFiscalProvisioning] = useState<FiscalProvisioning | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const companyDetailRequestId = useRef(0);
+  const operationsRequestId = useRef(0);
   const companyDetailMutationId = useRef(0);
   const selectedCompanyIdRef = useRef<string | null>(license?.companyId ?? null);
   selectedCompanyIdRef.current = license?.companyId ?? null;
@@ -5434,24 +5741,39 @@ function CompanyDetail({
   useEffect(() => {
     const companyId = license?.companyId ?? null;
     const requestId = ++companyDetailRequestId.current;
+    const operationsId = ++operationsRequestId.current;
     companyDetailMutationId.current += 1;
     setOperations(null);
+    setOperationsLoadError(null);
+    setOperationsStale(false);
     setFiscalProvisioning(null);
     setBusy(null);
     if (!companyId) return;
-    void loadOperations(companyId, requestId);
+    void loadOperations(companyId, requestId, operationsId);
     void loadFiscalProvisioning(companyId, requestId);
   }, [license?.companyId]);
 
-  async function loadOperations(companyId: string, requestId: number) {
+  async function loadOperations(companyId: string, requestId: number, operationsId: number) {
     try {
       const loaded = await api.companyOperations(credentials, companyId);
-      if (!isCurrentCompanyRequest(companyId, requestId) || loaded.companyId !== companyId) return;
+      if (!isCurrentCompanyRequest(companyId, requestId) || operationsId !== operationsRequestId.current || loaded.companyId !== companyId) return;
       setOperations(loaded);
-    } catch {
-      if (!isCurrentCompanyRequest(companyId, requestId)) return;
-      setOperations(defaultCompanyOperations(companyId));
+      setOperationsLoadError(null);
+      setOperationsStale(false);
+    } catch (error) {
+      if (!isCurrentCompanyRequest(companyId, requestId) || operationsId !== operationsRequestId.current) return;
+      setOperations((current) => retainCompanyOperationsAfterFailure(current, companyId));
+      setOperationsLoadError(errorMessage(error));
+      setOperationsStale(operations?.companyId === companyId);
     }
+  }
+
+  function retryOperations() {
+    const companyId = license?.companyId;
+    if (!companyId) return;
+    const operationsId = ++operationsRequestId.current;
+    setOperationsLoadError(null);
+    void loadOperations(companyId, companyDetailRequestId.current, operationsId);
   }
 
   async function loadFiscalProvisioning(companyId: string, requestId: number) {
@@ -5554,7 +5876,7 @@ function CompanyDetail({
 
   async function saveOperations(event: FormEvent) {
     event.preventDefault();
-    if (!license || !operations || !canEditCompany) return;
+    if (!license || !operations || !canEditCompany || operationsStale || operationsLoadError) return;
     const companyId = license.companyId;
     if (operations.companyId !== companyId) {
       onNotice({ type: "error", text: t("companySelectionChanged") });
@@ -5597,9 +5919,7 @@ function CompanyDetail({
   const activeInstallations = installations.filter((installation) => installation.active);
   const stores = new Set(activeInstallations.map((installation) => installation.storeId)).size;
   const recentEvents = events.slice(0, 4);
-  const operationsForm = operations?.companyId === license.companyId
-    ? operations
-    : defaultCompanyOperations(license.companyId);
+  const operationsForm = operations?.companyId === license.companyId ? operations : null;
   const fiscalProvisioningForm = fiscalProvisioning?.companyId === license.companyId
     ? fiscalProvisioning
     : null;
@@ -5704,22 +6024,24 @@ function CompanyDetail({
               )}
             </form>
           )}
-          <form className="stack-form phase2-form wide" onSubmit={saveOperations}>
+          {operationsLoadError && <RetryError message={operationsLoadError} onRetry={retryOperations} />}
+          {operationsStale && operationsForm && <div className="permission-hint" role="status"><StatusPill status={t("stale")} tone="warning" /></div>}
+          {operationsForm ? <form className="stack-form phase2-form wide" onSubmit={saveOperations}>
             <h3>{t("billingStatus")} / {t("supportStatus")}</h3>
             <div className="compact-form-grid">
-              <Input label={t("plan")} value={operationsForm.planName} onChange={(planName) => setOperations({ ...operationsForm, planName })} disabled={!canEditCompany} />
-              <Input label={t("billingStatus")} value={operationsForm.billingStatus} onChange={(billingStatus) => setOperations({ ...operationsForm, billingStatus })} disabled={!canEditCompany} />
+              <Select label={t("plan")} value={operationsForm.planName} options={["BASIC", "STANDARD", "PREMIUM", "PRO", "ENTERPRISE"]} onChange={(planName) => setOperations({ ...operationsForm, planName })} disabled={!canEditCompany || operationsStale} />
+              <Select label={t("billingStatus")} value={operationsForm.billingStatus} options={["PAGADO", "PENDIENTE", "VENCIDO", "IMPAGADO"]} onChange={(billingStatus) => setOperations({ ...operationsForm, billingStatus })} disabled={!canEditCompany || operationsStale} />
               <Input
                 label={t("renewalDate")}
                 type="datetime-local"
                 value={operationsForm.renewalDate ? toLocalInput(new Date(operationsForm.renewalDate)) : ""}
                 onChange={(renewalDate) => setOperations({ ...operationsForm, renewalDate })}
-                disabled={!canEditCompany}
+                disabled={!canEditCompany || operationsStale}
               />
-              <Input label={t("monthlyPrice")} value={operationsForm.monthlyPrice ?? ""} onChange={(monthlyPrice) => setOperations({ ...operationsForm, monthlyPrice })} disabled={!canEditCompany} />
-              <Input label={t("supportStatus")} value={operationsForm.supportStatus} onChange={(supportStatus) => setOperations({ ...operationsForm, supportStatus })} disabled={!canEditCompany} />
-              <Input label={t("contactName")} value={operationsForm.contactName ?? ""} onChange={(contactName) => setOperations({ ...operationsForm, contactName })} disabled={!canEditCompany} />
-              <Input label={t("contactEmail")} value={operationsForm.contactEmail ?? ""} onChange={(contactEmail) => setOperations({ ...operationsForm, contactEmail })} disabled={!canEditCompany} />
+              <Input label={t("monthlyPrice")} value={operationsForm.monthlyPrice ?? ""} onChange={(monthlyPrice) => setOperations({ ...operationsForm, monthlyPrice })} disabled={!canEditCompany || operationsStale} />
+              <Select label={t("supportStatus")} value={operationsForm.supportStatus} options={["NORMAL", "ATENCION", "BLOQUEADO"]} onChange={(supportStatus) => setOperations({ ...operationsForm, supportStatus })} disabled={!canEditCompany || operationsStale} />
+              <Input label={t("contactName")} value={operationsForm.contactName ?? ""} onChange={(contactName) => setOperations({ ...operationsForm, contactName })} disabled={!canEditCompany || operationsStale} />
+              <Input label={t("contactEmail")} value={operationsForm.contactEmail ?? ""} onChange={(contactEmail) => setOperations({ ...operationsForm, contactEmail })} disabled={!canEditCompany || operationsStale} />
             </div>
             <label>
               {t("notes")}
@@ -5727,15 +6049,15 @@ function CompanyDetail({
                 className="control-input text-area"
                 value={operationsForm.notes ?? ""}
                 onChange={(event) => setOperations({ ...operationsForm, notes: event.target.value })}
-                disabled={!canEditCompany}
+                disabled={!canEditCompany || operationsStale}
               />
             </label>
             {canEditCompany && (
-              <button className="secondary-button" type="submit" disabled={busy === "operations"}>
+              <button className="secondary-button" type="submit" disabled={busy === "operations" || operationsStale || Boolean(operationsLoadError)}>
                 {busy === "operations" ? t("saving") : t("saveChanges")}
               </button>
             )}
-          </form>
+          </form> : !operationsLoadError && <EmptyState text={t("loadingSaas")} />}
         </div>
       </div>
     </section>
@@ -6028,6 +6350,9 @@ function Input({
   type = "text",
   required,
   min,
+  minLength,
+  maxLength,
+  step,
   disabled
 }: {
   label: string;
@@ -6036,6 +6361,9 @@ function Input({
   type?: string;
   required?: boolean;
   min?: number;
+  minLength?: number;
+  maxLength?: number;
+  step?: string;
   disabled?: boolean;
 }) {
   return (
@@ -6046,6 +6374,9 @@ function Input({
         type={type}
         value={value}
         min={min}
+        minLength={minLength}
+        maxLength={maxLength}
+        step={step}
         onChange={(event) => onChange(event.target.value)}
         required={required}
         disabled={disabled}
@@ -6190,7 +6521,7 @@ function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floa
   );
 }
 
-const VALID_VIEWS: View[] = ["dashboard", "licenses", "sync", "fiscal", "users", "audit", "support", "health", "billing", "masters", "operations", "subscriptions", "reports"];
+const VALID_VIEWS: View[] = ["dashboard", "licenses", "sync", "fiscal", "users", "audit", "support", "health", "billing", "masters", "operations", "outbox", "subscriptions", "reports"];
 
 function readViewFromLocation(): View {
   const candidate = window.location.hash.replace(/^#\/?/, "") as View;
@@ -6218,6 +6549,7 @@ function viewTitle(view: View, t: (key: string) => string) {
     billing: t("billing"),
     masters: t("masters"),
     operations: t("operations"),
+    outbox: t("outboxRecovery"),
     subscriptions: t("subscriptions"),
     reports: t("reports"),
     audit: t("audit")
@@ -6229,20 +6561,6 @@ function uniqueCompanies(licenses: LicenseSummary[]) {
     companyId: license.companyId,
     companyName: license.companyName
   }));
-}
-
-function defaultCompanyOperations(companyId: string): CompanyOperations {
-  return {
-    companyId,
-    planName: "STANDARD",
-    billingStatus: "PENDIENTE",
-    renewalDate: null,
-    monthlyPrice: "",
-    supportStatus: "NORMAL",
-    contactName: "",
-    contactEmail: "",
-    notes: ""
-  };
 }
 
 function riskLabel(riskLevel: string, t: (key: string) => string) {
@@ -6508,12 +6826,13 @@ async function copyText(text: string) {
 
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
+    if ([502, 503, 504].includes(error.status)) return TRANSLATIONS.es.serviceUnavailable;
+    if (error.status >= 500) return TRANSLATIONS.es.internalServerError;
     const actionableMessage = extractApiErrorMessage(error.message);
     if (actionableMessage) return actionableMessage;
     if (error.status === 401) return TRANSLATIONS.es.invalidCredentials;
     if (error.status === 403) return TRANSLATIONS.es.forbiddenAction;
     if (error.status === 404) return TRANSLATIONS.es.resourceNotFound;
-    if (error.status >= 500) return TRANSLATIONS.es.backendNotUpdated;
     if (error.status === 400) return "La solicitud no es válida.";
     if (error.status === 409) return "La operación entra en conflicto con el estado actual.";
     if (error.status === 429) return "Demasiadas solicitudes. Espera un momento y vuelve a intentarlo.";

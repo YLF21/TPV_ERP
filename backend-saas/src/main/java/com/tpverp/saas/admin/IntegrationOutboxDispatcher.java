@@ -48,9 +48,9 @@ public class IntegrationOutboxDispatcher {
                     select r.id, e.integration_type, e.target_url, e.api_key_encrypted, e.api_key
                       from saas_integration_run r
                       join saas_integration_endpoint e on e.id = r.integration_id
-                     where ((r.status = 'PENDING' and (r.next_attempt_at is null or r.next_attempt_at <= ?))
-                        or (r.status = 'PROCESSING' and r.claimed_at <= ?))
-                       and r.delivery_attempt_count < ?
+                     where ((r.status = 'PENDING' and (r.next_attempt_at is null or r.next_attempt_at <= ?)
+                               and r.delivery_attempt_count < ?)
+                         or (r.status = 'PROCESSING' and (r.claimed_at is null or r.claimed_at <= ?)))
                      order by r.started_at
                      for update of r skip locked
                      limit 20
@@ -67,7 +67,7 @@ public class IntegrationOutboxDispatcher {
                 rs.getString("integration_type"), rs.getString("target_url"),
                 rs.getString("api_key_encrypted"), rs.getString("api_key"),
                 rs.getInt("delivery_attempt_count")),
-                Timestamp.from(now), Timestamp.from(now.minus(claimLease)), maxAttempts,
+                Timestamp.from(now), maxAttempts, Timestamp.from(now.minus(claimLease)),
                 Timestamp.from(now), claimToken);
         int delivered = 0;
         for (Pending row : rows) {
@@ -76,7 +76,7 @@ public class IntegrationOutboxDispatcher {
                 accepted = channel.deliver(new IntegrationDeliveryChannel.IntegrationDelivery(
                         row.integrationId(), row.integrationType(), row.targetUrl(),
                         row.encryptedApiKey() == null ? row.legacyApiKey() : cipher.decrypt(row.encryptedApiKey()),
-                        row.payload(), row.idempotencyKey()));
+                        deliveryPayload(row.payload()), row.idempotencyKey()));
             } catch (RuntimeException exception) {
                 accepted = false;
             }
@@ -115,6 +115,14 @@ public class IntegrationOutboxDispatcher {
             throw new IllegalArgumentException(property + " debe ser positivo");
         }
         return value;
+    }
+
+    private String deliveryPayload(String storedPayload) {
+        if (storedPayload == null || storedPayload.isBlank()
+                || SecurityPayloadRetentionService.PURGED_PAYLOAD.equals(storedPayload)) {
+            return null;
+        }
+        return storedPayload.startsWith("v1:") ? cipher.decrypt(storedPayload) : storedPayload;
     }
 
     private record Pending(UUID id, UUID integrationId, String idempotencyKey, String payload,

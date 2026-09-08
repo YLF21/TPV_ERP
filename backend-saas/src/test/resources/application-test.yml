@@ -5,10 +5,10 @@ spring:
   flyway:
     locations: classpath:db/migration,classpath:db/test
   datasource:
-    url: jdbc:tc:postgresql:17-alpine:///tpv_saas
-    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
-    username: test
-    password: test
+    url: ${TPV_TEST_DB_URL:jdbc:tc:postgresql:17-alpine:///tpv_saas}
+    driver-class-name: ${TPV_TEST_DB_DRIVER:org.testcontainers.jdbc.ContainerDatabaseDriver}
+    username: ${TPV_TEST_DB_USERNAME:test}
+    password: ${TPV_TEST_DB_PASSWORD:test}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -19,4 +19,3 @@ tpv:
     legacy-basic-auth-enabled: true
     secrets:
       encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-

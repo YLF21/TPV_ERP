@@ -24,12 +24,18 @@ tpv:
       required: ${TPV_SAAS_SECURITY_NOTIFICATIONS_REQUIRED:true}
       max-attempts: ${TPV_SAAS_SECURITY_NOTIFICATIONS_MAX_ATTEMPTS:8}
       claim-lease: ${TPV_SAAS_SECURITY_NOTIFICATIONS_CLAIM_LEASE:PT2M}
+      payload-retention: ${TPV_SAAS_SECURITY_PAYLOAD_RETENTION:P30D}
+      payload-purge-delay: ${TPV_SAAS_SECURITY_PAYLOAD_PURGE_DELAY:86400000}
     integrations:
       required: ${TPV_SAAS_INTEGRATIONS_REQUIRED:true}
       max-delivery-attempts: ${TPV_SAAS_INTEGRATIONS_MAX_DELIVERY_ATTEMPTS:8}
       claim-lease: ${TPV_SAAS_INTEGRATIONS_CLAIM_LEASE:PT2M}
+      payload-retention: ${TPV_SAAS_INTEGRATION_PAYLOAD_RETENTION:P30D}
     outbox:
       critical-backlog: ${TPV_SAAS_OUTBOX_CRITICAL_BACKLOG:1000}
+      max-pending-age: ${TPV_SAAS_OUTBOX_MAX_PENDING_AGE:PT1H}
+      max-claim-age: ${TPV_SAAS_OUTBOX_MAX_CLAIM_AGE:PT5M}
+      payload-purge-batch-size: ${TPV_SAAS_PAYLOAD_PURGE_BATCH_SIZE:500}
     password-reset:
       lifetime: ${TPV_SAAS_PASSWORD_RESET_LIFETIME:PT30M}
     operational-incidents:

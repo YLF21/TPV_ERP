@@ -29,6 +29,57 @@ class ProductionReadinessMigrationContractTest {
                 "idx_saas_integration_run_delivery");
     }
 
+    @Test
+    void v49RequiresFiscalEvidenceAndCountsOnlyActiveLicenses() throws IOException {
+        String sql = migration("V49__production_delivery_and_fiscal_evidence.sql");
+
+        assertThat(sql).contains(
+                "fiscal_reason",
+                "fiscal_legal_basis",
+                "fiscal_evidence_reference",
+                "saas_invoice_fiscal_decision_audit",
+                "not valid",
+                "status = 'VALIDA'",
+                "valid_until > current_timestamp",
+                "update of status, valid_until, company_id");
+        assertThat(sql).doesNotContain("set fiscal_status = 'PENDING_TAX_DATA'");
+    }
+
+    @Test
+    void v50AddsAuditableRecoveryStatesAndFailedIndexesWithoutDroppingLiveIndexes() throws IOException {
+        String sql = migration("V50__outbox_operational_recovery.sql");
+
+        assertThat(sql).contains(
+                "ACKNOWLEDGED",
+                "RECOVERED_ORPHAN_CLAIM",
+                "idx_saas_security_outbox_failed",
+                "idx_saas_integration_run_failed_delivery",
+                "delivery_attempt_count = 0");
+        assertThat(sql).doesNotContain(
+                "drop index idx_saas_security_outbox_delivery",
+                "drop index idx_saas_integration_run_delivery");
+    }
+
+    @Test
+    void v51BuildsTerminalRetentionIndexConcurrently() throws IOException {
+        String sql = migration("V51__security_payload_retention_index.sql");
+        assertThat(sql).contains(
+                "create index concurrently",
+                "ACKNOWLEDGED",
+                "encrypted_payload <> '__PURGED__'");
+        assertThat(sql).doesNotContain("alter table", "drop index");
+    }
+
+    @Test
+    void v52BuildsIntegrationRetentionIndexConcurrently() throws IOException {
+        String sql = migration("V52__integration_payload_retention_index.sql");
+        assertThat(sql).contains(
+                "create index concurrently",
+                "saas_integration_run",
+                "payload <> '__PURGED__'");
+        assertThat(sql).doesNotContain("alter table", "drop index");
+    }
+
     private String migration(String filename) throws IOException {
         try (var stream = getClass().getClassLoader().getResourceAsStream("db/migration/" + filename)) {
             assertThat(stream).isNotNull();
