@@ -653,6 +653,17 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  it("retains three decimal unit prices and rounds only after multiplying quantity", () => {
+    const line = addSaleLine([], { ...products[0], salePrice: "2.208" })[0];
+    expect(saleLineUnitPrice(line)).toBe(2.208);
+    expect(saleLineSubtotal({ ...line, quantity: 10 })).toBe(22.08);
+    expect(saleLineSubtotal(line)).toBe(2.21);
+    const temporary = updateSaleLineTemporaryPrice([line], saleCartLineIdentity(line), 1.235)[0];
+    expect(saleLineUnitPrice(temporary)).toBe(1.235);
+    expect(saleLineSubtotal({ ...temporary, quantity: 3 })).toBe(3.71);
+    expect(saleLineSubtotal({ ...temporary, quantity: -3 })).toBe(-3.71);
+    expect(() => updateSaleLineTemporaryPrice([line], saleCartLineIdentity(line), 1.2345)).toThrow("invalid_temporary_price");
+  });
   it("validates required serial numbers exactly, including cross-line duplicates", () => {
     const product: SaleProduct = { ...products[0], productType: "UNIT", requiresSerialNumber: true };
     const line = (serialNumbers: string[], quantity = serialNumbers.length): SaleLine => ({ product, quantity, discountPercent: 0, serialNumbers });

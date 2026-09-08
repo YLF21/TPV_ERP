@@ -12,7 +12,7 @@ import java.util.UUID;
 public record WarehouseInputLineCommand(
         @NotNull UUID productId,
         @NotNull @Positive @Digits(integer = 16, fraction = 3) BigDecimal quantity,
-        @DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal unitPrice,
+        @DecimalMin("0.00") @Digits(integer = 17, fraction = 3) BigDecimal unitPrice,
         @DecimalMin("0.00") @DecimalMax("100.00") @Digits(integer = 3, fraction = 2) BigDecimal discount,
         boolean priceOverridden,
         @Size(max = 255) String productName) {

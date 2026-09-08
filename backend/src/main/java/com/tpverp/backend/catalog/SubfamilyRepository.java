@@ -19,6 +19,11 @@ public interface SubfamilyRepository extends JpaRepository<Subfamily, UUID> {
 
     @Query("select subfamily from Subfamily subfamily join Family family "
             + "on family.id = subfamily.familyId "
+            + "where family.storeId = :storeId and upper(subfamily.subfamilyCode) in :references")
+    List<Subfamily> findByStoreIdAndSubfamilyCodeIn(UUID storeId, java.util.Collection<String> references);
+
+    @Query("select subfamily from Subfamily subfamily join Family family "
+            + "on family.id = subfamily.familyId "
             + "where family.storeId = :storeId and subfamily.id = :id")
     Optional<Subfamily> findByStoreIdAndId(UUID storeId, UUID id);
 

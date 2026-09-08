@@ -75,9 +75,13 @@ public interface ProductSupplierRepository extends JpaRepository<ProductSupplier
                 :entryAt, 0
             from product_lock
             on conflict (producto_id, proveedor_id) do update
-            set referencia_proveedor = coalesce(
-                    excluded.referencia_proveedor,
-                    current_link.referencia_proveedor),
+            set referencia_proveedor = case
+                    when current_link.ultima_entrada_en is null
+                      or excluded.ultima_entrada_en >= current_link.ultima_entrada_en
+                    then coalesce(excluded.referencia_proveedor,
+                        current_link.referencia_proveedor)
+                    else current_link.referencia_proveedor
+                end,
                 ultimo_proveedor = current_link.ultimo_proveedor or :makeLastSupplier,
                 principal = current_link.principal or :makePrincipal,
                 precio_compra_bruto = case
@@ -92,9 +96,11 @@ public interface ProductSupplierRepository extends JpaRepository<ProductSupplier
                     then excluded.descuento_compra
                     else current_link.descuento_compra
                 end,
-                ultima_entrada_en = greatest(
-                    current_link.ultima_entrada_en,
-                    excluded.ultima_entrada_en),
+                ultima_entrada_en = case
+                    when current_link.ultima_entrada_en is null then excluded.ultima_entrada_en
+                    when excluded.ultima_entrada_en is null then current_link.ultima_entrada_en
+                    else greatest(current_link.ultima_entrada_en, excluded.ultima_entrada_en)
+                end,
                 version = current_link.version + 1
             """, nativeQuery = true)
     int upsertPurchase(

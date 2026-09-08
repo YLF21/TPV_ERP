@@ -42,6 +42,22 @@ class AuthoritativePromotionPricingTest {
     @Mock Product product;
 
     @Test
+    void derivedOfferKeepsThirdDecimalBeforeQuantityIsMultiplied() {
+        when(product.getDiscountType()).thenReturn(DiscountType.DISCOUNT_PRICE);
+        when(product.getPriceUseMode()).thenReturn(PriceUseMode.OFFER_DISCOUNT);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("2.76"));
+        when(product.isOfferActive()).thenReturn(true);
+        when(product.getOfferFrom()).thenReturn(DATE);
+        when(product.getOfferDiscountPercent()).thenReturn(new BigDecimal("20.00"));
+        var line = new DocumentLineCommand(UUID.randomUUID(), BigDecimal.TEN, "P-1", "Producto", "VENTA",
+                BigDecimal.ONE, BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00"));
+        var priced = service().priceLine(product, DATE, AuthoritativePromotionPricing.CustomerContext.anonymous(), line);
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("2.208");
+        assertThat(com.tpverp.backend.document.Money.euros(priced.precioUnitario().multiply(priced.cantidad())))
+                .isEqualByComparingTo("22.08");
+    }
+
+    @Test
     void memberPriceRequiresRealActiveMember() {
         when(customers.findByIdAndCompanyId(CUSTOMER_ID, COMPANY_ID)).thenReturn(Optional.of(customer));
         when(members.findByCustomerIdAndCompanyId(CUSTOMER_ID, COMPANY_ID)).thenReturn(Optional.of(member));

@@ -110,8 +110,8 @@ class PreviousTicketImportRepositoryPostgreSqlTest {
                 .containsExactlyInAnyOrder(latestFirst, latestTie, secondLatest);
         assertThat(result).extracting(value -> value.getAmount())
                 .containsExactlyInAnyOrder(
-                        new BigDecimal("7.00"), new BigDecimal("7.00"),
-                        new BigDecimal("3.00"));
+                        new BigDecimal("7.000"), new BigDecimal("7.000"),
+                        new BigDecimal("3.000"));
     }
 
     private UUID insertPrice(UUID productId, String amount, String updatedAt) {

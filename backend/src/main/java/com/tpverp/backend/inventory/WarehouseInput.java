@@ -132,6 +132,10 @@ public class WarehouseInput {
         return warehouseId;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     public UUID getSupplierId() {
         return supplierId;
     }
@@ -173,7 +177,12 @@ public class WarehouseInput {
     }
 
     public List<WarehouseInputLine> getLines() {
-        return List.copyOf(lines);
+        return lines.stream().sorted(java.util.Comparator.comparingInt(WarehouseInputLine::getPosition)).toList();
+    }
+
+    void clearLinesForReplacement() {
+        requireDraft();
+        lines.clear();
     }
 
     public void addLine(UUID productId, int quantity) {
@@ -215,9 +224,7 @@ public class WarehouseInput {
         this.globalDiscount = percent(globalDiscount);
         this.sourceDeliveryNoteIds.clear();
         this.sourceDeliveryNoteIds.addAll(sourceDeliveryNoteIds == null ? List.of() : sourceDeliveryNoteIds.stream().distinct().toList());
-        if (newExcelImport != null) {
-            this.excelImport = WarehouseExcelImportMetadata.copy(newExcelImport);
-        }
+        this.excelImport = WarehouseExcelImportMetadata.copy(newExcelImport);
         lines.clear();
         newLines.forEach(this::addLine);
     }

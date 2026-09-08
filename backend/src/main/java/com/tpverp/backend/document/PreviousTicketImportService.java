@@ -287,8 +287,8 @@ public class PreviousTicketImportService {
     private CurrentPriceDecision currentPriceDecision(
             DocumentLine source,
             CurrentProductSnapshot current) {
-        var sourcePrice = Money.euros(source.getPrecioUnitario());
-        var currentSalePrice = Money.euros(current.product().getSalePrice());
+        var sourcePrice = Money.unitPrice(source.getPrecioUnitario());
+        var currentSalePrice = Money.unitPrice(current.product().getSalePrice());
         if (isTemporaryPrice(source)) {
             return new CurrentPriceDecision(
                     sourcePrice, "TEMPORAL", true, true, false);
@@ -811,7 +811,7 @@ public class PreviousTicketImportService {
                         var evidence = current.historicalSalePrice();
                         canonical.append("|current-price:")
                                 .append(line.getId()).append(':')
-                                .append(Money.euros(current.product().getSalePrice()))
+                                .append(Money.unitPrice(current.product().getSalePrice()))
                                 .append(':');
                         if (evidence == null) {
                             canonical.append('~');
@@ -932,7 +932,7 @@ public class PreviousTicketImportService {
             List<UUID> historyIds) {
 
         private HistoricalSalePriceEvidence {
-            amount = Money.euros(amount);
+            amount = Money.unitPrice(amount);
             historyIds = List.copyOf(historyIds);
         }
     }
@@ -945,7 +945,7 @@ public class PreviousTicketImportService {
             boolean historicalOpenPrice) {
 
         private CurrentPriceDecision {
-            unitPrice = Money.euros(unitPrice);
+            unitPrice = Money.unitPrice(unitPrice);
         }
 
         private static CurrentPriceDecision current(BigDecimal unitPrice) {

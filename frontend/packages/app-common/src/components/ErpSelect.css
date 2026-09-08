@@ -6,6 +6,38 @@
   font: inherit;
 }
 
+.erp-select--editable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+}
+
+.erp-select--editable > input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #8ea5bd;
+  border-radius: 0;
+  background: #fffef0;
+  color: #001b3f;
+  font: inherit;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.erp-select--editable > .erp-select__trigger {
+  grid-template-columns: 1fr;
+  border-left: 0;
+}
+
+.erp-select--editable .erp-select__arrow {
+  width: 28px;
+  margin: 0;
+}
+
+.erp-select--editable > input:focus-visible {
+  outline: 2px solid #1d6faf;
+  outline-offset: 1px;
+}
+
 .erp-select > .erp-select__trigger {
   width: 100%;
   min-width: 0;

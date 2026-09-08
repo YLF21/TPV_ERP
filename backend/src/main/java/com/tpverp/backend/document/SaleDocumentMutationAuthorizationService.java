@@ -122,8 +122,8 @@ public class SaleDocumentMutationAuthorizationService {
                 operations.add(SaleOperationCode.TEMPORARY_NAME);
             }
 
-            var catalogPrice = Money.euros(product.getSalePrice());
-            var requestedPrice = Money.euros(line.precioUnitario());
+            var catalogPrice = Money.unitPrice(product.getSalePrice());
+            var requestedPrice = Money.exactUnitPrice(line.precioUnitario());
             if (catalogPrice.signum() == 0) {
                 if (line.temporaryPriceOverride()) {
                     throw new IllegalArgumentException(

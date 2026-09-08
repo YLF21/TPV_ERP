@@ -138,12 +138,28 @@ public class ProductBulkEditService {
         List<ProductBulkEditContent.Row> content =
                 validateApplyRequest(storeId, edit, request, stagedImages);
         if (request.updates().isEmpty()
+                && request.creates().isEmpty()
                 && request.supplierAssignments().isEmpty()
                 && request.supplierPrincipalAssignments().isEmpty()
                 && stagedImages.isEmpty()) {
             throw new IllegalArgumentException("No hay cambios para aplicar");
         }
         Map<UUID, Product> modifiedProducts = new HashMap<>();
+        Map<String, Product> createdProducts = new HashMap<>();
+        if (!request.creates().isEmpty()) {
+            List<CatalogService.ProductRequest> createRequests = request.creates().stream()
+                    .map(BulkProductCreate::product)
+                    .toList();
+            List<Product> created = catalog.createProductsFromImport(createRequests);
+            if (created.size() != request.creates().size()) {
+                throw new IllegalStateException("CatalogService no devolvio todas las altas");
+            }
+            for (int index = 0; index < created.size(); index++) {
+                Product product = created.get(index);
+                modifiedProducts.put(product.getId(), product);
+                createdProducts.put(request.creates().get(index).rowId(), product);
+            }
+        }
         if (!request.updates().isEmpty()) {
             catalog.updateProducts(request.updates()).forEach(
                     product -> modifiedProducts.put(product.getId(), product));
@@ -165,7 +181,7 @@ public class ProductBulkEditService {
         content = finalizeSupplierState(content);
         if (!modifiedProducts.isEmpty()) {
             products.flush();
-            content = refreshPersistenceState(content, modifiedProducts);
+            content = refreshPersistenceState(content, modifiedProducts, createdProducts);
         }
         edit.apply(content, user.getId(), clock.instant());
         images.deleteAll(stagedImages);
@@ -221,6 +237,7 @@ public class ProductBulkEditService {
         Objects.requireNonNull(request.updates(), "updates");
         Objects.requireNonNull(request.supplierAssignments(), "supplierAssignments");
         Objects.requireNonNull(request.supplierPrincipalAssignments(), "supplierPrincipalAssignments");
+        Objects.requireNonNull(request.creates(), "creates");
         List<ProductBulkEditContent.Row> content = ProductBulkEditContent.validateAndCopy(request.content());
         Map<UUID, ProductBulkEditContent.ProductData> contentProducts = content.stream()
                 .map(ProductBulkEditContent.Row::effectiveProduct)
@@ -228,6 +245,16 @@ public class ProductBulkEditService {
                 .collect(Collectors.toMap(
                         ProductBulkEditContent.ProductData::productId,
                         Function.identity()));
+        Set<String> persistedRowIds = edit.getContenido().stream()
+                .map(ProductBulkEditContent.Row::id)
+                .collect(Collectors.toSet());
+        Set<String> contentRowIds = content.stream()
+                .map(ProductBulkEditContent.Row::id)
+                .collect(Collectors.toSet());
+        if (!persistedRowIds.equals(contentRowIds)) {
+            throw new IllegalArgumentException(
+                    "content no coincide con las filas guardadas en la lista de edicion masiva");
+        }
         Set<UUID> persistedProductIds = edit.getContenido().stream()
                 .map(ProductBulkEditContent.Row::effectiveProduct)
                 .filter(Objects::nonNull)
@@ -236,6 +263,63 @@ public class ProductBulkEditService {
         if (!persistedProductIds.equals(contentProducts.keySet())) {
             throw new IllegalArgumentException(
                     "content no coincide con los productos guardados en la lista de edicion masiva");
+        }
+        Map<String, ProductBulkEditContent.Row> rowsById = content.stream()
+                .collect(Collectors.toMap(ProductBulkEditContent.Row::id, Function.identity()));
+        Map<String, ProductBulkEditContent.Row> persistedRowsById = edit.getContenido().stream()
+                .collect(Collectors.toMap(ProductBulkEditContent.Row::id, Function.identity()));
+        Set<String> expectedCreateRowIds = persistedRowsById.values().stream()
+                .filter(row -> row.product() == null && !isEmptyDraft(row.draft()))
+                .map(ProductBulkEditContent.Row::id)
+                .collect(Collectors.toSet());
+        for (ProductBulkEditContent.Row persistedRow : persistedRowsById.values()) {
+            ProductBulkEditContent.Row submittedRow = rowsById.get(persistedRow.id());
+            if (persistedRow.product() == null) {
+                if (submittedRow == null || submittedRow.product() != null
+                        || !Objects.equals(submittedRow.draft(), persistedRow.draft())) {
+                    throw new IllegalArgumentException(
+                            "la fila MISSING persistida " + persistedRow.id()
+                                    + " no coincide con el snapshot guardado");
+                }
+            } else if (submittedRow == null || submittedRow.product() == null) {
+                throw new IllegalArgumentException(
+                        "la fila existente " + persistedRow.id() + " no puede convertirse en MISSING");
+            }
+        }
+        if (request.creates().size() > 5_000) {
+            throw new IllegalArgumentException("creates no puede superar 5000 altas");
+        }
+        Set<String> createRowIds = new HashSet<>();
+        for (int index = 0; index < request.creates().size(); index++) {
+            BulkProductCreate create = request.creates().get(index);
+            if (create == null || create.rowId() == null || create.rowId().isBlank()
+                    || create.product() == null) {
+                throw new IllegalArgumentException("creates[" + index + "] no es valido");
+            }
+            if (!createRowIds.add(create.rowId())) {
+                throw new IllegalArgumentException("creates contiene rowId duplicado: " + create.rowId());
+            }
+            ProductBulkEditContent.Row row = rowsById.get(create.rowId());
+            ProductBulkEditContent.Row persistedRow = persistedRowsById.get(create.rowId());
+            if (row == null || persistedRow == null || row.product() != null
+                    || persistedRow.product() != null || isEmptyDraft(row.draft())
+                    || isEmptyDraft(persistedRow.draft())) {
+                throw new IllegalArgumentException(
+                        "creates[" + index + "] no coincide con una fila MISSING persistida");
+            }
+            if (!Objects.equals(row.draft(), persistedRow.draft())) {
+                throw new IllegalArgumentException(
+                        "creates[" + index + "] modifica el draft de la fila MISSING persistida");
+            }
+            if (row.draft().productId() != null || row.draft().version() != null) {
+                throw new IllegalArgumentException(
+                        "creates[" + index + "] no puede inyectar productId o version");
+            }
+            requireCreateMatchesContent(create, row.draft(), index);
+        }
+        if (!expectedCreateRowIds.equals(createRowIds)) {
+            throw new IllegalArgumentException(
+                    "creates debe cubrir exactamente las filas MISSING con datos");
         }
         Set<UUID> updatedProductIds = new HashSet<>();
         for (int index = 0; index < request.updates().size(); index++) {
@@ -366,27 +450,127 @@ public class ProductBulkEditService {
 
     private static List<ProductBulkEditContent.Row> refreshPersistenceState(
             List<ProductBulkEditContent.Row> content,
-            Map<UUID, Product> modifiedProducts) {
+            Map<UUID, Product> modifiedProducts,
+            Map<String, Product> createdProducts) {
         return content.stream().map(row -> {
             ProductBulkEditContent.ProductData effective = row.effectiveProduct();
-            if (effective == null) {
+            Product product = effective == null
+                    ? createdProducts.get(row.id())
+                    : modifiedProducts.get(effective.productId());
+            if (product == null) {
                 return row;
             }
-            Product product = modifiedProducts.get(effective.productId());
-            if (product == null || row.product() == null) {
-                return row;
-            }
+            ProductBulkEditContent.ProductData persisted = row.product() == null
+                    ? ProductBulkEditContent.ProductData.fromProduct(product)
+                    : effective.withPersistenceState(product.getVersion(), product.getImageId());
             return new ProductBulkEditContent.Row(
                     row.id(),
                     row.selected(),
                     row.query(),
-                    row.product().withPersistenceState(product.getVersion(), product.getImageId()),
-                    row.draft().withoutPersistenceState(),
+                    persisted,
+                    ProductBulkEditContent.ProductData.empty(),
                     row.suppliers(),
                     row.pendingSupplier(),
                     row.principalSupplierChanged(),
                     row.pendingPrincipalSupplierId());
         }).toList();
+    }
+
+    private static boolean isEmptyDraft(ProductBulkEditContent.ProductData draft) {
+        return draft == null || (draft.productId() == null && draft.version() == null
+                && text(draft.code()) == null && text(draft.barcode()) == null
+                && text(draft.barcode2()) == null && text(draft.name()) == null
+                && text(draft.description()) == null && text(draft.comments()) == null
+                && text(draft.familyId()) == null && text(draft.subfamilyId()) == null
+                && text(draft.taxId()) == null && text(draft.purchasePrice()) == null
+                && text(draft.salePrice()) == null && text(draft.productType()) == null);
+    }
+
+    private static void requireCreateMatchesContent(
+            BulkProductCreate create,
+            ProductBulkEditContent.ProductData content,
+            int index) {
+        String path = "creates[" + index + "]";
+        CatalogService.ProductRequest product = create.product();
+        requireCreateField(path, "familyId", content.familyId(), product.familyId() == null ? null : product.familyId().toString());
+        requireCreateField(path, "subfamilyId", content.subfamilyId(), product.subfamilyId() == null ? null : product.subfamilyId().toString());
+        requireCreateField(path, "taxId", content.taxId(), product.taxId() == null ? null : product.taxId().toString());
+        requireCreateField(path, "productType", content.productType(), product.productType() == null ? null : product.productType().name());
+        String priceUse = text(content.discountType()) == null ? PriceUseMode.NORMAL.name()
+                : content.discountType().trim().toUpperCase(java.util.Locale.ROOT);
+        String backendDiscount = text(content.backendDiscountType());
+        if (backendDiscount == null) {
+            backendDiscount = switch (priceUse) {
+                case "MEMBER_PRICE" -> DiscountType.MEMBER_PRICE.name();
+                case "OFFER_PRICE", "OFFER_DISCOUNT" -> DiscountType.DISCOUNT_PRICE.name();
+                default -> DiscountType.NORMAL.name();
+            };
+        }
+        requireCreateField(path, "discountType", backendDiscount, product.discountType() == null ? null : product.discountType().name());
+        requireCreateField(path, "priceUseMode", priceUse, product.priceUseMode() == null ? null : product.priceUseMode().name());
+        requireCreateField(path, "name", content.name(), product.name());
+        requireCreateField(path, "description", content.description(), product.description());
+        requireCreateField(path, "comments", content.comments(), product.comments());
+        requireCreateDecimal(path, "purchasePrice", content.purchasePrice(), product.purchasePrice(), BigDecimal.ZERO);
+        requireCreateBoolean(path, "taxesIncluded", content.taxesIncluded(), product.taxesIncluded(), true);
+        requireCreateDecimal(path, "salePrice", content.salePrice(), product.salePrice(), BigDecimal.ZERO);
+        requireCreateField(path, "code", content.code(), product.code());
+        requireCreateField(path, "barcode", content.barcode(), product.barcode());
+        requireCreateField(path, "barcode2", content.barcode2(), product.barcode2());
+        requireCreateDecimal(path, "memberPrice", content.memberPrice(), product.memberPrice());
+        requireCreateDecimal(path, "wholesalePrice", content.wholesalePrice(), product.wholesalePrice());
+        requireCreateDecimal(path, "offerPrice", content.offerPrice(), product.offerPrice());
+        requireCreateDecimal(path, "offerDiscountPercent", content.offerDiscountPercent(), product.offerDiscountPercent());
+        requireCreateDecimal(path, "purchaseDiscountPercent", content.purchaseDiscountPercent(), product.purchaseDiscountPercent());
+        requireCreateBoolean(path, "offerActive", content.offerActive(), product.offerActive(),
+                "OFFER_PRICE".equals(priceUse) || "OFFER_DISCOUNT".equals(priceUse));
+        requireCreateField(path, "offerFrom", content.offerFrom(), product.offerFrom() == null ? null : product.offerFrom().toString());
+        requireCreateField(path, "offerUntil", content.offerUntil(), product.offerUntil() == null ? null : product.offerUntil().toString());
+        requireCreateBoolean(path, "active", content.active(),
+                product.active() == null || product.active(), true);
+        requireCreateDecimal(path, "stockMin", content.stockMin(), product.stockMin());
+        requireCreateDecimal(path, "stockMax", content.stockMax(), product.stockMax());
+        requireCreateDecimal(path, "packageQuantity", content.packageQuantity(), product.packageQuantity());
+        if (product.requiresSerialNumber() != null) {
+            throw new IllegalArgumentException(path + ".product.requiresSerialNumber no esta permitido en content");
+        }
+    }
+
+    private static void requireCreateField(String path, String field, String draft, String request) {
+        if (!Objects.equals(text(draft), text(request))) {
+            throw new IllegalArgumentException(path + ".product." + field + " no coincide con content");
+        }
+    }
+
+    private static void requireCreateDecimal(String path, String field, String draft, BigDecimal request) {
+        if (text(draft) == null) {
+            if (request != null) {
+                throw new IllegalArgumentException(path + ".product." + field + " no coincide con content");
+            }
+        } else if (request == null
+                ? decimal(draft).signum() != 0
+                : decimal(draft).compareTo(request) != 0) {
+            throw new IllegalArgumentException(path + ".product." + field + " no coincide con content");
+        }
+    }
+
+    private static void requireCreateDecimal(
+            String path, String field, String draft, BigDecimal request, BigDecimal defaultValue) {
+        if (text(draft) == null) {
+            if (request == null || request.compareTo(defaultValue) != 0) {
+                throw new IllegalArgumentException(path + ".product." + field + " no coincide con content");
+            }
+            return;
+        }
+        requireCreateDecimal(path, field, draft, request);
+    }
+
+    private static void requireCreateBoolean(
+            String path, String field, String draft, boolean request, boolean defaultValue) {
+        boolean expected = text(draft) == null ? defaultValue : bool(draft);
+        if (expected != request) {
+            throw new IllegalArgumentException(path + ".product." + field + " no coincide con content");
+        }
     }
 
     private static List<ProductBulkEditContent.Row> finalizeSupplierState(
@@ -608,12 +792,24 @@ public class ProductBulkEditService {
             @jakarta.validation.constraints.NotNull
             List<@jakarta.validation.Valid BulkSupplierPrincipalAssignment> supplierPrincipalAssignments,
             @jakarta.validation.constraints.NotNull @jakarta.validation.Valid
-            List<ProductBulkEditContent.Row> content) {
+            List<ProductBulkEditContent.Row> content,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.Valid
+            List<@jakarta.validation.Valid BulkProductCreate> creates) {
 
         public ProductBulkApplyRequest {
             supplierPrincipalAssignments = supplierPrincipalAssignments == null
                     ? List.of()
                     : List.copyOf(supplierPrincipalAssignments);
+            creates = creates == null ? List.of() : List.copyOf(creates);
+        }
+
+        public ProductBulkApplyRequest(
+                Long version,
+                List<CatalogService.BulkProductUpdate> updates,
+                List<BulkSupplierAssignment> supplierAssignments,
+                List<BulkSupplierPrincipalAssignment> supplierPrincipalAssignments,
+                List<ProductBulkEditContent.Row> content) {
+            this(version, updates, supplierAssignments, supplierPrincipalAssignments, content, List.of());
         }
 
         public ProductBulkApplyRequest(
@@ -621,8 +817,15 @@ public class ProductBulkEditService {
                 List<CatalogService.BulkProductUpdate> updates,
                 List<BulkSupplierAssignment> supplierAssignments,
                 List<ProductBulkEditContent.Row> content) {
-            this(version, updates, supplierAssignments, List.of(), content);
+            this(version, updates, supplierAssignments, List.of(), content, List.of());
         }
+    }
+
+    /** A create is bound to a persisted MISSING row, never to a client product id. */
+    public record BulkProductCreate(
+            @jakarta.validation.constraints.NotBlank String rowId,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.Valid
+            CatalogService.ProductRequest product) {
     }
 
     public record BulkSupplierAssignment(
