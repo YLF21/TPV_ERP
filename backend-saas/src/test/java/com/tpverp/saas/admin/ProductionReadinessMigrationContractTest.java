@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 class ProductionReadinessMigrationContractTest {
 
@@ -27,6 +28,68 @@ class ProductionReadinessMigrationContractTest {
         assertThat(sql).contains("idempotency_key", "claim_token", "claimed_at",
                 "delivery_attempt_count", "idx_saas_security_outbox_delivery",
                 "idx_saas_integration_run_delivery");
+    }
+
+    @Test
+    void v49RequiresFiscalEvidenceAndCountsOnlyActiveLicenses() throws IOException {
+        String sql = migration("V49__production_delivery_and_fiscal_evidence.sql");
+
+        assertThat(sql).contains(
+                "fiscal_reason",
+                "fiscal_legal_basis",
+                "fiscal_evidence_reference",
+                "saas_invoice_fiscal_decision_audit",
+                "not valid",
+                "status = 'VALIDA'",
+                "valid_until > current_timestamp",
+                "update of status, valid_until, company_id");
+        assertThat(sql).doesNotContain("set fiscal_status = 'PENDING_TAX_DATA'");
+    }
+
+    @Test
+    void v50AddsAuditableRecoveryStatesAndFailedIndexesWithoutDroppingLiveIndexes() throws IOException {
+        String sql = migration("V50__outbox_operational_recovery.sql");
+
+        assertThat(sql).contains(
+                "ACKNOWLEDGED",
+                "RECOVERED_ORPHAN_CLAIM",
+                "idx_saas_security_outbox_failed",
+                "idx_saas_integration_run_failed_delivery",
+                "delivery_attempt_count = 0");
+        assertThat(sql).doesNotContain(
+                "drop index idx_saas_security_outbox_delivery",
+                "drop index idx_saas_integration_run_delivery");
+    }
+
+    @Test
+    void v51BuildsTerminalRetentionIndexConcurrently() throws IOException {
+        String sql = migration("V51__security_payload_retention_index.sql");
+        assertThat(sql).contains(
+                "create index concurrently",
+                "ACKNOWLEDGED",
+                "encrypted_payload <> '__PURGED__'");
+        assertThat(sql).doesNotContain("alter table", "drop index");
+    }
+
+    @Test
+    void v52BuildsIntegrationRetentionIndexConcurrently() throws IOException {
+        String sql = migration("V52__integration_payload_retention_index.sql");
+        assertThat(sql).contains(
+                "create index concurrently",
+                "saas_integration_run",
+                "payload <> '__PURGED__'");
+        assertThat(sql).doesNotContain("alter table", "drop index");
+    }
+
+    @Test
+    void flywayUsesSessionLockForConcurrentPostgresqlIndexes() throws IOException {
+        var application = new ClassPathResource("application.yml");
+        String yaml = application.getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(yaml).contains(
+                "flyway:",
+                "postgresql:",
+                "transactional-lock: false");
     }
 
     private String migration(String filename) throws IOException {

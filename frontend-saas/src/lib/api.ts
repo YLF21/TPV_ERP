@@ -22,6 +22,7 @@ import type {
   ErpWarehouse,
   IntegrationEndpoint,
   InvoiceFiscalDetail,
+  UpdateInvoiceFiscalRequest,
   InventoryMovement,
   InventoryStock,
   InstallationSummary,
@@ -52,11 +53,13 @@ import type {
   LoginResponse,
   MasterImportResult,
   PaymentReconciliation,
-  PlanUsage
+  PlanUsage,
+  OutboxFailurePage
 } from "./types";
 import { extractApiErrorMessage } from "./problem-detail.mjs";
 
 const API_BASE = import.meta.env.VITE_SAAS_API_BASE_URL ?? "";
+const REQUEST_TIMEOUT_MS = 20_000;
 let unauthorizedHandler: ((credentials: Credentials) => void) | null = null;
 
 export function setUnauthorizedHandler(handler: ((credentials: Credentials) => void) | null) {
@@ -79,6 +82,26 @@ export class ApiError extends Error {
 
 export { extractApiErrorMessage };
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const externalSignal = init.signal;
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) controller.abort(externalSignal.reason);
+  else externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted && !externalSignal?.aborted) {
+      throw new ApiError(408, "La solicitud ha superado el tiempo de espera");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
+}
+
 function authHeader(credentials: Credentials) {
   if (!credentials.accessToken) {
     throw new ApiError(401, "La sesion no contiene un token de acceso");
@@ -87,7 +110,7 @@ function authHeader(credentials: Credentials) {
 }
 
 async function publicPost<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
@@ -102,7 +125,7 @@ async function publicPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function requestText(credentials: Credentials, path: string, options: { method?: "GET" | "POST"; body?: string } = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: options.method ?? "GET",
     headers: {
       Authorization: authHeader(credentials),
@@ -119,7 +142,7 @@ async function requestText(credentials: Credentials, path: string, options: { me
 }
 
 async function request<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: options.method ?? "GET",
     headers: {
       Authorization: authHeader(credentials),
@@ -161,7 +184,7 @@ export const api = {
 
   async logout(credentials: Credentials) {
     if (!credentials.accessToken) return;
-    await fetch(`${API_BASE}/api/v1/auth/logout`, {
+    await fetchWithTimeout(`${API_BASE}/api/v1/auth/logout`, {
       method: "POST",
       headers: { Authorization: authHeader(credentials) }
     });
@@ -312,6 +335,13 @@ export const api = {
     return request<InvoiceFiscalDetail>(credentials, `/api/v1/admin/invoices/${encodeURIComponent(invoiceId)}/fiscal`);
   },
 
+  updateInvoiceFiscal(credentials: Credentials, invoiceId: string, payload: UpdateInvoiceFiscalRequest) {
+    return request<InvoiceFiscalDetail>(credentials, `/api/v1/admin/invoices/${encodeURIComponent(invoiceId)}/fiscal`, {
+      method: "PUT",
+      body: payload
+    });
+  },
+
   planUsage(credentials: Credentials, companyId: string) {
     return request<PlanUsage>(credentials, `/api/v1/admin/companies/${encodeURIComponent(companyId)}/plan-usage`);
   },
@@ -343,6 +373,28 @@ export const api = {
     return request<BillingPayment>(credentials, `/api/v1/admin/invoices/${invoiceId}/payments`, {
       method: "POST",
       body: payload
+    });
+  },
+
+  outboxFailures(credentials: Credentials, options: { channel?: "SECURITY" | "INTEGRATION"; limit?: number; cursor?: string } = {}) {
+    const params = new URLSearchParams();
+    if (options.channel) params.set("channel", options.channel);
+    params.set("limit", String(options.limit ?? 50));
+    if (options.cursor) params.set("cursor", options.cursor);
+    return request<OutboxFailurePage>(credentials, `/api/v1/admin/outbox/failures?${params.toString()}`);
+  },
+
+  resolveOutboxFailure(
+    credentials: Credentials,
+    channel: "SECURITY" | "INTEGRATION",
+    id: string,
+    action: "requeue" | "acknowledge",
+    reason: string
+  ) {
+    const resource = channel === "SECURITY" ? "security" : "integrations";
+    return request<void>(credentials, `/api/v1/admin/outbox/${resource}/${encodeURIComponent(id)}/${action}`, {
+      method: "POST",
+      body: { reason }
     });
   },
 

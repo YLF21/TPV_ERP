@@ -106,6 +106,6 @@ if ($response.StatusCode -ne 200) {
 }
 
 Write-Host "SaaS DEV listo en http://127.0.0.1:$WebPort"
-Write-Host "Usuario inicial DEV: admin"
-Write-Host "Contrasena inicial DEV: admin"
+Write-Host "Usuario inicial DEV: ADMIN"
+Write-Host "Contrasena inicial DEV: 0000"
 Write-Host "PostgreSQL DEV: 127.0.0.1:5433"

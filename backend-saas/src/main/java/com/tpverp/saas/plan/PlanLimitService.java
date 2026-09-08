@@ -65,7 +65,10 @@ public class PlanLimitService {
         used.put(PlanResource.TENANT_USERS, count(
                 "select count(*) from saas_tenant_user where company_id = ? and active = true", companyId));
         used.put(PlanResource.STORES, count("select count(*) from saas_store where company_id = ?", companyId));
-        used.put(PlanResource.LICENSES, count("select count(*) from saas_license where company_id = ?", companyId));
+        used.put(PlanResource.LICENSES, count("""
+                select count(*) from saas_license
+                where company_id = ? and status = 'VALIDA' and valid_until > ?
+                """, companyId, Timestamp.from(clock.instant())));
         used.put(PlanResource.MASTER_RECORDS, count("""
                 select (select count(*) from saas_erp_customer where company_id = ?)
                      + (select count(*) from saas_erp_product where company_id = ?)

@@ -10,8 +10,11 @@ test("passwordChangeRequired gates dashboard loading and uses the dedicated endp
 
   assert.match(app, /authenticated\.passwordChangeRequired/);
   assert.match(app, /if \(pendingPasswordChange\)/);
-  assert.match(app, /api\.changeOwnPassword\(pendingPasswordChange\.credentials/);
-  assert.match(app, /api\.login\(\{ username: pendingPasswordChange\.credentials\.username, password: newPassword \}\)/);
+  assert.match(app, /api\.changeOwnPassword\(pending\.credentials/);
+  assert.match(app, /api\.login\(\{ username: pending\.credentials\.username, password: newPassword \}\)/);
+  assert.match(app, /const requestId = \+\+authRequestId\.current/);
+  assert.match(app, /if \(!isCurrentAuthRequest\(requestId, authRequestId\.current\)\) return;/);
+  assert.match(app, /disabled=\{loading\} onClick=\{onCancel\}/);
   assert.match(api, /\/api\/v1\/auth\/password\/change/);
 });
 

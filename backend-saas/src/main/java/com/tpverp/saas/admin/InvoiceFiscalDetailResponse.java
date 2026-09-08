@@ -13,6 +13,9 @@ public record InvoiceFiscalDetailResponse(
         String taxBase,
         String taxRate,
         String taxAmount,
+        String reason,
+        String legalBasis,
+        String evidenceReference,
         String total,
         String currency) {
 }

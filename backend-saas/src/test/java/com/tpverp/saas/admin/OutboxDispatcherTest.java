@@ -49,6 +49,9 @@ class OutboxDispatcherTest {
         assertThat(count).isEqualTo(1);
         assertThat(delivered.get().oneTimeToken()).isEqualTo("one-time-token");
         assertThat(delivered.get().idempotencyKey()).isEqualTo("notification-1");
+        org.mockito.Mockito.verify(jdbc).query(
+                org.mockito.ArgumentMatchers.contains("claimed_at is null"),
+                any(RowMapper.class), any(Object[].class));
     }
 
     @Test
@@ -61,7 +64,7 @@ class OutboxDispatcherTest {
         when(rs.getObject("id", UUID.class)).thenReturn(runId);
         when(rs.getObject("integration_id", UUID.class)).thenReturn(integrationId);
         when(rs.getString("idempotency_key")).thenReturn("key-1");
-        when(rs.getString("payload")).thenReturn("{\"value\":1}");
+        when(rs.getString("payload")).thenReturn(cipher.encrypt("{\"value\":1}"));
         when(rs.getString("integration_type")).thenReturn("WEBHOOK");
         when(rs.getString("target_url")).thenReturn("https://example.test/hook");
         when(rs.getString("api_key_encrypted")).thenReturn(cipher.encrypt("api-secret"));
@@ -78,6 +81,9 @@ class OutboxDispatcherTest {
         assertThat(delivered.get().apiKey()).isEqualTo("api-secret");
         assertThat(delivered.get().payload()).isEqualTo("{\"value\":1}");
         assertThat(delivered.get().idempotencyKey()).isEqualTo("key-1");
+        org.mockito.Mockito.verify(jdbc).query(
+                org.mockito.ArgumentMatchers.contains("claimed_at is null"),
+                any(RowMapper.class), any(Object[].class));
     }
 
     private static void answerClaim(JdbcTemplate jdbc, ResultSet rs) {

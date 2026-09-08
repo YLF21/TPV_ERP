@@ -100,7 +100,7 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V48__outbox_claims_and_delivery_safety");
+                .isEqualTo("V52__integration_payload_retention_index");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
                 "operational-incidents");
@@ -1452,7 +1452,7 @@ class AdminApiTest {
         assertThat(history).hasSize(1);
         assertThat(history.get(0).get("status").asText()).isEqualTo("PENDING");
         assertThat(history.get(0).get("deliveryMode").asText()).isEqualTo("LOCAL_OUTBOX");
-        assertThat(history.get(0).get("payload").asText()).contains("\"schemaVersion\":1");
+        assertThat(history.get(0).get("payload").isNull()).isTrue();
     }
 
     @Test
@@ -1484,7 +1484,12 @@ class AdminApiTest {
         mvc.perform(put("/api/v1/admin/invoices/{invoiceId}/fiscal", invoiceId)
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"fiscalStatus\":\"NOT_APPLICABLE\"}"))
+                        .content("""
+                                {"fiscalStatus":"NOT_APPLICABLE",
+                                 "reason":"Operacion exenta documentada",
+                                 "legalBasis":"Articulo 20 de la normativa aplicable",
+                                 "evidenceReference":"EXPEDIENTE-FISCAL-2026-001"}
+                                """))
                 .andExpect(status().isOk());
     }
 

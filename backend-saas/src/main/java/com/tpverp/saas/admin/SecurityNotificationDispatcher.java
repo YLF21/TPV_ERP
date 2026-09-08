@@ -51,9 +51,9 @@ public class SecurityNotificationDispatcher {
         List<Pending> pending = jdbc.query("""
                 with candidates as (
                     select id from saas_security_notification_outbox
-                    where ((status = 'PENDING' and (next_attempt_at is null or next_attempt_at <= ?))
-                        or (status = 'PROCESSING' and claimed_at <= ?))
-                      and attempt_count < ?
+                    where ((status = 'PENDING' and (next_attempt_at is null or next_attempt_at <= ?)
+                              and attempt_count < ?)
+                        or (status = 'PROCESSING' and (claimed_at is null or claimed_at <= ?)))
                     order by created_at
                     for update skip locked
                     limit 20
@@ -67,7 +67,7 @@ public class SecurityNotificationDispatcher {
                 rs.getObject("id", UUID.class), rs.getString("idempotency_key"),
                 rs.getString("event_type"), rs.getString("realm"), rs.getString("username_key"),
                 rs.getString("encrypted_payload"), rs.getInt("attempt_count")),
-                Timestamp.from(now), Timestamp.from(now.minus(claimLease)), maxAttempts,
+                Timestamp.from(now), maxAttempts, Timestamp.from(now.minus(claimLease)),
                 Timestamp.from(now), claimToken);
         int delivered = 0;
         for (Pending item : pending) {

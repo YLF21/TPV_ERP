@@ -8,6 +8,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class AdminProductionGuard implements ApplicationRunner {
@@ -21,6 +22,7 @@ public class AdminProductionGuard implements ApplicationRunner {
     private static final String DEV_DATABASE_PASSWORD =
             "replace-with-a-strong-database-password";
     private static final Set<String> KNOWN_DEFAULT_HASHES = Set.of(DEFAULT_SEED_HASH, LOCAL_ADMIN_HASH);
+    private static final Set<String> PERMISSIVE_PROFILES = Set.of("local", "test", "dev", "demo");
 
     private final SaasAdminUserRepository users;
     private final AdminPasswordHasher passwords;
@@ -71,15 +73,24 @@ public class AdminProductionGuard implements ApplicationRunner {
     }
 
     @Override
+    @Transactional
     public void run(ApplicationArguments args) {
         run();
     }
 
     void run() {
-        if (activeProfiles.contains("prod") && activeProfiles.contains("local")) {
-            throw new IllegalStateException("Los perfiles prod y local no pueden activarse a la vez");
+        if (activeProfiles.contains("prod")
+                && activeProfiles.stream().anyMatch(PERMISSIVE_PROFILES::contains)) {
+            throw new IllegalStateException(
+                    "El perfil prod no puede combinarse con perfiles permisivos local, test, dev o demo");
         }
-        if (activeProfiles.contains("local") || activeProfiles.contains("test")) {
+        boolean permissive = activeProfiles.stream().anyMatch(PERMISSIVE_PROFILES::contains);
+        boolean nonPermissive = activeProfiles.stream().anyMatch(profile -> !PERMISSIVE_PROFILES.contains(profile));
+        if (permissive && nonPermissive) {
+            throw new IllegalStateException(
+                    "Los perfiles permisivos local, test, dev o demo no pueden combinarse con perfiles no permisivos");
+        }
+        if (permissive) {
             return;
         }
         rejectUnsafeProductionSecrets();

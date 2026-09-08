@@ -19,7 +19,31 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: maven
     directory: /backend-saas
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: maven
+    directory: /license-issuer
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: maven
+    directory: /payment-terminal-bridge
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /frontend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
