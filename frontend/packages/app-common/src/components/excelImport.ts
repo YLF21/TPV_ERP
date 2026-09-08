@@ -1,7 +1,7 @@
 import { readSheet } from "read-excel-file/browser";
 import {
   excelFormulaCellText,
-  overlayExcelFormulas,
+  isExcelFormulaCell,
   type ExcelFormulaCell
 } from "./excelFormula";
 
@@ -25,6 +25,7 @@ export type ExcelColumnMapping = {
   code?: string;
   barcode?: string;
   barcode2?: string;
+  supplierReference?: string;
   name?: string;
   description?: string;
   comments?: string;
@@ -63,6 +64,7 @@ export type ExcelImportProductDraft = {
   code: string;
   barcode: string;
   barcode2: string;
+  supplierReference?: string;
   purchasePrice: string;
   purchaseDiscountPercent: string;
   taxesIncluded: string;
@@ -80,19 +82,66 @@ export type ExcelImportProductDraft = {
 };
 
 export type ExcelImportClassifiedRow = {
+  existence?: "EXISTING" | "MISSING" | "AMBIGUOUS" | "UNRESOLVED";
   rowNumber: number;
+  rowNumbers?: number[];
   source: ExcelCell[];
   draft: ExcelImportProductDraft;
   product?: ExcelImportProductIdentity;
+  version?: number | null;
+  excelData?: Record<string, unknown>;
+  databaseData?: Record<string, unknown> | null;
+  changes?: Record<string, unknown>;
+  structuredErrors?: Array<{
+    code: string;
+    row?: number | null;
+    column?: number | null;
+    attribute?: string | null;
+    receivedValue?: string | null;
+    reason: string;
+    acceptedValues?: string | null;
+    recommendedFix?: string | null;
+  }>;
   status: "missing" | "purchasePriceChanged" | "accepted" | "error";
   errors: string[];
+  masterDataChanged?: boolean;
 };
 
-export const excelImportAccept = ".xlsx,.xls,.csv";
+export const excelImportAccept = ".xlsx,.xls";
+
+/** Safety limits shared by the browser preview and the server contract. */
+export const excelImportLimits = {
+  maxFileBytes: 10 * 1024 * 1024,
+  maxDetectedRows: 5_000,
+  maxColumns: 256,
+  maxNonEmptyCells: 250_000
+} as const;
 
 export async function readExcelSheet(file: File): Promise<ExcelSheet> {
+  if (file.size > excelImportLimits.maxFileBytes) {
+    throw new Error("excel.fileTooLarge");
+  }
   const values = await readSheet(file);
-  return await overlayExcelFormulas(file, values);
+  // Legacy helpers may still read an already-normalized XLSX value grid, but
+  // they never parse or execute workbook formulas. Product imports use the
+  // backend /read endpoint for both XLS and XLSX.
+  validateExcelSheetLimits(values);
+  return values;
+}
+
+export function validateExcelSheetLimits(sheet: ExcelSheet) {
+  const width = sheet.reduce((maximum, row) => Math.max(maximum, row.length), 0);
+  if (width > excelImportLimits.maxColumns) {
+    throw new Error("excel.tooManyColumns");
+  }
+  const nonEmptyCells = sheet.reduce(
+    (count, row) => count + row.filter((cell) => excelCellText(cell) !== "").length,
+    0
+  );
+  if (nonEmptyCells > excelImportLimits.maxNonEmptyCells) {
+    throw new Error("excel.tooManyCells");
+  }
+  return sheet;
 }
 
 export async function readExcelTable(file: File): Promise<ExcelTable> {
@@ -168,6 +217,7 @@ export function buildExcelImportDraft(row: readonly ExcelCell[], mapping: ExcelC
     code: excelCellText(excelCellByColumnLetter(row, mapping.code)),
     barcode: excelCellText(excelCellByColumnLetter(row, mapping.barcode)),
     barcode2: excelCellText(excelCellByColumnLetter(row, mapping.barcode2)),
+    supplierReference: excelCellText(excelCellByColumnLetter(row, mapping.supplierReference)),
     purchasePrice: excelPriceText(excelCellByColumnLetter(row, mapping.purchasePrice)),
     purchaseDiscountPercent: excelPriceText(excelCellByColumnLetter(row, mapping.purchaseDiscountPercent)),
     taxesIncluded: excelCellText(excelCellByColumnLetter(row, mapping.taxesIncluded)),
@@ -177,8 +227,8 @@ export function buildExcelImportDraft(row: readonly ExcelCell[], mapping: ExcelC
     offerPrice: excelPriceText(excelCellByColumnLetter(row, mapping.offerPrice)),
     offerDiscountPercent: excelPriceText(excelCellByColumnLetter(row, mapping.offerDiscountPercent)),
     offerActive: excelCellText(excelCellByColumnLetter(row, mapping.offerActive)),
-    offerFrom: excelCellText(excelCellByColumnLetter(row, mapping.offerFrom)),
-    offerUntil: excelCellText(excelCellByColumnLetter(row, mapping.offerUntil)),
+    offerFrom: excelDateText(excelCellByColumnLetter(row, mapping.offerFrom)),
+    offerUntil: excelDateText(excelCellByColumnLetter(row, mapping.offerUntil)),
     packageQuantity: excelPriceText(excelCellByColumnLetter(row, mapping.packageQuantity)),
     stockMin: excelPriceText(excelCellByColumnLetter(row, mapping.stockMin)),
     stockMax: excelPriceText(excelCellByColumnLetter(row, mapping.stockMax))
@@ -194,16 +244,19 @@ export function classifyExcelProductRows(
 ): ExcelImportClassifiedRow[] {
   const productIndex = buildExcelProductIdentityIndex(products);
   const firstDataRow = Math.max(2, Math.floor(startRow));
-  return sheet.slice(firstDataRow - 1).flatMap((row, rowIndex) => {
-    if (row.every((cell) => excelCellText(cell) === "")) {
+  const classified = sheet.slice(firstDataRow - 1).flatMap((row, rowIndex) => {
+    const draft = buildExcelImportDraft(row, mapping);
+    // A row is a product candidate only when one of the configured identity
+    // fields has content. Price/stock-only helper rows must not inflate the
+    // detected count or reach the import workflow.
+    if (!draft.code && !draft.barcode && !draft.name) {
       return [];
     }
-    const draft = buildExcelImportDraft(row, mapping);
     const errors: string[] = [];
-    if (!draft.name) errors.push("nameRequired");
     if (!draft.code && !draft.barcode) errors.push("identifierRequired");
     const product = productIndex.get(normalizeExcelText(draft.code))
       ?? productIndex.get(normalizeExcelText(draft.barcode));
+    if (!product && !draft.name) errors.push("nameRequired");
     const status: ExcelImportClassifiedRow["status"] = errors.length > 0
       ? "error"
       : !product
@@ -220,6 +273,17 @@ export function classifyExcelProductRows(
       errors
     }];
   });
+  if (classified.length <= excelImportLimits.maxDetectedRows) return classified;
+  return [
+    ...classified.slice(0, excelImportLimits.maxDetectedRows),
+    {
+      rowNumber: -1,
+      source: [],
+      draft: buildExcelImportDraft([], {}),
+      status: "error" as const,
+      errors: ["tooManyDetectedRows"]
+    }
+  ];
 }
 
 export function excelCellText(value: ExcelCell) {
@@ -231,6 +295,45 @@ export function excelCellText(value: ExcelCell) {
     return `${year}-${month}-${day}`;
   }
   return cellValue === null || cellValue === undefined ? "" : String(cellValue).trim();
+}
+
+/**
+ * Accepts the formats users commonly enter in Spanish Excel sheets. The
+ * canonical value remains ISO because the API and existing document metadata
+ * already use yyyy-MM-dd.
+ */
+export function parseExcelDate(value: ExcelCell): string | null {
+  if (isExcelFormulaCell(value)) {
+    return parseExcelDate(value.value);
+  }
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? isoDate(value.getFullYear(), value.getMonth() + 1, value.getDate()) : null;
+  }
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const match = /^(\d{2})-(\d{2})-(\d{2}|\d{4})$/.exec(text);
+  if (match) {
+    const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
+    return validIsoDate(year, Number(match[2]), Number(match[1]));
+  }
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  return iso ? validIsoDate(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
+}
+
+export function excelDateText(value: ExcelCell) {
+  return parseExcelDate(value) ?? excelCellText(value);
+}
+
+function isoDate(year: number, month: number, day: number) {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function validIsoDate(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? isoDate(year, month, day)
+    : null;
 }
 
 export function excelPriceText(value: ExcelCell) {

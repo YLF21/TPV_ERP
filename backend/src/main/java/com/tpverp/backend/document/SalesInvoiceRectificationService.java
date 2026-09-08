@@ -182,10 +182,9 @@ public class SalesInvoiceRectificationService {
                 throw new IllegalArgumentException("Una linea original no puede repetirse");
             }
             validQuantity(request.quantity());
-            if (request.unitPrice().scale() > Money.SCALE
-                    || Money.euros(request.unitPrice()).signum() < 0) {
+            if (Money.exactUnitPrice(request.unitPrice()).signum() < 0) {
                 throw new IllegalArgumentException(
-                        "El precio unitario de la diferencia debe ser positivo y tener dos decimales");
+                        "El precio unitario de la diferencia no puede ser negativo y admite hasta tres decimales");
             }
         }
         var sourceLines = original.getLineas().stream()

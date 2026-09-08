@@ -549,7 +549,7 @@ export function SalesDocumentScreen({
         name: line.temporaryName
           ?? line.product.name ?? line.product.code ?? t("sale.main.unnamedProduct"),
         rate: line.product.rate ?? null,
-        price: saleLineUnitPrice(line, activeMember, wholesaleMode).toFixed(2),
+        price: saleLineUnitPrice(line, activeMember, wholesaleMode).toFixed(3).replace(/(\.\d{2})0$/, "$1"),
         discount: line.discountPercent.toFixed(2),
         ...saleProductFiscalSnapshot(line.product),
         serialNumbers: line.serialNumbers ?? [],

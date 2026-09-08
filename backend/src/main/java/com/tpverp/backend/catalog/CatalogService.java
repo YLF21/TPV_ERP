@@ -325,6 +325,7 @@ public class CatalogService {
     @Transactional
     public StoreTax createTax(BigDecimal percentage) {
         UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
         if (taxRepository.findByStoreIdAndPorcentaje(storeId, percentage).isPresent()) {
             throw new IllegalArgumentException("Ya existe ese porcentaje de impuesto");
         }
@@ -333,6 +334,8 @@ public class CatalogService {
 
     @Transactional
     public StoreTax updateTax(UUID taxId, BigDecimal percentage) {
+        UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
         StoreTax tax = tax(taxId);
         taxRepository.findByStoreIdAndPorcentaje(tax.getStoreId(), percentage)
                 .filter(existing -> !existing.getId().equals(taxId))
@@ -345,6 +348,8 @@ public class CatalogService {
 
     @Transactional
     public void deleteTax(UUID taxId) {
+        UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
         StoreTax tax = tax(taxId);
         tax.requireDeletable();
         if (productRepository.existsByTaxId(taxId)) {
@@ -355,6 +360,8 @@ public class CatalogService {
 
     @Transactional
     public StoreTax setDefaultTax(UUID taxId) {
+        UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
         StoreTax selected = tax(taxId);
         taxRepository.findByStoreIdAndPredeterminadoTrue(selected.getStoreId())
                 .filter(current -> !current.getId().equals(selected.getId()))
@@ -365,6 +372,8 @@ public class CatalogService {
 
     @Transactional
     public StoreTax setTaxActive(UUID taxId, boolean active) {
+        UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
         StoreTax tax = tax(taxId);
         if (active) {
             tax.activate();
@@ -927,6 +936,145 @@ public class CatalogService {
                 : updateProductLocked(productForUpdate(storeId, existingProductId), request);
     }
 
+    /**
+     * Creates an import batch under one store lock and one product flush. The
+     * caller is responsible for classifying rows and ensuring the batch is
+     * atomic; this method deliberately does not expose a per-row fallback.
+     */
+    @Transactional
+    public List<Product> createProductsFromImport(List<ProductRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("La lista de altas esta vacia");
+        }
+        if (requests.size() > 5_000) {
+            throw new IllegalArgumentException("La lista de altas no puede superar 5000 filas");
+        }
+        UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
+        validateImportBatchReferences(storeId, requests);
+        validateImportBatchIdentifiers(storeId, requests);
+        List<Product> created = new ArrayList<>(requests.size());
+        for (ProductRequest request : requests) {
+            // References and identifiers were batch-validated above. The
+            // remaining checks are pure request invariants.
+            Objects.requireNonNull(request, "product");
+            validateRequiredProductIdentifier(request);
+            validateDiscountType(request);
+            if (request.productType() != ProductType.UNIT
+                    && Boolean.TRUE.equals(request.requiresSerialNumber())) {
+                throw new IllegalArgumentException("message.product.serial_number_requires_unit");
+            }
+            Product product = new Product(
+                    storeId, request.familyId(), request.subfamilyId(), request.taxId(),
+                    request.productType(), request.discountType(), request.name(), request.description(),
+                    request.comments(), request.purchasePrice(), request.taxesIncluded());
+            applyProductData(product, request);
+            created.add(product);
+        }
+        productRepository.saveAllAndFlush(created);
+        Instant now = Instant.now(clock);
+        List<ProductPriceHistory> history = new ArrayList<>(created.size() * 5);
+        for (Product product : created) {
+            addHistory(history, product, ProductPriceHistoryType.COSTE, product.getPurchasePrice(), now);
+            addHistory(history, product, ProductPriceHistoryType.VENTA, product.getSalePrice(), now);
+            addHistory(history, product, ProductPriceHistoryType.MEMBER, product.getMemberPrice(), now);
+            addHistory(history, product, ProductPriceHistoryType.MAYORISTA, product.getWholesalePrice(), now);
+            addHistory(history, product, ProductPriceHistoryType.OFERTA, product.getOfferPrice(), now);
+        }
+        saveHistory(history);
+        return List.copyOf(created);
+    }
+
+    private void validateImportBatchReferences(UUID storeId, List<ProductRequest> requests) {
+        Set<UUID> familyIds = requests.stream().filter(Objects::nonNull).map(ProductRequest::familyId)
+                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Set<UUID> subfamilyIds = requests.stream().filter(Objects::nonNull).map(ProductRequest::subfamilyId)
+                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Set<UUID> taxIds = requests.stream().filter(Objects::nonNull).map(ProductRequest::taxId)
+                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Map<UUID, Family> families = (familyIds.isEmpty() ? List.<Family>of() : familyRepository.findByStoreIdAndIdIn(storeId, familyIds)).stream()
+                .collect(java.util.stream.Collectors.toMap(Family::getId, java.util.function.Function.identity()));
+        Map<UUID, Subfamily> subfamilies = (subfamilyIds.isEmpty() ? List.<Subfamily>of() : subfamilyRepository.findByStoreIdAndIdIn(storeId, subfamilyIds)).stream()
+                .collect(java.util.stream.Collectors.toMap(Subfamily::getId, java.util.function.Function.identity()));
+        Map<UUID, StoreTax> taxById = (taxIds.isEmpty() ? List.<StoreTax>of() : taxRepository.findByStoreIdAndIdIn(storeId, taxIds)).stream()
+                .collect(java.util.stream.Collectors.toMap(StoreTax::getId,
+                        java.util.function.Function.identity()));
+        for (ProductRequest request : requests) {
+            if (request == null || request.familyId() == null || !families.containsKey(request.familyId())) {
+                throw new ProductImportConflictException("La familia no pertenece a la tienda");
+            }
+            if (request.subfamilyId() != null) {
+                Subfamily subfamily = subfamilies.get(request.subfamilyId());
+                if (subfamily == null || !request.familyId().equals(subfamily.getFamilyId())) {
+                    throw new ProductImportConflictException("La subfamilia no pertenece a la familia");
+                }
+            }
+            StoreTax tax = taxById.get(request.taxId());
+            if (tax == null || !tax.isActive()) {
+                throw new ProductImportConflictException("El impuesto no pertenece a la tienda o no esta activo");
+            }
+            tax.requireSelectable();
+        }
+    }
+
+    private void validateImportBatchIdentifiers(UUID storeId, List<ProductRequest> requests) {
+        Map<String, Integer> ownerByValue = new HashMap<>();
+        for (int rowIndex = 0; rowIndex < requests.size(); rowIndex++) {
+            ProductRequest request = requests.get(rowIndex);
+            if (request == null) throw new IllegalArgumentException("producto nulo");
+            String[] identifiers = {request.code(), request.barcode(), request.barcode2()};
+            Set<String> rowValues = new HashSet<>();
+            for (int index = 0; index < identifiers.length; index++) {
+                String value = identifiers[index];
+                if (!CatalogText.isBlank(value)
+                        && !rowValues.add(normalizeImportIdentifier(value))
+                        && !(index == 1 && Objects.equals(normalizeImportIdentifier(request.code()), normalizeImportIdentifier(request.barcode())))) {
+                    throw new ProductImportConflictException("Identificador duplicado en el lote");
+                }
+                if (!CatalogText.isBlank(value)) {
+                    String normalized = normalizeImportIdentifier(value);
+                    Integer owner = ownerByValue.putIfAbsent(normalized, rowIndex);
+                    if (owner != null && owner != rowIndex) {
+                        throw new ProductImportConflictException("Identificador duplicado en el lote");
+                    }
+                }
+            }
+        }
+        Set<String> values = ownerByValue.keySet();
+        if (values.isEmpty()) return;
+        List<ProductIdentifier> existing = identifierRepository.findAllByStoreIdAndValorLowerIn(storeId, values);
+        if (!existing.isEmpty()) throw new ProductImportConflictException(
+                "El identificador ya pertenece a un producto");
+    }
+
+    private static String normalizeImportIdentifier(String value) {
+        return value == null ? null : CatalogText.canonicalIdentity(value).toLowerCase(Locale.ROOT);
+    }
+
+    private void validateImportBatchUpdateIdentifiers(UUID storeId, List<BulkProductUpdate> updates) {
+        Map<String, UUID> ownerByValue = new HashMap<>();
+        Set<String> values = new HashSet<>();
+        for (BulkProductUpdate update : updates) {
+            for (String value : java.util.stream.Stream.of(update.product().code(),
+                    update.product().barcode(), update.product().barcode2()).toList()) {
+                String normalized = normalizeImportIdentifier(value);
+                if (normalized == null || normalized.isBlank()) continue;
+                UUID previous = ownerByValue.putIfAbsent(normalized, update.productId());
+                if (previous != null && !previous.equals(update.productId())) {
+                    throw new ProductImportConflictException("Identificador duplicado en el lote");
+                }
+                values.add(normalized);
+            }
+        }
+        if (values.isEmpty()) return;
+        for (ProductIdentifier identifier : identifierRepository.findAllByStoreIdAndValorLowerIn(storeId, values)) {
+            UUID requestedOwner = ownerByValue.get(normalizeImportIdentifier(identifier.getValue()));
+            if (requestedOwner != null && !requestedOwner.equals(identifier.getProductId())) {
+                throw new ProductImportConflictException("El identificador ya pertenece a otro producto");
+            }
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<ProductPriceHistory> priceHistory(UUID productId) {
         Product product = product(productId);
@@ -1042,9 +1190,9 @@ public class CatalogService {
                 && request.offerDiscountPercent() != null) {
             return request.salePrice()
                     .subtract(request.salePrice().multiply(request.offerDiscountPercent())
-                            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP))
+                            .movePointLeft(2))
                     .max(BigDecimal.ZERO)
-                    .setScale(2, RoundingMode.HALF_UP);
+                    .setScale(3, RoundingMode.HALF_UP);
         }
         return request.offerPrice();
     }
@@ -1697,6 +1845,13 @@ public class CatalogService {
                         update.productId(), update.expectedVersion(), current.getVersion());
             }
         }
+        // Revalidate selectable references and identifiers in one store-scoped
+        // batch immediately before the mutation. Import writers translate the
+        // typed conflict to a re-preview response; unrelated validation still
+        // remains an ordinary transaction failure.
+        validateImportBatchReferences(storeId, updates.stream()
+                .map(BulkProductUpdate::product).toList());
+        validateImportBatchUpdateIdentifiers(storeId, updates);
 
         List<Product> changed = new ArrayList<>(updates.size());
         for (BulkProductUpdate update : updates) {

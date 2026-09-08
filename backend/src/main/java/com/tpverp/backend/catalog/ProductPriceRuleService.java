@@ -626,11 +626,11 @@ public class ProductPriceRuleService {
                 .orElse(BigDecimal.ZERO);
         return product.getPurchasePrice()
                 .multiply(BigDecimal.ONE.subtract(discount.movePointLeft(2)))
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return Objects.requireNonNull(value, "value").setScale(2, RoundingMode.HALF_UP);
+        return com.tpverp.backend.document.Money.unitPrice(Objects.requireNonNull(value, "value"));
     }
 
     private static BigDecimal percentage(BigDecimal value) {
@@ -639,9 +639,9 @@ public class ProductPriceRuleService {
 
     private static BigDecimal offerPrice(BigDecimal salePrice, BigDecimal discountPercent) {
         return salePrice.subtract(salePrice.multiply(discountPercent)
-                        .divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP))
+                        .movePointLeft(2))
                 .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
     }
 
     private static boolean isOfferMode(PriceUseMode mode) {

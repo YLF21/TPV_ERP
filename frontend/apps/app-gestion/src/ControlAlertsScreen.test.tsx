@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { UserSession } from "@tpverp/app-common";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import * as api from "./controlAlertsApi";
@@ -187,8 +187,10 @@ describe("ControlAlertsScreen", () => {
   it("updates the operational priority from the alert detail", async () => {
     renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_MANAGE"]);
     fireEvent.click(await screen.findByRole("button", { name: "gestion.controlAlerts.openList" }));
-    const prioritySelectors = await screen.findAllByRole("combobox", { name: "gestion.controlAlerts.priorityLabel" });
-    fireEvent.change(prioritySelectors.at(-1) as HTMLElement, { target: { value: "CRITICAL" } });
+    // Wait for the detail editor: the list filter has the same accessible label and appears first.
+    const detail = screen.getByRole("complementary", { name: "gestion.controlAlerts.detail" });
+    const priority = await within(detail).findByRole("combobox", { name: "gestion.controlAlerts.priorityLabel" });
+    fireEvent.change(priority, { target: { value: "CRITICAL" } });
     fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.saveWork" }));
 
     await waitFor(() => expect(api.updateControlAlertWork).toHaveBeenCalledWith(

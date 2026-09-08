@@ -71,7 +71,7 @@ public class TemporaryPriceAuthorizationService {
         var product = products.findById(productId)
                 .filter(value -> value.getStoreId().equals(store.getId()))
                 .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
-        if (Money.euros(product.getSalePrice()).signum() == 0) {
+        if (Money.unitPrice(product.getSalePrice()).signum() == 0) {
             throw new IllegalArgumentException(
                     "temporary_price_authorization_not_required_for_open_price_product");
         }
@@ -194,7 +194,7 @@ public class TemporaryPriceAuthorizationService {
     }
 
     private static BigDecimal positivePrice(BigDecimal value) {
-        var normalized = Money.euros(Objects.requireNonNull(value, "unitPrice"));
+        var normalized = Money.exactUnitPrice(Objects.requireNonNull(value, "unitPrice"));
         if (normalized.signum() <= 0) {
             throw new IllegalArgumentException("temporary_price_must_be_greater_than_zero");
         }

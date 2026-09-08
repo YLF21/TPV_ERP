@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { applyMoneyDiscount, roundMoneyProduct } from "../money";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
 import { ErpSelect } from "./ErpSelect";
 import {
@@ -12,16 +13,7 @@ import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
-import {
-  applyProductRequiredDefaults,
-  buildCreateProductRequest,
-  createDefaultProductForm,
-  ProductCreateDialog,
-  type ProductCreateFormState,
-  type ProductCreateResponse
-} from "./ProductCreateDialog";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
-import type { ExcelImportClassifiedRow, ExcelImportProductDraft, ExcelImportProductIdentity } from "./excelImport";
 import { SaleProductSearchDialog, type SaleProductSearchOption } from "./SaleProductSearchDialog";
 import { WarehouseSupplierDialog } from "./WarehouseSupplierDialog";
 import {
@@ -85,8 +77,12 @@ export type WarehouseDocumentView = {
   total?: number | string | null;
   sourceDeliveryNoteIds?: string[];
   status: string;
+  hasExcelImport?: boolean;
+  excelImportPendingSupplierUpdate?: boolean;
+  excelImportSnapshotToken?: string | null;
   lines: Array<{
     productId: string;
+    productCode?: string | null;
     productName?: string | null;
     quantity: number;
     purchaseUnitPrice?: number | string | null;
@@ -132,6 +128,9 @@ export type WarehouseDocumentDraft = {
   sourceDeliveryNoteIds?: string[];
   lines: WarehouseDocumentLineDraft[];
   excelImport?: SharedExcelImportMetadata | null;
+  excelImportProvenanceToken?: string | null;
+  excelImportSnapshotToken?: string | null;
+  excelImportCleared?: boolean;
 };
 
 const warehouseDocumentColumns = [
@@ -154,8 +153,12 @@ export function warehouseDocumentPath(mode: WarehouseDocumentMode) {
 export function warehouseDocumentRequestErrorMessage(
   error: unknown,
   fallback: string,
-  messages: { integrityConflict: string; stateConflict: string }
+  messages: { integrityConflict: string; stateConflict: string; excelReviewRequired?: string }
 ) {
+  if ((error instanceof Error && error.message === "EXCEL_IMPORT_REVIEW_REQUIRED")
+      || (error instanceof ApiError && error.problem?.code === "EXCEL_IMPORT_REVIEW_REQUIRED")) {
+    return messages.excelReviewRequired ?? fallback;
+  }
   if (error instanceof TypeError || (error instanceof Error && error.message === "Failed to write request")) {
     return fallback;
   }
@@ -195,6 +198,15 @@ export function buildWarehouseDocumentCommand(mode: WarehouseDocumentMode, draft
   const lines = mode === "input"
     ? inputLines
     : inputLines.map(({ productId, quantity }) => ({ productId, quantity }));
+  const excelImport = draft.excelImport ? {
+    ...(draft.excelImport.fileName !== undefined ? { fileName: draft.excelImport.fileName } : {}),
+    formulas: draft.excelImport.formulas,
+    ...(draft.excelImport.sha256 !== undefined ? { sha256: draft.excelImport.sha256 } : {}),
+    ...(draft.excelImport.sheetName !== undefined ? { sheetName: draft.excelImport.sheetName } : {}),
+    updateSupplier: Boolean(draft.excelImport.updateSupplier),
+    skipZeroPriceUpdate: Boolean(draft.excelImport.skipZeroPriceUpdate),
+    lines: draft.excelImport.lines ?? []
+  } : undefined;
   if (mode === "input") {
     return {
       warehouseId: draft.warehouseId,
@@ -208,7 +220,10 @@ export function buildWarehouseDocumentCommand(mode: WarehouseDocumentMode, draft
       globalDiscount: parseDocumentDiscountPercent(draft.globalDiscount),
       sourceDeliveryNoteIds: draft.sourceDeliveryNoteIds ?? [],
       lines,
-      ...(draft.excelImport ? { excelImport: draft.excelImport } : {})
+      ...(excelImport ? { excelImport } : {}),
+      ...(draft.excelImportProvenanceToken ? { excelImportProvenanceToken: draft.excelImportProvenanceToken } : {}),
+      ...(draft.excelImportSnapshotToken ? { expectedExcelImportSnapshotToken: draft.excelImportSnapshotToken } : {}),
+      ...(draft.excelImportCleared ? { clearExcelImport: true } : {})
     };
   }
   return {
@@ -216,8 +231,7 @@ export function buildWarehouseDocumentCommand(mode: WarehouseDocumentMode, draft
     date: draft.date,
     destination: draft.partnerText,
     concept: draft.concept,
-    lines,
-    ...(draft.excelImport ? { excelImport: draft.excelImport } : {})
+    lines
   };
 }
 
@@ -229,6 +243,69 @@ export function createManualWarehouseDocumentLine(
 ): WarehouseDocumentLineDraft {
   const product = products.find((candidate) => candidate.id === productId);
   return createWarehouseDocumentLine(product, product?.code ?? product?.barcode ?? product?.name ?? "", quantity, rowNumber);
+}
+
+export function restoreWarehouseDocumentLines(document: WarehouseDocumentView | null | undefined, products: WarehouseImportProduct[]): WarehouseDocumentLineDraft[] {
+  const byId = new Map(products.map((product) => [product.id, product]));
+  return (document?.lines ?? []).map((line, index) => {
+    const draft = createWarehouseDocumentLine(byId.get(line.productId), line.productCode ?? "", Number(line.quantity), index + 1);
+    return {
+      ...draft,
+      // A catalog miss must never erase the identity already persisted by the server.
+      productId: line.productId,
+      productName: line.productName ?? draft.productName,
+      unitPrice: line.purchaseUnitPrice == null ? undefined : Number(line.purchaseUnitPrice),
+      discountPercent: String(line.discount ?? 0),
+      priceOverridden: Boolean(line.priceOverridden)
+    };
+  });
+}
+
+export function buildImportedWarehouseDocumentLine(
+  row: SharedExcelImportAcceptedRow,
+  products: WarehouseImportProduct[],
+  sourceKey: "purchasePrice" | "salePrice" | "memberPrice" | "wholesalePrice" | "offerPrice",
+  selectedPriceMode: WarehouseInputPriceSource
+) {
+  const line = createManualWarehouseDocumentLine(row.product?.id ?? "", row.quantity ?? 1, products, row.rowNumber);
+  const hasServerPrice = Boolean(row.excelData && Object.hasOwn(row.excelData, sourceKey));
+  const rawImportedPrice = hasServerPrice ? row.excelData?.[sourceKey] : row.draft[sourceKey];
+  const hasImportedPrice = hasServerPrice
+    ? String(rawImportedPrice ?? "").trim() !== ""
+    : String(row.draft[sourceKey] ?? "").trim() !== "";
+  const importedPrice = hasImportedPrice ? strictImportedDocumentNumber(rawImportedPrice) : null;
+  const product = products.find((candidate) => candidate.id === row.product?.id);
+  // The page catalog can predate master updates performed inside the importer.
+  const snapshotTariff = row.databaseData?.[sourceKey];
+  const selectedTariff = row.databaseData && Object.hasOwn(row.databaseData, sourceKey)
+    ? snapshotTariff == null ? null : String(snapshotTariff)
+    : selectedDocumentTariff(product, selectedPriceMode);
+  const selectedDatabasePrice = decimalDocumentNumber(selectedTariff);
+  line.unitPrice = hasImportedPrice ? importedPrice ?? undefined : selectedDatabasePrice;
+  line.priceOverridden = hasImportedPrice;
+  if (hasImportedPrice && importedPrice == null && line.valid) {
+    line.valid = false;
+    line.errorKey = "warehouseDocument.error.invalidImportedPrice";
+  } else if (!hasImportedPrice && selectedTariff == null && line.valid) {
+    line.valid = false;
+    line.errorKey = "warehouseDocument.error.priceUnavailable";
+    line.unitPrice = undefined;
+  }
+  if (row.draft.name.trim()) {
+    line.productName = row.draft.name.trim();
+    line.productLabel = row.draft.name.trim();
+  }
+  const rawDiscount = row.excelData && Object.hasOwn(row.excelData, "purchaseDiscountPercent")
+    ? row.excelData.purchaseDiscountPercent
+    : row.draft.purchaseDiscountPercent;
+  const hasImportedDiscount = String(rawDiscount ?? "").trim() !== "";
+  const importedDiscount = hasImportedDiscount ? strictImportedDocumentNumber(rawDiscount) : 0;
+  if ((importedDiscount == null || importedDiscount > 100) && line.valid) {
+    line.valid = false;
+    line.errorKey = "warehouseDocument.error.invalidImportedDiscount";
+  }
+  line.discountPercent = importedDiscount == null ? "" : String(importedDiscount);
+  return line;
 }
 
 function createManualWarehouseDocumentLineByCode(
@@ -338,12 +415,31 @@ export function WarehouseDocumentDialog({
   const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [excelCreatedProducts, setExcelCreatedProducts] = useState<WarehouseImportProduct[]>([]);
   const [excelImportMetadata, setExcelImportMetadata] = useState<SharedExcelImportMetadata | null>(null);
-  const [manualMissingRows, setManualMissingRows] = useState<ExcelImportClassifiedRow[]>([]);
-  const [manualMissingIndex, setManualMissingIndex] = useState(0);
+  const [excelImportProvenanceToken, setExcelImportProvenanceToken] = useState<string | null>(null);
+  const [excelImportSnapshotToken, setExcelImportSnapshotToken] = useState<string | null>(null);
+  const importedDraftFingerprintRef = useRef<string | null>(null);
+  const initializedDocumentRef = useRef<{ document: typeof document; mode: typeof mode; open: boolean } | null>(null);
+  const catalogRecoveryAttemptRef = useRef(false);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [priceMenuOpen, setPriceMenuOpen] = useState(false);
   const [documentPriceMode, setDocumentPriceMode] = useState<WarehouseInputPriceSource>("PURCHASE");
   const [sourceDeliveryNoteIds, setSourceDeliveryNoteIds] = useState<string[]>([]);
+
+  // Compare business values, not React object identity or descriptive fields.
+  // Keep provenance until a reviewed import replaces it; never silently lose
+  // the pending supplier update when effects rerun or a draft is saved again.
+  const excelDraftFingerprint = JSON.stringify([
+    warehouseId, partnerId, date, documentPriceMode, decimalDocumentNumber(documentDiscountPercent),
+    [...sourceDeliveryNoteIds].sort(),
+    lines.map((line) => [line.productId, line.quantity, line.unitPrice,
+      decimalDocumentNumber(line.discountPercent ?? "0"), Boolean(line.priceOverridden)])
+  ]);
+  useEffect(() => {
+    if (!excelImportMetadata && !excelImportProvenanceToken && !excelImportSnapshotToken) return;
+    if (importedDraftFingerprintRef.current === null) {
+      importedDraftFingerprintRef.current = excelDraftFingerprint;
+    }
+  }, [excelImportMetadata, excelImportProvenanceToken, excelImportSnapshotToken, excelDraftFingerprint]);
   const [availableSourceDeliveryNotes, setAvailableSourceDeliveryNotes] = useState<WarehouseDocumentView[]>([]);
   const tableLayout = useTableLayoutPreference({
     app,
@@ -378,9 +474,15 @@ export function WarehouseDocumentDialog({
   }, []);
 
   useEffect(() => {
+    const previous = initializedDocumentRef.current;
+    if (previous && previous.document === document && previous.mode === mode && previous.open === open) return;
+    initializedDocumentRef.current = { document, mode, open };
     if (!open) {
       return;
     }
+    const sameDocument = previous?.open && previous.mode === mode && document?.id === documentId;
+    const knownProducts = sameDocument ? [...products, ...excelCreatedProducts] : products;
+    catalogRecoveryAttemptRef.current = false;
     const initialWarehouse = document?.warehouseId
       || defaultWarehouseId
       || warehouses.find((warehouse) => warehouse.active !== false)?.id
@@ -395,16 +497,7 @@ export function WarehouseDocumentDialog({
     setExternalNumber(document?.externalNumber ?? "");
     setDocumentDiscountPercent(String(document?.globalDiscount ?? "0"));
     setConcept(document?.concept ?? "");
-    setLines((document?.lines ?? []).map((line, index) => {
-      const draftLine = createManualWarehouseDocumentLine(line.productId, Number(line.quantity), products, index + 1);
-      return {
-        ...draftLine,
-        productName: line.productName ?? draftLine.productName,
-        unitPrice: line.purchaseUnitPrice == null ? undefined : Number(line.purchaseUnitPrice),
-        discountPercent: String(line.discount ?? 0),
-        priceOverridden: Boolean(line.priceOverridden)
-      };
-    }));
+    setLines(restoreWarehouseDocumentLines(document, knownProducts));
     setSelectedLineIndex(null);
     setLineEditorIndex(null);
     setQuickLineEditMode(null);
@@ -429,15 +522,65 @@ export function WarehouseDocumentDialog({
     printingRef.current = false;
     setPrinting(false);
     setExcelImportOpen(false);
-    setExcelCreatedProducts([]);
+    if (!sameDocument) setExcelCreatedProducts([]);
+    importedDraftFingerprintRef.current = null;
     setExcelImportMetadata(null);
-    setManualMissingRows([]);
-    setManualMissingIndex(0);
+    setExcelImportProvenanceToken(null);
+    setExcelImportSnapshotToken(document?.excelImportSnapshotToken ?? null);
     setFileMenuOpen(false);
     setPriceMenuOpen(false);
     setDocumentPriceMode(document?.priceSource ?? (mode === "output" ? "SALE" : "PURCHASE"));
     setSourceDeliveryNoteIds(document?.sourceDeliveryNoteIds ?? []);
-  }, [defaultWarehouseId, document, mode, open]);
+  }, [document, mode, open]);
+
+  const knownProductIds = new Set([...products, ...excelCreatedProducts].map((product) => product.id));
+  const missingSavedProductIds = [...new Set((document?.lines ?? []).map((line) => line.productId))]
+    .filter((id) => id && !knownProductIds.has(id)).sort().join(",");
+
+  useEffect(() => {
+    if (!open || !token || !document?.id || !missingSavedProductIds || catalogRecoveryAttemptRef.current) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const missing = new Set(missingSavedProductIds.split(","));
+    // Reuse the warehouse-authorized catalog only for missing saved products,
+    // not after every save and not one request per invoice line.
+    void apiRequest<WarehouseImportProduct[]>("/products/warehouse-options", { token, signal: controller.signal })
+      .then((catalog) => {
+        if (cancelled) return;
+        catalogRecoveryAttemptRef.current = true;
+        const recovered = catalog.filter((product) => missing.has(product.id));
+        setExcelCreatedProducts((current) => [...current.filter((product) => !missing.has(product.id)), ...recovered]);
+        if (recovered.length < missing.size) setStatus(t("warehouseDocument.error.productNotFound"));
+      }).catch(() => {
+        if (!cancelled) {
+          catalogRecoveryAttemptRef.current = true;
+          setStatus(t("warehouseScreen.loadError"));
+        }
+      });
+    return () => { cancelled = true; controller.abort(); };
+  }, [open, document, mode, token, missingSavedProductIds]);
+
+  useEffect(() => {
+    if (!open) return;
+    const byId = new Map([...products, ...excelCreatedProducts].map((product) => [product.id, product]));
+    setLines((current) => {
+      let changed = false;
+      const next = current.map((line) => {
+        const product = byId.get(line.productId);
+        if (line.errorKey !== "warehouseDocument.error.productNotFound" || !product) return line;
+        changed = true;
+        const resolved = createWarehouseDocumentLine(product, line.importedProduct, line.quantity, line.rowNumber);
+        return { ...line, productLabel: resolved.productLabel, importedProduct: resolved.importedProduct,
+          productName: line.productName || resolved.productName, valid: resolved.valid, errorKey: resolved.errorKey };
+      });
+      return changed ? next : current;
+    });
+  }, [open, products, excelCreatedProducts]);
+
+  useEffect(() => {
+    if (!open || document?.warehouseId || warehouseId || !defaultWarehouseId) return;
+    setWarehouseId(defaultWarehouseId);
+  }, [defaultWarehouseId, document?.warehouseId, open, warehouseId]);
 
   useEffect(() => {
     setLocalSuppliers(suppliers);
@@ -472,7 +615,7 @@ export function WarehouseDocumentDialog({
       if (event.key !== "Escape" || event.defaultPrevented) {
         return;
       }
-      if (excelImportOpen || manualMissingRows.length > 0) {
+      if (excelImportOpen) {
         return;
       }
       event.preventDefault();
@@ -480,7 +623,7 @@ export function WarehouseDocumentDialog({
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [excelImportOpen, manualMissingRows.length, onClose, open]);
+  }, [excelImportOpen, onClose, open]);
 
   useEffect(() => {
     const linkedLines = documentType === "FACTURA_ENTRADA" && sourceDeliveryNoteIds.length > 0;
@@ -522,7 +665,9 @@ export function WarehouseDocumentDialog({
   const draft = {
     warehouseId, partnerId, partnerText, date, externalNumber, concept, lines,
     documentType, priceSource: documentPriceMode, globalDiscount: documentDiscountPercent,
-    sourceDeliveryNoteIds, excelImport: excelImportMetadata
+    sourceDeliveryNoteIds, excelImport: excelImportMetadata,
+    excelImportProvenanceToken,
+    excelImportSnapshotToken
   };
   const readOnly = documentStatus !== "BORRADOR";
   const canSaveDraft = canConfirmWarehouseDocument(draft) && !submitting && Boolean(token) && !readOnly;
@@ -552,81 +697,46 @@ export function WarehouseDocumentDialog({
   const documentTotal = documentTotalAfterDiscount(documentSubtotal, documentDiscountPercent);
 
   function importAcceptedExcelRows(rows: SharedExcelImportAcceptedRow[], metadata: SharedExcelImportMetadata) {
-    const sourceKey = priceSourceDraftKey(documentPriceMode);
-    const nextLines = rows.map((row, index) => {
-      const line = createManualWarehouseDocumentLine(row.product?.id ?? "", row.quantity, importProducts, index + 1);
-      const importedPrice = decimalDocumentNumber(row.draft[sourceKey]);
-      const hasImportedPrice = String(row.draft[sourceKey] ?? "").trim() !== "";
-      const product = importProducts.find((candidate) => candidate.id === row.product?.id);
-      line.unitPrice = hasImportedPrice ? importedPrice : documentProductPrice(product, documentPriceMode);
-      line.priceOverridden = hasImportedPrice;
-      line.discountPercent = String(row.draft.purchaseDiscountPercent ?? "0");
-      return line;
-    });
+    const sourceKey = metadata.documentPriceSource ?? priceSourceDraftKey(documentPriceMode);
+    const selectedPriceMode = priceSourceModeFromDraftKey(sourceKey);
+    const createdFromApply = rows
+      .filter((row) => row.product && !importProducts.some((product) => product.id === row.product?.id))
+      .map((row) => ({
+        id: row.product!.id,
+        code: row.draft.code || row.product!.code,
+        barcode: row.draft.barcode || row.product!.barcode,
+        barcode2: row.draft.barcode2,
+        reference: row.draft.supplierReference || row.draft.code || row.draft.barcode,
+        name: row.draft.name,
+        purchasePrice: row.draft.purchasePrice,
+        salePrice: row.draft.salePrice,
+        memberPrice: row.draft.memberPrice,
+        wholesalePrice: row.draft.wholesalePrice,
+        offerPrice: row.draft.offerPrice,
+        packageQuantity: row.draft.packageQuantity,
+        discountType: row.draft.discountType
+      } satisfies WarehouseImportProduct));
+    const combinedProducts = [...importProducts, ...createdFromApply];
+    if (createdFromApply.length > 0) {
+      setExcelCreatedProducts((current) => [
+        ...current,
+        ...createdFromApply.filter((created) => !current.some((product) => product.id === created.id))
+      ]);
+    }
+    const nextLines = rows.map((row) => buildImportedWarehouseDocumentLine(
+      row,
+      combinedProducts,
+      sourceKey,
+      selectedPriceMode
+    ));
+    if (mode === "input") setDocumentPriceMode(selectedPriceMode);
     setLines(nextLines);
-              setExcelImportMetadata(metadata);
+    importedDraftFingerprintRef.current = null;
+    setExcelImportProvenanceToken(metadata.provenanceToken ?? null);
+    setExcelImportSnapshotToken(null);
+    setExcelImportMetadata(metadata);
     setStatus(t("warehouseDocument.imported"));
     setExcelImportOpen(false);
-  }
-
-  async function addMissingProductsAuto(rows: ExcelImportClassifiedRow[]): Promise<ExcelImportProductIdentity[]> {
-    if (!token) {
-      setStatus(t("product.create.saveError"));
-      return [];
-    }
-    setStatus(interpolateMessage(t("warehouseDocument.status.creatingProducts"), { count: rows.length }));
-    const defaults = await loadProductCreateDefaults(token);
-    const created: ExcelImportProductIdentity[] = [];
-    for (const row of rows) {
-      const form = applyProductRequiredDefaults(productFormFromExcelDraft(row.draft), defaults.families, defaults.taxes);
-      const product = await apiRequest<ProductCreateResponse>("/products/management", {
-        token,
-        method: "POST",
-        body: buildCreateProductRequest(form, { purchaseDiscountPercent: row.draft.purchaseDiscountPercent })
-      });
-      const createdProduct = {
-        id: product.id,
-        code: product.code ?? row.draft.code,
-        barcode: row.draft.barcode,
-        reference: row.draft.code,
-        name: product.name ?? row.draft.name
-      };
-      setExcelCreatedProducts((current) => [...current, createdProduct]);
-      created.push({ id: product.id, code: product.code ?? row.draft.code, barcode: row.draft.barcode });
-    }
-    setStatus(interpolateMessage(t("warehouseDocument.status.productsCreated"), { count: created.length }));
-    return created;
-  }
-
-  function addMissingProductsManual(rows: ExcelImportClassifiedRow[]) {
-    setManualMissingRows(rows);
-    setManualMissingIndex(0);
-    setStatus(interpolateMessage(t("warehouseDocument.status.productsPendingReview"), { count: rows.length }));
-  }
-
-  function closeManualMissingProduct() {
-    setManualMissingRows([]);
-    setManualMissingIndex(0);
-  }
-
-  function manualMissingProductCreated(product: ProductCreateResponse) {
-    const row = manualMissingRows[manualMissingIndex];
-    if (row) {
-      setExcelCreatedProducts((current) => [...current, {
-        id: product.id,
-        code: product.code ?? row.draft.code,
-        barcode: row.draft.barcode,
-        reference: row.draft.code,
-        name: product.name ?? row.draft.name
-      }]);
-    }
-    const nextIndex = manualMissingIndex + 1;
-    if (nextIndex >= manualMissingRows.length) {
-      closeManualMissingProduct();
-      setStatus(t("warehouseDocument.status.missingReviewed"));
-      return;
-    }
-    setManualMissingIndex(nextIndex);
   }
 
   function addManualLine() {
@@ -740,7 +850,7 @@ export function WarehouseDocumentDialog({
   function focusProductSearch() {
     if (!open || readOnly || linkedLinesLocked || productSearchOpen || supplierDialogOpen
         || lineEditorIndex !== null || quickLineEditMode !== null || excelImportOpen
-        || manualMissingRows.length > 0) return;
+       ) return;
     window.requestAnimationFrame(() => productSearchRef.current?.focus());
   }
 
@@ -1316,7 +1426,7 @@ export function WarehouseDocumentDialog({
       case "discount":
         return formatDocumentDiscount(discountPercent);
       case "price":
-        return formatDocumentAmount(price);
+        return formatDocumentAmount(price, 3);
       case "quantity":
         return line.quantity;
       case "total":
@@ -1371,7 +1481,7 @@ export function WarehouseDocumentDialog({
           <input
             type="number"
             min="0"
-            step="0.01"
+            step="0.001"
             value={manualUnitPrice || manualProductPrice}
             onChange={(event) => {
               setManualUnitPrice(event.target.value);
@@ -1411,6 +1521,10 @@ export function WarehouseDocumentDialog({
     if (!canSaveDraft || !token || readOnly) {
       return null;
     }
+    if (mode === "input" && importedDraftFingerprintRef.current !== null
+        && importedDraftFingerprintRef.current !== excelDraftFingerprint) {
+      throw new Error("EXCEL_IMPORT_REVIEW_REQUIRED");
+    }
     const basePath = warehouseDocumentPath(mode);
     const saved = await apiRequest<WarehouseDocumentView>(documentId ? `${basePath}/${documentId}` : basePath, {
       token,
@@ -1420,6 +1534,10 @@ export function WarehouseDocumentDialog({
     setDocumentId(saved.id);
     setDocumentNumber(saved.number ?? documentNumber);
     setDocumentStatus(saved.status ?? "BORRADOR");
+    importedDraftFingerprintRef.current = null;
+    setExcelImportSnapshotToken(saved.excelImportSnapshotToken ?? null);
+    setExcelImportMetadata(null);
+    setExcelImportProvenanceToken(null);
     onSaved?.(saved);
     return saved;
   }
@@ -1435,8 +1553,9 @@ export function WarehouseDocumentDialog({
       setStatus(t("warehouseDocument.saved"));
     } catch (error) {
       setStatus(warehouseDocumentRequestErrorMessage(error, t("warehouseDocument.saveError"), {
-        integrityConflict: t("warehouseDocument.error.integrityConflict"),
-        stateConflict: t("warehouseDocument.error.stateConflict")
+        integrityConflict: t("warehouseDocument.error.draftIntegrityConflict"),
+        stateConflict: t("warehouseDocument.error.stateConflict"),
+        excelReviewRequired: t("warehouseDocument.error.excelReviewRequired")
       }));
     } finally {
       setSubmitting(false);
@@ -1449,21 +1568,24 @@ export function WarehouseDocumentDialog({
     }
     setSubmitting(true);
     setStatus(t("warehouseDocument.confirming"));
+    let confirmationRequested = false;
     try {
       const saved = await persistDraft();
       const id = saved?.id ?? documentId;
       if (!id || !token) {
         return;
       }
+      confirmationRequested = true;
       const confirmed = await apiRequest<WarehouseDocumentView>(`${warehouseDocumentPath(mode)}/${id}/confirm`, { token, method: "POST" });
       setDocumentNumber(confirmed.number ?? saved?.number ?? documentNumber);
       setDocumentStatus(confirmed.status ?? "CONFIRMADA");
       setStatus(t("warehouseDocument.confirmed"));
       onConfirmed(confirmed);
     } catch (error) {
-      setStatus(warehouseDocumentRequestErrorMessage(error, t("warehouseDocument.confirmError"), {
-        integrityConflict: t("warehouseDocument.error.integrityConflict"),
-        stateConflict: t("warehouseDocument.error.stateConflict")
+      setStatus(warehouseDocumentRequestErrorMessage(error, t(confirmationRequested ? "warehouseDocument.confirmError" : "warehouseDocument.saveError"), {
+        integrityConflict: t(confirmationRequested ? "warehouseDocument.error.integrityConflict" : "warehouseDocument.error.draftIntegrityConflict"),
+        stateConflict: t("warehouseDocument.error.stateConflict"),
+        excelReviewRequired: t("warehouseDocument.error.excelReviewRequired")
       }));
     } finally {
       setSubmitting(false);
@@ -1918,7 +2040,7 @@ export function WarehouseDocumentDialog({
             </header>
             <label><span>{t("warehouseDocument.quantity")}</span><input autoFocus={lineEditorInitialField === "quantity"} disabled={linkedLinesLocked} type="number" min="0.001" step="0.001" value={lineEditQuantity} onChange={(event) => setLineEditQuantity(event.target.value)} /></label>
             {mode === "input" && <label><span>{t("warehouseDocument.column.name")}</span><input ref={lineEditNameRef} maxLength={255} value={lineEditName} onChange={(event) => setLineEditName(event.target.value)} /></label>}
-            <label><span>{t("warehouseDocument.column.price")}</span><input ref={lineEditPriceRef} type="number" min="0" step="0.01" value={lineEditPrice} onChange={(event) => setLineEditPrice(event.target.value)} /></label>
+            <label><span>{t("warehouseDocument.column.price")}</span><input ref={lineEditPriceRef} type="number" min="0" step="0.001" value={lineEditPrice} onChange={(event) => setLineEditPrice(event.target.value)} /></label>
             <label><span>{t("warehouseDocument.column.discount")}</span><input type="number" min="0" max="100" step="0.01" value={lineEditDiscount} onChange={(event) => setLineEditDiscount(event.target.value)} /></label>
             <footer className="filter-actions">
               <button type="button" onClick={closeLineEditor}>{t("common.cancel")}</button>
@@ -2019,24 +2141,35 @@ export function WarehouseDocumentDialog({
           code: product.code,
           barcode: product.barcode
         })))}
+        currentPurchasePrice={(identity) => {
+          const product = [...products, ...excelCreatedProducts].find((candidate) => candidate.id === identity.id);
+          return product?.purchasePrice;
+        }}
         title={t("warehouseDocument.importExcel")}
         requireQuantity
         terminalContext={terminalContext}
+        token={token}
+        context={mode === "input" ? "WAREHOUSE_INPUT" : "WAREHOUSE_OUTPUT"}
+        warehouseId={warehouseId}
+        documentDate={date}
+        showDocumentPriceSource={mode === "input"}
+        supplier={mode === "input" && partnerId ? (() => {
+          const selectedSupplier = localSuppliers.find((candidate) => candidate.id === partnerId);
+          return selectedSupplier ? {
+            id: selectedSupplier.id,
+            code: selectedSupplier.supplierId,
+            legalName: selectedSupplier.legalName ?? selectedSupplier.razonSocial,
+            tradeName: selectedSupplier.tradeName,
+            documentType: selectedSupplier.documentType,
+            documentNumber: selectedSupplier.documentNumber ?? selectedSupplier.numeroDocumento,
+            active: selectedSupplier.active
+          } : null;
+        })() : null}
         onClose={() => {
           setExcelImportOpen(false);
           window.requestAnimationFrame(() => productSearchRef.current?.focus());
         }}
         onImportAccepted={importAcceptedExcelRows}
-        onAddMissingAuto={addMissingProductsAuto}
-        onAddMissingManual={addMissingProductsManual}
-      />
-      <ProductCreateDialog
-        open={manualMissingRows.length > 0}
-        locale={locale}
-        token={token}
-        initialForm={manualMissingRows[manualMissingIndex] ? productFormFromExcelDraft(manualMissingRows[manualMissingIndex].draft) : undefined}
-        onClose={closeManualMissingProduct}
-        onCreated={manualMissingProductCreated}
       />
     </div>
   );
@@ -2056,13 +2189,16 @@ function productLabel(product: WarehouseImportProduct) {
 }
 
 function documentProductPrice(product: WarehouseImportProduct | undefined, mode: WarehouseInputPriceSource) {
-  if (!product) return 0;
-  const value = mode === "PURCHASE" ? product.purchasePrice
+  return decimalDocumentNumber(selectedDocumentTariff(product, mode));
+}
+
+function selectedDocumentTariff(product: WarehouseImportProduct | undefined, mode: WarehouseInputPriceSource) {
+  if (!product) return undefined;
+  return mode === "PURCHASE" ? product.purchasePrice
     : mode === "SALE" ? product.salePrice
       : mode === "MEMBER" ? product.memberPrice
         : mode === "WHOLESALE" ? product.wholesalePrice
           : product.offerPrice;
-  return decimalDocumentNumber(value ?? product.purchasePrice ?? product.salePrice ?? product.wholesalePrice);
 }
 
 function priceSourceDraftKey(source: WarehouseInputPriceSource): "purchasePrice" | "salePrice" | "memberPrice" | "wholesalePrice" | "offerPrice" {
@@ -2071,6 +2207,14 @@ function priceSourceDraftKey(source: WarehouseInputPriceSource): "purchasePrice"
   if (source === "WHOLESALE") return "wholesalePrice";
   if (source === "OFFER") return "offerPrice";
   return "purchasePrice";
+}
+
+function priceSourceModeFromDraftKey(source: "purchasePrice" | "salePrice" | "memberPrice" | "wholesalePrice" | "offerPrice"): WarehouseInputPriceSource {
+  if (source === "salePrice") return "SALE";
+  if (source === "memberPrice") return "MEMBER";
+  if (source === "wholesalePrice") return "WHOLESALE";
+  if (source === "offerPrice") return "OFFER";
+  return "PURCHASE";
 }
 
 function priceSourceLabel(source: WarehouseInputPriceSource, t: (key: string) => string) {
@@ -2086,6 +2230,14 @@ function decimalDocumentNumber(value: string | number | null | undefined) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function strictImportedDocumentNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+  const text = String(value ?? "").trim();
+  if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
+  const number = Number(text);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
 function parseDocumentDiscountPercent(value: string | number | null | undefined) {
   const number = decimalDocumentNumber(value);
   if (number < 0) return 0;
@@ -2094,25 +2246,21 @@ function parseDocumentDiscountPercent(value: string | number | null | undefined)
 }
 
 export function documentLineTotal(price: number, quantity: number, discountPercent: string | number | null | undefined) {
-  const discount = parseDocumentDiscountPercent(discountPercent);
-  const total = price * quantity * (1 - discount / 100);
-  return Number.isFinite(total) ? total : 0;
+  return applyMoneyDiscount(roundMoneyProduct(price, quantity), parseDocumentDiscountPercent(discountPercent));
 }
 
 export function documentTotalAfterDiscount(subtotal: number, discountPercent: string | number | null | undefined) {
-  const discount = parseDocumentDiscountPercent(discountPercent);
-  const total = subtotal * (1 - discount / 100);
-  return Number.isFinite(total) ? total : 0;
+  return applyMoneyDiscount(subtotal, parseDocumentDiscountPercent(discountPercent));
 }
 
 function formatDocumentDiscount(value: string | number | null | undefined) {
   return `${formatDocumentAmount(parseDocumentDiscountPercent(value))}%`;
 }
 
-function formatDocumentAmount(value: number) {
+function formatDocumentAmount(value: number, maximumFractionDigits = 2) {
   return new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits
   }).format(Number.isFinite(value) ? value : 0);
 }
 
@@ -2134,81 +2282,6 @@ function csvCell(value: unknown) {
   return /[;"\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-async function loadProductCreateDefaults(token: string) {
-  const [families, taxes] = await Promise.all([
-    apiRequest<Array<{ id: string; defaultFamily?: boolean | null }>>("/families", { token }),
-    apiRequest<Array<{ id: string; defaultTax?: boolean | null }>>("/taxes/selectable", { token })
-  ]);
-  return { families, taxes };
-}
-
-function productFormFromExcelDraft(draft: ExcelImportProductDraft): ProductCreateFormState {
-  return {
-    ...createDefaultProductForm(),
-    familyId: draft.familyId,
-    subfamilyId: draft.subfamilyId,
-    taxId: draft.taxId,
-    productType: productTypeFromExcel(draft.productType),
-    priceUseMode: priceUseModeFromExcel(draft.priceUseMode),
-    discountType: discountTypeFromExcel(draft.discountType),
-    name: draft.name,
-    description: draft.description,
-    comments: draft.comments,
-    purchasePrice: draft.purchasePrice || "0",
-    taxesIncluded: booleanFromExcel(draft.taxesIncluded, true),
-    code: draft.code,
-    barcode: draft.barcode,
-    barcode2: draft.barcode2,
-    salePrice: draft.salePrice || "0",
-    memberPrice: optionalPositiveExcelValue(draft.memberPrice),
-    wholesalePrice: optionalPositiveExcelValue(draft.wholesalePrice),
-    offerPrice: optionalPositiveExcelValue(draft.offerPrice),
-    offerDiscountPercent: optionalPositiveExcelValue(draft.offerDiscountPercent),
-    offerActive: booleanFromExcel(draft.offerActive, false),
-    offerFrom: draft.offerFrom,
-    offerUntil: draft.offerUntil
-  };
-}
-
-function productTypeFromExcel(value: string): ProductCreateFormState["productType"] {
-  const normalized = normalizeExcelOption(value);
-  if (["SERVICE", "SERVICIO"].includes(normalized)) return "SERVICE";
-  if (["WEIGHT", "PESO", "PESABLE"].includes(normalized)) return "WEIGHT";
-  return "UNIT";
-}
-
-function priceUseModeFromExcel(value: string): ProductCreateFormState["priceUseMode"] {
-  const normalized = normalizeExcelOption(value);
-  if (["MEMBER_PRICE", "MEMBER", "MIEMBRO", "PRECIO_MIEMBRO", "PRECIO_DE_MIEMBRO"].includes(normalized)) return "MEMBER_PRICE";
-  if (["OFFER_PRICE", "OFERTA", "PRECIO_OFERTA"].includes(normalized)) return "OFFER_PRICE";
-  if (["OFFER_DISCOUNT", "DESCUENTO_OFERTA"].includes(normalized)) return "OFFER_DISCOUNT";
-  return "NORMAL";
-}
-
-function discountTypeFromExcel(value: string): ProductCreateFormState["discountType"] {
-  const normalized = normalizeExcelOption(value);
-  if (["1", "TRUE", "SI", "YES", "NONE", "NO_APLICAR", "PROHIBIDO"].includes(normalized)) return "NONE";
-  if (["MEMBER_PRICE", "MIEMBRO", "PRECIO_MIEMBRO", "PRECIO_DE_MIEMBRO"].includes(normalized)) return "MEMBER_PRICE";
-  if (["DISCOUNT_PRICE", "OFERTA", "DESCUENTO"].includes(normalized)) return "DISCOUNT_PRICE";
-  return "NORMAL";
-}
-
-function booleanFromExcel(value: string, fallback: boolean) {
-  const normalized = normalizeExcelOption(value);
-  if (!normalized) return fallback;
-  if (["1", "TRUE", "SI", "YES", "S"].includes(normalized)) return true;
-  if (["0", "FALSE", "NO", "N"].includes(normalized)) return false;
-  return fallback;
-}
-
-function optionalPositiveExcelValue(value: string) {
-  const normalized = value.trim().replace(",", ".");
-  if (!normalized) {
-    return "";
-  }
-  const number = Number(normalized);
-  return Number.isFinite(number) && number <= 0 ? "" : value;
-}
 
 function normalizeExcelOption(value: string) {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "_").toUpperCase();

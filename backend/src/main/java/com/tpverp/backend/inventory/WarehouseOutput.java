@@ -135,9 +135,7 @@ public class WarehouseOutput {
         }
         destino = optional(destination);
         concepto = optional(concept);
-        if (newExcelImport != null) {
-            excelImport = WarehouseExcelImportMetadata.copy(newExcelImport);
-        }
+        excelImport = WarehouseExcelImportMetadata.copy(newExcelImport);
         lines.clear();
         newLines.forEach(line -> addLine(line.productId(), line.quantity()));
     }

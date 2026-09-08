@@ -48,18 +48,18 @@ public class WarehouseInputController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
-    public WarehouseInput create(
+    public WarehouseInputView create(
             @Valid @RequestBody WarehouseInputCommand command,
             Authentication authentication) {
-        return service.create(command, authentication);
+        return service.createView(command, authentication);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
-    public WarehouseInput update(
+    public WarehouseInputView update(
             @PathVariable UUID id,
             @Valid @RequestBody WarehouseInputCommand command) {
-        return service.update(id, command);
+        return service.updateView(id, command);
     }
 
     @DeleteMapping("/{id}")
@@ -71,10 +71,10 @@ public class WarehouseInputController {
 
     @PostMapping("/{id}/confirm")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
-    public WarehouseInput confirm(
+    public WarehouseInputView confirm(
             @PathVariable UUID id,
             Authentication authentication) {
-        return service.confirm(id, authentication);
+        return service.confirmView(id, authentication);
     }
 
     @GetMapping("/{id}/print-document")

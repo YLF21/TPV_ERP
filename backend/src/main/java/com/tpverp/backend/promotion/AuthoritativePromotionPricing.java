@@ -112,7 +112,7 @@ public class AuthoritativePromotionPricing {
         var salePrice = requiredPrice(product.getSalePrice(), "precio de venta");
         if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
             return customer.isMember() && isPositive(product.getMemberPrice())
-                    ? Money.euros(product.getMemberPrice()) : salePrice;
+                    ? Money.unitPrice(product.getMemberPrice()) : salePrice;
         }
         // NONE is canonically NORMAL even for legacy rows saved before the
         // catalog lock existed. Wholesale remains the only permitted override.
@@ -120,7 +120,7 @@ public class AuthoritativePromotionPricing {
                 ? PriceUseMode.NORMAL
                 : product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
         if (wholesaleMode && mode == PriceUseMode.NORMAL && isPositive(product.getWholesalePrice())) {
-            return Money.euros(product.getWholesalePrice());
+            return Money.unitPrice(product.getWholesalePrice());
         }
         if (product.getDiscountType() == DiscountType.NONE) {
             return salePrice;
@@ -128,12 +128,12 @@ public class AuthoritativePromotionPricing {
         return switch (mode) {
             case NORMAL -> salePrice;
             case MEMBER_PRICE -> customer.isMember() && isPositive(product.getMemberPrice())
-                    ? Money.euros(product.getMemberPrice()) : salePrice;
+                    ? Money.unitPrice(product.getMemberPrice()) : salePrice;
             case OFFER_PRICE -> offerApplies(product, documentDate) && product.getOfferPrice() != null
-                    ? Money.euros(product.getOfferPrice()) : salePrice;
+                    ? Money.unitPrice(product.getOfferPrice()) : salePrice;
             case OFFER_DISCOUNT -> offerApplies(product, documentDate)
                     && product.getOfferDiscountPercent() != null
-                    ? Money.euros(salePrice.multiply(BigDecimal.ONE.subtract(
+                    ? Money.unitPrice(salePrice.multiply(BigDecimal.ONE.subtract(
                     product.getOfferDiscountPercent().divide(HUNDRED))))
                     : salePrice;
         };
@@ -187,7 +187,7 @@ public class AuthoritativePromotionPricing {
         if (value == null) {
             throw new IllegalStateException(field + " no configurado");
         }
-        return Money.euros(value);
+        return Money.unitPrice(value);
     }
 
     private static BigDecimal requiredOpenPrice(BigDecimal value) {
@@ -195,10 +195,10 @@ public class AuthoritativePromotionPricing {
             throw new IllegalArgumentException(
                     "Debe indicar el precio para el producto con precio de venta 0");
         }
-        if (value.scale() > 2) {
-            throw new IllegalArgumentException("El precio abierto admite un maximo de 2 decimales");
+        if (value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("El precio abierto admite un maximo de 3 decimales");
         }
-        var price = Money.euros(value);
+        var price = Money.exactUnitPrice(value);
         if (price.signum() <= 0) {
             throw new IllegalArgumentException("El precio abierto debe ser mayor que 0");
         }
@@ -209,11 +209,11 @@ public class AuthoritativePromotionPricing {
         if (value == null) {
             throw new IllegalArgumentException("Debe indicar el precio temporal");
         }
-        if (value.scale() > 2) {
+        if (value.stripTrailingZeros().scale() > 3) {
             throw new IllegalArgumentException(
-                    "El precio temporal admite un maximo de 2 decimales");
+                    "El precio temporal admite un maximo de 3 decimales");
         }
-        var price = Money.euros(value);
+        var price = Money.exactUnitPrice(value);
         if (price.signum() <= 0) {
             throw new IllegalArgumentException(
                     "El precio temporal debe ser mayor que 0");

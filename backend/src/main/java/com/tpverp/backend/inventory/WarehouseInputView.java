@@ -23,7 +23,10 @@ public record WarehouseInputView(
         java.math.BigDecimal total,
         List<UUID> sourceDeliveryNoteIds,
         WarehouseInputStatus status,
-        List<WarehouseInputLineView> lines) {
+        List<WarehouseInputLineView> lines,
+        boolean hasExcelImport,
+        boolean excelImportPendingSupplierUpdate,
+        String excelImportSnapshotToken) {
 
     public WarehouseInputView(
             UUID id,
@@ -39,7 +42,8 @@ public record WarehouseInputView(
         this(id, number, storeId, warehouseId, supplierId,
                 WarehouseInputDocumentType.ENTRADA_ALMACEN, date, null, origin, concept,
                 WarehouseInputPriceSource.PURCHASE, java.math.BigDecimal.ZERO,
-                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, List.of(), status, lines);
+                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, List.of(), status, lines,
+                false, false, null);
     }
 
     public static WarehouseInputView from(WarehouseInput input) {
@@ -47,6 +51,11 @@ public record WarehouseInputView(
     }
 
     public static WarehouseInputView from(WarehouseInput input, Map<UUID, Product> products) {
+        return from(input, products, null);
+    }
+
+    public static WarehouseInputView from(WarehouseInput input, Map<UUID, Product> products,
+            String excelImportSnapshotToken) {
         return new WarehouseInputView(
                 input.getId(),
                 input.getNumber(),
@@ -66,6 +75,9 @@ public record WarehouseInputView(
                 input.getStatus(),
                 input.getLines().stream()
                         .map(line -> WarehouseInputLineView.from(line, products.get(line.getProductId())))
-                        .toList());
+                        .toList(),
+                input.getExcelImport() != null,
+                input.getExcelImport() != null && input.getExcelImport().updateSupplier(),
+                excelImportSnapshotToken);
     }
 }

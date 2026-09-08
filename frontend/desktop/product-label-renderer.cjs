@@ -152,8 +152,8 @@ function normalizedCommercial(value) {
 function labelMarkup(request, profile, product, style = "") {
   const commercial = product.commercial;
   const priceMarkup = commercial?.offer
-    ? `<div class="price offer-price"><span class="commercial-badge">${escapeHtml(commercial.badge)}</span><del>${commercial.offer.regularPrice.toFixed(2)} &euro;</del><strong>${commercial.offer.offerPrice.toFixed(2)} &euro;</strong><small>-${commercial.offer.discountPercent.toFixed(2)}%${commercial.offer.validUntil ? ` &middot; ${escapeHtml(commercial.offer.validUntil)}` : ""}</small></div>`
-    : `<div class="price">${commercial ? `<span class="commercial-badge">${escapeHtml(commercial.badge)}</span>` : ""}<strong>${Number(product.price || 0).toFixed(2)} &euro;</strong></div>`;
+    ? `<div class="price offer-price"><span class="commercial-badge">${escapeHtml(commercial.badge)}</span><del>${commercial.offer.regularPrice.toFixed(3).replace(/(\.\d{2})0$/, "$1")} &euro;</del><strong>${commercial.offer.offerPrice.toFixed(3).replace(/(\.\d{2})0$/, "$1")} &euro;</strong><small>-${commercial.offer.discountPercent.toFixed(2)}%${commercial.offer.validUntil ? ` &middot; ${escapeHtml(commercial.offer.validUntil)}` : ""}</small></div>`
+    : `<div class="price">${commercial ? `<span class="commercial-badge">${escapeHtml(commercial.badge)}</span>` : ""}<strong>${Number(product.price || 0).toFixed(3).replace(/(\.\d{2})0$/, "$1")} &euro;</strong></div>`;
   const promotionMarkup = commercial?.promotionLines?.length
     ? `<div class="promotion-summary">${commercial.promotionLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}</div>`
     : "";

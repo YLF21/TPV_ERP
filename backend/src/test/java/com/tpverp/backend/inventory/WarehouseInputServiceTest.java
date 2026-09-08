@@ -3,13 +3,21 @@ package com.tpverp.backend.inventory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductSupplierRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.document.DocumentCounterRepository;
@@ -38,6 +46,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronization;
 
 @ExtendWith(MockitoExtension.class)
 class WarehouseInputServiceTest {
@@ -51,7 +62,10 @@ class WarehouseInputServiceTest {
     @Mock private ProductRepository products;
     @Mock private WarehouseRepository warehouses;
     @Mock private SupplierRepository suppliers;
+    @Mock private ProductSupplierRepository productSuppliers;
     @Mock private SyncOutboxService syncOutbox;
+    @Mock private WarehouseInputExcelAuditService excelAudit;
+    @Mock private WarehouseExcelImportProvenanceService provenance;
 
     private WarehouseInputService service;
     private Store store;
@@ -64,8 +78,8 @@ class WarehouseInputServiceTest {
     void setUp() {
         service = new WarehouseInputService(
                 inputs, counters, stockLevels, settings, movements, organization, products,
-                warehouses, suppliers, new StockMovementSyncPublisher(syncOutbox),
-                Clock.fixed(Instant.parse("2026-07-08T10:00:00Z"), ZoneOffset.UTC));
+                warehouses, suppliers, productSuppliers, new StockMovementSyncPublisher(syncOutbox),
+                Clock.fixed(Instant.parse("2026-07-08T10:00:00Z"), ZoneOffset.UTC), excelAudit, provenance);
         var address = Map.of(
                 "linea1", "Calle 1",
                 "ciudad", "Las Palmas",
@@ -90,6 +104,8 @@ class WarehouseInputServiceTest {
         lenient().when(inputs.save(any())).thenAnswer(call -> call.getArgument(0));
         lenient().when(inputs.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         lenient().when(movements.save(any())).thenAnswer(call -> call.getArgument(0));
+        lenient().when(provenance.verifyApply(any(), any(), any(), any(), any(), nullable(UUID.class), any()))
+                .thenReturn(true);
     }
 
     @Test
@@ -109,7 +125,8 @@ class WarehouseInputServiceTest {
                         new WarehouseExcelImportMetadata(
                                 "productos.xlsx",
                                 List.of(new WarehouseExcelImportMetadata.Formula(
-                                        "I2", "E2*2.5", "10.25")))),
+                                        "I2", "E2*2.5", "10.25"))),
+                        applyProvenanceToken()),
                 authentication());
 
         assertThat(input.getStatus()).isEqualTo(WarehouseInputStatus.BORRADOR);
@@ -122,6 +139,123 @@ class WarehouseInputServiceTest {
         assertThat(input.getExcelImport().formulas()).singleElement()
                 .extracting(WarehouseExcelImportMetadata.Formula::formula)
                 .isEqualTo("E2*2.5");
+        verify(provenance).verifyApply(
+                eq(applyProvenanceToken()), eq(store.getEmpresa().getId()), eq(store.getId()),
+                eq(warehouse.getId()), eq(LocalDate.of(2026, 7, 8)), eq(null), any());
+    }
+
+    @Test
+    void rejectsExcelMetadataWithoutAuthoritativeApplyProofBeforeSave() {
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(supplier));
+        var metadata = new WarehouseExcelImportMetadata(
+                "productos.xlsx", List.of(), "a".repeat(64), "Hoja1", false, false, List.of());
+        var command = new WarehouseInputCommand(
+                warehouse.getId(), LocalDate.of(2026, 7, 8), supplier.getId(),
+                "Proveedor SL", "Compra", List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, null, BigDecimal.ZERO, false, product.getName())),
+                metadata);
+
+        assertThatThrownBy(() -> service.create(command, authentication()))
+                .isInstanceOf(WarehouseInputService.WarehouseExcelImportProvenanceException.class);
+        verify(provenance, never()).verifyApply(any(), any(), any(), any(), any(), any(), any());
+        verify(inputs, never()).save(any());
+    }
+
+    @Test
+    void rejectsTamperedExcelMetadataProofBeforeSave() {
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(supplier));
+        var metadata = new WarehouseExcelImportMetadata(
+                "productos.xlsx", List.of(), "a".repeat(64), "Hoja1", false, false, List.of());
+        var token = applyProvenanceToken();
+        var command = new WarehouseInputCommand(
+                warehouse.getId(), LocalDate.of(2026, 7, 8), supplier.getId(),
+                "Proveedor SL", "Compra", List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, null, BigDecimal.ZERO, false, product.getName())),
+                metadata, token);
+        when(provenance.verifyApply(eq(token), any(), any(), any(), any(), any(), eq(metadata)))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> service.create(command, authentication()))
+                .isInstanceOf(WarehouseInputService.WarehouseExcelImportProvenanceException.class);
+        verify(inputs, never()).save(any());
+    }
+
+    @Test
+    void staleDocumentSnapshotFailsBeforeMutatingTheDraft() {
+        var input = importedDraft();
+        var snapshotToken = "WXP1.D." + "a".repeat(512);
+        var command = sameDocumentCommand(snapshotToken);
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(provenance.verifyDocument(eq(snapshotToken), any(UUID.class), any(UUID.class), any(UUID.class),
+                any(LocalDate.class), any(UUID.class), anyLong(), nullable(UUID.class),
+                any(WarehouseExcelImportMetadata.class), anyList()))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> service.update(input.getId(), command))
+                .isInstanceOf(WarehouseInputService.WarehouseExcelImportSnapshotException.class)
+                .hasMessage("VERSION_STALE");
+        assertThat(input.getExcelImport()).isNotNull();
+        verify(inputs, never()).saveAndFlush(any());
+        verify(inputs, never()).flush();
+    }
+
+    @Test
+    void missingDocumentSnapshotFailsInsteadOfSilentlyDroppingMetadata() {
+        var input = importedDraft();
+        var command = new WarehouseInputCommand(
+                warehouse.getId(), LocalDate.of(2026, 7, 8), null,
+                "Origen", null, "Importado", WarehouseInputDocumentType.ENTRADA_ALMACEN,
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"),
+                        BigDecimal.ZERO, false, product.getName())), null, null, false, null);
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> service.update(input.getId(), command))
+                .isInstanceOf(WarehouseInputService.WarehouseExcelImportSnapshotException.class)
+                .hasMessage("VERSION_STALE");
+        assertThat(input.getExcelImport()).isNotNull();
+        verify(inputs, never()).saveAndFlush(any());
+        verify(inputs, never()).flush();
+    }
+
+    @Test
+    void validDocumentSnapshotPreservesMetadataWhenDraftIsEquivalent() {
+        var input = importedDraft();
+        var snapshotToken = "WXP1.D." + "a".repeat(512);
+        var command = sameDocumentCommand(snapshotToken);
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(provenance.verifyDocument(eq(snapshotToken), any(UUID.class), any(UUID.class), any(UUID.class),
+                any(LocalDate.class), any(UUID.class), anyLong(), nullable(UUID.class),
+                any(WarehouseExcelImportMetadata.class), anyList()))
+                .thenReturn(true);
+
+        doAnswer(invocation -> {
+            assertThat(input.getLines()).isEmpty();
+            // Metadata validation must happen before removing the original lines.
+            assertThat(input.getExcelImport()).isNotNull();
+            return null;
+        }).when(inputs).flush();
+
+        service.update(input.getId(), command);
+
+        assertThat(input.getExcelImport()).isNotNull();
+        assertThat(input.getLines()).hasSize(command.lines().size());
+        var ordered = inOrder(inputs);
+        ordered.verify(inputs).flush();
+        ordered.verify(inputs).saveAndFlush(input);
     }
 
     @Test
@@ -198,7 +332,7 @@ class WarehouseInputServiceTest {
                         product.getId(), new BigDecimal("5.000"),
                         new BigDecimal("4.20"), BigDecimal.ZERO, false, product.getName())));
         var stock = new StockLevel(product.getId(), warehouse.getId());
-        when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
@@ -224,6 +358,130 @@ class WarehouseInputServiceTest {
     }
 
     @Test
+    void appliesSupplierMetadataOnlyWhenTheInputIsConfirmed() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        var metadata = new WarehouseExcelImportMetadata(
+                "productos.xlsx", List.of(), "a".repeat(64), "Hoja1", true, true,
+                List.of(new WarehouseExcelImportMetadata.Line(product.getId(), List.of(2),
+                        "REF-EXCEL", BigDecimal.ZERO, new BigDecimal("5"))));
+        input.replace(
+                supplier.getId(), "Proveedor SL", "Compra",
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("3.20"),
+                        BigDecimal.ZERO, false, product.getName())), metadata);
+        var stock = new StockLevel(product.getId(), warehouse.getId());
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(suppliers.findByIdAndCompanyIdForUpdate(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdInForUpdate(eq(store.getId()), any()))
+                .thenReturn(List.of(product));
+        when(stockLevels.findByProductIdAndWarehouseId(product.getId(), warehouse.getId()))
+                .thenReturn(Optional.of(stock));
+        when(productSuppliers.findLatestEntryAtForProduct(product.getId())).thenReturn(null);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.confirm(input.getId(), productManagementAuthentication());
+            TransactionSynchronizationManager.getSynchronizations().forEach(s ->
+                    s.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(products).findAllByStoreIdAndIdInForUpdate(eq(store.getId()), any());
+        verify(productSuppliers, never()).lockProduct(any());
+        verify(productSuppliers).clearLastSupplier(product.getId(), supplier.getId());
+        verify(productSuppliers).upsertPurchase(
+                any(), eq(product.getId()), eq(supplier.getId()), eq("REF-EXCEL"),
+                eq(false), eq(true), eq(new BigDecimal("4.20")), eq(new BigDecimal("5")), any());
+        verify(excelAudit).record(eq(com.tpverp.backend.audit.AuditResult.EXITO), any());
+    }
+
+    @Test
+    void blocksSupplierMetadataWithoutProductManagementBeforeWriting() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        input.replace(supplier.getId(), "Proveedor SL", "Compra",
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("3.20"),
+                        BigDecimal.ZERO, false, product.getName())),
+                new WarehouseExcelImportMetadata(
+                        "productos.xlsx", List.of(), "a".repeat(64), "Hoja1", true, false,
+                        List.of(new WarehouseExcelImportMetadata.Line(product.getId(), List.of(2),
+                                "REF-EXCEL", new BigDecimal("3.20"), BigDecimal.ZERO))));
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.confirm(input.getId(), authentication()))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            TransactionSynchronizationManager.getSynchronizations().forEach(s ->
+                    s.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        verify(productSuppliers, never()).upsertPurchase(any(), any(), any(), any(), anyBoolean(), anyBoolean(),
+                any(), any(), any());
+        verify(movements, never()).save(any());
+        verify(excelAudit).record(eq(com.tpverp.backend.audit.AuditResult.FALLO), any());
+    }
+
+    @Test
+    void rejectsInactiveOrForeignSupplierBeforeProductLocks() {
+        var input = supplierMetadataInput();
+        supplier.deactivate();
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(suppliers.findByIdAndCompanyIdForUpdate(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(supplier));
+
+        assertThatThrownBy(() -> service.confirm(input.getId(), productManagementAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("inactivo");
+        verify(productSuppliers, never()).lockProduct(any());
+
+        var foreignInput = supplierMetadataInput();
+        when(inputs.findByIdAndStoreIdForUpdate(foreignInput.getId(), store.getId()))
+                .thenReturn(Optional.of(foreignInput));
+        when(suppliers.findByIdAndCompanyIdForUpdate(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.confirm(foreignInput.getId(), productManagementAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Proveedor no encontrado");
+    }
+
+    @Test
+    void rejectsSupplierMetadataForProductOutsideTheStoreAndDuplicateProductLines() {
+        var input = supplierMetadataInput();
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(suppliers.findByIdAndCompanyIdForUpdate(supplier.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdInForUpdate(eq(store.getId()), any())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.confirm(input.getId(), productManagementAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no pertenece");
+
+        var duplicate = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        duplicate.replace(supplier.getId(), "Proveedor SL", "Compra",
+                List.of(new WarehouseInputLineCommand(product.getId(), BigDecimal.ONE,
+                        new BigDecimal("3.20"), BigDecimal.ZERO, false, product.getName())),
+                new WarehouseExcelImportMetadata("productos.xlsx", List.of(), "a".repeat(64), "Hoja1", true, false,
+                        List.of(
+                                new WarehouseExcelImportMetadata.Line(product.getId(), List.of(2), "A", BigDecimal.ONE, BigDecimal.ZERO),
+                                new WarehouseExcelImportMetadata.Line(product.getId(), List.of(3), "B", BigDecimal.ONE, BigDecimal.ZERO))));
+        when(inputs.findByIdAndStoreIdForUpdate(duplicate.getId(), store.getId())).thenReturn(Optional.of(duplicate));
+        assertThatThrownBy(() -> service.confirm(duplicate.getId(), productManagementAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("productos repetidos");
+    }
+
+    @Test
     void skipsExistingAnnualNumberWhenCounterIsStale() {
         var input = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
@@ -235,7 +493,7 @@ class WarehouseInputServiceTest {
         var existing = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 1), user.getId());
         var stock = new StockLevel(product.getId(), warehouse.getId());
-        when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
@@ -261,7 +519,7 @@ class WarehouseInputServiceTest {
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), BigDecimal.ONE, null,
                         BigDecimal.ZERO, false, product.getName())));
-        when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(movements.existsByWarehouseInputId(input.getId())).thenReturn(true);
 
@@ -302,7 +560,7 @@ class WarehouseInputServiceTest {
                         new BigDecimal("4.20"), new BigDecimal("10.00"), true,
                         product.getName())), null);
         var stock = new StockLevel(product.getId(), warehouse.getId());
-        when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(inputs.findByIdAndStoreIdForUpdate(invoice.getId(), store.getId())).thenReturn(Optional.of(invoice));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "FE", "2026"))
                 .thenReturn(Optional.empty());
@@ -345,7 +603,7 @@ class WarehouseInputServiceTest {
                         product.getId(), new BigDecimal("3.000"),
                         new BigDecimal("4.10"), BigDecimal.ZERO, true,
                         product.getName())), null);
-        when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(inputs.findByIdAndStoreIdForUpdate(invoice.getId(), store.getId())).thenReturn(Optional.of(invoice));
         when(inputs.findByIdAndStoreId(deliveryNote.getId(), store.getId()))
                 .thenReturn(Optional.of(deliveryNote));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
@@ -383,7 +641,7 @@ class WarehouseInputServiceTest {
                 List.of(new WarehouseInputLineCommand(
                         product.getId(), BigDecimal.ONE, new BigDecimal("4.20"),
                         BigDecimal.ZERO, false, product.getName())), null);
-        when(inputs.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(inputs.findByIdAndStoreIdForUpdate(invoice.getId(), store.getId())).thenReturn(Optional.of(invoice));
         when(inputs.findByIdAndStoreId(deliveryNote.getId(), store.getId()))
                 .thenReturn(Optional.of(deliveryNote));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
@@ -410,7 +668,7 @@ class WarehouseInputServiceTest {
                 product.getId(), warehouse.getId(), new BigDecimal("-10.000"));
         var policy = new StockSettings(store.getId(), warehouse.getId());
         policy.update(warehouse.getId(), false, StockSettings.DEFAULT_MINIMUM_STOCK, true);
-        when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(inputs.findByIdAndStoreIdForUpdate(input.getId(), store.getId())).thenReturn(Optional.of(input));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(settings.findById(store.getId())).thenReturn(Optional.of(policy));
         when(stockLevels.findByProductIdAndWarehouseIdForUpdate(
@@ -428,7 +686,55 @@ class WarehouseInputServiceTest {
         verify(syncOutbox, never()).enqueue(any());
     }
 
+    private WarehouseInput importedDraft() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        input.replace(null, "Origen", "Importado",
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"),
+                        BigDecimal.ZERO, false, product.getName())),
+                new WarehouseExcelImportMetadata(
+                        "productos.xlsx", List.of(), "a".repeat(64), "Hoja1", false, false,
+                        List.of(new WarehouseExcelImportMetadata.Line(product.getId(), List.of(2),
+                                null, new BigDecimal("4.20"), BigDecimal.ZERO))));
+        return input;
+    }
+
+    private WarehouseInputCommand sameDocumentCommand(String snapshotToken) {
+        return new WarehouseInputCommand(
+                warehouse.getId(), LocalDate.of(2026, 7, 8), null,
+                "Origen", null, "Importado", WarehouseInputDocumentType.ENTRADA_ALMACEN,
+                WarehouseInputPriceSource.PURCHASE, BigDecimal.ZERO, List.of(),
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("4.20"),
+                        BigDecimal.ZERO, false, product.getName())), null, null, false, snapshotToken);
+    }
+
     private UsernamePasswordAuthenticationToken authentication() {
         return new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+    }
+
+    private static String applyProvenanceToken() {
+        return "WXP1.A." + "A".repeat(512);
+    }
+
+    private WarehouseInput supplierMetadataInput() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        input.replace(supplier.getId(), "Proveedor SL", "Compra",
+                List.of(new WarehouseInputLineCommand(
+                        product.getId(), BigDecimal.ONE, new BigDecimal("3.20"),
+                        BigDecimal.ZERO, false, product.getName())),
+                new WarehouseExcelImportMetadata(
+                        "productos.xlsx", List.of(), "a".repeat(64), "Hoja1", true, false,
+                        List.of(new WarehouseExcelImportMetadata.Line(product.getId(), List.of(2),
+                                "REF-EXCEL", new BigDecimal("3.20"), BigDecimal.ZERO))));
+        return input;
+    }
+
+    private UsernamePasswordAuthenticationToken productManagementAuthentication() {
+        return new UsernamePasswordAuthenticationToken("user", "n/a",
+                List.of(new SimpleGrantedAuthority("GESTION_ALMACEN"),
+                        new SimpleGrantedAuthority("GESTION_PRODUCTO")));
     }
 }

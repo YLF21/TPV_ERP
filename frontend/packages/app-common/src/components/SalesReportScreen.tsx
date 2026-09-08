@@ -5,7 +5,7 @@ import type { UIEvent } from "react";
 import { flushSync } from "react-dom";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
-import { formatEuroAmount, localeTag, parseMoneyValue } from "../money";
+import { formatEuroAmount, formatEuroUnitPrice, localeTag, parseMoneyValue } from "../money";
 import {
   commercialDocumentAsA4Document,
   outputConfirmedTicketsSequentially,
@@ -4144,7 +4144,7 @@ export function SalesReportScreen({
                           <td>{line.code}</td>
                           <td>{line.name}</td>
                           <td>{new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 3 }).format(Number(line.quantity))}</td>
-                          <td>{formatEuroAmount(line.unitPrice, locale)}</td>
+                          <td>{formatEuroUnitPrice(line.unitPrice, locale)}</td>
                           <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.discount))} %`}</td>
                           <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.taxPercentage))} %`}</td>
                           <td>{formatEuroAmount(line.total, locale)}</td>

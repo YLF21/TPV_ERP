@@ -28,10 +28,10 @@ class DocumentRulesTest {
                 new BigDecimal("1.005"), new BigDecimal("10"), false, "IVA",
                 new BigDecimal("21"));
 
-        assertThat(line.getPrecioUnitario()).isEqualByComparingTo("1.01");
-        assertThat(line.getBase()).isEqualByComparingTo("2.73");
+        assertThat(line.getPrecioUnitario()).isEqualByComparingTo("1.005");
+        assertThat(line.getBase()).isEqualByComparingTo("2.72");
         assertThat(line.getImpuesto()).isEqualByComparingTo("0.57");
-        assertThat(line.getTotal()).isEqualByComparingTo("3.30");
+        assertThat(line.getTotal()).isEqualByComparingTo("3.29");
     }
 
     @Test

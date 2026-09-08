@@ -415,7 +415,7 @@
 					<bottomPen lineWidth="0.25" lineStyle="Solid"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="7fb467f7-0920-49ab-a4cb-0a573deb0102" x="395" y="0" width="50" height="24" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="7fb467f7-0920-49ab-a4cb-0a573deb0102" x="395" y="0" width="50" height="24" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00#" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{unitPriceNet}]]></expression>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<box leftPadding="3" rightPadding="2">

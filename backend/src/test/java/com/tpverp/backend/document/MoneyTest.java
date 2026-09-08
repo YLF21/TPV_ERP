@@ -9,6 +9,20 @@ import org.junit.jupiter.api.Test;
 class MoneyTest {
 
     @Test
+    void preservesUnitPrecisionAndRoundsOnlyTheExtendedAmount() {
+        assertThat(Money.exactUnitPrice(new BigDecimal("2.208"))).isEqualByComparingTo("2.208");
+        assertThat(Money.euros(Money.exactUnitPrice(new BigDecimal("2.208")).multiply(BigDecimal.TEN)))
+                .isEqualByComparingTo("22.08");
+        assertThat(Money.euros(Money.exactUnitPrice(new BigDecimal("1.235")).multiply(new BigDecimal("3"))))
+                .isEqualByComparingTo("3.71");
+        assertThat(Money.unitPrice(new BigDecimal("10.000"))).isEqualTo(new BigDecimal("10.00"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> Money.exactUnitPrice(new BigDecimal("1.2345")))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> Money.exactUnitPrice(new BigDecimal("100000000000000000")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void roundsHalfUpToTwoDecimals() {
         assertThat(Money.euros("10.125")).isEqualByComparingTo("10.13");
         assertThat(Money.euros("10.124")).isEqualByComparingTo("10.12");

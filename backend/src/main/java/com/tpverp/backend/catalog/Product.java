@@ -61,7 +61,7 @@ public class Product {
     @Column(columnDefinition = "text")
     private String comments;
 
-    @Column(name = "precio_compra", nullable = false, precision = 19, scale = 2)
+    @Column(name = "precio_compra", nullable = false, precision = 20, scale = 3)
     private BigDecimal purchasePrice;
 
     @Column(name = "descuento_compra_porcentaje", precision = 5, scale = 2)
@@ -477,7 +477,7 @@ public class Product {
         if (value.signum() < 0) {
             throw new IllegalArgumentException(field + " no puede ser negativo");
         }
-        return value;
+        return com.tpverp.backend.document.Money.exactUnitPrice(value);
     }
 
 }

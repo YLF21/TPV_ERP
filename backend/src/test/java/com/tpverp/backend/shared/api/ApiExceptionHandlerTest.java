@@ -10,6 +10,7 @@ import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
 import com.tpverp.backend.document.TicketGeneratedVoucherAlreadyUsedException;
 import com.tpverp.backend.document.TicketNotFoundException;
+import com.tpverp.backend.inventory.WarehouseInputService.WarehouseExcelImportSnapshotException;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
 import com.tpverp.backend.document.template.DocumentTemplateType;
@@ -83,6 +84,31 @@ class ApiExceptionHandlerTest {
         assertEquals("AUTHENTICATION_FAILED", problem.getProperties().get("code"));
         assertEquals("en", problem.getProperties().get("locale"));
         assertEquals("Incorrect username or password", problem.getDetail());
+    }
+
+    @Test
+    void mapsStaleWarehouseExcelSnapshotToConflict() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US");
+
+        var problem = handler.warehouseExcelImportSnapshotStale(
+                new WarehouseExcelImportSnapshotException("VERSION_STALE"), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("VERSION_STALE", problem.getProperties().get("code"));
+        assertEquals("The warehouse Excel snapshot is stale. Save the document again after reviewing it.",
+                problem.getDetail());
+    }
+
+    @Test
+    void explainsThatChangedWarehouseExcelDataMustBeReviewedWithoutDiscardingSupplierIntent() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es");
+        var problem = handler.warehouseExcelImportSnapshotStale(
+                new WarehouseExcelImportSnapshotException("EXCEL_IMPORT_REVIEW_REQUIRED"), request);
+        assertEquals(409, problem.getStatus());
+        assertEquals("EXCEL_IMPORT_REVIEW_REQUIRED", problem.getProperties().get("code"));
+        org.assertj.core.api.Assertions.assertThat(problem.getDetail()).contains("No se ha eliminado", "proveedor");
     }
 
     @Test

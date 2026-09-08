@@ -10,10 +10,26 @@ import java.util.stream.IntStream;
 public final class Money {
 
     public static final int SCALE = 2;
+    public static final int UNIT_PRICE_SCALE = 3;
     public static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
     private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     private Money() {
+    }
+
+    /** Unit prices retain their third decimal; euros() is applied after multiplication by quantity. */
+    public static BigDecimal unitPrice(BigDecimal value) {
+        if (value == null) throw new IllegalArgumentException("precio unitario es obligatorio");
+        return value.setScale(Math.max(SCALE, Math.min(UNIT_PRICE_SCALE, value.stripTrailingZeros().scale())), ROUNDING);
+    }
+
+    public static BigDecimal exactUnitPrice(BigDecimal value) {
+        if (value == null) throw new IllegalArgumentException("precio unitario es obligatorio");
+        var normalized = value.stripTrailingZeros();
+        if (normalized.scale() > UNIT_PRICE_SCALE || normalized.precision() - normalized.scale() > 17) {
+            throw new IllegalArgumentException("El precio admite hasta 17 dígitos enteros y 3 decimales");
+        }
+        return unitPrice(value);
     }
 
     // Normaliza cualquier importe al formato monetario EUR del sistema.
