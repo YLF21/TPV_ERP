@@ -203,11 +203,20 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={onPaid}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
+    const transferButton = await screen.findByRole("button", { name: "Transferencia" });
+    await waitFor(() => expect(transferButton).toBeEnabled());
+    fireEvent.click(transferButton);
+    await waitFor(() => expect(transferButton).toHaveClass("selected"));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/customer-receivables/doc-1/payments",
+      {
+        token: "token",
+        body: { pagos: [expect.objectContaining({ metodoPagoId: "transfer", importe: "20.00" })] },
+      },
+    ));
     await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
     expect(onPaid).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("55,00"));
