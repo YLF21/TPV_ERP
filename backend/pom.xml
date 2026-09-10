@@ -28,7 +28,7 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
-		<springdoc.version>3.1.0</springdoc.version>
+		<springdoc.version>3.1.1</springdoc.version>
 		<jna.version>5.19.1</jna.version>
 		<jasperreports.version>7.0.8</jasperreports.version>
 		<dss.version>6.4</dss.version>
