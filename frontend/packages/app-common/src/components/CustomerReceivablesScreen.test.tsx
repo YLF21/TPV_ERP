@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CustomerReceivablesScreen, effectiveReceivableStatus } from "./CustomerReceivablesScreen";
 import type { UserSession } from "../types";
@@ -147,6 +147,80 @@ describe("CustomerReceivablesScreen", () => {
     fireEvent.change(amount, { target: { value: "25" } });
     fireEvent.keyDown(amount, { key: "Enter" });
     await waitFor(() => expect(screen.getAllByText("50,00")).toHaveLength(2));
+  });
+
+  it("reloads the persisted receipt when retrying a partial payment after closing checkout", async () => {
+    const receipt = { paymentId: "request-1", documentNumber: "FV-1", collectedAt: "2026-07-20T09:30:00Z", method: "TRANSFERENCIA", amount: "25.00", remaining: "50.00" };
+    const refreshed = { ...receipt, renderedPdf: { contentType: "application/pdf", base64: "fresh-pdf" } };
+    const updated = { ...row, paidTotal: "50.00", pendingTotal: "50.00" };
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return [{ id: "transfer", name: "TRANSFERENCIA", active: true }];
+      if (path === "/terminal-configuration/payment") return {};
+      if (path === "/customer-receivables/doc-1/payments") return { receivable: updated, paymentReceipt: receipt };
+      if (path === "/customer-receivables/doc-1/payments/request-1/receipt") return refreshed;
+      return [row];
+    });
+    const printReceipt = vi.fn().mockResolvedValueOnce({ status: "FAILED" }).mockResolvedValue({ status: "PRINTED" });
+    render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} printReceipt={printReceipt} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cobrar FV-1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
+    fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "25" } });
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cobro realizado; impresión pendiente. No repitas el cobro.");
+    fireEvent.click(screen.getAllByRole("button", { name: "CANCELAR" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar impresión" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reintentar impresión" })).not.toBeInTheDocument());
+    expect(printReceipt).toHaveBeenLastCalledWith(refreshed, expect.anything(), undefined, "es");
+    expect(request).toHaveBeenCalledWith("/customer-receivables/doc-1/payments/request-1/receipt", { token: "token" });
+    expect(request.mock.calls.filter(([path]) => path.endsWith("/payments"))).toHaveLength(1);
+    expect(screen.getAllByText("50,00")).toHaveLength(2);
+  });
+
+  it("regenerates history retries for the original internal payment id after navigating to another receipt", async () => {
+    const history = { paymentId: "internal-1", requestId: "request-1", documentId: "doc-1", documentType: "FACTURA_VENTA", documentNumber: "FV-1", customerId: "customer-1", customerName: "Cliente Uno", issueDate: "2026-07-01", collectedAt: "2026-07-20T09:30:00Z", paymentMethodId: "transfer", paymentMethodName: "TRANSFERENCIA", amount: "25.00" };
+    const other = { ...history, paymentId: "internal-2", requestId: "request-2", documentId: "doc-2", documentNumber: "FV-2" };
+    const receipt = { paymentId: "request-1", documentNumber: "FV-1", collectedAt: history.collectedAt, method: "TRANSFERENCIA", amount: "25.00", remaining: "75.00" };
+    const refreshed = { ...receipt, renderedPdf: { contentType: "application/pdf", base64: "fresh-pdf" } };
+    let originalReads = 0;
+    const onBack = vi.fn();
+    let resolveReceipt!: (value: unknown) => void;
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return [];
+      if (path.startsWith("/customer-receivables/payment-history")) return [history, other];
+      if (path === "/customer-receivables/doc-1/payments/internal-1/print") {
+        originalReads += 1;
+        return originalReads < 3 ? receipt : new Promise((resolve) => { resolveReceipt = resolve; });
+      }
+      if (path === "/customer-receivables/doc-2/payments/internal-2/print") return { ...receipt, paymentId: "request-2", documentNumber: "FV-2" };
+      return [];
+    });
+    const printReceipt = vi.fn().mockResolvedValueOnce({ status: "FAILED" }).mockResolvedValue({ status: "PRINTED" });
+    render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} printReceipt={printReceipt} onBack={onBack} onLocaleChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Histórico de cobros" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Consultar FV-1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reimprimir justificante" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Reimprimir justificante" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cobro realizado; impresión pendiente.");
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Consultar FV-2" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reimprimir justificante" })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    const retry = screen.getByRole("button", { name: "Reintentar impresión" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(screen.getByRole("button", { name: "Imprimiendo..." })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Cerrar" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getByRole("button", { name: "Consultar FV-2" })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onBack).not.toHaveBeenCalled();
+    await waitFor(() => expect(originalReads).toBe(3));
+    await act(async () => { resolveReceipt(refreshed); });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reintentar impresión" })).not.toBeInTheDocument());
+    expect(printReceipt).toHaveBeenLastCalledWith(refreshed, expect.anything(), undefined, "es");
+    expect(request.mock.calls.filter(([path]) => path.includes("doc-2/payments/"))).toHaveLength(1);
+    expect(request.mock.calls.some(([path]) => path.endsWith("/payments"))).toBe(false);
   });
 
   it("ignores an older filter response that arrives after the current request", async () => {

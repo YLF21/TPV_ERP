@@ -8,6 +8,7 @@ import com.tpverp.saas.license.SaasInstallation;
 import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.TokenHasher;
 import com.tpverp.saas.fiscal.FiscalStatusSyncProjector;
+import com.tpverp.saas.customer.CustomerIdentityService;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
 import java.math.BigDecimal;
@@ -29,6 +30,12 @@ public class SyncEventService {
     private MemberPointsSyncProjector memberPointsSyncProjector;
     private FiscalStatusSyncProjector fiscalStatusSyncProjector;
     private MemberReturnBalanceRecoveryProjector retentionRecoveryProjector;
+    private CustomerIdentityService customerIdentityService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setCustomerIdentityService(CustomerIdentityService service) {
+        this.customerIdentityService = service;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setMemberPointsSyncProjector(MemberPointsSyncProjector memberPointsSyncProjector) {
@@ -130,13 +137,18 @@ public class SyncEventService {
         if (!(memberPointsSyncProjector.supports(request.entityType(), request.operation())
                 || walletProjector.supports(request.entityType(), request.operation())
                 || fiscalStatusSyncProjector.supports(request.entityType(), request.operation())
-                || retentionRecoveryProjector.supports(request.entityType(), request.operation()))) {
+                || retentionRecoveryProjector.supports(request.entityType(), request.operation())
+                || customerIdentityService.supports(request.entityType(), request.operation()))) {
             event.markIgnored(projectedAt);
             return;
         }
 
         try {
-            if (memberPointsSyncProjector.supports(request.entityType(), request.operation())) {
+            if (customerIdentityService.supports(request.entityType(), request.operation())) {
+                // Identity failures roll back the event and all master writes together.
+                // The local outbox retains the committed operation for a safe retry.
+                customerIdentityService.finalizeIdentity(event, request.payload());
+            } else if (memberPointsSyncProjector.supports(request.entityType(), request.operation())) {
                 memberPointsSyncProjector.project(event, request.payload(), event.getReceivedAt());
             } else if (fiscalStatusSyncProjector.supports(request.entityType(), request.operation())) {
                 fiscalStatusSyncProjector.project(event, request.payload(), event.getReceivedAt());

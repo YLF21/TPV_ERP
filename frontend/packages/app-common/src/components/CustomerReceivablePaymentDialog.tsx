@@ -126,6 +126,7 @@ export function CustomerReceivablePaymentDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [cashCompletion, setCashCompletion] = useState<CashCompletion | null>(null);
+  const cashPrintInFlight = useRef(false);
   const mounted = useRef(true);
   const storageKey = receivablePaymentAttemptKey(terminalCode, activeReceivable.documentId);
   const standardKey = `${storageKey}.standard`;
@@ -215,26 +216,54 @@ export function CustomerReceivablePaymentDialog({
       : [...current, allocation]);
   }
 
+  function createReceiptRetry(result: PaymentMutationResult) {
+    const context = terminalContext;
+    if (!context) return undefined;
+    const documentId = result.receivable.documentId;
+    const requestId = result.paymentReceipt.paymentId;
+    let inFlight: ReturnType<typeof printReceipt> | null = null;
+    return () => {
+      if (inFlight) return inFlight;
+      inFlight = request<CustomerReceivablePaymentReceiptSnapshot>(
+        `/customer-receivables/${documentId}/payments/${requestId}/receipt`,
+        { token },
+      ).then((refreshed) => printReceipt(refreshed, context, undefined, locale))
+        .finally(() => { inFlight = null; });
+      return inFlight;
+    };
+  }
+
   async function printResult(result: PaymentMutationResult) {
     let retryPrint: (() => Promise<unknown>) | undefined;
     if (terminalContext) {
-      const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
+      const retry = createReceiptRetry(result);
       try {
-        if ((await retry()).status === "FAILED") retryPrint = retry;
+        if ((await printReceipt(result.paymentReceipt, terminalContext, undefined, locale)).status === "FAILED") retryPrint = retry;
       } catch {
         retryPrint = retry;
       }
     }
-    if (mounted.current) publishPayment(result.receivable, retryPrint);
+    if (mounted.current) {
+      if (retryPrint) setError(t("receivables.print.pending"));
+      setBusy(false);
+      publishPayment(result.receivable, retryPrint);
+    }
   }
 
-  async function printCashCompletion(completion: CashCompletion) {
-    if (!terminalContext) return;
+  async function printCashCompletion(completion: CashCompletion, reload = false) {
+    if (!terminalContext || cashPrintInFlight.current) return;
+    cashPrintInFlight.current = true;
     setCashCompletion((current) => current?.receipt.paymentId === completion.receipt.paymentId
       ? { ...current, printStatus: "PRINTING" }
       : current);
     try {
-      const outcome = await printReceipt(completion.receipt, terminalContext, undefined, locale);
+      const refreshed = reload
+        ? await request<CustomerReceivablePaymentReceiptSnapshot>(
+            `/customer-receivables/${completion.receivable.documentId}/payments/${completion.receipt.paymentId}/receipt`,
+            { token },
+          )
+        : completion.receipt;
+      const outcome = await printReceipt(refreshed, terminalContext, undefined, locale);
       if (mounted.current) setCashCompletion((current) => current?.receipt.paymentId === completion.receipt.paymentId
         ? { ...current, printStatus: outcome.status }
         : current);
@@ -242,7 +271,7 @@ export function CustomerReceivablePaymentDialog({
       if (mounted.current) setCashCompletion((current) => current?.receipt.paymentId === completion.receipt.paymentId
         ? { ...current, printStatus: "FAILED" }
         : current);
-    }
+    } finally { cashPrintInFlight.current = false; }
   }
 
   async function payStandard(input?: PaymentAllocationInput) {
@@ -281,7 +310,6 @@ export function CustomerReceivablePaymentDialog({
       const result = await postPayment(item);
       globalThis.localStorage?.removeItem(standardKey);
       setStandardAttempt(null);
-      setBusy(false);
       rememberAllocation({
         kind: kind === "cash" ? "CASH" : kind === "card" ? "MANUAL_CARD" : "TRANSFER",
         amountCents: Math.round(Number(item.importe) * 100),
@@ -295,6 +323,7 @@ export function CustomerReceivablePaymentDialog({
         status: "APPROVED",
       });
       if (kind === "cash") {
+        setBusy(false);
         const confirmedCents = Math.round(Number(result.paymentReceipt.amount) * 100);
         const receivedCents = input?.deliveredCents ?? confirmedCents;
         const completion: CashCompletion = {
@@ -330,7 +359,6 @@ export function CustomerReceivablePaymentDialog({
     });
     globalThis.localStorage?.removeItem(storageKey);
     setCardAttempt(null);
-    setBusy(false);
     rememberAllocation({
       kind: "INTEGRATED_CARD",
       amountCents: Math.round(Number(attempt.amount) * 100),
@@ -488,13 +516,19 @@ export function CustomerReceivablePaymentDialog({
     receivedCents={cashCompletion.receivedCents}
     changeCents={cashCompletion.changeCents}
     printStatus={cashCompletion.printStatus}
+    printTechnicalMessage={cashCompletion.printStatus === "FAILED" ? t("receivables.print.pending") : undefined}
+    allowFinishWithPendingPrint
     onRetryPrint={cashCompletion.printStatus === "FAILED"
-      ? () => void printCashCompletion(cashCompletion)
+      ? () => void printCashCompletion(cashCompletion, true)
       : undefined}
     onFinish={() => {
       const completed = cashCompletion.receivable;
+      const retry = cashCompletion.printStatus === "FAILED"
+        ? createReceiptRetry({ receivable: completed, paymentReceipt: cashCompletion.receipt })
+        : undefined;
       setCashCompletion(null);
-      publishPayment(completed);
+      if (retry) setError(t("receivables.print.pending"));
+      publishPayment(completed, retry);
     }}
   />;
 

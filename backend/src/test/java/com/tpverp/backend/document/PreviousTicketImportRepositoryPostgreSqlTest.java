@@ -63,6 +63,84 @@ class PreviousTicketImportRepositoryPostgreSqlTest {
     }
 
     @Test
+    void latestIssuedTicketIsScopedToTerminalAndStoreInsteadOfGlobalNumber() {
+        var fixture = insertFixture();
+        var otherTerminal = UUID.randomUUID();
+        jdbc.update("""
+                insert into terminal (id, tienda_id, nombre, tipo, credential_hash)
+                values (?, ?, 'TPV-2', 'TERMINAL_VENTA', 'hash-2')
+                """, otherTerminal, fixture.storeId());
+        var otherFixture = new Fixture(
+                fixture.companyId(), fixture.storeId(), otherTerminal, fixture.roleId(),
+                fixture.userId(), fixture.taxId(), fixture.familyId(), fixture.warehouseId(),
+                fixture.productId());
+        var firstTicket = UUID.randomUUID();
+        var secondTicket = UUID.randomUUID();
+        insertDocument(fixture, firstTicket, "T-001", "2026-09-09 10:00:00+00", "10.00");
+        insertDocument(otherFixture, secondTicket, "T-002", "2026-09-09 10:01:00+00", "12.00");
+
+        assertThat(documents.findLatestIssuedTicketIds(
+                fixture.storeId(), fixture.terminalId(), PageRequest.of(0, 1)))
+                .containsExactly(firstTicket);
+        assertThat(documents.findLatestIssuedTicketIds(
+                fixture.storeId(), otherTerminal, PageRequest.of(0, 1)))
+                .containsExactly(secondTicket);
+        assertThat(documents.findLatestIssuedTicketIds(
+                UUID.randomUUID(), fixture.terminalId(), PageRequest.of(0, 1)))
+                .isEmpty();
+        assertThat(documents.findLatestIssuedTicketIds(
+                fixture.storeId(), UUID.randomUUID(), PageRequest.of(0, 1)))
+                .isEmpty();
+    }
+
+    @Test
+    void latestIssuedTicketUsesConfirmationOrderAndIgnoresDraftsAndOtherDocumentTypes() {
+        var fixture = insertFixture();
+        var older = UUID.randomUUID();
+        var newer = UUID.randomUUID();
+        var draft = UUID.randomUUID();
+        var invoice = UUID.randomUUID();
+        insertDocument(fixture, older, "T-999", "2026-09-09 10:00:00+00", "10.00");
+        insertDocument(fixture, newer, "T-001", "2026-09-09 10:01:00+00", "12.00");
+        insertDocument(fixture, draft, "T-DRAFT", "2026-09-09 10:02:00+00", "14.00");
+        jdbc.update("""
+                update documento set estado = 'BORRADOR', numero = null,
+                    confirmado_en = null, confirmado_por = null where id = ?
+                """, draft);
+        insertDocument(fixture, invoice, "FV-001", "2026-09-09 10:03:00+00", "16.00");
+        jdbc.update("update documento set tipo = 'FACTURA_VENTA' where id = ?", invoice);
+        jdbc.update("""
+                insert into documento_relacion (documento_id, origen_id, tipo)
+                values (?, ?, 'FACTURA_DE')
+                """, invoice, newer);
+
+        assertThat(documents.findLatestIssuedTicketIds(
+                fixture.storeId(), fixture.terminalId(), PageRequest.of(0, 1)))
+                .containsExactly(newer);
+    }
+
+    @Test
+    void latestIssuedTicketDoesNotSkipReturnsOrCancelledTickets() {
+        var fixture = insertFixture();
+        var sale = UUID.randomUUID();
+        var refund = UUID.randomUUID();
+        insertDocument(fixture, sale, "T-001", "2026-09-09 10:00:00+00", "10.00");
+        insertDocument(fixture, refund, "R-001", "2026-09-09 10:01:00+00", "-10.00");
+
+        assertThat(documents.findLatestIssuedTicketIds(
+                fixture.storeId(), fixture.terminalId(), PageRequest.of(0, 1)))
+                .containsExactly(refund);
+        jdbc.update("""
+                update documento set estado = 'ANULADO', anulado_en = now(),
+                    anulado_por = ?, motivo_anulacion = 'Test' where id = ?
+                """, fixture.userId(), refund);
+
+        assertThat(documents.findLatestIssuedTicketIds(
+                fixture.storeId(), fixture.terminalId(), PageRequest.of(0, 1)))
+                .containsExactly(refund);
+    }
+
+    @Test
     void latestMixedExchangeIsSkippedInFavourOfPreviousNormalSale() {
         var fixture = insertFixture();
         var previousSale = UUID.randomUUID();

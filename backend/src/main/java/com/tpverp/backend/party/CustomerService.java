@@ -24,6 +24,7 @@ public class CustomerService {
     private final MemberRepository members;
     private final MemberLoyaltyService memberLoyalty;
     private final Clock clock;
+    private final CustomerIdentityCoordinator identities;
 
     public CustomerService(
             CustomerRepository customers,
@@ -32,7 +33,7 @@ public class CustomerService {
             PartyCodeAllocator codes,
             MemberRepository members,
             MemberLoyaltyService memberLoyalty,
-            Clock clock) {
+            Clock clock, CustomerIdentityCoordinator identities) {
         this.customers = customers;
         this.movements = movements;
         this.context = context;
@@ -40,6 +41,7 @@ public class CustomerService {
         this.members = members;
         this.memberLoyalty = memberLoyalty;
         this.clock = clock;
+        this.identities = identities;
     }
 
     @Transactional(readOnly = true)
@@ -79,17 +81,18 @@ public class CustomerService {
         var company = context.currentCompany();
         var store = context.currentStore();
         rejectDirectMemberCreation(command);
-        ensureUnique(company.getId(), command.documentType(), command.documentNumber(), null);
-        var customer = new Customer(
-                company, command.fiscalName(), command.documentType(), command.documentNumber(),
-                command.address(), command.phone(), command.email(), command.notes(),
-                CustomerRate.VENTA, command.discount());
-        customer.updateProfile(
-                command.birthday(), command.gender(), command.commercialConsent(),
-                command.preferredCommercialChannelId());
-        applyCreditConfiguration(customer, command, true);
-        customer.assignClientCode(store.getId(), codes.nextClient(store));
+        var identity = validateDocument(command);
+        ensureUnique(company.getId(), identity.canonicalNumber(), null);
+        // Validate non-identity fields before making a central reservation.
+        var candidate = newCustomer(UUID.randomUUID(), company, command, identity);
+        // All create paths lock the code allocator before reservation rows (batch uses the same order).
+        var clientCode = codes.nextClient(store);
+        candidate.assignClientCode(store.getId(), clientCode);
+        var approval = identities.reserve(company.getId(), store.getId(), null, identity, candidate);
+        var customer = newCustomer(approval.customerId(), company, command, identity);
+        customer.assignClientCode(store.getId(), clientCode);
         customer = customers.save(customer);
+        identities.complete(approval, customer);
         return view(customer, null);
     }
 
@@ -101,42 +104,66 @@ public class CustomerService {
         var company = context.currentCompany();
         var store = context.currentStore();
         commands.forEach(this::rejectDirectMemberCreation);
+        commands.forEach(CustomerService::validateDocument);
         List<CustomerCommand> ordered = commands.stream()
                 .sorted(Comparator.comparing(
-                        command -> PartyValues.document(command.documentNumber())))
+                        command -> CustomerDocumentIdentity.normalizeNumber(command.documentNumber())))
                 .toList();
+        var numbers = new java.util.HashSet<String>();
         ordered.forEach(command -> {
-            ensureUnique(company.getId(), command.documentType(), command.documentNumber(), null);
+            var identity = validateDocument(command);
+            if (!numbers.add(identity.canonicalNumber())) throw CustomerIdentityException.duplicate();
+            ensureUnique(company.getId(), identity.canonicalNumber(), null);
+            newCustomer(UUID.randomUUID(), company, command, identity);
         });
         List<String> reservedCodes = codes.nextClients(store, ordered.size());
         var pending = new java.util.ArrayList<Customer>(ordered.size());
+        var approvals = new java.util.ArrayList<CustomerIdentityCoordinator.Approval>(ordered.size());
         for (int index = 0; index < ordered.size(); index++) {
             CustomerCommand command = ordered.get(index);
-            var customer = new Customer(
-                    company, command.fiscalName(), command.documentType(),
-                    command.documentNumber(), command.address(), command.phone(),
-                    command.email(), command.notes(), CustomerRate.VENTA, command.discount());
-            customer.updateProfile(
-                    command.birthday(), command.gender(), command.commercialConsent(),
-                    command.preferredCommercialChannelId());
-            applyCreditConfiguration(customer, command, true);
+            var identity = validateDocument(command);
+            var candidate = newCustomer(UUID.randomUUID(), company, command, identity);
+            candidate.assignClientCode(store.getId(), reservedCodes.get(index));
+            var approval = identities.reserve(company.getId(), store.getId(), null, identity, candidate);
+            approvals.add(approval);
+            var customer = newCustomer(approval.customerId(), company, command, identity);
             customer.assignClientCode(store.getId(), reservedCodes.get(index));
             pending.add(customer);
         }
         List<Customer> saved = customers.saveAll(pending);
+        for (int index = 0; index < saved.size(); index++) identities.complete(approvals.get(index), saved.get(index));
         return saved.stream().map(this::view).toList();
     }
 
     @Transactional
     public CustomerView update(UUID id, CustomerCommand command) {
-        Customer customer = customer(id);
-        ensureUnique(context.currentCompany().getId(), command.documentType(),
-                command.documentNumber(), id);
+        Customer customer = customers.findLockedByIdAndCompanyId(id, context.currentCompany().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
+        DocumentType canonicalType;
+        String canonicalNumber;
+        try {
+            canonicalType = CustomerDocumentIdentity.canonicalType(command.documentType());
+            canonicalNumber = CustomerDocumentIdentity.normalizeNumber(command.documentNumber());
+        } catch (IllegalArgumentException exception) {
+            throw CustomerIdentityException.invalid();
+        }
+        boolean identityChanged = canonicalType != CustomerDocumentIdentity.canonicalType(customer.getDocumentType())
+                || !canonicalNumber.equals(CustomerDocumentIdentity.normalizeNumber(customer.getDocumentNumber()));
+        CustomerIdentityCoordinator.Approval approval = null;
+        if (identityChanged) {
+            var identity = validateDocument(command);
+            ensureUnique(context.currentCompany().getId(), canonicalNumber, id);
+            // A legacy record can be registered with a corrected, valid identity. Never attach
+            // it to another central customer merely because a number matches.
+            var candidate = newCustomer(id, context.currentCompany(), command, identity);
+            candidate.assignClientCode(customer.getClientCodeStoreId(), customer.getClientId());
+            approval = identities.reserve(context.currentCompany().getId(), context.currentStore().getId(), customer, identity, candidate);
+        }
         ensureUniqueMemberNumber(context.currentCompany().getId(), command.numMember(), id);
         Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
                 .orElse(null);
         customer.update(
-                command.fiscalName(), command.documentType(), command.documentNumber(),
+                command.fiscalName(), canonicalType, canonicalNumber,
                 command.address(), command.phone(), command.email(), command.notes(),
                 CustomerRate.VENTA, command.discount());
         customer.updateProfile(
@@ -159,7 +186,38 @@ public class CustomerService {
         } else if (member != null && member.isActive()) {
             memberLoyalty.deactivateMember(member);
         }
+        if (approval != null) identities.complete(approval, customer);
         return view(customer, member);
+    }
+
+    /** Explicit backfill of an existing local customer; never links to somebody else's central record by NIF. */
+    @Transactional
+    public CustomerView registerIdentity(UUID id) {
+        var company = context.currentCompany();
+        var customer = customers.findLockedByIdAndCompanyId(id, company.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
+        if (customer.getSaasCustomerId() != null) return view(customer);
+        CustomerDocumentIdentity identity;
+        try { identity = CustomerDocumentIdentity.validate(customer.getDocumentType(), customer.getDocumentNumber()); }
+        catch (IllegalArgumentException exception) { throw CustomerIdentityException.invalid(); }
+        ensureUnique(company.getId(), identity.canonicalNumber(), id);
+        var approval = identities.reserve(company.getId(), context.currentStore().getId(), customer, identity, customer);
+        identities.complete(approval, customer);
+        return view(customer);
+    }
+
+    private static CustomerDocumentIdentity validateDocument(CustomerCommand command) {
+        try { return CustomerDocumentIdentity.validate(command.documentType(), command.documentNumber()); }
+        catch (IllegalArgumentException exception) { throw CustomerIdentityException.invalid(); }
+    }
+
+    private static Customer newCustomer(UUID id, com.tpverp.backend.organization.Company company,
+            CustomerCommand command, CustomerDocumentIdentity identity) {
+        var customer = new Customer(id, company, command.fiscalName(), identity.canonicalType(), identity.canonicalNumber(),
+                command.address(), command.phone(), command.email(), command.notes(), CustomerRate.VENTA, command.discount());
+        customer.updateProfile(command.birthday(), command.gender(), command.commercialConsent(), command.preferredCommercialChannelId());
+        applyCreditConfiguration(customer, command, true);
+        return customer;
     }
 
     @Transactional
@@ -257,13 +315,11 @@ public class CustomerService {
         }
     }
 
-    private void ensureUnique(
-            UUID companyId, DocumentType type, String number, UUID currentId) {
-        String normalized = PartyValues.document(number);
-        customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(companyId, type, normalized)
+    private void ensureUnique(UUID companyId, String number, UUID currentId) {
+        customers.findByCompanyAndNormalizedDocument(companyId, number)
                 .filter(value -> !value.getId().equals(currentId))
                 .ifPresent(value -> {
-                    throw new IllegalArgumentException("Ya existe ese documento de cliente");
+                    throw CustomerIdentityException.duplicate();
                 });
     }
 
@@ -418,7 +474,7 @@ public class CustomerService {
                     : BigDecimal.ZERO.setScale(2);
             return new CustomerView(
                     customer.getId(), customer.getVersion(), customer.getClientId(), customer.getFiscalName(),
-                    customer.getDocumentType(),
+                    CustomerDocumentIdentity.canonicalType(customer.getDocumentType()),
                     customer.getDocumentNumber(), customer.getFiscalAddress(),
                     customer.getPhone(), customer.getEmail(), customer.getNotes(),
                     activeMember ? CustomerRate.MEMBER : customer.getRate(),

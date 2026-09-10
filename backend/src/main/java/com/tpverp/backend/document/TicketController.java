@@ -89,6 +89,13 @@ public class TicketController {
         return service.loadRenderedTicketPrintSet(id);
     }
 
+    @GetMapping("/last-current-terminal/print-set")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
+    public DocumentService.TicketPrintSet lastCurrentTerminalPrintSet(
+            Authentication authentication) {
+        return service.loadLatestTerminalTicketPrintSet(authentication);
+    }
+
     @GetMapping("/{id}/cancellation-receipt")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public TicketCancellationService.CancellationReceipt cancellationReceipt(

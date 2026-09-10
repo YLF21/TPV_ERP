@@ -2,6 +2,7 @@ package com.tpverp.saas.master;
 
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
+import com.tpverp.saas.customer.CustomerDocumentIdentity;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -10,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,7 +24,7 @@ public class MasterCsvService {
 
     private static final Map<String, Definition> DEFINITIONS = Map.of(
             "customers", new Definition("saas_erp_customer", "code",
-                    List.of("code", "name", "tax_id", "email", "phone")),
+                    List.of("code", "name", "tax_id", "email", "phone", "document_type")),
             "suppliers", new Definition("saas_erp_supplier", "code",
                     List.of("code", "name", "tax_id", "email", "phone")),
             "products", new Definition("saas_erp_product", "sku",
@@ -62,6 +64,18 @@ public class MasterCsvService {
     public MasterImportResult importCsv(UUID companyId, String resource, String csv) {
         Definition definition = definition(resource);
         List<List<String>> rows = parse(csv);
+        if (definition.table().equals("saas_erp_customer") && !rows.isEmpty()
+                && rows.getFirst().equals(definition.columns().subList(0, 5))) {
+            // Accept existing five-column CSV files; new exports carry the explicit type.
+            List<List<String>> expandedRows = new ArrayList<>();
+            for (int index = 0; index < rows.size(); index++) {
+                List<String> row = rows.get(index);
+                List<String> expanded = new ArrayList<>(row);
+                expanded.add(index == 0 ? "document_type" : "");
+                expandedRows.add(List.copyOf(expanded));
+            }
+            rows = expandedRows;
+        }
         if (rows.isEmpty() || !rows.get(0).equals(definition.columns())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Cabecera CSV esperada: " + String.join(",", definition.columns()));
@@ -75,6 +89,7 @@ public class MasterCsvService {
                         "Numero de columnas invalido en fila " + (rowNumber + 1));
             }
             validate(definition, row, rowNumber + 1);
+            if (definition.table().equals("saas_erp_customer")) row = customerIdentityRow(companyId, row);
             Long exists = jdbc.queryForObject("select count(*) from " + definition.table()
                     + " where company_id = ? and " + definition.key() + " = ?", Long.class,
                     companyId, row.get(0).trim());
@@ -121,6 +136,28 @@ public class MasterCsvService {
         args.add(Timestamp.from(clock.instant()));
         jdbc.update("insert into " + definition.table() + "(id, company_id, " + columns
                 + ", active, created_at) values (?, ?, " + placeholders + ", ?, ?)", args.toArray());
+    }
+
+    private List<String> customerIdentityRow(UUID companyId, List<String> row) {
+        List<Map<String, Object>> existing = jdbc.queryForList(
+                "select tax_id, document_type from saas_erp_customer where company_id = ? and code = ?",
+                companyId, row.getFirst().trim());
+        String requestedType = row.get(5).trim();
+        if (!existing.isEmpty() && requestedType.isEmpty() && existing.getFirst().get("document_type") == null
+                && CustomerDocumentIdentity.normalize(Objects.toString(existing.getFirst().get("tax_id"), ""))
+                        .equals(CustomerDocumentIdentity.normalize(row.get(2)))) {
+            // A legacy profile-only edit does not reclassify or revalidate its historical document.
+            return row;
+        }
+        if (requestedType.isEmpty() && !existing.isEmpty()) {
+            requestedType = Objects.toString(existing.getFirst().get("document_type"), "NIF");
+        }
+        CustomerDocumentIdentity identity = CustomerDocumentIdentity.validate(
+                requestedType.isEmpty() ? null : requestedType, row.get(2));
+        List<String> normalized = new ArrayList<>(row);
+        normalized.set(2, identity.documentNumber());
+        normalized.set(5, identity.documentType());
+        return normalized;
     }
 
     private void update(UUID companyId, Definition definition, List<String> row) {

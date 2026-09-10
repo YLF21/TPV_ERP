@@ -6,13 +6,14 @@ import {
   commercialDocumentAsA4Document,
   printCustomerReceivablePaymentReceipt,
   outputConfirmedTicket,
+  outputConfirmedTicketsSequentially,
   printPendingCommercialDocument,
   printConfirmedTicketAutomatically,
   retryConfirmedTicketPrint,
   ticketAsA4Document,
   ticketPrintRequest,
 } from "./ticketPrinting";
-import type { ConfirmedTicketPrintSnapshot } from "./ticketPrinting";
+import type { ConfirmedTicketPrintSnapshot, CustomerReceivablePaymentReceiptSnapshot } from "./ticketPrinting";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { buildTicketBuffer } = require("../../../../desktop/escpos.cjs");
@@ -43,6 +44,61 @@ function hardwareConfig(printAutomatically: boolean) {
 }
 
 describe("confirmed ticket printing", () => {
+  it("does not dispatch a copy after cancellation during printer configuration loading", async () => {
+    const controller = new AbortController();
+    let resolveConfig!: (config: typeof defaultHardwareConfig) => void;
+    const printTicket = vi.fn();
+    const hardware = {
+      getHardwareConfig: vi.fn(() => new Promise((resolve) => { resolveConfig = resolve; })),
+      printTicket,
+    } as unknown as HardwareBridge;
+    const pending = outputConfirmedTicket(snapshot, terminal, "TICKET_COPY", "es", hardware, controller.signal);
+    controller.abort();
+    resolveConfig(defaultHardwareConfig);
+    await expect(pending).resolves.toEqual({ status: "SKIPPED" });
+    expect(printTicket).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch another document after a copy sequence has been cancelled", async () => {
+    const controller = new AbortController();
+    const printTicket = vi.fn(async () => { controller.abort(); return { ok: true }; });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig), printTicket,
+    } as unknown as HardwareBridge;
+    await outputConfirmedTicketsSequentially([
+      snapshot, { ...snapshot, documentId: "second", documentNumber: "T-2" },
+    ], terminal, "TICKET_COPY", "es", hardware, controller.signal);
+    expect(printTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("prints one explicit copy without opening the drawer or changing saved routing", async () => {
+    const config = hardwareConfig(false);
+    const route = config.documentPrintRoutes.find((entry) => entry.documentType === "TICKET")!;
+    route.copies = 3;
+    route.printerName = "Configured receipt printer";
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(config),
+      printTicket,
+    } as unknown as HardwareBridge;
+
+    await expect(outputConfirmedTicket(snapshot, terminal, "TICKET_COPY", "es", hardware))
+      .resolves.toEqual({ status: "PRINTED" });
+    expect(printTicket).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ documentNumber: snapshot.documentNumber, total: 7 }),
+      expect.objectContaining({
+        openCashDrawerWithTicket: false,
+        documentPrintRoutes: expect.arrayContaining([expect.objectContaining({
+          documentType: "TICKET", printerName: "Configured receipt printer",
+          copies: 1, printAutomatically: true,
+        })]),
+      }),
+    );
+    expect(config.openCashDrawerWithTicket).toBe(true);
+    expect(route.copies).toBe(3);
+    expect(route.printAutomatically).toBe(false);
+  });
+
   it("normalizes payment method labels across ticket and A4 fallback routes", () => {
     const paymentSnapshot = {
       ...snapshot,
@@ -563,6 +619,7 @@ describe("confirmed ticket printing", () => {
 
     expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
       documentNumber: "COBRO FV-1 / pay-1",
+      requireRenderedDocument: true,
       issuedAt: "2026-07-20T09:00:00Z",
       payments: [{ method: "CREDITO DEVOLUCION", amount: 20 }],
       total: 20,
@@ -571,31 +628,54 @@ describe("confirmed ticket printing", () => {
     }), expect.anything());
   });
 
-  it("sends separate Unicode and printable Chinese ESC/POS labels end to end", async () => {
-    let payload: any;
-    const hardware = { getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
-      printTicket: vi.fn().mockImplementation((value) => { payload = value; return Promise.resolve({ ok: true }); }) } as unknown as HardwareBridge;
-    await printCustomerReceivablePaymentReceipt({ kind: "PAYMENT_RECEIPT", paymentId: "p", documentNumber: "F",
-      collectedAt: "now", method: "CARD", amount: 2, remaining: 0 }, terminal, hardware, "zh");
-    expect(payload.labels.item).toBe("商品");
-    expect(payload.escposLabels).toEqual({ terminal: "Zhongduan", item: "Shangpin", quantity: "Shuliang", price: "Jiage", total: "Zongji" });
-    const raw = buildTicketBuffer(payload).toString("latin1");
-    expect(raw).toContain("Zhongduan terminal-CAJA-1"); expect(raw).toContain("Shangpin / Shuliang / Jiage");
-    expect(raw.match(/Zhongduan terminal-CAJA-1|Shangpin \/ Shuliang \/ Jiage|Zongji/g)?.join(" ")).not.toContain("??");
-  });
+  const receipt: CustomerReceivablePaymentReceiptSnapshot = {
+    kind: "PAYMENT_RECEIPT", paymentId: "pay-01", documentNumber: "发票-01",
+    collectedAt: "2026-09-09T10:00:00Z", method: "银行卡", amount: 2, remaining: 0,
+  };
 
-  it("produces a complete readable Chinese ESC/POS receipt without replacement markers", async () => {
-    let payload: any;
-    const hardware = { getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
-      printTicket: vi.fn().mockImplementation((value) => { payload = value; return Promise.resolve({ ok: true }); }) } as unknown as HardwareBridge;
-    await printCustomerReceivablePaymentReceipt({ kind: "PAYMENT_RECEIPT", paymentId: "pay-01", documentNumber: "发票-01",
-      collectedAt: "now", method: "银行卡", amount: 2, remaining: 0 },
-      { storeName: "商店", terminalCode: "终端-01" }, hardware, "zh");
-    const raw = buildTicketBuffer(payload).toString("latin1");
-    expect(raw).not.toContain("??");
-    expect(raw).toContain("Dianpu"); expect(raw).toContain("Zhongduan terminal-01");
-    expect(raw).toContain("Shoukuan pay-01"); expect(raw).toContain("Fangshi CARD");
-  });
+  it.each(["WINDOWS_DRIVER", "ESCPOS_RAW"] as const)(
+    "never sends a collection without the required Jasper representation to %s", async (driver) => {
+      const printTicket = vi.fn();
+      const hardware = {
+        getHardwareConfig: vi.fn().mockResolvedValue({ ...defaultHardwareConfig, ticketPrinterDriver: driver }),
+        printTicket,
+      } as unknown as HardwareBridge;
+      const wrongFormat = driver === "ESCPOS_RAW"
+        ? { renderedPdf: { contentType: "application/pdf" as const, base64: "JVBERi0=" } }
+        : { ticketRenderedImage: { contentType: "image/png" as const, base64: "iVBORw0KGgo=" } };
+      for (const incomplete of [receipt, { ...receipt, ...wrongFormat }, {
+        ...receipt,
+        renderedPdf: { contentType: "application/pdf" as const, base64: " " },
+        ticketRenderedImage: { contentType: "image/png" as const, base64: " " },
+      }]) {
+        await expect(printCustomerReceivablePaymentReceipt(incomplete, terminal, hardware)).resolves.toEqual({
+          status: "FAILED",
+          technicalMessage: "No se ha podido generar el justificante Jasper. No se ha enviado ninguna impresión.",
+        });
+      }
+      expect(printTicket).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["WINDOWS_DRIVER", "ESCPOS_RAW"] as const)(
+    "prints Chinese collection content from Jasper only with %s", async (driver) => {
+      const printTicket = vi.fn().mockResolvedValue({ ok: true });
+      const hardware = {
+        getHardwareConfig: vi.fn().mockResolvedValue({ ...defaultHardwareConfig, ticketPrinterDriver: driver }),
+        printTicket,
+      } as unknown as HardwareBridge;
+      const artifact = driver === "ESCPOS_RAW"
+        ? { ticketRenderedImage: { contentType: "image/png" as const, base64: "iVBORw0KGgo=" } }
+        : { renderedPdf: { contentType: "application/pdf" as const, base64: "JVBERi0=" } };
+      await expect(printCustomerReceivablePaymentReceipt({ ...receipt, ...artifact },
+        { storeName: "商店", terminalCode: "终端-01" }, hardware, "zh")).resolves.toEqual({ status: "PRINTED" });
+      const payload = printTicket.mock.calls[0][0];
+      expect(payload).toMatchObject({ requireRenderedDocument: true, storeName: "商店", terminalCode: "终端-01" });
+      expect(payload).not.toHaveProperty("escposContent");
+      if (driver === "ESCPOS_RAW") expect(payload.documentRaster).toBe("data:image/png;base64,iVBORw0KGgo=");
+      else expect(payload.renderedPdf).toEqual(artifact.renderedPdf);
+    },
+  );
 
   it("localizes customer receivable print copy", async () => {
     const printA4Document = vi.fn().mockResolvedValue({ ok: true });
