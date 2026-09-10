@@ -51,7 +51,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** All writes use the isolated PostgreSQL test profile, never the developer business database. */
-@SpringBootTest
+// CI shares one database across suites; keep these committed fixtures out of the admin schema.
+@SpringBootTest(properties = {
+        "spring.flyway.default-schema=customer_identity_test",
+        "spring.datasource.hikari.schema=customer_identity_test",
+        "spring.jpa.properties.hibernate.default_schema=customer_identity_test"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class CustomerIdentityPostgreSqlTest {
@@ -70,6 +75,15 @@ class CustomerIdentityPostgreSqlTest {
     @Autowired MasterCsvService csv;
     @Autowired MockMvc mvc;
     @Autowired PlatformTransactionManager transactionManager;
+
+    @Test
+    void companyFixturesUseTheirOwnSchema() {
+        assertThat(jdbc.queryForObject("select current_schema()", String.class))
+                .isEqualTo("customer_identity_test");
+        Site site = site();
+        assertThat(jdbc.queryForObject("select tax_id from saas_company where id = ?",
+                String.class, site.company().getId())).isEqualTo(site.company().getTaxId());
+    }
 
     @Test
     void retryReturnsSameIdentityAndChangedRequestConflicts() {
