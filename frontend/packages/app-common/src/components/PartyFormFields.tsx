@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ErpSelect } from "./ErpSelect";
 import type { PartyForm } from "./PartyDirectoryPanel";
+import { customerDocumentType } from "./customerDocumentIdentity";
 
 export type CommercialChannelOption = {
   id: string;
@@ -12,6 +13,7 @@ export type CommercialChannelOption = {
 type Props = {
   form: PartyForm;
   errors: string[];
+  documentError?: string;
   channels: CommercialChannelOption[];
   supplier?: boolean;
   autoFocusName?: boolean;
@@ -22,6 +24,7 @@ type Props = {
 export function PartyFormFields({
   form,
   errors,
+  documentError,
   channels,
   supplier = false,
   autoFocusName = false,
@@ -30,7 +33,7 @@ export function PartyFormFields({
 }: Props) {
   function error(field: keyof PartyForm): ReactNode {
     return errors.includes(field)
-      ? <small className="party-field-error" role="alert">{t("party.field.invalid")}</small>
+      ? <small className="party-field-error" role="alert">{field === "documentNumber" && documentError ? documentError : t("party.field.invalid")}</small>
       : null;
   }
 
@@ -72,9 +75,11 @@ export function PartyFormFields({
       <label>
         <span>{t("party.field.documentType")}</span>
         <ErpSelect
-          value={form.documentType}
+          aria-label={t("party.field.documentType")}
+          value={supplier ? form.documentType : customerDocumentType(form.documentType)}
           onChange={(value) => onChange("documentType", value)}
-          options={["NIF", "CIF", "NIE", "PASAPORTE", "OTRO"].map((value) => ({ value, label: value }))}
+          options={(supplier ? ["NIF", "CIF", "NIE", "PASAPORTE", "OTRO"] : ["NIE", "DNI", "NIF", "PASAPORTE"])
+            .map((value) => ({ value, label: !supplier && value === "PASAPORTE" ? t("party.documentType.passportOther") : value }))}
         />
       </label>
       <label className={invalidClass("documentNumber")}>

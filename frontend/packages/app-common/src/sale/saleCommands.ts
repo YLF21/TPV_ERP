@@ -5,6 +5,7 @@ export type SaleCommandId =
   | "calculator"
   | "ean-generator"
   | "print-product-label"
+  | "reprint-last-ticket"
   | "cash-drawer"
   | "logout"
   | "stock"
@@ -79,6 +80,10 @@ export function saleCommandFromKeyboard(
     if (event.key === "/") return "sale-discount";
     if (key === "m") return "wholesale-mode";
     return null;
+  }
+
+  if (event.key === "PrintScreen" || event.code === "PrintScreen") {
+    return event.shiftKey ? null : "reprint-last-ticket";
   }
 
   switch (event.key) {

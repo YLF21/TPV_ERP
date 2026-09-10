@@ -6037,6 +6037,8 @@ textarea {
   height: min(760px, calc(100vh - 40px));
   max-height: calc(100vh - 40px);
   display: grid;
+  gap: 0;
+  padding: 0;
   grid-template-rows: 58px auto minmax(0, 1fr) 58px;
   overflow: hidden;
   border: 1px solid #8298af;

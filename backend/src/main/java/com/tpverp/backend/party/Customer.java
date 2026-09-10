@@ -44,6 +44,12 @@ public class Customer {
     @Column(name = "numero_documento", nullable = false, length = 64)
     private String documentNumber;
 
+    @Column(name = "saas_customer_id")
+    private UUID saasCustomerId;
+
+    @Column(name = "saas_identity_revision")
+    private Long saasIdentityRevision;
+
     @Embedded
     private FiscalAddress fiscalAddress;
 
@@ -110,7 +116,14 @@ public class Customer {
             String notes,
             CustomerRate rate,
             BigDecimal discount) {
-        this.id = UUID.randomUUID();
+        this(UUID.randomUUID(), company, fiscalName, documentType, documentNumber,
+                fiscalAddress, phone, email, notes, rate, discount);
+    }
+
+    Customer(UUID id, Company company, String fiscalName, DocumentType documentType,
+            String documentNumber, FiscalAddress fiscalAddress, String phone, String email,
+            String notes, CustomerRate rate, BigDecimal discount) {
+        this.id = Objects.requireNonNull(id, "id");
         this.company = Objects.requireNonNull(company, "empresa");
         update(fiscalName, documentType, documentNumber, fiscalAddress,
                 phone, email, notes, rate, discount);
@@ -150,6 +163,19 @@ public class Customer {
         this.gender = gender;
         this.commercialConsent = commercialConsent;
         this.preferredCommercialChannelId = preferredCommercialChannelId;
+    }
+
+    public UUID getSaasCustomerId() { return saasCustomerId; }
+    public Long getSaasIdentityRevision() { return saasIdentityRevision; }
+    public UUID getClientCodeStoreId() { return clientCodeStoreId; }
+
+    void linkSaasIdentity(UUID centralId, long revision) {
+        if (centralId == null || revision < 0
+                || (saasCustomerId != null && !saasCustomerId.equals(centralId))) {
+            throw CustomerIdentityException.conflict();
+        }
+        saasCustomerId = centralId;
+        saasIdentityRevision = revision;
     }
 
     public void configureCredit(

@@ -107,6 +107,29 @@ class FiscalSnapshotFactoryTest {
     }
 
     @Test
+    void congelaElTipoDniYSuNumeroSinAlterarLaIdentidadFiscal() {
+        var company = new Company("B12345674", "Company", address());
+        var customer = new Customer(
+                company, "Cliente DNI", DocumentType.DNI, "00000001R",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
+        setParties(document, customer.getId(), null);
+        document.addLine(line(document, 1, "A"));
+        document.confirm(
+                "FV-001-27-000001", UUID.randomUUID(),
+                Instant.parse("2027-01-02T10:00:00Z"), false);
+
+        var snapshot = new FiscalSnapshotFactory().create(
+                document, "B12345674", FiscalRecordOperation.ALTA, FiscalDocumentType.F1, customer);
+
+        assertThat(map(snapshot.get("cliente")))
+                .containsEntry("tipoDocumento", "DNI")
+                .containsEntry("numeroDocumento", "00000001R");
+    }
+
+    @Test
     void noInventaMetodoRectificativoSinElFlujoFiscalVinculado() {
         var document = new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.RECTIFICATIVA_VENTA,

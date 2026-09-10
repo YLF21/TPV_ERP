@@ -47,7 +47,25 @@ describe("CashPaymentResultDialog", () => {
     expect(html).toContain("Detalle técnico: The Print Spooler service is not running");
     expect(html).toContain("Reintentar impresión");
     expect(html).not.toContain("Finalizar");
+    expect(html).not.toContain(">Cerrar</button>");
     expect(html).toContain('role="alert"');
+  });
+
+  it("can explicitly close a debt receipt with printing pending without retrying or finishing twice", () => {
+    const onFinish = vi.fn();
+    const onRetryPrint = vi.fn();
+    const view = render(<CashPaymentResultDialog
+      ticketNumber="FV-1" totalCents={2000} printStatus="FAILED"
+      allowFinishWithPendingPrint onFinish={onFinish} onRetryPrint={onRetryPrint}
+    />);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onFinish).not.toHaveBeenCalled();
+    const close = view.getByRole("button", { name: "Cerrar" });
+    fireEvent.click(close);
+    fireEvent.click(close);
+    expect(onFinish).toHaveBeenCalledOnce();
+    expect(onRetryPrint).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   it("does not render a print message when printing is skipped", () => {

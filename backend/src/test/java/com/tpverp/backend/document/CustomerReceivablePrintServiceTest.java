@@ -143,6 +143,58 @@ class CustomerReceivablePrintServiceTest {
     }
 
     @Test
+    void failedJasperRenderingKeepsConfirmedPaymentAndCanBeRetriedWithoutWriting() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var payments = mock(DocumentPaymentRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var customers = mock(CustomerRepository.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(organization.currentStore()).thenReturn(store);
+        var document = document(storeId);
+        var payment = new DocumentPayment(document,
+                new PaymentMethod(UUID.randomUUID(), "EFECTIVO", true), 1,
+                new BigDecimal("20.00"), true, null, null, null, null,
+                Instant.parse("2026-09-09T10:00:00Z"), null,
+                null, null, null, null, UUID.randomUUID());
+        document.addPayment(payment);
+        document.updatePaymentStatus();
+        var confirmedStatus = document.getEstado();
+        when(documents.findCustomerDocumentForPrint(document.getId(), storeId))
+                .thenReturn(Optional.of(document));
+        when(payments.findByRequestId(payment.getRequestId())).thenReturn(Optional.of(payment));
+        when(payments.findAllByDocumentoId(document.getId())).thenReturn(List.of(payment));
+        var receiptRenderer = mock(OperationalReceiptJasperRenderer.class);
+        when(receiptRenderer.renderPendingCollection(document.getId(), payment.getRequestId()))
+                .thenThrow(new IllegalStateException("operational_receipt_jasper_render_failed"))
+                .thenReturn(new OperationalReceiptJasperRenderer.RenderedReceipt(
+                        "%PDF".getBytes(java.nio.charset.StandardCharsets.US_ASCII), pngSignature()));
+        var service = new CustomerReceivablePrintService(documents, payments, organization,
+                customers, null, null, null, null, receiptRenderer);
+
+        var pendingPrint = service.paymentReceipt(document.getId(), payment.getRequestId());
+        var retry = service.paymentReceipt(document.getId(), payment.getRequestId());
+
+        assertThat(pendingPrint.paymentId()).isEqualTo(payment.getRequestId());
+        assertThat(pendingPrint.amount()).isEqualByComparingTo("20.00");
+        assertThat(pendingPrint.remaining()).isEqualByComparingTo("80.00");
+        assertThat(pendingPrint.renderedPdf()).isNull();
+        assertThat(pendingPrint.ticketRenderedImage()).isNull();
+        assertThat(retry.paymentId()).isEqualTo(pendingPrint.paymentId());
+        assertThat(retry.amount()).isEqualByComparingTo(pendingPrint.amount());
+        assertThat(retry.remaining()).isEqualByComparingTo(pendingPrint.remaining());
+        assertThat(retry.renderedPdf()).isNotNull();
+        assertThat(retry.ticketRenderedImage()).isNotNull();
+        assertThat(document.getPagos()).containsExactly(payment);
+        assertThat(document.getEstado()).isEqualTo(confirmedStatus);
+        verify(payments, never()).save(any());
+        verify(documents, never()).save(any());
+        verify(receiptRenderer, org.mockito.Mockito.times(2))
+                .renderPendingCollection(document.getId(), payment.getRequestId());
+    }
+
+    @Test
     void attachesJasperPdfWhenTheFrozenTemplateRendersIt() {
         var documents = mock(CommercialDocumentRepository.class);
         var payments = mock(DocumentPaymentRepository.class);

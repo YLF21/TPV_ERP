@@ -3118,6 +3118,61 @@ class DocumentServiceTest {
     }
 
     @Test
+    void latestTerminalTicketPrintUsesAuthenticatedTerminalAndCurrentStore() {
+        var authentication = authentication();
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("T-001", user.getId(), NOW, false);
+        when(documentRepository.findLatestIssuedTicketIds(
+                store.getId(), terminalId, org.springframework.data.domain.PageRequest.of(0, 1)))
+                .thenReturn(List.of(ticket.getId()));
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(fiscalQr.resolveForPrint(ticket.getId())).thenReturn(Optional.empty());
+
+        var printSet = service.loadLatestTerminalTicketPrintSet(authentication);
+
+        assertThat(printSet.printTicket().documentId()).isEqualTo(ticket.getId());
+        assertThat(printSet.printTicket().documentNumber()).isEqualTo("T-001");
+        verify(currentTerminal).terminalId(authentication);
+        verify(documentRepository).findLatestIssuedTicketIds(
+                store.getId(), terminalId, org.springframework.data.domain.PageRequest.of(0, 1));
+        verifyNoInteractions(stockGateway, fiscalIntegration, cashPaymentRecorder);
+    }
+
+    @Test
+    void latestTerminalTicketPrintReportsMissingWithoutLoadingAnotherTicket() {
+        when(documentRepository.findLatestIssuedTicketIds(any(), any(), any()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.loadLatestTerminalTicketPrintSet(authentication()))
+                .isInstanceOf(TicketNotFoundException.class);
+
+        verify(documentRepository, never()).findById(any());
+        verifyNoInteractions(stockGateway, fiscalIntegration, cashPaymentRecorder);
+    }
+
+    @Test
+    void latestCancelledTicketDoesNotSilentlyReprintAnOlderTicket() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("T-001", user.getId(), NOW, false);
+        ticket.cancel(user.getId(), NOW.plusSeconds(1), "Cancelled");
+        when(documentRepository.findLatestIssuedTicketIds(any(), any(), any()))
+                .thenReturn(List.of(ticket.getId()));
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.loadLatestTerminalTicketPrintSet(authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.document.print_ticket_requires_confirmed_document");
+
+        verify(documentRepository).findLatestIssuedTicketIds(any(), any(), any());
+        verify(documentRepository).findById(ticket.getId());
+        verifyNoInteractions(stockGateway, fiscalIntegration, cashPaymentRecorder);
+    }
+
+    @Test
     void compensatingExchangeReprintReconstructsRectificationBeforeReplacementSale() {
         var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
         var fiscalQrImages = org.mockito.Mockito.mock(

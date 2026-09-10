@@ -266,6 +266,24 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void enviaElDniDelDestinatarioComoNifSinPerderCerosIniciales() {
+        var snapshot = new LinkedHashMap<>(snapshot(Map.of()));
+        snapshot.put("cliente", Map.of(
+                "tipoDocumento", "DNI",
+                "numeroDocumento", "00000001R",
+                "nombreFiscal", "Cliente DNI"));
+
+        var xml = service().batchXml(request(
+                fiscalRecord(FiscalDocumentType.F1, "FV-001-26-000001", snapshot), "Company SL"));
+
+        assertThat(xml).containsSubsequence(
+                "<sf:Destinatarios>",
+                "<sf:NombreRazon>Cliente DNI</sf:NombreRazon>",
+                "<sf:NIF>00000001R</sf:NIF>");
+        new VerifactuOfficialXsdValidator().validate(xml);
+    }
+
+    @Test
     void rechazaLotesSinRegistrosONombreEmisor() {
         assertThatThrownBy(() -> service().batchXml(request(List.of(), "Company SL")))
                 .isInstanceOf(IllegalArgumentException.class)

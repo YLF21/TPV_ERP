@@ -26,6 +26,10 @@ public class PlanLimitService {
         lockCompany(companyId);
         PlanUsageResponse usage = usage(companyId);
         long used = usage.usage().get(resource);
+        if (resource == PlanResource.MASTER_RECORDS) {
+            Long reserved = jdbc.queryForObject("select saas_customer_reserved_master_count(?)", Long.class, companyId);
+            used += reserved == null ? 0 : reserved;
+        }
         long limit = usage.limits().get(resource);
         if (used >= limit) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

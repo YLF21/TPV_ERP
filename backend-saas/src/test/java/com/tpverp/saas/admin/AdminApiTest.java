@@ -100,7 +100,7 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V52__integration_payload_retention_index");
+                .isEqualTo("V53__customer_document_identity_reservations");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
                 "operational-incidents");
@@ -1221,7 +1221,7 @@ class AdminApiTest {
                                 {
                                   "code": "CLI-A",
                                   "name": "Cliente A",
-                                  "taxId": "11111111A",
+                                  "taxId": "11111111H",
                                   "email": "cliente-a@example.com",
                                   "phone": "600000001"
                                 }
@@ -1235,7 +1235,7 @@ class AdminApiTest {
                                 {
                                   "code": "CLI-B",
                                   "name": "Cliente B",
-                                  "taxId": "22222222B",
+                                  "taxId": "22222222J",
                                   "email": "cliente-b@example.com",
                                   "phone": "600000002"
                                 }
@@ -1600,7 +1600,7 @@ class AdminApiTest {
                 {
                   "code": "%s",
                   "name": "Cliente por rol",
-                  "taxId": "11111111A",
+                  "taxId": "11111111H",
                   "email": "rol@example.com",
                   "phone": "600000099"
                 }

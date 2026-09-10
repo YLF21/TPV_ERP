@@ -36,6 +36,7 @@ public class TicketReportService {
     private final RefundTenderRepository refundTenders;
     private final SalesInvoiceRectificationRepository invoiceRectifications;
     private final DocumentMemberBalanceResolver memberBalances;
+    private final CustomerDocumentReportQueryRepository customerReports;
 
     public TicketReportService(
             CommercialDocumentRepository documents,
@@ -45,7 +46,8 @@ public class TicketReportService {
             DocumentRelationRepository relations,
             RefundTenderRepository refundTenders,
             SalesInvoiceRectificationRepository invoiceRectifications,
-            DocumentMemberBalanceResolver memberBalances) {
+            DocumentMemberBalanceResolver memberBalances,
+            CustomerDocumentReportQueryRepository customerReports) {
         this.documents = documents;
         this.organization = organization;
         this.customers = customers;
@@ -54,21 +56,54 @@ public class TicketReportService {
         this.refundTenders = refundTenders;
         this.invoiceRectifications = invoiceRectifications;
         this.memberBalances = memberBalances;
+        this.customerReports = customerReports;
     }
 
     @Transactional(readOnly = true)
     public PagedResult<TicketReportView> list(Integer requestedLimit, String cursor) {
+        return list(requestedLimit, cursor, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<TicketReportView> list(
+            Integer requestedLimit, String cursor, UUID customerId) {
+        return list(requestedLimit, cursor, customerId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<TicketReportView> list(
+            Integer requestedLimit, String cursor, UUID customerId, CustomerDocumentReportFilter filter) {
+        var filtered = filter != null && filter.isRequested();
+        if (filtered && customerId == null) {
+            throw new IllegalArgumentException("El cliente es obligatorio para filtrar documentos");
+        }
         var store = organization.currentStore();
         var limit = normalizedLimit(requestedLimit);
-        var parsedCursor = parseCursor(cursor);
+        var parsedCursor = filtered ? null : parseCursor(cursor);
         var pageRequest = PageRequest.of(0, limit + 1);
-        var values = parsedCursor.date() == null
-                ? documents.findReportDocuments(store.getId(), TICKETS, pageRequest)
-                : documents.findReportDocumentsAfter(
-                        store.getId(), TICKETS, parsedCursor.date(),
+        CustomerDocumentReportQueryRepository.Page orderedPage = null;
+        List<CommercialDocument> values;
+        if (customerId == null) {
+            values = parsedCursor.date() == null
+                    ? documents.findReportDocuments(store.getId(), TICKETS, pageRequest)
+                    : documents.findReportDocumentsAfter(
+                            store.getId(), TICKETS, parsedCursor.date(),
+                            parsedCursor.occurredAt(), parsedCursor.id(), pageRequest);
+        } else {
+            customers.findByIdAndCompanyId(customerId, organization.currentCompany().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
+            if (filtered) {
+                orderedPage = customerReports.findPage(store.getId(), customerId, TICKETS, filter, cursor, limit);
+                values = documents.loadCustomerReportDocumentsByIds(
+                        store.getId(), customerId, TICKETS, orderedPage.ids());
+            } else {
+                values = documents.findCustomerReportDocuments(
+                        store.getId(), customerId, TICKETS, parsedCursor.date(),
                         parsedCursor.occurredAt(), parsedCursor.id(), pageRequest);
-        var hasMore = values.size() > limit;
-        var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
+            }
+        }
+        var hasMore = orderedPage == null ? values.size() > limit : orderedPage.hasMore();
+        var pageValues = orderedPage == null && hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
         if (pageValues.isEmpty()) {
             return new PagedResult<>(List.of(), null, false);
         }
@@ -108,7 +143,8 @@ public class TicketReportService {
         }).toList();
 
         return new PagedResult<>(items,
-                hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null,
+                orderedPage != null ? orderedPage.nextCursor()
+                        : hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null,
                 hasMore);
     }
 

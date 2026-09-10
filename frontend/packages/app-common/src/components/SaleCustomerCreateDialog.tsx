@@ -12,6 +12,7 @@ import {
 } from "./PartyDirectoryPanel";
 import { PartyFormFields, type CommercialChannelOption } from "./PartyFormFields";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { customerIdentityFailure } from "./customerDocumentIdentity";
 
 type Props = {
   locale: LocaleCode;
@@ -35,6 +36,7 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
   const dialogRef = useRef<HTMLElement>(null);
   const [form, setForm] = useState<PartyForm>({ ...emptyPartyForm });
   const [errors, setErrors] = useState<string[]>([]);
+  const [documentError, setDocumentError] = useState("");
   const [channels, setChannels] = useState<CommercialChannelOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(customerId));
@@ -86,11 +88,14 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
 
   function update<K extends keyof PartyForm>(field: K, value: PartyForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
-    setErrors((current) => current.filter((candidate) => candidate !== field));
+    const identityChanged = field === "documentType" || field === "documentNumber";
+    if (identityChanged) setDocumentError("");
+    setErrors((current) => current.filter((candidate) => candidate !== field && !(identityChanged && candidate === "documentNumber")));
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    setDocumentError("");
     const nextErrors = validatePartyForm(form, false);
     if (nextErrors.length > 0) {
       setErrors(nextErrors);
@@ -98,6 +103,7 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
       return;
     }
     setSaving(true);
+    setErrors([]);
     setStatus("");
     try {
       const created = await apiRequest<CustomerView>(customerId ? `/customers/${customerId}` : "/customers", {
@@ -107,7 +113,12 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
       });
       onCreated(created);
     } catch (failure) {
-      setStatus(failure instanceof Error ? failure.message : t("party.saveError"));
+      const identityFailure = customerIdentityFailure(failure);
+      if (identityFailure) {
+        const message = t(identityFailure.messageKey);
+        if (identityFailure.documentField) { setErrors(["documentNumber"]); setDocumentError(message); }
+        setStatus(message);
+      } else setStatus(failure instanceof Error ? failure.message : t("party.saveError"));
     } finally {
       setSaving(false);
     }
@@ -127,6 +138,7 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
           <PartyFormFields
             form={form}
             errors={errors}
+            documentError={documentError}
             channels={channels}
             autoFocusName
             t={t}

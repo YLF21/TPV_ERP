@@ -11,6 +11,7 @@ const sharedComponentsDirectory = fileURLToPath(
 );
 
 const sharedManagementComponents = [
+  "CustomerDocumentsDialog.tsx",
   "AppFrame.tsx",
   "LoginScreen.tsx",
   "PromotionListScreen.tsx",

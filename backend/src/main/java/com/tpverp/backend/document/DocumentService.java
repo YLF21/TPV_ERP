@@ -2343,6 +2343,19 @@ public class DocumentService {
         return renderTicketPrintView(sale, ticketPrintView(sale));
     }
 
+    @Transactional(readOnly = true)
+    public TicketPrintSet loadLatestTerminalTicketPrintSet(Authentication authentication) {
+        var ticketId = documents.findLatestIssuedTicketIds(
+                        organization.currentStore().getId(),
+                        currentTerminal.terminalId(authentication),
+                        org.springframework.data.domain.PageRequest.of(0, 1))
+                .stream()
+                .findFirst()
+                .orElseThrow(TicketNotFoundException::new);
+        // Do not fall back to an older ticket when the latest cannot be printed.
+        return loadRenderedTicketPrintSet(ticketId);
+    }
+
     /**
      * Reconstructs the complete printable set for a ticket. In a compensating
      * exchange the rectification is intentionally returned first, followed by
