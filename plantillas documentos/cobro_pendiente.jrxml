@@ -46,7 +46,6 @@ SELECT
     e.tax_id AS cif,
     ldt.contenido AS logo_contenido,
     d.numero AS numero_documento,
-    CAST(COALESCE(po.request_id, po.id) AS varchar) AS numero_cobro,
     po.creado_en AS fecha_cobro,
     COALESCE(NULLIF(TRIM(term.nombre), ''), '—') AS terminal,
     COALESCE(NULLIF(TRIM(c.nombre_fiscal), ''), '—') AS cliente,
@@ -106,7 +105,6 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 	<field name="cif" class="java.lang.String"/>
 	<field name="logo_contenido" class="byte[]"/>
 	<field name="numero_documento" class="java.lang.String"/>
-	<field name="numero_cobro" class="java.lang.String"/>
 	<field name="fecha_cobro" class="java.sql.Timestamp"/>
 	<field name="terminal" class="java.lang.String"/>
 	<field name="cliente" class="java.lang.String"/>
@@ -147,8 +145,8 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 			<expression><![CDATA["Cobro de " + $F{numero_documento}]]></expression>
 		</element>
 		<element kind="component" uuid="eb25af37-e9e1-43d4-b04e-27dc61b35b93" x="8" y="195" width="191" height="30" style="BarcodeCentrado">
-			<component kind="barcode4j:Code128" moduleWidth="0.38" textPosition="none" quietZone="2.0" verticalQuietZone="0.0">
-				<codeExpression><![CDATA[$F{numero_cobro}]]></codeExpression>
+			<component kind="barcode4j:Code128" moduleWidth="1.0" textPosition="none" quietZone="10.0" verticalQuietZone="0.0">
+				<codeExpression><![CDATA[$F{numero_documento}]]></codeExpression>
 			</component>
 		</element>
 		<element kind="textField" uuid="70c23169-ea09-4cf2-99e8-8e2500e9d6b5" style="Texto" x="5" y="229" width="197" height="13">

@@ -104,12 +104,17 @@ class OperationalReceiptJasperRendererPostgreSqlTest {
                 var barcode = new MultiFormatReader().decode(bitmap, Map.of(
                         DecodeHintType.POSSIBLE_FORMATS, List.of(BarcodeFormat.CODE_128),
                         DecodeHintType.TRY_HARDER, true));
-                assertThat(barcode.getText()).isEqualTo(fixture.requestId().toString());
+                assertThat(barcode.getText()).isEqualTo(fixture.number());
             }
             var raster = ImageIO.read(new ByteArrayInputStream(rendered.png()));
             assertThat(raster).isNotNull();
             assertThat(raster.getWidth()).isEqualTo(576);
             assertThat(raster.getHeight()).isGreaterThan(100);
+            var rasterBarcode = new MultiFormatReader().decode(
+                    new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(raster))),
+                    Map.of(DecodeHintType.POSSIBLE_FORMATS, List.of(BarcodeFormat.CODE_128),
+                            DecodeHintType.TRY_HARDER, true));
+            assertThat(rasterBarcode.getText()).isEqualTo(fixture.number());
             if ("FACTURA_VENTA".equals(documentType) && paymentId.equals(fixture.requestId())) {
                 var output = Path.of("target", "receipt-jasper-verification");
                 Files.createDirectories(output);
@@ -135,7 +140,11 @@ class OperationalReceiptJasperRendererPostgreSqlTest {
         var documentId = UUID.randomUUID();
         var paymentId = UUID.randomUUID();
         var requestId = UUID.randomUUID();
-        var number = "COBRO-TEST-" + documentType;
+        var number = switch (documentType) {
+            case "FACTURA_VENTA" -> "FV-001-26-000001";
+            case "ALBARAN_VENTA" -> "AV-001-26-000001";
+            default -> "001-260909-00001";
+        };
         var taxId = switch (documentType) {
             case "FACTURA_VENTA" -> "B00000001";
             case "ALBARAN_VENTA" -> "B00000002";
