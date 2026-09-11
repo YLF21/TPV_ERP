@@ -16,6 +16,7 @@ type CashPaymentResultDialogProps = {
   reference?: string;
   printStatus?: TicketPrintUiStatus;
   printTechnicalMessage?: string;
+  allowFinishWithPendingPrint?: boolean;
   issuedVoucher?: IssuedVoucherPrintSnapshot;
   voucherPrintStatus?: TicketPrintUiStatus;
   onRetryPrint?: () => void;
@@ -86,7 +87,11 @@ export function CashPaymentResultDialog(props: CashPaymentResultDialogProps) {
     onFinishRef.current();
   }, [resultPrintStatus]);
 
-  return <CashPaymentResultContent {...props} />;
+  return <CashPaymentResultContent {...props} onFinish={() => {
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
+    onFinishRef.current();
+  }} />;
 }
 
 export function CashPaymentResultContent({
@@ -100,10 +105,12 @@ export function CashPaymentResultContent({
   reference,
   printStatus = "SKIPPED",
   printTechnicalMessage,
+  allowFinishWithPendingPrint = false,
   issuedVoucher,
   voucherPrintStatus = "SKIPPED",
   onRetryPrint,
   onRetryVoucherPrint,
+  onFinish,
 }: CashPaymentResultDialogProps) {
   const t = createTranslator(locale);
   return (
@@ -136,6 +143,8 @@ export function CashPaymentResultContent({
               </small>
             )}
             <button type="button" className="cash-payment-print-retry" onClick={onRetryPrint}>{t("payment.result.retryPrint")}</button>
+            {allowFinishWithPendingPrint && <button type="button" className="cash-payment-print-retry"
+              onClick={onFinish}>{t("common.close")}</button>}
           </div>
         )}
         {issuedVoucher && (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
 import { hasPermission } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -35,6 +36,7 @@ import {
   outputConfirmedTicketsSequentially,
   retryConfirmedTicketPrint,
   type ConfirmedTicketPrintSnapshot,
+  type ConfirmedTicketPrintSet,
   type SalePrintMode,
   type TicketPrintOutcome,
 } from "../sale/ticketPrinting";
@@ -962,8 +964,10 @@ export function saleLineSubtotal(line: SaleLine, activeMember = false, wholesale
   if (line.previousTicketImportOrigin) {
     return line.previousTicketImportOrigin.historicalTotal;
   }
-  return saleLineUnitPrice(line, activeMember, wholesaleMode) * line.quantity
-    * (1 - effectiveSaleLineDiscount(line) / 100);
+  const gross = saleLineUnitPrice(line, activeMember, wholesaleMode) * line.quantity;
+  const grossCents = Math.sign(gross) * Math.round((Math.abs(gross) + Number.EPSILON) * 100);
+  const discountCents = Math.sign(grossCents) * Math.round(Math.abs(grossCents) * effectiveSaleLineDiscount(line) / 100);
+  return (grossCents - discountCents) / 100;
 }
 
 export function updateSaleLineSerialNumbers(
@@ -1006,8 +1010,8 @@ export function updateSaleLineTemporaryPrice(
   authorization?: SaleLine["temporaryPriceAuthorization"],
 ) {
   if (value != null) {
-    const hasMoreThanTwoDecimals = Math.abs(value * 100 - Math.round(value * 100)) > 1e-9;
-    if (!Number.isFinite(value) || value <= 0 || hasMoreThanTwoDecimals) {
+    const hasMoreThanThreeDecimals = Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-9;
+    if (!Number.isFinite(value) || value <= 0 || hasMoreThanThreeDecimals) {
       throw new Error("invalid_temporary_price");
     }
   }
@@ -1451,7 +1455,7 @@ export function effectiveSaleProductPrice(
     if (Number.isFinite(explicitOfferPrice)) return explicitOfferPrice;
     if (mode === "OFFER_DISCOUNT") {
       const discount = salePriceNumber(product.offerDiscountPercent);
-      if (discount >= 0 && discount <= 100) return salePrice * (1 - discount / 100);
+      if (discount >= 0 && discount <= 100) return roundUnitPrice(salePrice * (1 - discount / 100));
     }
   }
   return salePrice;
@@ -1583,7 +1587,7 @@ export function pendingSaleDraftForCustomer(
         line,
         customer.activeMember === true,
         wholesaleMode,
-      ).toFixed(2),
+      ).toFixed(3).replace(/(\.\d{2})0$/, "$1"),
       // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
       discount: line.discountPercent.toFixed(2), ...saleProductFiscalSnapshot(line.product),
       serialNumbers: line.serialNumbers ?? [],
@@ -1690,6 +1694,7 @@ export function SaleScreen({
   const [nextScanQuantity, setNextScanQuantity] = useState(1);
   const [nextScanMode, setNextScanMode] = useState<"UNIT" | "PACKAGE">("UNIT");
   const [shortcutStatus, setShortcutStatus] = useState("");
+  const [lastTicketCopyBusy, setLastTicketCopyBusy] = useState(false);
   const [cashDrawerAuthorizationOpen, setCashDrawerAuthorizationOpen] = useState(false);
   const [cashDrawerBusy, setCashDrawerBusy] = useState(false);
   const [cashDrawerError, setCashDrawerError] = useState("");
@@ -1882,6 +1887,7 @@ export function SaleScreen({
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
   const saleShortcutHandlerRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  const lastTicketCopyControllerRef = useRef<AbortController | null>(null);
   const blockedRecoveryDialogRef = useRef<HTMLElement>(null);
   const deletionControlRef = useRef<SaleDeletionControlSequence | null>(null);
   if (!deletionControlRef.current) deletionControlRef.current = new SaleDeletionControlSequence();
@@ -1893,6 +1899,14 @@ export function SaleScreen({
   const customerSearchGenerationRef = useRef(0);
   const linesRef = useRef(lines);
   const serialQuantityRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    setLastTicketCopyBusy(false);
+    return () => {
+      lastTicketCopyControllerRef.current?.abort();
+      lastTicketCopyControllerRef.current = null;
+    };
+  }, [session.accessToken, terminalContext.terminalId, terminalContext.terminalCode]);
 
   useEffect(() => {
     if (paymentLocked) return;
@@ -2641,7 +2655,7 @@ export function SaleScreen({
     const totalAmount = confirmedDisplayLine
       ? finiteAmount(confirmedDisplayLine.commercialSubtotal)
       : historicalTotal;
-    const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${totalAmount == null ? t("sale.quote.loading") : formatSaleAmount(totalAmount)}`;
+    const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice, 3)} ${discountText} ${totalAmount == null ? t("sale.quote.loading") : formatSaleAmount(totalAmount)}`;
     const cartLineId = saleCartLineIdentity(localLine);
     const selected = selectedLineId === cartLineId;
     const touchQuantityLocked = paymentLocked
@@ -2744,7 +2758,7 @@ export function SaleScreen({
       if (column === "salePrice") {
         return (
           <td className="sale-cart-number sale-cart-sale-price" data-column-key={column} key={column}>
-            {formatSaleAmount(displayedSalePrice)} €
+            {formatSaleAmount(displayedSalePrice, 3)} €
             {saleCartTaxLabelVisible(effectiveTaxIncluded) && (
               <small className="sale-cart-tax-excluded">{t("sale.cart.taxExcluded")}</small>
             )}
@@ -2768,7 +2782,7 @@ export function SaleScreen({
               <>
                 <small>{specialLabel}</small>
                 <strong>
-                  {formatSaleAmount(specialPrice.unitPrice)} €
+                  {formatSaleAmount(specialPrice.unitPrice, 3)} €
                   <span>{t("sale.cart.perUnit")}</span>
                 </strong>
               </>
@@ -3048,6 +3062,43 @@ export function SaleScreen({
       locale,
     )
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
+  }
+
+  async function reprintLastTerminalTicket() {
+    if (lastTicketCopyControllerRef.current) return;
+    const controller = new AbortController();
+    lastTicketCopyControllerRef.current = controller;
+    setLastTicketCopyBusy(true);
+    setShortcutStatus(t("sale.lastTicketCopy.printing"));
+    try {
+      const printSet = await apiRequest<ConfirmedTicketPrintSet>(
+        "/tickets/last-current-terminal/print-set",
+        { token: session.accessToken, signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      const outcome = await outputConfirmedTicketsSequentially(
+        [...(printSet.additionalPrintTickets ?? []), printSet.printTicket],
+        terminalContext,
+        "TICKET_COPY",
+        locale,
+        undefined,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setShortcutStatus(outcome.status === "PRINTED"
+        ? saleMainMessage(t, "sale.lastTicketCopy.printed", { number: printSet.printTicket.documentNumber })
+        : outcome.technicalMessage ?? t("ticketManagement.error.print"));
+    } catch (failure) {
+      if (controller.signal.aborted) return;
+      setShortcutStatus(failure instanceof ApiError && failure.problem?.code === "TICKET_NOT_FOUND"
+        ? t("sale.lastTicketCopy.notFound")
+        : failure instanceof Error ? failure.message : t("ticketManagement.error.print"));
+    } finally {
+      if (lastTicketCopyControllerRef.current === controller) {
+        lastTicketCopyControllerRef.current = null;
+        setLastTicketCopyBusy(false);
+      }
+    }
   }
 
   function renderReturnPromotionAdjustmentRow(line: AuthoritativeSaleLine) {
@@ -4845,6 +4896,8 @@ export function SaleScreen({
   function saleCommandDisabled(command: SaleCommandId) {
     if (previousTicketImportBusy && command !== "import-previous-ticket") return true;
     switch (command) {
+      case "reprint-last-ticket":
+        return !cashSessionReady || !paymentHydrated || paymentLocked || lastTicketCopyBusy;
       case "wholesale-mode":
         return false;
       case "product-search":
@@ -4955,6 +5008,9 @@ export function SaleScreen({
     }
     if (saleCommandDisabled(command) && !keyboardReturnRemoval) return false;
     switch (command) {
+      case "reprint-last-ticket":
+        void reprintLastTerminalTicket();
+        break;
       case "sales-document":
         onOpenSalesDocumentWindow?.();
         break;
@@ -5118,6 +5174,8 @@ export function SaleScreen({
           return;
         }
         event.preventDefault();
+        // Windows can deliver PrintScreen only on release. Never print on both events.
+        if (command === "reprint-last-ticket" && event.type !== "keyup") return;
         executeSaleCommand(command, "KEYBOARD");
         return;
       }
@@ -5150,8 +5208,17 @@ export function SaleScreen({
     function handleSaleShortcut(event: KeyboardEvent) {
       saleShortcutHandlerRef.current(event);
     }
+    function handleSaleShortcutRelease(event: KeyboardEvent) {
+      if (saleCommandFromKeyboard(event) === "reprint-last-ticket") {
+        saleShortcutHandlerRef.current(event);
+      }
+    }
     window.addEventListener("keydown", handleSaleShortcut);
-    return () => window.removeEventListener("keydown", handleSaleShortcut);
+    window.addEventListener("keyup", handleSaleShortcutRelease);
+    return () => {
+      window.removeEventListener("keydown", handleSaleShortcut);
+      window.removeEventListener("keyup", handleSaleShortcutRelease);
+    };
   }, []);
 
   const cartColumnVisible = (columnKey: SaleCartColumnKey) => (
@@ -5251,6 +5318,11 @@ export function SaleScreen({
           type: "action", id: "gift-receipt", label: t("sale.shortcut.giftReceipt"), shortcut: "Ctrl+R",
           disabled: !paymentHydrated || paymentLocked,
           onSelect: () => executeSaleCommand("gift-receipt"),
+        },
+        {
+          type: "action", id: "reprint-last-ticket", label: t("sale.lastTicketCopy.action"), shortcut: t("sale.lastTicketCopy.key"),
+          disabled: saleCommandDisabled("reprint-last-ticket"),
+          onSelect: () => executeSaleCommand("reprint-last-ticket"),
         },
         {
           type: "action", id: "cancel-last-ticket", label: commandLabels.cancelTicket, shortcut: "F11",
@@ -5623,7 +5695,7 @@ export function SaleScreen({
                         activeMember,
                         currentSaleDate(),
                         wholesaleMode,
-                      )),
+                      ), 3),
                     })
                   : ""}
               </small>
@@ -6906,10 +6978,10 @@ function SaleActionDialog({
   );
 }
 
-function formatSaleAmount(value: number | string | null | undefined) {
+function formatSaleAmount(value: number | string | null | undefined, maximumFractionDigits = 2) {
   return Number(value ?? 0).toLocaleString("es-ES", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits
   });
 }
 

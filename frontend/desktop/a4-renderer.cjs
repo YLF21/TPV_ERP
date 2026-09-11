@@ -4,7 +4,9 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
-function money(value) { return Number(value || 0).toFixed(2); }
+function money(value, unitPrice = false) {
+  return unitPrice ? Number(value || 0).toFixed(3).replace(/(\.\d{2})0$/, "$1") : Number(value || 0).toFixed(2);
+}
 function quantity(value) { return Number(value || 0).toLocaleString("es-ES", { maximumFractionDigits: 3 }); }
 
 function addressLines(value = {}) {
@@ -44,7 +46,7 @@ function renderA4DocumentHtml(document) {
     <td>${escapeHtml(line.barcode)}</td>
     <td>${escapeHtml(line.name)}</td>
     <td class="right">${quantity(line.quantity)}</td>
-    <td class="right">${money(line.price)}</td>
+    <td class="right">${money(line.price, true)}</td>
     <td class="right tax-rate">${retail ? "" : escapeHtml(line.taxPercentage ?? "")}</td>
     <td class="right">${money(line.total)}</td>
   </tr>`).join("");

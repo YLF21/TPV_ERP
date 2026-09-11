@@ -104,9 +104,16 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const [receipt, setReceipt] = useState<CustomerReceivablePaymentReceiptSnapshot | null>(null);
   const [detailLoading, setDetailLoading] = useState(false); const [detailError, setDetailError] = useState(""); const [printing, setPrinting] = useState(false);
   const [retryPrint, setRetryPrint] = useState<(() => Promise<unknown>) | null>(null);
+  const printInFlight = useRef(false);
+  const close = useCallback(() => { if (!printInFlight.current) onBack(); }, [onBack]);
   const retryFailedPrint = async () => {
-    if (!retryPrint) return;
-    if (await retryPrintSucceeded(retryPrint)) setRetryPrint(null);
+    if (!retryPrint || printInFlight.current) return;
+    const operation = retryPrint;
+    printInFlight.current = true;
+    setPrinting(true);
+    try {
+      if (await retryPrintSucceeded(operation)) setRetryPrint((current) => current === operation ? null : current);
+    } finally { printInFlight.current = false; setPrinting(false); }
   };
   const loadGeneration = useRef(0);
   const detailGeneration = useRef(0);
@@ -155,6 +162,11 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.repeat) return;
+      if (printInFlight.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       if (selected) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -180,14 +192,31 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   };
   const closeHistory = () => { detailGeneration.current += 1; setSelectedHistory(null); setReceipt(null); setDetailError(""); setDetailLoading(false); };
   const reprintReceipt = async () => {
-    if (!receipt || printing) return;
-    const operation = () => printReceipt(receipt, terminalContext, undefined, locale);
+    if (!selectedHistory || printInFlight.current) return;
+    const row = selectedHistory;
+    const generation = detailGeneration.current;
+    const operation = async () => {
+      try {
+        const refreshed = await request<CustomerReceivablePaymentReceiptSnapshot>(
+          `/customer-receivables/${row.documentId}/payments/${row.paymentId}/print`,
+          { token: session.accessToken },
+        );
+        if (generation === detailGeneration.current) setReceipt(refreshed);
+        const result = await printReceipt(refreshed, terminalContext, undefined, locale);
+        if (generation === detailGeneration.current) setDetailError(result.status === "FAILED" ? t("receivables.print.pending") : "");
+        return result;
+      } catch (failure) {
+        if (generation === detailGeneration.current) setDetailError(t("receivables.print.pending"));
+        throw failure;
+      }
+    };
+    printInFlight.current = true;
     setPrinting(true);
     try {
       const result = await operation();
       setRetryPrint(result.status === "PRINTED" || result.status === "SKIPPED" ? null : () => operation);
     } catch { setRetryPrint(() => operation); }
-    finally { setPrinting(false); }
+    finally { printInFlight.current = false; setPrinting(false); }
   };
 
   const columns = ["document", "customer", "issueDate", "dueDate", "total", "paid", "pending", "status", "actions"];
@@ -248,7 +277,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const customerContext = account?.customerName ?? rows[0]?.customerName ?? historyRows[0]?.customerName;
   const resultCount = view === "OPEN" ? rows.length : view === "HISTORY" ? historyRows.length : account?.entries.length ?? 0;
 
-  return <div className="customer-receivables-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onBack(); }}>
+  return <div className="customer-receivables-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <section
       ref={dialogRef}
       className="customer-receivables-dialog"
@@ -265,12 +294,12 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <h2 id="customer-receivables-title">{t(view === "OPEN" ? "receivables.title" : view === "HISTORY" ? "receivables.history.title" : "receivables.account.title")}</h2>
           <p id="customer-receivables-subtitle">{t(view === "OPEN" ? "receivables.subtitle" : view === "HISTORY" ? "receivables.history.subtitle" : "receivables.account.subtitle")}{customerContext ? <strong> · {customerContext}</strong> : null}</p>
         </div>
-        <button type="button" className="customer-receivables-close" aria-label={t("common.close")} onClick={onBack}>×</button>
+        <button type="button" className="customer-receivables-close" aria-label={t("common.close")} disabled={printing} onClick={close}>×</button>
       </header>
       <nav className="receivables-view-tabs" aria-label={t("receivables.view.label")}>
-        <button type="button" aria-pressed={view === "OPEN"} onClick={() => setView("OPEN")}>{t("receivables.view.open")}</button>
-        <button type="button" aria-pressed={view === "HISTORY"} onClick={() => setView("HISTORY")}>{t("receivables.view.history")}</button>
-        {initialCustomerId && <button type="button" aria-pressed={view === "ACCOUNT"} onClick={() => setView("ACCOUNT")}>{t("receivables.view.account")}</button>}
+        <button type="button" disabled={printing} aria-pressed={view === "OPEN"} onClick={() => setView("OPEN")}>{t("receivables.view.open")}</button>
+        <button type="button" disabled={printing} aria-pressed={view === "HISTORY"} onClick={() => setView("HISTORY")}>{t("receivables.view.history")}</button>
+        {initialCustomerId && <button type="button" disabled={printing} aria-pressed={view === "ACCOUNT"} onClick={() => setView("ACCOUNT")}>{t("receivables.view.account")}</button>}
       </nav>
       <div className="customer-receivables-dialog-body">
       {view === "OPEN" ? <>
@@ -289,13 +318,13 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         <label>{t("receivables.history.collectedTo")}<input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
       </div> : null}
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
-      {retryPrint && <div className="receivables-error"><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryFailedPrint()}>{t("payment.result.retryPrint")}</button></div>}
+      {retryPrint && <div className="receivables-error"><p role="alert">{t("receivables.print.pending")}</p><button type="button" disabled={printing} onClick={() => void retryFailedPrint()}>{printing ? t("receivables.history.printing") : t("payment.result.retryPrint")}</button></div>}
       {view === "OPEN" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
         <div role="row" className="receivable-row header">{columns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={openSorting.sort?.column === value ? (openSorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={openSorting.sort?.column === value ? openSorting.sort.direction : null} onSort={() => openSorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
         {!loading && sortedRows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{row.issueDate}</span><span role="cell">{row.dueDate || "-"}</span><span role="cell">{money(row.total, locale)}</span><span role="cell">{money(row.paidTotal, locale)}</span><span role="cell">{money(row.pendingTotal, locale)}</span><span role="cell">{t(statusKey(effectiveReceivableStatus(row)))}</span>
-          <span role="cell"><button type="button" aria-label={`${t("receivables.action.collect")} ${row.documentNumber}`} disabled={!canPay || effectiveReceivableStatus(row) === "PAGADO"} onClick={() => setSelected(row)}>{t("receivables.action.collect")}</button></span>
+          <span role="cell"><button type="button" aria-label={`${t("receivables.action.collect")} ${row.documentNumber}`} disabled={printing || !canPay || effectiveReceivableStatus(row) === "PAGADO"} onClick={() => setSelected(row)}>{t("receivables.action.collect")}</button></span>
         </div>)}
       </div> : view === "HISTORY" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
         <div role="row" className="receivable-history-row header">{historyColumns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={historySorting.sort?.column === value ? (historySorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={historySorting.sort?.column === value ? historySorting.sort.direction : null} onSort={() => historySorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
@@ -303,7 +332,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         {!loading && historyRows.length === 0 && <p className="receivables-empty">{t("receivables.history.empty")}</p>}
         {!loading && sortedHistoryRows.map((row) => <div role="row" className="receivable-history-row" key={row.paymentId}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{dateTime(row.collectedAt, locale)}</span><span role="cell">{row.paymentMethodName}</span><span role="cell">{money(row.amount, locale)}</span><span role="cell">{row.transferDate || "-"}</span><span role="cell">{row.reference || "-"}</span>
-          <span role="cell"><button type="button" aria-label={`${t("receivables.action.consult")} ${row.documentNumber}`} onClick={() => void consultHistory(row)}>{t("receivables.action.consult")}</button></span>
+          <span role="cell"><button type="button" disabled={printing} aria-label={`${t("receivables.action.consult")} ${row.documentNumber}`} onClick={() => void consultHistory(row)}>{t("receivables.action.consult")}</button></span>
         </div>)}
       </div> : <div className="receivables-account" aria-label={t("receivables.account.title")}>
         {loading && <p>{t("common.loading")}</p>}
@@ -328,17 +357,17 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
       <footer className="customer-receivables-dialog-footer">
         <p aria-live="polite"><strong>{resultCount}</strong> {t("receivables.results")}</p>
         <span><kbd>Esc</kbd> {t("common.close")}</span>
-        <button type="button" onClick={onBack}>{t("common.close")}</button>
+        <button type="button" disabled={printing} onClick={close}>{t("common.close")}</button>
       </footer>
     </section>
-    {selected && <CustomerReceivablePaymentDialog locale={locale} receivable={selected} token={session.accessToken} terminalCode={terminalContext.terminalCode} terminalContext={terminalContext} request={request} printReceipt={printReceipt} onCancel={() => setSelected(null)} onPayment={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint(() => retry ?? null); setSelected(updated); }} onPaid={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint(() => retry ?? null); setSelected(null); void load(); }} />}
+    {selected && <CustomerReceivablePaymentDialog locale={locale} receivable={selected} token={session.accessToken} terminalCode={terminalContext.terminalCode} terminalContext={terminalContext} request={request} printReceipt={printReceipt} onCancel={() => setSelected(null)} onPayment={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint((current) => retry ?? current); setSelected(updated); }} onPaid={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint((current) => retry ?? current); setSelected(null); void load(); }} />}
     {selectedHistory && <div className="sale-action-overlay" role="presentation">
       <section className="customer-receivable-payment-dialog receivable-history-dialog" role="dialog" aria-modal="true" aria-labelledby="receivable-history-title">
         <header><h2 id="receivable-history-title">{t("receivables.history.detailTitle")}</h2><button type="button" aria-label={t("common.close")} disabled={printing} onClick={closeHistory}>×</button></header>
         <dl><div><dt>{t("receivables.column.document")}</dt><dd>{selectedHistory.documentNumber}</dd></div><div><dt>{t("receivables.column.customer")}</dt><dd>{selectedHistory.customerName}</dd></div><div><dt>{t("receivables.column.collectedAt")}</dt><dd>{dateTime(selectedHistory.collectedAt, locale)}</dd></div><div><dt>{t("receivables.column.method")}</dt><dd>{selectedHistory.paymentMethodName}</dd></div><div><dt>{t("receivables.column.amount")}</dt><dd>{money(selectedHistory.amount, locale)}</dd></div><div><dt>{t("receivables.column.transferDate")}</dt><dd>{selectedHistory.transferDate || "-"}</dd></div><div><dt>{t("receivables.column.reference")}</dt><dd>{selectedHistory.reference || "-"}</dd></div>{receipt && <div><dt>{t("receivables.column.pending")}</dt><dd>{money(receipt.remaining, locale)}</dd></div>}</dl>
         {detailLoading && <p>{t("common.loading")}</p>}
         {detailError && <p className="sale-action-error" role="alert">{detailError}</p>}
-        <footer><button type="button" disabled={printing} onClick={closeHistory}>{t("common.close")}</button><button type="button" disabled={!receipt || detailLoading || printing} onClick={() => void reprintReceipt()}>{printing ? t("receivables.history.printing") : t("receivables.action.reprint")}</button></footer>
+        <footer><button type="button" disabled={printing} onClick={closeHistory}>{t("common.close")}</button><button type="button" disabled={detailLoading || printing} onClick={() => void reprintReceipt()}>{printing ? t("receivables.history.printing") : t("receivables.action.reprint")}</button></footer>
       </section>
     </div>}
   </div>;

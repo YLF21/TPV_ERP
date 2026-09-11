@@ -87,7 +87,7 @@ public class ProductLabelCommercialContextService {
     private OfferLabelView activeOffer(
             com.tpverp.backend.catalog.Product product,
             LocalDate businessDate) {
-        var regularPrice = Money.euros(product.getSalePrice());
+        var regularPrice = Money.unitPrice(product.getSalePrice());
         var offerPrice = pricing.basePrice(
                 product, businessDate, AuthoritativePromotionPricing.CustomerContext.anonymous());
         if (regularPrice.signum() <= 0 || offerPrice.compareTo(regularPrice) >= 0) {

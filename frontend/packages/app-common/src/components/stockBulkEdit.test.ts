@@ -3,6 +3,7 @@ import { readSheet } from "read-excel-file/browser";
 import {
   buildStockBulkSupplierPrincipalAssignments,
   buildStockBulkSupplierAssignments,
+  buildStockBulkCreates,
   buildStockBulkUpdates,
   finalizeStockBulkSupplierAssignments,
   hydrateStockBulkSupplierData,
@@ -147,12 +148,49 @@ describe("stock bulk edit", () => {
         taxId: "tax-1",
         discountType: "NONE",
         priceUseMode: "NORMAL",
-        salePrice: 1.2,
-        purchaseDiscountPercent: 5,
+        salePrice: "1.20",
+        purchaseDiscountPercent: "5",
         taxesIncluded: true,
         active: true
       })
     })]);
+  });
+
+  it("applies an imported prohibited-discount change to an existing product", () => {
+    const discountableProduct = {
+      ...product,
+      backendDiscountType: "NORMAL"
+    };
+
+    const [update] = buildStockBulkUpdates([{
+      id: "row-prohibited",
+      selected: false,
+      query: "A001",
+      product: discountableProduct,
+      draft: { backendDiscountType: "NONE" }
+    }]);
+
+    expect(update.product.discountType).toBe("NONE");
+    expect(update.product.priceUseMode).toBe("NORMAL");
+  });
+
+  it("keeps legacy high-precision database decimals as strings when another field changes", () => {
+    const highPrecisionProduct = {
+      ...product,
+      purchasePrice: "9007199254740993.01",
+      salePrice: "9007199254740993.01"
+    };
+    const [update] = buildStockBulkUpdates([{
+      id: "row-precision",
+      selected: false,
+      query: "A001",
+      product: highPrecisionProduct,
+      draft: { name: "Agua renombrada" }
+    }]);
+
+    expect(update.product.purchasePrice).toBe("9007199254740993.01");
+    expect(update.product.salePrice).toBe("9007199254740993.01");
+    expect(JSON.stringify(update)).toContain('"purchasePrice":"9007199254740993.01"');
   });
 
   it("persists product activation changes", () => {
@@ -231,6 +269,80 @@ describe("stock bulk edit", () => {
       method: "POST",
       body: JSON.stringify({ content: rows })
     }));
+  });
+
+  it("keeps a non-empty missing row as a validated ProductBulk create", () => {
+    const missing = {
+      id: "excel-row-17",
+      selected: false,
+      query: "NUEVO-17",
+      draft: {
+        code: "NUEVO-17",
+        name: "Producto nuevo",
+        familyId: "family-1",
+        taxId: "tax-1",
+        productType: "UNIT",
+        purchasePrice: "1.25",
+        salePrice: "2.50",
+        taxesIncluded: "common.yes"
+      }
+    };
+
+    expect(validateStockBulkRows([missing])).toEqual([]);
+    expect(buildStockBulkCreates([missing])).toEqual([expect.objectContaining({
+      rowId: "excel-row-17",
+      product: expect.objectContaining({
+        code: "NUEVO-17",
+        name: "Producto nuevo",
+        purchasePrice: "1.25",
+        salePrice: "2.50",
+        taxesIncluded: true
+      })
+    })]);
+  });
+
+  it("builds a complete create from a missing row even when no update fields are selected", () => {
+    const missing = {
+      id: "excel-row-complete",
+      selected: false,
+      query: "NUEVO-COMPLETO",
+      draft: {
+        code: "NUEVO-COMPLETO",
+        barcode: "0843000000011",
+        name: "Producto completo",
+        familyId: "family-1",
+        taxId: "tax-1",
+        productType: "UNIT",
+        purchasePrice: "4.20",
+        salePrice: "6.50",
+        memberPrice: "6.00",
+        wholesalePrice: "5.30",
+        taxesIncluded: "common.yes"
+      }
+    };
+
+    expect(validateStockBulkRows([missing])).toEqual([]);
+    expect(buildStockBulkCreates([missing])).toEqual([expect.objectContaining({
+      rowId: "excel-row-complete",
+      product: expect.objectContaining({
+        code: "NUEVO-COMPLETO",
+        barcode: "0843000000011",
+        name: "Producto completo",
+        familyId: "family-1",
+        taxId: "tax-1",
+        purchasePrice: "4.20",
+        salePrice: "6.50",
+        memberPrice: "6.00",
+        wholesalePrice: "5.30",
+        taxesIncluded: true
+      })
+    })]);
+  });
+
+  it("does not turn the empty bulk tail into a create", () => {
+    const empty = { id: "tail", selected: false, query: "", draft: {} };
+    expect(buildStockBulkCreates([empty])).toEqual([]);
+    expect(validateStockBulkRows([empty])).toEqual([]);
   });
 
   it("posts readable classification codes beside the legacy UUID references", async () => {
@@ -770,8 +882,10 @@ describe("stock bulk edit", () => {
     ]));
   });
 
-  it("calculates offer price from sale price and offer discount", () => {
+  it("preserves an explicit offer price and calculates it only when absent", () => {
     expect(stockOfferPriceFromDiscount("10,00", "15")).toBe("8.50");
+    expect(stockOfferPriceFromDiscount("2.76", "20")).toBe("2.208");
+    expect(stockOfferPriceFromDiscount("2.469", "50")).toBe("1.235");
     expect(stockOfferPriceFromDiscount("10.00", "101")).toBeNull();
 
     const rows = [{
@@ -790,8 +904,18 @@ describe("stock bulk edit", () => {
     }];
 
     expect(buildStockBulkUpdates(rows)[0].product).toEqual(expect.objectContaining({
-      offerPrice: 15,
-      offerDiscountPercent: 25,
+      offerPrice: "1.00",
+      offerDiscountPercent: "25",
+      offerActive: true
+    }));
+
+    const withoutExplicitPrice = [{
+      ...rows[0],
+      draft: { ...rows[0].draft, offerPrice: "" }
+    }];
+    expect(buildStockBulkUpdates(withoutExplicitPrice)[0].product).toEqual(expect.objectContaining({
+      offerPrice: "15.00",
+      offerDiscountPercent: "25",
       offerActive: true
     }));
   });

@@ -653,6 +653,17 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  it("retains three decimal unit prices and rounds only after multiplying quantity", () => {
+    const line = addSaleLine([], { ...products[0], salePrice: "2.208" })[0];
+    expect(saleLineUnitPrice(line)).toBe(2.208);
+    expect(saleLineSubtotal({ ...line, quantity: 10 })).toBe(22.08);
+    expect(saleLineSubtotal(line)).toBe(2.21);
+    const temporary = updateSaleLineTemporaryPrice([line], saleCartLineIdentity(line), 1.235)[0];
+    expect(saleLineUnitPrice(temporary)).toBe(1.235);
+    expect(saleLineSubtotal({ ...temporary, quantity: 3 })).toBe(3.71);
+    expect(saleLineSubtotal({ ...temporary, quantity: -3 })).toBe(-3.71);
+    expect(() => updateSaleLineTemporaryPrice([line], saleCartLineIdentity(line), 1.2345)).toThrow("invalid_temporary_price");
+  });
   it("validates required serial numbers exactly, including cross-line duplicates", () => {
     const product: SaleProduct = { ...products[0], productType: "UNIT", requiresSerialNumber: true };
     const line = (serialNumbers: string[], quantity = serialNumbers.length): SaleLine => ({ product, quantity, discountPercent: 0, serialNumbers });
@@ -4662,6 +4673,139 @@ describe("SaleScreen", () => {
 
     labels.slice(0, -1).forEach((label) => expect(html).toContain(label));
     expect(createTranslator(locale)("sale.shortcut.importPreviousTicket")).toBe(labels.at(-1));
+  });
+
+  describe("last terminal ticket copies", () => {
+    function installCopyRequests(copyResponse: () => Promise<Response>) {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        const path = new URL(url, "http://localhost").pathname;
+        if (path.endsWith("/tickets/last-current-terminal/print-set")) {
+          expect(init?.method ?? "GET").toBe("GET");
+          expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer access-token");
+          return copyResponse();
+        }
+        if (path.endsWith("/products/sale")) return Response.json(products);
+        if (path.endsWith("/pos/sales/quote")) return Response.json(authoritativeQuote(products[0]));
+        return Response.json([]);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    }
+
+    function copyResponse() {
+      return Promise.resolve(Response.json({ printTicket: printSnapshot("001"), additionalPrintTickets: [] }));
+    }
+
+    async function ready() {
+      const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+      await waitFor(() => expect(search).toBeEnabled());
+      await waitFor(() => expect(checkoutProps.current).not.toBeNull());
+      return search;
+    }
+
+    it("prints the backend-selected terminal receipt once on release and preserves the cart", async () => {
+      const fetchMock = installCopyRequests(copyResponse);
+      let finishPrint!: (result: { ok: true }) => void;
+      const printTicket = vi.fn(() => new Promise((resolve) => { finishPrint = resolve; }));
+      installTicketHardware(printTicket);
+      renderSaleScreen();
+      const search = await ready();
+      submitQuickEntry(search, "CAF-001");
+      await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+      const cartBefore = checkoutProps.current?.sale?.lines;
+
+      fireEvent.keyDown(search, { key: "PrintScreen", code: "PrintScreen" });
+      expect(printTicket).not.toHaveBeenCalled();
+      fireEvent.keyUp(search, { key: "PrintScreen", code: "PrintScreen" });
+      fireEvent.keyUp(search, { key: "PrintScreen", code: "PrintScreen" });
+      await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+      expect(printTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ documentNumber: "001", terminalCode: "01" }),
+        expect.objectContaining({ openCashDrawerWithTicket: false }),
+      );
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/tickets/"))).toHaveLength(1);
+      expect(fetchMock.mock.calls.some(([url]) => /\/pos\/(cash|card)|\/finalize/.test(String(url)))).toBe(false);
+      await act(async () => finishPrint({ ok: true }));
+      expect(await screen.findByText("Copia del ticket 001 enviada a la impresora.")).toBeInTheDocument();
+      expect(checkoutProps.current?.sale?.lines).toEqual(cartBefore);
+      expect(search).toHaveFocus();
+    });
+
+    it("reports no ticket without falling back to another terminal", async () => {
+      const fetchMock = installCopyRequests(async () => Response.json({
+        code: "TICKET_NOT_FOUND", detail: "no ticket", status: 404,
+      }, { status: 404 }));
+      const printTicket = vi.fn();
+      installTicketHardware(printTicket);
+      renderSaleScreen();
+      await ready();
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      expect(await screen.findByText("No hay ningún ticket cobrado en este terminal.")).toBeInTheDocument();
+      expect(printTicket).not.toHaveBeenCalled();
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/tickets/"))).toHaveLength(1);
+    });
+
+    it("allows a fresh copy attempt after printer failure without repeating checkout", async () => {
+      installCopyRequests(copyResponse);
+      const printTicket = vi.fn().mockResolvedValueOnce({ ok: false, message: "printer offline" })
+        .mockResolvedValue({ ok: true });
+      installTicketHardware(printTicket);
+      renderSaleScreen();
+      await ready();
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      expect(await screen.findByText(/printer offline/)).toBeInTheDocument();
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      expect(await screen.findByText("Copia del ticket 001 enviada a la impresora.")).toBeInTheDocument();
+      expect(printTicket).toHaveBeenCalledTimes(2);
+    });
+
+    it("ignores repeats, modified keys, modal dialogs and a locked checkout", async () => {
+      const fetchMock = installCopyRequests(copyResponse);
+      installTicketHardware(vi.fn());
+      renderSaleScreen();
+      const search = await ready();
+      fireEvent.keyUp(search, { key: "PrintScreen", repeat: true });
+      for (const modifier of ["ctrlKey", "shiftKey", "altKey", "metaKey"]) {
+        fireEvent.keyUp(search, { key: "PrintScreen", [modifier]: true });
+      }
+      await act(async () => checkoutProps.current?.onLockedChange?.(true));
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      await act(async () => checkoutProps.current?.onLockedChange?.(false));
+      fireEvent.keyDown(window, { key: "F2" });
+      await screen.findByRole("dialog");
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/tickets/"))).toHaveLength(0);
+    });
+
+    it("does not print a late response after leaving the sales screen", async () => {
+      let resolveCopy!: (response: Response) => void;
+      const fetchMock = installCopyRequests(() => new Promise((resolve) => { resolveCopy = resolve; }));
+      const printTicket = vi.fn();
+      installTicketHardware(printTicket);
+      renderSaleScreen();
+      await ready();
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      await waitFor(() => expect(resolveCopy).toBeDefined());
+      cleanup();
+      await act(async () => resolveCopy(await copyResponse()));
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      expect(printTicket).not.toHaveBeenCalled();
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/tickets/"))).toHaveLength(1);
+    });
+
+    it("keeps the fiscal print-set order without printing the non-fiscal summary", async () => {
+      installCopyRequests(async () => Response.json({
+        printTicket: printSnapshot("001"), additionalPrintTickets: [printSnapshot("R-001")],
+        nonFiscalSummary: { ...printSnapshot("SUMMARY"), nonFiscalSummary: true },
+      }));
+      const printTicket = vi.fn().mockResolvedValue({ ok: true });
+      installTicketHardware(printTicket);
+      renderSaleScreen();
+      await ready();
+      fireEvent.keyUp(window, { key: "PrintScreen" });
+      expect(await screen.findByText("Copia del ticket 001 enviada a la impresora.")).toBeInTheDocument();
+      expect(printTicket.mock.calls.map(([ticket]) => ticket.documentNumber)).toEqual(["R-001", "001"]);
+    });
   });
 
   it("imports a confirmed previous ticket as an immutable current-repricing block", async () => {

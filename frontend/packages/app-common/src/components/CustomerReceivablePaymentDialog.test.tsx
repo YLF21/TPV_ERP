@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultHardwareConfig, type HardwareBridge } from "../hardware/hardware";
+import { printCustomerReceivablePaymentReceipt } from "../sale/ticketPrinting";
 import {
   CustomerReceivablePaymentDialog,
   receivablePaymentAttemptKey,
@@ -203,11 +205,20 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={onPaid}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
+    const transferButton = await screen.findByRole("button", { name: "Transferencia" });
+    await waitFor(() => expect(transferButton).toBeEnabled());
+    fireEvent.click(transferButton);
+    await waitFor(() => expect(transferButton).toHaveClass("selected"));
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
 
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/customer-receivables/doc-1/payments",
+      {
+        token: "token",
+        body: { pagos: [expect.objectContaining({ metodoPagoId: "transfer", importe: "20.00" })] },
+      },
+    ));
     await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, undefined));
     expect(onPaid).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("55,00"));
@@ -446,5 +457,104 @@ describe("CustomerReceivablePaymentDialog", () => {
       undefined,
       "es",
     ));
+  });
+
+  it("keeps a confirmed cash payment and change while regenerating a failed receipt without collecting again", async () => {
+    const cashReceipt = { ...transferReceipt, paymentId: "cash-request", method: "EFECTIVO", amount: "75.00", remaining: "0.00", renderedPdf: null, ticketRenderedImage: null };
+    const refreshedReceipt = { ...cashReceipt, renderedPdf: { contentType: "application/pdf" as const, base64: "fresh-pdf" }, ticketRenderedImage: { contentType: "image/png" as const, base64: "fresh-png" } };
+    const paid = { ...receivable, paidTotal: "100.00", pendingTotal: "0.00", status: "PAGADO" };
+    let resolveReceipt!: (value: unknown) => void;
+    let receiptRequests = 0;
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return methods;
+      if (path === "/terminal-configuration/payment") return terminalConfiguration;
+      if (path.endsWith("/payments")) return { receivable: paid, paymentReceipt: cashReceipt };
+      if (path === "/customer-receivables/doc-1/payments/cash-request/receipt") {
+        receiptRequests += 1;
+        if (receiptRequests === 1) throw new Error("Jasper unavailable");
+        return new Promise((resolve) => { resolveReceipt = resolve; });
+      }
+      throw new Error(path);
+    });
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue({ ...defaultHardwareConfig, ticketPrinterDriver: "WINDOWS_DRIVER" }),
+      printTicket,
+    } as unknown as HardwareBridge;
+    const printReceipt = vi.fn<typeof printCustomerReceivablePaymentReceipt>((snapshot, terminal, _bridge, locale) =>
+      printCustomerReceivablePaymentReceipt(snapshot, terminal, hardware, locale));
+    const onPaid = vi.fn();
+    render(<CustomerReceivablePaymentDialog
+      receivable={receivable} token="token" terminalCode="01"
+      terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+      request={request as any} printReceipt={printReceipt} onCancel={vi.fn()} onPaid={onPaid}
+    />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Efectivo" })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cobro realizado; impresión pendiente. No repitas el cobro.");
+    expect(printTicket).not.toHaveBeenCalled();
+    expect(screen.getByText("75,00")).toBeVisible();
+    expect(screen.getByText("100,00")).toBeVisible();
+    expect(screen.getByText("25,00")).toBeVisible();
+    expect(localStorage.getItem(`${receivablePaymentAttemptKey("01", "doc-1")}.standard`)).toBeNull();
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onPaid).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
+    expect(await screen.findByRole("button", { name: "Reintentar impresión" })).toBeVisible();
+    expect(printReceipt).toHaveBeenCalledTimes(1);
+
+    const retry = screen.getByRole("button", { name: "Reintentar impresión" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(receiptRequests).toBe(2));
+    await act(async () => { resolveReceipt(refreshedReceipt); });
+    await waitFor(() => expect(printReceipt).toHaveBeenLastCalledWith(refreshedReceipt, expect.anything(), undefined, "es"));
+    expect(printTicket).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ requireRenderedDocument: true, renderedPdf: refreshedReceipt.renderedPdf }), expect.anything());
+    expect(request).toHaveBeenCalledWith("/customer-receivables/doc-1/payments/cash-request/receipt", { token: "token" });
+    expect(request.mock.calls.filter(([path]) => path.endsWith("/payments"))).toHaveLength(1);
+    expect(screen.getByText("25,00")).toBeVisible();
+    fireEvent.keyDown(window, { key: "Enter" });
+    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(paid, undefined));
+  });
+
+  it.each(["Transferencia", "Tarjeta"])("retains a %s receipt retry that reloads its original payment after the dialog closes", async (method) => {
+    const initialReceipt = { ...transferReceipt, renderedPdf: null, ticketRenderedImage: null };
+    const refreshedReceipt = { ...transferReceipt, renderedPdf: { contentType: "application/pdf", base64: "fresh-pdf" } };
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return methods;
+      if (path === "/terminal-configuration/payment") return { rules: { cardManualEnabled: true } };
+      if (path.endsWith("/payments")) return { ...paymentResult, paymentReceipt: initialReceipt };
+      if (path === "/customer-receivables/doc-1/payments/payment-1/receipt") return refreshedReceipt;
+      throw new Error(path);
+    });
+    const printReceipt = vi.fn().mockResolvedValueOnce({ status: "FAILED" })
+      .mockResolvedValueOnce({ status: "FAILED" }).mockResolvedValue({ status: "PRINTED" });
+    const onPayment = vi.fn();
+    const view = render(<CustomerReceivablePaymentDialog
+      receivable={receivable} token="token" terminalCode="01"
+      terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+      request={request as any} printReceipt={printReceipt} onCancel={vi.fn()} onPaid={vi.fn()} onPayment={onPayment}
+    />);
+    await waitFor(() => expect(screen.getByRole("button", { name: method })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: method }));
+    fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "ACEPTAR" }));
+    await waitFor(() => expect(onPayment).toHaveBeenCalledWith(paymentResult.receivable, expect.any(Function)));
+    expect(screen.getByRole("alert")).toHaveTextContent("Cobro realizado; impresión pendiente. No repitas el cobro.");
+    expect(printReceipt).toHaveBeenCalledWith(initialReceipt, expect.anything(), undefined, "es");
+    expect(request.mock.calls.filter(([path]) => path.endsWith("/receipt"))).toHaveLength(0);
+    const retry = onPayment.mock.calls[0][1] as () => Promise<unknown>;
+    view.unmount();
+
+    const first = retry();
+    expect(retry()).toBe(first);
+    expect(await first).toEqual({ status: "FAILED" });
+    expect(await retry()).toEqual({ status: "PRINTED" });
+    expect(request.mock.calls.filter(([path]) => path.endsWith("/receipt"))).toHaveLength(2);
+    expect(printReceipt).toHaveBeenLastCalledWith(refreshedReceipt, expect.anything(), undefined, "es");
+    expect(request.mock.calls.filter(([path]) => path.endsWith("/payments"))).toHaveLength(1);
+    expect(request.mock.calls.some(([path]) => path.endsWith("/card-charges"))).toBe(false);
   });
 });

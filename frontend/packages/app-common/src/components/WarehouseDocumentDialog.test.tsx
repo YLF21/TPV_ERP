@@ -2,12 +2,14 @@
 
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiRequest } from "../api/client";
 import type { HardwareBridge } from "../hardware/hardware";
 import { tableLayoutStorageKey, writeStoredTableLayout } from "./tableLayoutPreferences";
 import {
   buildWarehouseDocumentCommand,
+  buildImportedWarehouseDocumentLine,
   canConfirmWarehouseDocument,
   createManualWarehouseDocumentLine,
   documentLineTotal,
@@ -16,6 +18,8 @@ import {
   warehouseDocumentPath,
   WarehouseDocumentDialog
 } from "./WarehouseDocumentDialog";
+import type { WarehouseImportProduct } from "./warehouseDocumentImport";
+import { previewRowToClassifiedRow } from "./SharedExcelImportDialog";
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -126,6 +130,38 @@ describe("WarehouseDocumentDialog", () => {
     expect(html).not.toContain("Cliente</span>");
   });
 
+  it("keeps the file menu open when the default warehouse arrives after opening", () => {
+    const props = {
+      mode: "input" as const,
+      open: true,
+      products,
+      warehouses: [],
+      customers,
+      suppliers,
+      token: "token",
+      onClose: vi.fn(),
+      onConfirmed: vi.fn()
+    };
+    const view = render(<WarehouseDocumentDialog {...props} />);
+
+    fireEvent.click(view.getByRole("button", { name: "Archivo" }));
+    expect(view.getByRole("button", { name: "Importar Excel" })).toBeTruthy();
+
+    view.rerender(<WarehouseDocumentDialog {...props} defaultWarehouseId="warehouse-1" />);
+
+    expect(view.getByRole("button", { name: "Importar Excel" })).toBeTruthy();
+  });
+
+  it("still refreshes a new server snapshot of the same document", () => {
+    const props = { mode: "output" as const, open: true, products, warehouses, customers, suppliers,
+      onClose: vi.fn(), onConfirmed: vi.fn() };
+    const view = render(<WarehouseDocumentDialog {...props} document={existingDocument} />);
+    expect((view.getByRole("textbox", { name: "Comentarios" }) as HTMLTextAreaElement).value).toBe("Rotura");
+    view.rerender(<WarehouseDocumentDialog {...props}
+      document={{ ...existingDocument, concept: "Revisión desde servidor" }} />);
+    expect((view.getByRole("textbox", { name: "Comentarios" }) as HTMLTextAreaElement).value).toBe("Revisión desde servidor");
+  });
+
   it("closes the document editor when Escape is pressed outside its controls", () => {
     const onClose = vi.fn();
     render(
@@ -223,6 +259,64 @@ describe("WarehouseDocumentDialog", () => {
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
+  it.each(["Guardar (F9)", "Confirmar"])("retains the draft and identifies a save conflict from %s without confirming", async (action) => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError("internal SQL detail", 409, { code: "DATA_INTEGRITY_CONFLICT" }));
+    const onConfirmed = vi.fn();
+    const { getByRole, findByText } = render(
+      <WarehouseDocumentDialog mode="input" open products={products} warehouses={warehouses}
+        customers={customers} suppliers={suppliers} token="token" canConfirm
+        document={{ ...existingDocument, id: "input-1", number: null, documentType: "FACTURA_ENTRADA", supplierId: "supplier-1" }}
+        onClose={vi.fn()} onConfirmed={onConfirmed} />
+    );
+    await waitFor(() => expect((getByRole("button", { name: action }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: action }));
+    expect(await findByText(/No se pudo guardar el borrador por un conflicto de datos/)).toBeTruthy();
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs/input-1", expect.objectContaining({ method: "PUT" }));
+    expect(onConfirmed).not.toHaveBeenCalled();
+    expect(getByRole("dialog").textContent).toContain("Cafe molido");
+    expect(getByRole("dialog").textContent).not.toContain("internal SQL detail");
+  });
+
+  it("saves the existing draft before sending confirmation and preserves uncertainty only for the confirmation stage", async () => {
+    const saved = { ...existingDocument, id: "input-1", number: null, documentType: "FACTURA_ENTRADA" as const, supplierId: "supplier-1" };
+    vi.mocked(apiRequest).mockResolvedValueOnce(saved as never)
+      .mockRejectedValueOnce(new ApiError("internal SQL detail", 409, { code: "DATA_INTEGRITY_CONFLICT" }));
+    const { getByRole, findByText } = render(
+      <WarehouseDocumentDialog mode="input" open products={products} warehouses={warehouses}
+        customers={customers} suppliers={suppliers} token="token" canConfirm document={saved}
+        onClose={vi.fn()} onConfirmed={vi.fn()} />
+    );
+    await waitFor(() => expect((getByRole("button", { name: "Confirmar" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Confirmar" }));
+    expect(await findByText(/Recarga el listado y comprueba/)).toBeTruthy();
+    expect(apiRequest).toHaveBeenNthCalledWith(1, "/warehouse-inputs/input-1", expect.objectContaining({ method: "PUT" }));
+    expect(apiRequest).toHaveBeenNthCalledWith(2, "/warehouse-inputs/input-1/confirm", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("keeps the supplier snapshot through StrictMode, descriptive edits and repeated saves", async () => {
+    const imported = { ...existingDocument, id: "input-1", documentType: "FACTURA_ENTRADA" as const,
+      supplierId: "supplier-1", hasExcelImport: true, excelImportPendingSupplierUpdate: true,
+      excelImportSnapshotToken: "WXP1.D.original" };
+    vi.mocked(apiRequest).mockResolvedValue({ ...imported, excelImportSnapshotToken: "WXP1.D.saved" } as never);
+    const view = render(<StrictMode><WarehouseDocumentDialog mode="input" open products={products}
+      warehouses={warehouses} suppliers={suppliers} customers={customers} token="token" document={imported}
+      onClose={vi.fn()} onConfirmed={vi.fn()} /></StrictMode>);
+    fireEvent.change(view.getByRole("textbox", { name: "Comentarios" }), { target: { value: "Revisado" } });
+    fireEvent.change(view.getByRole("textbox", { name: "Número externo" }), { target: { value: "EXT-123" } });
+    fireEvent.click(view.getByRole("button", { name: "Guardar (F9)" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs/input-1", expect.objectContaining({
+      body: expect.objectContaining({ expectedExcelImportSnapshotToken: "WXP1.D.original", concept: "Revisado", externalNumber: "EXT-123" })
+    })));
+    await waitFor(() => expect((view.getByRole("button", { name: "Guardar (F9)" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(view.getByRole("button", { name: "Guardar (F9)" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs/input-1", expect.objectContaining({
+      body: expect.objectContaining({ expectedExcelImportSnapshotToken: "WXP1.D.saved" })
+    })));
+    expect(vi.mocked(apiRequest).mock.calls.filter(([path]) => path === "/warehouse-inputs/input-1")
+      .every(([, options]) => !JSON.stringify(options).includes("clearExcelImport"))).toBe(true);
+  });
+
   it("blocks confirmation with no valid lines", () => {
     expect(canConfirmWarehouseDocument({
       warehouseId: "warehouse-1",
@@ -242,6 +336,308 @@ describe("WarehouseDocumentDialog", () => {
       partnerText: "",
       lines
     })).toBe(true);
+  });
+
+  it("builds a valid warehouse line from a product created by the Excel apply", () => {
+    const createdProduct = {
+      id: "created-from-excel",
+      code: "NEW-001",
+      barcode: "841000000099",
+      name: "Producto nuevo",
+      purchasePrice: 2.5,
+      salePrice: 4
+    };
+    const line = createManualWarehouseDocumentLine(createdProduct.id, 3, [createdProduct], 27);
+
+    expect(line).toEqual(expect.objectContaining({
+      valid: true,
+      rowNumber: 27,
+      productId: createdProduct.id,
+      productName: "Producto nuevo",
+      quantity: 3
+    }));
+  });
+
+  it("combines an applied Excel product and keeps its name and imported price in the line", () => {
+    const createdProduct = {
+      id: "created-from-excel",
+      code: "NEW-001",
+      name: "Producto nuevo",
+      purchasePrice: 2.5
+    };
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 27,
+      rowNumbers: [27],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 2,
+      draft: {
+        familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+        discountType: "", name: "Producto aplicado", description: "", comments: "",
+        code: "NEW-001", barcode: "", barcode2: "", supplierReference: "",
+        purchasePrice: "3.75", purchaseDiscountPercent: "", taxesIncluded: "",
+        salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+        offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+        packageQuantity: "", stockMin: "", stockMax: ""
+      },
+      product: { id: createdProduct.id, code: createdProduct.code, barcode: null },
+      errors: [],
+      structuredErrors: []
+    }, [createdProduct], "purchasePrice", "PURCHASE");
+
+    expect(line).toEqual(expect.objectContaining({
+      valid: true,
+      productId: createdProduct.id,
+      productName: "Producto aplicado",
+      unitPrice: 3.75,
+      priceOverridden: true
+    }));
+  });
+
+  it.each([
+    ["PURCHASE", "purchasePrice"],
+    ["SALE", "salePrice"],
+    ["MEMBER", "memberPrice"],
+    ["WHOLESALE", "wholesalePrice"],
+    ["OFFER", "offerPrice"]
+  ] as const)("uses only the selected %s tariff when the imported cell is empty and the tariff is missing", (mode, sourceKey) => {
+    const product: WarehouseImportProduct = {
+      id: "product-1",
+      purchasePrice: 11,
+      salePrice: 22,
+      memberPrice: 33,
+      wholesalePrice: 44,
+      offerPrice: 55
+    };
+    product[sourceKey] = null;
+    const draft = {
+      familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+      discountType: "", name: "Producto", description: "", comments: "",
+      code: "A001", barcode: "", barcode2: "", supplierReference: "",
+      purchasePrice: "", purchaseDiscountPercent: "", taxesIncluded: "",
+      salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+      offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+      packageQuantity: "", stockMin: "", stockMax: ""
+    };
+    draft[sourceKey] = "";
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 2,
+      rowNumbers: [2],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 1,
+      draft,
+      product: { id: product.id, code: product.code ?? null, barcode: product.barcode ?? null },
+      errors: [],
+      structuredErrors: []
+    }, [product], sourceKey, mode);
+
+    expect(line).toEqual(expect.objectContaining({
+      unitPrice: undefined,
+      priceOverridden: false,
+      valid: false,
+      errorKey: "warehouseDocument.error.priceUnavailable"
+    }));
+    expect(canConfirmWarehouseDocument({
+      warehouseId: "warehouse-1",
+      partnerId: "supplier-1",
+      partnerText: "Proveedor SL",
+      lines: [line]
+    })).toBe(false);
+    expect(buildWarehouseDocumentCommand("input", {
+      warehouseId: "warehouse-1",
+      partnerId: "supplier-1",
+      partnerText: "Proveedor SL",
+      date: "2026-07-08",
+      concept: "Compra",
+      lines: [line]
+    }).lines).toEqual([]);
+  });
+
+  it.each([
+    ["PURCHASE", "purchasePrice", 12.5],
+    ["SALE", "salePrice", 23.5],
+    ["MEMBER", "memberPrice", 34.5],
+    ["WHOLESALE", "wholesalePrice", 45.5],
+    ["OFFER", "offerPrice", 56.5]
+  ] as const)("uses the selected %s tariff, without falling back, when the imported cell is empty", (mode, sourceKey, expectedPrice) => {
+    const product: WarehouseImportProduct = {
+      id: "product-1",
+      purchasePrice: 99,
+      salePrice: 98,
+      memberPrice: 97,
+      wholesalePrice: 96,
+      offerPrice: 95
+    };
+    product[sourceKey] = expectedPrice;
+    const draft = {
+      familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+      discountType: "", name: "Producto", description: "", comments: "",
+      code: "A001", barcode: "", barcode2: "", supplierReference: "",
+      purchasePrice: "", purchaseDiscountPercent: "", taxesIncluded: "",
+      salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+      offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+      packageQuantity: "", stockMin: "", stockMax: ""
+    };
+    draft[sourceKey] = "";
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 2,
+      rowNumbers: [2],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 1,
+      draft,
+      product: { id: product.id, code: product.code ?? null, barcode: product.barcode ?? null },
+      errors: [],
+      structuredErrors: []
+    }, [product], sourceKey, mode);
+
+    expect(line.unitPrice).toBe(expectedPrice);
+    expect(line.priceOverridden).toBe(false);
+  });
+
+  it.each([17.5, 0, null])("uses the latest backend tariff %s for an empty cell instead of the stale page catalog", (tariff) => {
+    const row = previewRowToClassifiedRow({
+      rowNumber: 2, rowNumbers: [2], classification: "EXISTING", excelData: { code: "A001", purchasePrice: "" },
+      databaseData: { id: "product-1", code: "A001", purchasePrice: tariff }, changes: {}, errors: [], purchasePriceChanged: false
+    }, [["Código", "Precio"], ["A001", ""]], { code: "A", purchasePrice: "B" }, "");
+    const line = buildImportedWarehouseDocumentLine({ ...row, quantity: 1, updateFields: {} },
+      [{ id: "product-1", code: "A001", name: "Producto", purchasePrice: 5 }], "purchasePrice", "PURCHASE");
+    expect(line.unitPrice).toBe(tariff === null ? undefined : tariff);
+    expect(line.valid).toBe(tariff !== null);
+    expect(line.priceOverridden).toBe(false);
+  });
+
+  it("keeps an explicit Excel zero instead of replacing it with the database tariff", () => {
+    const product: WarehouseImportProduct = {
+      id: "product-1", purchasePrice: 12.5, salePrice: 8, memberPrice: 7,
+      wholesalePrice: 6, offerPrice: 5
+    };
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 2,
+      rowNumbers: [2],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 1,
+      draft: {
+        familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+        discountType: "", name: "Producto", description: "", comments: "",
+        code: "A001", barcode: "", barcode2: "", supplierReference: "",
+        purchasePrice: "", purchaseDiscountPercent: "", taxesIncluded: "",
+        salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+        offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+        packageQuantity: "", stockMin: "", stockMax: ""
+      },
+      excelData: { purchasePrice: "0" },
+      product: { id: product.id, code: "A001", barcode: null },
+      errors: [],
+      structuredErrors: []
+    }, [product], "purchasePrice", "PURCHASE");
+
+    expect(line).toEqual(expect.objectContaining({ unitPrice: 0, priceOverridden: true }));
+  });
+
+  it("blocks a non-canonical imported document price instead of silently converting it to zero", () => {
+    const product: WarehouseImportProduct = {
+      id: "product-1", purchasePrice: 12.5, salePrice: 8, memberPrice: 7,
+      wholesalePrice: 6, offerPrice: 5
+    };
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 2,
+      rowNumbers: [2],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 1,
+      draft: {
+        familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+        discountType: "", name: "Producto", description: "", comments: "",
+        code: "A001", barcode: "", barcode2: "", supplierReference: "",
+        purchasePrice: "", purchaseDiscountPercent: "", taxesIncluded: "",
+        salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+        offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+        packageQuantity: "", stockMin: "", stockMax: ""
+      },
+      excelData: { salePrice: "1.234,56" },
+      product: { id: product.id, code: "A001", barcode: null },
+      errors: [],
+      structuredErrors: []
+    }, [product], "salePrice", "SALE");
+
+    expect(line).toEqual(expect.objectContaining({
+      unitPrice: undefined,
+      priceOverridden: true,
+      valid: false,
+      errorKey: "warehouseDocument.error.invalidImportedPrice"
+    }));
+  });
+
+  it("blocks an invalid imported purchase discount instead of silently applying zero", () => {
+    const product: WarehouseImportProduct = { id: "product-1", salePrice: 8 };
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 2,
+      rowNumbers: [2],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 1,
+      draft: {
+        familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+        discountType: "", name: "Producto", description: "", comments: "",
+        code: "A001", barcode: "", barcode2: "", supplierReference: "",
+        purchasePrice: "", purchaseDiscountPercent: "", taxesIncluded: "",
+        salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+        offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+        packageQuantity: "", stockMin: "", stockMax: ""
+      },
+      excelData: { salePrice: "1234.56", purchaseDiscountPercent: "100.01" },
+      product: { id: product.id, code: "A001", barcode: null },
+      errors: [],
+      structuredErrors: []
+    }, [product], "salePrice", "SALE");
+
+    expect(line).toEqual(expect.objectContaining({
+      unitPrice: 1234.56,
+      discountPercent: "100.01",
+      valid: false,
+      errorKey: "warehouseDocument.error.invalidImportedDiscount"
+    }));
+  });
+
+  it("uses canonical server prices and discounts in an imported document line", () => {
+    const product: WarehouseImportProduct = { id: "product-1", salePrice: 8 };
+    const line = buildImportedWarehouseDocumentLine({
+      rowNumber: 2,
+      rowNumbers: [2],
+      status: "accepted",
+      source: [],
+      updateFields: {},
+      quantity: 1,
+      draft: {
+        familyId: "", subfamilyId: "", taxId: "", productType: "", priceUseMode: "",
+        discountType: "", name: "Producto", description: "", comments: "",
+        code: "A001", barcode: "", barcode2: "", supplierReference: "",
+        purchasePrice: "", purchaseDiscountPercent: "", taxesIncluded: "",
+        salePrice: "", memberPrice: "", wholesalePrice: "", offerPrice: "",
+        offerDiscountPercent: "", offerActive: "", offerFrom: "", offerUntil: "",
+        packageQuantity: "", stockMin: "", stockMax: ""
+      },
+      excelData: { salePrice: "1234.56", purchaseDiscountPercent: "10.5" },
+      product: { id: product.id, code: "A001", barcode: null },
+      errors: [],
+      structuredErrors: []
+    }, [product], "salePrice", "SALE");
+
+    expect(line).toEqual(expect.objectContaining({
+      unitPrice: 1234.56,
+      discountPercent: "10.5",
+      priceOverridden: true,
+      valid: true
+    }));
   });
 
   it("builds output and input commands for backend endpoints", () => {
@@ -326,14 +722,169 @@ describe("WarehouseDocumentDialog", () => {
       }],
       excelImport: {
         fileName: "productos.xlsx",
-        formulas: [{ cell: "I2", formula: "E2*2.5", calculatedValue: "10.25" }]
+        updateSupplier: true,
+        skipZeroPriceUpdate: true,
+        formulas: [{ cell: "I2", formula: "E2*2.5", calculatedValue: "10.25" }],
+        lines: [{ productId: "product-1", rowNumbers: [2], supplierReference: "REF-1", grossPurchasePrice: "4.2", purchaseDiscountPercent: "5" }]
       }
     })).toEqual(expect.objectContaining({
       excelImport: {
         fileName: "productos.xlsx",
-        formulas: [{ cell: "I2", formula: "E2*2.5", calculatedValue: "10.25" }]
+        updateSupplier: true,
+        skipZeroPriceUpdate: true,
+        formulas: [{ cell: "I2", formula: "E2*2.5", calculatedValue: "10.25" }],
+        lines: [{ productId: "product-1", rowNumbers: [2], supplierReference: "REF-1", grossPurchasePrice: "4.2", purchaseDiscountPercent: "5" }]
       }
     }));
+    const command = buildWarehouseDocumentCommand("input", {
+      warehouseId: "warehouse-1",
+      partnerId: "supplier-1",
+      partnerText: "Proveedor SL",
+      date: "2026-07-08",
+      concept: "Compra",
+      lines,
+      excelImport: {
+        fileName: "productos.xlsx",
+        updateSupplier: true,
+        skipZeroPriceUpdate: true,
+        formulas: [],
+      }
+    });
+    expect(command).not.toHaveProperty("excelImport.rowNumbers");
+    expect(command).not.toHaveProperty("excelImport.options");
+  });
+
+  it("keeps apply provenance separate from the document snapshot token", () => {
+    const metadata = {
+      fileName: "productos.xlsx",
+      updateSupplier: false,
+      skipZeroPriceUpdate: false,
+      formulas: [],
+      lines: []
+    };
+    const applyToken = `WXP1.A.${"A".repeat(512)}`;
+    const snapshotToken = `WXP1.D.${"D".repeat(512)}`;
+    const base = {
+      warehouseId: "warehouse-1",
+      partnerId: "supplier-1",
+      partnerText: "Proveedor SL",
+      date: "2026-07-08",
+      concept: "Compra",
+      lines,
+      excelImport: metadata
+    };
+
+    const imported = buildWarehouseDocumentCommand("input", {
+      ...base,
+      excelImportProvenanceToken: applyToken
+    });
+    expect(imported).toHaveProperty("excelImportProvenanceToken", applyToken);
+    expect(imported).not.toHaveProperty("expectedExcelImportSnapshotToken");
+
+    const reopened = buildWarehouseDocumentCommand("input", {
+      ...base,
+      excelImport: undefined,
+      excelImportSnapshotToken: snapshotToken
+    });
+    expect(reopened).not.toHaveProperty("excelImportProvenanceToken");
+    expect(reopened).toHaveProperty("expectedExcelImportSnapshotToken", snapshotToken);
+  });
+
+  it("requires a reviewed import after editing a line instead of silently clearing Excel metadata", async () => {
+    const readResult = {
+      fileName: "productos.xlsx",
+      sha256: "a".repeat(64),
+      sheetName: "Hoja1",
+      rows: [
+        [{ value: "Codigo" }, { value: "Nombre" }, { value: "Cantidad" }],
+        [{ value: "A001" }, { value: "Cafe molido" }, { value: "3" }]
+      ],
+      formulas: [],
+      nonEmptyRows: 2,
+      columns: 3,
+      nonEmptyCells: 6
+    };
+    const previewRow = {
+      rowNumber: 2,
+      rowNumbers: [2],
+      classification: "EXISTING",
+      excelData: { code: "A001", name: "Cafe molido", quantity: "3", purchasePrice: "2.50" },
+      databaseData: { id: "product-1", code: "A001", name: "Cafe molido", purchasePrice: "2.50" },
+      version: 1,
+      changes: {},
+      errors: [],
+      purchasePriceChanged: false,
+      masterDataChanged: false,
+      concurrencyToken: "token-1"
+    };
+    const calls: Array<{ path: string; body?: unknown }> = [];
+    vi.mocked(apiRequest).mockImplementation(async (path, options = {}) => {
+      calls.push({ path, body: options.body });
+      if (path.includes("/product-excel-imports/read")) return readResult as never;
+      if (path.includes("/product-excel-imports/preview")) {
+        return {
+          fileName: "productos.xlsx", sha256: "a".repeat(64), sheetName: "Hoja1",
+          rows: [previewRow], detectedRows: 1, existingRows: 1, missingRows: 0, errors: [], previewFingerprint: "b".repeat(64)
+        } as never;
+      }
+      if (path.includes("/product-excel-imports/apply")) {
+        return {
+          fileName: "productos.xlsx", sha256: "a".repeat(64),
+          rows: [{ rowNumber: 2, rowNumbers: [2], classification: "EXISTING", productId: "product-1", errors: [] }],
+          errors: [], appliedCount: 0,
+          warehouseMetadata: { fileName: "productos.xlsx", formulas: [], sha256: "a".repeat(64), sheetName: "Hoja1", updateSupplier: false, skipZeroPriceUpdate: true, lines: [] },
+          warehouseProvenanceToken: "signed-preview"
+        } as never;
+      }
+      if (path === "/warehouse-inputs/input-1") {
+        return {
+          id: "input-1", number: "ENT-1", warehouseId: "warehouse-1", supplierId: "supplier-1",
+          origin: "Proveedor SL", date: "2026-07-08", status: "BORRADOR", lines: [{ productId: "product-1", quantity: 3 }]
+        } as never;
+      }
+      return { items: [] } as never;
+    });
+
+    const { container, getByRole, getAllByRole } = render(
+      <WarehouseDocumentDialog
+        mode="input"
+        open
+        products={products}
+        warehouses={warehouses}
+        suppliers={suppliers}
+        customers={[]}
+        token="token"
+        document={{
+          id: "input-1", number: "ENT-1", warehouseId: "warehouse-1", supplierId: "supplier-1",
+          origin: "Proveedor SL", date: "2026-07-08", status: "BORRADOR",
+          lines: [{ productId: "product-1", quantity: 1 }]
+        }}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.click(getByRole("button", { name: "Archivo" }));
+    fireEvent.click(getByRole("button", { name: "Importar Excel" }));
+    const fileInput = container.querySelector<HTMLInputElement>("input[type=file]");
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput!, { target: { files: [new File(["xlsx"], "productos.xlsx")] } });
+    await waitFor(() => expect(container.querySelector<HTMLInputElement>('[aria-label="Código Columna Excel"]')?.value).toBe("A"));
+    await waitFor(() => expect((getByRole("button", { name: "Aplicar" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect((getByRole("button", { name: "Importar Excel al documento" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Importar Excel al documento" }));
+    await waitFor(() => expect(container.querySelectorAll(".warehouse-document-table tbody tr")).toHaveLength(1));
+
+    fireEvent.doubleClick(container.querySelector(".warehouse-document-table tbody tr")!);
+    const lineDialog = await waitFor(() => getByRole("dialog", { name: "Editar línea" }));
+    const inputs = lineDialog.querySelectorAll<HTMLInputElement>("input");
+    fireEvent.change(inputs[0], { target: { value: "2" } });
+    fireEvent.click(getAllByRole("button", { name: "Guardar" }).at(-1)!);
+    await waitFor(() => expect((getByRole("button", { name: "Guardar (F9)" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Guardar (F9)" }));
+    await waitFor(() => expect(container.textContent).toContain("No se ha eliminado la actualización pendiente del proveedor"));
+    expect(calls.some((call) => call.path === "/warehouse-inputs/input-1")).toBe(false);
   });
 
   it("creates a valid manual line from the product master", () => {
@@ -350,6 +901,10 @@ describe("WarehouseDocumentDialog", () => {
     const lineTotal = documentLineTotal(100, 2, "20");
     expect(lineTotal).toBe(160);
     expect(documentTotalAfterDiscount(lineTotal, "5")).toBe(152);
+    expect(documentLineTotal(1.95, 6, "5")).toBe(11.12);
+    expect(documentLineTotal(2.208, 10, "0")).toBe(22.08);
+    expect(documentLineTotal(11.7, 1, "33,33")).toBe(7.80);
+    expect(documentTotalAfterDiscount(11.7, "5")).toBe(11.12);
   });
 
   it("uses the translated conflict message instead of exposing backend copy", () => {

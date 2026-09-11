@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -437,7 +438,7 @@ describe("ProductCreateDialog", () => {
     vi.unstubAllGlobals();
   });
 
-  it("clears the subfamily UUID when resolving a three-digit family code", async () => {
+  it("clears the subfamily UUID and saves on the first click after a resolved code loses focus", async () => {
     const updateProduct = vi.fn().mockResolvedValue({ id: "product-1" });
     const family = {
       id: "family-1",
@@ -497,6 +498,11 @@ describe("ProductCreateDialog", () => {
     await waitFor(() =>
       expect(view.container.textContent).not.toContain("Resolviendo..."),
     );
+    await waitFor(() => expect(businessId).toHaveAttribute("aria-busy", "false"));
+    const resolutionCount = fetchMock.mock.calls.filter(([input]) => String(input).includes("/families/resolve?code=123")).length;
+    fireEvent.blur(businessId);
+    expect(businessId).toHaveAttribute("aria-busy", "false");
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/families/resolve?code=123"))).toHaveLength(resolutionCount);
     fireEvent.click(
       Array.from(view.container.querySelectorAll("button")).find((button) =>
         button.textContent?.includes("Guardar"),
@@ -782,7 +788,7 @@ describe("ProductCreateDialog", () => {
   });
 
   it("does not let a blurred code resolution overwrite a tree selection", async () => {
-    let resolveLookup!: (response: Response) => void;
+    let resolveLookup!: () => void;
     const family = {
       id: "family-1",
       familyCode: "123",
@@ -797,25 +803,27 @@ describe("ProductCreateDialog", () => {
       name: "Café",
       order: 1,
     };
-    const lookupResponse = new Promise<Response>((resolve) => {
+    const lookupResponse = new Promise<void>((resolve) => {
       resolveLookup = resolve;
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.endsWith("/families"))
-          return new Response(JSON.stringify([family]), { status: 200 });
-        if (url.includes("/families/family-1/subfamilies"))
-          return new Response(JSON.stringify([subfamily]), { status: 200 });
-        if (url.includes("/families/resolve?code=123")) return lookupResponse;
-        if (url.endsWith("/taxes/selectable"))
-          return new Response(JSON.stringify([]), { status: 200 });
-        if (url.endsWith("/products"))
-          return new Response(JSON.stringify([]), { status: 200 });
-        return new Response("not found", { status: 404 });
-      }),
-    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/families"))
+        return new Response(JSON.stringify([family]), { status: 200 });
+      if (url.includes("/families/family-1/subfamilies"))
+        return new Response(JSON.stringify([subfamily]), { status: 200 });
+      if (url.includes("/families/resolve?code=123")) {
+        await lookupResponse;
+        // Change and blur each request a resolution; response bodies cannot be reused.
+        return new Response(JSON.stringify({ family }), { status: 200 });
+      }
+      if (url.endsWith("/taxes/selectable"))
+        return new Response(JSON.stringify([]), { status: 200 });
+      if (url.endsWith("/products"))
+        return new Response(JSON.stringify([]), { status: 200 });
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     const view = render(
       <ProductCreateDialog
@@ -825,14 +833,23 @@ describe("ProductCreateDialog", () => {
         onClose={() => undefined}
       />,
     );
-    await waitFor(() =>
-      expect(view.container.textContent).toContain("Bebidas"),
-    );
     const businessId = view.container.querySelector<HTMLInputElement>(
       'input[data-product-field-name="familyBusinessCode"]',
     )!;
+    // The family name renders before its code is initialized by the following effect.
+    await waitFor(() => {
+      expect(businessId).toHaveValue("123");
+      expect(businessId).toHaveAttribute("aria-busy", "false");
+    });
+    // Start a real edit; blurring the already resolved default no longer refetches it.
+    fireEvent.change(businessId, { target: { value: "12" } });
     fireEvent.change(businessId, { target: { value: "123" } });
+    const lookupCalls = () => fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/families/resolve?code=123"),
+    );
+    expect(lookupCalls()).toHaveLength(1);
     fireEvent.blur(businessId);
+    expect(lookupCalls()).toHaveLength(2);
     await waitFor(() =>
       expect(view.container.textContent).toContain("Resolviendo..."),
     );
@@ -863,14 +880,15 @@ describe("ProductCreateDialog", () => {
       ).toHaveValue("123456"),
     );
 
-    resolveLookup(new Response(JSON.stringify({ family }), { status: 200 }));
-    await waitFor(() =>
-      expect(
-        view.container.querySelector<HTMLInputElement>(
-          'input[data-product-field-name="familyBusinessCode"]',
-        ),
-      ).toHaveValue("123456"),
-    );
+    // Flush both late responses before asserting: the value already matches before they finish.
+    await act(async () => {
+      resolveLookup();
+    });
+    expect(businessId).toHaveValue("123456");
+    expect(businessId).toHaveAttribute("aria-busy", "false");
+    expect(
+      view.container.querySelector(".product-family-business-summary"),
+    ).toHaveTextContent("Café");
     vi.unstubAllGlobals();
   });
 

@@ -6,6 +6,8 @@ export type ApiRequestOptions = {
   body?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  responseType?: "json" | "blob";
+  onResponseHeaders?: (headers: Headers) => void;
 };
 
 export class ApiError extends Error {
@@ -106,8 +108,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     throw new ApiError(traceId ? `${message} (Ref: ${traceId})` : message, response.status, problem, traceId);
   }
 
+  options.onResponseHeaders?.(response.headers);
+
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  if (options.responseType === "blob") {
+    return response.blob() as Promise<T>;
   }
 
   if (typeof response.text !== "function") {

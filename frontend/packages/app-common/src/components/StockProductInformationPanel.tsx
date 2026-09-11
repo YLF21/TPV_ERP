@@ -83,7 +83,7 @@ export function StockProductInformationPanel({
   });
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
-    { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+    { minimumFractionDigits: 2, maximumFractionDigits: 3 }
   ), [locale]);
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",

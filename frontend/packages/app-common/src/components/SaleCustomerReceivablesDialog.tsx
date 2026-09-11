@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { retryPrintSucceeded } from "../sale/printRetry";
+import { printCustomerReceivablePaymentReceipt } from "../sale/ticketPrinting";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
 import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./CustomerReceivablePaymentDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
@@ -24,6 +26,7 @@ type Props = {
   terminalContext: TerminalContext;
   customer: SaleCustomerSummary;
   request?: Request;
+  printReceipt?: typeof printCustomerReceivablePaymentReceipt;
   onClose: () => void;
 };
 
@@ -50,6 +53,7 @@ export function SaleCustomerReceivablesDialog({
   terminalContext,
   customer,
   request = apiRequest,
+  printReceipt = printCustomerReceivablePaymentReceipt,
   onClose,
 }: Props) {
   const t = createTranslator(locale);
@@ -59,6 +63,20 @@ export function SaleCustomerReceivablesDialog({
   const [payment, setPayment] = useState<CustomerReceivable | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryPrint, setRetryPrint] = useState<(() => Promise<unknown>) | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const printInFlight = useRef(false);
+  const close = useCallback(() => { if (!printInFlight.current) onClose(); }, [onClose]);
+
+  async function retryFailedPrint() {
+    if (!retryPrint || printInFlight.current) return;
+    const operation = retryPrint;
+    printInFlight.current = true;
+    setPrinting(true);
+    try {
+      if (await retryPrintSucceeded(operation)) setRetryPrint((current) => current === operation ? null : current);
+    } finally { printInFlight.current = false; setPrinting(false); }
+  }
 
   const openRows = useMemo(() => rows
     .filter((row) => row.status !== "PAGADO" && Number(row.pendingTotal) > 0)
@@ -94,6 +112,11 @@ export function SaleCustomerReceivablesDialog({
     : undefined, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (printInFlight.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -124,7 +147,7 @@ export function SaleCustomerReceivablesDialog({
           <h2 id="sale-customer-receivables-title">{t("sale.customer.receivables.title")}</h2>
           <span>{customer.clientId} · {customer.fiscalName}</span>
         </div>
-        <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+        <button type="button" aria-label={t("common.close")} disabled={printing} onClick={close}>×</button>
       </header>
       <div className="sale-customer-receivables-summary">
         <div><span>{t("sale.customer.receivables.pending")}</span><strong className={totalPending > 0 ? "debt" : ""}>{amount(totalPending, locale)} €</strong></div>
@@ -147,6 +170,7 @@ export function SaleCustomerReceivablesDialog({
             type="button"
             role="row"
             key={row.documentId}
+            disabled={printing}
             className={`sale-customer-receivables-row ${row.documentId === selectedId ? "selected " : ""}${row.overdue ? "overdue" : ""}`.trim()}
             aria-current={row.documentId === selectedId}
             onClick={() => setSelectedId(row.documentId)}
@@ -162,11 +186,15 @@ export function SaleCustomerReceivablesDialog({
           {!loading && !error && openRows.length === 0 && <p className="sale-customer-receivables-empty">{t("sale.customer.receivables.empty")}</p>}
         </div>
       </div>
+      {retryPrint && <p className="sale-action-error" role="alert">{t("receivables.print.pending")}</p>}
       <footer className="sale-customer-receivables-footer">
         <p><kbd>↑</kbd><kbd>↓</kbd> {t("sale.customer.receivables.navigateHint")} · <kbd>Enter</kbd> {t("sale.customer.receivables.collectHint")}</p>
         <div className="sale-action-buttons">
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
-          <button type="button" disabled={!selected} onClick={() => selected && setPayment(selected)}>{t("receivables.action.collect")}</button>
+          {retryPrint && <button type="button" disabled={printing}
+            onKeyDown={(event) => event.stopPropagation()}
+            onClick={() => void retryFailedPrint()}>{printing ? t("receivables.history.printing") : t("payment.result.retryPrint")}</button>}
+          <button type="button" disabled={printing} onClick={close}>{t("common.close")}</button>
+          <button type="button" disabled={!selected || printing} onClick={() => selected && setPayment(selected)}>{t("receivables.action.collect")}</button>
         </div>
       </footer>
     </section>
@@ -178,13 +206,16 @@ export function SaleCustomerReceivablesDialog({
       terminalCode={terminalContext.terminalCode}
       terminalContext={terminalContext}
       request={request}
+      printReceipt={printReceipt}
       onCancel={() => setPayment(null)}
-      onPayment={(updated) => {
+      onPayment={(updated, retry) => {
         setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row));
+        setRetryPrint((current) => retry ?? current);
         setPayment(updated);
       }}
-      onPaid={(updated) => {
+      onPaid={(updated, retry) => {
         setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row));
+        setRetryPrint((current) => retry ?? current);
         setPayment(null);
         void load();
       }}

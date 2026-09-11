@@ -27,7 +27,7 @@ public class ProductPrice {
     @Column(nullable = false, length = 16)
     private PriceTier tarifa;
 
-    @Column(precision = 19, scale = 2)
+    @Column(precision = 20, scale = 3)
     private BigDecimal importe;
 
     @Version
@@ -59,6 +59,6 @@ public class ProductPrice {
         } else if (amount != null && amount.compareTo(MIN_OPTIONAL_PRICE) < 0) {
             throw new IllegalArgumentException("El precio opcional debe ser nulo o mayor o igual que 0.01");
         }
-        importe = amount;
+        importe = amount == null ? null : com.tpverp.backend.document.Money.exactUnitPrice(amount);
     }
 }

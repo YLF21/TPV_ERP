@@ -1,0 +1,27 @@
+.customer-model347-overlay { z-index: 80; }
+.customer-model347-dialog {
+  box-sizing: border-box; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 40px);
+  overflow-y: auto; border: 1px solid #8fa9c6; background: #fff; color: #0c2d54;
+}
+.customer-model347-dialog > header { padding: 12px 16px; background: #0c2d54; color: #fff; }
+.customer-model347-dialog h2 { margin: 0; font-size: 19px; }
+.customer-model347-dialog form { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.customer-model347-dialog p { margin: 0; font-size: 13px; line-height: 1.45; }
+.customer-model347-dialog .customer-model347-customer { font-weight: 700; overflow-wrap: anywhere; }
+.customer-model347-year { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 700; }
+.customer-model347-year input {
+  box-sizing: border-box; width: 116px; height: 36px; padding: 6px 8px;
+  border: 1px solid #91abc8; border-radius: 0; background: #fff; color: #0c2d54; font: inherit;
+}
+.customer-model347-year input[readonly] { background: #f0f5fa; }
+.customer-model347-notice { padding: 8px; background: #f0f5fa; border: 1px solid #c5d3e3; }
+.customer-model347-error { color: #a12020; }
+.customer-model347-dialog footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.customer-model347-dialog button {
+  min-height: 36px; padding: 7px 15px; border: 1px solid #91abc8; border-radius: 0;
+  background: #fff; color: #0c2d54; font: inherit; font-size: 14px; font-weight: 700;
+}
+.customer-model347-dialog .customer-model347-generate { background: #1c6daf; border-color: #14578f; color: #fff; }
+.customer-model347-dialog button:disabled { color: #53677c; background: #e1e7ee; cursor: default; }
+.customer-model347-dialog :focus-visible { outline: 2px solid #1c6daf; outline-offset: -3px; }
+.customer-model347-dialog .customer-model347-generate:focus-visible { outline-color: #fff; }

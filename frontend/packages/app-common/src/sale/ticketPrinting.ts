@@ -325,15 +325,24 @@ export function ticketAsA4Document(
 export async function outputConfirmedTicket(
   snapshot: ConfirmedTicketPrintSnapshot,
   terminal: TerminalContext,
-  mode: SalePrintMode,
+  mode: SalePrintMode | "TICKET_COPY",
   locale: LocaleCode = "es",
   hardware: HardwareBridge = getHardwareBridge(),
+  signal?: AbortSignal,
 ): Promise<TicketPrintOutcome> {
-  if (mode === "NONE") return { status: "SKIPPED" };
+  if (mode === "NONE" || signal?.aborted) return { status: "SKIPPED" };
   try {
     const config = await hardware.getHardwareConfig();
-    if (mode === "DEFAULT") {
-      return await sendConfirmedTicket(snapshot, terminal, hardware, config, locale);
+    if (signal?.aborted) return { status: "SKIPPED" };
+    if (mode === "DEFAULT" || mode === "TICKET_COPY") {
+      const printConfig = mode === "TICKET_COPY" ? {
+        ...config,
+        openCashDrawerWithTicket: false,
+        documentPrintRoutes: config.documentPrintRoutes.map((route) => route.documentType === "TICKET"
+          ? { ...route, copies: 1, printAutomatically: true }
+          : route),
+      } : config;
+      return await sendConfirmedTicket(snapshot, terminal, hardware, printConfig, locale);
     }
     if (mode === "PDF") {
       const safeNumber = snapshot.documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
@@ -388,14 +397,16 @@ export async function outputConfirmedTicket(
 export async function outputConfirmedTicketsSequentially(
   snapshots: readonly ConfirmedTicketPrintSnapshot[],
   terminal: TerminalContext,
-  mode: SalePrintMode,
+  mode: SalePrintMode | "TICKET_COPY",
   locale: LocaleCode = "es",
   hardware: HardwareBridge = getHardwareBridge(),
+  signal?: AbortSignal,
 ): Promise<TicketPrintOutcome> {
   const failedDocuments: NonNullable<TicketPrintOutcome["failedDocuments"]> = [];
   let printed = false;
   for (const snapshot of snapshots) {
-    const outcome = await outputConfirmedTicket(snapshot, terminal, mode, locale, hardware);
+    if (signal?.aborted) break;
+    const outcome = await outputConfirmedTicket(snapshot, terminal, mode, locale, hardware, signal);
     if (outcome.status === "PRINTED") printed = true;
     if (outcome.status === "FAILED") {
       failedDocuments.push({
@@ -668,11 +679,17 @@ export async function printCustomerReceivablePaymentReceipt(
   try {
     const t = createTranslator(locale);
     const config = await hardware.getHardwareConfig();
+    const representation = config.ticketPrinterDriver === "ESCPOS_RAW"
+      ? snapshot.ticketRenderedImage : snapshot.renderedPdf;
+    const contentType = config.ticketPrinterDriver === "ESCPOS_RAW"
+      ? "image/png" : "application/pdf";
+    if (representation?.contentType !== contentType || !representation.base64?.trim()) {
+      return { status: "FAILED", technicalMessage: t("receivables.print.jasperUnavailable") };
+    }
     const amount = Number(snapshot.amount);
     const methodLabel = printablePaymentMethodLabel(snapshot.method);
-    const escposMethodLabel = methodLabel.normalize("NFKD")
-      .replace(/[^\x20-\x7e]/g, "").trim() || "CARD";
     const result = await hardware.printTicket({
+      requireRenderedDocument: true,
       documentNumber: `${t("receivables.print.collection")} ${snapshot.documentNumber} / ${snapshot.paymentId}`,
       storeName: terminal.storeName,
       terminalCode: terminal.terminalCode,
@@ -690,15 +707,6 @@ export async function printCustomerReceivablePaymentReceipt(
       total: amount,
       labels: { terminal: t("print.a4.terminal"), item: t("print.ticket.item"),
         quantity: t("print.ticket.quantity"), price: t("print.ticket.price"), total: t("print.a4.total") },
-      escposLabels: locale === "zh"
-        ? { terminal: "Zhongduan", item: "Shangpin", quantity: "Shuliang", price: "Jiage", total: "Zongji" }
-        : { terminal: "Terminal", item: locale === "es" ? "Articulo" : "Item", quantity: locale === "es" ? "Cant." : "Qty.", price: locale === "es" ? "Precio" : "Price", total: locale === "es" ? "TOTAL" : "Total" },
-      escposContent: locale === "zh" ? {
-        storeName: "Dianpu", terminalCode: `terminal-${terminal.terminalCode.replace(/[^A-Za-z0-9_-]/g, "").replace(/^-+/, "") || "local"}`,
-        documentNumber: `Shoukuan ${snapshot.paymentId}`,
-        lineNames: [`Kehu ${snapshot.documentNumber.replace(/[^\x20-\x7e]/g, "") || snapshot.paymentId}`],
-        paymentMethods: [`Fangshi ${escposMethodLabel}`]
-      } : undefined,
       ...(snapshot.renderedPdf ? { renderedPdf: snapshot.renderedPdf } : {}),
       ...(snapshot.ticketRenderedImage ? {
         documentRaster: `data:${snapshot.ticketRenderedImage.contentType};base64,${snapshot.ticketRenderedImage.base64}`,

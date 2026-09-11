@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 
 public interface WarehouseInputRepository extends JpaRepository<WarehouseInput, UUID> {
 
@@ -50,6 +52,11 @@ public interface WarehouseInputRepository extends JpaRepository<WarehouseInput, 
 
     @EntityGraph(attributePaths = "lines")
     Optional<WarehouseInput> findByIdAndStoreId(UUID id, UUID storeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = "lines")
+    @Query("select distinct input from WarehouseInput input where input.id = :id and input.storeId = :storeId")
+    Optional<WarehouseInput> findByIdAndStoreIdForUpdate(UUID id, UUID storeId);
 
     @Query("""
             select count(input) > 0

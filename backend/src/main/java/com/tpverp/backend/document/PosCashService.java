@@ -602,7 +602,7 @@ public class PosCashService {
                     product.getName(), line.temporaryName());
             var temporaryNameOverride = !temporaryName.equals(product.getName());
             var temporaryPriceOverride = !"0".equals(product.getCode())
-                    && Money.euros(product.getSalePrice()).signum() != 0
+                    && Money.unitPrice(product.getSalePrice()).signum() != 0
                     && line.openUnitPrice() != null;
             if (line.quantity().compareTo(BigDecimal.ONE.negate()) == 0) {
                 sensitiveOperations.add(SaleOperationCode.MANUAL_RETURN_WITHOUT_TICKET);
@@ -1119,7 +1119,7 @@ public class PosCashService {
             var product = products.findById(line.productoId())
                     .filter(value -> value.getStoreId().equals(storeId))
                     .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
-            if (Money.euros(product.getSalePrice()).signum() == 0) {
+            if (Money.unitPrice(product.getSalePrice()).signum() == 0) {
                 authoritativeUnitPrice(product.getSalePrice(), line.precioUnitario());
                 operations.add(SaleOperationCode.OPEN_PRICE_PRODUCT);
             }
@@ -1353,16 +1353,16 @@ public class PosCashService {
         if (catalogSalePrice == null) {
             throw new IllegalStateException("El precio de venta del producto no esta configurado");
         }
-        var normalizedCatalogPrice = Money.euros(catalogSalePrice);
+        var normalizedCatalogPrice = Money.unitPrice(catalogSalePrice);
         if (normalizedCatalogPrice.signum() != 0) {
             if (requestedOpenUnitPrice == null) {
                 return normalizedCatalogPrice;
             }
-            if (requestedOpenUnitPrice.scale() > 2) {
+            if (requestedOpenUnitPrice.stripTrailingZeros().scale() > 3) {
                 throw new IllegalArgumentException(
-                        "El precio temporal admite un maximo de 2 decimales");
+                        "El precio temporal admite un maximo de 3 decimales");
             }
-            var temporaryPrice = Money.euros(requestedOpenUnitPrice);
+            var temporaryPrice = Money.exactUnitPrice(requestedOpenUnitPrice);
             if (temporaryPrice.signum() <= 0) {
                 throw new IllegalArgumentException(
                         "El precio temporal debe ser mayor que 0");
@@ -1373,10 +1373,10 @@ public class PosCashService {
             throw new IllegalArgumentException(
                     "Debe indicar el precio para el producto con precio de venta 0");
         }
-        if (requestedOpenUnitPrice.scale() > 2) {
-            throw new IllegalArgumentException("El precio abierto admite un maximo de 2 decimales");
+        if (requestedOpenUnitPrice.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("El precio abierto admite un maximo de 3 decimales");
         }
-        var normalizedOpenPrice = Money.euros(requestedOpenUnitPrice);
+        var normalizedOpenPrice = Money.exactUnitPrice(requestedOpenUnitPrice);
         if (normalizedOpenPrice.signum() <= 0) {
             throw new IllegalArgumentException("El precio abierto debe ser mayor que 0");
         }
@@ -1919,9 +1919,9 @@ public class PosCashService {
             this.product = product;
             this.lineId = "product:" + line.getProductoId() + ":" + occurrence;
             this.historical = historical;
-            this.normalUnitPrice = Money.euros(product.getSalePrice());
+            this.normalUnitPrice = Money.unitPrice(product.getSalePrice());
             this.memberUnitPrice = product.getMemberPrice() == null
-                    ? null : Money.euros(product.getMemberPrice());
+                    ? null : Money.unitPrice(product.getMemberPrice());
             this.baseSubtotal = QuoteLine.grossTotal(line);
             this.memberPriceSaving = memberPriceSaving(line, normalUnitPrice);
             var lineDiscount = Money.euros(baseSubtotal.subtract(line.getTotal()).max(BigDecimal.ZERO));
@@ -2244,7 +2244,7 @@ public class PosCashService {
     }
 
     private static String normalizedOpenPrice(BigDecimal value) {
-        return value == null ? "-" : Money.euros(value).toPlainString();
+        return value == null ? "-" : Money.unitPrice(value).toPlainString();
     }
 
     private static boolean hasText(String value) {

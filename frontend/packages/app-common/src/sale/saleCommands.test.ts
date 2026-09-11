@@ -16,6 +16,15 @@ function key(
 }
 
 describe("saleCommandFromKeyboard", () => {
+  it("resolves PrintScreen without reserving modified screenshot shortcuts", () => {
+    expect(saleCommandFromKeyboard(key("PrintScreen"))).toBe("reprint-last-ticket");
+    expect(saleCommandFromKeyboard(key("Unidentified", { code: "PrintScreen" })))
+      .toBe("reprint-last-ticket");
+    for (const modifier of ["ctrlKey", "altKey", "shiftKey", "metaKey"] as const) {
+      expect(saleCommandFromKeyboard(key("PrintScreen", { [modifier]: true }))).toBeNull();
+    }
+  });
+
   it("resolves the EAN and product-label shortcuts exactly", () => {
     expect(saleCommandFromKeyboard(key("F2", { ctrlKey: true })))
       .toBe("ean-generator");

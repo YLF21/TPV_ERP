@@ -94,7 +94,7 @@ export function renderWarehouseA4PreviewHtml(document: A4DocumentPrintRequest): 
   ).join("");
   const rows = document.lines.map((line) => `<tr>
     <td>${escapeHtml(line.name)}</td><td class="number">${formatNumber(line.quantity)}</td>
-    <td class="number">${formatMoney(line.price)}</td><td class="number">${formatMoney(line.total)}</td>
+    <td class="number">${formatMoney(line.price, 3)}</td><td class="number">${formatMoney(line.total)}</td>
   </tr>`).join("");
   const notes = (document.notes ?? []).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
 
@@ -158,10 +158,10 @@ function escapeHtml(value: unknown): string {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
-function formatMoney(value: number): string {
+function formatMoney(value: number, maximumFractionDigits = 2): string {
   const amount = Number(value || 0).toLocaleString("es-ES", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits
   });
   return `${amount} €`;
 }

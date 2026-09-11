@@ -6,8 +6,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -347,6 +349,21 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
              where document.tiendaId = :storeId
                and document.terminalOrigenId = :terminalId
                and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+               and document.confirmadoEn is not null
+               and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+             order by document.confirmadoEn desc, document.id desc
+            """)
+    List<UUID> findLatestIssuedTicketIds(
+            @Param("storeId") UUID storeId,
+            @Param("terminalId") UUID terminalId,
+            Pageable pageable);
+
+    @Query("""
+            select document.id
+              from CommercialDocument document
+             where document.tiendaId = :storeId
+               and document.terminalOrigenId = :terminalId
+               and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
                and document.estado = com.tpverp.backend.document.DocumentStatus.CONFIRMADO
                and not exists (
                    select relation.documento.id
@@ -468,6 +485,113 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     List<String> usedSerialNumbers(
             @Param("storeId") UUID storeId,
             @Param("serialNumbers") Collection<String> serialNumbers);
+
+    // Page scalar IDs before fetching collections so the database applies the limit.
+    default List<CommercialDocument> findCustomerReportDocuments(
+            UUID storeId,
+            UUID customerId,
+            Collection<CommercialDocumentType> types,
+            LocalDate cursorDate,
+            Instant cursorOccurredAt,
+            String cursorId,
+            Pageable pageable) {
+        Objects.requireNonNull(customerId, "customerId");
+        if (types.isEmpty()) return List.of();
+        var ids = cursorDate == null
+                ? findCustomerReportDocumentIds(storeId, customerId, types, pageable)
+                : findCustomerReportDocumentIdsAfter(
+                        storeId, customerId, types, cursorDate, cursorOccurredAt, cursorId, pageable);
+        return loadCustomerReportDocumentsByIds(storeId, customerId, types, ids);
+    }
+
+    default List<CommercialDocument> loadCustomerReportDocumentsByIds(UUID storeId,
+            UUID customerId, Collection<CommercialDocumentType> types, List<UUID> ids) {
+        Objects.requireNonNull(customerId, "customerId");
+        if (types.isEmpty()) return List.of();
+        if (ids.isEmpty()) return List.of();
+        var byId = findCustomerReportDocumentsWithPayments(
+                        storeId, customerId, types, ids).stream()
+                .collect(Collectors.toMap(CommercialDocument::getId, document -> document));
+        // Fetch each collection separately to avoid multiplying lines by payments.
+        findCustomerReportDocumentsWithLines(storeId, customerId, types, ids);
+        return ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+    }
+
+    @Query("""
+            select document.id
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.clienteId = :customerId
+              and document.tipo in :types
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
+            """)
+    List<UUID> findCustomerReportDocumentIds(
+            @Param("storeId") UUID storeId,
+            @Param("customerId") UUID customerId,
+            @Param("types") Collection<CommercialDocumentType> types,
+            Pageable pageable);
+
+    @Query("""
+            select document.id
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.clienteId = :customerId
+              and document.tipo in :types
+              and (
+                  document.fecha < :cursorDate
+                  or (
+                      document.fecha = :cursorDate
+                      and (
+                          coalesce(document.confirmadoEn, document.creadoEn) < :cursorOccurredAt
+                          or (
+                              coalesce(document.confirmadoEn, document.creadoEn) = :cursorOccurredAt
+                              and cast(document.id as string) < :cursorId
+                          )
+                      )
+                  )
+              )
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
+            """)
+    List<UUID> findCustomerReportDocumentIdsAfter(
+            @Param("storeId") UUID storeId,
+            @Param("customerId") UUID customerId,
+            @Param("types") Collection<CommercialDocumentType> types,
+            @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorOccurredAt") Instant cursorOccurredAt,
+            @Param("cursorId") String cursorId,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.clienteId = :customerId
+              and document.tipo in :types
+              and document.id in :ids
+            """)
+    List<CommercialDocument> findCustomerReportDocumentsWithPayments(
+            @Param("storeId") UUID storeId,
+            @Param("customerId") UUID customerId,
+            @Param("types") Collection<CommercialDocumentType> types,
+            @Param("ids") Collection<UUID> ids);
+
+    @EntityGraph(attributePaths = "lineas")
+    @Query("""
+            select document from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.clienteId = :customerId
+              and document.tipo in :types
+              and document.id in :ids
+            """)
+    List<CommercialDocument> findCustomerReportDocumentsWithLines(
+            @Param("storeId") UUID storeId,
+            @Param("customerId") UUID customerId,
+            @Param("types") Collection<CommercialDocumentType> types,
+            @Param("ids") Collection<UUID> ids);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     @Query("""
