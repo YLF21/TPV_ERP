@@ -57,8 +57,9 @@ Para el SaaS:
 El comando crea `backend-saas\.env` si falta, construye backend y frontend,
 espera a que el backend este saludable y publica el panel solo en
 `http://127.0.0.1:8088`. PostgreSQL queda disponible en loopback en el puerto
-`5433`. El usuario inicial del laboratorio es `admin` con contrasena `admin`;
-debe cambiarse antes de usar cualquier despliegue no local.
+`5433`. El acceso del laboratorio local es `ADMIN` con contraseña `0000`. La
+política solicitada permite contraseñas elegidas de al menos cuatro caracteres,
+también en producción, aunque allí el bootstrap inicial continúa usando secretos.
 
 Para conectar el backend normal de tienda con ese SaaS y con el laboratorio
 fiscal, abre otra consola en la raiz:

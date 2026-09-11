@@ -56,7 +56,7 @@ public class PasswordLifecycleController {
 
     public record ChangePasswordRequest(
             @NotBlank String currentPassword,
-            @NotBlank @Size(min = 12, max = 200) String newPassword) {
+            @NotBlank @Size(min = 4, max = 200) String newPassword) {
     }
 
     public record RecoveryRequest(@NotBlank @Size(max = 80) String username) {
@@ -64,6 +64,6 @@ public class PasswordLifecycleController {
 
     public record RecoveryConfirmation(
             @NotBlank @Size(min = 32, max = 200) String token,
-            @NotBlank @Size(min = 12, max = 200) String newPassword) {
+            @NotBlank @Size(min = 4, max = 200) String newPassword) {
     }
 }

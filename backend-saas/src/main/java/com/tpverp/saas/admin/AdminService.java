@@ -788,6 +788,17 @@ public class AdminService {
         audit.log("DEACTIVATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
     }
 
+    @Transactional
+    public void activateUser(String username, ChangeAdminPasswordRequest request) {
+        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
+        user.changePasswordHash(passwordHasher.hash(request.password()));
+        user.passwordChanged();
+        user.activate();
+        sessions.revokeByUser("admin", user.getUsername());
+        audit.log("ACTIVATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
+    }
+
     @Transactional(readOnly = true)
     public List<TenantUserResponse> tenantUsers(UUID companyId) {
         ensureCompanyExists(companyId);

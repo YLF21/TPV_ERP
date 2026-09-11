@@ -16,7 +16,7 @@ public class AdminProductionGuard implements ApplicationRunner {
     private static final String DEFAULT_SEED_HASH =
             "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
     private static final String LOCAL_ADMIN_HASH =
-            "9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0";
+            "2471a9eb4d709d78c59cb8141ec108cce7db9c71b901d76b01cb1efcc2913b94";
     private static final String DEV_ENCRYPTION_KEY =
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     private static final String DEV_DATABASE_PASSWORD =
@@ -144,7 +144,6 @@ public class AdminProductionGuard implements ApplicationRunner {
     private boolean usesKnownSeedCredential(SaasAdminUser user) {
         return KNOWN_DEFAULT_HASHES.stream()
                 .anyMatch(knownHash -> knownHash.equalsIgnoreCase(user.getPasswordHash()))
-                || passwords.matches("admin", user.getPasswordHash())
-                || passwords.matches("0000", user.getPasswordHash());
+                || passwords.matches("admin", user.getPasswordHash());
     }
 }

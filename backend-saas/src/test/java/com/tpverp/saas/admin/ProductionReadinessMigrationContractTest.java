@@ -92,6 +92,16 @@ class ProductionReadinessMigrationContractTest {
                 "transactional-lock: false");
     }
 
+    @Test
+    void v59RevokesWeakAdminCredentialAndRequiresForcedRotation() throws IOException {
+        String sql = migration("V59__remove_weak_admin_credential.sql");
+
+        assertThat(sql).contains(
+                "password_hash = '2471a9eb4d709d78c59cb8141ec108cce7db9c71b901d76b01cb1efcc2913b94'",
+                "must_change_password = true",
+                "and password_hash = '9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0'");
+    }
+
     private String migration(String filename) throws IOException {
         try (var stream = getClass().getClassLoader().getResourceAsStream("db/migration/" + filename)) {
             assertThat(stream).isNotNull();
