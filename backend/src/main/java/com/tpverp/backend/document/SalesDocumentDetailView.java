@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public record SalesDocumentDetailView(
         UUID id,
@@ -26,6 +28,8 @@ public record SalesDocumentDetailView(
     static SalesDocumentDetailView from(
             CommercialDocument document,
             CommercialDocument originTicket) {
+        var adjustmentTypes = document.getAjustes().stream()
+                .collect(Collectors.toMap(DocumentAdjustment::getId, DocumentAdjustment::getTipo));
         return new SalesDocumentDetailView(
                 document.getId(),
                 document.getTipo(),
@@ -39,7 +43,7 @@ public record SalesDocumentDetailView(
                 originTicket == null ? null : RelatedDocumentView.from(originTicket),
                 document.getLineas().stream()
                         .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
-                        .map(LineView::from)
+                        .map(line -> LineView.from(line, adjustmentTypes))
                         .toList());
     }
 
@@ -59,9 +63,10 @@ public record SalesDocumentDetailView(
             BigDecimal discount,
             String taxRegime,
             BigDecimal taxPercentage,
-            BigDecimal total) {
+            BigDecimal total,
+            String documentAdjustmentType) {
 
-        static LineView from(DocumentLine line) {
+        static LineView from(DocumentLine line, Map<UUID, String> adjustmentTypes) {
             return new LineView(
                     line.getId(),
                     line.getPosicion(),
@@ -72,7 +77,9 @@ public record SalesDocumentDetailView(
                     line.getDescuento(),
                     line.getRegimenImpuesto(),
                     line.getPorcentajeImpuesto(),
-                    line.getTotal());
+                    line.getTotal(),
+                    line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT
+                            ? adjustmentTypes.get(line.getDocumentAdjustmentId()) : null);
         }
     }
 }

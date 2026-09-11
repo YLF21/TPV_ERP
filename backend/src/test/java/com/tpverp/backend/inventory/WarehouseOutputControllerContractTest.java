@@ -29,7 +29,8 @@ class WarehouseOutputControllerContractTest {
 
     @Test
     void exposesListCreateUpdateDeleteAndConfirmEndpoints() throws NoSuchMethodException {
-        var list = WarehouseOutputController.class.getDeclaredMethod("list", Integer.class, String.class);
+        var list = WarehouseOutputController.class.getDeclaredMethod("list", Integer.class, String.class,
+                java.time.LocalDate.class, java.time.LocalDate.class);
         var create = WarehouseOutputController.class.getDeclaredMethod(
                 "create", WarehouseOutputCommand.class, org.springframework.security.core.Authentication.class);
         var update = WarehouseOutputController.class.getDeclaredMethod(

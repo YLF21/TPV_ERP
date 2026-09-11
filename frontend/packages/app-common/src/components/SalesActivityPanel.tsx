@@ -12,6 +12,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns, type TableColumnDefinition } from "./tableLayoutPreferences";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { ReportDateRangeFilter, reportDateRangeLabel, type ReportDateRange as DateRange } from "./ReportDateRangeFilter";
 import "./SalesActivityPanel.css";
 
 type Request = <T>(path: string, options?: { token?: string }) => Promise<T>;
@@ -120,8 +121,6 @@ type Props = {
   request?: Request;
 };
 
-type RangePreset = "TODAY" | "YESTERDAY" | "WEEK" | "MONTH" | "QUARTER" | "YEAR" | "CUSTOM";
-type DateRange = { from: string; to: string; label: string; preset?: RangePreset };
 type PrintFormat = "A4" | "TICKET_80";
 type PrintGrouping = "DAY" | "DOCUMENT";
 type DocumentColumnKey =
@@ -167,10 +166,6 @@ function formatDate(value: string, locale: LocaleCode) {
   return new Intl.DateTimeFormat(localeTag(locale)).format(localDate(value));
 }
 
-function endOfMonth(year: number, monthIndex: number) {
-  return new Date(year, monthIndex + 1, 0);
-}
-
 function currentDayRange(label: string, currentDate: string): DateRange {
   return { from: currentDate, to: currentDate, label, preset: "TODAY" };
 }
@@ -212,14 +207,7 @@ export function SalesActivityPanel({
   request = apiRequest
 }: Props) {
   const t = createSalesActivityTranslator(locale);
-  const rangeLabel = (value: DateRange) => value.preset === "TODAY" ? t("today")
-    : value.preset === "YESTERDAY" ? t("yesterday")
-      : value.preset === "WEEK" ? t("week")
-        : value.preset === "MONTH" ? new Intl.DateTimeFormat(localeTag(locale), { month: "long", year: "numeric" }).format(localDate(value.from))
-          : value.preset === "QUARTER" ? `${t("quarter")} ${Math.floor(localDate(value.from).getMonth() / 3) + 1} ${localDate(value.from).getFullYear()}`
-            : value.preset === "YEAR" ? localDate(value.from).getFullYear().toString()
-              : value.preset === "CUSTOM" ? `${formatDate(value.from, locale)} — ${formatDate(value.to, locale)}`
-                : value.label;
+  const rangeLabel = (value: DateRange) => reportDateRangeLabel(value, locale);
   const [today, setToday] = useState("");
   const [dailyDate, setDailyDate] = useState("");
   const [daily, setDaily] = useState<DailySummary | null>(null);
@@ -228,9 +216,6 @@ export function SalesActivityPanel({
   const [dailyRows, setDailyRows] = useState<DailyDocumentRow[]>([]);
   const [dailyPage, setDailyPage] = useState<DailyDocumentPage | null>(null);
   const [range, setRange] = useState<DateRange>({ from: "", to: "", label: "" });
-  const [draftFrom, setDraftFrom] = useState("");
-  const [draftTo, setDraftTo] = useState("");
-  const [customOpen, setCustomOpen] = useState(false);
   const [earliestDate, setEarliestDate] = useState("");
   const [filterOptionsReady, setFilterOptionsReady] = useState(false);
   const [filterReload, setFilterReload] = useState(0);
@@ -301,7 +286,7 @@ export function SalesActivityPanel({
 
   type CurrentDateResolution = "accepted" | "rollover" | "invalid";
   function failClosedForCurrentDate() {
-    setToday(""); setDailyDate(""); setDraftFrom(""); setDraftTo("");
+    setToday(""); setDailyDate("");
     setRange({ from: "", to: "", label: "" });
     setDaily(null); setRows([]); setPage(null); setDailyRows([]); setDailyPage(null);
     setError(""); setErrorKey("operationFailed"); setFilterOptionsReady(false);
@@ -334,7 +319,7 @@ export function SalesActivityPanel({
         if (cancelled) return;
         const currentDate = value.currentDate;
         if (!isValidIsoDate(currentDate)) {
-          setToday(""); setDailyDate(""); setDraftFrom(""); setDraftTo("");
+          setToday(""); setDailyDate("");
           setRange({ from: "", to: "", label: "" });
           setError(""); setErrorKey("operationFailed");
           setFilterOptionsReady(false);
@@ -344,14 +329,12 @@ export function SalesActivityPanel({
         setError(""); setErrorKey(null);
         setEarliestDate(isValidIsoDate(value.earliestDate) ? value.earliestDate : currentDate);
         setDailyDate(currentDate);
-        setDraftFrom(currentDate);
-        setDraftTo(currentDate);
         setRange(currentDayRange(t("today"), currentDate));
         setFilterOptionsReady(true);
       })
       .catch(() => {
         if (cancelled) return;
-        setToday(""); setDailyDate(""); setDraftFrom(""); setDraftTo("");
+        setToday(""); setDailyDate("");
         setRange({ from: "", to: "", label: "" });
         setError(""); setErrorKey("operationFailed");
         setFilterOptionsReady(false);
@@ -411,7 +394,6 @@ export function SalesActivityPanel({
             range.preset === "TODAY" && range.from === today && range.to === today,
             (nextDate) => {
               setRange({ from: nextDate, to: nextDate, label: "", preset: "TODAY" });
-              setDraftFrom(nextDate); setDraftTo(nextDate);
             });
           if (result !== "accepted") return;
           setDailyRows(dailyValue.items);
@@ -424,7 +406,6 @@ export function SalesActivityPanel({
             (nextDate) => {
               setRows([]); setPage(null);
               setRange({ from: nextDate, to: nextDate, label: "", preset: "TODAY" });
-              setDraftFrom(nextDate); setDraftTo(nextDate);
             }, true);
           if (result !== "accepted") return;
           setRows(documentValue.items);
@@ -442,91 +423,6 @@ export function SalesActivityPanel({
       });
     return () => { cancelled = true; };
   }, [filterOptionsReady, mode, range.from, range.to, reload, request, token, viewMode]);
-
-  const monthOptions = useMemo(() => {
-    if (!isValidIsoDate(earliestDate) || !isValidIsoDate(today)) return [];
-    const earliest = localDate(earliestDate);
-    const current = localDate(today);
-    const cursor = new Date(current.getFullYear(), current.getMonth(), 1);
-    const values: Array<{ value: string; label: string }> = [];
-    while (cursor >= new Date(earliest.getFullYear(), earliest.getMonth(), 1)) {
-      values.push({
-        value: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
-        label: new Intl.DateTimeFormat(localeTag(locale), { month: "long", year: "numeric" }).format(cursor)
-      });
-      cursor.setMonth(cursor.getMonth() - 1);
-    }
-    return values;
-  }, [earliestDate, locale, today]);
-
-  const quarterOptions = useMemo(() => {
-    if (!isValidIsoDate(earliestDate) || !isValidIsoDate(today)) return [];
-    const earliest = localDate(earliestDate);
-    const current = localDate(today);
-    let year = current.getFullYear();
-    let quarter = Math.floor(current.getMonth() / 3) + 1;
-    const minimum = earliest.getFullYear() * 4 + Math.floor(earliest.getMonth() / 3);
-    const values: Array<{ value: string; label: string }> = [];
-    while (year * 4 + quarter - 1 >= minimum) {
-      values.push({ value: `${year}-Q${quarter}`, label: `${t("quarter")} ${quarter} ${year}` });
-      quarter -= 1;
-      if (quarter === 0) { quarter = 4; year -= 1; }
-    }
-    return values;
-  }, [earliestDate, locale, t, today]);
-
-  const yearOptions = useMemo(() => {
-    if (!isValidIsoDate(earliestDate) || !isValidIsoDate(today)) return [];
-    const first = localDate(earliestDate).getFullYear();
-    const currentYear = localDate(today).getFullYear();
-    return Array.from({ length: currentYear - first + 1 }, (_, index) => String(currentYear - index));
-  }, [earliestDate, today]);
-
-  function selectRange(next: DateRange) {
-    setRange(next); setDraftFrom(next.from); setDraftTo(next.to); setCustomOpen(false);
-  }
-
-  function selectYesterday() {
-    const value = localDate(today); value.setDate(value.getDate() - 1);
-    const iso = isoDate(value); selectRange({ from: iso, to: iso, label: t("yesterday"), preset: "YESTERDAY" });
-  }
-
-  function selectWeek() {
-    const end = localDate(today);
-    const start = new Date(end); start.setDate(end.getDate() - ((end.getDay() + 6) % 7));
-    selectRange({ from: isoDate(start), to: isoDate(end), label: t("week"), preset: "WEEK" });
-  }
-
-  function selectMonth(value: string) {
-    if (!value) return;
-    const [year, month] = value.split("-").map(Number);
-    const from = new Date(year, month - 1, 1);
-    const naturalEnd = endOfMonth(year, month - 1);
-    const current = localDate(today);
-    const end = naturalEnd > current ? current : naturalEnd;
-    const label = monthOptions.find((option) => option.value === value)?.label ?? value;
-    selectRange({ from: isoDate(from), to: isoDate(end), label, preset: "MONTH" });
-  }
-
-  function selectQuarter(value: string) {
-    const match = value.match(/^(\d{4})-Q([1-4])$/);
-    if (!match) return;
-    const year = Number(match[1]); const quarter = Number(match[2]);
-    const start = new Date(year, (quarter - 1) * 3, 1);
-    const naturalEnd = endOfMonth(year, quarter * 3 - 1);
-    const current = localDate(today);
-    const end = naturalEnd > current ? current : naturalEnd;
-    const label = quarterOptions.find((option) => option.value === value)?.label ?? value;
-    selectRange({ from: isoDate(start), to: isoDate(end), label, preset: "QUARTER" });
-  }
-
-  function selectYear(value: string) {
-    if (!value) return;
-    const year = Number(value);
-    const current = localDate(today);
-    const end = year === current.getFullYear() ? current : new Date(year, 11, 31);
-    selectRange({ from: `${year}-01-01`, to: isoDate(end), label: value, preset: "YEAR" });
-  }
 
   async function loadMore() {
     const requestVersion = requestVersionRef.current;
@@ -548,7 +444,6 @@ export function SalesActivityPanel({
           (nextDate) => {
             setDailyRows([]); setDailyPage(null);
             setRange({ from: nextDate, to: nextDate, label: "", preset: "TODAY" });
-            setDraftFrom(nextDate); setDraftTo(nextDate);
           });
         if (result !== "accepted") return;
         setDailyRows((current) => [...current, ...dailyValue.items]);
@@ -561,7 +456,6 @@ export function SalesActivityPanel({
           (nextDate) => {
             setRows([]); setPage(null);
             setRange({ from: nextDate, to: nextDate, label: "", preset: "TODAY" });
-            setDraftFrom(nextDate); setDraftTo(nextDate);
           }, true);
         if (result !== "accepted") return;
         setRows((current) => [...current, ...documentValue.items]);
@@ -945,16 +839,8 @@ export function SalesActivityPanel({
         </table> : null)}
         {((viewMode === "DAY" ? dailyPage : page)?.hasMore) && <button className="sales-documents-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? t("loading") : t("loadMore")}</button>}
       </div>}
-      <footer className="sales-activity-filter-dock" aria-label={t("currentPeriod")}>
-        <button type="button" disabled={!filterOptionsReady} className={range.preset === "TODAY" ? "selected" : ""} onClick={() => selectRange(currentDayRange(t("today"), today))}>{t("today")}</button>
-        <button type="button" disabled={!filterOptionsReady} onClick={selectYesterday}>{t("yesterday")}</button>
-        <button type="button" disabled={!filterOptionsReady} onClick={selectWeek}>{t("week")}</button>
-        <label><span>{t("month")}</span><select disabled={!filterOptionsReady} defaultValue="" onChange={(event) => selectMonth(event.target.value)}><option value="">—</option>{monthOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        <label><span>{t("quarter")}</span><select disabled={!filterOptionsReady} defaultValue="" onChange={(event) => selectQuarter(event.target.value)}><option value="">—</option>{quarterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        <label><span>{t("year")}</span><select disabled={!filterOptionsReady} defaultValue="" onChange={(event) => selectYear(event.target.value)}><option value="">—</option>{yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
-        <button type="button" disabled={!filterOptionsReady} onClick={() => setCustomOpen((value) => !value)}>{t("custom")}</button>
-        {customOpen && <div className="sales-activity-custom-period"><label><span>{t("from")}</span><input type="date" value={draftFrom} onChange={(event) => setDraftFrom(event.target.value)} /></label><label><span>{t("to")}</span><input type="date" max={today} value={draftTo} onChange={(event) => setDraftTo(event.target.value)} /></label><button type="button" disabled={!draftFrom || !draftTo || draftTo < draftFrom} onClick={() => selectRange({ from: draftFrom, to: draftTo, label: "", preset: "CUSTOM" })}>{t("apply")}</button></div>}
-      </footer>
+      <ReportDateRangeFilter locale={locale} today={today} earliestDate={earliestDate}
+        value={range} onChange={setRange} disabled={!filterOptionsReady} />
     </div>;
   }
 

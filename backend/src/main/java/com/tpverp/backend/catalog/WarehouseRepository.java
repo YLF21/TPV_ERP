@@ -12,6 +12,8 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
 
     List<Warehouse> findByStoreIdOrderByNombre(UUID storeId);
 
+    List<Warehouse> findByStoreIdAndIdIn(UUID storeId, List<UUID> ids);
+
     Optional<Warehouse> findByStoreIdAndPredeterminadoTrue(UUID storeId);
 
     boolean existsByStoreIdAndNombreIgnoreCase(UUID storeId, String name);

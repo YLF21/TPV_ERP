@@ -73,8 +73,8 @@ public class TicketReportService {
     @Transactional(readOnly = true)
     public PagedResult<TicketReportView> list(
             Integer requestedLimit, String cursor, UUID customerId, CustomerDocumentReportFilter filter) {
-        var filtered = filter != null && filter.isRequested();
-        if (filtered && customerId == null) {
+        var filtered = customerId != null && filter != null && filter.isRequested();
+        if (customerId == null && filter != null && filter.requiresCustomer()) {
             throw new IllegalArgumentException("El cliente es obligatorio para filtrar documentos");
         }
         var store = organization.currentStore();
@@ -84,7 +84,11 @@ public class TicketReportService {
         CustomerDocumentReportQueryRepository.Page orderedPage = null;
         List<CommercialDocument> values;
         if (customerId == null) {
-            values = parsedCursor.date() == null
+            values = filter != null && (filter.dateFrom() != null || filter.dateTo() != null)
+                    ? documents.findReportDocumentsInRange(
+                            store.getId(), TICKETS, filter.dateFrom(), filter.dateTo(),
+                            parsedCursor.date(), parsedCursor.occurredAt(), parsedCursor.id(), pageRequest)
+                    : parsedCursor.date() == null
                     ? documents.findReportDocuments(store.getId(), TICKETS, pageRequest)
                     : documents.findReportDocumentsAfter(
                             store.getId(), TICKETS, parsedCursor.date(),

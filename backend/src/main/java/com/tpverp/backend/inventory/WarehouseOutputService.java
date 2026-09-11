@@ -75,9 +75,21 @@ public class WarehouseOutputService {
 
     @Transactional(readOnly = true)
     public PagedResult<WarehouseOutputView> listPage(Integer requestedLimit, String cursor) {
+        return listPage(requestedLimit, cursor, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<WarehouseOutputView> listPage(
+            Integer requestedLimit, String cursor, LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw new IllegalArgumentException("La fecha inicial no puede ser posterior a la final");
+        }
         var limit = normalizedLimit(requestedLimit);
         var parsedCursor = parseCursor(cursor);
-        var values = outputs.findPageByStoreId(
+        var values = dateFrom != null || dateTo != null
+                ? outputs.findReportPageInRange(organization.currentStore().getId(), dateFrom, dateTo,
+                        parsedCursor.date(), parsedCursor.id(), PageRequest.of(0, limit + 1))
+                : outputs.findPageByStoreId(
                 organization.currentStore().getId(),
                 parsedCursor.date(),
                 parsedCursor.id(),

@@ -1,0 +1,86 @@
+.report-date-range-filter {
+  --activity-navy: #0a2f56;
+  --activity-ink: #15283a;
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  order: 4;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 50px;
+  padding: 7px 9px;
+  border: 1px solid #8298ac;
+  border-top: 3px solid var(--activity-navy);
+  background: #dfe6ed;
+  color: var(--activity-ink);
+}
+
+.report-date-range-filter button {
+  min-height: 32px;
+  border: 1px solid #8ea2b5;
+  border-radius: 3px;
+  padding: 0 13px;
+  background: #fff;
+  color: var(--activity-navy);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.report-date-range-filter button.selected,
+.report-date-range-filter button:not(:disabled):hover {
+  background: var(--activity-navy);
+  border-color: var(--activity-navy);
+  color: #fff;
+}
+
+.report-date-range-filter :is(button, select, input):focus-visible {
+  outline: 2px solid #155b8f;
+  outline-offset: 2px;
+}
+
+.report-date-range-filter :disabled { opacity: .55; cursor: not-allowed; }
+.report-date-range-filter label { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
+.report-date-range-filter label span { color: #52687b; font-size: 10px; text-transform: uppercase; }
+.report-date-range-filter :is(input, select) {
+  height: 32px;
+  min-width: 96px;
+  max-width: 180px;
+  border: 1px solid #9fb0c1;
+  border-radius: 3px;
+  padding: 0 8px;
+  background: #fff;
+  color: var(--activity-ink);
+  font: inherit;
+}
+.report-date-range-filter .report-date-custom {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 10px;
+  border: 1px solid #7f94a8;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgb(18 43 66 / 22%);
+}
+.report-date-range-filter .report-date-custom label { flex-direction: column; align-items: flex-start; }
+.report-date-options-error {
+  display: flex;
+  flex: 0 0 auto;
+  order: 4;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  color: #8a2020;
+  background: #fff3f3;
+  border: 1px solid #b74a4a;
+}
+@media print { .report-date-range-filter, .report-date-options-error { display: none !important; } }

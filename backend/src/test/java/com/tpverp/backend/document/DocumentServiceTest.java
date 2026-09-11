@@ -1585,6 +1585,21 @@ class DocumentServiceTest {
     }
 
     @Test
+    void detailedReadInitializesAdjustmentOriginsWithoutSavingTheDocument() {
+        var ticket = org.mockito.Mockito.spy(draft(CommercialDocumentType.TICKET));
+        when(documentRepository.findByIdAndTiendaId(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(documentRepository.findByIdAndTiendaIdWithPayments(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+
+        assertThat(service.findDetailed(ticket.getId())).isSameAs(ticket);
+
+        verify(ticket).getAjustes();
+        verify(documentRepository, never()).save(any());
+        verifyNoInteractions(stockGateway, cashPaymentRecorder, documentSync);
+    }
+
+    @Test
     void ticketWithPreviousReturnsUsesSpecificCancellationBlock() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);

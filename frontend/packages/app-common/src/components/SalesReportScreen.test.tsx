@@ -15,7 +15,6 @@ import {
   formatReportDisplayValue,
   isPurchaseDocumentReport,
   isWarehouseDocumentReport,
-  moveReportColumnBeforeTotal,
   moveVisibleReportColumn,
   normalizeRequiredTotal,
   reportExportColumnKeys,
@@ -52,8 +51,6 @@ const terminalContext: TerminalContext = {
   storeName: "Tienda Principal",
   terminalCode: "01"
 };
-
-const noSavedVisualizationPreferences = vi.fn().mockResolvedValue([]);
 
 function createTableLayoutController(
   initialLayout: TableLayout<string>
@@ -236,14 +233,14 @@ describe("SalesReportScreen", () => {
         terminalContext={terminalContext}
         initialReport="salesReport.tickets"
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
       />
     );
 
-    const cancelButton = screen.getByRole("button", { name: "Anular ticket" });
+    expect(screen.queryByRole("button", { name: "Anular ticket" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
+    const cancelButton = screen.getByRole("menuitem", { name: "Anular ticket" });
     const convertButton = screen.getByRole("menuitem", { name: "Convertir ticket a factura" });
     expect(convertButton).toBeDisabled();
     expect(cancelButton).toBeDisabled();
@@ -494,7 +491,7 @@ describe("SalesReportScreen", () => {
     ]);
   });
 
-  it("maps enriched invoice and delivery-note report data by purchase and sale type", () => {
+  it("uses current warehouse purchases and excludes legacy commercial purchases", () => {
     const reports = buildDocumentReports(
       [],
       [
@@ -547,7 +544,15 @@ describe("SalesReportScreen", () => {
       ],
       [],
       [],
-      [],
+      [
+        { id: "current-invoice", documentType: "FACTURA_ENTRADA", number: "FC-NEW", date: "2026-07-11", status: "CONFIRMADO",
+          supplierCode: "P-1", supplierName: "Proveedor Uno", warehouseName: "GENERAL", externalNumber: "Proveedor ref",
+          subtotal: "100.00", globalDiscount: "10", total: "90.00", lines: [{ quantity: "2", purchaseTotal: "100.00" }] },
+        { id: "current-note", documentType: "ALBARAN_ENTRADA", number: "AC-NEW", date: "2026-07-13", status: "BORRADOR",
+          supplierCode: "P-2", supplierName: "Proveedor Dos", warehouseName: "GENERAL", subtotal: "20", total: "20",
+          lines: [{ quantity: "1.5" }, { quantity: "1.5" }] },
+        { id: "current-input", documentType: "ENTRADA_ALMACEN", number: "E-NEW", date: "2026-07-13", total: "5.00" }
+      ],
       session,
       terminalContext
     );
@@ -563,13 +568,12 @@ describe("SalesReportScreen", () => {
     ]);
     expect(reports["salesReport.inputInvoices"]?.rows).toEqual([
       expect.objectContaining({
-        invoice: "FC-1",
+        invoice: "FC-NEW",
         supplier: "P-1",
         supplierName: "Proveedor Uno",
         warehouse: "GENERAL",
-        dueDate: "11/08/2026",
-        pending: "12.50",
-        comment: "Proveedor ref"
+        comment: "Proveedor ref",
+        subtotal: "100.00", globalDiscount: "10", total: "90.00"
       })
     ]);
     expect(reports["salesReport.deliveryNotes"]?.rows).toEqual([
@@ -581,13 +585,22 @@ describe("SalesReportScreen", () => {
     ]);
     expect(reports["salesReport.inputDeliveryNotes"]?.rows).toEqual([
       expect.objectContaining({
-        deliveryNote: "AC-1",
+        deliveryNote: "AC-NEW",
         supplier: "P-2",
         supplierName: "Proveedor Dos",
         warehouse: "GENERAL",
         productCount: "3"
       })
     ]);
+    expect(reports["salesReport.inputWarehouse"]?.rows).toHaveLength(1);
+    expect(reports["salesReport.inputWarehouse"]?.rows[0].input).toBe("E-NEW");
+    for (const key of ["inputInvoices", "inputDeliveryNotes"]) {
+      const purchase = reports[`salesReport.${key}`]!;
+      for (const absent of ["pending", "dueDate", "base", "tax", "terminal", "user", "time"]) {
+        expect(purchase.availableAttributes).not.toContain(absent);
+        expect(purchase.rows[0]).not.toHaveProperty(absent);
+      }
+    }
   });
 
   it("maps ticket customer, invoice lifecycle and real refund methods without product count", () => {
@@ -968,7 +981,6 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.invoices"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -1045,7 +1057,6 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         onBack={vi.fn()}
         onLogout={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -1091,7 +1102,6 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
       />
@@ -1127,7 +1137,7 @@ describe("SalesReportScreen", () => {
       }
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
-    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
     expect(screen.queryByText("Total de ventas netas")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
@@ -1652,7 +1662,7 @@ describe("SalesReportScreen", () => {
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
 
-    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       expect.stringMatching(/^\/sales-activity\/documents\/by-day\?dateFrom=.*&dateTo=.*&limit=250$/),
@@ -1751,7 +1761,7 @@ describe("SalesReportScreen", () => {
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
 
-    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 
     expect(await screen.findByRole("button", { name: "Por día" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Por documento" })).toHaveAttribute("aria-pressed", "false");
@@ -1794,7 +1804,7 @@ describe("SalesReportScreen", () => {
     });
 
     try {
-      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
       await screen.findByText("EMPRESA");
 
       fireEvent.keyDown(window, { key: "F6" });
@@ -1859,7 +1869,7 @@ describe("SalesReportScreen", () => {
     });
 
     try {
-      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
       fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
       await waitFor(() => expect(request).toHaveBeenCalledWith(
         expect.stringMatching(/^\/sales-activity\/documents\?dateFrom=.*&dateTo=.*&limit=250$/),
@@ -1915,7 +1925,7 @@ describe("SalesReportScreen", () => {
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
 
-    const { container } = render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    const { container } = render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} initialReport="salesReport.salesDocuments" onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Por documento" }));
     expect(await screen.findByRole("button", { name: "Modificar ancho Número de ticket" })).toBeVisible();
@@ -1952,6 +1962,11 @@ describe("SalesReportScreen", () => {
 
   it("shows warehouse report load failures and retries instead of silently rendering an empty report", async () => {
     const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/document-reports/date-options")) {
+        const today = new Date();
+        const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        return Promise.resolve({ earliestDate: date, currentDate: date });
+      }
       if (path === "/tickets") {
         return Promise.resolve([]);
       }
@@ -1968,7 +1983,6 @@ describe("SalesReportScreen", () => {
         session={{ username: "warehouse", displayName: "ALMACÉN", permissions: ["GESTION_ALMACEN"], accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.warehouseOutputs"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -2000,7 +2014,6 @@ describe("SalesReportScreen", () => {
         }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.warehouseOutputs"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -2025,9 +2038,9 @@ describe("SalesReportScreen", () => {
       if (path === "/warehouses") {
         return Promise.resolve([{ id: "warehouse-1", name: "GENERAL" }]);
       }
-      if (path.startsWith("/warehouse-inputs")) {
+      if (path.startsWith("/document-reports/warehouse-inputs")) {
         return Promise.resolve({
-          items: [{
+          items: [{ document: {
             id: "input-1",
             number: "ENT-NO-SELECT",
             date: today,
@@ -2041,7 +2054,7 @@ describe("SalesReportScreen", () => {
               purchaseUnitPrice: 4.2,
               purchaseTotal: 4.2
             }]
-          }],
+          }, warehouseName: "GENERAL", supplierCode: null, supplierName: null }],
           nextCursor: null,
           hasMore: false
         });
@@ -2069,13 +2082,17 @@ describe("SalesReportScreen", () => {
     );
 
     const row = (await screen.findByText("ENT-NO-SELECT")).closest("tr");
+    const reconciliation = screen.getByRole("region", { name: "Conciliación de almacén" });
+    expect(within(reconciliation).getByText("Unidades de entrada").parentElement).toHaveTextContent("1");
+    expect(within(reconciliation).getByText("Unidades de salida").parentElement).toHaveTextContent("No disponible");
+    expect(within(reconciliation).getByText("Balance de unidades").parentElement).toHaveTextContent("No disponible");
     expect(row).not.toHaveClass("selected");
     expect(row).toHaveAttribute("aria-selected", "false");
     fireEvent.click(row!);
     expect(row).toHaveClass("selected");
     fireEvent.doubleClick(row!);
     expect(await screen.findByRole("heading", { name: "ENT-NO-SELECT" })).toBeVisible();
-    expect(screen.getByText("CAF-001")).toBeVisible();
+    expect(await screen.findByText("CAF-001")).toBeVisible();
     expect(screen.getByText("Café de prueba")).toBeVisible();
     expect(screen.queryByText("P-INPUT")).not.toBeInTheDocument();
     expect(screen.queryByText("input-1")).not.toBeInTheDocument();
@@ -2142,7 +2159,7 @@ describe("SalesReportScreen", () => {
     fireEvent.doubleClick(row!);
 
     expect(await screen.findByRole("heading", { name: "SAL-READABLE" })).toBeVisible();
-    expect(screen.getByText("AGUA-001")).toBeVisible();
+    expect(await screen.findByText("AGUA-001")).toBeVisible();
     expect(screen.getByText("Agua mineral")).toBeVisible();
     expect(screen.queryByText("P-OUTPUT")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Exportar Excel" })).toBeVisible();
@@ -2231,7 +2248,6 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.deliveryNotes"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -2361,7 +2377,6 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.tickets"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -2369,7 +2384,7 @@ describe("SalesReportScreen", () => {
     );
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/document-reports/tickets?limit=500",
+      expect.stringMatching(/^\/document-reports\/tickets\?limit=500&dateFrom=\d{4}-\d{2}-\d{2}&dateTo=\d{4}-\d{2}-\d{2}$/),
       { token: "token" }
     ));
     await waitFor(() => expect(screen.getAllByText("Líneas visibles: 1")).not.toHaveLength(0));
@@ -2465,7 +2480,6 @@ describe("SalesReportScreen", () => {
           session={{ ...session, accessToken: "token" }}
           terminalContext={terminalContext}
           request={request}
-          loadVisualizationPreferences={noSavedVisualizationPreferences}
           initialReport="salesReport.tickets"
           onBack={vi.fn()}
           onLocaleChange={vi.fn()}
@@ -2631,7 +2645,6 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.invoices"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -2669,7 +2682,6 @@ describe("SalesReportScreen", () => {
         session={session}
         terminalContext={terminalContext}
         request={vi.fn()}
-        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.tickets"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -2697,7 +2709,7 @@ describe("SalesReportScreen", () => {
     ]);
   });
 
-  it("keeps total required and applies Visualization ordering to the generic layout", () => {
+  it("keeps total required and reorders visible columns from the headers", () => {
     const tableLayout = createTableLayoutController([
       { key: "total", width: 112, visible: false },
       { key: "date", width: 112, visible: true },
@@ -2714,9 +2726,5 @@ describe("SalesReportScreen", () => {
     moveVisibleReportColumn(tableLayout, "date", 1);
     expect(visibleTableColumns(tableLayout.layout).map((column) => column.key))
       .toEqual(["customerName", "date", "total"]);
-
-    moveReportColumnBeforeTotal(tableLayout, "time");
-    expect(visibleTableColumns(tableLayout.layout).map((column) => column.key))
-      .toEqual(["customerName", "date", "time", "total"]);
   });
 });

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
 import type { LocaleCode, TerminalContext } from "../types";
@@ -53,6 +53,7 @@ type Props = {
   token?: string;
   locale: LocaleCode;
   terminalContext: TerminalContext;
+  initialTicketNumber?: string;
   onClose: () => void;
 };
 
@@ -175,18 +176,43 @@ function formatIssuedAt(value: string, locale: LocaleCode) {
   }).format(parsed);
 }
 
-export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: Props) {
+export function GiftReceiptDialog({ token, locale, terminalContext, initialTicketNumber, onClose }: Props) {
   const t = copy[locale];
   const inputRef = useRef<HTMLInputElement>(null);
   const issueRequestRef = useRef("");
   const ticketEditedRef = useRef(false);
-  const [ticketNumber, setTicketNumber] = useState("");
+  const previewRequestRef = useRef(0);
+  const [ticketNumber, setTicketNumber] = useState(initialTicketNumber?.trim() ?? "");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [selections, setSelections] = useState<Record<string, Selection>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [issuedCode, setIssuedCode] = useState("");
+
+  const loadPreview = useCallback(async (number: string) => {
+    const request = ++previewRequestRef.current;
+    setBusy(true); setError(""); setMessage(""); setIssuedCode("");
+    setPreview(null);
+    setSelections({});
+    issueRequestRef.current = "";
+    try {
+      const result = await apiRequest<Preview>(
+        `/gift-receipts/preview?ticketNumber=${encodeURIComponent(number)}`,
+        { token },
+      );
+      if (request !== previewRequestRef.current) return;
+      setPreview(result);
+      setTicketNumber(result.ticketNumber);
+    } catch (nextError) {
+      if (request !== previewRequestRef.current) return;
+      setError(isMissingTicketError(nextError)
+        ? t.ticketNotFound
+        : apiMessage(nextError, t.searchError));
+    } finally {
+      if (request === previewRequestRef.current) setBusy(false);
+    }
+  }, [token, t]);
 
   useEffect(() => {
     let active = true;
@@ -196,18 +222,25 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
       inputRef.current?.select();
     }, 0);
 
-    void apiRequest<{ numero?: string | null }>("/tickets/last-current-terminal", { token })
-      .then((ticket) => {
-        if (!active || ticketEditedRef.current || !ticket.numero?.trim()) return;
-        setTicketNumber(ticket.numero.trim());
-      })
-      .catch(() => undefined)
-      .finally(focusAndSelectTicket);
+    const initialNumber = initialTicketNumber?.trim();
+    if (initialNumber) {
+      setTicketNumber(initialNumber);
+      void loadPreview(initialNumber).finally(focusAndSelectTicket);
+    } else {
+      void apiRequest<{ numero?: string | null }>("/tickets/last-current-terminal", { token })
+        .then((ticket) => {
+          if (!active || ticketEditedRef.current || !ticket.numero?.trim()) return;
+          setTicketNumber(ticket.numero.trim());
+        })
+        .catch(() => undefined)
+        .finally(focusAndSelectTicket);
+    }
 
     return () => {
       active = false;
+      previewRequestRef.current += 1;
     };
-  }, [token]);
+  }, [initialTicketNumber, loadPreview, token]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -235,25 +268,8 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
   async function search() {
     const normalized = ticketNumber.trim();
     if (!normalized || busy) return;
-    setBusy(true); setError(""); setMessage(""); setIssuedCode("");
-    try {
-      const result = await apiRequest<Preview>(
-        `/gift-receipts/preview?ticketNumber=${encodeURIComponent(normalized)}`,
-        { token },
-      );
-      setPreview(result);
-      setTicketNumber(result.ticketNumber);
-      setSelections({});
-      issueRequestRef.current = "";
-    } catch (nextError) {
-      setPreview(null);
-      setSelections({});
-      setError(isMissingTicketError(nextError)
-        ? t.ticketNotFound
-        : apiMessage(nextError, t.searchError));
-    } finally {
-      setBusy(false);
-    }
+    ticketEditedRef.current = true;
+    await loadPreview(normalized);
   }
 
   function selectAll() {

@@ -13,6 +13,31 @@ import org.springframework.data.jpa.repository.Query;
 class DocumentReportPaginationContractTest {
 
     @Test
+    void dateBoundedQueriesPageScalarIdsWithStoreScopeAndInclusiveDates() throws Exception {
+        var commercial = CommercialDocumentRepository.class.getDeclaredMethod("findReportDocumentIdsInRange",
+                UUID.class, Collection.class, LocalDate.class, LocalDate.class, LocalDate.class,
+                Instant.class, String.class, Pageable.class);
+        var input = com.tpverp.backend.inventory.WarehouseInputRepository.class.getDeclaredMethod(
+                "findReportIdsInRange", UUID.class, com.tpverp.backend.inventory.WarehouseInputDocumentType.class,
+                LocalDate.class, LocalDate.class, LocalDate.class, UUID.class, Pageable.class);
+        var output = com.tpverp.backend.inventory.WarehouseOutputRepository.class.getDeclaredMethod(
+                "findReportIdsInRange", UUID.class, LocalDate.class, LocalDate.class,
+                LocalDate.class, UUID.class, Pageable.class);
+        for (var method : java.util.List.of(commercial, input, output)) {
+            assertThat(method.getGenericReturnType().getTypeName()).contains("java.util.UUID");
+            assertThat(method.isAnnotationPresent(org.springframework.data.jpa.repository.EntityGraph.class)).isFalse();
+            assertThat(method.getAnnotation(Query.class).value())
+                    .contains("= :storeId", ".fecha >= :dateFrom", ".fecha <= :dateTo", ".fecha < :cursorDate")
+                    .contains("order by")
+                    .doesNotContain("join fetch");
+        }
+        assertThat(commercial.getAnnotation(Query.class).value())
+                .contains("document.tipo in :types", "cast(document.id as string) < :cursorId")
+                .contains("cast(document.id as string) desc");
+        assertThat(input.getAnnotation(Query.class).value()).contains("input.documentType = :type");
+    }
+
+    @Test
     void ordersAndFiltersTheUuidTieBreakerUsingTheSameStringRepresentation() throws Exception {
         var firstPageMethod = CommercialDocumentRepository.class.getDeclaredMethod(
                 "findReportDocuments",

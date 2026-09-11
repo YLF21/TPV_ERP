@@ -1391,6 +1391,8 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "documento no encontrado"));
         initializeDetailedCollections(document, storeId);
+        // Detail labels use the persisted adjustment origin after this read-only transaction.
+        document.getAjustes();
         return document;
     }
 

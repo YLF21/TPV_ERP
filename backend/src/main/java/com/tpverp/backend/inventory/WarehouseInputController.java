@@ -5,7 +5,9 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 import com.tpverp.backend.shared.api.PagedResult;
 import com.tpverp.backend.document.template.RenderedDocumentView;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.UUID;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -41,7 +43,14 @@ public class WarehouseInputController {
     public PagedResult<WarehouseInputView> list(
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) WarehouseInputDocumentType type) {
+            @RequestParam(required = false) WarehouseInputDocumentType type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return dateFrom == null && dateTo == null ? service.listPage(limit, cursor, type)
+                : service.listPage(limit, cursor, type, dateFrom, dateTo);
+    }
+
+    public PagedResult<WarehouseInputView> list(Integer limit, String cursor, WarehouseInputDocumentType type) {
         return service.listPage(limit, cursor, type);
     }
 

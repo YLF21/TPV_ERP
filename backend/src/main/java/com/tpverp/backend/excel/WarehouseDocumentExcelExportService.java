@@ -5,11 +5,13 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.inventory.WarehouseInput;
 import com.tpverp.backend.inventory.WarehouseInputRepository;
+import com.tpverp.backend.inventory.WarehouseInputDocumentType;
 import com.tpverp.backend.inventory.WarehouseOutput;
 import com.tpverp.backend.inventory.WarehouseOutputRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.application.PermissionChecks;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -24,6 +26,8 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -49,11 +53,17 @@ public class WarehouseDocumentExcelExportService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] exportInput(UUID documentId) {
+    public byte[] exportInput(UUID documentId, Authentication authentication) {
+        if (!PermissionChecks.hasPurchaseDocumentRead(authentication)) {
+            throw new AccessDeniedException("Sin permiso para exportar este informe de entradas");
+        }
         var store = organization.currentStore();
-        var input = inputs.findById(documentId)
-                .filter(value -> store.getId().equals(value.getStoreId()))
+        var input = inputs.findByIdAndStoreId(documentId, store.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Entrada de almacén no encontrada"));
+        if (input.getDocumentType() == WarehouseInputDocumentType.ENTRADA_ALMACEN
+                && !PermissionChecks.hasWarehouseManagement(authentication)) {
+            throw new AccessDeniedException("Sin permiso para exportar entradas de almacen");
+        }
         return writeInput(input, store, organization.currentCompany());
     }
 
@@ -68,13 +78,18 @@ public class WarehouseDocumentExcelExportService {
 
     private byte[] writeInput(WarehouseInput input, Store store, Company company) {
         try (var workbook = new XSSFWorkbook()) {
-            var sheet = workbook.createSheet("Entrada almacén");
+            var title = switch (input.getDocumentType()) {
+                case FACTURA_ENTRADA -> "Entrada de factura";
+                case ALBARAN_ENTRADA -> "Entrada de albarán";
+                case ENTRADA_ALMACEN -> "Entrada de almacén";
+            };
+            var sheet = workbook.createSheet(title);
         var money = moneyStyle(workbook);
         var unitPrice = unitPriceStyle(workbook);
         var metadataLabel = metadataLabelStyle(workbook);
         var metadataValue = metadataValueStyle(workbook);
         var tableHeader = tableHeaderStyle(workbook);
-            int row = metadata(sheet, company, store, "Entrada de almacén", input.getNumber(),
+            int row = metadata(sheet, company, store, title, input.getNumber(),
                     input.getDate().toString(), input.getStatus().name(), input.getWarehouseId());
         styleMetadata(sheet, metadataLabel, metadataValue);
             int headerRowIndex = row;
@@ -92,9 +107,12 @@ public class WarehouseDocumentExcelExportService {
                 money(data, 4, line.getPurchaseTotal(), money);
             }
             row++;
+            moneyPair(sheet.createRow(row++), "Subtotal", input.getSubtotal(), money);
+            var percentageStyle = workbook.createCellStyle();
+            percentageStyle.setDataFormat(workbook.createDataFormat().getFormat("0.##%"));
+            moneyPair(sheet.createRow(row++), "Descuento total del documento %", input.getGlobalDiscount().movePointLeft(2), percentageStyle);
             var total = sheet.createRow(row);
-            moneyPair(total, "Total de compra", input.getLines().stream()
-                    .map(line -> line.getPurchaseTotal()).reduce(BigDecimal.ZERO, BigDecimal::add), money);
+            moneyPair(total, "Total de compra", input.getTotal(), money);
             styleTotal(total, workbook);
             finish(sheet, 5, headerRowIndex);
             return bytes(workbook);

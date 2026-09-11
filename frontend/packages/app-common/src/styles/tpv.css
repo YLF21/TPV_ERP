@@ -694,10 +694,7 @@ textarea {
 
 .report-nav button:hover .report-menu-icon,
 .report-nav button:focus-visible .report-menu-icon,
-.report-nav button.selected .report-menu-icon,
-.visualization-reports button:hover .report-menu-icon,
-.visualization-reports button:focus-visible .report-menu-icon,
-.visualization-reports button.selected .report-menu-icon {
+.report-nav button.selected .report-menu-icon {
   filter: grayscale(1) brightness(0) invert(1);
 }
 
@@ -1283,16 +1280,6 @@ textarea {
   height: 100%;
 }
 
-.visualization-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 5;
-  display: grid;
-  place-items: center;
-  background: rgba(20, 34, 56, 0.28);
-  backdrop-filter: blur(4px);
-}
-
 .filter-overlay {
   position: fixed;
   inset: 0;
@@ -1575,180 +1562,6 @@ textarea {
 .filter-actions button:first-child {
   background: rgba(255, 255, 255, 0.54);
   color: #233d69;
-}
-
-.visualization-dialog {
-  width: min(1040px, calc(100vw - 92px));
-  height: min(640px, calc(100vh - 108px));
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.68);
-  border-radius: 24px;
-  background: rgba(226, 239, 255, 0.86);
-  box-shadow: 0 26px 80px rgba(22, 49, 93, 0.28);
-  backdrop-filter: blur(18px);
-}
-
-.visualization-header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 0 0 14px;
-}
-
-.visualization-header h2 {
-  margin: 0;
-  color: #233d69;
-  font-size: 26px;
-}
-
-.visualization-header button,
-.visualization-reports button,
-.attribute-chip {
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.38);
-  color: #203456;
-  cursor: pointer;
-  font-weight: 900;
-}
-
-.visualization-header button {
-  min-width: 110px;
-  height: 42px;
-}
-
-.visualization-layout {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 230px minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
-}
-
-.visualization-reports,
-.visualization-column {
-  min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: 9px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.22);
-  overflow: auto;
-}
-
-.visualization-reports button {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-  text-align: left;
-}
-
-.visualization-reports button.selected,
-.attribute-chip:hover,
-.attribute-chip:focus-visible,
-.visualization-reports button:hover,
-.visualization-reports button:focus-visible {
-  border-color: rgba(95, 145, 228, 0.42);
-  background: rgba(99, 151, 238, 0.72);
-  color: #ffffff;
-  outline: none;
-}
-
-.visualization-column > strong {
-  color: rgba(35, 61, 105, 0.72);
-  font-size: 14px;
-  font-weight: 950;
-}
-
-.attribute-list {
-  display: grid;
-  gap: 4px;
-}
-
-.attribute-row {
-  display: grid;
-  gap: 4px;
-}
-
-.attribute-chip {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-  text-align: left;
-  cursor: grab;
-  user-select: none;
-}
-
-.attribute-chip.locked {
-  cursor: default;
-  background: rgba(235, 244, 255, 0.72);
-}
-
-.attribute-actions {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.attribute-actions button {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid rgba(35, 61, 105, 0.18);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.6);
-  color: #203456;
-  font-size: 12px;
-  font-weight: 950;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.attribute-actions button:hover,
-.attribute-actions button:focus-visible {
-  border-color: rgba(95, 145, 228, 0.42);
-  background: rgba(99, 151, 238, 0.72);
-  color: #ffffff;
-  outline: none;
-}
-
-.attribute-actions button:disabled {
-  cursor: default;
-  opacity: 0.35;
-  background: rgba(255, 255, 255, 0.34);
-  color: rgba(35, 61, 105, 0.52);
-}
-
-.lock-icon {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-}
-
-.lock-icon img {
-  width: 24px;
-  height: 24px;
-  display: block;
-  object-fit: contain;
-  filter: grayscale(1);
-}
-
-.drag-handle {
-  color: rgba(35, 61, 105, 0.48);
-  font-weight: 950;
 }
 
 .login-store-heading {
@@ -2666,15 +2479,13 @@ textarea {
   background: #d52d2d;
 }
 
-.report-screen .filter-overlay,
-.report-screen .visualization-overlay {
+.report-screen .filter-overlay {
   z-index: 6;
   background: rgba(9, 20, 38, 0.34);
   backdrop-filter: none;
 }
 
-.report-screen .filter-dialog,
-.report-screen .visualization-dialog {
+.report-screen .filter-dialog {
   border: 1px solid #d7e0ea;
   border-radius: 20px;
   background: #ffffff;
@@ -2689,21 +2500,13 @@ textarea {
   padding: 18px;
 }
 
-.report-screen .visualization-dialog {
-  width: min(1040px, calc(100vw - 92px));
-  height: min(640px, calc(100vh - 108px));
-  padding: 18px;
-}
-
-.report-screen .filter-header,
-.report-screen .visualization-header {
+.report-screen .filter-header {
   gap: 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid #e6ecf3;
 }
 
-.report-screen .filter-header h2,
-.report-screen .visualization-header h2 {
+.report-screen .filter-header h2 {
   color: #0b1f3f;
   font-size: 24px;
   line-height: 1;
@@ -2711,8 +2514,7 @@ textarea {
 }
 
 .report-screen .filter-header button,
-.report-screen .filter-actions button,
-.report-screen .visualization-header button {
+.report-screen .filter-actions button {
   min-width: 112px;
   height: 40px;
   border: 1px solid #d7e0ea;
@@ -2726,9 +2528,7 @@ textarea {
 .report-screen .filter-header button:hover,
 .report-screen .filter-header button:focus-visible,
 .report-screen .filter-actions button:hover,
-.report-screen .filter-actions button:focus-visible,
-.report-screen .visualization-header button:hover,
-.report-screen .visualization-header button:focus-visible {
+.report-screen .filter-actions button:focus-visible {
   border-color: #9db8db;
   background: #f3f7fb;
   outline: 3px solid rgba(36, 78, 134, 0.12);
@@ -2755,8 +2555,7 @@ textarea {
 }
 
 .report-screen .filter-grid label,
-.report-screen .filter-field,
-.report-screen .visualization-column > strong {
+.report-screen .filter-field {
   color: #66758d;
   font-size: 13px;
   font-weight: 950;
@@ -2879,60 +2678,6 @@ textarea {
   background: #244e86;
   color: #ffffff;
   outline: none;
-}
-
-.report-screen .visualization-layout {
-  gap: 14px;
-  padding-top: 14px;
-}
-
-.report-screen .visualization-reports,
-.report-screen .visualization-column {
-  border: 1px solid #d7e0ea;
-  border-radius: 16px;
-  background: #fbfcfe;
-}
-
-.report-screen .visualization-reports button,
-.report-screen .attribute-chip {
-  border: 1px solid transparent;
-  border-radius: 11px;
-  background: #ffffff;
-  color: #17233b;
-  font-weight: 850;
-  box-shadow: 0 1px 0 rgba(31, 55, 86, 0.04);
-}
-
-.report-screen .visualization-reports button:hover,
-.report-screen .visualization-reports button:focus-visible,
-.report-screen .visualization-reports button.selected,
-.report-screen .attribute-chip:hover,
-.report-screen .attribute-chip:focus-visible {
-  border-color: transparent;
-  background: #244e86;
-  color: #ffffff;
-  outline: none;
-  box-shadow: 0 8px 18px rgba(36, 78, 134, 0.22);
-}
-
-.report-screen .attribute-chip.locked {
-  border-color: #d7e0ea;
-  background: #eef3f8;
-  color: #66758d;
-  box-shadow: none;
-}
-
-.report-screen .attribute-actions button {
-  border-color: #d7e0ea;
-  background: #f3f7fb;
-  color: #17233b;
-}
-
-.report-screen .attribute-actions button:hover,
-.report-screen .attribute-actions button:focus-visible {
-  border-color: #9db8db;
-  background: #17233b;
-  color: #ffffff;
 }
 
 /* Formal entry screens aligned with SalesReportScreen */
@@ -11061,7 +10806,6 @@ body,
 .stock-columns-dialog,
 .stock-bulk-workspace-manager,
 .filter-dialog,
-.visualization-dialog,
 .warehouse-document-dialog,
 .sale-action-dialog,
 .promotion-toolbar,
@@ -11083,7 +10827,6 @@ body,
 .stock-nav,
 .stock-table,
 .filter-dialog,
-.visualization-dialog,
 .sale-action-dialog,
 .warehouse-document-dialog {
   box-shadow: 0 1px 3px rgba(35, 52, 77, 0.12);
@@ -11101,7 +10844,6 @@ body,
 .settings-card header,
 .hardware-section header,
 .filter-dialog header,
-.visualization-dialog header,
 .warehouse-document-dialog header {
   border-color: var(--tpv-business-border-soft);
 }
@@ -11120,7 +10862,6 @@ body,
 .report-toolbar button,
 .report-action-button,
 .filter-actions button,
-.visualization-actions button,
 .warehouse-document-actions button,
 .promotion-row-actions button {
   border-radius: var(--tpv-business-radius);
@@ -11292,7 +11033,6 @@ textarea:focus,
 }
 
 .filter-overlay,
-.visualization-overlay,
 .sale-action-overlay,
 .warehouse-document-overlay {
   background: rgba(23, 32, 51, 0.34);
@@ -11379,7 +11119,6 @@ button.danger,
 .sale-payment-actions button,
 .sale-action-dialog,
 .filter-dialog,
-.visualization-dialog,
 .warehouse-document-dialog,
 .promotion-row {
   border-radius: var(--tpv-business-radius) !important;
@@ -11403,7 +11142,6 @@ button.danger,
 .stock-table,
 .sale-action-dialog,
 .filter-dialog,
-.visualization-dialog,
 .warehouse-document-dialog {
   background: var(--tpv-business-panel) !important;
   border: 1px solid var(--tpv-business-border) !important;
@@ -11947,7 +11685,6 @@ body,
 .report-action-button,
 .report-toolbar button,
 .filter-actions button,
-.visualization-actions button,
 .sale-action-buttons button {
   height: 34px !important;
   min-height: 34px !important;
@@ -12542,7 +12279,6 @@ body,
 .settings-nav,
 .hardware-nav,
 .filter-dialog,
-.visualization-dialog,
 .sale-action-dialog,
 .warehouse-document-dialog {
   border: 1px solid var(--tpv-v3-line) !important;
@@ -15596,7 +15332,6 @@ textarea:focus,
 .report-screen .print-menu,
 .report-screen .filter-popover,
 .report-screen .date-popover,
-.report-screen .visualization-dialog,
 .report-screen .filter-dialog {
   border-radius: var(--tpv-v3-radius) !important;
   box-shadow: none !important;
@@ -15725,27 +15460,6 @@ textarea:focus,
   color: var(--tpv-v3-text) !important;
 }
 
-/* Report productivity controls */
-.report-quick-filters {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.report-data-toolbar .report-quick-filters button {
-  min-width: auto;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 16px;
-  background: #f2f6fa;
-}
-
-.report-data-toolbar .report-quick-filters button.active {
-  border-color: #2876b9;
-  background: #dceeff;
-  color: #0a4d85;
-}
-
 .report-table-region {
   min-height: 0;
   display: flex;
@@ -15845,6 +15559,8 @@ textarea:focus,
 
 .report-document-preview-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
   margin-left: auto;
@@ -15905,14 +15621,12 @@ textarea:focus,
 }
 
 @media (max-width: 1100px) {
-  .report-quick-filters { width: 100%; }
   .warehouse-reconciliation {
     grid-template-columns: minmax(190px, 1.3fr) repeat(5, minmax(150px, 1fr));
   }
 }
 
 @media print {
-  .report-quick-filters,
   .warehouse-reconciliation {
     display: none !important;
   }

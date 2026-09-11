@@ -486,6 +486,52 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             @Param("storeId") UUID storeId,
             @Param("serialNumbers") Collection<String> serialNumbers);
 
+    @Query("select min(document.fecha) from CommercialDocument document where document.tiendaId = :storeId and document.tipo in :types")
+    LocalDate findFirstReportDate(UUID storeId, Collection<CommercialDocumentType> types);
+
+    // Page IDs before collection fetches: a date filter must not read the whole matching book.
+    default List<CommercialDocument> findReportDocumentsInRange(
+            UUID storeId, Collection<CommercialDocumentType> types,
+            LocalDate dateFrom, LocalDate dateTo, LocalDate cursorDate,
+            Instant cursorOccurredAt, String cursorId, Pageable pageable) {
+        if (types.isEmpty()) return List.of();
+        var ids = findReportDocumentIdsInRange(storeId, types, dateFrom, dateTo,
+                cursorDate, cursorOccurredAt, cursorId, pageable);
+        if (ids.isEmpty()) return List.of();
+        var byId = findReportDocumentsWithPaymentsByIds(storeId, types, ids).stream()
+                .collect(Collectors.toMap(CommercialDocument::getId, document -> document));
+        findReportDocumentsWithLinesByIds(storeId, types, ids);
+        return ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+    }
+
+    @Query("""
+            select document.id from CommercialDocument document
+            where document.tiendaId = :storeId and document.tipo in :types
+              and (cast(:dateFrom as date) is null or document.fecha >= :dateFrom)
+              and (cast(:dateTo as date) is null or document.fecha <= :dateTo)
+              and (cast(:cursorDate as date) is null or document.fecha < :cursorDate
+                or (document.fecha = :cursorDate and (
+                  coalesce(document.confirmadoEn, document.creadoEn) < :cursorOccurredAt
+                  or (coalesce(document.confirmadoEn, document.creadoEn) = :cursorOccurredAt
+                    and cast(document.id as string) < :cursorId))))
+            order by document.fecha desc, coalesce(document.confirmadoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
+            """)
+    List<UUID> findReportDocumentIdsInRange(
+            UUID storeId, Collection<CommercialDocumentType> types,
+            LocalDate dateFrom, LocalDate dateTo, LocalDate cursorDate,
+            Instant cursorOccurredAt, String cursorId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("select document from CommercialDocument document where document.tiendaId = :storeId and document.tipo in :types and document.id in :ids")
+    List<CommercialDocument> findReportDocumentsWithPaymentsByIds(
+            UUID storeId, Collection<CommercialDocumentType> types, Collection<UUID> ids);
+
+    @EntityGraph(attributePaths = "lineas")
+    @Query("select document from CommercialDocument document where document.tiendaId = :storeId and document.tipo in :types and document.id in :ids")
+    List<CommercialDocument> findReportDocumentsWithLinesByIds(
+            UUID storeId, Collection<CommercialDocumentType> types, Collection<UUID> ids);
+
     // Page scalar IDs before fetching collections so the database applies the limit.
     default List<CommercialDocument> findCustomerReportDocuments(
             UUID storeId,

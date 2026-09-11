@@ -46,7 +46,6 @@
   .report-screen .report-feedback,
   .report-screen .report-options .active-filter-summary button,
   .report-screen .report-load-more,
-  .report-screen .visualization-overlay,
   .report-screen .filter-overlay,
   .report-screen .shutdown-overlay {
     display: none !important;

@@ -1,7 +1,14 @@
 package com.tpverp.backend.excel;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
@@ -14,13 +21,19 @@ import com.tpverp.backend.document.DocumentReportView;
 import com.tpverp.backend.document.DocumentReportService;
 import com.tpverp.backend.document.DocumentService;
 import com.tpverp.backend.document.DocumentStatus;
-import com.tpverp.backend.inventory.WarehouseInputService;
+import com.tpverp.backend.document.WarehouseInputReportService;
+import com.tpverp.backend.document.WarehouseInputReportView;
+import com.tpverp.backend.inventory.WarehouseInputDocumentType;
+import com.tpverp.backend.inventory.WarehouseInputView;
+import com.tpverp.backend.inventory.WarehouseInputLineView;
+import com.tpverp.backend.inventory.WarehouseInputStatus;
 import com.tpverp.backend.inventory.WarehouseInput;
 import com.tpverp.backend.inventory.WarehouseOutputService;
 import com.tpverp.backend.inventory.WarehouseOutput;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.shared.api.PagedResult;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,6 +43,10 @@ import java.util.Set;
 import java.util.UUID;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
@@ -39,7 +56,7 @@ class SalesReportExcelExportServiceTest {
     void exportsEverySupportedReportWithItsCompleteColumnConfiguration() throws Exception {
         var documents = mock(DocumentService.class);
         var reports = mock(DocumentReportService.class);
-        var inputs = mock(WarehouseInputService.class);
+        var inputs = mock(WarehouseInputReportService.class);
         var outputs = mock(WarehouseOutputService.class);
         var warehouses = mock(WarehouseRepository.class);
         when(documents.listTickets()).thenReturn(List.of());
@@ -47,7 +64,8 @@ class SalesReportExcelExportServiceTest {
         when(reports.allInvoices(false, true)).thenReturn(List.of());
         when(reports.allDeliveryNotes(true, false)).thenReturn(List.of());
         when(reports.allDeliveryNotes(false, true)).thenReturn(List.of());
-        when(inputs.list()).thenReturn(List.of());
+        when(inputs.listPage(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PagedResult<>(List.of(), null, false));
         when(outputs.list()).thenReturn(List.of());
         when(warehouses.findAll()).thenReturn(List.of());
         var service = new SalesReportExcelExportService(
@@ -77,11 +95,11 @@ class SalesReportExcelExportServiceTest {
                         List.of("date", "time", "output", "terminal", "user", "warehouse", "productCount",
                                 "comment", "reason", "total")),
                 Map.entry("salesReport.inputDeliveryNotes",
-                        List.of("date", "time", "deliveryNote", "terminal", "user", "supplier",
-                                "supplierName", "warehouse", "productCount", "pending", "comment", "total")),
+                        List.of("date", "deliveryNote", "supplier", "supplierName", "warehouse",
+                                "productCount", "comment", "status", "subtotal", "globalDiscount", "total")),
                 Map.entry("salesReport.inputInvoices",
-                        List.of("date", "time", "invoice", "terminal", "user", "supplier", "supplierName",
-                                "warehouse", "pending", "dueDate", "comment", "status", "total")),
+                        List.of("date", "invoice", "supplier", "supplierName", "warehouse",
+                                "productCount", "comment", "status", "subtotal", "globalDiscount", "total")),
                 Map.entry("salesReport.inputWarehouse",
                         List.of("date", "time", "input", "terminal", "user", "warehouse", "productCount",
                                 "comment", "origin", "total")));
@@ -122,7 +140,7 @@ class SalesReportExcelExportServiceTest {
         var service = new SalesReportExcelExportService(
                 mock(DocumentService.class),
                 reports,
-                mock(WarehouseInputService.class),
+                mock(WarehouseInputReportService.class),
                 mock(WarehouseOutputService.class),
                 mock(WarehouseRepository.class),
                 currentOrganization(),
@@ -175,7 +193,7 @@ class SalesReportExcelExportServiceTest {
         var service = new SalesReportExcelExportService(
                 documents,
                 mock(DocumentReportService.class),
-                mock(WarehouseInputService.class),
+                mock(WarehouseInputReportService.class),
                 mock(WarehouseOutputService.class),
                 mock(WarehouseRepository.class),
                 organization,
@@ -202,7 +220,7 @@ class SalesReportExcelExportServiceTest {
 
     @Test
     void exportsWarehouseNamesAndHistoricalPurchaseAndSaleTotals() throws Exception {
-        var inputs = mock(WarehouseInputService.class);
+        var inputs = mock(WarehouseInputReportService.class);
         var outputs = mock(WarehouseOutputService.class);
         var warehouses = mock(WarehouseRepository.class);
         var storeId = UUID.randomUUID();
@@ -217,7 +235,10 @@ class SalesReportExcelExportServiceTest {
         output.addLine(productId, 3);
         output.snapshotSalePrices(Map.of(productId, new BigDecimal("10.25")));
         output.confirm("SAL-2026-TEST", userId, java.time.Instant.parse("2026-07-20T11:00:00Z"));
-        when(inputs.list()).thenReturn(List.of(input));
+        when(inputs.listPage(eq(WarehouseInputDocumentType.ENTRADA_ALMACEN), eq(200),
+                isNull(), isNull(), isNull(), any()))
+                .thenReturn(new PagedResult<>(List.of(new WarehouseInputReportView(
+                        WarehouseInputView.from(input), null, null, "GENERAL")), null, false));
         when(outputs.list()).thenReturn(List.of(output));
         when(warehouses.findAll()).thenReturn(List.of(warehouse));
         var service = new SalesReportExcelExportService(
@@ -234,6 +255,152 @@ class SalesReportExcelExportServiceTest {
 
         assertWarehouseExport(service, authentication, "salesReport.inputWarehouse", "GENERAL", 25.20);
         assertWarehouseExport(service, authentication, "salesReport.warehouseOutputs", "GENERAL", 30.75);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"salesReport.inputInvoices,FACTURA_ENTRADA,invoice",
+            "salesReport.inputDeliveryNotes,ALBARAN_ENTRADA,deliveryNote",
+            "salesReport.inputWarehouse,ENTRADA_ALMACEN,input"})
+    void exportsCurrentTypedEntriesAcrossPagesWithTheAppliedDatesAndFilters(
+            String reportKey, WarehouseInputDocumentType type, String numberColumn) throws Exception {
+        var inputs = mock(WarehouseInputReportService.class);
+        var reports = mock(DocumentReportService.class);
+        var documents = mock(DocumentService.class);
+        var service = new SalesReportExcelExportService(documents, reports, inputs,
+                mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
+                mock(DocumentAttributionResolver.class), mock(AuditService.class));
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_ALMACEN")));
+        var from = LocalDate.of(2026, 8, 1);
+        var to = LocalDate.of(2026, 8, 31);
+        var matching = inputReport(type, "ENT-002", "PROVEEDOR OBJETIVO");
+        var other = inputReport(type, "ENT-001", "OTRO");
+        when(inputs.listPage(type, 200, null, from, to, authentication))
+                .thenReturn(new PagedResult<>(List.of(other), "next", true));
+        when(inputs.listPage(type, 200, "next", from, to, authentication))
+                .thenReturn(new PagedResult<>(List.of(matching), null, false));
+        var keys = List.of(numberColumn, "supplier", "supplierName", "warehouse", "productCount", "comment",
+                "status", "subtotal", "globalDiscount", "total");
+        var request = new SalesReportExportRequest(reportKey,
+                new SalesReportExportRequest.Filters("2026-08-01", "2026-08-31", "", "", "OBJETIVO", "", "", "", ""),
+                "ENT-002", keys.stream().map(key -> new SalesReportExportRequest.Column(key, key)).toList());
+
+        byte[] bytes = service.export(request, authentication);
+
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            var row = sheet.getRow(9);
+            assertThat(row.getCell(0).getStringCellValue()).isEqualTo("ENT-002");
+            assertThat(row.getCell(1).getStringCellValue()).isEqualTo("P-000001");
+            assertThat(row.getCell(2).getStringCellValue()).isEqualTo("PROVEEDOR OBJETIVO");
+            assertThat(row.getCell(3).getStringCellValue()).isEqualTo("GENERAL");
+            assertThat(row.getCell(4).getNumericCellValue()).isEqualTo(3.75);
+            assertThat(row.getCell(5).getStringCellValue()).isEqualTo("REF EXTERNA");
+            assertThat(row.getCell(6).getStringCellValue()).isEqualTo("CONFIRMADA");
+            assertThat(row.getCell(7).getNumericCellValue()).isEqualTo(105.25);
+            assertThat(row.getCell(7).getCellStyle().getDataFormatString()).contains("€");
+            assertThat(row.getCell(8).getNumericCellValue()).isEqualTo(0.05);
+            assertThat(new DataFormatter().formatCellValue(row.getCell(8))).contains("5", "%").doesNotContain("500");
+            assertThat(row.getCell(9).getNumericCellValue()).isEqualTo(99.99);
+        }
+        verify(inputs).listPage(type, 200, null, from, to, authentication);
+        verify(inputs).listPage(type, 200, "next", from, to, authentication);
+        verifyNoInteractions(reports, documents);
+    }
+
+    @Test
+    void capsEntryExportsBeforeBuildingAWorkbookInsteadOfLoadingTheWholeHistory() {
+        var inputs = mock(WarehouseInputReportService.class);
+        var audit = mock(AuditService.class);
+        var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
+                inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
+                mock(DocumentAttributionResolver.class), audit);
+        var type = WarehouseInputDocumentType.FACTURA_ENTRADA;
+        var row = inputReport(type, "FE-001", "PROVEEDOR");
+        var call = new java.util.concurrent.atomic.AtomicInteger();
+        when(inputs.listPage(eq(type), eq(200), any(), any(), any(), any()))
+                .thenAnswer(ignored -> new PagedResult<>(java.util.Collections.nCopies(200, row),
+                        "page-" + call.incrementAndGet(), true));
+        var request = new SalesReportExportRequest("salesReport.inputInvoices", null, "",
+                List.of(new SalesReportExportRequest.Column("invoice", "Factura")));
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_CUENTAS")));
+
+        assertThatThrownBy(() -> service.export(request, authentication))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("50000");
+        verify(inputs, times(251)).listPage(eq(type), eq(200), any(), any(), any(), eq(authentication));
+        verifyNoInteractions(audit);
+    }
+
+    @Test
+    void doesNotReadPurchaseEntriesForSalesOnlyExporters() {
+        var inputs = mock(WarehouseInputReportService.class);
+        var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
+                inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
+                mock(DocumentAttributionResolver.class), mock(AuditService.class));
+        var request = new SalesReportExportRequest("salesReport.inputDeliveryNotes", null, "",
+                List.of(new SalesReportExportRequest.Column("deliveryNote", "Albarán")));
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_VENTAS")));
+        assertThatThrownBy(() -> service.export(request, authentication)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(inputs);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"salesReport.status.draft,BORRADOR,FE-DRAFT,FE-CONFIRMED",
+            "salesReport.status.confirmed,CONFIRMADA,FE-CONFIRMED,FE-DRAFT",
+            "BORRADOR,BORRADOR,FE-DRAFT,FE-CONFIRMED",
+            "CONFIRMADA,CONFIRMADA,FE-CONFIRMED,FE-DRAFT"})
+    void xlsxAndPdfApplyTheSameDraftAndConfirmedStatusFilterAsTheScreen(
+            String filter, WarehouseInputStatus expectedStatus, String included, String excluded) throws Exception {
+        var inputs = mock(WarehouseInputReportService.class);
+        var type = WarehouseInputDocumentType.FACTURA_ENTRADA;
+        var draft = inputReport(type, "FE-DRAFT", "PROVEEDOR");
+        var confirmed = inputReport(type, "FE-CONFIRMED", "PROVEEDOR");
+        when(draft.document().status()).thenReturn(WarehouseInputStatus.BORRADOR);
+        when(inputs.listPage(eq(type), eq(200), any(), any(), any(), any()))
+                .thenReturn(new PagedResult<>(List.of(draft, confirmed), null, false));
+        var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
+                inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
+                mock(DocumentAttributionResolver.class), mock(AuditService.class));
+        var request = new SalesReportExportRequest("salesReport.inputInvoices",
+                new SalesReportExportRequest.Filters("", "", "", "", "", "", "", filter, ""), "",
+                List.of(new SalesReportExportRequest.Column("invoice", "Factura"),
+                        new SalesReportExportRequest.Column("status", "Estado")));
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_CUENTAS")));
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication)))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo(included);
+            assertThat(sheet.getRow(9).getCell(1).getStringCellValue()).isEqualTo(expectedStatus.name());
+        }
+        var pdf = new SalesReportPdfExportService(service).export(request, authentication);
+        try (var document = org.apache.pdfbox.Loader.loadPDF(pdf)) {
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(document))
+                    .contains(included, expectedStatus.name()).doesNotContain(excluded);
+        }
+    }
+
+    private WarehouseInputReportView inputReport(WarehouseInputDocumentType type, String number, String supplierName) {
+        var document = mock(WarehouseInputView.class);
+        var first = mock(WarehouseInputLineView.class);
+        var second = mock(WarehouseInputLineView.class);
+        when(first.quantity()).thenReturn(new BigDecimal("1.25"));
+        when(second.quantity()).thenReturn(new BigDecimal("2.50"));
+        when(document.lines()).thenReturn(List.of(first, second));
+        when(document.documentType()).thenReturn(type);
+        when(document.number()).thenReturn(number);
+        when(document.date()).thenReturn(LocalDate.of(2026, 8, 15));
+        when(document.status()).thenReturn(WarehouseInputStatus.CONFIRMADA);
+        when(document.concept()).thenReturn("");
+        when(document.externalNumber()).thenReturn("REF EXTERNA");
+        when(document.subtotal()).thenReturn(new BigDecimal("105.25"));
+        when(document.globalDiscount()).thenReturn(new BigDecimal("5.00"));
+        // Deliberately distinct from a recomputation: exports must consume the persisted view's total.
+        when(document.total()).thenReturn(new BigDecimal("99.99"));
+        return new WarehouseInputReportView(document, "P-000001", supplierName, "GENERAL");
     }
 
     private void assertWarehouseExport(
