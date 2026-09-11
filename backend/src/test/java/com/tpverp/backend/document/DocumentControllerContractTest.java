@@ -218,10 +218,10 @@ class DocumentControllerContractTest {
                 "relate", UUID.class, InvoiceController.RelationRequest.class,
                 org.springframework.security.core.Authentication.class));
         assertSalesManagement(DocumentReportController.class.getDeclaredMethod(
-                "invoices", Integer.class, String.class,
+                "invoices", Integer.class, String.class, String.class, CustomerDocumentReportFilter.class,
                 org.springframework.security.core.Authentication.class));
         assertSalesManagement(DocumentReportController.class.getDeclaredMethod(
-                "deliveryNotes", Integer.class, String.class,
+                "deliveryNotes", Integer.class, String.class, String.class, CustomerDocumentReportFilter.class,
                 org.springframework.security.core.Authentication.class));
     }
 
@@ -252,10 +252,10 @@ class DocumentControllerContractTest {
                 "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
                 org.springframework.security.core.Authentication.class));
         assertPurchaseRead(DocumentReportController.class.getDeclaredMethod(
-                "invoices", Integer.class, String.class,
+                "invoices", Integer.class, String.class, String.class, CustomerDocumentReportFilter.class,
                 org.springframework.security.core.Authentication.class));
         assertPurchaseRead(DocumentReportController.class.getDeclaredMethod(
-                "deliveryNotes", Integer.class, String.class,
+                "deliveryNotes", Integer.class, String.class, String.class, CustomerDocumentReportFilter.class,
                 org.springframework.security.core.Authentication.class));
     }
 

@@ -22,6 +22,7 @@ import com.tpverp.saas.license.SaasLicense;
 import com.tpverp.saas.license.SaasLicenseRepository;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
+import com.tpverp.saas.customer.CustomerDocumentIdentity;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -152,22 +153,23 @@ public class TenantService {
 
     @Transactional
     public ErpCustomerResponse createErpCustomer(CreateErpCustomerRequest request) {
+        CustomerDocumentIdentity identity = CustomerDocumentIdentity.validate(request.documentType(), request.taxId());
         planLimits.requireCapacity(TenantContextHolder.current().companyId(), PlanResource.MASTER_RECORDS);
         UUID companyId = TenantContextHolder.current().companyId();
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                insert into saas_erp_customer(id, company_id, code, name, tax_id, email, phone, active, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                insert into saas_erp_customer(id, company_id, code, name, tax_id, email, phone, active, created_at, document_type)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
                 companyId,
                 request.code().trim(),
                 request.name().trim(),
-                blankToNull(request.taxId()),
+                identity.documentNumber(),
                 blankToNull(request.email()),
                 blankToNull(request.phone()),
                 true,
-                sqlTimestamp(clock.instant()));
+                sqlTimestamp(clock.instant()), identity.documentType());
         return erpCustomer(id);
     }
 

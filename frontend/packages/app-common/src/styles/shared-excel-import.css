@@ -1,0 +1,1078 @@
+.shared-excel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 34px;
+  padding: 0 8px;
+  border-bottom: 1px solid #9fb1c6;
+  background: #e9eef4;
+  color: #001b3f;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shared-excel-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.shared-excel-title h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 900;
+  color: #001b3f;
+  white-space: nowrap;
+}
+
+.shared-excel-title span {
+  min-width: 0;
+  overflow: hidden;
+  color: #405673;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-excel-toolbar-actions {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+  max-width: 72vw;
+  overflow-x: auto;
+}
+
+.shared-excel-toolbar-actions button {
+  flex: 0 0 auto;
+  min-width: 116px;
+  border: 0;
+  border-left: 1px solid #bfccd9;
+  background: #e9eef4;
+  color: #001b3f;
+  font-weight: 900;
+}
+
+.shared-excel-toolbar-actions button:hover {
+  background: #ffffff;
+}
+
+.shared-excel-toolbar-actions button[aria-pressed="true"] {
+  background: #1d6faf;
+  color: #ffffff;
+  box-shadow: inset 0 -3px 0 #165a91;
+}
+
+.shared-excel-top-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid #9fb1c6;
+  background: #f5f7fa;
+  overflow: hidden;
+}
+
+.shared-excel-top-pane > .shared-excel-preview {
+  flex: 1;
+  height: auto;
+}
+
+.shared-excel-cell-alert {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-bottom: 2px solid #a12121;
+  background: #fff1f0;
+  color: #721717;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.shared-excel-cell-alert ul {
+  margin: 3px 0;
+  padding-left: 20px;
+  max-height: 64px;
+  overflow: auto;
+}
+
+.shared-excel-cell-alert ul:focus-visible {
+  outline: 2px solid #001b3f;
+}
+
+.shared-excel-cell-alert p {
+  margin: 3px 0 0;
+}
+
+.shared-excel-preview td.shared-excel-cell-error {
+  color: #721717;
+  background: #fff1f0;
+  box-shadow: inset 0 -2px #a12121;
+  font-weight: 800;
+}
+
+.shared-excel-preview {
+  border: 0;
+  background: #ffffff;
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  min-height: 0;
+  min-width: 0;
+  overscroll-behavior: contain;
+}
+
+.shared-excel-preview table,
+.shared-excel-results table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.shared-excel-preview th,
+.shared-excel-preview td,
+.shared-excel-results th,
+.shared-excel-results td {
+  border: 1px solid #d9e2ec;
+  padding: 7px 9px;
+  text-align: left;
+  white-space: nowrap;
+  color: #001b3f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shared-excel-preview thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  min-width: 72px;
+  user-select: none;
+}
+
+.shared-excel-preview tbody th {
+  position: sticky;
+  left: 0;
+  top: auto;
+  z-index: 2;
+}
+
+.shared-excel-preview tbody tr {
+  height: 28px;
+}
+
+.shared-excel-preview tbody tr:nth-child(even) {
+  background: #eef4f8;
+}
+
+.shared-excel-preview tbody th,
+.shared-excel-preview tbody td {
+  height: 28px;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 26px;
+}
+
+.shared-excel-preview thead th:first-child {
+  left: 0;
+  z-index: 4;
+  min-width: 56px;
+  width: 56px;
+}
+
+.shared-excel-column-resizer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 9px;
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  border-right: 2px solid #9db4cd;
+  background: #f5f7fa;
+  cursor: col-resize;
+}
+
+.shared-excel-column-resizer:hover,
+.shared-excel-column-resizer:focus-visible {
+  border-right-color: #ffca28;
+  background: #fff7d6;
+  outline: none;
+}
+
+.shared-excel-preview {
+  height: 100%;
+  cursor: grab;
+  user-select: none;
+}
+
+.shared-excel-cell-input {
+  display: block;
+  width: 100%;
+  min-width: 72px;
+  max-width: 440px;
+  height: 26px;
+  border: 1px solid #b8c6d6;
+  border-radius: 0;
+  padding: 2px 5px;
+  background: #f7fbff;
+  color: #001b3f;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.shared-excel-preview--editing td {
+  padding: 1px 5px;
+  background: #f7fbff;
+}
+
+.shared-excel-preview--editing tbody tr:hover td {
+  background: #edf6ff;
+}
+
+.shared-excel-preview--editing .shared-excel-cell-input:hover {
+  border-color: #a8c8e5;
+  background: #ffffff;
+}
+
+.shared-excel-cell-input:focus {
+  border-color: #1d6faf;
+  background: #ffffff;
+  outline: 2px solid #2f7dbd;
+}
+
+.shared-excel-preview[data-dragging="true"],
+.shared-excel-results[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.shared-excel-empty-preview {
+  height: 100%;
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 16px 22px;
+  background: #ffffff;
+  color: #001b3f;
+}
+
+.shared-excel-empty-preview h3 {
+  margin: 0 0 10px;
+  text-align: center;
+  color: #1d6faf;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.shared-excel-empty-preview ol {
+  margin: 0;
+  padding-left: 26px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.shared-excel-preview th,
+.shared-excel-results th,
+.shared-excel-results section header {
+  background: #263f63;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.shared-excel-mapping {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+  grid-template-rows: repeat(9, minmax(32px, max-content));
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+  align-content: start;
+  min-width: 0;
+}
+
+.shared-excel-mapping-row {
+  display: grid;
+  grid-template-columns: 30px minmax(120px, 1fr) minmax(130px, 1.2fr);
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #50627a;
+  min-width: 0;
+  padding: 3px 5px;
+  text-align: left;
+}
+
+.shared-excel-mapping-update {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.shared-excel-mapping-row:not(:has(.shared-excel-value-control)) {
+  grid-template-columns: 20px 52px minmax(0, 1fr);
+}
+
+.shared-excel-mapping-row > input[type="text"] {
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.shared-excel-mapping-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #001b3f;
+}
+
+.shared-excel-value-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  min-width: 0;
+}
+
+.shared-excel-mapping-row:has(.shared-excel-value-control) {
+  grid-template-columns: 20px 80px minmax(0, 1fr);
+}
+
+.shared-excel-value-control .erp-select--editable {
+  width: 80px;
+  grid-template-columns: 52px 28px;
+}
+
+.shared-excel-value-control .erp-select--editable > .erp-select__trigger {
+  /* Override the app-wide 44 px trigger without covering the 52 px input. */
+  grid-template-columns: 1fr !important;
+  min-height: 32px !important;
+  height: 32px;
+  border-color: #6d8299 !important;
+}
+
+.shared-excel-value-control .erp-select--editable .erp-select__arrow {
+  width: 28px !important;
+  height: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box;
+}
+
+.shared-excel-value-control .erp-select--editable > .erp-select__trigger:focus-visible {
+  outline: 2px solid #001b3f !important;
+  outline-offset: 1px;
+}
+
+.shared-excel-value-control select,
+.shared-excel-value-control input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid #8ea5bd;
+  border-radius: 0;
+  background: #fffef0;
+  color: #001b3f;
+  font: inherit;
+  font-weight: 800;
+  box-sizing: border-box;
+}
+
+.shared-excel-value-control .erp-select > .erp-select__trigger,
+.shared-excel-options .erp-select > .erp-select__trigger {
+  min-height: 30px;
+  height: 30px;
+  border-color: #8ea5bd;
+  background: #fffef0;
+  font-size: 11px;
+}
+
+.shared-excel-value-control .erp-select__arrow,
+.shared-excel-options .erp-select__arrow {
+  width: 28px;
+  background: #07254f;
+}
+
+.shared-excel-date-hint {
+  white-space: normal;
+  display: block;
+  margin-top: 1px;
+  color: #526a84;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.shared-excel-value-control select:focus-visible,
+.shared-excel-value-control input:focus-visible,
+.shared-excel-mapping input:focus-visible {
+  outline: 2px solid #001b3f;
+  outline-offset: 1px;
+}
+
+.shared-excel-mapping-hint {
+  margin: 6px 8px 0;
+  color: #173353;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.shared-excel-config {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.shared-excel-config-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-bottom: 1px solid #c8d3df;
+  background: #f5f7fa;
+  color: #001b3f;
+  font-size: 12px;
+  font-weight: 800;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.shared-excel-config-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shared-excel-config-bar input {
+  width: 54px;
+  height: 26px;
+  border: 1px solid #6d8299;
+  background: #fffef0;
+  color: #001b3f;
+  font-weight: 900;
+  text-align: center;
+}
+
+.shared-excel-options {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 360px;
+  min-height: 250px;
+  padding: 12px;
+  border: 1px solid #c8d3df;
+  background: #ffffff;
+  color: #001b3f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shared-excel-options label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.shared-excel-options .shared-excel-option-disabled {
+  color: #68788c;
+  cursor: not-allowed;
+}
+
+.shared-excel-supplier-context {
+  padding: 7px 8px;
+  border: 1px solid #9fb1c6;
+  border-left: 4px solid #2f7dbd;
+  background: #f4f8fc;
+  color: #173353;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.shared-excel-options select {
+  height: 28px;
+  min-width: 150px;
+  border: 1px solid #b8c6d6;
+  background: #ffffff;
+  color: #001b3f;
+  font-weight: 800;
+}
+
+.shared-excel-file-input {
+  display: none;
+}
+
+.shared-excel-mapping input[type="text"],
+.shared-excel-mapping input[type="number"],
+.shared-excel-mapping input:not([type]) {
+  height: 32px;
+  border: 1px solid #6d8299;
+  padding: 0 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  border-radius: 0;
+  background: #fffef0;
+  color: #001b3f;
+}
+
+.shared-excel-config > .shared-excel-mapping {
+  grid-template-columns: repeat(3, minmax(170px, 1fr));
+  grid-template-rows: repeat(9, minmax(32px, max-content));
+  padding-right: 386px;
+  box-sizing: border-box;
+}
+
+.shared-excel-config-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid #c8d3df;
+  background: #f5f7fa;
+}
+
+.shared-excel-config-actions button {
+  min-width: 116px;
+  height: 34px;
+  border: 1px solid #2f79bd;
+  border-radius: 0;
+  background: #ffffff;
+  color: #001b3f;
+  font-weight: 900;
+}
+
+.shared-excel-config-actions button:last-child {
+  background: #1d6faf;
+  color: #ffffff;
+}
+
+.shared-excel-mapping .shared-excel-mapping-row:nth-child(1),
+.shared-excel-mapping .shared-excel-mapping-row:nth-child(2),
+.shared-excel-mapping .shared-excel-mapping-row:nth-child(3),
+.shared-excel-mapping .shared-excel-mapping-row:nth-child(4),
+.shared-excel-mapping .shared-excel-mapping-row:nth-child(5),
+.shared-excel-mapping .shared-excel-mapping-row:nth-child(6) {
+  background: #f7f9fc;
+}
+
+.shared-excel-body {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-left: 1px solid #c8d3df;
+  border-right: 1px solid #c8d3df;
+  background: #ffffff;
+}
+
+.shared-excel-results {
+  display: block;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  cursor: grab;
+  user-select: none;
+}
+
+.shared-excel-results section {
+  min-height: 100%;
+  border-width: 0;
+  overflow: visible;
+}
+
+.shared-excel-results section header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #263f63;
+}
+
+.shared-excel-results .shared-excel-review {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shared-excel-review > header {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  padding: 5px 8px !important;
+}
+
+.shared-excel-review-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  cursor: grab;
+}
+
+.shared-excel-review-viewport thead th {
+  top: 0;
+  height: 48px;
+  white-space: normal;
+  padding-right: 14px;
+}
+
+.shared-excel-review-viewport .table-layout-header-label {
+  white-space: normal;
+  line-height: 1.2;
+  text-overflow: clip;
+}
+
+.shared-excel-review-viewport tbody tr:not([aria-hidden]) {
+  height: 32px;
+}
+
+.shared-excel-review-viewport tbody td {
+  height: 32px;
+  line-height: 30px;
+  padding: 0 9px;
+  box-sizing: border-box;
+}
+
+.shared-excel-review-viewport .table-layout-column-resizer {
+  padding: 0;
+  min-width: 8px;
+  background: transparent;
+  border: 0;
+  border-right: 2px solid #aec4da;
+}
+
+.shared-excel-review-detail {
+  flex: 0 1 180px;
+  min-height: 80px;
+  overflow: auto;
+  padding: 8px;
+  border-top: 2px solid #1d6faf;
+  background: #f4f7fb;
+  user-select: text;
+}
+
+.shared-excel-review-detail dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
+  gap: 4px 14px;
+  margin: 0 0 8px;
+}
+
+.shared-excel-review-detail dt { font-weight: 800; color: #263f63; }
+.shared-excel-review-detail dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.shared-excel-review-viewport .shared-excel-review-row-button {
+  min-height: 24px;
+  padding: 0 4px;
+  border: 0;
+  text-decoration: underline;
+  background: transparent;
+  line-height: 24px;
+}
+
+.shared-excel-review-viewport:focus-visible,
+.shared-excel-results button:focus-visible,
+.shared-excel-toolbar button:focus-visible,
+.shared-excel-bottom-tabs button:focus-visible {
+  outline: 2px solid #001b3f;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px #ffffff;
+}
+
+.shared-excel-results thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #263f63;
+  color: #ffffff;
+}
+
+.shared-excel-results h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.shared-excel-results section header span {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.shared-excel-results button {
+  min-height: 28px;
+  border: 1px solid #9fb1c6;
+  background: #ffffff;
+  color: #001b3f;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.shared-excel-result-row:nth-child(even) td {
+  background: #f4f7fb;
+}
+
+.shared-excel-result-row--purchasePriceChanged td,
+.shared-excel-result-row--missing td {
+  border-bottom-color: #b76e00;
+}
+
+.shared-excel-result-row--error td {
+  border-bottom-color: #b42318;
+  background: #fff4f2;
+}
+
+/* Comparison sources stay distinct; amber and the != marker identify differences, not writes. */
+.shared-excel-review-legend {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 12px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #9fb1c6;
+  background: #ffffff;
+  color: #001b3f;
+  font-size: 12px;
+  cursor: default;
+}
+
+.shared-excel-review-legend > span {
+  padding: 2px 6px;
+  border: 1px solid #9fb1c6;
+  font-weight: 800;
+}
+
+.shared-excel-review-legend small { font-size: 11px; }
+.shared-excel-review-legend-current { background: #e7eef8; }
+.shared-excel-review-legend-excel { background: #e8f5eb; }
+.shared-excel-review-legend-changed { background: #fff0bd; }
+
+.shared-excel-results th.shared-excel-review-cell--current { background: #334d70; }
+.shared-excel-results th.shared-excel-review-cell--excel { background: #205b3b; }
+
+.shared-excel-review td.shared-excel-review-cell--current,
+.shared-excel-review-detail .shared-excel-review-cell--current { background: #eef3fa; }
+.shared-excel-review td.shared-excel-review-cell--excel,
+.shared-excel-review-detail .shared-excel-review-cell--excel { background: #f0f8f2; }
+.shared-excel-review tr:nth-child(even) td.shared-excel-review-cell--current { background: #e7eef8; }
+.shared-excel-review tr:nth-child(even) td.shared-excel-review-cell--excel { background: #e8f5eb; }
+
+.shared-excel-review td.shared-excel-review-cell--changed,
+.shared-excel-review-detail .shared-excel-review-cell--changed {
+  font-weight: 800;
+  box-shadow: inset 3px 0 #916000;
+}
+
+.shared-excel-review tr td.shared-excel-review-cell--excel.shared-excel-review-cell--changed,
+.shared-excel-review-detail .shared-excel-review-cell--excel.shared-excel-review-cell--changed {
+  background: #fff0bd;
+  color: #001b3f;
+}
+
+.shared-excel-review-change-mark {
+  display: inline-block;
+  margin-right: 5px;
+  color: #714900;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.shared-excel-review-detail [class*="shared-excel-review-cell--"] { padding: 4px 8px; }
+
+/* Frozen header occupies its own layout row; only the data viewport scrolls vertically. */
+.shared-excel-frozen-table {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.shared-excel-frozen-table > .shared-excel-preview { flex: 1 1 auto; height: auto; }
+.shared-excel-fixed-header {
+  flex: 0 0 auto;
+  overflow: hidden;
+  min-width: 0;
+  background: #263f63;
+}
+.shared-excel-fixed-header table { min-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.shared-excel-fixed-header thead th {
+  position: relative;
+  top: auto;
+  border: 1px solid #d9e2ec;
+  background: #263f63;
+  color: #fff;
+  text-align: left;
+  height: 48px;
+  padding: 6px 14px 6px 9px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: normal;
+}
+.shared-excel-fixed-header .table-layout-header-label { white-space: normal; line-height: 1.2; text-overflow: clip; }
+.shared-excel-fixed-header .table-layout-column-resizer { padding: 0; min-width: 8px; background: transparent; border: 0; border-right: 2px solid #aec4da; }
+.shared-excel-raw-table .shared-excel-fixed-header th { height: 32px; white-space: nowrap; }
+.shared-excel-raw-table .shared-excel-fixed-header th:first-child { position: sticky; left: 0; z-index: 2; }
+.shared-excel-body-labels {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.shared-excel-body-labels th { position: static !important; }
+.shared-excel-results .shared-excel-review > header { position: static; }
+.shared-excel-preview tr[aria-selected="true"] > *,
+.shared-excel-review-viewport tr[aria-selected="true"] > * {
+  outline: 2px solid #1d6faf;
+  outline-offset: -2px;
+}
+.shared-excel-source-row-button {
+  display: block;
+  width: 100%;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.shared-excel-source-row-button:focus-visible { outline: 2px solid #ffda69; outline-offset: -2px; }
+.shared-excel-preview:focus-visible { outline: 2px solid #1d6faf; outline-offset: -2px; }
+
+.shared-excel-result-status {
+  font-weight: 900;
+}
+
+.shared-excel-result-status > span {
+  display: inline-block;
+  width: 18px;
+  margin-right: 4px;
+  color: #173353;
+  text-align: center;
+}
+
+.shared-excel-result-row--purchasePriceChanged .shared-excel-result-status > span,
+.shared-excel-result-row--missing .shared-excel-result-status > span {
+  color: #8a4b00;
+}
+
+.shared-excel-result-row--error .shared-excel-result-status > span {
+  color: #9d2017;
+}
+
+.shared-excel-summary-table th:nth-child(n+3),
+.shared-excel-summary-table td:nth-child(n+3) {
+  min-width: 290px;
+  max-width: 420px;
+  vertical-align: top;
+  white-space: normal;
+}
+
+.shared-excel-summary-values {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.shared-excel-summary-values > div {
+  display: grid;
+  grid-template-columns: minmax(115px, .8fr) minmax(110px, 1fr);
+  gap: 7px;
+  padding-bottom: 2px;
+  border-bottom: 1px dotted #afbdcc;
+}
+
+.shared-excel-summary-values dt,
+.shared-excel-summary-values dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.shared-excel-summary-values dt {
+  color: #334d6b;
+  font-weight: 900;
+}
+
+.shared-excel-summary-changes dd {
+  color: #714000;
+  font-weight: 900;
+}
+
+.shared-excel-results section header button:last-child {
+  background: #1d6faf;
+  border-color: #276da7;
+  color: #ffffff;
+}
+
+.shared-excel-error-list {
+  display: grid;
+  gap: 5px;
+  min-width: 260px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  border: 1px solid #b42318;
+  background: #fff4f2;
+  color: #681b17;
+  white-space: normal;
+}
+
+.shared-excel-error-list li {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e7aaa5;
+}
+
+.shared-excel-error-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.shared-excel-error-list strong {
+  color: #8e1f16;
+  font-weight: 900;
+}
+
+.shared-excel-error-list span {
+  display: block;
+  color: inherit;
+  font-weight: 700;
+}
+
+.shared-excel-bottom-tabs {
+  display: flex;
+  min-height: 46px;
+  border: 1px solid #c8d3df;
+  border-top: 0;
+  background: #eef3f8;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.shared-excel-bottom-tabs button {
+  min-width: 180px;
+  border: 0;
+  border-right: 1px solid #c8d3df;
+  background: #ffffff;
+  color: #001b3f;
+  font-weight: 800;
+}
+
+.shared-excel-bottom-tabs button.selected {
+  background: #1d6faf;
+  color: #ffffff;
+}
+
+.shared-excel-status {
+  margin: 0;
+  padding: 0 12px;
+  color: #8a4b00;
+  font-weight: 800;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-excel-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #163b67;
+}
+
+.shared-excel-confirm-dialog {
+  width: min(560px, 100%);
+  border: 2px solid #163b67;
+  background: #ffffff;
+  color: #001b3f;
+  box-shadow: 0 12px 28px #0b2e52;
+  padding: 18px;
+}
+
+.shared-excel-confirm-dialog h2 {
+  margin: 0 0 10px;
+  color: #163b67;
+  font-size: 16px;
+}
+
+.shared-excel-confirm-dialog p {
+  margin: 0;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.shared-excel-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.shared-excel-confirm-actions button {
+  min-width: 120px;
+  height: 34px;
+  border: 1px solid #2f79bd;
+  border-radius: 0;
+  background: #ffffff;
+  color: #001b3f;
+  font-weight: 900;
+}
+
+.shared-excel-confirm-actions button:last-child {
+  background: #1d6faf;
+  color: #ffffff;
+}
+
+@media (max-width: 1120px) {
+  .shared-excel-config > .shared-excel-mapping {
+    grid-template-columns: repeat(3, minmax(240px, 1fr));
+    grid-template-rows: repeat(9, minmax(32px, max-content));
+    padding-right: 0;
+  }
+
+  .shared-excel-options {
+    position: static;
+    width: auto;
+    min-height: 0;
+    margin: 8px;
+  }
+
+  .shared-excel-config {
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  }
+}

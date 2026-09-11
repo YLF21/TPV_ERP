@@ -1,6 +1,8 @@
 package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.catalog.ProductClassificationVersionConflictException;
+import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.FiscalQrUnavailableException;
@@ -23,6 +25,7 @@ import com.tpverp.backend.security.sales.SaleOperationAuthorizationDeniedExcepti
 import com.tpverp.backend.security.sales.SaleOperationAuthorizationThrottledException;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
+import com.tpverp.backend.inventory.WarehouseInputService.WarehouseExcelImportSnapshotException;
 import com.tpverp.backend.management.SafeManagementRetirementService.SafeRetirementStaleStateException;
 import com.tpverp.backend.management.SafeManagementRetirementService.ProtectedSystemProductException;
 import com.tpverp.backend.party.loyalty.central.MemberBalanceCentralException;
@@ -47,9 +50,13 @@ import org.springframework.http.ProblemDetail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -58,9 +65,141 @@ public class ApiExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private final LocalizedMessages messages;
+    private final AuditService audit;
 
     public ApiExceptionHandler(MessageSource messageSource) {
+        this(messageSource, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ApiExceptionHandler(MessageSource messageSource, @Nullable AuditService audit) {
         this.messages = new LocalizedMessages(messageSource);
+        this.audit = audit;
+    }
+
+    /** Compatibility helper for direct callers that explicitly handle Excel. */
+    public ResponseEntity<java.util.Map<String, Object>> uploadTooLarge(MaxUploadSizeExceededException exception) {
+        return excelUploadTooLarge(SupportedLanguage.ES);
+    }
+
+    /** Handles multipart rejection before a controller method is selected. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<?> uploadTooLarge(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request) {
+        if (request == null || request.getRequestURI() == null
+                || !request.getRequestURI().startsWith("/api/v1/product-excel-imports")) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(problem(HttpStatus.PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE",
+                            payloadTooLargeText(language(request)), language(request), request));
+        }
+        return excelUploadTooLarge(language(request));
+    }
+
+    private ResponseEntity<java.util.Map<String, Object>> excelUploadTooLarge(SupportedLanguage language) {
+        if (audit != null) {
+            try {
+                audit.record("PRODUCT_EXCEL_IMPORT_READ", AuditResult.FALLO,
+                        java.util.Map.of("fileName", "", "sha256", "", "code", "FILE_TOO_LARGE"));
+            } catch (RuntimeException ignored) {
+                // Transport-level audit is best-effort and cannot hide the 413.
+            }
+        }
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("code", "FILE_TOO_LARGE");
+        body.put("message", switch (language) {
+            case EN -> "The workbook exceeds 10 MB";
+            case ZH -> "工作簿超过 10 MB";
+            default -> "El fichero supera 10 MB";
+        });
+        body.put("attribute", "file");
+        body.put("receivedValue", null);
+        body.put("reason", switch (language) {
+            case EN -> "The workbook exceeds the permitted size limit";
+            case ZH -> "工作簿超过允许的大小限制";
+            default -> "El fichero supera el límite de tamaño permitido";
+        });
+        body.put("acceptedValues", "<= 10 MB");
+        body.put("recommendedFix", switch (language) {
+            case EN -> "Split the workbook or reduce its size";
+            case ZH -> "拆分工作簿或减小其大小";
+            default -> "Divide el fichero o reduce su tamaño";
+        });
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(body);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<?> accessDenied(
+            AccessDeniedException exception,
+            HttpServletRequest request) {
+        boolean excelEndpoint = request != null && request.getRequestURI() != null
+                && request.getRequestURI().startsWith("/api/v1/product-excel-imports");
+        if (!excelEndpoint) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(problem(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                            permissionDeniedText(language(request)), language(request), request));
+        }
+        if (audit != null) {
+            try {
+                audit.record(excelPermissionAuditEvent(request), AuditResult.FALLO,
+                        java.util.Map.of("code", "PERMISSION_DENIED"));
+            } catch (RuntimeException ignored) {
+                // Authorization auditing is best-effort and cannot hide the 403.
+            }
+        }
+        SupportedLanguage currentLanguage = language(request);
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("code", "PERMISSION_DENIED");
+        body.put("message", permissionDeniedText(currentLanguage));
+        body.put("attribute", "context");
+        body.put("receivedValue", request.getRequestURI());
+        body.put("reason", switch (currentLanguage) {
+            case EN -> "The permission does not match the import context";
+            case ZH -> "权限与导入上下文不匹配";
+            default -> "El permiso no corresponde al contexto de la importación";
+        });
+        body.put("acceptedValues", switch (currentLanguage) {
+            case EN -> "STOCK: GESTION_PRODUCTO; WAREHOUSE_INPUT/OUTPUT read: GESTION_ALMACEN; master or supplier changes: both";
+            case ZH -> "STOCK：GESTION_PRODUCTO；WAREHOUSE_INPUT/OUTPUT读取：GESTION_ALMACEN；主数据或供应商变更：两者都需要";
+            default -> "STOCK: GESTION_PRODUCTO; lectura WAREHOUSE_INPUT/OUTPUT: GESTION_ALMACEN; cambios maestros o proveedor: ambos";
+        });
+        body.put("recommendedFix", switch (currentLanguage) {
+            case EN -> "Request the permission required for this context";
+            case ZH -> "申请此上下文所需的权限";
+            default -> "Solicita el permiso requerido para este contexto";
+        });
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    private static String permissionDeniedText(SupportedLanguage language) {
+        return switch (language) {
+            case EN -> "You do not have permission for this operation";
+            case ZH -> "没有执行此操作的权限";
+            default -> "No tienes permiso para esta operación";
+        };
+    }
+
+    private static String payloadTooLargeText(SupportedLanguage language) {
+        return switch (language) {
+            case EN -> "The request body exceeds the permitted limit";
+            case ZH -> "请求正文超过允许的大小限制";
+            default -> "El cuerpo supera el límite permitido";
+        };
+    }
+
+    private static String excelPermissionAuditEvent(HttpServletRequest request) {
+        String uri = request == null ? "" : request.getRequestURI();
+        int marker = uri.indexOf("/api/v1/product-excel-imports/");
+        String operation = marker < 0 ? "UNKNOWN"
+                : uri.substring(marker + "/api/v1/product-excel-imports/".length())
+                        .replaceAll("[^A-Za-z0-9].*", "").toUpperCase(java.util.Locale.ROOT);
+        return "PRODUCT_EXCEL_IMPORT_" + (operation.isBlank() ? "ACCESS" : operation);
+    }
+
+    @ExceptionHandler(com.tpverp.backend.party.CustomerIdentityException.class)
+    ProblemDetail customerIdentityProblem(com.tpverp.backend.party.CustomerIdentityException exception,
+            HttpServletRequest request) {
+        return problem(exception.status(), exception.code(), exception.code(), language(request), request);
     }
 
     @ExceptionHandler(PaymentTerminalApiException.class)
@@ -421,6 +560,27 @@ public class ApiExceptionHandler {
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language,
                 request);
+    }
+
+    @ExceptionHandler(WarehouseExcelImportSnapshotException.class)
+    ProblemDetail warehouseExcelImportSnapshotStale(
+            WarehouseExcelImportSnapshotException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        if ("EXCEL_IMPORT_REVIEW_REQUIRED".equals(exception.getMessage())) {
+            var detail = switch (language) {
+                case EN -> "The imported document data changed. Open Import Excel, review and import it again before saving or confirming. The pending supplier update has not been discarded.";
+                case ZH -> "导入后单据数据已更改。请打开 Excel 导入，重新检查并导入后再保存或确认。待更新的供应商设置未被删除。";
+                default -> "Los datos del documento importado han cambiado. Abre Importar Excel, revisa e importa de nuevo antes de guardar o confirmar. No se ha eliminado la actualización pendiente del proveedor.";
+            };
+            return problem(HttpStatus.CONFLICT, "EXCEL_IMPORT_REVIEW_REQUIRED", detail, language, request);
+        }
+        var detail = switch (language) {
+            case EN -> "The warehouse Excel snapshot is stale. Save the document again after reviewing it.";
+            case ZH -> "仓库 Excel 快照已过期。请重新检查后保存单据。";
+            default -> "La instantánea Excel del almacén está obsoleta. Revisa y guarda de nuevo el documento.";
+        };
+        return problem(HttpStatus.CONFLICT, "VERSION_STALE", detail, language, request);
     }
 
     @ExceptionHandler(SafeRetirementStaleStateException.class)

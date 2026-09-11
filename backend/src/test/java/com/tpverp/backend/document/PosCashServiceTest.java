@@ -1007,7 +1007,7 @@ class PosCashServiceTest {
     }
 
     @Test
-    void zeroPricedProductRequiresPositiveOpenPriceWithAtMostTwoDecimals() {
+    void zeroPricedProductRequiresPositiveOpenPriceWithAtMostThreeDecimals() {
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> PosCashService.authoritativeUnitPrice(BigDecimal.ZERO, null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -1019,9 +1019,13 @@ class PosCashServiceTest {
                 .hasMessageContaining("mayor que 0");
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> PosCashService.authoritativeUnitPrice(
-                        BigDecimal.ZERO, new BigDecimal("1.001")))
+                        BigDecimal.ZERO, new BigDecimal("1.0001")))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("maximo de 2 decimales");
+                .hasMessageContaining("maximo de 3 decimales");
+        assertThat(PosCashService.authoritativeUnitPrice(BigDecimal.ZERO, new BigDecimal("2.208")))
+                .isEqualByComparingTo("2.208");
+        assertThat(PosCashService.authoritativeUnitPrice(new BigDecimal("0.001"), null))
+                .isEqualByComparingTo("0.001");
     }
 
     @Test

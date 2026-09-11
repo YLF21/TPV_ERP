@@ -15,17 +15,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TicketController.class)
+@Import(TicketControllerJasperContractTest.MethodSecurityConfiguration.class)
 class TicketControllerJasperContractTest {
 
     @Autowired MockMvc mvc;
@@ -38,6 +43,56 @@ class TicketControllerJasperContractTest {
     @MockitoBean GenericSalesApiService genericSales;
     @MockitoBean PreviousTicketImportService previousTicketImports;
     @MockitoBean TicketJasperRenderer jasperRenderer;
+
+    @Test
+    void latestTerminalPrintSetPreservesPrintPermissionsAndFiscalDocuments() throws Exception {
+        var sale = new TicketPrintView(
+                UUID.randomUUID(), "T-001", Instant.parse("2026-09-09T12:00:00Z"),
+                List.of(), List.of(), BigDecimal.TEN);
+        when(service.loadLatestTerminalTicketPrintSet(
+                org.mockito.ArgumentMatchers.any(Authentication.class)))
+                .thenReturn(new DocumentService.TicketPrintSet(sale, List.of(), null));
+
+        for (var permission : List.of("VENTA", "TICKETS_READ", "GESTION_VENTAS")) {
+            mvc.perform(get("/api/v1/tickets/last-current-terminal/print-set")
+                            .with(user("cashier").authorities(() -> permission)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.printTicket.documentNumber").value("T-001"))
+                    .andExpect(jsonPath("$.additionalPrintTickets").isEmpty());
+        }
+        mvc.perform(get("/api/v1/tickets/last-current-terminal/print-set")
+                        .with(user("ADMIN").roles("ADMIN")))
+                .andExpect(status().isOk());
+
+        verify(service, org.mockito.Mockito.times(4)).loadLatestTerminalTicketPrintSet(
+                org.mockito.ArgumentMatchers.any(Authentication.class));
+    }
+
+    @Test
+    void latestTerminalPrintSetRejectsAnonymousAndUnrelatedPermissions() throws Exception {
+        mvc.perform(get("/api/v1/tickets/last-current-terminal/print-set"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/tickets/last-current-terminal/print-set")
+                        .with(user("warehouse").authorities(() -> "GESTION_ALMACEN")))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
+    @Test
+    @WithMockUser(authorities = "VENTA")
+    void latestTerminalPrintSetReturnsStructuredNotFoundWhenNoTicketExists() throws Exception {
+        when(service.loadLatestTerminalTicketPrintSet(
+                org.mockito.ArgumentMatchers.any(Authentication.class)))
+                .thenThrow(new TicketNotFoundException());
+
+        mvc.perform(get("/api/v1/tickets/last-current-terminal/print-set"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TICKET_NOT_FOUND"));
+    }
+
+    @EnableMethodSecurity
+    static class MethodSecurityConfiguration {
+    }
 
     @Test
     @WithMockUser(roles = "ADMIN")

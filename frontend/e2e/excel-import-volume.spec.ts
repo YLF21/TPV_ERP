@@ -1,0 +1,56 @@
+import { expect, test } from "@playwright/test";
+import { apiGet, createProductFixture, loginApi, uniqueMarker } from "./support/testApi";
+import { chooseImportAction, loginUi, openBulkEdit } from "./support/ui";
+import { generateExcelImportFixture } from "./support/excelImportFixture";
+
+test("revisa 5000 filas originales y columnas AA sin usar Cantidad en Stock", async ({ page, request }) => {
+  const session = await loginApi(request);
+  const marker = uniqueMarker("E2E-EXCEL-5000");
+  const product = await createProductFixture(request, session.accessToken, marker);
+  const before = await apiGet(request, session.accessToken, `/products/management/${product.id}`);
+  const workbook = await generateExcelImportFixture("xlsx", marker, 5000);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await loginUi(page, "venta");
+  await page.getByRole("button", { name: "GESTIÓN", exact: true }).click();
+  await openBulkEdit(page);
+  await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+  await chooseImportAction(page, "Importar Excel");
+  const dialog = page.getByRole("dialog", { name: "Importar Excel", exact: true });
+  const readResponse = page.waitForResponse(response => response.url().endsWith("/product-excel-imports/read"));
+  await dialog.locator("input.shared-excel-file-input").setInputFiles({
+    name: "volumen-5000.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: workbook
+  });
+  const read = await readResponse;
+  expect(read.ok()).toBe(true);
+  expect((await read.json()).columns).toBe(27);
+  await expect(dialog.getByLabel("Código Columna Excel")).toHaveValue("A");
+  await expect(dialog.getByLabel("Cantidad Columna Excel")).toHaveCount(0);
+  await dialog.getByLabel("Generar documento resumen").check();
+  const previewResponse = page.waitForResponse(response => response.url().endsWith("/product-excel-imports/preview"));
+  await dialog.getByRole("button", { name: "Aplicar", exact: true }).click();
+  const response = await previewResponse;
+  expect(response.ok()).toBe(true);
+  const preview = await response.json();
+  expect(preview.detectedRows).toBe(5000);
+  expect(preview.sourceRows).toHaveLength(5000);
+  expect(preview.rows).toHaveLength(1);
+  expect(preview.rows[0].rowNumbers).toHaveLength(5000);
+  expect(preview.rows[0].excelData).not.toHaveProperty("quantity");
+  expect(preview.errors).toEqual([]);
+  await expect(dialog.getByRole("status")).toContainText("Aplicado: 5000 aceptadas");
+  await dialog.getByRole("button", { name: /^Documento resumen \(5000\)/ }).click();
+  const table = dialog.locator(".shared-excel-review table");
+  await expect(table).toHaveAttribute("aria-rowcount", "5001");
+  expect(await table.locator("tbody tr:not([aria-hidden])").count()).toBeLessThan(50);
+  await expect(table.locator('td[data-column-key="rowNumber"]').first()).toHaveText("2");
+  const viewport = dialog.locator(".shared-excel-review-viewport");
+  await viewport.hover();
+  await page.mouse.wheel(0, 200000);
+  await expect(table.locator('td[data-column-key="rowNumber"]').last()).toHaveText("5001");
+  expect(await table.locator("tbody tr:not([aria-hidden])").count()).toBeLessThan(50);
+  await page.mouse.wheel(1800, 0);
+  await expect.poll(() => viewport.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+  await page.screenshot({ path: "../output/playwright/excel-import-5000.png" });
+  const after = await apiGet(request, session.accessToken, `/products/management/${product.id}`);
+  expect(after).toEqual(before);
+});

@@ -1,18 +1,31 @@
 package com.tpverp.backend.verifactu;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import com.tpverp.backend.organization.CurrentOrganization;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +36,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @WebMvcTest(FiscalController.class)
@@ -123,12 +137,35 @@ class FiscalControllerAuthorizationWebMvcTest {
                         .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"kind\":\"BILLING\"}"))
                 .andExpect(status().isForbidden());
-        mvc.perform(post("/api/v1/fiscal/exports/download")
-                        .with(manager()).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"kind\":\"BILLING\"}"))
+        var plan = mock(FiscalExportService.FiscalExportZipPlan.class);
+        when(exports.prepareExportZip(any())).thenReturn(plan);
+        var initialDispatchFinished = new CountDownLatch(1);
+        byte[] archive = "mock fiscal archive".getBytes(StandardCharsets.UTF_8);
+        doAnswer(invocation -> {
+            // Keep the async flush from racing the initial security-header writes in MockMvc.
+            assertTrue(initialDispatchFinished.await(5, TimeUnit.SECONDS),
+                    "Initial download dispatch did not finish");
+            invocation.getArgument(1, OutputStream.class).write(archive);
+            return null;
+        }).when(exports).writeExportZip(same(plan), any(OutputStream.class));
+
+        MvcResult download;
+        try {
+            download = mvc.perform(post("/api/v1/fiscal/exports/download")
+                            .with(manager()).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"kind\":\"BILLING\"}"))
+                    .andExpect(request().asyncStarted())
+                    .andReturn();
+        } finally {
+            initialDispatchFinished.countDown();
+        }
+        mvc.perform(asyncDispatch(download))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.parseMediaType("application/zip")));
+                .andExpect(content().contentType(MediaType.parseMediaType("application/zip")))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=exportacion-fiscal.zip"))
+                .andExpect(content().bytes(archive));
+        verify(exports).writeExportZip(same(plan), any(OutputStream.class));
     }
 
     private static FiscalStatusView statusView(UUID companyId) {

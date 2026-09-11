@@ -2,9 +2,11 @@ package com.tpverp.backend.document;
 
 import com.tpverp.backend.security.application.PermissionChecks;
 import com.tpverp.backend.shared.api.PagedResult;
+import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,12 +26,15 @@ public class DocumentReportController {
     public PagedResult<DocumentReportView> invoices(
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) String customerId,
+            @ModelAttribute CustomerDocumentReportFilter filter,
             Authentication authentication) {
         return service.listInvoices(
                 limit,
                 cursor,
                 PermissionChecks.hasSalesDocumentRead(authentication, "INVOICES_READ"),
-                false);
+                false,
+                customerId == null ? null : UUID.fromString(customerId), filter);
     }
 
     @GetMapping("/delivery-notes")
@@ -37,11 +42,14 @@ public class DocumentReportController {
     public PagedResult<DocumentReportView> deliveryNotes(
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) String customerId,
+            @ModelAttribute CustomerDocumentReportFilter filter,
             Authentication authentication) {
         return service.listDeliveryNotes(
                 limit,
                 cursor,
                 PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ"),
-                false);
+                false,
+                customerId == null ? null : UUID.fromString(customerId), filter);
     }
 }

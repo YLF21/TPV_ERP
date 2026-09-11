@@ -117,7 +117,7 @@ function initialLines(source: RectificationSource): EditableLine[] {
   return source.lines.map((line) => ({
     originalLineId: line.id,
     quantity: "0",
-    unitPrice: Number(line.unitPrice).toFixed(2)
+    unitPrice: Number(line.unitPrice).toFixed(3).replace(/(\.\d{2})0$/, "$1")
   }));
 }
 
@@ -128,20 +128,20 @@ function savedLines(view: RectificationView): EditableLine[] {
     if (!line) return {
       originalLineId: sourceLine.id,
       quantity: "0",
-      unitPrice: Number(sourceLine.unitPrice).toFixed(2)
+      unitPrice: Number(sourceLine.unitPrice).toFixed(3).replace(/(\.\d{2})0$/, "$1")
     };
     if (sourceLine.type !== "PRODUCT") {
       const sign = view.affectsStock ? -1 : Math.sign(Number(line.unitPrice));
       return {
         originalLineId: sourceLine.id,
         quantity: String(sign || 1),
-        unitPrice: Math.abs(Number(line.unitPrice)).toFixed(2)
+        unitPrice: Math.abs(Number(line.unitPrice)).toFixed(3).replace(/(\.\d{2})0$/, "$1")
       };
     }
     return {
       originalLineId: sourceLine.id,
       quantity: String(line.quantity),
-      unitPrice: Math.abs(Number(line.unitPrice)).toFixed(2)
+      unitPrice: Math.abs(Number(line.unitPrice)).toFixed(3).replace(/(\.\d{2})0$/, "$1")
     };
   });
 }
@@ -216,7 +216,7 @@ export function SalesInvoiceRectificationDialog({
         originalLineId: line.id,
         quantity: Number(line.availableStockQuantity) > 0
           ? String(-Number(line.availableStockQuantity)) : "0",
-        unitPrice: Math.abs(Number(line.unitPrice)).toFixed(2)
+        unitPrice: Math.abs(Number(line.unitPrice)).toFixed(3).replace(/(\.\d{2})0$/, "$1")
       })));
       return;
     }
@@ -385,7 +385,7 @@ export function SalesInvoiceRectificationDialog({
                       <td>{line.originalQuantity}</td>
                       <td>{line.availableStockQuantity}</td>
                       <td><input aria-label={`${t("rectification.differenceQuantity")} ${line.name}`} type="number" step="0.001" value={editable?.quantity ?? "0"} disabled={reason === "OPERATION_CANCELLATION"} onChange={(event) => updateLine(line.id, "quantity", event.target.value)} /></td>
-                      <td><input aria-label={`${t("rectification.unitDifference")} ${line.name}`} type="number" min="0" step="0.01" value={editable?.unitPrice ?? "0.00"} disabled={stock} onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)} /></td>
+                      <td><input aria-label={`${t("rectification.unitDifference")} ${line.name}`} type="number" min="0" step="0.001" value={editable?.unitPrice ?? "0.00"} disabled={stock} onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)} /></td>
                     </tr>;
                   })}</tbody>
                 </table>

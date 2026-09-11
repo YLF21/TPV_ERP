@@ -19,6 +19,7 @@ import com.tpverp.saas.tenant.TenantRole;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
 import com.tpverp.saas.plan.PlanUsageResponse;
+import com.tpverp.saas.customer.CustomerDocumentIdentity;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.math.BigDecimal;
@@ -1361,22 +1362,23 @@ public class AdminService {
 
     @Transactional
     public ErpCustomerResponse createErpCustomer(UUID companyId, CreateErpCustomerRequest request) {
+        CustomerDocumentIdentity identity = CustomerDocumentIdentity.validate(request.documentType(), request.taxId());
         planLimits.requireCapacity(companyId, PlanResource.MASTER_RECORDS);
         ensureCompanyExists(companyId);
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                insert into saas_erp_customer(id, company_id, code, name, tax_id, email, phone, active, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                insert into saas_erp_customer(id, company_id, code, name, tax_id, email, phone, active, created_at, document_type)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
                 companyId,
                 request.code().trim(),
                 request.name().trim(),
-                blankToNull(request.taxId()),
+                identity.documentNumber(),
                 blankToNull(request.email()),
                 blankToNull(request.phone()),
                 true,
-                sqlTimestamp(clock.instant()));
+                sqlTimestamp(clock.instant()), identity.documentType());
         audit.log("CREATE_ERP_CUSTOMER", "COMPANY", companyId.toString());
         return erpCustomer(id);
     }

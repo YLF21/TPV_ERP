@@ -62,7 +62,7 @@ class DocumentReportServiceTest {
 
         var service = new DocumentReportService(
                 documents, organization, customers, suppliers, warehouses,
-                attributions, refundTenders, memberBalances);
+                attributions, refundTenders, memberBalances, mock(CustomerDocumentReportQueryRepository.class));
 
         var result = service.listInvoices(500, null, true, false);
 

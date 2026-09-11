@@ -4,6 +4,12 @@ const require = createRequire(import.meta.url);
 const { renderTicketHtml } = require("./ticket-renderer.cjs");
 
 describe("ticket desktop renderer", () => {
+  it("prints the three-decimal unit price and the two-decimal extended amount", () => {
+    const html = renderTicketHtml({storeName: "Shop", lines: [{name: "Articulo", quantity: 10, price: 2.208, total: 22.08}], payments: [], total: 22.08});
+    expect(html).toContain(">2.208</td>");
+    expect(html).toContain(">22.08</td>");
+    expect(html).not.toContain(">2.21</td>");
+  });
   it("uses the complete Jasper raster when the configured ticket design is available", () => {
     const raster = "data:image/png;base64,iVBORw0KGgo=";
     const html = renderTicketHtml({

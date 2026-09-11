@@ -40,6 +40,7 @@ public class DocumentReportService {
     private final DocumentAttributionResolver attributions;
     private final RefundTenderRepository refundTenders;
     private final DocumentMemberBalanceResolver memberBalances;
+    private final CustomerDocumentReportQueryRepository customerReports;
 
     public DocumentReportService(
             CommercialDocumentRepository documents,
@@ -49,7 +50,8 @@ public class DocumentReportService {
             WarehouseRepository warehouses,
             DocumentAttributionResolver attributions,
             RefundTenderRepository refundTenders,
-            DocumentMemberBalanceResolver memberBalances) {
+            DocumentMemberBalanceResolver memberBalances,
+            CustomerDocumentReportQueryRepository customerReports) {
         this.documents = documents;
         this.organization = organization;
         this.customers = customers;
@@ -58,6 +60,7 @@ public class DocumentReportService {
         this.attributions = attributions;
         this.refundTenders = refundTenders;
         this.memberBalances = memberBalances;
+        this.customerReports = customerReports;
     }
 
     @Transactional(readOnly = true)
@@ -71,8 +74,25 @@ public class DocumentReportService {
             String cursor,
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
+        return listInvoices(limit, cursor, includeSalesDocuments, includePurchaseDocuments, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<DocumentReportView> listInvoices(
+            Integer limit,
+            String cursor,
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments,
+            UUID customerId) {
+        return listInvoices(limit, cursor, includeSalesDocuments, includePurchaseDocuments, customerId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<DocumentReportView> listInvoices(
+            Integer limit, String cursor, boolean includeSalesDocuments, boolean includePurchaseDocuments,
+            UUID customerId, CustomerDocumentReportFilter filter) {
         return list(documentTypes(
-                includeSalesDocuments, SALES_INVOICES), limit, cursor);
+                includeSalesDocuments, SALES_INVOICES), limit, cursor, customerId, filter);
     }
 
     @Transactional(readOnly = true)
@@ -86,8 +106,25 @@ public class DocumentReportService {
             String cursor,
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
+        return listDeliveryNotes(limit, cursor, includeSalesDocuments, includePurchaseDocuments, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<DocumentReportView> listDeliveryNotes(
+            Integer limit,
+            String cursor,
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments,
+            UUID customerId) {
+        return listDeliveryNotes(limit, cursor, includeSalesDocuments, includePurchaseDocuments, customerId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<DocumentReportView> listDeliveryNotes(
+            Integer limit, String cursor, boolean includeSalesDocuments, boolean includePurchaseDocuments,
+            UUID customerId, CustomerDocumentReportFilter filter) {
         return list(documentTypes(
-                includeSalesDocuments, SALES_DELIVERY_NOTES), limit, cursor);
+                includeSalesDocuments, SALES_DELIVERY_NOTES), limit, cursor, customerId, filter);
     }
 
     @Transactional(readOnly = true)
@@ -110,7 +147,7 @@ public class DocumentReportService {
         var result = new ArrayList<DocumentReportView>();
         String cursor = null;
         do {
-            var page = list(types, MAX_LIMIT, cursor);
+            var page = list(types, MAX_LIMIT, cursor, null, null);
             result.addAll(page.items());
             cursor = page.hasMore() ? page.nextCursor() : null;
         } while (cursor != null);
@@ -120,18 +157,41 @@ public class DocumentReportService {
     private PagedResult<DocumentReportView> list(
             Collection<CommercialDocumentType> types,
             Integer requestedLimit,
-            String cursor) {
+            String cursor,
+            UUID customerId,
+            CustomerDocumentReportFilter filter) {
+        var filtered = filter != null && filter.isRequested();
+        if (filtered && customerId == null) {
+            throw new IllegalArgumentException("El cliente es obligatorio para filtrar documentos");
+        }
         var store = organization.currentStore();
         var limit = normalizedLimit(requestedLimit);
-        var parsedCursor = parseCursor(cursor);
+        var parsedCursor = filtered ? null : parseCursor(cursor);
         var pageRequest = PageRequest.of(0, limit + 1);
-        var values = parsedCursor.date() == null
-                ? documents.findReportDocuments(store.getId(), types, pageRequest)
-                : documents.findReportDocumentsAfter(
-                        store.getId(), types, parsedCursor.date(),
+        CustomerDocumentReportQueryRepository.Page orderedPage = null;
+        List<CommercialDocument> values;
+        if (customerId == null) {
+            values = parsedCursor.date() == null
+                    ? documents.findReportDocuments(store.getId(), types, pageRequest)
+                    : documents.findReportDocumentsAfter(
+                            store.getId(), types, parsedCursor.date(),
+                            parsedCursor.occurredAt(), parsedCursor.id(), pageRequest);
+        } else {
+            customers.findByIdAndCompanyId(customerId, organization.currentCompany().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
+            if (types.isEmpty()) return new PagedResult<>(List.of(), null, false);
+            if (filtered) {
+                orderedPage = customerReports.findPage(store.getId(), customerId, types, filter, cursor, limit);
+                values = documents.loadCustomerReportDocumentsByIds(
+                        store.getId(), customerId, types, orderedPage.ids());
+            } else {
+                values = documents.findCustomerReportDocuments(
+                        store.getId(), customerId, types, parsedCursor.date(),
                         parsedCursor.occurredAt(), parsedCursor.id(), pageRequest);
-        var hasMore = values.size() > limit;
-        var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
+            }
+        }
+        var hasMore = orderedPage == null ? values.size() > limit : orderedPage.hasMore();
+        var pageValues = orderedPage == null && hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
         var customerIndex = customers.findAllById(values.stream()
                         .map(CommercialDocument::getClienteId)
                         .filter(Objects::nonNull)
@@ -174,7 +234,8 @@ public class DocumentReportService {
                         refundTotalIndex.getOrDefault(document.getId(), BigDecimal.ZERO),
                         memberBalanceIndex.amountFor(document)))
                 .toList();
-        return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
+        return new PagedResult<>(items, orderedPage != null ? orderedPage.nextCursor()
+                : hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }
 
     private Map<UUID, BigDecimal> refundTotals(

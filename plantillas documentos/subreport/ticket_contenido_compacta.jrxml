@@ -21,8 +21,8 @@
     dl.cantidad,
     dl.precio_unitario AS precio,
     dl.descuento AS descuento_linea,
-    dl.precio_unitario * dl.cantidad AS importe_bruto,
-    dl.precio_unitario * dl.cantidad - dl.total AS importe_descuento,
+    round(dl.precio_unitario * dl.cantidad, 2) AS importe_bruto,
+    round(dl.precio_unitario * dl.cantidad, 2) - dl.total AS importe_descuento,
     dl.total AS total_linea,
     d.descuento_global,
     vale.concepto_vale,
@@ -192,7 +192,7 @@ ORDER BY dl.posicion]]></query>
     ? ""
     : $F{cantidad}.stripTrailingZeros().toPlainString()
         + " × ( "
-        + new java.text.DecimalFormat("#,##0.00")
+        + new java.text.DecimalFormat("#,##0.00#")
             .format($F{precio})
         + " € )"]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>

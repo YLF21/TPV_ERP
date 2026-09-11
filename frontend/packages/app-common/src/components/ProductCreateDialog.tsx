@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { ApiConnectionError, ApiError, apiRequest } from "../api/client";
+import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -596,7 +597,7 @@ function priceFromOfferDiscount(salePrice: string, discountPercent: string) {
   if (!Number.isFinite(sale) || !Number.isFinite(discount)) {
     return "";
   }
-  return Math.max(0, sale - (sale * discount / 100)).toFixed(2);
+  return roundUnitPrice(Math.max(0, sale - (sale * discount / 100))).toFixed(3).replace(/(\.\d{2})0$/, "$1");
 }
 
 function toIsoDate(value: Date) {
@@ -1645,8 +1646,13 @@ export function ProductCreateDialog({
     return { familyId, subfamilyId, family, subfamily };
   }
 
-  async function resolveFamilyCode(rawCode = form.familyBusinessCode, showError = false) {
+  async function resolveFamilyCode(rawCode = form.familyBusinessCode, showError = false, reuseResolved = false) {
     const code = rawCode.replace(/\D/g, "").slice(0, 6);
+    // Blurring a resolved field to click Save must not start another lookup and
+    // invalidate the same family before the click handler can submit it.
+    if (reuseResolved && familyBusinessCodeStatus === "valid" && form.familyId && code === form.familyBusinessCode) {
+      return true;
+    }
     if (code.length !== 3 && code.length !== 6) {
       setFamilyBusinessCodeStatus(code.length === 0 ? "idle" : "incomplete");
       if (showError && code.length > 0) {
@@ -2185,7 +2191,7 @@ export function ProductCreateDialog({
                         void resolveFamilyCode(value);
                       }
                     }}
-                    onBlur={(event) => void resolveFamilyCode(event.currentTarget.value, true)}
+                    onBlur={(event) => void resolveFamilyCode(event.currentTarget.value, true, true)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();

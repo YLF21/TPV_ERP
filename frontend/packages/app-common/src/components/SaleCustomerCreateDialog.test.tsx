@@ -3,11 +3,12 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
+import { createTranslator } from "../i18n/LocalizedMessages";
 import type { UserSession } from "../types";
 import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
 
-vi.mock("../api/client", () => ({ apiRequest: vi.fn() }));
+vi.mock("../api/client", async (original) => ({ ...await original<typeof import("../api/client")>(), apiRequest: vi.fn() }));
 const request = vi.mocked(apiRequest);
 
 const session: UserSession = {
@@ -136,5 +137,69 @@ describe("SaleCustomerCreateDialog", () => {
       id: "customer-1",
       fiscalName: "Cliente actualizado",
     }));
+  });
+
+  it.each(["es", "en", "zh"] as const)("offers the agreed customer document types in %s and submits the passport alias without format checks", async (locale) => {
+    const t = createTranslator(locale);
+    const onCreated = vi.fn();
+    render(<SaleCustomerCreateDialog locale={locale} session={session} onCancel={vi.fn()} onCreated={onCreated} />);
+    fireEvent.click(screen.getByRole("button", { name: t("party.field.documentType") }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["NIE", "DNI", "NIF", t("party.documentType.passportOther")]);
+    fireEvent.click(screen.getByRole("option", { name: t("party.documentType.passportOther") }));
+    fireEvent.change(screen.getByLabelText(t("party.field.fiscalName")), { target: { value: "Cliente internacional" } });
+    fireEvent.change(screen.getByLabelText(t("party.field.documentNumber")), { target: { value: "AA / 99-自由" } });
+    fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers", expect.objectContaining({
+      body: expect.objectContaining({ documentType: "PASAPORTE", documentNumber: "AA / 99-自由" }),
+    })));
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects DNI using the existing keyboard dropdown", async () => {
+    render(<SaleCustomerCreateDialog locale="es" session={session} onCancel={vi.fn()} onCreated={vi.fn()} />);
+    const select = screen.getByRole("button", { name: "Tipo de documento" });
+    fireEvent.keyDown(select, { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("option", { name: "NIF" }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("option", { name: "NIE" }), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("option", { name: "DNI" }), { key: "Enter" });
+    expect(select).toHaveTextContent("DNI");
+    expect(select).toHaveFocus();
+  });
+
+  it.each([
+    ["CUSTOMER_DOCUMENT_INVALID", "invalid", true],
+    ["CUSTOMER_DOCUMENT_DUPLICATE", "duplicate", true],
+    ["CUSTOMER_IDENTITY_SAAS_UNAVAILABLE", "unavailable", false],
+    ["CUSTOMER_IDENTITY_CONFLICT", "conflict", false],
+  ] as const)("shows %s and preserves the form for retry", async (code, key, invalidField) => {
+    request.mockImplementation(async (path, options) => {
+      if (path === "/commercial-contact-channels") return [];
+      if (options?.method === "POST") throw new ApiError("opaque backend message", 409, { code });
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const onCreated = vi.fn();
+    render(<SaleCustomerCreateDialog locale="es" session={session} onCancel={vi.fn()} onCreated={onCreated} />);
+    const name = screen.getByLabelText(/Nombre o razón social/);
+    const number = screen.getByLabelText(/Número de documento/);
+    const phone = screen.getByLabelText("Teléfono");
+    fireEvent.change(name, { target: { value: "Cliente pendiente de guardar" } });
+    fireEvent.change(number, { target: { value: "12345678A" } });
+    fireEvent.change(phone, { target: { value: "600000001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    const message = createTranslator("es")(`party.customerIdentity.${key}`);
+    await waitFor(() => expect(screen.getAllByText(message).length).toBeGreaterThan(0));
+    expect(screen.queryByText("opaque backend message")).not.toBeInTheDocument();
+    expect(number).toHaveAttribute("aria-invalid", String(invalidField));
+    expect(number).toHaveValue("12345678A");
+    expect(name).toHaveValue("Cliente pendiente de guardar");
+    expect(phone).toHaveValue("600000001");
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeEnabled();
+
+    fireEvent.change(number, { target: { value: "12345678Z" } });
+    expect(number).toHaveAttribute("aria-invalid", "false");
+    request.mockResolvedValueOnce({ id: "customer-retry" } as never);
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: "customer-retry" }));
   });
 });

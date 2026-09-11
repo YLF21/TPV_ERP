@@ -38,7 +38,7 @@ public class TemporaryPriceAuthorizationGrant {
     private String cartLineId;
     @Column(name = "producto_id", nullable = false)
     private UUID productId;
-    @Column(name = "precio_unitario", nullable = false, precision = 19, scale = 2)
+    @Column(name = "precio_unitario", nullable = false, precision = 20, scale = 3)
     private BigDecimal unitPrice;
     @Column(name = "version_politica", nullable = false)
     private long policyVersion;
@@ -177,7 +177,7 @@ public class TemporaryPriceAuthorizationGrant {
     }
 
     private static BigDecimal positive(BigDecimal value) {
-        var normalized = Money.euros(Objects.requireNonNull(value, "unitPrice"));
+        var normalized = Money.exactUnitPrice(Objects.requireNonNull(value, "unitPrice"));
         if (normalized.signum() <= 0) {
             throw new IllegalArgumentException("temporary_price_must_be_greater_than_zero");
         }
