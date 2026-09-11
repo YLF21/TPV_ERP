@@ -8,8 +8,9 @@ import com.tpverp.backend.document.DocumentReportView;
 import com.tpverp.backend.document.DocumentService;
 import com.tpverp.backend.document.DocumentAttributionResolver;
 import com.tpverp.backend.document.DocumentView;
-import com.tpverp.backend.inventory.WarehouseInputService;
-import com.tpverp.backend.inventory.WarehouseInputView;
+import com.tpverp.backend.document.WarehouseInputReportService;
+import com.tpverp.backend.document.WarehouseInputReportView;
+import com.tpverp.backend.inventory.WarehouseInputDocumentType;
 import com.tpverp.backend.inventory.WarehouseOutputService;
 import com.tpverp.backend.inventory.WarehouseOutputView;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -21,6 +22,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,7 +45,7 @@ public class SalesReportExcelExportService {
             "date", "time", "ticket", "invoice", "invoiced", "deliveryNote", "documentType", "terminal", "user",
             "productCount", "customer", "customerName", "supplier", "supplierName", "comment",
             "warehouse", "input", "output", "total", "pending", "payment", "status", "reason",
-            "origin", "dueDate", "tickets", "base", "tax", "discount", "memberBalance");
+            "origin", "dueDate", "tickets", "base", "tax", "discount", "memberBalance", "subtotal", "globalDiscount");
     private static final Set<String> REPORT_KEYS = Set.of(
             "salesReport.dailySales", "salesReport.tickets", "salesReport.deliveryNotes",
             "salesReport.invoices", "salesReport.warehouseOutputs", "salesReport.inputDeliveryNotes",
@@ -56,7 +58,7 @@ public class SalesReportExcelExportService {
 
     private final DocumentService documents;
     private final DocumentReportService documentReports;
-    private final WarehouseInputService warehouseInputs;
+    private final WarehouseInputReportService warehouseInputs;
     private final WarehouseOutputService warehouseOutputs;
     private final WarehouseRepository warehouses;
     private final CurrentOrganization organization;
@@ -66,7 +68,7 @@ public class SalesReportExcelExportService {
     public SalesReportExcelExportService(
             DocumentService documents,
             DocumentReportService documentReports,
-            WarehouseInputService warehouseInputs,
+            WarehouseInputReportService warehouseInputs,
             WarehouseOutputService warehouseOutputs,
             WarehouseRepository warehouses,
             CurrentOrganization organization,
@@ -86,7 +88,7 @@ public class SalesReportExcelExportService {
     public byte[] export(SalesReportExportRequest request, Authentication authentication) {
         validateRequest(request);
         requireAccess(request.reportKey(), authentication);
-        var rows = filteredRows(request, rows(request.reportKey()));
+        var rows = filteredRows(request, rows(request, authentication));
         if (rows.size() > MAX_ROWS) {
             throw new IllegalArgumentException("El informe supera el limite de 50000 filas exportables");
         }
@@ -96,17 +98,15 @@ public class SalesReportExcelExportService {
         return workbook;
     }
 
-    private List<Map<String, Object>> rows(String reportKey) {
-        return switch (reportKey) {
+    private List<Map<String, Object>> rows(SalesReportExportRequest request, Authentication authentication) {
+        return switch (request.reportKey()) {
             case "salesReport.tickets" -> ticketRows();
             case "salesReport.invoices" -> documentRows(
                     documentReports.allInvoices(true, false), true, false);
-            case "salesReport.inputInvoices" -> documentRows(
-                    documentReports.allInvoices(false, true), true, true);
+            case "salesReport.inputInvoices" -> inputRows(request, WarehouseInputDocumentType.FACTURA_ENTRADA, authentication);
             case "salesReport.deliveryNotes" -> documentRows(
                     documentReports.allDeliveryNotes(true, false), false, false);
-            case "salesReport.inputDeliveryNotes" -> documentRows(
-                    documentReports.allDeliveryNotes(false, true), false, true);
+            case "salesReport.inputDeliveryNotes" -> inputRows(request, WarehouseInputDocumentType.ALBARAN_ENTRADA, authentication);
             case "salesReport.warehouseOutputs" -> {
                 var warehouseNames = warehouseNames();
                 yield warehouseOutputs.list().stream()
@@ -114,13 +114,7 @@ public class SalesReportExcelExportService {
                         .map(value -> outputRow(value, warehouseNames))
                         .toList();
             }
-            case "salesReport.inputWarehouse" -> {
-                var warehouseNames = warehouseNames();
-                yield warehouseInputs.list().stream()
-                        .map(WarehouseInputView::from)
-                        .map(value -> inputRow(value, warehouseNames))
-                        .toList();
-            }
+            case "salesReport.inputWarehouse" -> inputRows(request, WarehouseInputDocumentType.ENTRADA_ALMACEN, authentication);
             case "salesReport.dailySales" -> dailyRows();
             default -> throw new IllegalArgumentException("Informe no soportado");
         };
@@ -215,21 +209,50 @@ public class SalesReportExcelExportService {
         return row;
     }
 
-    private Map<String, Object> inputRow(
-            WarehouseInputView value,
-            Map<java.util.UUID, String> warehouseNames) {
+    private List<Map<String, Object>> inputRows(SalesReportExportRequest request,
+            WarehouseInputDocumentType type, Authentication authentication) {
+        var filters = request.filters();
+        var from = filters == null ? null : date(filters.dateFrom());
+        var to = filters == null ? null : date(filters.dateTo());
+        var result = new ArrayList<Map<String, Object>>();
+        String cursor = null;
+        do {
+            // The reader applies type, store and dates before fetching a bounded page of lines.
+            var page = warehouseInputs.listPage(type, 200, cursor, from, to, authentication);
+            result.addAll(filteredRows(request, page.items().stream().map(this::inputRow).toList()));
+            if (result.size() > MAX_ROWS) {
+                throw new IllegalArgumentException("El informe supera el limite de 50000 filas exportables");
+            }
+            if (!page.hasMore()) break;
+            if (page.nextCursor() == null || page.nextCursor().equals(cursor)) {
+                throw new IllegalStateException("No se pudo continuar la paginacion del informe de entradas");
+            }
+            cursor = page.nextCursor();
+        } while (true);
+        return result;
+    }
+
+    private Map<String, Object> inputRow(WarehouseInputReportView report) {
+        var value = report.document();
         var row = baseRow(value.date(), "", "", null);
-        row.put("input", text(value.number(), id(value.id())));
-        row.put("warehouse", warehouseNames.getOrDefault(value.warehouseId(), id(value.warehouseId())));
-        row.put("supplier", id(value.supplierId()));
+        var numberColumn = switch (value.documentType()) {
+            case FACTURA_ENTRADA -> "invoice";
+            case ALBARAN_ENTRADA -> "deliveryNote";
+            case ENTRADA_ALMACEN -> "input";
+        };
+        row.put(numberColumn, value.number());
+        row.put("warehouse", report.warehouseName());
+        row.put("supplier", report.supplierCode());
+        row.put("supplierName", report.supplierName());
         row.put("productCount", value.lines().stream()
                 .map(line -> line.quantity())
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
-        row.put("comment", value.concept());
+        row.put("comment", text(value.concept(), value.externalNumber()));
         row.put("origin", text(value.origin(), value.status().name()));
-        row.put("total", value.lines().stream()
-                .map(line -> amount(line.purchaseTotal()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        row.put("status", value.status().name());
+        row.put("subtotal", value.subtotal());
+        row.put("globalDiscount", value.globalDiscount());
+        row.put("total", value.total());
         return row;
     }
 
@@ -270,7 +293,7 @@ public class SalesReportExcelExportService {
                     && contains(row, List.of("supplier", "supplierName"), filters.supplier())
                     && exact(row, "payment", filters.payment())
                     && exact(row, "terminal", filters.terminal())
-                    && (blank(filters.status()) || exact(row, "status", filters.status()) || exact(row, "payment", filters.status()))
+                    && (blank(filters.status()) || statusMatches(row.get("status"), filters.status()) || exact(row, "payment", filters.status()))
                     && exact(row, "warehouse", filters.warehouse())
                     && (search.isEmpty() || normalize(row.values().toString()).contains(search));
         }).toList();
@@ -288,6 +311,8 @@ public class SalesReportExcelExportService {
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             var currencyStyle = workbook.createCellStyle();
             currencyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00 [$€-es-ES]"));
+            var percentageStyle = workbook.createCellStyle();
+            percentageStyle.setDataFormat(workbook.createDataFormat().getFormat("0.##%"));
             int headerRowIndex = writeStoreInformation(sheet, workbook, request);
             var header = sheet.createRow(headerRowIndex);
             for (int column = 0; column < request.columns().size(); column++) {
@@ -303,9 +328,12 @@ public class SalesReportExcelExportService {
                     var cell = excelRow.createCell(column);
                     if (value instanceof Number number) {
                         cell.setCellValue(number.doubleValue());
-                        if (Set.of("total", "pending", "base", "tax", "discount", "memberBalance")
+                        if (Set.of("total", "subtotal", "pending", "base", "tax", "discount", "memberBalance")
                                 .contains(request.columns().get(column).key())) {
                             cell.setCellStyle(currencyStyle);
+                        } else if ("globalDiscount".equals(request.columns().get(column).key())) {
+                            cell.setCellValue(new BigDecimal(number.toString()).movePointLeft(2).doubleValue());
+                            cell.setCellStyle(percentageStyle);
                         }
                     } else {
                         cell.setCellValue(value == null ? "" : String.valueOf(value));
@@ -419,6 +447,18 @@ public class SalesReportExcelExportService {
 
     private static boolean exact(Map<String, Object> row, String key, String expected) {
         return blank(expected) || String.valueOf(row.getOrDefault(key, "")).equals(expected);
+    }
+
+    private static boolean statusMatches(Object value, String expected) {
+        return normalizeStatus(value == null ? "" : String.valueOf(value)).equals(normalizeStatus(expected));
+    }
+
+    private static String normalizeStatus(String value) {
+        return switch (normalize(value)) {
+            case "salesreport.status.draft", "draft", "borrador" -> "BORRADOR";
+            case "salesreport.status.confirmed", "confirmed", "confirmado", "confirmada" -> "CONFIRMADA";
+            default -> value;
+        };
     }
 
     private static boolean contains(Map<String, Object> row, List<String> keys, String expected) {

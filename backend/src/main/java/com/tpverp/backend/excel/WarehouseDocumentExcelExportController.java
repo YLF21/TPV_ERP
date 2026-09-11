@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,9 +27,9 @@ public class WarehouseDocumentExcelExportController {
     }
 
     @GetMapping("/warehouse-inputs/{documentId}/export")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
-    public ResponseEntity<byte[]> exportInput(@PathVariable UUID documentId) {
-        return file(service.exportInput(documentId), "entrada-almacen.xlsx");
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN','GESTION_CUENTAS')")
+    public ResponseEntity<byte[]> exportInput(@PathVariable UUID documentId, Authentication authentication) {
+        return file(service.exportInput(documentId, authentication), "entrada-almacen.xlsx");
     }
 
     @GetMapping("/warehouse-outputs/{documentId}/export")

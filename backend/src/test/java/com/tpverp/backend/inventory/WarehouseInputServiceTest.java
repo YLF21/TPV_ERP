@@ -109,6 +109,28 @@ class WarehouseInputServiceTest {
     }
 
     @Test
+    void dateFilterUsesTheBoundedStoreAndDocumentTypeQuery() {
+        var from = LocalDate.of(2024, 2, 1);
+        var to = LocalDate.of(2024, 2, 29);
+        var cursorId = UUID.randomUUID();
+        service.listPage(50, to + "|" + cursorId, WarehouseInputDocumentType.FACTURA_ENTRADA, from, to);
+        verify(inputs).findReportPageInRange(store.getId(), WarehouseInputDocumentType.FACTURA_ENTRADA,
+                from, to, to, cursorId, org.springframework.data.domain.PageRequest.of(0, 51));
+        verify(inputs, never()).findByStoreIdOrderByFechaDesc(any());
+        assertThatThrownBy(() -> service.listPage(50, null, null, to, from))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("fecha inicial");
+    }
+
+    @Test
+    void anUnfilteredPageStillLimitsDocumentIdsBeforeFetchingLines() {
+        service.listPage(50, null, WarehouseInputDocumentType.ENTRADA_ALMACEN);
+        verify(inputs).findReportPageInRange(store.getId(), WarehouseInputDocumentType.ENTRADA_ALMACEN,
+                null, null, null, null, org.springframework.data.domain.PageRequest.of(0, 51));
+        verify(inputs, never()).findPageByStoreIdAndType(any(), any(), any(), any(), any());
+        verify(inputs, never()).findByStoreIdOrderByFechaDesc(any());
+    }
+
+    @Test
     void createsEditableDraftWithSupplierAndLines() {
         when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));

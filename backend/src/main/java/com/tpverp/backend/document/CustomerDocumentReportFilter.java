@@ -43,6 +43,10 @@ public record CustomerDocumentReportFilter(
                 || sortBy != null || sortDirection != null;
     }
 
+    boolean requiresCustomer() {
+        return search != null || status != null || sortBy != null || sortDirection != null;
+    }
+
     String effectiveSortBy() {
         return sortBy == null ? "date" : sortBy;
     }

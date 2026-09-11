@@ -156,6 +156,28 @@ class CustomerDocumentReportServiceTest {
         verifyNoInteractions(customers, documents, orderedReports);
     }
 
+    @ParameterizedTest
+    @EnumSource(ReportKind.class)
+    void generalDateRangesFilterBeforePagingAndPreserveLegacyCursorFormat(ReportKind kind) {
+        var from = DATE.minusMonths(1);
+        var filter = new CustomerDocumentReportFilter(null, null, from, DATE, null, null);
+        var first = document(kind.types().iterator().next());
+        var second = document(kind.types().iterator().next());
+        var pageable = PageRequest.of(0, 2);
+        when(documents.findReportDocumentsInRange(STORE_ID, kind.types(), from, DATE,
+                null, null, null, pageable)).thenReturn(List.of(first, second));
+
+        var result = query(kind, 1, null, null, filter);
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.nextCursor()).isEqualTo(DATE + "|" + OCCURRED_AT + "|" + first.getId());
+        assertThat(result.hasMore()).isTrue();
+        query(kind, 1, result.nextCursor(), null, filter);
+        verify(documents).findReportDocumentsInRange(STORE_ID, kind.types(), from, DATE,
+                DATE, OCCURRED_AT, first.getId().toString(), pageable);
+        verify(documents, never()).findReportDocuments(any(), anyCollection(), any());
+        verifyNoInteractions(orderedReports);
+    }
+
     private void allowCustomer() {
         when(customers.findByIdAndCompanyId(CUSTOMER_ID, COMPANY_ID))
                 .thenReturn(Optional.of(mock(Customer.class)));

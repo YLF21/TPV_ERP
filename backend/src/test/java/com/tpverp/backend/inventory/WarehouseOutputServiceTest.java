@@ -85,6 +85,19 @@ class WarehouseOutputServiceTest {
     }
 
     @Test
+    void dateFilterUsesTheBoundedStoreQuery() {
+        var from = LocalDate.of(2024, 2, 1);
+        var to = LocalDate.of(2024, 2, 29);
+        var cursorId = UUID.randomUUID();
+        service.listPage(50, to + "|" + cursorId, from, to);
+        verify(outputs).findReportPageInRange(store.getId(), from, to, to, cursorId,
+                org.springframework.data.domain.PageRequest.of(0, 51));
+        verify(outputs, never()).findByStoreIdOrderByFechaDesc(any());
+        assertThatThrownBy(() -> service.listPage(50, null, to, from))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("fecha inicial");
+    }
+
+    @Test
     void createsEditableDraft() {
         when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));

@@ -137,14 +137,20 @@ public class WarehouseInputService {
             Integer requestedLimit,
             String cursor,
             WarehouseInputDocumentType type) {
+        return listPage(requestedLimit, cursor, type, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<WarehouseInputView> listPage(
+            Integer requestedLimit, String cursor, WarehouseInputDocumentType type,
+            LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw new IllegalArgumentException("La fecha inicial no puede ser posterior a la final");
+        }
         var limit = normalizedLimit(requestedLimit);
         var parsedCursor = parseCursor(cursor);
-        var values = inputs.findPageByStoreIdAndType(
-                organization.currentStore().getId(),
-                type,
-                parsedCursor.date(),
-                parsedCursor.id(),
-                PageRequest.of(0, limit + 1));
+        var values = inputs.findReportPageInRange(organization.currentStore().getId(), type,
+                dateFrom, dateTo, parsedCursor.date(), parsedCursor.id(), PageRequest.of(0, limit + 1));
         var hasMore = values.size() > limit;
         var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
         var productIds = pageValues.stream()

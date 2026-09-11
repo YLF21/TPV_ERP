@@ -70,6 +70,10 @@ class CustomerDocumentReportRepositoryPostgreSqlTest {
     @Autowired private CustomerDocumentReportQueryRepository orderedReports;
     @Autowired private CustomerRepository customers;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private com.tpverp.backend.inventory.WarehouseInputRepository warehouseInputs;
+    @Autowired private com.tpverp.backend.inventory.WarehouseOutputRepository warehouseOutputs;
+    @Autowired private com.tpverp.backend.party.SupplierRepository suppliers;
+    @Autowired private com.tpverp.backend.catalog.WarehouseRepository warehouses;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -89,6 +93,141 @@ class CustomerDocumentReportRepositoryPostgreSqlTest {
     @AfterAll
     static void cleanup() {
         execute("drop schema if exists " + SCHEMA + " cascade");
+    }
+
+    @Test
+    void generalDateRangesFilterInTheDatabaseBeforePagingWithoutCollectionFetchPagination() {
+        var fixture = fixture();
+        var included = new ArrayList<UUID>();
+        for (int index = 0; index < 3; index++) {
+            included.add(document(fixture.store(), fixture.customerId(), CommercialDocumentType.TICKET,
+                    DocumentStatus.CONFIRMADO, UUID.randomUUID()));
+        }
+        var outside = document(fixture.store(), fixture.customerId(), CommercialDocumentType.TICKET,
+                DocumentStatus.CONFIRMADO, UUID.randomUUID());
+        jdbc.update("update documento set fecha = ? where id = ?", DATE.minusDays(1), outside);
+        document(fixture.otherStore(), fixture.customerId(), CommercialDocumentType.TICKET,
+                DocumentStatus.CONFIRMADO, UUID.randomUUID());
+        var types = EnumSet.of(CommercialDocumentType.TICKET);
+        var first = documents.findReportDocumentsInRange(fixture.store().storeId(), types, DATE, DATE,
+                null, null, null, PageRequest.of(0, 2));
+        assertThat(first).hasSize(2);
+        var last = first.getLast();
+        var second = documents.findReportDocumentsInRange(fixture.store().storeId(), types, DATE, DATE,
+                last.getFecha(), last.getOperationalOccurredAt(), last.getId().toString(), PageRequest.of(0, 2));
+        assertThat(second).hasSize(1);
+        assertThat(Stream.concat(first.stream(), second.stream()).map(CommercialDocument::getId).toList())
+                .containsExactlyInAnyOrderElementsOf(included);
+        assertThat(documents.findReportDocumentsInRange(fixture.store().storeId(), types,
+                null, DATE.minusDays(1), null, null, null, PageRequest.of(0, 5)))
+                .extracting(CommercialDocument::getId).containsExactly(outside);
+        assertThat(documents.findFirstReportDate(fixture.store().storeId(), types)).isEqualTo(DATE.minusDays(1));
+    }
+
+    @Test
+    void warehouseDateRangesKeepTypeStoreAndStablePaginationInSql() {
+        var fixture = fixture();
+        var store = fixture.store();
+        var otherStore = fixture.otherStore();
+        var type = com.tpverp.backend.inventory.WarehouseInputDocumentType.ENTRADA_ALMACEN;
+        var included = new ArrayList<UUID>();
+        for (int index = 0; index < 3; index++) {
+            included.add(warehouseInputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseInput(
+                    store.storeId(), store.warehouseId(), DATE, store.userId(), type)).getId());
+        }
+        warehouseInputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseInput(
+                store.storeId(), store.warehouseId(), DATE, store.userId(),
+                com.tpverp.backend.inventory.WarehouseInputDocumentType.ALBARAN_ENTRADA));
+        warehouseInputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseInput(
+                otherStore.storeId(), otherStore.warehouseId(), DATE, otherStore.userId(), type));
+        warehouseInputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseInput(
+                store.storeId(), store.warehouseId(), DATE.minusDays(1), store.userId(), type));
+        var first = warehouseInputs.findReportPageInRange(store.storeId(), type, DATE, DATE,
+                null, null, PageRequest.of(0, 2));
+        assertThat(first).hasSize(2);
+        var last = first.getLast();
+        var second = warehouseInputs.findReportPageInRange(store.storeId(), type, DATE, DATE,
+                last.getDate(), last.getId(), PageRequest.of(0, 2));
+        assertThat(second).hasSize(1);
+        assertThat(Stream.concat(first.stream(), second.stream()).map(com.tpverp.backend.inventory.WarehouseInput::getId).toList())
+                .containsExactlyInAnyOrderElementsOf(included);
+        assertThat(warehouseInputs.findReportPageInRange(store.storeId(), null, DATE, null,
+                null, null, PageRequest.of(0, 5))).hasSize(4);
+        assertThat(warehouseInputs.findFirstReportDate(store.storeId(), type)).isEqualTo(DATE.minusDays(1));
+
+        var outputs = new ArrayList<UUID>();
+        for (int index = 0; index < 3; index++) {
+            outputs.add(warehouseOutputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseOutput(
+                    store.storeId(), store.warehouseId(), DATE, store.userId())).getId());
+        }
+        warehouseOutputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseOutput(
+                otherStore.storeId(), otherStore.warehouseId(), DATE, otherStore.userId()));
+        warehouseOutputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseOutput(
+                store.storeId(), store.warehouseId(), DATE.minusDays(1), store.userId()));
+        var outputFirst = warehouseOutputs.findReportPageInRange(store.storeId(), DATE, DATE,
+                null, null, PageRequest.of(0, 2));
+        assertThat(outputFirst).hasSize(2);
+        var outputLast = outputFirst.getLast();
+        var outputSecond = warehouseOutputs.findReportPageInRange(store.storeId(), DATE, DATE,
+                outputLast.getDate(), outputLast.getId(), PageRequest.of(0, 2));
+        assertThat(outputSecond).hasSize(1);
+        assertThat(Stream.concat(outputFirst.stream(), outputSecond.stream())
+                .map(com.tpverp.backend.inventory.WarehouseOutput::getId).toList())
+                .containsExactlyInAnyOrderElementsOf(outputs);
+        assertThat(warehouseOutputs.findReportPageInRange(store.storeId(), null, DATE.minusDays(1),
+                null, null, PageRequest.of(0, 5))).hasSize(1);
+        assertThat(warehouseOutputs.findFirstReportDate(store.storeId())).isEqualTo(DATE.minusDays(1));
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(com.tpverp.backend.inventory.WarehouseInputDocumentType.class)
+    void warehouseInputsKeepTypesSeparateAndSqlPaginationEvenWithoutDates(
+            com.tpverp.backend.inventory.WarehouseInputDocumentType type) {
+        var fixture = fixture();
+        var included = new ArrayList<UUID>();
+        for (var candidateType : com.tpverp.backend.inventory.WarehouseInputDocumentType.values()) {
+            for (int index = 0; index < 3; index++) {
+                var input = warehouseInputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseInput(
+                        fixture.store().storeId(), fixture.store().warehouseId(), DATE.minusDays(index),
+                        fixture.store().userId(), candidateType));
+                if (candidateType == type) included.add(input.getId());
+            }
+        }
+        warehouseInputs.saveAndFlush(new com.tpverp.backend.inventory.WarehouseInput(
+                fixture.otherStore().storeId(), fixture.otherStore().warehouseId(), DATE,
+                fixture.otherStore().userId(), type));
+        SqlCapture.SQL.clear();
+
+        var page = warehouseInputs.findReportPageInRange(fixture.store().storeId(), type, null, null,
+                null, null, PageRequest.of(0, 2));
+        assertThat(page).extracting(com.tpverp.backend.inventory.WarehouseInput::getId).containsExactlyElementsOf(included.subList(0, 2));
+        assertThat(SqlCapture.SQL.stream().anyMatch(sql -> sql.toLowerCase().contains("fetch first"))).isTrue();
+        var last = page.getLast();
+        var next = warehouseInputs.findReportPageInRange(fixture.store().storeId(), type, null, null,
+                last.getDate(), last.getId(), PageRequest.of(0, 2));
+        assertThat(next).extracting(com.tpverp.backend.inventory.WarehouseInput::getId).containsExactly(included.getLast());
+        assertThat(warehouseInputs.findFirstReportDate(fixture.store().storeId(), type)).isEqualTo(DATE.minusDays(2));
+    }
+
+    @Test
+    void entryReportBulkEnrichmentCannotReadAnotherCompanyOrStore() {
+        var fixture = fixture();
+        var foreignCompanyId = UUID.randomUUID();
+        jdbc.update("insert into empresa(id,tax_id,razon_social,domicilio_fiscal) values (?,?,?,cast(? as jsonb))",
+                foreignCompanyId, "B00000002", "Otra empresa", address());
+        var ownSupplier = UUID.randomUUID();
+        var foreignSupplier = UUID.randomUUID();
+        for (var pair : List.of(Map.entry(ownSupplier, fixture.companyId()), Map.entry(foreignSupplier, foreignCompanyId))) {
+            jdbc.update("""
+                    insert into proveedor(id,empresa_id,supplier_id,razon_social,tipo_documento,numero_documento)
+                    values (?,?,'S-000001','PROVEEDOR','NIF','B12345678')
+                    """, pair.getKey(), pair.getValue());
+        }
+        assertThat(suppliers.findByCompanyIdAndIdIn(fixture.companyId(), List.of(ownSupplier, foreignSupplier)))
+                .extracting(com.tpverp.backend.party.Supplier::getId).containsExactly(ownSupplier);
+        assertThat(warehouses.findByStoreIdAndIdIn(fixture.store().storeId(),
+                List.of(fixture.store().warehouseId(), fixture.otherStore().warehouseId())))
+                .extracting(com.tpverp.backend.catalog.Warehouse::getId).containsExactly(fixture.store().warehouseId());
     }
 
     @Test

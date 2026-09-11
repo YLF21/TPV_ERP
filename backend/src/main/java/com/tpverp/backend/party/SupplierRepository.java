@@ -25,6 +25,8 @@ public interface SupplierRepository extends JpaRepository<Supplier, UUID> {
 
     Optional<Supplier> findByIdAndCompanyId(UUID id, UUID companyId);
 
+    List<Supplier> findByCompanyIdAndIdIn(UUID companyId, List<UUID> ids);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select supplier from Supplier supplier where supplier.id = :id and supplier.company.id = :companyId")
     Optional<Supplier> findByIdAndCompanyIdForUpdate(UUID id, UUID companyId);
