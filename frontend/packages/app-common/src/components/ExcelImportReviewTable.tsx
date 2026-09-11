@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { revealExcelTableRow, useExcelTableHeader } from "./useExcelTableHeader";
 
@@ -53,14 +53,15 @@ export function ExcelImportReviewTable({ title, columns, rows, actions, onExport
     observer.observe(viewport.current);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {
+  // Complete selection resets before the mounted rows can receive their first click.
+  useLayoutEffect(() => {
     if (selectedId === null || !rows.some((row) => row.id === selectedId)) {
       if (viewport.current) viewport.current.scrollTop = 0;
       setScrollTop(0);
     }
     setSelected(null);
   }, [rowSetKey]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectedId !== null) setScrollTop(revealExcelTableRow(viewport.current, rows.findIndex((row) => row.id === selectedId), rowHeight));
     setSelected((current) => current === null ? null : selectedId);
   }, [selectedId, rowSetKey, height]);

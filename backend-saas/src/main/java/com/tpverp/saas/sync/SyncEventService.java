@@ -9,6 +9,8 @@ import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.TokenHasher;
 import com.tpverp.saas.fiscal.FiscalStatusSyncProjector;
 import com.tpverp.saas.customer.CustomerIdentityService;
+import com.tpverp.saas.customer.CustomerAdoptionService;
+import com.tpverp.saas.document.CommercialDocumentSyncProjector;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
 import java.math.BigDecimal;
@@ -31,10 +33,22 @@ public class SyncEventService {
     private FiscalStatusSyncProjector fiscalStatusSyncProjector;
     private MemberReturnBalanceRecoveryProjector retentionRecoveryProjector;
     private CustomerIdentityService customerIdentityService;
+    private CustomerAdoptionService customerAdoptionService;
+    private CommercialDocumentSyncProjector commercialDocumentSyncProjector;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setCommercialDocumentSyncProjector(CommercialDocumentSyncProjector projector) {
+        this.commercialDocumentSyncProjector = projector;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setCustomerIdentityService(CustomerIdentityService service) {
         this.customerIdentityService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setCustomerAdoptionService(CustomerAdoptionService service) {
+        this.customerAdoptionService = service;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -134,6 +148,19 @@ public class SyncEventService {
     }
 
     private void project(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        if (customerAdoptionService.supports(request.entityType(), request.operation())) {
+            customerAdoptionService.finalizeAdoption(event, request.payload());
+            event.markProjected(projectedAt);
+            return;
+        }
+        if (commercialDocumentSyncProjector.supports(request)) {
+            // JDBC projection references the event row. Both writes belong to this transaction;
+            // contract/conflict failures must roll back together so the source outbox can retry.
+            events.flush();
+            commercialDocumentSyncProjector.project(event, request);
+            event.markProjected(projectedAt);
+            return;
+        }
         if (!(memberPointsSyncProjector.supports(request.entityType(), request.operation())
                 || walletProjector.supports(request.entityType(), request.operation())
                 || fiscalStatusSyncProjector.supports(request.entityType(), request.operation())

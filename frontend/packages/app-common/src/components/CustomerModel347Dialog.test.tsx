@@ -22,6 +22,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); delete window.tpvDesktop; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("CustomerModel347Dialog", () => {
+  it.each([
+    ["SAAS_CUSTOMER_BINDING_REQUIRED", "vínculo central"],
+    ["SAAS_CUSTOMER_DOCUMENTS_CURRENCY_UNSUPPORTED", "solo admite EUR"],
+  ])("explains %s without downloading a misleading PDF", async (code, message) => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError("internal", 422, { code }));
+    mount(); fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(window.tpvDesktop!.reports!.saveFile).not.toHaveBeenCalled();
+  });
+
   it("focuses the current year, submits on Enter and saves the Jasper PDF bytes", async () => {
     const user = userEvent.setup();
     mount();
@@ -33,7 +43,7 @@ describe("CustomerModel347Dialog", () => {
       defaultFileName: "C-001-Cliente de prueba-Modelo 347-2024.pdf",
       filters: [{ name: "PDF", extensions: ["pdf"] }], bytes: new Uint8Array([37, 80, 68, 70]),
     }));
-    expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/customer-document-reports/customer-1/model-347.pdf?year=2024&locale=es", {
+    expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/customer-document-reports/saas/customer-1/annual.pdf?year=2024&locale=es", {
       token: "test-token", responseType: "blob", signal: expect.any(AbortSignal),
     });
     expect(await screen.findByRole("status")).toHaveTextContent("PDF generado.");
@@ -63,7 +73,7 @@ describe("CustomerModel347Dialog", () => {
     mount(); fireEvent.change(screen.getByRole("spinbutton"), { target: { value: year } });
     fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
     await screen.findByRole("status");
-    expect(apiRequest).toHaveBeenCalledWith(`/customer-document-reports/customer-1/model-347.pdf?year=${year}&locale=es`, expect.anything());
+    expect(apiRequest).toHaveBeenCalledWith(`/customer-document-reports/saas/customer-1/annual.pdf?year=${year}&locale=es`, expect.anything());
   });
 
   it("prevents duplicate generation and aborts on Escape without saving late responses", async () => {

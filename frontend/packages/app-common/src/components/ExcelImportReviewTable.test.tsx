@@ -1,11 +1,34 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import { useLayoutEffect, useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExcelImportReviewTable } from "./ExcelImportReviewTable";
 
 afterEach(cleanup);
 describe("Excel import review table", () => {
+  it.each([false, true])("keeps an immediate row-detail click before passive mount effects flush (controlled: %s)", (controlled) => {
+    const props = { title: "Review", columns: [{ key: "rowNumber", label: "Row" }], onExport: vi.fn(), exportDisabled: false,
+      labels: { export: "Export", empty: "Empty", review: "Review row", resize: (name: string) => "Resize " + name } };
+    const rows = [{ id: 2, status: "error", values: { rowNumber: "2" }, details: <p>Fix this row</p> }];
+    function ReviewOnMount() {
+      const host = useRef<HTMLDivElement>(null);
+      const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
+      useLayoutEffect(() => {
+        // Model the first click after DOM commit, before passive initialization runs.
+        host.current?.querySelector<HTMLButtonElement>(".shared-excel-review-row-button")?.click();
+      }, []);
+      return <div ref={host}><ExcelImportReviewTable {...props} rows={rows}
+        {...(controlled ? { selectedRowId, onSelectRow: setSelectedRowId } : {})} /></div>;
+    }
+    render(<ReviewOnMount />);
+    const button = screen.getByRole("button", { name: "Review row 2" });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("region", { name: "Review row 2" })).toHaveTextContent("Fix this row");
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "Review row 2" })).not.toBeInTheDocument();
+  });
   it("reveals a distant selected row without filtering and synchronizes a separate header", () => {
     const props = { title: "Review", columns: [{ key: "rowNumber", label: "Row" }], onExport: vi.fn(), exportDisabled: false,
       labels: { export: "Export", empty: "Empty", review: "Review row", resize: (name: string) => "Resize " + name } };

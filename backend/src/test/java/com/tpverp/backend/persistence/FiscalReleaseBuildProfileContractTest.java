@@ -20,13 +20,13 @@ class FiscalReleaseBuildProfileContractTest {
         var defaultBuild = pom.substring(0, profilesStart);
         var releaseProfiles = pom.substring(profilesStart);
         assertThat(manifest).contains("@tpv.release.id@", "@tpv.release.version@",
-                "@tpv.release.capability@").contains("schema.version=V242")
+                "@tpv.release.capability@").contains("schema.version=V244")
                 .contains("release.sequence=@tpv.release.sequence@")
                 .contains("build.sequence=@tpv.release.build.sequence@");
-        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v242</tpv.release.id>")
+        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v244</tpv.release.id>")
                 .contains("<tpv.release.version>DEV</tpv.release.version>")
                 .contains("<tpv.release.capability>DUAL</tpv.release.capability>")
-                .contains("<tpv.release.sequence>10</tpv.release.sequence>")
+                .contains("<tpv.release.sequence>11</tpv.release.sequence>")
                 .contains("<tpv.release.build.sequence>0</tpv.release.build.sequence>");
         assertThat(releaseProfiles)
                 .contains("<id>production-release</id>")

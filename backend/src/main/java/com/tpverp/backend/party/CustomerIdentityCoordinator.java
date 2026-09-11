@@ -29,7 +29,7 @@ public class CustomerIdentityCoordinator {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Customer identity registration requires a transaction");
         }
-        var profile = profile(candidate);
+        var profile = profile(candidate, existing == null ? null : existing.getSaasClientCode());
         var operation = operations.prepare(companyId, storeId, existing == null ? null : existing.getId(),
                 existing == null ? null : existing.getSaasCustomerId(),
                 existing == null ? null : existing.getSaasIdentityRevision(), identity);
@@ -60,12 +60,16 @@ public class CustomerIdentityCoordinator {
     }
 
     static Map<String, Object> profile(Customer customer) {
+        return profile(customer, customer.getSaasClientCode());
+    }
+
+    private static Map<String, Object> profile(Customer customer, String centralCode) {
         requireLength(customer.getFiscalName(), 255, "nombreFiscal");
         requireLength(customer.getPhone(), 64, "telefono");
         requireLength(customer.getEmail(), 320, "email");
         if (customer.getClientId() == null) throw new IllegalStateException("Customer code is required before reservation");
         var payload = new LinkedHashMap<String, Object>();
-        payload.put("clientId", customer.getClientId());
+        payload.put("clientId", centralCode == null ? customer.getClientId() : centralCode);
         payload.put("fiscalName", customer.getFiscalName());
         payload.put("phone", customer.getPhone());
         payload.put("email", customer.getEmail());

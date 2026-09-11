@@ -68,8 +68,12 @@ public class CustomerIdentityService {
         }
         boolean pending = Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(select 1 from saas_customer_identity_operation
-                  where installation_id = ? and local_customer_id = ? and status = 'RESERVED')
-                """, Boolean.class, installation.getId(), request.localCustomerId()));
+                  where status = 'RESERVED' and ((installation_id = ? and local_customer_id = ?)
+                    or (company_id = ? and customer_id = ?)))
+                  or exists(select 1 from saas_customer_adoption_operation
+                    where installation_id = ? and local_customer_id = ? and status = 'RESERVED')
+                """, Boolean.class, installation.getId(), request.localCustomerId(), request.companyId(),
+                request.expectedCustomerId(), installation.getId(), request.localCustomerId()));
         if (pending) throw CustomerIdentityException.conflict();
         List<UUID> links = jdbc.query("""
                 select customer_id from saas_customer_identity_link

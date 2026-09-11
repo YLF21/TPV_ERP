@@ -53,6 +53,8 @@ public class CustomerDocumentExcelExportService {
     private static final int HEADER_ROW = 4;
     private static final Set<String> COLUMNS = Set.of(
             "number", "date", "type", "status", "base", "tax", "total", "terminal", "user");
+    private static final Set<String> RECEIVED_COLUMNS = Set.of(
+            "number", "date", "type", "status", "base", "tax", "total", "terminal", "user", "store", "currency");
     private final CurrentOrganization organization;
     private final CustomerRepository customers;
     private final CustomerDocumentReportQueryRepository queries;
@@ -178,7 +180,7 @@ public class CustomerDocumentExcelExportService {
         return ids.stream().map(byId::get).toList();
     }
 
-    private static Set<CommercialDocumentType> allowedTypes(String reportKey, Authentication authentication) {
+    public static Set<CommercialDocumentType> allowedTypes(String reportKey, Authentication authentication) {
         var permission = switch (reportKey) {
             case "tickets" -> "TICKETS_READ";
             case "invoices" -> "INVOICES_READ";
@@ -201,13 +203,36 @@ public class CustomerDocumentExcelExportService {
 
     private static void validateRequest(CustomerDocumentExportRequest request,
             Set<CommercialDocumentType> types, boolean filtered) {
+        validatePresentation(request, types, COLUMNS, EnumSet.allOf(DocumentStatus.class));
+        if (filtered ? request.documentIds() != null : request.documentIds() == null) {
+            throw new IllegalArgumentException("La selección de documentos no corresponde a los filtros");
+        }
+        if (!filtered) {
+            if (request.documentIds().size() > MAX_ROWS) throw new ExportLimitExceededException();
+            if (request.documentIds().stream().anyMatch(java.util.Objects::isNull)
+                    || new HashSet<>(request.documentIds()).size() != request.documentIds().size()) {
+                throw new IllegalArgumentException("La selección de documentos contiene identificadores no válidos");
+            }
+        }
+    }
+
+    public static void validateReceivedPresentation(CustomerDocumentExportRequest request,
+            Set<CommercialDocumentType> types) {
+        validatePresentation(request, types, RECEIVED_COLUMNS, EnumSet.complementOf(EnumSet.of(DocumentStatus.BORRADOR)));
+        if (request.columns().stream().noneMatch(column -> column.key().equals("currency"))) {
+            throw new IllegalArgumentException("La exportación central debe identificar la moneda");
+        }
+    }
+
+    private static void validatePresentation(CustomerDocumentExportRequest request,
+            Set<CommercialDocumentType> types, Set<String> allowedColumns, Set<DocumentStatus> requiredStatuses) {
         if (request.customerId() == null || request.columns() == null || request.columns().isEmpty()
-                || request.columns().size() > COLUMNS.size() || request.labels() == null) {
+                || request.columns().size() > allowedColumns.size() || request.labels() == null) {
             throw new IllegalArgumentException("La configuración de exportación no es válida");
         }
         var seen = new HashSet<String>();
         for (var column : request.columns()) {
-            if (column == null || column.key() == null || !COLUMNS.contains(column.key()) || !seen.add(column.key())
+            if (column == null || column.key() == null || !allowedColumns.contains(column.key()) || !seen.add(column.key())
                     || !validLabel(column.label())) {
                 throw new IllegalArgumentException("Columna de exportación no válida");
             }
@@ -221,19 +246,9 @@ public class CustomerDocumentExcelExportService {
                 || seen.contains("type") && (request.labels().types() == null
                     || types.stream().anyMatch(type -> !validLabel(request.labels().types().get(type))))
                 || (seen.contains("status") || request.queryFilter().status() != null) && (request.labels().statuses() == null
-                    || EnumSet.allOf(DocumentStatus.class).stream()
+                    || requiredStatuses.stream()
                         .anyMatch(status -> !validLabel(request.labels().statuses().get(status))))) {
             throw new IllegalArgumentException("Las etiquetas de exportación no son válidas");
-        }
-        if (filtered ? request.documentIds() != null : request.documentIds() == null) {
-            throw new IllegalArgumentException("La selección de documentos no corresponde a los filtros");
-        }
-        if (!filtered) {
-            if (request.documentIds().size() > MAX_ROWS) throw new ExportLimitExceededException();
-            if (request.documentIds().stream().anyMatch(java.util.Objects::isNull)
-                    || new HashSet<>(request.documentIds()).size() != request.documentIds().size()) {
-                throw new IllegalArgumentException("La selección de documentos contiene identificadores no válidos");
-            }
         }
     }
 
@@ -262,8 +277,13 @@ public class CustomerDocumentExcelExportService {
 
     private static void writeCustomer(Sheet sheet, Customer customer, CustomerDocumentExportRequest request,
             CustomerDocumentReportFilter filter, Styles styles) {
+        writeCustomer(sheet, new String[]{customer.getClientId(), customer.getDocumentNumber(), customer.getFiscalName()},
+                request, filter, styles);
+    }
+
+    private static void writeCustomer(Sheet sheet, String[] values, CustomerDocumentExportRequest request,
+            CustomerDocumentReportFilter filter, Styles styles) {
         String[] labels = { request.labels().customerCode(), request.labels().customerTaxId(), request.labels().customerName() };
-        String[] values = { customer.getClientId(), customer.getDocumentNumber(), customer.getFiscalName() };
         for (int index = 0; index < labels.length; index++) {
             var row = sheet.createRow(index);
             row.setHeightInPoints(index == 2 ? 32 : 25);
@@ -312,6 +332,8 @@ public class CustomerDocumentExcelExportService {
                     case "total" -> row.total();
                     case "terminal" -> nameOrPlaceholder(row.terminal());
                     case "user" -> nameOrPlaceholder(row.user());
+                    case "store" -> nameOrPlaceholder(row.store());
+                    case "currency" -> row.currency();
                     default -> throw new IllegalArgumentException("Columna de exportación no válida");
                 };
                 writeValue(excelRow.createCell(index), value, styles);
@@ -365,8 +387,94 @@ public class CustomerDocumentExcelExportService {
         return name == null || name.isEmpty() ? "—" : name;
     }
 
-    record ExportRow(UUID id, String number, LocalDate date, CommercialDocumentType type,
-            DocumentStatus status, BigDecimal base, BigDecimal tax, BigDecimal total, String terminal, String user) {
+    public record ExportRow(UUID id, String number, LocalDate date, CommercialDocumentType type,
+            DocumentStatus status, BigDecimal base, BigDecimal tax, BigDecimal total, String terminal, String user,
+            String store, String currency) {
+        ExportRow(UUID id, String number, LocalDate date, CommercialDocumentType type,
+                DocumentStatus status, BigDecimal base, BigDecimal tax, BigDecimal total, String terminal, String user) {
+            this(id, number, date, type, status, base, tax, total, terminal, user, null, null);
+        }
+    }
+
+    /** Presentation only: received rows never trigger local document queries or an audit/database write. */
+    public byte[] renderReceived(CustomerDocumentExportRequest request, String customerCode,
+            String customerTaxId, String customerName, List<ExportRow> rows) {
+        if (rows.size() > MAX_ROWS) throw new ExportLimitExceededException();
+        var types = rows.stream().map(ExportRow::type).collect(Collectors.toSet());
+        validateReceivedPresentation(request, types);
+        var workbook = new SXSSFWorkbook(PAGE_SIZE);
+        workbook.setCompressTempFiles(true);
+        try (workbook; var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(request.labels().sheetName()));
+            try {
+                sheet.setDisplayGridlines(false);
+                var styles = Styles.create(workbook);
+                // Currency is explicit in each row and total; do not apply the legacy EUR-only format.
+                styles.amount().setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+                styles.totalAmount().setDataFormat(styles.amount().getDataFormat());
+                writeHeader(sheet, request.columns(), styles);
+                writeCustomer(sheet, new String[]{customerCode, customerTaxId, customerName}, request, request.queryFilter(), styles);
+                var totals = new java.util.TreeMap<String, BigDecimal>();
+                int count = 0;
+                for (var row : rows) {
+                    if (row.currency() == null || !row.currency().matches("[A-Z]{3}")) {
+                        throw new IllegalArgumentException("Moneda documental no válida");
+                    }
+                    // Reuse row layout with exact decimal cells in this received-data path.
+                    writeRows(sheet, request, List.of(row), new ExportSummary(count++, BigDecimal.ZERO), styles);
+                    var excelRow = sheet.getRow(HEADER_ROW + count);
+                    for (int index = 0; index < request.columns().size(); index++) {
+                        BigDecimal decimal = switch (request.columns().get(index).key()) {
+                            case "base" -> row.base(); case "tax" -> row.tax(); case "total" -> row.total(); default -> null;
+                        };
+                        if (decimal != null) exactNumber(excelRow.getCell(index), decimal);
+                    }
+                    totals.merge(row.currency(), row.total(), BigDecimal::add);
+                }
+                int totalColumn = java.util.stream.IntStream.range(0, request.columns().size())
+                        .filter(index -> request.columns().get(index).key().equals("total")).findFirst().orElse(-1);
+                int amountColumn = totalColumn < 0 ? 1 : totalColumn;
+                int currencyColumn = java.util.stream.IntStream.range(0, request.columns().size())
+                        .filter(index -> request.columns().get(index).key().equals("currency")).findFirst().orElseThrow();
+                int totalRow = HEADER_ROW + count;
+                for (var entry : totals.entrySet()) {
+                    var row = sheet.createRow(++totalRow);
+                    row.setHeightInPoints(30);
+                    for (int index = 0; index < Math.max(2, request.columns().size()); index++) {
+                        row.createCell(index).setCellStyle(styles.totalLabel());
+                    }
+                    row.getCell(amountColumn == 0 ? 1 : 0).setCellValue(request.labels().grandTotal() + " (" + entry.getKey() + ")");
+                    var amount = row.getCell(amountColumn);
+                    // Text fallback must not be silently omitted by an Excel SUM/SUMIFS formula.
+                    boolean numeric = rows.stream().filter(value -> value.currency().equals(entry.getKey()))
+                            .allMatch(value -> exactlyRepresentable(value.total()));
+                    if (numeric && exactlyRepresentable(entry.getValue()) && count > 0 && totalColumn >= 0) {
+                        String amounts = CellReference.convertNumToColString(totalColumn);
+                        String currencies = CellReference.convertNumToColString(currencyColumn);
+                        amount.setCellFormula("SUMIFS(" + amounts + "6:" + amounts + (HEADER_ROW + count + 1)
+                                + "," + currencies + "6:" + currencies + (HEADER_ROW + count + 1) + ",\"" + entry.getKey() + "\")");
+                    }
+                    exactNumber(amount, entry.getValue());
+                    amount.setCellStyle(styles.totalAmount());
+                }
+                sheet.setAutoFilter(new CellRangeAddress(HEADER_ROW, HEADER_ROW + count, 0, request.columns().size() - 1));
+                sheet.createFreezePane(0, HEADER_ROW + 1);
+                workbook.write(output);
+                return output.toByteArray();
+            } finally { sheet.flushRows(); }
+        } catch (IOException exception) {
+            throw new IllegalStateException("No se pudieron exportar los documentos del cliente", exception);
+        }
+    }
+
+    private static boolean exactlyRepresentable(BigDecimal value) {
+        return value.stripTrailingZeros().precision() <= 15 && Double.isFinite(value.doubleValue())
+                && BigDecimal.valueOf(value.doubleValue()).compareTo(value) == 0;
+    }
+
+    private static void exactNumber(Cell cell, BigDecimal value) {
+        if (exactlyRepresentable(value)) cell.setCellValue(value.doubleValue());
+        else cell.setCellValue(value.toPlainString());
     }
 
     static final class ExportLimitExceededException extends IllegalArgumentException {

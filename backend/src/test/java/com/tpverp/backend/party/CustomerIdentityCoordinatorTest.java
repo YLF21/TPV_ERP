@@ -139,6 +139,29 @@ class CustomerIdentityCoordinatorTest {
     }
 
     @Test
+    void editingAnAdoptedCopyRetainsCentralCodeEvenWhenCandidateHasOnlyTheLocalStoreCode() {
+        Customer existing = customer(UUID.randomUUID(), "Cliente adoptado");
+        UUID centralId = UUID.randomUUID();
+        existing.linkAdoptedSaasIdentity(centralId, 0L, "CENTRAL-MASTER-CODE");
+        Customer candidate = customer(existing.getId(), "Perfil editado");
+        var operation = operation(existing.getId(), "PENDING", false, centralId, 0L);
+        when(operations.prepare(company.getId(), storeId, existing.getId(), centralId, 0L, identity)).thenReturn(operation);
+        when(operations.lock(operation.operationId())).thenReturn(operation);
+        when(central.reserve(eq(operation), any())).thenReturn(new CustomerIdentitySaasClient.Reservation(
+                operation.operationId(), centralId, 1L, "DNI", "12345678Z"));
+        transactions.executeWithoutResult(status -> {
+            var approval = coordinator.reserve(company.getId(), storeId, existing, identity, candidate);
+            assertEquals("CENTRAL-MASTER-CODE", approval.profile().get("clientId"));
+            existing.update(candidate.getFiscalName(), candidate.getDocumentType(), candidate.getDocumentNumber(),
+                    candidate.getFiscalAddress(), candidate.getPhone(), candidate.getEmail(), null, CustomerRate.VENTA, BigDecimal.ZERO);
+            coordinator.complete(approval, existing);
+        });
+        assertEquals("C-001-000001", existing.getClientId());
+        assertEquals("CENTRAL-MASTER-CODE", existing.getSaasClientCode());
+        assertEquals(1L, existing.getSaasIdentityRevision());
+    }
+
+    @Test
     void uncertainTimeoutReturns503AndRetainsDurableCancellationForLateReservation() {
         Customer customer = customer(UUID.randomUUID(), "Cliente de prueba");
         var operation = prepared(customer, "PENDING");

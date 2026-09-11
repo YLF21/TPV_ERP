@@ -24,6 +24,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     Optional<Customer> findByIdAndCompanyId(UUID id, UUID companyId);
 
+    Optional<Customer> findByCompanyIdAndSaasCustomerId(UUID companyId, UUID saasCustomerId);
+
     @Query(value = """
             select * from cliente where empresa_id = :companyId
               and customer_document_key(numero_documento) = :number

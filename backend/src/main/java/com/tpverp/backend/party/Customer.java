@@ -50,6 +50,9 @@ public class Customer {
     @Column(name = "saas_identity_revision")
     private Long saasIdentityRevision;
 
+    @Column(name = "saas_client_code", length = 40)
+    private String saasClientCode;
+
     @Embedded
     private FiscalAddress fiscalAddress;
 
@@ -167,6 +170,7 @@ public class Customer {
 
     public UUID getSaasCustomerId() { return saasCustomerId; }
     public Long getSaasIdentityRevision() { return saasIdentityRevision; }
+    public String getSaasClientCode() { return saasClientCode; }
     public UUID getClientCodeStoreId() { return clientCodeStoreId; }
 
     void linkSaasIdentity(UUID centralId, long revision) {
@@ -176,6 +180,15 @@ public class Customer {
         }
         saasCustomerId = centralId;
         saasIdentityRevision = revision;
+    }
+
+    void linkAdoptedSaasIdentity(UUID centralId, long revision, String centralCode) {
+        if (centralCode == null || centralCode.isBlank() || centralCode.length() > 40
+                || (saasClientCode != null && !saasClientCode.equals(centralCode))) {
+            throw CustomerIdentityException.conflict();
+        }
+        linkSaasIdentity(centralId, revision);
+        saasClientCode = centralCode;
     }
 
     public void configureCredit(

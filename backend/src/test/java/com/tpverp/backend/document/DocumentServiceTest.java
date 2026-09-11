@@ -52,8 +52,6 @@ import com.tpverp.backend.security.application.OperationalPermissionAuthorizatio
 import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.sync.SyncOperation;
-import com.tpverp.backend.sync.SyncOutboundEventCommand;
-import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
@@ -119,7 +117,7 @@ class DocumentServiceTest {
     @Mock
     private MemberLoyaltyService memberLoyaltyService;
     @Mock
-    private SyncOutboxService syncOutbox;
+    private DocumentSyncPublisher documentSync;
 @Mock
     private PromotionRepository promotionRepository;
     @Mock
@@ -223,7 +221,7 @@ class DocumentServiceTest {
                 terminalPaymentConfigurations,
                 cashPaymentRecorder,
                 memberLoyaltyService,
-                syncOutbox,
+                documentSync,
                 promotionRepository,
                 promotionTargetRepository,
                 new PromotionEngine(),
@@ -606,11 +604,8 @@ class DocumentServiceTest {
 
         var confirmed = service.confirm(document.getId(), authentication());
 
-        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
-        verify(syncOutbox).enqueue(command.capture());
-        assertThat(command.getValue().entityId()).isEqualTo(confirmed.getId());
-        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CONFIRMAR);
-        assertThat(command.getValue().payload())
+        verify(documentSync).schedule(store.getEmpresa().getId(), confirmed, terminalId, SyncOperation.CONFIRMAR);
+        assertThat(new DocumentSyncPayloadFactory(relationRepository, org.mockito.Mockito.mock(DocumentAttributionResolver.class)).create(confirmed, 1L))
                 .containsEntry("tipo", "ALBARAN_VENTA")
                 .containsEntry("numero", confirmed.getNumero());
     }
@@ -1448,15 +1443,12 @@ class DocumentServiceTest {
                         cash.getId(), new BigDecimal("10.00"), true, null, null)),
                 authentication());
 
-        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
-        verify(syncOutbox).enqueue(command.capture());
-        assertThat(command.getValue().companyId()).isEqualTo(store.getEmpresa().getId());
-        assertThat(command.getValue().storeId()).isEqualTo(store.getId());
-        assertThat(command.getValue().terminalId()).isEqualTo(terminalId);
-        assertThat(command.getValue().entityType()).isEqualTo("DOCUMENTO");
-        assertThat(command.getValue().entityId()).isEqualTo(ticket.getId());
-        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CONFIRMAR);
-        assertThat(command.getValue().payload())
+        verify(documentSync).schedule(store.getEmpresa().getId(), ticket, terminalId, SyncOperation.CONFIRMAR);
+        var payload = new DocumentSyncPayloadFactory(relationRepository, org.mockito.Mockito.mock(DocumentAttributionResolver.class)).create(ticket, 1L);
+        assertThat(ticket.getTiendaId()).isEqualTo(store.getId());
+        assertThat(payload)
+                .containsEntry("schemaVersion", 2)
+                .containsEntry("sourceRevision", 1L)
                 .containsEntry("tipo", "TICKET")
                 .containsEntry("numero", ticket.getNumero())
                 .containsEntry("fecha", "2026-06-08")
@@ -1466,7 +1458,7 @@ class DocumentServiceTest {
                 .containsEntry("descuentoGlobal", "0.00")
                 .containsEntry("subtotal", "8.26")
                 .containsEntry("impuestos", "1.74");
-        assertThat(command.getValue().payload().get("lineas"))
+        assertThat(payload.get("lineas"))
                 .asList()
                 .singleElement()
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
@@ -1482,7 +1474,7 @@ class DocumentServiceTest {
                 .containsEntry("base", "8.26")
                 .containsEntry("impuesto", "1.74")
                 .containsEntry("total", "10.00");
-        assertThat(command.getValue().payload().get("pagos"))
+        assertThat(payload.get("pagos"))
                 .asList()
                 .singleElement()
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
@@ -1569,11 +1561,8 @@ class DocumentServiceTest {
 
         var cancelled = service.cancelTicket(ticket.getId(), authentication(), "ERROR");
 
-        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
-        verify(syncOutbox).enqueue(command.capture());
-        assertThat(command.getValue().entityId()).isEqualTo(cancelled.getId());
-        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.ANULAR);
-        assertThat(command.getValue().payload())
+        verify(documentSync).schedule(store.getEmpresa().getId(), cancelled, terminalId, SyncOperation.ANULAR);
+        assertThat(new DocumentSyncPayloadFactory(relationRepository, org.mockito.Mockito.mock(DocumentAttributionResolver.class)).create(cancelled, 1L))
                 .containsEntry("tipo", "TICKET")
                 .containsEntry("estado", "ANULADO");
     }
@@ -1817,11 +1806,8 @@ class DocumentServiceTest {
         var invoice = service.convertTicketToInvoice(
                 ticket.getId(), customer.getId(), null, null, authentication());
 
-        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
-        verify(syncOutbox).enqueue(command.capture());
-        assertThat(command.getValue().entityId()).isEqualTo(invoice.getId());
-        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CONFIRMAR);
-        assertThat(command.getValue().payload())
+        verify(documentSync).schedule(store.getEmpresa().getId(), invoice, terminalId, SyncOperation.CONFIRMAR);
+        assertThat(new DocumentSyncPayloadFactory(relationRepository, org.mockito.Mockito.mock(DocumentAttributionResolver.class)).create(invoice, 1L))
                 .containsEntry("tipo", "FACTURA_VENTA")
                 .containsEntry("numero", invoice.getNumero())
                 .containsEntry("clienteId", customer.getId().toString());
@@ -2242,13 +2228,11 @@ class DocumentServiceTest {
                         method.getId(), new BigDecimal("4.00"), true, null, null)),
                 authentication());
 
-        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
-        verify(syncOutbox).enqueue(command.capture());
-        assertThat(command.getValue().entityId()).isEqualTo(paid.getId());
-        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.ACTUALIZAR);
-        assertThat(command.getValue().payload())
+        verify(documentSync).schedule(store.getEmpresa().getId(), paid, terminalId, SyncOperation.ACTUALIZAR);
+        var payload = new DocumentSyncPayloadFactory(relationRepository, org.mockito.Mockito.mock(DocumentAttributionResolver.class)).create(paid, 1L);
+        assertThat(payload)
                 .containsEntry("estado", "PARCIAL");
-        assertThat(command.getValue().payload().get("pagos"))
+        assertThat(payload.get("pagos"))
                 .asList()
                 .singleElement()
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
@@ -2783,6 +2767,7 @@ class DocumentServiceTest {
         assertThat(edited.isWholesaleMode()).isTrue();
         assertThat(edited.getDescuentoGlobal()).isZero();
         assertThat(edited.getTotal()).isEqualByComparingTo("9.00");
+        verify(documentSync).schedule(store.getEmpresa().getId(), edited, terminalId, SyncOperation.ACTUALIZAR);
         assertThat(edited.getAjustes()).singleElement().satisfies(adjustment -> {
             assertThat(adjustment.getPorcentaje()).isEqualByComparingTo("10.00");
             var discount = edited.getLineas().stream()
@@ -2994,6 +2979,19 @@ class DocumentServiceTest {
         order.verify(documentRepository).findLockedDocument(firstId, store.getId());
         order.verify(documentRepository).findLockedDocument(secondId, store.getId());
         verify(relationRepository).save(any(DocumentRelation.class));
+        verify(documentSync).schedule(store.getEmpresa().getId(), invoice, terminalId, SyncOperation.ACTUALIZAR);
+    }
+
+    @Test
+    void draftCompensationRelationIsNotPublishedBeforeConfirmation() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        var origin = draft(CommercialDocumentType.TICKET);
+        stubLocked(invoice, origin);
+
+        service.relate(invoice.getId(), origin.getId(), DocumentRelationType.COMPENSA, authentication());
+
+        verify(relationRepository).save(any(DocumentRelation.class));
+        verify(documentSync, never()).schedule(any(), any(), any(), any());
     }
     @Test
     void rejectsInactiveProductWhenConfirmingASaleAndPolicyIsDisabled() {

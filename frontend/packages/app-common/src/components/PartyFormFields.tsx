@@ -14,6 +14,7 @@ type Props = {
   form: PartyForm;
   errors: string[];
   documentError?: string;
+  identityAction?: ReactNode;
   channels: CommercialChannelOption[];
   supplier?: boolean;
   autoFocusName?: boolean;
@@ -25,6 +26,7 @@ export function PartyFormFields({
   form,
   errors,
   documentError,
+  identityAction,
   channels,
   supplier = false,
   autoFocusName = false,
@@ -93,6 +95,7 @@ export function PartyFormFields({
         {error("documentNumber")}
       </label>
     </div>
+    {identityAction}
     <div className="product-create-row product-create-row-two">
       <label><span>{t("party.field.phone")}</span><input value={form.phone} onChange={(event) => onChange("phone", event.target.value)} /></label>
       <label><span>{t("party.field.email")}</span><input type="email" value={form.email} onChange={(event) => onChange("email", event.target.value)} /></label>
