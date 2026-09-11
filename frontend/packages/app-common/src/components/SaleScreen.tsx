@@ -36,6 +36,7 @@ import {
   outputConfirmedTicketsSequentially,
   retryConfirmedTicketPrint,
   type ConfirmedTicketPrintSnapshot,
+  type ConfirmedTicketPrintSet,
   type SalePrintMode,
   type TicketPrintOutcome,
 } from "../sale/ticketPrinting";
@@ -1693,6 +1694,7 @@ export function SaleScreen({
   const [nextScanQuantity, setNextScanQuantity] = useState(1);
   const [nextScanMode, setNextScanMode] = useState<"UNIT" | "PACKAGE">("UNIT");
   const [shortcutStatus, setShortcutStatus] = useState("");
+  const [lastTicketCopyBusy, setLastTicketCopyBusy] = useState(false);
   const [cashDrawerAuthorizationOpen, setCashDrawerAuthorizationOpen] = useState(false);
   const [cashDrawerBusy, setCashDrawerBusy] = useState(false);
   const [cashDrawerError, setCashDrawerError] = useState("");
@@ -1885,6 +1887,7 @@ export function SaleScreen({
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
   const saleShortcutHandlerRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  const lastTicketCopyControllerRef = useRef<AbortController | null>(null);
   const blockedRecoveryDialogRef = useRef<HTMLElement>(null);
   const deletionControlRef = useRef<SaleDeletionControlSequence | null>(null);
   if (!deletionControlRef.current) deletionControlRef.current = new SaleDeletionControlSequence();
@@ -1896,6 +1899,14 @@ export function SaleScreen({
   const customerSearchGenerationRef = useRef(0);
   const linesRef = useRef(lines);
   const serialQuantityRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    setLastTicketCopyBusy(false);
+    return () => {
+      lastTicketCopyControllerRef.current?.abort();
+      lastTicketCopyControllerRef.current = null;
+    };
+  }, [session.accessToken, terminalContext.terminalId, terminalContext.terminalCode]);
 
   useEffect(() => {
     if (paymentLocked) return;
@@ -3051,6 +3062,43 @@ export function SaleScreen({
       locale,
     )
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
+  }
+
+  async function reprintLastTerminalTicket() {
+    if (lastTicketCopyControllerRef.current) return;
+    const controller = new AbortController();
+    lastTicketCopyControllerRef.current = controller;
+    setLastTicketCopyBusy(true);
+    setShortcutStatus(t("sale.lastTicketCopy.printing"));
+    try {
+      const printSet = await apiRequest<ConfirmedTicketPrintSet>(
+        "/tickets/last-current-terminal/print-set",
+        { token: session.accessToken, signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      const outcome = await outputConfirmedTicketsSequentially(
+        [...(printSet.additionalPrintTickets ?? []), printSet.printTicket],
+        terminalContext,
+        "TICKET_COPY",
+        locale,
+        undefined,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setShortcutStatus(outcome.status === "PRINTED"
+        ? saleMainMessage(t, "sale.lastTicketCopy.printed", { number: printSet.printTicket.documentNumber })
+        : outcome.technicalMessage ?? t("ticketManagement.error.print"));
+    } catch (failure) {
+      if (controller.signal.aborted) return;
+      setShortcutStatus(failure instanceof ApiError && failure.problem?.code === "TICKET_NOT_FOUND"
+        ? t("sale.lastTicketCopy.notFound")
+        : failure instanceof Error ? failure.message : t("ticketManagement.error.print"));
+    } finally {
+      if (lastTicketCopyControllerRef.current === controller) {
+        lastTicketCopyControllerRef.current = null;
+        setLastTicketCopyBusy(false);
+      }
+    }
   }
 
   function renderReturnPromotionAdjustmentRow(line: AuthoritativeSaleLine) {
@@ -4848,6 +4896,8 @@ export function SaleScreen({
   function saleCommandDisabled(command: SaleCommandId) {
     if (previousTicketImportBusy && command !== "import-previous-ticket") return true;
     switch (command) {
+      case "reprint-last-ticket":
+        return !cashSessionReady || !paymentHydrated || paymentLocked || lastTicketCopyBusy;
       case "wholesale-mode":
         return false;
       case "product-search":
@@ -4958,6 +5008,9 @@ export function SaleScreen({
     }
     if (saleCommandDisabled(command) && !keyboardReturnRemoval) return false;
     switch (command) {
+      case "reprint-last-ticket":
+        void reprintLastTerminalTicket();
+        break;
       case "sales-document":
         onOpenSalesDocumentWindow?.();
         break;
@@ -5121,6 +5174,8 @@ export function SaleScreen({
           return;
         }
         event.preventDefault();
+        // Windows can deliver PrintScreen only on release. Never print on both events.
+        if (command === "reprint-last-ticket" && event.type !== "keyup") return;
         executeSaleCommand(command, "KEYBOARD");
         return;
       }
@@ -5153,8 +5208,17 @@ export function SaleScreen({
     function handleSaleShortcut(event: KeyboardEvent) {
       saleShortcutHandlerRef.current(event);
     }
+    function handleSaleShortcutRelease(event: KeyboardEvent) {
+      if (saleCommandFromKeyboard(event) === "reprint-last-ticket") {
+        saleShortcutHandlerRef.current(event);
+      }
+    }
     window.addEventListener("keydown", handleSaleShortcut);
-    return () => window.removeEventListener("keydown", handleSaleShortcut);
+    window.addEventListener("keyup", handleSaleShortcutRelease);
+    return () => {
+      window.removeEventListener("keydown", handleSaleShortcut);
+      window.removeEventListener("keyup", handleSaleShortcutRelease);
+    };
   }, []);
 
   const cartColumnVisible = (columnKey: SaleCartColumnKey) => (
@@ -5254,6 +5318,11 @@ export function SaleScreen({
           type: "action", id: "gift-receipt", label: t("sale.shortcut.giftReceipt"), shortcut: "Ctrl+R",
           disabled: !paymentHydrated || paymentLocked,
           onSelect: () => executeSaleCommand("gift-receipt"),
+        },
+        {
+          type: "action", id: "reprint-last-ticket", label: t("sale.lastTicketCopy.action"), shortcut: t("sale.lastTicketCopy.key"),
+          disabled: saleCommandDisabled("reprint-last-ticket"),
+          onSelect: () => executeSaleCommand("reprint-last-ticket"),
         },
         {
           type: "action", id: "cancel-last-ticket", label: commandLabels.cancelTicket, shortcut: "F11",

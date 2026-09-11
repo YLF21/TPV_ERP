@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
+import { CashRegisterIcon, ChartBarIcon, GearSixIcon, SquaresFourIcon, WarehouseIcon } from "@phosphor-icons/react";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { hasPermission } from "../auth/auth";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import settingsIcon from "../assets/home-configuracion.png";
-import reportIcon from "../assets/home-informe.png";
-import saleIcon from "../assets/home-venta.png";
-import stockIcon from "../assets/home-stock.png";
-import warehouseIcon from "../assets/home-almacen.png";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { SaleCashSessionDialog } from "./SaleCashSessionDialog";
@@ -138,7 +134,7 @@ export function SessionHomeScreen({
   return (
     <main className="home-screen">
       <header className="entry-topbar">
-        <img className="home-brand-icon" alt="" src={saleIcon} />
+        <CashRegisterIcon className="home-brand-icon" weight="duotone" aria-hidden="true" focusable="false" />
         <strong className="app-brand-static">{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
       </header>
       <div className="login-store-heading">
@@ -170,7 +166,7 @@ export function SessionHomeScreen({
               disabled={!saleUnlocked}
               aria-describedby={saleUnlocked ? undefined : "home-sale-cash-state"}
             >
-              <img className="home-action-icon" alt="" src={saleIcon} />
+              <CashRegisterIcon className="home-action-icon" weight="duotone" aria-hidden="true" focusable="false" />
               <span>{t("home.sale")}</span>
               <kbd className="home-action-shortcut" aria-hidden="true">F1</kbd>
             </button>
@@ -210,14 +206,14 @@ export function SessionHomeScreen({
         <div className="home-action-side">
           {canOpenStock && (
             <button type="button" className="home-action" onClick={onOpenStock}>
-              <img className="home-action-icon" alt="" src={stockIcon} />
+              <SquaresFourIcon className="home-action-icon" weight="duotone" aria-hidden="true" focusable="false" />
               <span>{t("home.product")}</span>
               <kbd className="home-action-shortcut" aria-hidden="true">F2</kbd>
             </button>
           )}
           {canOpenWarehouse && (
             <button type="button" className="home-action" onClick={onOpenWarehouse}>
-              <img className="home-action-icon" alt="" src={warehouseIcon} />
+              <WarehouseIcon className="home-action-icon" weight="duotone" aria-hidden="true" focusable="false" />
               <span>{t("home.warehouse")}</span>
               <kbd className="home-action-shortcut" aria-hidden="true">F3</kbd>
             </button>
@@ -228,14 +224,14 @@ export function SessionHomeScreen({
               className="home-action"
               onClick={onOpenSalesReport}
             >
-              <img className="home-action-icon" alt="" src={reportIcon} />
+              <ChartBarIcon className="home-action-icon" weight="duotone" aria-hidden="true" focusable="false" />
               <span>{t("home.salesReport")}</span>
               <kbd className="home-action-shortcut" aria-hidden="true">F4</kbd>
             </button>
           )}
           {canOpenSettings && (
             <button type="button" className="home-action" onClick={onOpenSettings}>
-              <img className="home-action-icon" alt="" src={settingsIcon} />
+              <GearSixIcon className="home-action-icon" weight="duotone" aria-hidden="true" focusable="false" />
               <span>{t("home.settings")}</span>
               <kbd className="home-action-shortcut" aria-hidden="true">F5</kbd>
             </button>

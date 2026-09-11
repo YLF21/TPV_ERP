@@ -113,6 +113,24 @@ describe("SessionHomeScreen", () => {
     }
   });
 
+  it("uses five distinct decorative vector icons without changing button names", async () => {
+    renderHome();
+    await waitFor(() => expect(screen.getByRole("button", { name: "VENTA" })).toBeEnabled());
+    const icons = Array.from(document.querySelectorAll(".home-actions .home-action-icon"));
+
+    expect(icons).toHaveLength(5);
+    expect(new Set(icons.map((icon) => icon.innerHTML)).size).toBe(5);
+    for (const icon of icons) {
+      expect(icon.tagName.toLowerCase()).toBe("svg");
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(icon).toHaveAttribute("focusable", "false");
+      expect(icon).toHaveAttribute("viewBox", "0 0 256 256");
+    }
+    expect(document.querySelector(".home-actions img")).toBeNull();
+    expect(screen.getByRole("button", { name: "GESTIÓN" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "ALMACÉN" })).toBeEnabled();
+  });
+
   it("wires product and warehouse buttons to their callbacks", () => {
     const callbacks = renderHome();
 

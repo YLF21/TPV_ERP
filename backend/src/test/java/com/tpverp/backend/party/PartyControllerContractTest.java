@@ -59,6 +59,23 @@ class PartyControllerContractTest {
     }
 
     @Test
+    void explicitAdoptionUsesExactlyTheExistingCustomerCreatePermissions() throws Exception {
+        String create = permission(CustomerController.class.getMethod("create", CustomerController.CustomerRequest.class));
+        assertThat(permission(CustomerAdoptionController.class.getMethod("lookup", CustomerAdoptionApi.Lookup.class))).isEqualTo(create);
+        assertThat(permission(CustomerAdoptionController.class.getMethod("adopt", CustomerAdoptionApi.Adopt.class))).isEqualTo(create);
+        assertThat(path(CustomerAdoptionController.class)).isEqualTo("/api/v1/customers");
+    }
+
+    @Test
+    void protectsExplicitHistoricalIdentityRegistrationWithCustomerWritePermissions() throws Exception {
+        Method register = CustomerController.class.getMethod("registerIdentity", java.util.UUID.class);
+        assertThat(permission(register)).contains("hasRole('ADMIN')", "CUSTOMERS_WRITE", "GESTION_CLIENTE_PROVEEDOR")
+                .doesNotContain("CUSTOMERS_READ", "VENTA");
+        assertThat(register.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
+                .containsExactly("/{id}/register-identity");
+    }
+
+    @Test
     void saleCustomerOptionExposesIdentityMemberBenefitAndCreditAssessmentInputs() {
         assertThat(Arrays.stream(CustomerController.SaleCustomerOption.class.getRecordComponents())
                 .map(component -> component.getName()))

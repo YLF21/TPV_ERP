@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 
 class FiscalReleaseBuildProfileContractTest {
@@ -19,13 +20,13 @@ class FiscalReleaseBuildProfileContractTest {
         var defaultBuild = pom.substring(0, profilesStart);
         var releaseProfiles = pom.substring(profilesStart);
         assertThat(manifest).contains("@tpv.release.id@", "@tpv.release.version@",
-                "@tpv.release.capability@").contains("schema.version=V241")
+                "@tpv.release.capability@").contains("schema.version=V244")
                 .contains("release.sequence=@tpv.release.sequence@")
                 .contains("build.sequence=@tpv.release.build.sequence@");
-        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v241</tpv.release.id>")
+        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v244</tpv.release.id>")
                 .contains("<tpv.release.version>DEV</tpv.release.version>")
                 .contains("<tpv.release.capability>DUAL</tpv.release.capability>")
-                .contains("<tpv.release.sequence>9</tpv.release.sequence>")
+                .contains("<tpv.release.sequence>11</tpv.release.sequence>")
                 .contains("<tpv.release.build.sequence>0</tpv.release.build.sequence>");
         assertThat(releaseProfiles)
                 .contains("<id>production-release</id>")
@@ -38,6 +39,21 @@ class FiscalReleaseBuildProfileContractTest {
                 .contains("<delimiter>@</delimiter>");
         assertThat(Files.exists(Path.of("src/main/resources/META-INF/tpv-erp-dev-release.properties")))
                 .isFalse();
+    }
+
+    @Test
+    void packagedManifestMatchesTheLatestVersionedMigration() throws Exception {
+        var values = new Properties();
+        try (var input = Files.newInputStream(Path.of("target/classes/META-INF/tpv-erp-release.properties"))) {
+            values.load(input);
+        }
+        try (var migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
+            var latest = migrations.map(path -> path.getFileName().toString())
+                    .filter(name -> name.startsWith("V") && name.contains("__") && name.endsWith(".sql"))
+                    .map(name -> MigrationVersion.fromVersion(name.substring(1, name.indexOf("__"))))
+                    .max(MigrationVersion::compareTo).orElseThrow();
+            assertThat(values.getProperty("schema.version")).isEqualTo("V" + latest);
+        }
     }
 
     @Test

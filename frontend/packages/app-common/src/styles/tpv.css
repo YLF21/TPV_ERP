@@ -6037,6 +6037,8 @@ textarea {
   height: min(760px, calc(100vh - 40px));
   max-height: calc(100vh - 40px);
   display: grid;
+  gap: 0;
+  padding: 0;
   grid-template-rows: 58px auto minmax(0, 1fr) 58px;
   overflow: hidden;
   border: 1px solid #8298af;
@@ -12251,9 +12253,8 @@ body,
 .home-screen .home-sale-launcher {
   width: 410px;
   height: var(--home-launcher-height);
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
-  align-content: stretch;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -12287,6 +12288,7 @@ body,
 }
 
 .home-screen .home-action-sale {
+  flex: 1 1 0;
   grid-template-columns: 1fr !important;
   grid-template-rows: 210px 1fr !important;
   justify-items: center !important;
@@ -12336,7 +12338,8 @@ body,
 }
 
 .home-screen .home-action-sale:disabled .home-action-icon {
-  filter: grayscale(1) brightness(0.55) !important;
+  color: #4e5d6e;
+  filter: none !important;
   opacity: 0.68 !important;
 }
 
@@ -12398,7 +12401,8 @@ body,
   background: transparent !important;
   object-fit: contain;
   opacity: 1 !important;
-  filter: grayscale(1) brightness(0) !important;
+  color: var(--tpv-business-navy);
+  filter: none !important;
 }
 
 .home-screen .home-action span {
@@ -12424,7 +12428,8 @@ body,
   align-self: center !important;
   width: 112px !important;
   height: 112px !important;
-  filter: grayscale(1) brightness(0) invert(1) !important;
+  color: #ffffff;
+  filter: none !important;
 }
 
 @media (max-height: 760px) {
@@ -18082,14 +18087,39 @@ textarea:focus,
 }
 
 .warehouse-screen .stock-list.work-panel {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
 }
 
-.warehouse-screen .stock-history-panel,
+.warehouse-screen .stock-sales-history-panel,
 .warehouse-screen .goods-check-panel {
+  flex: 1 1 0;
   min-height: 0;
-  height: 100%;
+  height: auto !important;
+}
+
+/* Optional status messages must not move the table into an auto-sized grid row. */
+.warehouse-screen .stock-sales-history-panel,
+.warehouse-screen .goods-check-documents,
+.warehouse-screen .goods-check-workspace {
+  display: flex;
+  flex-direction: column;
+}
+
+.warehouse-screen .stock-list.work-panel > *,
+.warehouse-screen .stock-sales-history-panel > *,
+.warehouse-screen .goods-check-documents > *,
+.warehouse-screen .goods-check-workspace > * {
+  flex-shrink: 0;
+}
+
+.warehouse-screen .stock-history-table-scroll,
+.warehouse-screen .goods-check-workspace-empty {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto !important;
 }
 
 .goods-check-panel {

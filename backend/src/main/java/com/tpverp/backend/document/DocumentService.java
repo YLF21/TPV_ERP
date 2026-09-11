@@ -51,8 +51,6 @@ import com.tpverp.backend.security.application.CorePermissionBootstrap;
 import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.sync.SyncOperation;
-import com.tpverp.backend.sync.SyncOutboundEventCommand;
-import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
@@ -105,7 +103,7 @@ public class DocumentService {
     private final TerminalPaymentConfigurationRepository terminalPaymentConfigurations;
     private final CashPaymentRecorder cashPayments;
     private final MemberLoyaltyService memberLoyalty;
-    private final SyncOutboxService syncOutbox;
+    private final DocumentSyncPublisher documentSync;
     private final PromotionRepository promotions;
     private final PromotionTargetRepository promotionTargets;
     private final PromotionEngine promotionEngine;
@@ -143,7 +141,7 @@ public class DocumentService {
             TerminalPaymentConfigurationRepository terminalPaymentConfigurations,
             CashPaymentRecorder cashPayments,
             MemberLoyaltyService memberLoyalty,
-            SyncOutboxService syncOutbox,
+            DocumentSyncPublisher documentSync,
             PromotionRepository promotions,
             PromotionTargetRepository promotionTargets,
             PromotionEngine promotionEngine,
@@ -172,7 +170,7 @@ public class DocumentService {
         this.terminalPaymentConfigurations = terminalPaymentConfigurations;
         this.cashPayments = cashPayments;
         this.memberLoyalty = memberLoyalty;
-        this.syncOutbox = syncOutbox;
+        this.documentSync = documentSync;
         this.promotions = promotions;
         this.promotionTargets = promotionTargets;
         this.promotionEngine = promotionEngine;
@@ -2217,90 +2215,7 @@ public class DocumentService {
 
     private void enqueueDocumentEvent(
             CommercialDocument document, UUID terminalId, SyncOperation operation) {
-        syncOutbox.enqueue(new SyncOutboundEventCommand(
-                organization.currentCompany().getId(),
-                document.getTiendaId(),
-                terminalId,
-                "DOCUMENTO",
-                document.getId(),
-                operation,
-                documentPayload(document)));
-    }
-
-    private Map<String, Object> documentPayload(CommercialDocument document) {
-        var payload = new LinkedHashMap<String, Object>();
-        payload.put("tipo", document.getTipo().name());
-        payload.put("numero", document.getNumero());
-        payload.put("estado", document.getEstado().name());
-        payload.put("fecha", document.getFecha().toString());
-        payload.put("clienteId", nullableUuid(document.getClienteId()));
-        payload.put("proveedorId", nullableUuid(document.getProveedorId()));
-        payload.put("almacenId", nullableUuid(document.getAlmacenId()));
-        payload.put("descuentoGlobal", document.getDescuentoGlobal().toPlainString());
-        payload.put("subtotal", document.getBaseTotal().toPlainString());
-        payload.put("impuestos", document.getImpuestoTotal().toPlainString());
-        payload.put("total", document.getTotal().toPlainString());
-        payload.put("moneda", document.getMoneda());
-        payload.put("lineas", document.getLineas().stream()
-                .map(DocumentService::linePayload)
-                .toList());
-        payload.put("pagos", document.getPagos().stream()
-                .map(DocumentService::paymentPayload)
-                .toList());
-        return payload;
-    }
-
-    private static Map<String, Object> linePayload(DocumentLine line) {
-        var payload = new LinkedHashMap<String, Object>();
-        payload.put("productoId", nullableUuid(line.getProductoId()));
-        payload.put("tipoLinea", line.getLineType().name());
-        payload.put("promocionId", nullableUuid(line.getPromotionId()));
-        payload.put("cuponPromocionalId", nullableUuid(line.getPromotionalCouponId()));
-        payload.put("posicion", line.getPosicion());
-        payload.put("codigo", line.getCodigo());
-        payload.put("nombre", line.getNombre());
-        payload.put("tarifa", line.getTarifa());
-        payload.put("cantidad", String.valueOf(line.getCantidad()));
-        payload.put("precioUnitario", line.getPrecioUnitario().toPlainString());
-        payload.put("descuento", line.getDescuento().toPlainString());
-        payload.put("impuestosIncluidos", line.isImpuestosIncluidos());
-        payload.put("regimenImpuesto", line.getRegimenImpuesto());
-        payload.put("porcentajeImpuesto", line.getPorcentajeImpuesto().toPlainString());
-        payload.put("base", line.getBase().toPlainString());
-        payload.put("impuesto", line.getImpuesto().toPlainString());
-        payload.put("total", line.getTotal().toPlainString());
-        return payload;
-    }
-
-    private static Map<String, Object> paymentPayload(DocumentPayment payment) {
-        var payload = new LinkedHashMap<String, Object>();
-        payload.put("metodoPagoId", payment.getMetodoPago().getId().toString());
-        payload.put("metodoPago", payment.getMetodoPago().getNombre());
-        payload.put("posicion", payment.getPosicion());
-        payload.put("importe", payment.getImporte().toPlainString());
-        payload.put("principal", payment.isPrincipal());
-        payload.put("entregado", nullableAmount(payment.getEntregado()));
-        payload.put("cambio", nullableAmount(payment.getCambio()));
-        payload.put("voucherCode", payment.getVoucherCode());
-        payload.put("referencia", payment.getReferencia());
-        payload.put("terminalPagoModo", nullableEnum(payment.getCardMode()));
-        payload.put("terminalPagoProvider", nullableEnum(payment.getPaymentTerminalProvider()));
-        payload.put("terminalPagoEstado", nullableEnum(payment.getPaymentTerminalStatus()));
-        payload.put("autorizacionTarjeta", payment.getCardAuthorizationCode());
-        payload.put("terminalCobroId", nullableUuid(payment.getPaymentTerminalId()));
-        return payload;
-    }
-
-    private static String nullableEnum(Enum<?> value) {
-        return value == null ? null : value.name();
-    }
-
-    private static String nullableUuid(UUID value) {
-        return value == null ? null : value.toString();
-    }
-
-    private static String nullableAmount(BigDecimal value) {
-        return value == null ? null : value.toPlainString();
+        documentSync.schedule(organization.currentCompany().getId(), document, terminalId, operation);
     }
 
     @Transactional(readOnly = true)
@@ -2341,6 +2256,19 @@ public class DocumentService {
         // they receive at least the fiscal replacement sale, never the
         // non-fiscal combined exchange summary.
         return renderTicketPrintView(sale, ticketPrintView(sale));
+    }
+
+    @Transactional(readOnly = true)
+    public TicketPrintSet loadLatestTerminalTicketPrintSet(Authentication authentication) {
+        var ticketId = documents.findLatestIssuedTicketIds(
+                        organization.currentStore().getId(),
+                        currentTerminal.terminalId(authentication),
+                        org.springframework.data.domain.PageRequest.of(0, 1))
+                .stream()
+                .findFirst()
+                .orElseThrow(TicketNotFoundException::new);
+        // Do not fall back to an older ticket when the latest cannot be printed.
+        return loadRenderedTicketPrintSet(ticketId);
     }
 
     /**
@@ -3091,6 +3019,7 @@ public class DocumentService {
         operationalEvents.record(saved, DocumentOperationalEventType.MODIFICADO,
                 organization.currentUser(authentication).getId(), currentTerminalOrNull(authentication),
                 Instant.now(clock));
+        enqueueDocumentEvent(saved, currentTerminalOrNull(authentication), SyncOperation.ACTUALIZAR);
         return saved;
     }
 
@@ -3124,6 +3053,10 @@ public class DocumentService {
         operationalEvents.record(origin, eventType,
                 organization.currentUser(authentication).getId(), currentTerminalOrNull(authentication),
                 Instant.now(clock), Map.of("documentoRelacionadoId", invoice.getId().toString()));
+        // Draft relations are included when the document is eventually confirmed.
+        if (invoice.getEstado() != DocumentStatus.BORRADOR) {
+            enqueueDocumentEvent(invoice, currentTerminalOrNull(authentication), SyncOperation.ACTUALIZAR);
+        }
         return invoice;
     }
 

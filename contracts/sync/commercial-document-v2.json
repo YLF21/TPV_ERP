@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "usuarioNombre": null,
+  "terminalOrigenNombre": null,
+  "sourceRevision": 21,
+  "tipo": "TICKET",
+  "numero": "T-20260910-0001",
+  "estado": "CONFIRMADO",
+  "fecha": "2026-09-10",
+  "clienteId": "00000000-0000-0000-0000-000000000004",
+  "proveedorId": null,
+  "almacenId": "00000000-0000-0000-0000-000000000003",
+  "descuentoGlobal": "0.00",
+  "subtotal": "2.47",
+  "impuestos": "0.17",
+  "total": "2.64",
+  "moneda": "EUR",
+  "lineas": [
+    {
+      "productoId": "00000000-0000-0000-0000-000000000008",
+      "tipoLinea": "PRODUCT",
+      "promocionId": null,
+      "cuponPromocionalId": null,
+      "posicion": 1,
+      "codigo": "CONTRACT-001",
+      "nombre": "Producto de contrato",
+      "tarifa": "PVP",
+      "cantidad": "2.000",
+      "precioUnitario": "1.235",
+      "descuento": "0.00",
+      "impuestosIncluidos": false,
+      "regimenImpuesto": "IGIC",
+      "porcentajeImpuesto": "7.00",
+      "base": "2.47",
+      "impuesto": "0.17",
+      "total": "2.64"
+    }
+  ],
+  "pagos": [
+    {
+      "metodoPagoId": "00000000-0000-0000-0000-000000000009",
+      "metodoPago": "EFECTIVO",
+      "posicion": 1,
+      "importe": "2.64",
+      "principal": true,
+      "entregado": "5.00",
+      "cambio": "2.36",
+      "voucherCode": null,
+      "referencia": null,
+      "terminalPagoModo": null,
+      "terminalPagoProvider": null,
+      "terminalPagoEstado": null,
+      "autorizacionTarjeta": null,
+      "terminalCobroId": null
+    }
+  ],
+  "creadoPor": "00000000-0000-0000-0000-000000000005",
+  "confirmadoPor": "00000000-0000-0000-0000-000000000006",
+  "anuladoPor": null,
+  "creadoEn": "2026-09-10T10:00:00Z",
+  "confirmadoEn": "2026-09-10T10:01:00Z",
+  "anuladoEn": null,
+  "terminalOrigenId": "00000000-0000-0000-0000-000000000007",
+  "fechaVencimiento": "2026-10-10",
+  "settledByOrigin": false,
+  "relaciones": [
+    {
+      "tipo": "COMPENSA",
+      "origenId": "00000000-0000-0000-0000-000000000010"
+    }
+  ]
+}

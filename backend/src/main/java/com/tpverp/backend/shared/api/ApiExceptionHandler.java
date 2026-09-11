@@ -196,6 +196,12 @@ public class ApiExceptionHandler {
         return "PRODUCT_EXCEL_IMPORT_" + (operation.isBlank() ? "ACCESS" : operation);
     }
 
+    @ExceptionHandler(com.tpverp.backend.party.CustomerIdentityException.class)
+    ProblemDetail customerIdentityProblem(com.tpverp.backend.party.CustomerIdentityException exception,
+            HttpServletRequest request) {
+        return problem(exception.status(), exception.code(), exception.code(), language(request), request);
+    }
+
     @ExceptionHandler(PaymentTerminalApiException.class)
     ProblemDetail paymentTerminalProblem(PaymentTerminalApiException exception, HttpServletRequest request) {
         return problem(exception.status(), exception.code(), exception.getMessage(), language(request), request);

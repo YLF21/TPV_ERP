@@ -85,6 +85,17 @@ describe("PartyDirectoryPanel", () => {
     }, false, true)).toMatchObject({ isMember: true, numMember: "EXT-7" });
   });
 
+  it.each([["CIF", "NIF"], ["OTRO", "PASAPORTE"], ["DNI", "DNI"]])("canonicalizes legacy customer type %s but leaves suppliers unchanged", (legacy, canonical) => {
+    const customer = { id: "c1", clientId: "C-001", fiscalName: "Cliente", documentType: legacy,
+      documentNumber: "B12345674", isMember: false, active: true };
+    const supplier = { id: "s1", supplierId: "P-001", legalName: "Proveedor", documentType: legacy,
+      documentNumber: "B12345674", active: true };
+    expect(partyFormFromView(customer, false).documentType).toBe(canonical);
+    expect(partyFormFromView(supplier, true).documentType).toBe(legacy);
+    expect(buildPartyRequest({ ...emptyPartyForm, documentType: legacy }, false).documentType).toBe(canonical);
+    expect(buildPartyRequest({ ...emptyPartyForm, documentType: legacy }, true).documentType).toBe(legacy);
+  });
+
   it("restores persisted customer fields for editing", () => {
     expect(partyFormFromView({
       id: "c1", clientId: "C-01-1", fiscalName: "Ana", documentType: "NIF", documentNumber: "1",

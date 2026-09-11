@@ -43,7 +43,6 @@ import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
-import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
 import com.tpverp.backend.terminal.TerminalPaymentConfigurationRepository;
@@ -105,7 +104,7 @@ class DocumentPromotionIntegrationTest {
     @Mock
     private MemberRepository memberRepository;
     @Mock
-    private SyncOutboxService syncOutbox;
+    private DocumentSyncPublisher documentSync;
 @Mock
     private PromotionRepository promotionRepository;
     @Mock
@@ -189,7 +188,7 @@ class DocumentPromotionIntegrationTest {
                 terminalPaymentConfigurations,
                 cashPaymentRecorder,
                 memberLoyaltyService,
-                syncOutbox,
+                documentSync,
                 promotionRepository,
                 promotionTargetRepository,
                 new PromotionEngine(),

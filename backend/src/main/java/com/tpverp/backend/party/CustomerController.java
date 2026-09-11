@@ -115,6 +115,12 @@ public class CustomerController {
         return service.validateFiscalData(id);
     }
 
+    @PostMapping("/{id}/register-identity")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
+    public CustomerService.CustomerView registerIdentity(@PathVariable UUID id) {
+        return service.registerIdentity(id);
+    }
+
     @GetMapping("/{id}/balance-movements")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<CustomerService.BalanceView> balanceMovements(@PathVariable UUID id) {
@@ -130,12 +136,12 @@ public class CustomerController {
     }
 
     public record CustomerRequest(
-            @NotBlank String fiscalName,
+            @NotBlank @Size(max = 255) String fiscalName,
             @NotNull DocumentType documentType,
             @NotBlank String documentNumber,
             FiscalAddress address,
-            String phone,
-            String email,
+            @Size(max = 64) String phone,
+            @Size(max = 320) String email,
             String notes,
             @NotNull @DecimalMin("0.00") @DecimalMax("100.00") BigDecimal discount,
             boolean isMember,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -10,6 +10,9 @@ import { clampTableColumnWidth, visibleTableColumns } from "./tableLayoutPrefere
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { SafeRetirementDialog, type RetirementResult } from "./SafeRetirementDialog";
+import { CustomerDocumentsDialog } from "./CustomerDocumentsDialog";
+import { CentralCustomerReuse } from "./CentralCustomerReuse";
+import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
 export type PartyStatusFilter = "all" | "active" | "inactive";
@@ -123,7 +126,7 @@ export function partyFormFromView(entry: CustomerView | SupplierView, supplier: 
     ...emptyPartyForm,
     name: supplier ? provider.legalName : customer.fiscalName,
     tradeName: supplier ? provider.tradeName ?? "" : "",
-    documentType: entry.documentType,
+    documentType: supplier ? entry.documentType : customerDocumentType(entry.documentType),
     documentNumber: entry.documentNumber,
     phone: entry.phone ?? "", email: entry.email ?? "", address: entry.address?.address ?? "",
     postalCode: entry.address?.postalCode ?? "", city: entry.address?.city ?? "", province: entry.address?.province ?? "",
@@ -151,7 +154,7 @@ export function buildPartyRequest(form: PartyForm, supplier: boolean, preserveMe
     notes: form.notes.trim() || null
   };
   return {
-    fiscalName: form.name.trim(), documentType: form.documentType, documentNumber: form.documentNumber.trim(), address,
+    fiscalName: form.name.trim(), documentType: customerDocumentType(form.documentType), documentNumber: form.documentNumber.trim(), address,
     phone: form.phone.trim() || null, email: form.email.trim() || null, notes: form.notes.trim() || null,
     discount: Number(form.discount) || 0, isMember: preserveMember,
     numMember: preserveMember ? form.numMember.trim() || null : null,
@@ -312,10 +315,15 @@ export function PartyDirectoryPanel({
   const [status, setStatus] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [historyCustomer, setHistoryCustomer] = useState<CustomerView | null>(null);
+  const selectedRowRef = useRef<HTMLButtonElement>(null);
   const [form, setForm] = useState<PartyForm>(emptyPartyForm);
   const [initialForm, setInitialForm] = useState<PartyForm>(emptyPartyForm);
   const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [documentError, setDocumentError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [centralBusy, setCentralBusy] = useState(false);
   const [retirementOpen, setRetirementOpen] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -481,22 +489,24 @@ export function PartyDirectoryPanel({
 
   function update<K extends keyof PartyForm>(field: K, value: PartyForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
-    setFormErrors((current) => current.filter((candidate) => candidate !== field));
+    const identityChanged = field === "documentType" || field === "documentNumber";
+    if (identityChanged) setDocumentError("");
+    setFormErrors((current) => current.filter((candidate) => candidate !== field && !(identityChanged && candidate === "documentNumber")));
   }
   function openNew() {
-    setSelectedId(null); setForm(emptyPartyForm); setInitialForm(emptyPartyForm); setFormErrors([]); setStatus("");
+    setSelectedId(null); setForm(emptyPartyForm); setInitialForm(emptyPartyForm); setFormErrors([]); setDocumentError(""); setStatus("");
     setMemberCandidateQuery(""); setMemberCandidateId(null); setDialogOpen(true);
   }
   function openEntry(entry: PartyDirectoryEntry) {
     setSelectedId(entry.id);
     if (!isMember) {
       const nextForm = partyFormFromView(entry as CustomerView | SupplierView, isSupplier);
-      setForm(nextForm); setInitialForm(nextForm); setFormErrors([]);
+      setForm(nextForm); setInitialForm(nextForm); setFormErrors([]); setDocumentError("");
     }
     setStatus(""); setDialogOpen(true);
   }
   function closeDialog() {
-    if (!saving) {
+    if (!saving && !centralBusy) {
       if (!isMember && JSON.stringify(form) !== JSON.stringify(initialForm) && !window.confirm(t("party.confirm.discard"))) return;
       setDialogOpen(false); setSelectedId(null); setMemberCandidateId(null); setMemberCandidateQuery("");
     }
@@ -504,17 +514,25 @@ export function PartyDirectoryPanel({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (isMember) return;
+    if (isMember || saving || centralBusy || !canWrite) return;
+    setDocumentError("");
     const nextErrors = validatePartyForm(form, isSupplier);
     if (nextErrors.length) { setFormErrors(nextErrors); setStatus(t("party.form.invalid")); return; }
-    setSaving(true); setStatus("");
+    setSaving(true); setStatus(""); setFormErrors([]);
     try {
       await apiRequest(selectedId ? `${endpoint}/${selectedId}` : endpoint, {
         method: selectedId ? "PUT" : "POST", token: session.accessToken,
         body: buildPartyRequest(form, isSupplier, !isSupplier && Boolean((selected as CustomerView | null)?.isMember))
       });
       setDialogOpen(false); await load(false); setStatus(t("party.saveSuccess"));
-    } catch (error) { setStatus(error instanceof Error ? error.message : t("party.saveError")); }
+    } catch (error) {
+      const identityFailure = !isSupplier ? customerIdentityFailure(error) : undefined;
+      if (identityFailure) {
+        const message = t(identityFailure.messageKey);
+        if (identityFailure.documentField) { setFormErrors(["documentNumber"]); setDocumentError(message); }
+        setStatus(message);
+      } else setStatus(error instanceof Error ? error.message : t("party.saveError"));
+    }
     finally { setSaving(false); }
   }
 
@@ -560,6 +578,7 @@ export function PartyDirectoryPanel({
     setRetirementOpen(false);
     setDialogOpen(false);
     setSelectedId(null);
+    setHistoryCustomer(null);
     setStatus(t(`safeManagement.result.${result.outcome}`));
   }
 
@@ -675,7 +694,15 @@ export function PartyDirectoryPanel({
       {loading && <div className="stock-empty-state">{t("common.loading")}</div>}
       {!loading && loadError && <div className="party-directory-state error" role="alert"><span>{status || t("party.loadError")}</span><button type="button" onClick={() => void load()}>{t("party.retry")}</button></div>}
       {!loading && !loadError && rows.map((entry) => {
-        return <button type="button" className="party-directory-row party-directory-selectable-row" role="row" style={gridStyle} key={entry.id} onClick={() => openEntry(entry)}>
+        return <button type="button" className={`party-directory-row party-directory-selectable-row${kind === "customers" && selectedRowId === entry.id ? " selected" : ""}`} role="row" style={gridStyle} key={entry.id}
+          ref={selectedRowId === entry.id ? selectedRowRef : undefined}
+          onClick={(event) => {
+            if (kind !== "customers") { openEntry(entry); return; }
+            setSelectedRowId(entry.id);
+            // Keyboard activation (Enter/Space) has no pointer click count.
+            if (event.detail === 0) setHistoryCustomer(entry as CustomerView);
+          }}
+          onDoubleClick={() => { if (kind === "customers") { setSelectedRowId(entry.id); setHistoryCustomer(entry as CustomerView); } }}>
           {visibleColumns.map((column) => renderCell(column.key, entry))}
         </button>;
       })}
@@ -688,14 +715,31 @@ export function PartyDirectoryPanel({
     </div>}
     {status && !dialogOpen && !loadError && <p className="product-create-status party-directory-toast" role="status">{status}</p>}
 
+    {historyCustomer && <CustomerDocumentsDialog
+      key={historyCustomer.id}
+      customer={customers.find((customer) => customer.id === historyCustomer.id) ?? historyCustomer}
+      app={app} locale={locale} session={session} canEdit={canWrite} active={!dialogOpen && !retirementOpen}
+      onClose={() => { setHistoryCustomer(null); selectedRowRef.current?.focus({ preventScroll: true }); }}
+      onEdit={() => { if (canWrite) openEntry(customers.find((customer) => customer.id === historyCustomer.id) ?? historyCustomer); }}
+    />}
     {dialogOpen && <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="party-form-title">
       <section className="filter-dialog product-create-dialog party-create-dialog">
         <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={closeDialog}>{t("common.close")}</button></header>
         {isMember ? memberDialogContent : <form className="product-create-form party-create-form" onSubmit={submit}>
-          <fieldset disabled={!canWrite || saving}>
+          <fieldset disabled={!canWrite || saving || centralBusy}>
             <PartyFormFields
               form={form}
               errors={formErrors}
+              documentError={documentError}
+              identityAction={kind === "customers" && !selectedId && canWrite && <CentralCustomerReuse
+                documentType={form.documentType} documentNumber={form.documentNumber}
+                session={session} locale={locale} disabled={saving}
+                onBusyChange={setCentralBusy}
+                onAdopted={(customer) => {
+                  setDialogOpen(false); setSelectedRowId(customer.id);
+                  void load(false); setStatus(t("party.saveSuccess"));
+                }}
+              />}
               channels={channels}
               supplier={isSupplier}
               autoFocusName
@@ -707,7 +751,7 @@ export function PartyDirectoryPanel({
           {isMember && selected && (selected as CustomerView).memberUuid && (
             <MemberLoyaltyPanel app={app} memberId={(selected as CustomerView).memberUuid!} session={session} t={t} />
           )}
-          <footer className="filter-actions">{selected && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+          <footer className="filter-actions">{selected && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" disabled={saving || centralBusy} onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
         </form>}
       </section>
     </div>}

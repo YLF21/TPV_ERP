@@ -11,6 +11,22 @@ describe("desktop navigation security", () => {
     expect(source).toContain("sandbox: true");
   });
 
+  it("rejects missing required Jasper output before every ticket HTML or text fallback", () => {
+    const printing = source.slice(source.indexOf("async function printTicket("),
+      source.indexOf("async function exportTicketPdf("));
+    const exporting = source.slice(source.indexOf("async function exportTicketPdf("),
+      source.indexOf("async function exportA4DocumentPdf("));
+    const rasterGuard = printing.indexOf("ticket?.requireRenderedDocument && !documentRaster");
+    const pdfGuard = printing.indexOf("ticket?.requireRenderedDocument && !jasperPdf");
+    const exportGuard = exporting.indexOf("if (ticket?.requireRenderedDocument)");
+    expect(rasterGuard).toBeGreaterThan(-1);
+    expect(rasterGuard).toBeLessThan(printing.indexOf("buildTicketBuffer({ ...ticket"));
+    expect(pdfGuard).toBeGreaterThan(-1);
+    expect(pdfGuard).toBeLessThan(printing.indexOf("renderTicketHtml(ticket)"));
+    expect(exportGuard).toBeGreaterThan(-1);
+    expect(exportGuard).toBeLessThan(exporting.indexOf("renderTicketHtml(ticket)"));
+  });
+
   it("uses ProgramData configuration for packaged backend selection", () => {
     expect(source).toContain("app.isPackaged === true");
     expect(source).toContain("productionBackendConfigPath()");

@@ -198,7 +198,7 @@ class TicketReportServiceTest {
 
         var service = new TicketReportService(
                 documents, organization, customers, attributions, relations,
-                refundTenders, invoiceRectifications, memberBalances);
+                refundTenders, invoiceRectifications, memberBalances, mock(CustomerDocumentReportQueryRepository.class));
         return new Fixture(
                 service, ticket, ticketId, customerId, storeId, companyId,
                 customers, relations, refundTenders, invoiceRectifications,
