@@ -49,13 +49,16 @@ Compose; se puede cambiar con `TPV_LICENSE_SAAS_URL`.
 - `TPV_SAAS_LOG_MAX_SIZE` y `TPV_SAAS_LOG_MAX_FILES`: rotación local del driver
   `json-file`; por defecto `10m` y tres archivos por contenedor.
 
-Los usuarios seed `admin` y `viewer` son solo para el laboratorio. En
-produccion deben tener credenciales nuevas o quedar inactivos. Si cualquiera
-conserva una credencial seed conocida, incluido `ADMIN` / `0000`, el servidor
-no arranca. Los perfiles `prod` y `local` son mutuamente excluyentes.
+Los usuarios seed son solo para el laboratorio. En producción deben tener
+credenciales nuevas o quedar inactivos. Si cualquiera conserva una credencial
+conocida, el servidor no arranca. Los perfiles `prod` y `local` son mutuamente
+excluyentes.
 
-Con el perfil `local`, el acceso administrativo local es `ADMIN` / `0000`,
-igual que en APP VENTA y APP GESTION. Esta credencial no se carga en producción ni añade datos operativos demo.
+Con el perfil `local`, el acceso administrativo es `ADMIN` / `0000`. La política
+solicitada permite crear, activar y cambiar usuarios con contraseñas de al menos
+cuatro caracteres. En producción se mantiene el bootstrap inicial mediante
+secreto, pero los usuarios pueden elegir posteriormente una contraseña de cuatro
+caracteres.
 
 ## Endpoints base
 
@@ -169,12 +172,12 @@ aportar un certificado válido, redirección HTTP a HTTPS, HSTS emitido únicame
 sobre HTTPS, límites de tamaño y frecuencia y sobrescritura de cabeceras
 `Forwarded`/`X-Forwarded-*`. No se debe publicar directamente el puerto interno.
 
-En una base nueva, el bootstrap debe hacerse sin tráfico público. El primer arranque
-con `prod` exige `TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD`: rota el usuario `admin`, obliga
-a cambiar de password en el primer login y desactiva el usuario `viewer` seed. Después
-del bootstrap se retira este secreto temporal del contenedor y del gestor de secretos. No existe
-override para credenciales inseguras y el guard no escribe usuarios, passwords ni hashes
-en el log de rechazo.
+V59 revoca la credencial corta histórica antes de aceptar tráfico. En una base
+nueva o actualizada, el primer arranque con `prod` exige
+`TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD`: rota el usuario `admin`, obliga a cambiar
+la contraseña en el primer login y mantiene inactivo el usuario `viewer` seed.
+Después del bootstrap se retira el secreto temporal. El guard no escribe
+usuarios, contraseñas ni hashes en el log de rechazo.
 
 La entrega externa continúa deliberadamente fail-closed. Antes de registrar los
 proveedores se deben aprobar destinos HTTPS concretos o una allowlist, el envío del

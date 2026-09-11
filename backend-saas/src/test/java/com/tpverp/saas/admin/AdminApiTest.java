@@ -100,7 +100,7 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V57__commercial_document_attribution_labels");
+                .isEqualTo("V59__remove_weak_admin_credential");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
                 "operational-incidents");
@@ -390,6 +390,78 @@ class AdminApiTest {
                 .filteredOn(value -> value.username().equals("support1"))
                 .singleElement()
                 .satisfies(value -> assertThat(value.active()).isFalse());
+    }
+
+    @Test
+    void reactivaUsuarioAdminConPasswordNuevaPermisoYAuditoria() throws Exception {
+        String username = "admin-reactivation-test";
+        mvc.perform(post("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new CreateAdminUserRequest(
+                                username,
+                                "initial-reactivation-pass",
+                                "VIEWER"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(delete("/api/v1/admin/users/{username}", username)
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/activation", username)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("abc"))))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/activation", username)
+                        .header("Authorization", basic("viewer", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest(
+                                "forbidden-reactivation-pass"))))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/activation", username)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest(
+                                "new-reactivation-pass"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic(username, "initial-reactivation-pass")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic(username, "new-reactivation-pass")))
+                .andExpect(status().isOk());
+
+        var listResult = mvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminUserResponse[] users = mapper.readValue(
+                listResult.getResponse().getContentAsString(),
+                AdminUserResponse[].class);
+        assertThat(users)
+                .filteredOn(value -> value.username().equals(username))
+                .singleElement()
+                .satisfies(value -> assertThat(value.active()).isTrue());
+
+        var auditResult = mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminAuditLogResponse[] auditEntries = mapper.readValue(
+                auditResult.getResponse().getContentAsString(),
+                AdminAuditLogResponse[].class);
+        assertThat(auditEntries)
+                .filteredOn(value -> value.action().equals("ACTIVATE_ADMIN_USER")
+                        && value.targetId().equals(username))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.username()).isEqualTo("admin");
+                    assertThat(value.targetType()).isEqualTo("ADMIN_USER");
+                });
     }
 
     @Test

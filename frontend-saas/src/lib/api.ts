@@ -657,6 +657,13 @@ export const api = {
     });
   },
 
+  activateUser(credentials: Credentials, username: string, password: string) {
+    return request<void>(credentials, `/api/v1/admin/users/${encodeURIComponent(username)}/activation`, {
+      method: "PUT",
+      body: { password }
+    });
+  },
+
   deactivateUser(credentials: Credentials, username: string) {
     return request<void>(credentials, `/api/v1/admin/users/${encodeURIComponent(username)}`, {
       method: "DELETE"

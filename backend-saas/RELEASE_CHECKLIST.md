@@ -62,7 +62,7 @@ clasificación explícita; no se usa `git add .` a ciegas.
 ## Gate de producción
 
 - [ ] `.env.production` procede del gestor de secretos y pasa el guard de
-      credenciales, bootstrap inicial, clave AES-256 y CORS HTTPS.
+      credenciales, bootstrap inicial, clave AES-256, password de PostgreSQL y CORS HTTPS.
 - [ ] Existe un proveedor externo expresamente autorizado para cada canal
       requerido; las variables webhook reservadas por sí solas no cumplen este gate.
 - [ ] Los digests de imágenes del release quedan registrados y disponibles para
@@ -75,7 +75,7 @@ clasificación explícita; no se usa `git add .` a ciegas.
       rate limiting.
 - [ ] `/actuator/health` y `/actuator/saasSecurity` responden 2xx dentro de la red
       del backend.
-- [ ] El smoke ADMIN y tenant pasa sin utilizar credenciales locales en `prod`.
+- [ ] El smoke ADMIN y tenant pasa sin utilizar credenciales locales o seed en `prod`.
 - [ ] Hay observación de logs, disco, CPU, memoria, errores de outbox y capacidad
       de rollback durante la ventana posterior al despliegue.
 

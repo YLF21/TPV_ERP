@@ -18,7 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 class SaasAuthenticationControllerTest {
     @Test
-    void rejectsLocalCredentialOutsideLocalProfileBeforeQueryingUsers() {
+    void rejectsKnownCredentialOutsideLocalAndProductionProfilesBeforeQueryingUsers() {
         SaasAdminUserRepository admins = mock(SaasAdminUserRepository.class);
         SaasTenantUserRepository tenants = mock(SaasTenantUserRepository.class);
         AdminPasswordHasher passwords = mock(AdminPasswordHasher.class);
@@ -30,9 +30,9 @@ class SaasAuthenticationControllerTest {
                 passwords,
                 new LoginAttemptLimiter(clock, securityState),
                 new SaasSessionTokenStore(clock, securityState, java.time.Duration.ofHours(8)),
-                new LocalAdminCredentialPolicy(Set.of("prod")));
+                new LocalAdminCredentialPolicy(Set.of("staging")));
 
-        assertThatThrownBy(() -> controller.login(new SaasLoginRequest("ADMIN", "0000")))
+        assertThatThrownBy(() -> controller.login(new SaasLoginRequest("ADMIN", "000")))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         org.assertj.core.api.Assertions.assertThat(exception.getStatusCode())
                                 .isEqualTo(HttpStatus.UNAUTHORIZED));

@@ -117,13 +117,12 @@ class AdminProductionGuardTest {
     }
 
     @Test
-    void bloqueaAdmin0000YLaCombinacionProdLocal() {
+    void permitePasswordElegida0000PeroBloqueaLaCombinacionProdLocal() {
         String localHash = new AdminPasswordHasher().hash("0000");
         when(users.findAll()).thenReturn(List.of(user("ADMIN", localHash, true)));
 
-        assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Credenciales iniciales");
+        assertThatCode(() -> new AdminProductionGuard(users, Set.of("prod"), false).run())
+                .doesNotThrowAnyException();
         assertThatThrownBy(() -> new AdminProductionGuard(users, Set.of("prod", "local"), false).run())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("perfil prod");

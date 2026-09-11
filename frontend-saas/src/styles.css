@@ -1046,6 +1046,142 @@ label {
   background: rgba(255, 255, 255, 0.96);
 }
 
+.date-time-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.date-time-trigger {
+  cursor: pointer;
+}
+
+.date-time-popover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(430px, calc(100vw - 48px));
+  border: 1px solid #7f91a8;
+  padding: 18px;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: 0 22px 55px rgba(15, 47, 87, 0.24);
+}
+
+.date-time-calendar-header {
+  display: grid;
+  grid-template-columns: 46px 1fr 46px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.date-time-calendar-header strong {
+  text-align: center;
+  text-transform: capitalize;
+  font-size: 17px;
+}
+
+.date-time-calendar-header button,
+.date-time-days button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.date-time-calendar-header button {
+  min-height: 42px;
+  border-color: var(--line);
+  font-size: 25px;
+}
+
+.date-time-weekdays,
+.date-time-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.date-time-weekdays {
+  margin-bottom: 6px;
+  color: #64748b;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.date-time-days button {
+  min-height: 42px;
+  font-weight: 800;
+}
+
+.date-time-days button:hover,
+.date-time-calendar-header button:hover {
+  border-color: #8da8ca;
+  background: #edf4fc;
+}
+
+.date-time-days button.outside {
+  color: #a0a9b5;
+}
+
+.date-time-days button.today {
+  border-color: #5d84b3;
+}
+
+.date-time-days button.selected {
+  border-color: var(--nav);
+  color: #ffffff;
+  background: var(--nav);
+}
+
+.date-time-footer {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  margin-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 14px;
+}
+
+.date-time-footer input {
+  min-height: 40px;
+  border: 1px solid #9ea8b2;
+  padding: 7px 9px;
+  background: #ffffff;
+}
+
+.date-time-footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.date-time-footer.date-only {
+  grid-template-columns: 1fr;
+}
+
+.date-time-footer.date-only > div {
+  justify-content: flex-end;
+}
+
+@media (max-width: 560px) {
+  .date-time-popover {
+    width: min(360px, calc(100vw - 32px));
+    padding: 14px;
+  }
+
+  .date-time-days button {
+    min-height: 38px;
+  }
+
+  .date-time-footer {
+    grid-template-columns: 1fr;
+  }
+}
+
 .form-actions {
   display: flex;
   align-items: end;
@@ -1223,6 +1359,7 @@ tbody tr.billing-due {
   justify-content: flex-end;
 }
 
+.admin-user-actions,
 .tenant-user-actions {
   min-width: 460px;
 }
@@ -2500,6 +2637,85 @@ h2 {
   gap: 14px;
 }
 
+.license-workspace-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.license-workspace-nav button {
+  position: relative;
+  min-height: 82px;
+  border: 1px solid var(--line);
+  border-left: 4px solid transparent;
+  padding: 13px 50px 13px 15px;
+  color: var(--text);
+  text-align: left;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.license-workspace-nav button:hover {
+  border-color: #7f9dbc;
+  background: #f5f8fb;
+}
+
+.license-workspace-nav button:focus-visible {
+  outline: 3px solid rgba(35, 123, 190, 0.3);
+  outline-offset: 2px;
+}
+
+.license-workspace-nav button.active {
+  border-color: #7593b4;
+  border-left-color: var(--nav);
+  background: #edf3f9;
+}
+
+.license-workspace-nav strong,
+.license-workspace-nav span {
+  display: block;
+}
+
+.license-workspace-nav strong {
+  margin-bottom: 6px;
+  color: var(--nav);
+  font-size: 16px;
+}
+
+.license-workspace-nav span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.license-workspace-nav small {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  min-width: 25px;
+  border: 1px solid var(--line);
+  padding: 3px 6px;
+  color: var(--nav);
+  text-align: center;
+  background: #ffffff;
+  font-weight: 900;
+}
+
+.company-selector-section label {
+  display: block;
+  max-width: 620px;
+}
+
+@media (max-width: 850px) {
+  .license-workspace-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .license-workspace-nav button {
+    min-height: 68px;
+  }
+}
+
 .global-search {
   width: 100%;
   margin: 0 0 14px;
@@ -2520,6 +2736,113 @@ h2 {
 
 .global-search input:focus {
   box-shadow: inset 0 0 0 2px #7db4e8;
+}
+
+.guided-global-search {
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(260px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  overflow: visible;
+}
+
+.guided-global-search label,
+.guided-global-search label > span {
+  display: block;
+}
+
+.guided-global-search label > span {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.guided-global-search select,
+.guided-global-search input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #9ea8b2;
+  padding: 7px 10px;
+  color: var(--text);
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.guided-global-search select:focus,
+.guided-global-search input:focus {
+  border-color: #4f86bd;
+  outline: 0;
+  box-shadow: inset 0 0 0 2px #b9daf6;
+}
+
+.global-search-value {
+  position: relative;
+  min-width: 0;
+}
+
+.global-search-suggestions {
+  position: absolute;
+  z-index: 95;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #7f91a8;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(15, 47, 87, 0.2);
+}
+
+.global-search-suggestions button {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 9px 12px;
+  color: var(--text);
+  text-align: left;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.global-search-suggestions button:last-child {
+  border-bottom: 0;
+}
+
+.global-search-suggestions button:hover,
+.global-search-suggestions button:focus-visible {
+  outline: 0;
+  background: #edf4fc;
+}
+
+.global-search-suggestions strong,
+.global-search-suggestions span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-search-suggestions span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guided-global-search > .small-button {
+  min-height: 38px;
+}
+
+@media (max-width: 760px) {
+  .guided-global-search {
+    grid-template-columns: 1fr;
+  }
+
+  .guided-global-search > .small-button {
+    justify-self: start;
+  }
 }
 
 .launch-pad,

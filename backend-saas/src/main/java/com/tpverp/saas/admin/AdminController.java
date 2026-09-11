@@ -291,6 +291,13 @@ public class AdminController {
         service.deactivateUser(username);
     }
 
+    @PutMapping("/users/{username}/activation")
+    public void activateUser(
+            @PathVariable String username,
+            @Valid @RequestBody ChangeAdminPasswordRequest request) {
+        service.activateUser(username, request);
+    }
+
     @GetMapping("/licenses")
     public List<LicenseSummaryResponse> licenses() {
         return service.licenses();

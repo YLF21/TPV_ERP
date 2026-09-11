@@ -54,6 +54,9 @@ import type {
 type View = "dashboard" | "licenses" | "sync" | "fiscal" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "outbox" | "subscriptions" | "reports";
 type Notice = { type: "success" | "error"; text: string } | null;
 type LicenseAction = "block" | "unblock" | "pairing";
+type LicenseWorkspaceSection = "companies" | "licenses" | "verifactu";
+type GlobalSearchCriterion = "company" | "store" | "taxId";
+type GlobalSearchSuggestion = { key: string; value: string; label: string; detail: string };
 type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
 type TenantAssignableRoleName = "MANAGER" | "VIEWER" | "BILLING";
 type Language = "es" | "en" | "zh";
@@ -74,7 +77,13 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     language: "Idioma",
     dashboard: "Resumen",
     licensesCompanies: "Licencias y empresas",
+    companies: "Empresas",
     licenses: "Licencias",
+    companyScreenDescription: "Alta, seleccion y configuracion de empresas",
+    licenseScreenDescription: "Licencias, codigos de enlace e instalaciones",
+    verifactuScreenDescription: "Calendario global de activacion fiscal",
+    chooseCompany: "Seleccionar empresa",
+    companyManagement: "Gestion de empresa",
     sync: "Sincronizacion",
     fiscal: "Estado fiscal",
     users: "Usuarios",
@@ -100,11 +109,11 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     password: "Password",
     enter: "Entrar",
     passwordChangeTitle: "Cambia tu password inicial",
-    passwordChangeHelp: "Define una password nueva de al menos 12 caracteres antes de continuar.",
+    passwordChangeHelp: "Define una password nueva de al menos 4 caracteres antes de continuar.",
     confirmPassword: "Confirmar password",
     changeOwnPassword: "Cambiar password",
     passwordsDoNotMatch: "Las passwords no coinciden.",
-    passwordTooShort: "La nueva password debe tener al menos 12 caracteres.",
+    passwordTooShort: "La nueva password debe tener al menos 4 caracteres.",
     forgotPassword: "Recuperar acceso",
     recoveryRequest: "Solicitar recuperación",
     recoveryToken: "Token de recuperación",
@@ -268,15 +277,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     role: "Rol",
     createUser: "Crear usuario",
     adminUsers: "Usuarios admin",
+    adminUserPasswordUpdated: "Password de {username} actualizada. Sus sesiones se han cerrado; vuelve a iniciar sesion con la nueva password.",
+    adminUserActivated: "Usuario {username} activado con la nueva password.",
+    adminPasswordTooShort: "La nueva password debe tener al menos 4 caracteres.",
     accounts: "cuentas",
     created: "Creado",
     active: "Activo",
     inactive: "Inactivo",
     deactivate: "Desactivar",
+    activate: "Activar",
     adminAudit: "Auditoria administrativa",
     recentActions: "acciones recientes",
     noAuditActions: "No hay acciones de auditoria.",
     globalSearch: "Buscar empresa, licencia, NIF o tienda",
+    searchBy: "Buscar por",
+    searchCompany: "Empresa",
+    searchStore: "Tienda",
+    searchTaxId: "NIF",
+    searchValue: "Escribe para buscar",
+    matchingSuggestions: "Sugerencias coincidentes",
     clearSearch: "Limpiar busqueda",
     alerts: "Alertas",
     alertsSubtitle: "Riesgos operativos que conviene revisar",
@@ -505,6 +524,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     billingCycle: "Ciclo",
     nextBillingAt: "Proxima factura",
     startedAt: "Inicio",
+    previousMonth: "Mes anterior",
+    nextMonth: "Mes siguiente",
+    today: "Hoy",
+    closeCalendar: "Cerrar calendario",
     cancelSubscription: "Cancelar suscripcion",
     createSubscription: "Crear suscripcion",
     integrations: "Integraciones",
@@ -572,7 +595,13 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     language: "Language",
     dashboard: "Dashboard",
     licensesCompanies: "Licenses and companies",
+    companies: "Companies",
     licenses: "Licenses",
+    companyScreenDescription: "Company creation, selection and configuration",
+    licenseScreenDescription: "Licenses, pairing codes and installations",
+    verifactuScreenDescription: "Global fiscal activation calendar",
+    chooseCompany: "Select company",
+    companyManagement: "Company management",
     sync: "Synchronization",
     fiscal: "Fiscal status",
     users: "Users",
@@ -595,12 +624,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     password: "Password",
     enter: "Sign in",
     passwordChangeTitle: "Change your initial password",
-    passwordChangeHelp: "Set a new password of at least 12 characters before continuing.",
+    passwordChangeHelp: "Set a new password of at least 4 characters before continuing.",
     newPassword: "New password",
     confirmPassword: "Confirm password",
     changeOwnPassword: "Change password",
     passwordsDoNotMatch: "Passwords do not match.",
-    passwordTooShort: "The new password must be at least 12 characters.",
+    passwordTooShort: "The new password must be at least 4 characters.",
     forgotPassword: "Recover access",
     recoveryRequest: "Request recovery",
     recoveryToken: "Recovery token",
@@ -764,15 +793,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     role: "Role",
     createUser: "Create user",
     adminUsers: "Admin users",
+    adminUserPasswordUpdated: "Password for {username} updated. Its sessions were closed; sign in again with the new password.",
+    adminUserActivated: "User {username} activated with the new password.",
+    adminPasswordTooShort: "The new password must contain at least 4 characters.",
     accounts: "accounts",
     created: "Created",
     active: "Active",
     inactive: "Inactive",
     deactivate: "Deactivate",
+    activate: "Activate",
     adminAudit: "Admin audit",
     recentActions: "recent actions",
     noAuditActions: "No audit actions.",
     globalSearch: "Search company, license, tax ID or store",
+    searchBy: "Search by",
+    searchCompany: "Company",
+    searchStore: "Store",
+    searchTaxId: "Tax ID",
+    searchValue: "Type to search",
+    matchingSuggestions: "Matching suggestions",
     clearSearch: "Clear search",
     alerts: "Alerts",
     alertsSubtitle: "Operational risks worth reviewing",
@@ -1037,6 +1076,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     billingCycle: "Billing cycle",
     nextBillingAt: "Next billing",
     startedAt: "Start date",
+    previousMonth: "Previous month",
+    nextMonth: "Next month",
+    today: "Today",
+    closeCalendar: "Close calendar",
     cancelSubscription: "Cancel subscription",
     createSubscription: "Create subscription",
     integrations: "Integrations",
@@ -1076,7 +1119,13 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     language: "语言",
     dashboard: "概览",
     licensesCompanies: "许可证和公司",
+    companies: "公司",
     licenses: "许可证",
+    companyScreenDescription: "创建、选择和配置公司",
+    licenseScreenDescription: "许可证、配对码和安装",
+    verifactuScreenDescription: "全局税务启用日历",
+    chooseCompany: "选择公司",
+    companyManagement: "公司管理",
     sync: "同步",
     fiscal: "税务状态",
     users: "用户",
@@ -1337,6 +1386,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchCriterion, setSearchCriterion] = useState<GlobalSearchCriterion>("company");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchStores, setSearchStores] = useState<FiscalStatusAdmin[]>([]);
   const [navigationQuery, setNavigationQuery] = useState("");
   const navigationSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshRequestId = useRef(0);
@@ -1374,7 +1426,15 @@ export default function App() {
   ], [i18n]);
   const visibleNavigationItems = navigationItems.filter((item) =>
     item.label.toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase())
-  );  const visibleData = useMemo(() => (data ? filterDashboardData(data, searchQuery) : null), [data, searchQuery]);
+  );
+  const searchSuggestions = useMemo(
+    () => data ? buildGlobalSearchSuggestions(data, searchStores, searchCriterion, searchQuery) : [],
+    [data, searchStores, searchCriterion, searchQuery]
+  );
+  const visibleData = useMemo(
+    () => data ? filterDashboardData(data, searchQuery, searchCriterion, searchStores) : null,
+    [data, searchQuery, searchCriterion, searchStores]
+  );
   const permissions = useMemo(() => new Set(session?.permissions ?? []), [session]);
 
   function navigate(view: View) {
@@ -1407,6 +1467,7 @@ export default function App() {
       setData(null);
       setTenantData(null);
       setSession(null);
+      setSearchStores([]);
       setAuthMode(null);
       setLoading(false);
       setNotice({ type: "error", text: i18n.t("sessionExpired") });
@@ -1444,12 +1505,16 @@ export default function App() {
       if (activeCredentials.mode === "tenant") {
         const nextTenantData = await api.tenantPortal(activeCredentials);
         if (!isCurrent()) return;
-        setTenantData(nextTenantData); setData(null); setSession(null); setAuthMode("tenant");
+        setTenantData(nextTenantData); setData(null); setSession(null); setSearchStores([]); setAuthMode("tenant");
         setNotice(nextTenantData.loadErrors.length > 0 ? { type: "error", text: nextTenantData.loadErrors.join(" · ") } : null);
       } else {
-        const [dashboard, nextSession] = await Promise.all([api.dashboard(activeCredentials), api.session(activeCredentials)]);
+        const [dashboard, nextSession, stores] = await Promise.all([
+          api.dashboard(activeCredentials),
+          api.session(activeCredentials),
+          api.fiscalStatus(activeCredentials).catch(() => [] as FiscalStatusAdmin[])
+        ]);
         if (!isCurrent()) return;
-        setData(dashboard); setTenantData(null); setSession(nextSession); setAuthMode("admin"); setNotice(null);
+        setData(dashboard); setTenantData(null); setSession(nextSession); setSearchStores(stores); setAuthMode("admin"); setNotice(null);
       }
     } catch (error) {
       if (!isCurrent()) return;
@@ -1490,7 +1555,7 @@ export default function App() {
 
   async function completeRequiredPasswordChange(newPassword: string, confirmation: string) {
     if (!pendingPasswordChange) return;
-    if (newPassword.length < 12) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
+    if (newPassword.length < 4) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
     if (newPassword !== confirmation) { setNotice({ type: "error", text: i18n.t("passwordsDoNotMatch") }); return; }
     const pending = pendingPasswordChange;
     const requestId = ++authRequestId.current;
@@ -1521,7 +1586,7 @@ export default function App() {
   }
 
   async function confirmRecovery(token: string, newPassword: string, confirmation: string) {
-    if (newPassword.length < 12) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
+    if (newPassword.length < 4) { setNotice({ type: "error", text: i18n.t("passwordTooShort") }); return; }
     if (newPassword !== confirmation) { setNotice({ type: "error", text: i18n.t("passwordsDoNotMatch") }); return; }
     setLoading(true); setNotice(null);
     try { await api.confirmPasswordRecovery({ token: token.trim(), newPassword }); setNotice({ type: "success", text: i18n.t("recoveryCompleted") }); }
@@ -1541,6 +1606,7 @@ export default function App() {
     setData(null);
     setTenantData(null);
     setSession(null);
+    setSearchStores([]);
     setAuthMode(null);
     setNotice(null);
     setLoading(false);
@@ -1627,13 +1693,62 @@ export default function App() {
         </header>
 
         {data && activeView !== "dashboard" && (
-          <div className="global-search" role="search">
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={i18n.t("globalSearch")}
-              aria-label={i18n.t("globalSearch")}
-            />
+          <div
+            className="global-search guided-global-search"
+            role="search"
+            onFocusCapture={() => setSearchFocused(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSearchFocused(false);
+            }}
+          >
+            <label className="global-search-criterion">
+              <span>{i18n.t("searchBy")}</span>
+              <select
+                value={searchCriterion}
+                onChange={(event) => {
+                  setSearchCriterion(event.target.value as GlobalSearchCriterion);
+                  setSearchQuery("");
+                }}
+              >
+                <option value="company">{i18n.t("searchCompany")}</option>
+                <option value="store">{i18n.t("searchStore")}</option>
+                <option value="taxId">{i18n.t("searchTaxId")}</option>
+              </select>
+            </label>
+            <div className="global-search-value">
+              <label>
+                <span>{i18n.t("searchValue")}</span>
+                <input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={i18n.t("globalSearch")}
+                  aria-label={i18n.t("globalSearch")}
+                  aria-autocomplete="list"
+                  aria-controls="global-search-suggestions"
+                  aria-expanded={searchFocused && searchSuggestions.length > 0}
+                />
+              </label>
+              {searchFocused && searchQuery.trim() && searchSuggestions.length > 0 && (
+                <div id="global-search-suggestions" className="global-search-suggestions" role="listbox" aria-label={i18n.t("matchingSuggestions")}>
+                  {searchSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.key}
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setSearchQuery(suggestion.value);
+                        setSearchFocused(false);
+                      }}
+                    >
+                      <strong>{suggestion.label}</strong>
+                      <span>{suggestion.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {searchQuery && (
               <button className="small-button" type="button" onClick={() => setSearchQuery("")}>
                 {i18n.t("clearSearch")}
@@ -1730,7 +1845,7 @@ function LoginScreen({
   const { t, language } = useI18n();
   const [username, setUsername] = useState("ADMIN");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"login" | "request" | "confirm">("login");
+  const [mode] = useState<"login" | "request" | "confirm">("login");
   const [recoveryToken, setRecoveryToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -1775,14 +1890,10 @@ function LoginScreen({
           {mode === "login" && <label><span>{t("password")}</span><input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" placeholder={t("password")} required /></label>}
           {mode === "confirm" && <>
             <label><span>{t("recoveryToken")}</span><input value={recoveryToken} onChange={(event) => setRecoveryToken(event.target.value)} autoComplete="one-time-code" required minLength={32} /></label>
-            <label><span>{t("newPassword")}</span><input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" autoComplete="new-password" required minLength={12} /></label>
-            <label><span>{t("confirmPassword")}</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" required minLength={12} /></label>
+            <label><span>{t("newPassword")}</span><input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" autoComplete="new-password" required minLength={4} /></label>
+            <label><span>{t("confirmPassword")}</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" required minLength={4} /></label>
           </>}
           <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
-          <div className="form-actions login-recovery-actions">
-            {mode === "login" ? <button className="secondary-button" type="button" disabled={loading} onClick={() => setMode("request")}>{t("forgotPassword")}</button> : <button className="secondary-button" type="button" disabled={loading} onClick={() => setMode("login")}>{t("backToLogin")}</button>}
-            {mode !== "confirm" && <button className="secondary-button" type="button" disabled={loading} onClick={() => setMode("confirm")}>{t("recoveryToken")}</button>}
-          </div>
         </form>
       </section>
     </main>
@@ -1801,8 +1912,8 @@ function RequiredPasswordChangeScreen({ username, loading, notice, onSubmit, onC
     <form className="stack-form" onSubmit={(event) => { event.preventDefault(); void onSubmit(newPassword, confirmation); }}>
       <h1 id="password-change-title">{t("passwordChangeTitle")}</h1><p>{t("passwordChangeHelp")}</p>
       {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
-      <label><span>{t("newPassword")}</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={12} required autoFocus /></label>
-      <label><span>{t("confirmPassword")}</span><input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={12} required /></label>
+      <label><span>{t("newPassword")}</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={4} required autoFocus /></label>
+      <label><span>{t("confirmPassword")}</span><input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={4} required /></label>
       <button className="primary-button" type="submit" disabled={loading}>{t("changeOwnPassword")}</button>
       <button className="secondary-button" type="button" disabled={loading} onClick={onCancel}>{t("logout")}</button>
     </form>
@@ -2308,6 +2419,7 @@ function LicensesView({
   const [tenantAccess, setTenantAccess] = useState<{ username: string; password: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => licenses[0]?.companyId ?? "");
+  const [activeSection, setActiveSection] = useState<LicenseWorkspaceSection>(() => readLicenseWorkspaceSection());
   const canCreateCompany = permissions.has("ADD_COMPANY");
   const canEditCompany = permissions.has("EDIT_COMPANY_DATA");
   const canRenewLicense = permissions.has("RENEW_LICENSE");
@@ -2322,6 +2434,24 @@ function LicensesView({
       setSelectedCompanyId(licenses[0].companyId);
     }
   }, [licenses, selectedCompanyId]);
+
+  useEffect(() => {
+    const syncSection = () => setActiveSection(readLicenseWorkspaceSection());
+    window.addEventListener("popstate", syncSection);
+    window.addEventListener("hashchange", syncSection);
+    return () => {
+      window.removeEventListener("popstate", syncSection);
+      window.removeEventListener("hashchange", syncSection);
+    };
+  }, []);
+
+  function navigateSection(section: LicenseWorkspaceSection) {
+    setActiveSection(section);
+    const nextHash = `#/licenses/${section}`;
+    if (window.location.hash !== nextHash) {
+      window.history.pushState({ view: "licenses", section }, "", nextHash);
+    }
+  }
 
   async function createCompany(event: FormEvent) {
     event.preventDefault();
@@ -2340,6 +2470,7 @@ function LicensesView({
       setCompanyForm(initialCompanyForm);
       onNotice({ type: "success", text: `Licencia ${response.licenseReference} creada.` });
       onChanged();
+      navigateSection("licenses");
     } catch (error) {
       onNotice({ type: "error", text: errorMessage(error) });
     } finally {
@@ -2410,14 +2541,33 @@ function LicensesView({
 
   return (
     <div className="view-grid">
-      <VerifactuPolicySection
-        credentials={credentials}
-        canManage={permissions.has("MANAGE_FISCAL_POLICY")}
-        onChanged={onChanged}
-        onNotice={onNotice}
-      />
+      <nav className="license-workspace-nav" aria-label={t("licensesCompanies")}>
+        <button className={activeSection === "companies" ? "active" : ""} type="button" aria-current={activeSection === "companies" ? "page" : undefined} onClick={() => navigateSection("companies")}>
+          <strong>{t("companies")}</strong>
+          <span>{t("companyScreenDescription")}</span>
+          <small>{uniqueCompanies(licenses).length}</small>
+        </button>
+        <button className={activeSection === "licenses" ? "active" : ""} type="button" aria-current={activeSection === "licenses" ? "page" : undefined} onClick={() => navigateSection("licenses")}>
+          <strong>{t("licenses")}</strong>
+          <span>{t("licenseScreenDescription")}</span>
+          <small>{licenses.length}</small>
+        </button>
+        <button className={activeSection === "verifactu" ? "active" : ""} type="button" aria-current={activeSection === "verifactu" ? "page" : undefined} onClick={() => navigateSection("verifactu")}>
+          <strong>VeriFactu</strong>
+          <span>{t("verifactuScreenDescription")}</span>
+        </button>
+      </nav>
 
-      {canCreateCompany && (
+      {activeSection === "verifactu" && (
+        <VerifactuPolicySection
+          credentials={credentials}
+          canManage={permissions.has("MANAGE_FISCAL_POLICY")}
+          onChanged={onChanged}
+          onNotice={onNotice}
+        />
+      )}
+
+      {activeSection === "companies" && canCreateCompany && (
         <section className="content-section">
           <SectionHeader title={t("createCompany")} subtitle={t("createCompanySubtitle")} />
           <form className="form-grid" onSubmit={createCompany}>
@@ -2496,6 +2646,8 @@ function LicensesView({
         </section>
       )}
 
+      {activeSection === "licenses" && (
+      <>
       <section className="content-section">
         <SectionHeader title={t("licenses")} subtitle={`${licenses.length} ${t("records")}`} />
         {pairingCode && <PairingCodePanel pairingCode={pairingCode} onCopy={() => void copyPairingCode()} />}
@@ -2508,9 +2660,40 @@ function LicensesView({
           showUnblockAction={canUnblockLicense}
           showPairingAction={canGenerateCode}
           selectedCompanyId={selectedCompany?.companyId}
-          onSelectCompany={setSelectedCompanyId}
+          onSelectCompany={(companyId) => {
+            setSelectedCompanyId(companyId);
+            navigateSection("companies");
+          }}
         />
       </section>
+
+      <section className="content-section">
+        <SectionHeader title={t("linkedInstallations")} subtitle={`${installations.length} ${t("installations").toLowerCase()}`} />
+        <InstallationsTable
+          installations={installations}
+          canRevoke={canRevokeInstallation}
+          busy={busy}
+          onRevoke={(installation) => void revokeInstallation(installation)}
+        />
+      </section>
+      </>
+      )}
+
+      {activeSection === "companies" && (
+      <>
+      {licenses.length > 0 && (
+        <section className="content-section company-selector-section">
+          <SectionHeader title={t("companyManagement")} subtitle={t("companyScreenDescription")} />
+          <label>
+            {t("chooseCompany")}
+            <select className="control-input" value={selectedCompany?.companyId ?? ""} onChange={(event) => setSelectedCompanyId(event.target.value)}>
+              {uniqueCompanies(licenses).map((company) => (
+                <option key={company.companyId} value={company.companyId}>{company.companyName}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+      )}
 
       <CompanyDetail
         credentials={credentials}
@@ -2525,16 +2708,8 @@ function LicensesView({
         onChanged={onChanged}
         onNotice={onNotice}
       />
-
-      <section className="content-section">
-        <SectionHeader title={t("linkedInstallations")} subtitle={`${installations.length} ${t("installations").toLowerCase()}`} />
-        <InstallationsTable
-          installations={installations}
-          canRevoke={canRevokeInstallation}
-          busy={busy}
-          onRevoke={(installation) => void revokeInstallation(installation)}
-        />
-      </section>
+      </>
+      )}
     </div>
   );
 }
@@ -3049,6 +3224,7 @@ function UsersView({
   const [tenantUsername, setTenantUsername] = useState("");
   const [tenantPassword, setTenantPassword] = useState("");
   const [tenantRoleName, setTenantRoleName] = useState<TenantAssignableRoleName>("MANAGER");
+  const [adminPasswordByUser, setAdminPasswordByUser] = useState<Record<string, string>>({});
   const [tenantPasswordByUser, setTenantPasswordByUser] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const tenantUsersRequestId = useRef(0);
@@ -3099,6 +3275,49 @@ function UsersView({
     try {
       await api.deactivateUser(credentials, user);
       onNotice({ type: "success", text: `Usuario ${user} desactivado.` });
+      onChanged();
+    } catch (error) {
+      onNotice({ type: "error", text: userManagementErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeAdminPassword(user: string) {
+    const nextPassword = adminPasswordByUser[user]?.trim() ?? "";
+    if (nextPassword.length < 4) {
+      onNotice({ type: "error", text: t("adminPasswordTooShort") });
+      return;
+    }
+    setBusy(`admin-password-${user}`);
+    try {
+      await api.changePassword(credentials, user, nextPassword);
+      setAdminPasswordByUser((current) => ({ ...current, [user]: "" }));
+      onNotice({
+        type: "success",
+        text: t("adminUserPasswordUpdated").replace("{username}", user)
+      });
+    } catch (error) {
+      onNotice({ type: "error", text: userManagementErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function activateAdminUser(user: string) {
+    const nextPassword = adminPasswordByUser[user]?.trim() ?? "";
+    if (nextPassword.length < 4) {
+      onNotice({ type: "error", text: t("adminPasswordTooShort") });
+      return;
+    }
+    setBusy(`admin-activate-${user}`);
+    try {
+      await api.activateUser(credentials, user, nextPassword);
+      setAdminPasswordByUser((current) => ({ ...current, [user]: "" }));
+      onNotice({
+        type: "success",
+        text: t("adminUserActivated").replace("{username}", user)
+      });
       onChanged();
     } catch (error) {
       onNotice({ type: "error", text: userManagementErrorMessage(error) });
@@ -3223,7 +3442,7 @@ function UsersView({
         {canManageUsers && (
           <form className="form-grid three" onSubmit={create}>
             <Input label={t("username")} value={username} onChange={setUsername} required />
-            <Input label={t("password")} type="password" value={password} onChange={setPassword} required />
+            <Input label={t("password")} type="password" value={password} onChange={setPassword} required minLength={4} maxLength={120} />
             <label>
               {t("role")}
               <select
@@ -3267,15 +3486,44 @@ function UsersView({
                   </td>
                   <td>{formatDate(user.createdAt)}</td>
                   {canManageUsers && (
-                    <td className="row-actions">
+                    <td className="row-actions admin-user-actions">
+                      <input
+                        className="control-input inline-password"
+                        type="password"
+                        value={adminPasswordByUser[user.username] ?? ""}
+                        placeholder={t("newPassword")}
+                        aria-label={`${t("newPassword")} ${user.username}`}
+                        autoComplete="new-password"
+                        minLength={4}
+                        maxLength={120}
+                        onChange={(event) => setAdminPasswordByUser((current) => ({
+                          ...current,
+                          [user.username]: event.target.value
+                        }))}
+                      />
                       <button
                         className="small-button"
                         type="button"
-                        disabled={!user.active || busy === user.username}
-                        onClick={() => void deactivate(user.username)}
+                        disabled={(adminPasswordByUser[user.username]?.trim().length ?? 0) < 4
+                          || busy === (user.active
+                            ? `admin-password-${user.username}`
+                            : `admin-activate-${user.username}`)}
+                        onClick={() => void (user.active
+                          ? changeAdminPassword(user.username)
+                          : activateAdminUser(user.username))}
                       >
-                        {t("deactivate")}
+                        {user.active ? t("changePassword") : t("activate")}
                       </button>
+                      {user.active && (
+                        <button
+                          className="small-button"
+                          type="button"
+                          disabled={busy === user.username}
+                          onClick={() => void deactivate(user.username)}
+                        >
+                          {t("deactivate")}
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -3301,7 +3549,7 @@ function UsersView({
         {canManageTenantUsers && (
           <form className="form-grid four compact-form" onSubmit={createTenantUser}>
             <Input label={t("username")} value={tenantUsername} onChange={setTenantUsername} required disabled={!tenantCompanyId} />
-            <Input label={t("password")} type="password" value={tenantPassword} onChange={setTenantPassword} required disabled={!tenantCompanyId} />
+            <Input label={t("password")} type="password" value={tenantPassword} onChange={setTenantPassword} required minLength={4} maxLength={120} disabled={!tenantCompanyId} />
             <label>
               {t("role")}
               <select
@@ -4303,7 +4551,12 @@ function OperationsView({
           <form className="compact-form-grid" onSubmit={createMovement}>
             <Input label={t("warehouse")} value={movementForm.warehouseCode} onChange={(warehouseCode) => setMovementForm({ ...movementForm, warehouseCode })} required />
             <Input label={t("sku")} value={movementForm.productSku} onChange={(productSku) => setMovementForm({ ...movementForm, productSku })} required />
-            <Input label={t("movementType")} value={movementForm.movementType} onChange={(movementType) => setMovementForm({ ...movementForm, movementType })} required />
+            <Select
+              label={t("movementType")}
+              value={movementForm.movementType}
+              options={["ENTRADA", "SALIDA", "AJUSTE"]}
+              onChange={(movementType) => setMovementForm({ ...movementForm, movementType })}
+            />
             <Input label={t("quantity")} value={movementForm.quantity} onChange={(quantity) => setMovementForm({ ...movementForm, quantity })} required />
             <Input label={t("reason")} value={movementForm.reason} onChange={(reason) => setMovementForm({ ...movementForm, reason })} />
             <Input label={t("created")} type="datetime-local" value={movementForm.movedAt} onChange={(movedAt) => setMovementForm({ ...movementForm, movedAt })} required />
@@ -4429,12 +4682,12 @@ function SubscriptionsView({
             </select>
           </label>
           <Select label={t("status")} value={form.status} options={["ACTIVA", "SUSPENDIDA", "CANCELADA"]} onChange={(status) => setForm({ ...form, status })} />
-          <Input label={t("startedAt")} type="datetime-local" value={form.startedAt} onChange={(startedAt) => setForm({ ...form, startedAt })} required />
+          <DateTimePicker label={t("startedAt")} value={form.startedAt} onChange={(startedAt) => setForm({ ...form, startedAt })} required />
           <Select label={t("plan")} value={form.planName} options={["BASIC", "STANDARD", "PREMIUM", "PRO", "ENTERPRISE"]} onChange={(planName) => setForm({ ...form, planName })} />
           <Select label={t("billingCycle")} value={form.billingCycle} options={["MENSUAL", "TRIMESTRAL", "ANUAL"]} onChange={(billingCycle) => setForm({ ...form, billingCycle })} />
           <Input label={t("amount")} value={form.amount} onChange={(amount) => setForm({ ...form, amount })} required />
           <Input label={t("currency")} value={form.currency} onChange={(currency) => setForm({ ...form, currency })} required />
-          <Input label={t("nextBillingAt")} type="datetime-local" value={form.nextBillingAt} onChange={(nextBillingAt) => setForm({ ...form, nextBillingAt })} />
+          <DateTimePicker label={t("nextBillingAt")} value={form.nextBillingAt} onChange={(nextBillingAt) => setForm({ ...form, nextBillingAt })} />
           <button className="primary-button" type="submit" disabled={busy}>{t("createSubscription")}</button>
         </form>
       )}
@@ -6366,6 +6619,19 @@ function Input({
   step?: string;
   disabled?: boolean;
 }) {
+  if (type === "date" || type === "datetime-local") {
+    return (
+      <DateTimePicker
+        label={label}
+        value={value}
+        onChange={onChange}
+        required={required}
+        disabled={disabled}
+        dateOnly={type === "date"}
+      />
+    );
+  }
+
   return (
     <label>
       {label}
@@ -6382,6 +6648,115 @@ function Input({
         disabled={disabled}
       />
     </label>
+  );
+}
+
+function DateTimePicker({ label, value, onChange, required, disabled, dateOnly = false }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+  dateOnly?: boolean;
+}) {
+  const { t } = useI18n();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const selectedDate = parsePickerDate(value, dateOnly);
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => monthStart(selectedDate ?? new Date()));
+
+  useEffect(() => {
+    if (selectedDate) setVisibleMonth(monthStart(selectedDate));
+  }, [value]);
+
+  useEffect(() => {
+    if (!open) return;
+    function close(event: MouseEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent && event.key === "Escape") setOpen(false);
+      if (event instanceof MouseEvent && !containerRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const days = useMemo(() => calendarDays(visibleMonth), [visibleMonth]);
+  const weekDays = useMemo(() => calendarWeekDays(), []);
+
+  function selectDate(day: Date) {
+    const time = selectedDate ?? new Date();
+    const next = new Date(day.getFullYear(), day.getMonth(), day.getDate(), time.getHours(), time.getMinutes());
+    onChange(dateOnly ? toDateInput(next) : toLocalInput(next));
+  }
+
+  function selectTime(time: string) {
+    const [hours, minutes] = time.split(":").map(Number);
+    const next = selectedDate ?? new Date();
+    next.setHours(hours, minutes, 0, 0);
+    onChange(toLocalInput(next));
+  }
+
+  function selectToday() {
+    const now = new Date();
+    setVisibleMonth(monthStart(now));
+    onChange(dateOnly ? toDateInput(now) : toLocalInput(now));
+  }
+
+  return (
+    <div className="date-time-picker" ref={containerRef}>
+      <label>
+        {label}
+        <input
+          className="control-input date-time-trigger"
+          value={formatPickerDate(value, dateOnly)}
+          readOnly
+          required={required}
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onFocus={() => !disabled && setOpen(true)}
+          onClick={() => !disabled && setOpen(true)}
+        />
+      </label>
+      {open && (
+        <div className="date-time-popover" role="dialog" aria-label={label}>
+          <div className="date-time-calendar-header">
+            <button type="button" onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))} aria-label={t("previousMonth")}>‹</button>
+            <strong>{new Intl.DateTimeFormat(activeLocale, { month: "long", year: "numeric" }).format(visibleMonth)}</strong>
+            <button type="button" onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))} aria-label={t("nextMonth")}>›</button>
+          </div>
+          <div className="date-time-weekdays" aria-hidden="true">
+            {weekDays.map((day) => <span key={day}>{day}</span>)}
+          </div>
+          <div className="date-time-days" role="grid">
+            {days.map((day) => {
+              const selected = selectedDate ? sameCalendarDay(day, selectedDate) : false;
+              return (
+                <button
+                  type="button"
+                  key={day.toISOString()}
+                  className={`${day.getMonth() === visibleMonth.getMonth() ? "" : "outside"} ${selected ? "selected" : ""} ${sameCalendarDay(day, new Date()) ? "today" : ""}`.trim()}
+                  aria-pressed={selected}
+                  onClick={() => selectDate(day)}
+                >
+                  {day.getDate()}
+                </button>
+              );
+            })}
+          </div>
+          <div className={`date-time-footer ${dateOnly ? "date-only" : ""}`}>
+            {!dateOnly && <label>{t("time")}<input type="time" value={value.slice(11, 16) || "00:00"} onChange={(event) => selectTime(event.target.value)} /></label>}
+            <div>
+              <button type="button" className="secondary-button" onClick={selectToday}>{t("today")}</button>
+              <button type="button" className="primary-button" onClick={() => setOpen(false)}>{t("closeCalendar")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -6524,8 +6899,15 @@ function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floa
 const VALID_VIEWS: View[] = ["dashboard", "licenses", "sync", "fiscal", "users", "audit", "support", "health", "billing", "masters", "operations", "outbox", "subscriptions", "reports"];
 
 function readViewFromLocation(): View {
-  const candidate = window.location.hash.replace(/^#\/?/, "") as View;
+  const candidate = window.location.hash.replace(/^#\/?/, "").split("/")[0] as View;
   return VALID_VIEWS.includes(candidate) ? candidate : "dashboard";
+}
+
+function readLicenseWorkspaceSection(): LicenseWorkspaceSection {
+  const [, section] = window.location.hash.replace(/^#\/?/, "").split("/");
+  return section === "licenses" || section === "verifactu" || section === "companies"
+    ? section
+    : "companies";
 }
 
 function localeFor(language: Language) {
@@ -6607,28 +6989,107 @@ function formatMoney(value: string | number) {
   return formatCurrency(value, "EUR");
 }
 
-function filterDashboardData(data: DashboardData, query: string): DashboardData {
+function buildGlobalSearchSuggestions(
+  data: DashboardData,
+  storeIndex: FiscalStatusAdmin[],
+  criterion: GlobalSearchCriterion,
+  query: string
+): GlobalSearchSuggestion[] {
+  const normalized = normalizeSearch(query);
+  if (!normalized) return [];
+
+  if (criterion === "company") {
+    return Array.from(new Map(data.licenses.map((license) => [license.companyId, license])).values())
+      .filter((license) => normalizeSearch(license.companyName).includes(normalized))
+      .map((license) => ({
+        key: license.companyId,
+        value: license.companyName,
+        label: license.companyName,
+        detail: license.taxId
+      }))
+      .slice(0, 8);
+  }
+
+  if (criterion === "taxId") {
+    return Array.from(new Map(data.licenses.map((license) => [license.companyId, license])).values())
+      .filter((license) => normalizeSearch(license.taxId).includes(normalized))
+      .map((license) => ({
+        key: license.companyId,
+        value: license.taxId,
+        label: license.taxId,
+        detail: license.companyName
+      }))
+      .slice(0, 8);
+  }
+
+  const stores = new Map<string, GlobalSearchSuggestion>();
+  storeIndex.forEach((store) => {
+    stores.set(store.storeId, {
+      key: store.storeId,
+      value: store.storeName || store.storeId,
+      label: store.storeName || store.storeId,
+      detail: store.companyName
+    });
+  });
+  data.installations.forEach((installation) => {
+    if (stores.has(installation.storeId)) return;
+    const company = data.licenses.find((license) => license.companyId === installation.companyId);
+    stores.set(installation.storeId, {
+      key: installation.storeId,
+      value: installation.storeId,
+      label: installation.storeId,
+      detail: company?.companyName ?? installation.companyId
+    });
+  });
+  return Array.from(stores.values())
+    .filter((store) => normalizeSearch(store.label + " " + store.detail + " " + store.key).includes(normalized))
+    .slice(0, 8);
+}
+
+function filterDashboardData(
+  data: DashboardData,
+  query: string,
+  criterion: GlobalSearchCriterion,
+  storeIndex: FiscalStatusAdmin[]
+): DashboardData {
   const normalized = normalizeSearch(query);
   if (!normalized) return data;
 
-  const matchingLicenses = data.licenses.filter((license) =>
-    [
-      license.licenseReference,
-      license.companyName,
-      license.taxId,
-      license.companyId
-    ].some((value) => normalizeSearch(value).includes(normalized))
-  );
-  const companyIds = new Set(matchingLicenses.map((license) => license.companyId));
+  const companyIds = new Set<string>();
+  const storeIds = new Set<string>();
+
+  if (criterion === "company" || criterion === "taxId") {
+    data.licenses.forEach((license) => {
+      const candidate = criterion === "company" ? license.companyName : license.taxId;
+      if (normalizeSearch(candidate).includes(normalized)) companyIds.add(license.companyId);
+    });
+  } else {
+    storeIndex.forEach((store) => {
+      if (normalizeSearch(store.storeName + " " + store.storeId).includes(normalized)) {
+        companyIds.add(store.companyId);
+        storeIds.add(store.storeId);
+      }
+    });
+    data.installations.forEach((installation) => {
+      if (normalizeSearch(installation.storeId).includes(normalized)) {
+        companyIds.add(installation.companyId);
+        storeIds.add(installation.storeId);
+      }
+    });
+    data.events.forEach((event) => {
+      if (normalizeSearch(event.storeId).includes(normalized)) {
+        companyIds.add(event.companyId);
+        storeIds.add(event.storeId);
+      }
+    });
+  }
+
+  const matchingLicenses = data.licenses.filter((license) => companyIds.has(license.companyId));
   const licenseReferences = new Set(matchingLicenses.map((license) => license.licenseReference));
   const matchingInstallations = data.installations.filter((installation) =>
     companyIds.has(installation.companyId) ||
     licenseReferences.has(installation.licenseReference) ||
-    [
-      installation.installationReference,
-      installation.installationId,
-      installation.storeId
-    ].some((value) => normalizeSearch(value).includes(normalized))
+    storeIds.has(installation.storeId)
   );
   matchingInstallations.forEach((installation) => {
     companyIds.add(installation.companyId);
@@ -6639,8 +7100,10 @@ function filterDashboardData(data: DashboardData, query: string): DashboardData 
     ...data,
     licenses: data.licenses.filter((license) => companyIds.has(license.companyId) || licenseReferences.has(license.licenseReference)),
     installations: data.installations.filter((installation) => companyIds.has(installation.companyId) || licenseReferences.has(installation.licenseReference)),
-    events: data.events.filter((event) => companyIds.has(event.companyId) || normalizeSearch(event.storeId).includes(normalized)),
-    stockCurrent: data.stockCurrent.filter((row) => companyIds.has(row.companyId) || normalizeSearch(row.storeId).includes(normalized)),
+    events: data.events.filter((event) => companyIds.has(event.companyId) || storeIds.has(event.storeId)),
+    stockCurrent: data.stockCurrent.filter((row) => companyIds.has(row.companyId) || storeIds.has(row.storeId)),
+    subscriptions: data.subscriptions?.filter((subscription) => companyIds.has(subscription.companyId)),
+    integrations: data.integrations?.filter((integration) => integration.companyId !== null && companyIds.has(integration.companyId)),
     audit: data.audit.filter((item) =>
       [item.username, item.action, item.targetType, item.targetId].some((value) => normalizeSearch(value).includes(normalized))
     )
@@ -6691,9 +7154,10 @@ function auditActionLabel(action: string) {
     CREATE_ADMIN_USER: "Usuario admin creado",
     UPDATE_ADMIN_PASSWORD: "Password admin actualizada",
     CHANGE_ADMIN_PASSWORD: "Password admin actualizada",
-    DELETE_ADMIN_USER: "Usuario admin desactivado",
-    DEACTIVATE_ADMIN_USER: "Usuario admin desactivado",
-    UPDATE_COMPANY_OPERATIONS: "Datos SaaS de empresa actualizados",
+        DELETE_ADMIN_USER: "Usuario admin desactivado",
+        DEACTIVATE_ADMIN_USER: "Usuario admin desactivado",
+        ACTIVATE_ADMIN_USER: "Usuario admin activado",
+        UPDATE_COMPANY_OPERATIONS: "Datos SaaS de empresa actualizados",
     CREATE_SUPPORT_TICKET: "Ticket de soporte creado",
     UPDATE_SUPPORT_TICKET: "Ticket de soporte actualizado",
     UPDATE_VERIFACTU_ACTIVATION_POLICY: "Politica de activacion de VeriFactu actualizada"
@@ -6785,6 +7249,64 @@ function formatDate(value: string) {
 function toLocalInput(date: Date) {
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function parseLocalDateTime(value: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parsePickerDate(value: string, dateOnly: boolean) {
+  if (dateOnly) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+  }
+  return parseLocalDateTime(value);
+}
+
+function formatPickerDate(value: string, dateOnly: boolean) {
+  const date = parsePickerDate(value, dateOnly);
+  if (!date) return "";
+  return new Intl.DateTimeFormat(activeLocale, dateOnly
+    ? { dateStyle: "medium" }
+    : { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function toDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function monthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function calendarDays(month: Date) {
+  const mondayOffset = (month.getDay() + 6) % 7;
+  const first = new Date(month.getFullYear(), month.getMonth(), 1 - mondayOffset);
+  return Array.from({ length: 42 }, (_, index) =>
+    new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
+}
+
+function calendarWeekDays() {
+  const monday = new Date(2026, 0, 5);
+  return Array.from({ length: 7 }, (_, index) =>
+    new Intl.DateTimeFormat(activeLocale, { weekday: "short" })
+      .format(new Date(2026, 0, monday.getDate() + index))
+      .replace(".", ""));
+}
+
+function sameCalendarDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
 }
 
 function addYears(date: Date, years: number) {

@@ -88,6 +88,49 @@ final result: passed
 
 ---
 
+# Design QA — separación de Licencias y empresas
+
+## Evidencia
+
+- Fuente visual: C:\Users\xy656\AppData\Local\Temp\codex-clipboard-4335a801-c875-4743-94b5-859b56756689.png.
+- Fuente: 3840 × 1907 px; captura de escritorio suministrada por el usuario.
+- Implementación esperada: http://127.0.0.1:5175/#/licenses/companies.
+- Captura de implementación: no disponible.
+- Viewport CSS y densidad de implementación: no disponibles.
+- Estado objetivo: sesión ADMIN, módulo Licencias y empresas, pantalla Empresas.
+
+## Comparación de vista completa
+
+Bloqueada. La fuente muestra toda la política VeriFactu, el alta de empresa y el inicio de la tabla de licencias en una misma página. La implementación divide ese contenido en tres destinos independientes —Empresas, Licencias y VeriFactu—, pero el controlador del navegador local terminó inesperadamente tanto en el navegador integrado como en Chrome antes de poder capturar el resultado renderizado.
+
+## Comparación enfocada
+
+Bloqueada por el mismo fallo del controlador. Las comprobaciones de código confirman que solo se monta el contenido correspondiente a la opción activa, que las rutas internas admiten historial y que seleccionar una empresa desde Licencias abre su gestión.
+
+## Superficies de fidelidad
+
+- Tipografía: reutiliza las fuentes, pesos y jerarquía existentes del SaaS; pendiente de inspección renderizada.
+- Espaciado y composición: navegación de tres opciones en cuadrícula de escritorio y una columna por debajo de 850 px; pendiente de captura.
+- Colores: reutiliza los tokens existentes de navegación, bordes, fondo y foco.
+- Imágenes y recursos: la pantalla de referencia no contiene imágenes funcionales que deban recrearse.
+- Contenido: conserva todos los formularios y acciones, repartidos en Empresas, Licencias y VeriFactu.
+
+## Hallazgos
+
+- No hay fallos funcionales detectados por las pruebas automatizadas.
+- Bloqueador de QA visual: el controlador de navegador local se cierra antes de devolver el estado o una captura.
+
+## Historial
+
+1. Se separaron política fiscal, alta/gestión de empresa y licencias/instalaciones.
+2. Se añadieron rutas internas y compatibilidad con Atrás/Adelante.
+3. Se validaron 55 pruebas y la compilación de producción.
+4. Se intentó capturar primero el navegador integrado y después Chrome; ambos intentos terminaron por fallo del controlador.
+
+final result: blocked
+
+---
+
 # Design QA — acciones alineadas a la derecha
 
 - Fuente: `C:\Users\xy656\AppData\Local\Temp\codex-clipboard-8c5e7179-9909-47b4-8069-45aed9813743.png` (3840 × 1907).
