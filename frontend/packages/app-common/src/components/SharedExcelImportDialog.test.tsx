@@ -1515,9 +1515,13 @@ describe("SharedExcelImportDialog", () => {
       { target: { files: [new File(["xls"], "productos.xlsx")] } });
     await waitFor(() => expect(screen.getByLabelText(locale === "en" ? "Code Excel column" : "编码 Excel 列")).toHaveValue("A"));
     fireEvent.click(screen.getByRole("button", { name: locale === "en" ? "Apply" : "应用" }));
-    fireEvent.click(await screen.findByRole("button", { name: (locale === "en" ? "Review row " : "查看行 ") + "2" }));
-    expect(screen.getByText(genericReason)).toBeInTheDocument();
-    expect(screen.getAllByText(new RegExp(`${attributeLabel}: ${commentsLabel}`)).length).toBeGreaterThan(0);
+    const reviewLabel = (locale === "en" ? "Review row " : "查看行 ") + "2";
+    const reviewButton = await screen.findByRole("button", { name: reviewLabel });
+    fireEvent.click(reviewButton);
+    expect(reviewButton).toHaveAttribute("aria-expanded", "true");
+    const detail = screen.getByRole("region", { name: reviewLabel });
+    expect(within(detail).getByText(genericReason)).toBeInTheDocument();
+    expect(within(detail).getAllByText(new RegExp(`${attributeLabel}: ${commentsLabel}`)).length).toBeGreaterThan(0);
     expect(screen.queryByText("Motivo en español")).not.toBeInTheDocument();
   });
 
