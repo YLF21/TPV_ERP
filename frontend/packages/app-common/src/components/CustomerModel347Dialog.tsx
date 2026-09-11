@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { apiRequest, classifyApiFailure } from "../api/client";
+import { apiProblemCode, apiRequest, classifyApiFailure } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
@@ -55,7 +55,7 @@ export function CustomerModel347Dialog({ customer, session, locale, onClose }: P
     requestRef.current = controller; setBusy(true); setErrorKey(""); setSaved(false);
     try {
       const query = new URLSearchParams({ year: String(selectedYear), locale });
-      const blob = await apiRequest<Blob>(`/customer-document-reports/${encodeURIComponent(customer.id)}/model-347.pdf?${query}`, {
+      const blob = await apiRequest<Blob>(`/customer-document-reports/saas/${encodeURIComponent(customer.id)}/annual.pdf?${query}`, {
         token: session.accessToken, responseType: "blob", signal: controller.signal,
       });
       if (controller.signal.aborted) return;
@@ -81,8 +81,10 @@ export function CustomerModel347Dialog({ customer, session, locale, onClose }: P
       }
       setSaved(true);
     } catch (failure: unknown) {
-      if (!controller.signal.aborted) setErrorKey(classifyApiFailure(failure) === "forbidden"
-        ? "customerDocuments.noAccess" : "customerModel347.error");
+      if (!controller.signal.aborted) setErrorKey(apiProblemCode(failure) === "SAAS_CUSTOMER_BINDING_REQUIRED"
+        ? "customerDocuments.bindingRequired" : apiProblemCode(failure) === "SAAS_CUSTOMER_DOCUMENTS_CURRENCY_UNSUPPORTED"
+          ? "customerModel347.currencyUnsupported" : classifyApiFailure(failure) === "forbidden"
+            ? "customerDocuments.noAccess" : "customerModel347.error");
     } finally {
       if (requestRef.current === controller) requestRef.current = null;
       if (!controller.signal.aborted) setBusy(false);

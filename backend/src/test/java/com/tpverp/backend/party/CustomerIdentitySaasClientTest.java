@@ -164,6 +164,67 @@ class CustomerIdentitySaasClientTest {
     private CustomerIdentitySaasClient client() {
         return new CustomerIdentitySaasClient(url(), credentials, identities, mapper, HttpClient.newHttpClient());
     }
+
+    @Test
+    void adoptionLookupUsesExactDocumentAndInstallationScopeWithRevisionZero() throws Exception {
+        body.set(mapper.writeValueAsString(adoptionProfile()));
+        var value = client().lookup(company, store, CustomerDocumentIdentity.validate(DocumentType.DNI, "0000 0001-r"));
+        assertThat(value.revision()).isZero();
+        assertThat(value.customerId()).isEqualTo(centralCustomer);
+        assertThat(receivedPath.get()).isEqualTo("/api/v1/customer-identities/lookup");
+        assertThat(received.get().path("companyId").asText()).isEqualTo(centralCompany.toString());
+        assertThat(received.get().path("storeId").asText()).isEqualTo(centralStore.toString());
+        assertThat(received.get().path("documentNumber").asText()).isEqualTo("00000001R");
+        assertThat(received.get().has("localCustomerId")).isFalse();
+    }
+
+    @Test
+    void adoptionReservationPreservesStableOwnerAndSelectedRevisionWithoutSendingALocalProfile() throws Exception {
+        var operation = adoptionOperation();
+        body.set(mapper.writeValueAsString(new CustomerAdoptionApi.Reservation(operation.operationId(), operation.customerId(), adoptionProfile())));
+        assertThat(client().reserveAdoption(operation).customer().centralCode()).isEqualTo("CENTRAL-001");
+        assertThat(received.get().path("localCustomerId").asText()).isEqualTo(operation.customerId().toString());
+        assertThat(received.get().path("customerId").asText()).isEqualTo(centralCustomer.toString());
+        assertThat(received.get().path("expectedRevision").asLong()).isZero();
+        assertThat(received.get().has("profile")).isFalse();
+        status.set(204);
+        client().cancelAdoption(operation);
+        assertThat(receivedPath.get()).isEqualTo("/api/v1/customer-identities/adoptions/" + operation.operationId() + "/cancel");
+        assertThat(received.get().size()).isEqualTo(3);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "-1", "0.5", "0.0", "9223372036854775808", "\"0\""})
+    void adoptionRejectsMissingNegativeFractionalAndOverflowRevisions(String value) throws Exception {
+        body.set(mapper.writeValueAsString(adoptionProfile()).replace("\"revision\":0", "\"revision\":" + value));
+        unavailable(() -> client().lookup(company, store, CustomerDocumentIdentity.validate(DocumentType.DNI, "00000001R")));
+    }
+
+    @Test
+    void adoptionNotFoundIsLocalizedByAStableCodeWithoutLeakingUpstreamDetails() {
+        status.set(404); body.set("{\"code\":\"CUSTOMER_CENTRAL_NOT_FOUND\",\"detail\":\"private data\"}");
+        assertThatThrownBy(() -> client().lookup(company, store, CustomerDocumentIdentity.validate(DocumentType.DNI, "00000001R")))
+                .isInstanceOf(CustomerIdentityException.class).hasMessage("CUSTOMER_CENTRAL_NOT_FOUND").hasNoCause();
+    }
+
+    @Test
+    void adoptionRejectsUnexpectedLocalOwnerAndCustomerEvenWithIdenticalDocument() throws Exception {
+        var operation = adoptionOperation();
+        body.set(mapper.writeValueAsString(new CustomerAdoptionApi.Reservation(operation.operationId(), UUID.randomUUID(), adoptionProfile())));
+        unavailable(() -> client().reserveAdoption(operation));
+        body.set(mapper.writeValueAsString(new CustomerAdoptionApi.Reservation(operation.operationId(), operation.customerId(),
+                adoptionProfile().withLocalCustomerId(UUID.randomUUID()))));
+        unavailable(() -> client().reserveAdoption(operation));
+    }
+
+    private CustomerAdoptionOperations.Operation adoptionOperation() {
+        return new CustomerAdoptionOperations.Operation(UUID.randomUUID(), company, store, UUID.randomUUID(),
+                centralCustomer, 0, DocumentType.DNI, "00000001R", "PENDING");
+    }
+    private CustomerAdoptionApi.Profile adoptionProfile() {
+        return new CustomerAdoptionApi.Profile(centralCustomer, 0L, "CENTRAL-001", "Selected customer", DocumentType.DNI,
+                "00000001R", null, null, null, true, null);
+    }
     private String url() { return "http://127.0.0.1:" + server.getAddress().getPort(); }
     private CustomerIdentityOperations.Operation operation(Long expectedRevision) {
         return new CustomerIdentityOperations.Operation(UUID.randomUUID(), company, store, UUID.randomUUID(),

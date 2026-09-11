@@ -13,6 +13,7 @@ import {
 import { PartyFormFields, type CommercialChannelOption } from "./PartyFormFields";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { customerIdentityFailure } from "./customerDocumentIdentity";
+import { CentralCustomerReuse } from "./CentralCustomerReuse";
 
 type Props = {
   locale: LocaleCode;
@@ -39,6 +40,7 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
   const [documentError, setDocumentError] = useState("");
   const [channels, setChannels] = useState<CommercialChannelOption[]>([]);
   const [saving, setSaving] = useState(false);
+  const [centralBusy, setCentralBusy] = useState(false);
   const [loading, setLoading] = useState(Boolean(customerId));
   const [loadFailed, setLoadFailed] = useState(false);
   const [preserveMember, setPreserveMember] = useState(false);
@@ -78,13 +80,13 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || saving) return;
+      if (event.key !== "Escape" || saving || centralBusy) return;
       event.preventDefault();
       onCancel();
     };
     globalThis.addEventListener("keydown", handler);
     return () => globalThis.removeEventListener("keydown", handler);
-  }, [onCancel, saving]);
+  }, [onCancel, saving, centralBusy]);
 
   function update<K extends keyof PartyForm>(field: K, value: PartyForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -95,6 +97,7 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (saving || centralBusy) return;
     setDocumentError("");
     const nextErrors = validatePartyForm(form, false);
     if (nextErrors.length > 0) {
@@ -131,14 +134,17 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
           <h2 id="sale-customer-create-title">{customerId ? t("party.customers.edit") : t("party.customers.new")}</h2>
           <span>{t("party.form.subtitle")}</span>
         </div>
-        <button type="button" aria-label={t("common.close")} disabled={saving} onClick={onCancel}>{t("common.close")}</button>
+        <button type="button" aria-label={t("common.close")} disabled={saving || centralBusy} onClick={onCancel}>{t("common.close")}</button>
       </header>
       <form className="product-create-form party-create-form" onSubmit={submit}>
-        <fieldset disabled={saving || loading || loadFailed}>
+        <fieldset disabled={saving || centralBusy || loading || loadFailed}>
           <PartyFormFields
             form={form}
             errors={errors}
             documentError={documentError}
+            identityAction={!customerId && <CentralCustomerReuse documentType={form.documentType} documentNumber={form.documentNumber}
+              session={session} locale={locale} disabled={saving || loading || loadFailed}
+              onBusyChange={setCentralBusy} onAdopted={onCreated} />}
             channels={channels}
             autoFocusName
             t={t}
@@ -147,8 +153,8 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
         </fieldset>
         {status && <p className="product-create-status" role="alert">{status}</p>}
         <footer className="filter-actions">
-          <button type="button" disabled={saving} onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="submit" disabled={saving || loading || loadFailed}>{saving ? t("party.saving") : t("common.save")}</button>
+          <button type="button" disabled={saving || centralBusy} onClick={onCancel}>{t("common.cancel")}</button>
+          <button type="submit" disabled={saving || centralBusy || loading || loadFailed}>{saving ? t("party.saving") : t("common.save")}</button>
         </footer>
       </form>
     </section>

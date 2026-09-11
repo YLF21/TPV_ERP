@@ -59,7 +59,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({FlywayPostgreSqlConfiguration.class, DocumentService.class, InventoryDocumentGateway.class, StockMovementSyncPublisher.class,
-        SyncOutboxService.class, DocumentFiscalIntegration.class, FiscalRecordService.class,
+        SyncOutboxService.class, DocumentSyncPublisher.class, DocumentSyncPayloadFactory.class, DocumentAttributionResolver.class,
+        DocumentSyncRevisionRepository.class, DocumentFiscalIntegration.class, FiscalRecordService.class,
         VerifactuActivationService.class, FiscalSnapshotFactory.class, FiscalDocumentPolicy.class,
         PaymentTerminalRefundDocumentPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
@@ -163,6 +164,10 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
                 .containsEntry("importe_total", new BigDecimal("-12.10")).containsEntry("cuota_total", new BigDecimal("-2.10"));
         assertThat(jdbc.queryForObject("select count(*) from estado_envio_fiscal where registro_id = (select id from registro_fiscal where documento_id = ?)", Integer.class, first.getId())).isEqualTo(1);
         assertThat(jdbc.queryForObject("select count(*) from sync_outbox where (tipo_entidad = 'DOCUMENTO' and entidad_id = ?) or (tipo_entidad = 'STOCK_MOVEMENT' and payload ->> 'documentoId' = ?)", Integer.class, first.getId(), first.getId().toString())).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select payload->>'sourceRevision' from sync_outbox where tipo_entidad = 'DOCUMENTO' and entidad_id = ?",
+                String.class, first.getId())).isEqualTo("1");
+        assertThat(jdbc.queryForObject("select payload->'relaciones'->0->>'origenId' from sync_outbox where tipo_entidad = 'DOCUMENTO' and entidad_id = ?",
+                String.class, first.getId())).isEqualTo(fixture.documentId().toString());
     }
 
     @Test

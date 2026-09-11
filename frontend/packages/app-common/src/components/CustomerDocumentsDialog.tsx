@@ -8,6 +8,7 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { nextTableSort, type TableSort } from "./tableSorting";
 import { ErpSelect } from "./ErpSelect";
 import { CustomerModel347Dialog } from "./CustomerModel347Dialog";
+import { customerDocumentAmount } from "./customerDocumentAmount";
 import "./CustomerDocumentsDialog.css";
 
 const tabs = [
@@ -17,21 +18,24 @@ const tabs = [
 ] as const;
 type Tab = typeof tabs[number]["key"];
 const columns = [
+  { key: "store", defaultWidth: 90 },
   { key: "number", defaultWidth: 210 }, { key: "date", defaultWidth: 115 },
   { key: "type", defaultWidth: 165 }, { key: "status", defaultWidth: 145 },
   { key: "base", defaultWidth: 115 }, { key: "tax", defaultWidth: 100 },
   { key: "total", defaultWidth: 115 }, { key: "terminal", defaultWidth: 150 },
   { key: "user", defaultWidth: 160 },
+  { key: "currency", defaultWidth: 90 },
 ] as const;
 type Column = typeof columns[number]["key"];
 type DocumentRow = {
-  id: string; numero: string; fecha: string; tipo: string; estado: string;
-  customerId?: string | null; clienteId?: string | null;
-  base: number | string; impuesto: number | string; total: number | string;
-  terminalOrigenNombre?: string | null; usuarioNombre?: string | null;
+  id: string; storeId: string; storeCode: string; documentId: string;
+  customerId: string; number: string; date: string; type: string; status: string;
+  subtotal: string; taxTotal: string; total: string; currency: string;
+  terminalName?: string | null; userName?: string | null;
 };
-type DocumentPage = { items: DocumentRow[]; nextCursor?: string | null; hasMore: boolean };
-const statuses = ["BORRADOR", "CONFIRMADO", "PENDIENTE", "PARCIAL", "PAGADO", "ANULADO"] as const;
+type DocumentPage = { localCustomerId: string; customer: { id: string }; coverage: string;
+  items: DocumentRow[]; nextCursor?: string | null; hasMore: boolean };
+const statuses = ["CONFIRMADO", "PENDIENTE", "PARCIAL", "PAGADO", "ANULADO"] as const;
 const emptyFilters = { search: "", status: "", dateFrom: "", dateTo: "" };
 type Props = {
   customer: { id: string; clientId: string; fiscalName: string };
@@ -72,6 +76,9 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   const bodyRef = useRef<HTMLDivElement>(null);
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const allowed = canReadCustomerDocuments(session.permissions, tab);
+  const readContextRef = useRef<{ key: string; active: boolean } | null>(null);
+  const tableStateRef = useRef({ selectedId, page });
+  tableStateRef.current = { selectedId, page };
   const [model347CustomerId, setModel347CustomerId] = useState<string | null>(null);
   const model347Open = active && allowed && tab === "invoices" && model347CustomerId === customer.id;
   // Let the last real column fill spare width instead of drawing an empty tail.
@@ -114,19 +121,31 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   }
 
   useEffect(() => {
+    const key = JSON.stringify([customer.id, session.accessToken, tab, allowed, filters, sort]);
+    const previous = readContextRef.current;
+    const contextChanged = previous?.key !== key;
+    const resumed = !contextChanged && previous?.active === false;
+    readContextRef.current = { key, active };
+    if (contextChanged) resetRows();
     if (!active) return;
+    // A cursor belongs to its customer/filter/access context, never to the next dataset.
+    if (contextChanged && cursor) return;
+    if (resumed && cursor && !tableStateRef.current.page) { setCursor(null); return; }
     const controller = new AbortController();
-    if (!cursor || !allowed) { setPage(null); setSelectedId(null); }
+    if ((!cursor && !resumed) || !allowed) { setPage(null); setSelectedId(null); }
     setErrorKey(""); setLoading(allowed);
     if (!allowed) return;
-    const query = new URLSearchParams({ customerId: customer.id, limit: "50", sortBy: sort.column, sortDirection: sort.direction });
+    const query = new URLSearchParams({ size: "50", sortBy: sort.column, sortDirection: sort.direction });
     for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
     if (cursor) query.set("cursor", cursor);
-    void apiRequest<DocumentPage>(`/document-reports/${tab}?${query}`, { token: session.accessToken, signal: controller.signal })
+    void apiRequest<DocumentPage>(`/customer-document-reports/saas/${encodeURIComponent(customer.id)}/${tab}?${query}`, { token: session.accessToken, signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
-        // Fail closed if an older server ignores the new customer filter.
-        if (result.items.some((row) => (tab === "tickets" ? row.customerId : row.clienteId) !== customer.id)) {
+        // Keep remote identities separate from the local customer and require the expected dataset.
+        if (result.localCustomerId !== customer.id || result.coverage !== "RECEIVED_V2_ONLY"
+          || !result.customer?.id || result.items.some((row) => row.customerId !== result.customer.id
+            || row.id !== `${row.storeId}/${row.documentId}`)) {
+          setPage(null); setSelectedId(null); setScrollTop(0);
           setErrorKey("customerDocuments.filterUnavailable"); return;
         }
         setPage((current) => {
@@ -136,12 +155,20 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
           return { ...result, items: [...items.values()] };
         });
         if (!cursor) {
-          setSelectedId(result.items[0]?.id ?? null);
-          if (bodyRef.current) bodyRef.current.scrollTop = 0;
+          // F7 still refreshes the page, but an unchanged selected row keeps its viewport.
+          if (!resumed || !result.items.some((row) => row.id === tableStateRef.current.selectedId)) {
+            setSelectedId(result.items[0]?.id ?? null);
+            setScrollTop(0);
+            if (bodyRef.current) bodyRef.current.scrollTop = 0;
+          }
         }
       }).catch((failure: unknown) => {
-        if (!controller.signal.aborted) setErrorKey(classifyApiFailure(failure) === "forbidden"
-          ? "customerDocuments.noAccess" : "customerDocuments.loadError");
+        if (controller.signal.aborted) return;
+        const bindingRequired = apiProblemCode(failure) === "SAAS_CUSTOMER_BINDING_REQUIRED";
+        const forbidden = classifyApiFailure(failure) === "forbidden";
+        if (bindingRequired || forbidden) { setPage(null); setSelectedId(null); setScrollTop(0); }
+        setErrorKey(bindingRequired ? "customerDocuments.bindingRequired"
+          : forbidden ? "customerDocuments.noAccess" : "customerDocuments.loadError");
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [active, customer.id, session.accessToken, tab, cursor, allowed, retry, filters, sort]);
@@ -200,17 +227,19 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   function label(column: Column) {
     if (column === "number") return t("receivables.column.document");
     if (column === "type") return t("customerDocuments.type");
+    if (column === "store" || column === "currency") return t(`customerDocuments.${column}`);
     return t(`salesReport.column.${column}`);
   }
   function cell(row: DocumentRow, column: Column): string {
-    if (column === "number") return row.numero;
-    if (column === "date") return new Date(`${row.fecha}T00:00:00`).toLocaleDateString(locale === "zh" ? "zh-CN" : locale);
-    if (column === "type") return t(`customerDocuments.type.${row.tipo}`);
-    if (column === "status") return t(`salesReport.activity.documentStatus.${row.estado}`);
-    if (column === "terminal") return row.terminalOrigenNombre || "—";
-    if (column === "user") return row.usuarioNombre || "—";
-    return Number(column === "tax" ? row.impuesto : row[column]).toLocaleString(locale === "zh" ? "zh-CN" : locale,
-      { style: "currency", currency: "EUR" });
+    if (column === "store") return row.storeCode;
+    if (column === "currency") return row.currency;
+    if (column === "number") return row.number;
+    if (column === "date") return new Date(`${row.date}T00:00:00`).toLocaleDateString(locale === "zh" ? "zh-CN" : locale);
+    if (column === "type") return t(`customerDocuments.type.${row.type}`);
+    if (column === "status") return t(`salesReport.activity.documentStatus.${row.status}`);
+    if (column === "terminal") return row.terminalName || "—";
+    if (column === "user") return row.userName || "—";
+    return customerDocumentAmount(column === "tax" ? row.taxTotal : column === "base" ? row.subtotal : row.total, row.currency, locale);
   }
 
   async function exportExcel() {
@@ -218,13 +247,13 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
     const controller = new AbortController();
     exportController.current = controller; setExportBusy(true); setExportErrorKey("");
     try {
-      const blob = await apiRequest<Blob>("/customer-document-reports/export.xlsx", {
+      const blob = await apiRequest<Blob>("/customer-document-reports/saas/export.xlsx", {
         token: session.accessToken, responseType: "blob", signal: controller.signal,
         body: {
           customerId: customer.id, reportKey: tab,
           filters: Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
           sortBy: sort.column, sortDirection: sort.direction,
-          ...(hasFilters ? {} : { documentIds: rows.map((row) => row.id) }),
+          ...(hasFilters ? {} : { documentKeys: rows.map((row) => ({ storeId: row.storeId, documentId: row.documentId })) }),
           columns: layout.map((column) => ({ key: column.key, label: label(column.key) })),
           labels: {
             sheetName: t(`customerDocuments.${tab}`),
@@ -310,7 +339,11 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
       {filterError && <p className="customer-documents-notice" role="alert">{t("customerDocuments.invalidDates")}</p>}
       {filtersDirty && <p className="customer-documents-notice" role="status">{t("customerDocuments.applyPending")}</p>}
       {exportErrorKey && <p className="customer-documents-notice" role="alert">{t(exportErrorKey)}</p>}
-      {errorKey && <div className="customer-documents-notice" role="alert"><span>{t(errorKey)}</span> <button type="button" onClick={() => setRetry((value) => value + 1)}>{t("party.retry")}</button></div>}
+      {errorKey && <div className="customer-documents-notice" role="alert"><span>{t(errorKey)}</span> <button type="button" onClick={() => {
+        // A discarded dataset cannot be resumed from its former tail cursor.
+        if (!page) resetRows();
+        setRetry((value) => value + 1);
+      }}>{t("party.retry")}</button></div>}
       <p className="customer-documents-scope">{t("customerDocuments.scope")}</p>
       <div id="customer-documents-panel" className="customer-documents-panel" role="tabpanel" aria-labelledby={`customer-documents-tab-${tab}`} aria-busy={loading}>
         <div className="customer-documents-table-scroll">

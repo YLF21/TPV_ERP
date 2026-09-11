@@ -38,6 +38,24 @@ public interface DocumentRelationRepository
             @Param("documentId") UUID documentId,
             @Param("type") DocumentRelationType type);
 
+    // Read every outgoing relation. The payload factory rejects a corrupt cross-store origin
+    // instead of silently publishing an incomplete list of relationships.
+    @Query("""
+            select relation.tipo as type, relation.origen.id as originId,
+                   relation.origen.tiendaId as originStoreId
+            from DocumentRelation relation
+            where relation.documento.id = :documentId
+              and relation.documento.tiendaId = :storeId
+            order by relation.tipo asc, relation.origen.id asc
+            """)
+    List<SyncRelation> findOutgoingForSync(@Param("documentId") UUID documentId, @Param("storeId") UUID storeId);
+
+    interface SyncRelation {
+        DocumentRelationType getType();
+        UUID getOriginId();
+        UUID getOriginStoreId();
+    }
+
     @Query("""
             select relation.origen.id as originId,
                    relation.documento.id as documentId,

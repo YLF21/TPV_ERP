@@ -28,4 +28,9 @@ public class CustomerIdentityException extends ResponseStatusException {
         return new CustomerIdentityException(HttpStatus.CONFLICT, "CUSTOMER_IDENTITY_CONFLICT",
                 "La identidad del cliente ha cambiado o tiene otra operacion pendiente");
     }
+
+    public static CustomerIdentityException notFound() {
+        return new CustomerIdentityException(HttpStatus.NOT_FOUND, "CUSTOMER_CENTRAL_NOT_FOUND",
+                "No existe un cliente central con ese documento en esta empresa");
+    }
 }

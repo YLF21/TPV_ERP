@@ -1,0 +1,8 @@
+.party-central-customer { border-top: 1px solid #b4c6dc; background: #edf2f7; padding: 10px 12px; color: #123252; }
+.party-central-customer-search, .party-central-customer-result { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.party-central-customer-result { padding-top: 8px; flex-wrap: wrap; }
+.party-central-customer-result > div { display: grid; gap: 3px; }
+.party-central-customer p { margin: 8px 0 0; color: #9d2525; }
+.party-central-customer button { min-height: 32px; border: 1px solid #7f9cbd; border-radius: 0; padding: 4px 12px; background: #fff; color: #123252; font: inherit; cursor: pointer; }
+.party-central-customer button:focus-visible { outline: 2px solid #1266ad; outline-offset: 2px; }
+.party-central-customer button:disabled { color: #647184; cursor: default; }

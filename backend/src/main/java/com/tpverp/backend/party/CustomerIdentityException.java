@@ -28,4 +28,7 @@ public final class CustomerIdentityException extends RuntimeException {
     public static CustomerIdentityException unavailable() {
         return new CustomerIdentityException("CUSTOMER_IDENTITY_SAAS_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE);
     }
+    public static CustomerIdentityException notFound() {
+        return new CustomerIdentityException("CUSTOMER_CENTRAL_NOT_FOUND", HttpStatus.NOT_FOUND);
+    }
 }

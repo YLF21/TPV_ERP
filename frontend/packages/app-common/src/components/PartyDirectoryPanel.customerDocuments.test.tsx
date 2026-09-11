@@ -14,7 +14,7 @@ beforeEach(() => {
     if (path === "/customers") return [customer];
     if (path.startsWith("/customers/management/page")) return { items: [customer], hasMore: false };
     if (path === "/suppliers") return [{ ...customer, supplierId: "P-001", legalName: "Proveedor de prueba" }];
-    if (path.startsWith("/document-reports/")) return { items: [], hasMore: false };
+    if (path.startsWith("/customer-document-reports/saas/customer-1/")) return { localCustomerId: customer.id, customer: { id: "central-customer" }, coverage: "RECEIVED_V2_ONLY", items: [], hasMore: false };
     return [];
   });
 });
@@ -32,7 +32,7 @@ describe("Customer directory document entry", () => {
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`/ui/table-preferences/${app}/customers.documents`, expect.objectContaining({ token: "test-token" })));
     expect(screen.queryByRole("textbox", { name: "Nombre fiscal" })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F3" });
-    await screen.findByText("Este cliente no tiene documentos de este tipo en la tienda activa.");
+    await screen.findByText("No hay documentos de este tipo recibidos en SaaS para este cliente.");
     fireEvent.keyDown(window, { key: "F7" });
     const name = await screen.findByDisplayValue("Cliente de prueba");
     expect(name).toHaveFocus();
@@ -59,7 +59,7 @@ describe("Customer directory document entry", () => {
     vi.mocked(apiRequest).mockImplementation(async (path, options) => {
       if (path === "/customers/customer-1" && options?.method === "PUT") { saved = true; return customer; }
       if (path === "/customers") return [{ ...customer, fiscalName: saved ? "Cliente actualizado" : customer.fiscalName }];
-      if (path.startsWith("/document-reports/")) return { items: [], hasMore: false };
+      if (path.startsWith("/customer-document-reports/saas/customer-1/")) return { localCustomerId: customer.id, customer: { id: "central-customer" }, coverage: "RECEIVED_V2_ONLY", items: [], hasMore: false };
       return [];
     });
     render(<PartyDirectoryPanel kind="customers" locale="es" session={session} />);
@@ -80,6 +80,6 @@ describe("Customer directory document entry", () => {
     fireEvent.click((await screen.findByText("Proveedor de prueba")).closest("[role=row]")!, { detail: 1 });
     await screen.findByDisplayValue("Proveedor de prueba");
     expect(screen.queryByRole("dialog", { name: "Documentos del cliente" })).not.toBeInTheDocument();
-    await waitFor(() => expect(apiRequest).not.toHaveBeenCalledWith(expect.stringContaining("/document-reports/"), expect.anything()));
+    await waitFor(() => expect(apiRequest).not.toHaveBeenCalledWith(expect.stringContaining("/customer-document-reports/saas/customer-1/"), expect.anything()));
   });
 });
