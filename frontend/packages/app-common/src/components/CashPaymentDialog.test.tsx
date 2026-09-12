@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CashPaymentDialog, cashPaymentKeyAction } from "./CashPaymentDialog";
 import { activateModalFocusTrap } from "./modalFocusTrap";
+import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 
 const baseProps = {
   totalCents: 1543,
@@ -19,11 +20,16 @@ afterEach(cleanup);
 
 describe("CashPaymentDialog", () => {
   it("starts with touch controls and can switch to the physical keyboard for this opening", () => {
-    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />);
+    render(<SaleTouchKeyboardScope locale="es" interfaceMode="TOUCH">
+      <CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />
+    </SaleTouchKeyboardScope>);
 
     expect(screen.getByRole("button", { name: "Tecla 7" })).toBeVisible();
+    fireEvent.focus(screen.getByRole("textbox", { name: "Dinero recibido" }));
+    expect(screen.queryByRole("group", { name: "Teclado numérico" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Usar teclado físico" }));
     expect(screen.queryByRole("button", { name: "Tecla 7" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Teclado numérico" })).not.toBeInTheDocument();
   });
   it("labels and scopes the cash-entry modal", () => {
     const html = renderToStaticMarkup(<CashPaymentDialog {...baseProps} initialMode="touch" />);

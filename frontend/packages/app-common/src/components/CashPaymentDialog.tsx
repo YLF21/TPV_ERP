@@ -99,6 +99,7 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
       <section
         ref={dialogRef}
         className="cash-payment-dialog cash-payment-entry-dialog"
+        data-touch-keyboard="off"
         role="dialog"
         aria-modal="true"
         aria-labelledby="cash-payment-title"

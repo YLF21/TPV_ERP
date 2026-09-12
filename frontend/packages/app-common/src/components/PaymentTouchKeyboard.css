@@ -1,0 +1,86 @@
+/* The checkout owns this keyboard; fields and actions stay in its normal layout. */
+.sale-checkout-dialog.is-touch.has-touch-text-keyboard > .touch-alpha-keyboard {
+  --touch-alpha-key-height: 44px;
+  gap: 6px;
+  margin: 0 8px 8px;
+  padding: 6px;
+}
+
+.sale-checkout-dialog.is-touch.has-touch-text-keyboard .touch-alpha-keyboard-text-pad,
+.sale-checkout-dialog.is-touch.has-touch-text-keyboard .touch-alpha-keyboard-number-pad,
+.sale-checkout-dialog.is-touch.has-touch-text-keyboard .touch-alpha-keyboard-row {
+  gap: 4px;
+}
+
+/* Keep the original two method rows. Put their payment history beside them so
+   the text keyboard does not push the entry fields or checkout actions away. */
+@media (min-width: 1100px) {
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-body {
+    padding: 8px;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-main {
+    display: grid;
+    grid-template-columns: minmax(650px, 1.45fr) minmax(0, 1fr);
+    gap: 8px 12px;
+    align-items: stretch;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-entry,
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-totals,
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-policy-notice,
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-error,
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-footer {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-entry input {
+    min-height: 44px;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-change {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-methods {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    margin: 0;
+    align-content: start;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-methods button {
+    min-height: 44px;
+    padding: 5px 8px;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-table-wrap {
+    grid-column: 2;
+    grid-row: 3;
+    min-width: 0;
+    max-height: 92px;
+    overflow: auto;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-table th,
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-table td {
+    padding-inline: 6px;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-table .empty-row td {
+    height: 38px;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-totals span {
+    min-height: 44px;
+    padding: 4px 12px;
+  }
+
+  .sale-checkout-dialog.is-touch.has-touch-text-keyboard .sale-checkout-footer button {
+    min-height: 44px;
+  }
+}

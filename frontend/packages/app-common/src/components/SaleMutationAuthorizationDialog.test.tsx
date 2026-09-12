@@ -15,6 +15,36 @@ import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDial
 afterEach(cleanup);
 
 describe("SaleMutationAuthorizationDialog", () => {
+  it("edits the active authorization credential by touch without exposing or submitting passwords", async () => {
+    const onConfirm = vi.fn();
+    render(<SaleMutationAuthorizationDialog
+      open locale="es" interfaceMode="TOUCH" currentUsername="CAJERO"
+      requirements={[{ code: "TEMPORARY_PRICE_CHANGE", label: "Precio", authorization: { mode: "DELEGATED", requireUsername: true, requirePassword: true } }]}
+      onCancel={vi.fn()} onConfirm={onConfirm}
+    />);
+    const username = screen.getByLabelText<HTMLInputElement>("Usuario autorizador");
+    const password = screen.getByLabelText<HTMLInputElement>("Contraseña del autorizador");
+    await waitFor(() => expect(username).toHaveFocus());
+    fireEvent.click(await screen.findByRole("button", { name: "A" }));
+    expect(username).toHaveValue("A");
+    password.focus();
+    fireEvent.click(screen.getByRole("button", { name: "B" }));
+    fireEvent.click(screen.getByRole("button", { name: "1" }));
+    expect(username).toHaveValue("A");
+    expect(password).toHaveValue("B1");
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveFocus();
+    expect(screen.getByRole("group", { name: "Teclado alfanumérico" })).not.toHaveTextContent("B1");
+    expect(onConfirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar y continuar" }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith({ TEMPORARY_PRICE_CHANGE: { authorizerUsername: "A", authorizerPassword: "B1" } }));
+    expect(password).toHaveValue("");
+  });
+
+  it("does not add a virtual keyboard in the default mode", () => {
+    render(<SaleMutationAuthorizationDialog open locale="es" requirements={[{ code: "TEMPORARY_PRICE_CHANGE", label: "Precio", authorization: { mode: "CURRENT_PASSWORD", requireUsername: false, requirePassword: true } }]} onCancel={vi.fn()} onConfirm={vi.fn()} />);
+    expect(screen.queryByRole("group", { name: "Teclado alfanumérico" })).not.toBeInTheDocument();
+  });
   it("focuses the current user's password when the modal opens", async () => {
     render(<SaleMutationAuthorizationDialog
       open

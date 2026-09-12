@@ -23,10 +23,17 @@ import { queryPaymentOperation } from "../sale/paymentOperations";
 import type { TicketPrinterHealth } from "../hardware/hardware";
 import { SalePaymentCheckout, type PaymentFinalizationSummary, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import type { MemberWalletView } from "./PaymentAllocationPanel";
+import type { SaleCommandLabels } from "./SaleCommandPresentation";
 import {
-  TouchSaleActionPanel,
-  type SaleCommandLabels
-} from "./SaleCommandPresentation";
+  TouchSaleTopActions,
+  TouchSaleSideActions,
+  TouchSaleBottomActions,
+  TouchSaleMoreOptionsDialog,
+  type SaleTouchAction,
+} from "./SaleTouchControls";
+import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
+import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
+import "./SaleTouchLayout.css";
 import {
   SaleCommandMenuBar,
   type SaleCommandMenu,
@@ -887,7 +894,7 @@ export function updateSaleLineQuantity(lines: SaleLine[], lineId: string, quanti
   if (!selectedLine
       || selectedLine.previousTicketImportOrigin
       || !isProductQuantityPrecisionValid(quantity, selectedLine.product.productType)
-      || quantity === 0 || quantity < -1 || quantity > 9999) {
+      || quantity === 0 || (quantity < 0 && quantity !== -1) || quantity > 9999) {
     throw new Error("invalid_quantity");
   }
   return lines.map((line) => saleCartLineIdentity(line) === lineId ? { ...line, quantity } : line);
@@ -1714,6 +1721,8 @@ export function SaleScreen({
     | "discount"
     | "temporaryName"
     | "temporaryPrice"
+    | "touchPrice"
+    | "documentDiscount"
     | "customer"
     | "remove"
     | "comment"
@@ -1723,6 +1732,9 @@ export function SaleScreen({
     | null
   >(null);
   const [quantityInput, setQuantityInput] = useState("1");
+  const [touchMoreOpen, setTouchMoreOpen] = useState(false);
+  const [touchPriceInput, setTouchPriceInput] = useState("");
+  const [documentDiscountInput, setDocumentDiscountInput] = useState("0");
   const [discountInput, setDiscountInput] = useState("0");
   const [temporaryNameInput, setTemporaryNameInput] = useState("");
   const [temporaryPriceInput, setTemporaryPriceInput] = useState("");
@@ -1876,6 +1888,9 @@ export function SaleScreen({
   const discountInputRef = useRef<HTMLInputElement>(null);
   const temporaryNameInputRef = useRef<HTMLInputElement>(null);
   const temporaryPriceInputRef = useRef<HTMLInputElement>(null);
+  const touchPriceInputRef = useRef<HTMLInputElement>(null);
+  const documentDiscountInputRef = useRef<HTMLInputElement>(null);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const clearSaleCancelButtonRef = useRef<HTMLButtonElement>(null);
   const clearSaleConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const clearLinesCancelButtonRef = useRef<HTMLButtonElement>(null);
@@ -2658,17 +2673,6 @@ export function SaleScreen({
     const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice, 3)} ${discountText} ${totalAmount == null ? t("sale.quote.loading") : formatSaleAmount(totalAmount)}`;
     const cartLineId = saleCartLineIdentity(localLine);
     const selected = selectedLineId === cartLineId;
-    const touchQuantityLocked = paymentLocked
-      || Boolean(localLine.returnOrigin)
-      || Boolean(localLine.previousTicketImportOrigin);
-
-    function adjustTouchQuantity(delta: number) {
-      if (touchQuantityLocked) return;
-      const nextQuantity = Math.min(9999, Math.max(1, localLine.quantity + delta));
-      setSelectedLineId(cartLineId);
-      requestLineQuantityChange(localLine, nextQuantity);
-    }
-
     function renderCell(column: SaleCartColumnKey) {
       if (column === "image") {
         return (
@@ -2728,23 +2732,7 @@ export function SaleScreen({
       if (column === "quantity") {
         return (
           <td className="sale-cart-number sale-cart-quantity" data-column-key={column} key={column}>
-            {interfaceMode === "TOUCH" ? (
-              <div className="sale-cart-touch-quantity">
-                <button
-                  type="button"
-                  aria-label={`${t("sale.touch.decreaseQuantity")}: ${name}`}
-                  disabled={touchQuantityLocked || quantity <= 1}
-                  onClick={(event) => { event.stopPropagation(); adjustTouchQuantity(-1); }}
-                >−</button>
-                <output aria-label={`${t("sale.quantity.label")}: ${name}`}>{quantityText}</output>
-                <button
-                  type="button"
-                  aria-label={`${t("sale.touch.increaseQuantity")}: ${name}`}
-                  disabled={touchQuantityLocked || quantity >= 9999}
-                  onClick={(event) => { event.stopPropagation(); adjustTouchQuantity(1); }}
-                >+</button>
-              </div>
-            ) : quantityText}
+            {quantityText}
           </td>
         );
       }
@@ -3012,6 +3000,7 @@ export function SaleScreen({
         locale,
         session,
         terminalContext,
+        interfaceMode,
         initialProductId: selectedLine?.product.id,
         ...(kind === "INTERNAL_EAN" && internalEanAuthorization
           ? { authorization: internalEanAuthorization }
@@ -3514,6 +3503,10 @@ export function SaleScreen({
       discountInputRef.current?.focus();
       discountInputRef.current?.select();
     }
+    if (actionDialog === "touchPrice") {
+      touchPriceInputRef.current?.focus();
+      touchPriceInputRef.current?.select();
+    }
     if (actionDialog === "temporaryName") {
       temporaryNameInputRef.current?.focus();
       temporaryNameInputRef.current?.select();
@@ -3631,7 +3624,7 @@ export function SaleScreen({
   function saveDiscount() {
     if (!selectedLineId) return;
     try {
-      const discount = Number(discountInput);
+      const discount = Number(discountInput.replace(",", "."));
       const nextLines = updateSaleLineDiscount(lines, selectedLineId, discount);
       setLines(nextLines);
       setActionDialog(null);
@@ -3706,9 +3699,9 @@ export function SaleScreen({
     }
   }
 
-  async function saveTemporaryPrice() {
+  async function saveTemporaryPrice(input = temporaryPriceInput) {
     if (!selectedLineId) return;
-    const normalized = temporaryPriceInput.trim().replace(",", ".");
+    const normalized = input.trim().replace(",", ".");
     if (normalized && !/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
       setActionError(t("sale.temporaryPrice.invalid"));
       return;
@@ -4209,19 +4202,19 @@ export function SaleScreen({
       }));
   }
 
-  function applyDesiredLinePrice() {
+  function applyDesiredLinePrice(desiredPrice = quickOperand()) {
     if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked || !canApplyManualDiscount
-      || saleProductBlocksManualDiscount(selectedLine.product)) return;
-    const desiredPrice = quickOperand();
+      || saleProductBlocksManualDiscount(selectedLine.product)) return false;
     const currentPrice = saleLineUnitPrice(selectedLine, activeMember, wholesaleMode);
     if (desiredPrice == null || desiredPrice < 0 || desiredPrice > currentPrice || currentPrice <= 0) {
       setShortcutStatus("Introduce un precio final válido para la línea");
-      return;
+      return false;
     }
     const discount = Math.round((1 - desiredPrice / currentPrice) * 10_000) / 100;
     setDiscountInput(String(discount));
     clearQuickEntry();
     setLines((current) => updateSaleLineDiscount(current, saleCartLineIdentity(selectedLine), discount));
+    return true;
   }
 
   function cashSaleRequest(includeQuoteFingerprint = false) {
@@ -5505,7 +5498,73 @@ export function SaleScreen({
       ? saleMainMessage(t, "sale.printer.warning.notFound", { printer: ticketPrinterHealth.printerName })
       : t("sale.printer.warning.unavailable");
 
+  function touchAction(command: SaleCommandId, label: string, id: string = command): SaleTouchAction {
+    return { id, label, disabled: saleCommandDisabled(command), onClick: () => { executeSaleCommand(command); } };
+  }
+
+  function moveTouchSelection(key: "ArrowUp" | "ArrowDown") {
+    if (paymentLocked || previousTicketImportBusy) return;
+    setSelectedLineId(saleLineSelectionAfterArrow(lines, selectedLineId, key));
+  }
+
+  function touchQuantityDisabled(delta: number) {
+    if (saleCommandDisabled("quantity") || !selectedLine) return true;
+    const next = normalizeProductQuantity(selectedLine.quantity + delta);
+    return next < 0 || next > 9999;
+  }
+
+  function adjustTouchSelectedQuantity(delta: number) {
+    if (touchQuantityDisabled(delta) || !selectedLine) return;
+    const next = normalizeProductQuantity(selectedLine.quantity + delta);
+    // Zero uses the existing deletion confirmation and security flow.
+    if (next === 0) setActionDialog("remove");
+    else changeSelectedLineQuantity(next);
+  }
+
+  const touchDiscountDisabled = saleCommandDisabled("line-discount") || !canApplyManualDiscount
+    || Boolean(selectedLine && saleProductBlocksManualDiscount(selectedLine.product));
+  const touchPriceDisabled = saleCommandDisabled("temporary-price") && touchDiscountDisabled;
+  const hasManualDocumentDiscount = documentDiscountPercent > 0 || checkoutDiscountCents > 0;
+
+  function openTouchPrice() {
+    if (touchPriceDisabled || !selectedLine) return;
+    setTouchPriceInput(String(saleLineUnitPrice(selectedLine, activeMember, wholesaleMode)));
+    setActionError("");
+    setActionDialog("touchPrice");
+  }
+
+  function touchDocumentDiscount() {
+    if (saleCommandDisabled("sale-discount")) return;
+    if (hasManualDocumentDiscount) {
+      // Do not remove line discounts, automatic member discounts or member balance.
+      setDocumentDiscountPercent(0);
+      setCheckoutDiscountCents(0);
+      setShortcutStatus(t("sale.documentDiscount.cleared"));
+      return;
+    }
+    setDocumentDiscountInput(String(documentDiscountPercent));
+    setActionError("");
+    setActionDialog("documentDiscount");
+  }
+
+  const touchMoreActions: SaleTouchAction[] = [
+    touchAction("temporary-name", commandLabels.temporaryName),
+    touchAction("serial-number", commandLabels.serialNumber),
+    {
+      id: "sale-discount",
+      label: hasManualDocumentDiscount ? t("sale.touch.removeDocumentDiscount") : t("sale.touch.documentDiscount"),
+      disabled: saleCommandDisabled("sale-discount"), onClick: touchDocumentDiscount,
+    },
+    touchAction("sale-comment", commandLabels.saleComment),
+    touchAction("convert-ticket", commandLabels.convertInvoice),
+    touchAction("gift-receipt", t("sale.shortcut.giftReceipt")),
+    touchAction("clear-lines", t("sale.clearLines.action")),
+    touchAction("clear-sale", t("sale.clearSale.action")),
+    touchAction("cancel-ticket", commandLabels.cancelOtherTicket),
+  ];
+
   return (
+    <SaleTouchKeyboardScope locale={locale} interfaceMode={interfaceMode}>
     <main className={`sale-screen work-screen ${interfaceMode === "TOUCH" ? "touch-mode" : "keyboard-mode"}`}>
       <div aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined} style={{ display: "contents" }}><SessionTopControls
         locale={locale}
@@ -5533,6 +5592,12 @@ export function SaleScreen({
             ariaLabel={t("sale.menu.aria")}
             menus={saleCommandMenus}
           />
+          {interfaceMode === "TOUCH" && (
+            <TouchSaleTopActions
+              document={onOpenSalesDocumentWindow ? touchAction("sales-document", commandLabels.document) : undefined}
+              calculator={touchAction("calculator", commandLabels.calculator)}
+            />
+          )}
           {app === "venta" && hasPermission(session, "VENTA") && (
             <VerifactuPosIndicator
               token={session.accessToken ?? ""}
@@ -5627,6 +5692,19 @@ export function SaleScreen({
             preview={visiblePromotionPreview}
             status={currentRepricingQuoteStatus}
           />
+          {interfaceMode === "TOUCH" && (
+            <TouchSaleBottomActions
+              previous={{ id: "previous", label: t("sale.touch.previousRow"), disabled: paymentLocked || previousTicketImportBusy || !lines.length || selectedLineId === saleCartLineIdentity(lines[0]), onClick: () => moveTouchSelection("ArrowUp") }}
+              next={{ id: "next", label: t("sale.touch.nextRow"), disabled: paymentLocked || previousTicketImportBusy || !lines.length || selectedLineId === saleCartLineIdentity(lines[lines.length - 1]), onClick: () => moveTouchSelection("ArrowDown") }}
+              increase={{ id: "increase", label: "+1", disabled: touchQuantityDisabled(1), onClick: () => adjustTouchSelectedQuantity(1) }}
+              decrease={{ id: "decrease", label: "−1", disabled: touchQuantityDisabled(-1), onClick: () => adjustTouchSelectedQuantity(-1) }}
+              quantity={touchAction("quantity", commandLabels.quantity)}
+              price={{ id: "price", label: t("sale.touch.price"), disabled: touchPriceDisabled, onClick: openTouchPrice }}
+              discount={{ ...touchAction("line-discount", commandLabels.lineDiscount, "discount"), disabled: touchDiscountDisabled }}
+              remove={{ id: "remove", label: commandLabels.removeLine, disabled: saleCommandDisabled("quantity"), onClick: () => setActionDialog("remove") }}
+              checkout={touchAction("checkout", t("sale.touch.checkout"))}
+            />
+          )}
         </section>
 
         <section className="sale-tools work-panel" aria-label={t("sale.main.searchAndPayment")}>
@@ -5675,6 +5753,7 @@ export function SaleScreen({
               placeholder={t("sale.main.searchPlaceholder")}
               role="combobox"
               value={query}
+              onClick={() => { if (interfaceMode === "TOUCH") executeSaleCommand("product-search"); }}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -5801,55 +5880,14 @@ export function SaleScreen({
             </p>
           )}
           {interfaceMode === "TOUCH" && (
-            <TouchSaleActionPanel
-              labels={commandLabels}
-              paymentLocked={paymentLocked}
-              searchDisabled={catalogLoading || Boolean(catalogError) || paymentLocked}
-              quantityDisabled={saleCommandDisabled("quantity")}
-              temporaryNameDisabled={saleCommandDisabled("temporary-name")}
-              temporaryPriceDisabled={saleCommandDisabled("temporary-price")}
-              editProductDisabled={!selectedLine || paymentLocked || productEditBusy}
-              serialNumberDisabled={saleCommandDisabled("serial-number")}
-              ticketReturnDisabled={saleCommandDisabled("ticket-return")}
-              discountDisabled={
-                !selectedLine
-                || paymentLocked
-                || Boolean(selectedLine.previousTicketImportOrigin)
-                || !canApplyManualDiscount
-                || saleProductBlocksManualDiscount(selectedLine.product)
-              }
-              discountTitle={!canApplyManualDiscount
-                ? "No tienes el permiso APLICAR_DESCUENTO"
-                : selectedLine && saleProductBlocksManualDiscount(selectedLine.product)
-                  ? t("sale.discountBlocked")
-                  : undefined}
-              documentAvailable={Boolean(onOpenSalesDocumentWindow)}
-              receivablesAvailable={canOpenCustomerReceivables}
-              receivablesCustomer={selectedCustomer?.fiscalName ?? undefined}
-              onSearch={() => searchInputRef.current?.focus()}
-              onEanGenerator={() => executeSaleCommand("ean-generator")}
-              onPrintProductLabel={() => executeSaleCommand("print-product-label")}
-              onCashDrawer={() => executeSaleCommand("cash-drawer")}
-              onCashWithdrawal={() => executeSaleCommand("cash-withdrawal")}
-              onEditProduct={() => executeSaleCommand("edit-product")}
-              onSerialNumber={() => executeSaleCommand("serial-number")}
-              onTicketReturn={() => executeSaleCommand("ticket-return")}
-              onDocument={() => executeSaleCommand("sales-document")}
-              onQuantity={() => executeSaleCommand("quantity")}
-              onTemporaryName={() => executeSaleCommand("temporary-name")}
-              onTemporaryPrice={() => executeSaleCommand("temporary-price")}
-              onDiscount={() => executeSaleCommand("line-discount")}
-              onCustomer={() => executeSaleCommand("customer")}
-              onRemoveLine={() => setActionDialog("remove")}
-              onParkedSales={() => executeSaleCommand("park-sale")}
-              onCancelLastTicket={() => executeSaleCommand("cancel-last-ticket")}
-              onCancelTicket={() => executeSaleCommand("cancel-ticket")}
-              onConvertTicket={() => executeSaleCommand("convert-ticket")}
-              onReceivables={() => onOpenCustomerReceivables?.(selectedCustomer?.id)}
+            <TouchSaleSideActions
+              parked={touchAction("park-sale", commandLabels.parkedSales, "parked")}
+              returnAction={touchAction("ticket-return", t("sale.touch.return"), "return")}
+              copy={touchAction("reprint-last-ticket", t("sale.touch.copyLastTicket"), "copy")}
+              more={{ id: "more", label: t("sale.touch.moreOptions"), disabled: paymentLocked || previousTicketImportBusy, onClick: () => setTouchMoreOpen(true) }}
             />
           )}
           <section className="sale-payment" aria-label={t("sale.main.payment")}>
-            {interfaceMode === "TOUCH" && <h2>{t("sale.main.payment")}</h2>}
             {ticketPrinterWarning && (
               <aside
                 className="sale-printer-warning"
@@ -5871,7 +5909,7 @@ export function SaleScreen({
               permissions={session.permissions}
               terminal={terminalContext}
               disabled={paymentActionsDisabled || !paymentHydrated}
-              showIndividualActions={interfaceMode === "TOUCH"}
+              showIndividualActions={false}
               unifiedCheckout
               interfaceMode={interfaceMode}
               customerSelected={Boolean(selectedCustomer)}
@@ -6096,6 +6134,7 @@ export function SaleScreen({
       {cardDialogOpen && <CardPaymentDialog totalCents={cardQuoteCents} status={cardStatus} submitting={cardSubmitting} message={cardMessage} onCancel={() => setCardDialogOpen(false)} onConsult={consultCardPayment} onNewOperation={retryCardPayment} />}
 
       {pendingDraft && (selectedCustomer || recoveredPendingSale) && <CustomerPendingSaleDialog
+        interfaceMode={interfaceMode}
         customerName={selectedCustomer?.fiscalName ?? selectedCustomer?.clientId ?? recoveredPendingSale?.customer.name ?? "Cliente"}
         locale={locale}
         currentUsername={session.username}
@@ -6199,6 +6238,7 @@ export function SaleScreen({
       {consultationMode === "PRICE" && (
         <SalePriceConsultationDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           token={session.accessToken}
           onClose={() => {
             setConsultationMode(null);
@@ -6283,6 +6323,7 @@ export function SaleScreen({
               <span>{t("sale.comment.label")}</span>
               <textarea
                 autoFocus
+                ref={commentInputRef}
                 aria-label={t("sale.comment.label")}
                 maxLength={500}
                 rows={5}
@@ -6293,6 +6334,8 @@ export function SaleScreen({
                 }}
               />
             </label>
+            {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={commentInput}
+              onChange={setCommentInput} inputRef={commentInputRef} maxLength={500} />}
             <small className="sale-dialog-hint">
               {t("sale.comment.hint")} {commentInput.length}/500
             </small>
@@ -6406,16 +6449,89 @@ export function SaleScreen({
         </SaleActionDialog>
       )}
 
+      {interfaceMode === "TOUCH" && touchMoreOpen && (
+        <TouchSaleMoreOptionsDialog
+          locale={locale}
+          actions={touchMoreActions.map((action) => ({ ...action, onClick: () => {
+            setTouchMoreOpen(false);
+            action.onClick();
+          } }))}
+          onClose={() => setTouchMoreOpen(false)}
+        />
+      )}
+
+      {actionDialog === "documentDiscount" && (
+        <SaleActionDialog title={t("sale.touch.documentDiscount")} closeLabel={t("sale.dialog.close")}
+          className="sale-touch-entry-dialog" initialFocusRef={documentDiscountInputRef} onClose={() => setActionDialog(null)}>
+          <form className="sale-action-form" onSubmit={(event) => {
+            event.preventDefault();
+            if (saleCommandDisabled("sale-discount")) return;
+            const discount = saleDocumentDiscountOperand(documentDiscountInput);
+            if (discount == null || discount < 0 || discount > 100) {
+              setActionError(t("sale.documentDiscount.invalid"));
+              return;
+            }
+            setDocumentDiscountPercent(discount);
+            setActionDialog(null);
+          }}>
+            <label><span>{t("sale.discount.label")}</span>
+              <input ref={documentDiscountInputRef} inputMode="decimal" value={documentDiscountInput}
+                onChange={(event) => setDocumentDiscountInput(event.target.value)} />
+            </label>
+            <TouchNumericKeypad value={documentDiscountInput} inputRef={documentDiscountInputRef} allowDecimal
+              ariaLabel={t("sale.touch.numericKeypad")} clearLabel={t("sale.touch.clearNumber")}
+              backspaceLabel={t("sale.touch.backspace")} onChange={setDocumentDiscountInput} />
+            {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+              <button type="submit" disabled={saleCommandDisabled("sale-discount")}>{t("sale.dialog.apply")}</button></div>
+          </form>
+        </SaleActionDialog>
+      )}
+
+      {actionDialog === "touchPrice" && selectedLine && (
+        <SaleActionDialog title={t("sale.touch.price")} closeLabel={t("sale.dialog.close")}
+          className="sale-touch-entry-dialog sale-touch-numeric-dialog" initialFocusRef={touchPriceInputRef}
+          onClose={() => { if (!temporaryPriceAuthorizationBusy) setActionDialog(null); }}>
+          <form className="sale-action-form" onSubmit={(event) => event.preventDefault()}>
+            <div className="sale-inline-edit-product"><strong>{selectedLine.product.code && `${selectedLine.product.code} · `}{selectedLine.temporaryName ?? selectedLine.product.name}</strong></div>
+            <label><span>{t("sale.touch.finalPrice")}</span>
+              <input ref={touchPriceInputRef} inputMode="decimal" value={touchPriceInput} disabled={temporaryPriceAuthorizationBusy}
+                onChange={(event) => { setTouchPriceInput(event.target.value); setActionError(""); }} />
+            </label>
+            <TouchNumericKeypad value={touchPriceInput} inputRef={touchPriceInputRef} allowDecimal disabled={temporaryPriceAuthorizationBusy}
+              ariaLabel={t("sale.touch.numericKeypad")} clearLabel={t("sale.touch.clearNumber")}
+              backspaceLabel={t("sale.touch.backspace")} onChange={setTouchPriceInput} />
+            {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
+            <div className="sale-action-buttons sale-touch-price-actions">
+              <button type="button" className="sale-touch-change-price" disabled={saleCommandDisabled("temporary-price") || temporaryPriceAuthorizationBusy} onClick={() => {
+                if (!touchPriceInput.trim()) { setActionError(t("sale.touch.invalidFinalPrice")); return; }
+                void saveTemporaryPrice(touchPriceInput);
+              }}>{t("sale.touch.changePrice")}</button>
+              <button type="button" disabled={touchDiscountDisabled || temporaryPriceAuthorizationBusy} onClick={() => {
+                const normalized = touchPriceInput.trim().replace(",", ".");
+                if (!/^\d+(?:\.\d{1,2})?$/.test(normalized) || !applyDesiredLinePrice(Number(normalized))) {
+                  setActionError(t("sale.touch.invalidFinalPrice"));
+                } else setActionDialog(null);
+              }}>{t("sale.touch.applyDiscount")}</button>
+            </div>
+          </form>
+        </SaleActionDialog>
+      )}
+
       {actionDialog === "quantity" && selectedLine && (
-        <SaleActionDialog title={t("sale.quantity.title")} closeLabel={t("sale.dialog.close")} onClose={() => setActionDialog(null)}>
+        <SaleActionDialog title={t("sale.quantity.title")} closeLabel={t("sale.dialog.close")}
+          className={interfaceMode === "TOUCH" ? "sale-touch-entry-dialog sale-touch-numeric-dialog" : undefined}
+          initialFocusRef={quantityInputRef} onClose={() => setActionDialog(null)}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
+            {interfaceMode === "TOUCH" && <div className="sale-inline-edit-product"><strong>{selectedLine.product.code && `${selectedLine.product.code} · `}{selectedLine.temporaryName ?? selectedLine.product.name}</strong></div>}
             <label>
               <span>{t("sale.quantity.label")}</span>
               <input
                 ref={quantityInputRef}
                 aria-label={t("sale.quantity.inputAria")}
-                type="number"
-                min={productQuantityStep(selectedLine.product.productType)}
+                type={interfaceMode === "TOUCH" ? "text" : "number"}
+                inputMode={productQuantityStep(selectedLine.product.productType) < 1 ? "decimal" : "numeric"}
+                min={interfaceMode === "TOUCH" ? -1 : productQuantityStep(selectedLine.product.productType)}
                 max="9999"
                 step={productQuantityStep(selectedLine.product.productType)}
                 value={quantityInput}
@@ -6425,12 +6541,18 @@ export function SaleScreen({
             {interfaceMode === "TOUCH" && (
               <TouchNumericKeypad
                 value={quantityInput}
+                inputRef={quantityInputRef}
+                replaceOnFirstKey
+                allowNegative
+                allowDecimal={productQuantityStep(selectedLine.product.productType) < 1}
+                maximumFractionDigits={3}
                 ariaLabel={t("sale.touch.numericKeypad")}
                 clearLabel={t("sale.touch.clearNumber")}
                 backspaceLabel={t("sale.touch.backspace")}
                 onChange={setQuantityInput}
               />
             )}
+            {interfaceMode === "TOUCH" && <small className="sale-dialog-hint">{t("sale.touch.signedQuantityHint")}</small>}
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
           </form>
@@ -6438,15 +6560,20 @@ export function SaleScreen({
       )}
 
       {actionDialog === "discount" && selectedLine && (
-        <SaleActionDialog title={t("sale.discount.title")} closeLabel={t("sale.dialog.close")} onClose={() => setActionDialog(null)}>
+        <SaleActionDialog title={t("sale.discount.title")} closeLabel={t("sale.dialog.close")}
+          className={interfaceMode === "TOUCH" ? "sale-touch-entry-dialog sale-touch-numeric-dialog" : undefined}
+          initialFocusRef={discountInputRef} onClose={() => setActionDialog(null)}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveDiscount(); }}>
+            {interfaceMode === "TOUCH" && <div className="sale-inline-edit-product"><strong>{selectedLine.product.code && `${selectedLine.product.code} · `}{selectedLine.temporaryName ?? selectedLine.product.name}</strong></div>}
             <label>
               <span>{t("sale.discount.label")}</span>
-              <input ref={discountInputRef} aria-label={t("sale.discount.inputAria")} type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
+              <input ref={discountInputRef} aria-label={t("sale.discount.inputAria")} type={interfaceMode === "TOUCH" ? "text" : "number"} inputMode="decimal" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
             </label>
             {interfaceMode === "TOUCH" && (
               <TouchNumericKeypad
                 value={discountInput}
+                inputRef={discountInputRef}
+                replaceOnFirstKey
                 allowDecimal
                 decimalLabel={locale === "es" ? "," : "."}
                 ariaLabel={t("sale.touch.numericKeypad")}
@@ -6486,6 +6613,8 @@ export function SaleScreen({
                 onChange={(event) => setTemporaryNameInput(event.target.value)}
               />
             </label>
+            {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={temporaryNameInput}
+              onChange={setTemporaryNameInput} inputRef={temporaryNameInputRef} maxLength={255} />}
             <small className="sale-dialog-hint">{t("sale.temporaryName.hint")}</small>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons">
@@ -6525,6 +6654,7 @@ export function SaleScreen({
             {interfaceMode === "TOUCH" && (
               <TouchNumericKeypad
                 value={temporaryPriceInput}
+                inputRef={temporaryPriceInputRef}
                 allowDecimal
                 decimalLabel={locale === "es" ? "," : "."}
                 ariaLabel={t("sale.touch.numericKeypad")}
@@ -6547,6 +6677,7 @@ export function SaleScreen({
         <SaleMutationAuthorizationDialog
           open
           locale={locale}
+          interfaceMode={interfaceMode}
           currentUsername={session.username}
           requirements={[{
             code: "TEMPORARY_PRICE_CHANGE",
@@ -6661,6 +6792,8 @@ export function SaleScreen({
               {!customerLoading && !customerError && customerResults.length === 0 && pendingCustomerContinuation && <p className="sale-customer-empty">{t("sale.customer.empty")}</p>}
             </div>
           </div>
+          {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={customerQuery}
+            onChange={setCustomerQuery} inputRef={customerSearchInputRef} />}
           <footer className="sale-customer-selection-footer">
             <p className="sale-dialog-hint"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
             <div className="sale-action-buttons">
@@ -6714,8 +6847,13 @@ export function SaleScreen({
       )}
 
       {actionDialog === "remove" && selectedLine && (
-        <SaleActionDialog title={t("sale.removeLine.title")} closeLabel={t("sale.dialog.close")} onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
-          <p>{saleMainMessage(t, "sale.removeLine.confirm", { product: selectedLine.product.name ?? t("sale.removeLine.productFallback") })}</p>
+        <SaleActionDialog title={t("sale.removeLine.title")} closeLabel={t("sale.dialog.close")}
+          className={interfaceMode === "TOUCH" ? "sale-touch-entry-dialog sale-touch-remove-dialog" : undefined}
+          onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
+          {interfaceMode === "TOUCH" ? <>
+            <div className="sale-inline-edit-product"><strong>{selectedLine.product.code && `${selectedLine.product.code} · `}{selectedLine.temporaryName ?? selectedLine.product.name ?? t("sale.removeLine.productFallback")}</strong></div>
+            <p>{t("sale.removeLine.touchConfirm")}</p>
+          </> : <p>{saleMainMessage(t, "sale.removeLine.confirm", { product: selectedLine.product.name ?? t("sale.removeLine.productFallback") })}</p>}
           <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>{t("sale.removeLine.action")}</button></div>
         </SaleActionDialog>
       )}
@@ -6735,6 +6873,7 @@ export function SaleScreen({
       <SaleMutationAuthorizationDialog
         open={parkedSaleAuthorizationOpen}
         locale={locale}
+        interfaceMode={interfaceMode}
         currentUsername={session.username}
         requirements={saleMutationCredentialsRequired(saleMutationAuthorizations ?? [])}
         busy={parkedSaleSaving}
@@ -6807,6 +6946,7 @@ export function SaleScreen({
         return (
         <SaleSerialNumberDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           productName={serialLine.product.name ?? serialLine.product.code ?? ""}
           initialSerialNumbers={serialLine.serialNumbers ?? []}
           quantity={pendingSerialQuantity ?? serialLine.quantity}
@@ -6914,6 +7054,7 @@ export function SaleScreen({
         />
       )}
     </main>
+    </SaleTouchKeyboardScope>
   );
 }
 

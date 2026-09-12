@@ -458,7 +458,10 @@ function createSalesUtilityWindow(bootstrap) {
     }
   });
   const contentsId = salesUtilityWindow.webContents.id;
-  salesUtilityBootstraps.set(contentsId, structuredClone(bootstrap));
+  salesUtilityBootstraps.set(contentsId, {
+    ...structuredClone(bootstrap),
+    interfaceMode: bootstrap.interfaceMode === "TOUCH" ? "TOUCH" : "KEYBOARD",
+  });
   restrictNavigation(salesUtilityWindow, trustedAppOrigin);
   const target = new URL(appUrl);
   target.searchParams.set("window", "sales-utility");

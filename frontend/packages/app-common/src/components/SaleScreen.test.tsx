@@ -119,6 +119,8 @@ type CheckoutMockProps = {
       serialNumbersBySourceLineId: Record<string, string[]>;
     };
     quoteFingerprint?: string;
+    documentDiscountPercent?: number;
+    checkoutDiscountAmount?: number;
   };
   memberWallet?: {
     lots?: Array<{
@@ -2370,7 +2372,7 @@ describe("SaleScreen", () => {
       customerUnnamed: "Cliente sin nombre",
       customerNoCode: "Sin código",
       removeTitle: "Anular línea",
-      removeConfirm: "Se eliminará Cafe molido del ticket.",
+      removeConfirm: "Se eliminará esta línea del ticket.",
       removeAction: "Anular línea",
     }],
     ["en", {
@@ -2394,7 +2396,7 @@ describe("SaleScreen", () => {
       customerUnnamed: "Unnamed customer",
       customerNoCode: "No code",
       removeTitle: "Remove line",
-      removeConfirm: "Cafe molido will be removed from the ticket.",
+      removeConfirm: "This line will be removed from the ticket.",
       removeAction: "Remove line",
     }],
     ["zh", {
@@ -2418,7 +2420,7 @@ describe("SaleScreen", () => {
       customerUnnamed: "\u672a\u547d\u540d\u5ba2\u6237",
       customerNoCode: "\u65e0\u4ee3\u7801",
       removeTitle: "\u5220\u9664\u884c",
-      removeConfirm: "\u5c06\u4ece\u5c0f\u7968\u4e2d\u79fb\u9664 Cafe molido\u3002",
+      removeConfirm: "将从小票中删除此行。",
       removeAction: "\u5220\u9664\u884c",
     }],
   ] as const)("localizes sale action dialogs in %s", async (locale, expected) => {
@@ -2442,33 +2444,33 @@ describe("SaleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: t("sale.main.quantity") }));
     let dialog = screen.getByRole("dialog", { name: expected.quantityTitle });
     expect(within(dialog).getByText(expected.quantityLabel)).toBeInTheDocument();
-    expect(within(dialog).getByRole("spinbutton", { name: expected.quantityInput })).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: expected.quantityInput })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.close })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
-    const quantityInput = within(dialog).getByRole("spinbutton", { name: expected.quantityInput });
+    const quantityInput = within(dialog).getByRole("textbox", { name: expected.quantityInput });
     await user.clear(quantityInput);
     await user.type(quantityInput, "0");
-    await waitFor(() => expect(quantityInput).toHaveValue(0));
+    await waitFor(() => expect(quantityInput).toHaveValue("0"));
     fireEvent.submit(dialog.querySelector("form")!);
     expect(await within(dialog).findByText(expected.quantityInvalid)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
 
-    fireEvent.click(screen.getByRole("button", { name: t("sale.main.discount") }));
+    fireEvent.click(screen.getByRole("button", { name: t("sale.shortcut.lineDiscount") }));
     dialog = screen.getByRole("dialog", { name: expected.discountTitle });
     expect(within(dialog).getByText(expected.discountLabel)).toBeInTheDocument();
-    expect(within(dialog).getByRole("spinbutton", { name: expected.discountInput })).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: expected.discountInput })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
-    const discountInput = within(dialog).getByRole("spinbutton", { name: expected.discountInput });
+    const discountInput = within(dialog).getByRole("textbox", { name: expected.discountInput });
     await user.clear(discountInput);
     await user.type(discountInput, "101");
-    await waitFor(() => expect(discountInput).toHaveValue(101));
+    await waitFor(() => expect(discountInput).toHaveValue("101"));
     fireEvent.submit(dialog.querySelector("form")!);
     expect(await within(dialog).findByText(expected.discountInvalid)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
 
-    fireEvent.click(screen.getByRole("button", { name: t("sale.main.customer") }));
+    fireEvent.click(screen.getByRole("button", { name: `${t("sale.customer.card.title")}: ${t("sale.customer.none")}. ${t("sale.customer.card.open")}` }));
     dialog = screen.getByRole("dialog", { name: expected.customerTitle });
     expect(within(dialog).getByText(expected.customerSearch)).toBeInTheDocument();
     expect(within(dialog).getByRole("textbox", { name: expected.customerSearch })).toHaveAttribute("placeholder", expected.customerPlaceholder);
@@ -2509,8 +2511,8 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toBeEnabled());
     submitQuickEntry(search, "CAF-001");
 
-    fireEvent.click(screen.getByRole("button", { name: t("sale.main.discount") }));
-    fireEvent.change(screen.getByRole("spinbutton", { name: expected.discountInput }), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: t("sale.shortcut.lineDiscount") }));
+    fireEvent.change(screen.getByRole("textbox", { name: expected.discountInput }), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: expected.save }));
 
     await waitFor(() => expect(
@@ -2638,8 +2640,8 @@ describe("SaleScreen", () => {
     const search = await screen.findByRole("combobox", { name: expected.productSearch });
     await waitFor(() => expect(search).toBeEnabled());
     submitQuickEntry(search, "CAF-001");
-    fireEvent.click(screen.getByRole("button", { name: t("sale.main.discount") }));
-    fireEvent.change(screen.getByRole("spinbutton", { name: expected.discountInput }), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: t("sale.shortcut.lineDiscount") }));
+    fireEvent.change(screen.getByRole("textbox", { name: expected.discountInput }), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: expected.save }));
 
     await waitFor(() => expect(
@@ -2665,7 +2667,7 @@ describe("SaleScreen", () => {
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } }));
     }));
     renderSaleScreen(vi.fn(), locale, { interfaceMode: "TOUCH" });
-    fireEvent.click(await screen.findByRole("button", { name: t("sale.main.customer") }));
+    fireEvent.click(await screen.findByRole("button", { name: `${t("sale.customer.card.title")}: ${t("sale.customer.none")}. ${t("sale.customer.card.open")}` }));
     const dialog = await screen.findByRole("dialog", { name: expected.customerTitle });
     expect(await within(dialog).findByText(expected.customerLoadError)).toBeInTheDocument();
   });
@@ -4619,16 +4621,18 @@ describe("SaleScreen", () => {
     );
 
     expect(html).toContain('class="sale-screen work-screen touch-mode"');
-    expect(html).toContain('class="touch-sale-actions"');
+    expect(html).toContain('class="sale-touch-side-actions"');
+    expect(html).toContain('class="sale-touch-bottom-actions"');
+    expect(html).toContain('class="sale-touch-top-actions"');
     expect(html).not.toContain('class="sale-shortcut-bar keyboard-sale-command-bar"');
     expect(html).toContain("Buscar");
     expect(html).toContain("Factura / albarán");
     expect(html).toContain("Ventas aparcadas");
-    expect(html).toContain("Anular último ticket");
-    expect(html).toContain(createTranslator("es")("sale.shortcut.cancelOtherTicket"));
-    expect(html).toContain("Convertir ticket a factura");
-    expect(html).toContain("Efectivo");
-    expect(checkoutProps.current?.showIndividualActions).toBe(true);
+    expect(html).toContain("Más opciones");
+    expect(html).toContain("Fila anterior");
+    expect(html).toContain("Fila siguiente");
+    expect(html).not.toContain('class="touch-sale-actions"');
+    expect(checkoutProps.current?.showIndividualActions).toBe(false);
   });
 
   it.each([
@@ -4671,7 +4675,8 @@ describe("SaleScreen", () => {
       />,
     );
 
-    labels.slice(0, -1).forEach((label) => expect(html).toContain(label));
+    const t = createTranslator(locale);
+    ["sale.main.parkedSales", "sale.touch.moreOptions", "sale.touch.previousRow", "sale.touch.price"].forEach((key) => expect(html).toContain(t(key)));
     expect(createTranslator(locale)("sale.shortcut.importPreviousTicket")).toBe(labels.at(-1));
   });
 
@@ -5341,9 +5346,10 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toBeEnabled());
     submitQuickEntry(search, "CAF-001");
 
-    fireEvent.click(await screen.findByRole("button", { name: /Aumentar cantidad: Cafe molido/ }));
+    await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s });
+    fireEvent.click(screen.getByRole("button", { name: "+1" }));
     expect(screen.getByRole("button", { name: /Cafe molido.*2 x 10,00/s })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Reducir cantidad: Cafe molido/ }));
+    fireEvent.click(screen.getByRole("button", { name: "−1" }));
     expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
@@ -5354,6 +5360,369 @@ describe("SaleScreen", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
 
     expect(screen.getByRole("button", { name: /Cafe molido.*3 x 10,00/s })).toBeInTheDocument();
+  });
+
+  it("moves touch selection without wrapping and changes only the selected quantity", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(products.slice(0, 2)), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    submitQuickEntry(search, "PAN-001");
+    const coffee = await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s });
+    const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Fila siguiente" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fila anterior" }));
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Fila anterior" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "+1" }));
+    expect(checkoutProps.current?.sale?.lines.map((line) => [line.productId, line.quantity]))
+      .toEqual([["coffee", 2], ["bread", 1]]);
+    fireEvent.click(screen.getByRole("button", { name: "Fila siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "+1" }));
+    expect(checkoutProps.current?.sale?.lines.map((line) => [line.productId, line.quantity]))
+      .toEqual([["coffee", 2], ["bread", 2]]);
+    fireEvent.click(screen.getByRole("button", { name: "−1" }));
+    expect(checkoutProps.current?.sale?.lines.map((line) => [line.productId, line.quantity]))
+      .toEqual([["coffee", 2], ["bread", 1]]);
+
+    act(() => checkoutProps.current?.onLockedChange?.(true, 2250));
+    for (const name of ["Fila anterior", "Fila siguiente", "+1", "−1", "Cantidad", "Precio", "Descuento de línea", "Anular línea", "Más opciones"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "+1" }));
+    expect(checkoutProps.current?.sale?.lines.map((line) => line.quantity)).toEqual([2, 1]);
+  });
+
+  it("selects the initial touch quantity and price, replaces them with the first key and edits a price digit in place", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([products[0]]), { status: 200 })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const quickEntry = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    submitQuickEntry(quickEntry, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+    const quantityDialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+    const quantityInput = within(quantityDialog).getByRole<HTMLInputElement>("textbox", { name: "Nueva cantidad" });
+    expect(quantityInput).toHaveValue("1");
+    expect(quantityInput).toHaveFocus();
+    expect(quantityInput.selectionStart).toBe(0);
+    expect(quantityInput.selectionEnd).toBe(quantityInput.value.length);
+    fireEvent.click(within(quantityDialog).getByRole("button", { name: "2" }));
+    expect(quantityInput).toHaveValue("2");
+    fireEvent.click(within(quantityDialog).getByRole("button", { name: "Guardar" }));
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Precio" }));
+    const priceDialog = screen.getByRole("dialog", { name: "Precio" });
+    expect(within(priceDialog.querySelector(".sale-touch-price-actions")!).getAllByRole("button").map((button) => button.textContent))
+      .toEqual(["Cambiar precio", "Aplicar descuento"]);
+    expect(within(priceDialog).getByRole("button", { name: "Cambiar precio" })).toHaveClass("sale-touch-change-price");
+    const priceInput = within(priceDialog).getByRole("textbox") as HTMLInputElement;
+    expect(priceInput).toHaveValue("10");
+    expect(priceInput).toHaveFocus();
+    expect(priceInput.selectionStart).toBe(0);
+    expect(priceInput.selectionEnd).toBe(priceInput.value.length);
+    fireEvent.click(within(priceDialog).getByRole("button", { name: "2" }));
+    expect(priceInput).toHaveValue("2");
+    fireEvent.change(priceInput, { target: { value: "10" } });
+    priceInput.setSelectionRange(0, 1);
+    fireEvent.click(within(priceDialog).getByRole("button", { name: "2" }));
+    expect(priceInput).toHaveValue("20");
+    expect(priceInput).toHaveFocus();
+    expect(priceInput.selectionStart).toBe(1);
+    expect(checkoutProps.current?.sale?.lines[0].openUnitPrice).toBeUndefined();
+  });
+
+  it("accepts comma quantities for a weighted product with three digits and blocks a fourth keypad decimal", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([{ ...products[0], productType: "WEIGHT" }]), { status: 200 })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const quickEntry = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    submitQuickEntry(quickEntry, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+    let dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+    let input = within(dialog).getByRole<HTMLInputElement>("textbox", { name: "Nueva cantidad" });
+    expect(input).toHaveAttribute("inputmode", "decimal");
+    expect(within(dialog).getByRole("button", { name: "," })).toBeEnabled();
+    for (const key of ["0", ",", "1", "2", "5"]) {
+      fireEvent.click(within(dialog).getByRole("button", { name: key }));
+    }
+    expect(input).toHaveValue("0.125");
+    expect(input.selectionStart).toBe(5);
+    fireEvent.click(within(dialog).getByRole("button", { name: "9" }));
+    expect(input).toHaveValue("0.125");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(0.125);
+    expect(screen.queryByRole("dialog", { name: "Cambiar cantidad" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+    dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+    input = within(dialog).getByRole<HTMLInputElement>("textbox", { name: "Nueva cantidad" });
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
+    fireEvent.change(input, { target: { value: "0,250" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(0.25);
+  });
+
+  it("disables the quantity comma for unit products and rejects a fractional value entered physically", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([{ ...products[0], productType: "UNIT" }]), { status: 200 })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const quickEntry = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    submitQuickEntry(quickEntry, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+    const dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+    const input = within(dialog).getByRole("textbox", { name: "Nueva cantidad" });
+    expect(input).toHaveAttribute("inputmode", "numeric");
+    expect(within(dialog).getByRole("button", { name: "," })).toBeDisabled();
+    fireEvent.change(input, { target: { value: "1,5" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(within(dialog).getByText(createTranslator("es")("sale.quantity.invalid"))).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(1);
+    expect(input).toHaveValue("1,5");
+  });
+
+  it("selects the initial touch discount, replaces it on the first key and saves a physical comma value", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([products[0]]), { status: 200 })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const quickEntry = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    submitQuickEntry(quickEntry, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Descuento de línea" }));
+    const dialog = screen.getByRole("dialog", { name: createTranslator("es")("sale.discount.title") });
+    const input = within(dialog).getByRole<HTMLInputElement>("textbox", { name: "Nuevo descuento" });
+    expect(input).toHaveValue("0");
+    expect(input).toHaveFocus();
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
+    fireEvent.click(within(dialog).getByRole("button", { name: "2" }));
+    expect(input).toHaveValue("2");
+    fireEvent.change(input, { target: { value: "12,5" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(checkoutProps.current?.sale?.lines[0].discount).toBe(12.5);
+    expect(screen.queryByRole("dialog", { name: createTranslator("es")("sale.discount.title") })).not.toBeInTheDocument();
+  });
+
+  it("confirms touch quantity transitions to zero and accepts only the manual minus-one return", async () => {
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify([products[0]]), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s });
+    fireEvent.click(screen.getByRole("button", { name: "−1" }));
+    let dialog = screen.getByRole("dialog", { name: "Anular línea" });
+    expect(dialog).toHaveClass("sale-touch-remove-dialog");
+    expect(within(dialog).getByText("CAF-001 · Cafe molido")).toBeInTheDocument();
+    expect(within(dialog).getByText("Se eliminará esta línea del ticket.")).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Anular línea" }));
+    dialog = screen.getByRole("dialog", { name: "Anular línea" });
+    expect(dialog).toHaveClass("sale-touch-remove-dialog");
+    expect(within(dialog).getByText("CAF-001 · Cafe molido")).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Anular línea" })).not.toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+    dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "2" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "±" }));
+    fireEvent.submit(dialog.querySelector("form")!);
+    expect(within(dialog).getByText(createTranslator("es")("sale.quantity.invalid"))).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "1" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "±" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(-1);
+    expect(screen.getByRole("button", { name: "−1" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "+1" }));
+    dialog = screen.getByRole("dialog", { name: "Anular línea" });
+    expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(-1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Anular línea" }));
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toEqual([]));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/sale-line-deletions"))).toHaveLength(1);
+  });
+
+  it("applies a target price as a discount and preserves delegated authorization for checkout", async () => {
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify([products[0]]), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen(vi.fn(), "es", {
+      interfaceMode: "TOUCH",
+      session: { ...session, permissions: ["APLICAR_DESCUENTO"], maxDiscountPercent: 5 },
+    });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Precio" }));
+    const dialog = screen.getByRole("dialog", { name: "Precio" });
+    expect(within(dialog).getByRole("button", { name: "Cambiar precio" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "Aplicar descuento" })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "8" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar descuento" }));
+    expect(checkoutProps.current?.sale?.lines[0]).toMatchObject({ productId: "coffee", discount: 20 });
+    expect(checkoutProps.current?.sale?.lines[0].openUnitPrice).toBeUndefined();
+    expect(checkoutProps.current?.sale?.lines[0].temporaryPriceAuthorizationToken).toBeUndefined();
+    expect(checkoutProps.current?.saleMutationAuthorizations).toEqual([expect.objectContaining({
+      code: "APPLY_SALE_DISCOUNT", authorization: { mode: "DELEGATED", requireUsername: true, requirePassword: true },
+    })]);
+    expect(fetchMock.mock.calls.some(([url]) => /discount-authorizations|temporary-price/.test(String(url)))).toBe(false);
+  });
+
+  it("authorizes the common touch price action with its alphanumeric keyboard before mutating the line", async () => {
+    const authorizationRequests: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200 });
+      if (path.endsWith("/pos/sales/quote")) return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200 });
+      if (path.endsWith("/pos/sale-operation-authorizations/temporary-price")) {
+        authorizationRequests.push(JSON.parse(String(options?.body)));
+        return new Response(JSON.stringify({ token: "touch-price-proof", expiresAt: new Date(Date.now() + 120_000).toISOString(), policyVersion: 1 }), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Precio" }));
+    let dialog = screen.getByRole("dialog", { name: "Precio" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "8" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cambiar precio" }));
+    dialog = await screen.findByRole("dialog", { name: "Autorización de la venta" });
+    expect(authorizationRequests).toHaveLength(0);
+    expect(checkoutProps.current?.sale?.lines[0].openUnitPrice).toBeUndefined();
+    const keyboard = within(dialog).getByRole("group", { name: "Teclado alfanumérico" });
+    const password = within(dialog).getByLabelText("Tu contraseña");
+    await waitFor(() => expect(password).toHaveFocus());
+    fireEvent.click(within(keyboard).getByRole("button", { name: "A" }));
+    fireEvent.click(within(keyboard).getByRole("button", { name: "1" }));
+    expect(password).toHaveValue("A1");
+    expect(password).toHaveAttribute("type", "password");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar y continuar" }));
+    await waitFor(() => expect(authorizationRequests).toHaveLength(1));
+    expect(authorizationRequests[0]).toMatchObject({ productId: "coffee", unitPrice: 8, authorization: { authorizerPassword: "A1" } });
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines[0]).toMatchObject({ openUnitPrice: 8, discount: 0, temporaryPriceAuthorizationToken: "touch-price-proof" }));
+  });
+
+  it("toggles only the document discount from touch more options while retaining the line discount", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([products[0]]), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    fireEvent.click(screen.getByRole("button", { name: "Descuento de línea" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Nuevo descuento" }), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Más opciones" }));
+    let dialog = screen.getByRole("dialog", { name: "Más opciones" });
+    fireEvent.click(within(dialog).getByRole("button", { name: createTranslator("es")("sale.touch.documentDiscount") }));
+    dialog = screen.getByRole("dialog", { name: createTranslator("es")("sale.touch.documentDiscount") });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "1" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "0" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar" }));
+    expect(checkoutProps.current?.sale?.documentDiscountPercent).toBe(10);
+    expect(checkoutProps.current?.sale?.lines[0].discount).toBe(5);
+    fireEvent.click(screen.getByRole("button", { name: "Más opciones" }));
+    dialog = screen.getByRole("dialog", { name: "Más opciones" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar descuento documento" }));
+    expect(checkoutProps.current?.sale?.documentDiscountPercent).toBeUndefined();
+    expect(checkoutProps.current?.sale?.checkoutDiscountAmount).toBeUndefined();
+    expect(checkoutProps.current?.sale?.lines[0].discount).toBe(5);
+    fireEvent.click(screen.getByRole("button", { name: "Más opciones" }));
+    expect(within(screen.getByRole("dialog", { name: "Más opciones" })).getByRole("button", { name: createTranslator("es")("sale.touch.documentDiscount") })).toBeInTheDocument();
+  });
+
+  it("provides contextual touch input for customer creation and ticket returns", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const quickEntry = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    expect(screen.queryByRole("group", { name: "Teclado alfanumérico" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cliente: Sin cliente. Abrir selección de clientes" }));
+    const customersDialog = screen.getByRole("dialog", { name: "Seleccionar cliente" });
+    fireEvent.click(within(customersDialog).getByRole("button", { name: /Nuevo cliente/ }));
+    const createDialog = await screen.findByRole("dialog", { name: "Nuevo cliente" });
+    const customerName = within(createDialog).getByRole("textbox", { name: /Nombre o razón social/ });
+    fireEvent.focus(customerName);
+    const customerKeyboard = await within(createDialog).findByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(customerKeyboard).getByRole("button", { name: "A" }));
+    expect(customerName).toHaveValue("A");
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Cancelar" }));
+    const restoredCustomers = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    fireEvent.click(within(restoredCustomers.querySelector("header")!).getByRole("button", { name: "Cerrar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "F10" });
+    const returnDialog = await screen.findByRole("dialog", { name: "Devolución por ticket" });
+    const ticketCode = within(returnDialog).getByLabelText(/ticket o ticket regalo/i);
+    fireEvent.focus(ticketCode);
+    const returnKeyboard = await within(returnDialog).findByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(returnKeyboard).getByRole("button", { name: "T" }));
+    fireEvent.click(within(returnKeyboard).getByRole("button", { name: "1" }));
+    expect(ticketCode).toHaveValue("T1");
+    expect(within(returnDialog).getByRole("button", { name: /Buscar ticket/i })).toBeEnabled();
+  });
+
+  it("forwards the touch mode to native sales utility windows", async () => {
+    const open = vi.fn().mockResolvedValue({ ok: true, canceled: true });
+    vi.stubGlobal("tpvDesktop", { salesUtilities: { open } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Buscar producto" })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "i", ctrlKey: true });
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "PRODUCT_LABEL",
+      locale: "es",
+      interfaceMode: "TOUCH",
+    })));
+  });
+
+  it("opens alphanumeric search on touch and keeps physical scanning and the customer card functional", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify(products), { status: 200 });
+      return new Response("[]", { status: 200 });
+    }));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    expect(checkoutProps.current?.sale?.lines[0].productId).toBe("coffee");
+    fireEvent.click(search);
+    let dialog = screen.getByRole("dialog", { name: "Buscador de productos" });
+    let keyboard = within(dialog).getByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(keyboard).getByRole("button", { name: "P" }));
+    expect(within(dialog).getByRole("combobox", { name: "Código, código de barras o nombre" })).toHaveValue("P");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cliente: Sin cliente. Abrir selección de clientes" }));
+    dialog = screen.getByRole("dialog", { name: "Seleccionar cliente" });
+    keyboard = within(dialog).getByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(keyboard).getByRole("button", { name: "L" }));
+    fireEvent.click(within(keyboard).getByRole("button", { name: "1" }));
+    expect(within(dialog).getByRole("textbox", { name: "Buscar cliente" })).toHaveValue("L1");
+    expect(checkoutProps.current?.sale?.lines[0].productId).toBe("coffee");
   });
 
   it.each(["en", "zh"] as const)("keeps dynamic product names and codes literal in %s", async (locale) => {
@@ -6055,6 +6424,7 @@ describe("SaleScreen", () => {
     expect(weighted[0].quantity).toBe(0.125);
     expect(updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), 4.992)[0].quantity).toBe(4.992);
     expect(() => updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), 1.2345)).toThrow("invalid_quantity");
+    expect(() => updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), -0.5)).toThrow("invalid_quantity");
     expect(saleQuickOperand("5")).toBe(5);
     expect(saleOpenUnitPrice("1.20")).toBe(1.2);
     expect(saleOpenUnitPrice("1,")).toBe(1);

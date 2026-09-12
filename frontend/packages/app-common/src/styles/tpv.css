@@ -4578,43 +4578,6 @@ textarea {
   font: inherit;
 }
 
-.touch-numeric-keypad {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.touch-numeric-keypad button {
-  min-height: 54px;
-  border: 1px solid #91a8c0;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #102f55;
-  font-size: 21px;
-  font-weight: 900;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.touch-numeric-keypad button:hover,
-.touch-numeric-keypad button:focus-visible {
-  border-color: #176fb6;
-  background: #eaf4fd;
-  outline: 2px solid #176fb6;
-  outline-offset: -2px;
-}
-
-.touch-numeric-keypad button.utility {
-  background: #e7edf4;
-  color: #314b68;
-}
-
-.touch-numeric-keypad button.decimal {
-  grid-column: 1 / -1;
-  min-height: 46px;
-  background: #dbeaf8;
-}
-
 .sale-action-dialog textarea {
   min-height: 112px;
   resize: vertical;

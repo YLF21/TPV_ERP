@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
+import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 
 type Props = {
   locale: LocaleCode;
+  interfaceMode?: SaleInterfaceMode;
   productName: string;
   quantity: number;
   initialSerialNumbers: string[];
@@ -14,6 +17,7 @@ type Props = {
 
 export function SaleSerialNumberDialog({
   locale,
+  interfaceMode,
   productName,
   quantity,
   initialSerialNumbers,
@@ -22,6 +26,9 @@ export function SaleSerialNumberDialog({
 }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
+  const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const activeIndexRef = useRef(0);
+  const [activeIndex, setActiveIndex] = useState(0);
   const unitCount = Number.isInteger(Math.abs(quantity)) ? Math.abs(quantity) : 0;
   const [values, setValues] = useState(() => Array.from(
     { length: unitCount },
@@ -44,11 +51,15 @@ export function SaleSerialNumberDialog({
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
     : undefined, []);
 
+  function updateValue(index: number, value: string) {
+    setValues((current) => current.map((candidate, candidateIndex) => candidateIndex === index ? value : candidate));
+  }
+
   return (
     <div className="sale-action-overlay" role="presentation">
       <section
         ref={dialogRef}
-        className="sale-action-dialog sale-serial-number-dialog"
+        className={`sale-action-dialog sale-serial-number-dialog${interfaceMode === "TOUCH" ? " sale-touch-keyboard-dialog" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-serial-number-title"
@@ -56,7 +67,7 @@ export function SaleSerialNumberDialog({
           if (event.key === "Escape") {
             event.preventDefault();
             onCancel();
-          } else if (event.key === "Enter" && valid) {
+          } else if (event.key === "Enter" && valid && event.target instanceof HTMLInputElement) {
             event.preventDefault();
             onConfirm(values.map((value) => value.trim()));
           }
@@ -78,19 +89,21 @@ export function SaleSerialNumberDialog({
                 autoFocus={index === 0}
                 maxLength={128}
                 autoComplete="off"
+                inputMode={interfaceMode === "TOUCH" ? "none" : undefined}
                 value={value}
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  setValues((current) => current.map(
-                    (candidate, candidateIndex) => candidateIndex === index
-                    ? nextValue
-                    : candidate,
-                  ));
+                onFocus={(event) => {
+                  activeInputRef.current = event.currentTarget;
+                  activeIndexRef.current = index;
+                  setActiveIndex(index);
                 }}
+                onChange={(event) => updateValue(index, event.currentTarget.value)}
               />
             </label>
           ))}
         </div>
+        {interfaceMode === "TOUCH" && unitCount > 0 && (
+          <TouchAlphaKeyboard locale={locale} value={values[activeIndex] ?? ""} onChange={(value) => updateValue(activeIndexRef.current, value)} inputRef={activeInputRef} maxLength={128} />
+        )}
         {hasTrimmedSerials && (
           <label>
             <input

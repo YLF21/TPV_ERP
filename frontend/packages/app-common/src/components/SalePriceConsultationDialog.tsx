@@ -3,6 +3,7 @@ import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 
 export type SalePriceConsultation = {
   productId: string;
@@ -19,6 +20,7 @@ export type SalePriceConsultation = {
 
 type Props = {
   locale: LocaleCode;
+  interfaceMode?: SaleInterfaceMode;
   token?: string;
   onClose: () => void;
 };
@@ -50,7 +52,7 @@ function date(value: string, locale: LocaleCode) {
   return new Intl.DateTimeFormat(numberLocale(locale)).format(new Date(year, month - 1, day));
 }
 
-export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
+export function SalePriceConsultationDialog({ locale, token, onClose, interfaceMode = "KEYBOARD" }: Props) {
   const t = createTranslator(locale);
   const requestGeneration = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -158,7 +160,7 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
         >
           <input
             ref={inputRef}
-            className="sale-price-consultation-capture"
+            className={interfaceMode === "TOUCH" ? "sale-price-consultation-touch-input" : "sale-price-consultation-capture"}
             autoFocus
             autoComplete="off"
             spellCheck={false}
@@ -173,6 +175,9 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
             }}
             aria-label={t("sale.priceConsultation.identifier")}
           />
+          {interfaceMode === "TOUCH" && <button type="submit" disabled={loading || !identifier.trim()}>
+            {t("sale.main.search")}
+          </button>}
           <div className={result ? "sale-price-consultation-product" : undefined}>
             {!loading && !error && result && (
               <div

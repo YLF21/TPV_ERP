@@ -1,9 +1,49 @@
 import fs from "node:fs";
+import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 describe("desktop navigation security", () => {
   const source = fs.readFileSync(new URL("./main.cjs", import.meta.url), "utf8");
   const navigation = fs.readFileSync(new URL("./navigation-security.cjs", import.meta.url), "utf8");
+
+  it.each([
+    ["TOUCH", "TOUCH"],
+    ["KEYBOARD", "KEYBOARD"],
+    [undefined, "KEYBOARD"],
+    ["unexpected", "KEYBOARD"],
+  ])("normalizes the sales utility interface mode %s to %s", (interfaceMode, expected) => {
+    const bootstraps = new Map();
+    const start = source.indexOf("function createSalesUtilityWindow(");
+    const end = source.indexOf("\nfunction readHardwareConfig", start);
+    const context = vm.createContext({
+      salesUtilityWindow: undefined,
+      salesUtilityResult: undefined,
+      mainWindow: { isDestroyed: () => false },
+      salesUtilityBootstraps: bootstraps,
+      appName: "APP VENTA",
+      appUrl: "http://localhost:5173/",
+      trustedAppOrigin: "http://localhost:5173",
+      __dirname: "desktop",
+      path: { join: (...parts) => parts.join("/") },
+      URL,
+      structuredClone,
+      restrictNavigation: () => {},
+      BrowserWindow: class {
+        webContents = { id: 1 };
+        loadURL() {}
+        once() {}
+        on() {}
+      },
+    });
+    vm.runInContext(source.slice(start, end), context);
+    context.createSalesUtilityWindow({
+      kind: "PRODUCT_LABEL",
+      session: { accessToken: "test-token" },
+      terminalContext: { terminalCode: "01" },
+      interfaceMode,
+    });
+    expect(bootstraps.get(1).interfaceMode).toBe(expected);
+  });
 
   it("keeps renderer processes isolated and sandboxed", () => {
     expect(source).toContain("contextIsolation: true");

@@ -13,6 +13,7 @@ import {
   manualCardDialogState,
 } from "./PaymentAllocationPanel";
 import type { PaymentSession } from "../sale/paymentOrchestration";
+import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 
 const session: PaymentSession = {
   id: "sale-1",
@@ -444,6 +445,41 @@ describe("PaymentAllocationPanel", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(container.querySelector(".sale-checkout-dialog")).not.toHaveAttribute("aria-hidden");
     expect(memberButton).toHaveFocus();
+  });
+
+  it("releases the wallet keyboard and restores touch amount entry without a second keyboard", async () => {
+    const onMemberWallet = vi.fn();
+    const { container } = render(<SaleTouchKeyboardScope locale="es" interfaceMode="TOUCH">
+      <PaymentAllocationPanel
+        locale="es" session={{ ...session, allocations: [] }} providers={[]}
+        manualCardEnabled customerSelected memberBalanceEligibleTotalCents={1200}
+        interfaceMode="TOUCH"
+        memberWallet={{ loyaltyAvailable: 12, returnCreditAvailable: 0, totalAvailable: 12, lots: [] }}
+        onMemberWallet={onMemberWallet} onAdd={vi.fn()} onQuery={vi.fn()}
+      />
+    </SaleTouchKeyboardScope>);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    await waitFor(() => expect(amount).toHaveFocus());
+    const reference = within(container).getByRole("textbox", { name: "Nº DOCUMENTO" });
+    fireEvent.focus(reference);
+    expect(container.querySelector(".sale-checkout-dialog")).toHaveClass("has-touch-text-keyboard");
+    expect(container.querySelectorAll(".touch-alpha-keyboard")).toHaveLength(1);
+    expect(container.querySelector(".sale-touch-field-keyboard")).toBeNull();
+
+    fireEvent.click(within(container).getByRole("button", { name: /Saldo de miembro/ }));
+    const wallet = within(container).getByRole("dialog", { name: "Consumir saldo de miembro" });
+    expect(within(wallet).getByRole("textbox")).toHaveFocus();
+    await waitFor(() => expect(wallet.querySelector(".sale-touch-field-keyboard .touch-numeric-keypad")).not.toBeNull());
+    expect(container.querySelector(".touch-alpha-keyboard")).toBeNull();
+    fireEvent.click(within(wallet).getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(amount).toHaveFocus());
+    expect(container.querySelector(".sale-touch-field-keyboard")).toBeNull();
+    expect(container.querySelector(".touch-alpha-keyboard")).toBeNull();
+    expect(container.querySelector(".sale-checkout-keypad")).not.toBeNull();
+    expect(container.querySelector(".sale-checkout-dialog")).not.toHaveClass("has-touch-text-keyboard");
+    expect(amount).toHaveValue("12,00");
+    expect(onMemberWallet).not.toHaveBeenCalled();
   });
 
   it("uses Aceptar to submit the current entry in immediate-payment mode", () => {
@@ -1374,6 +1410,125 @@ describe("PaymentAllocationPanel", () => {
     expect(html).toContain("Exacto");
     expect(html).toContain("50 €");
     expect(html).not.toContain("<kbd>F11</kbd>");
+  });
+
+  it("replaces and deletes the selected amount at its cursor with the touch keypad", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={onAdd} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ }) as HTMLInputElement;
+    await waitFor(() => expect(amount).toHaveFocus());
+    const keypad = within(container.querySelector(".sale-checkout-keypad") as HTMLElement);
+
+    fireEvent.click(keypad.getByRole("button", { name: "7" }));
+    expect(amount).toHaveValue("7");
+    fireEvent.click(keypad.getByRole("button", { name: "," }));
+    fireEvent.click(keypad.getByRole("button", { name: "5" }));
+    fireEvent.click(keypad.getByRole("button", { name: "0" }));
+    expect(amount).toHaveValue("7,50");
+    amount.setSelectionRange(2, 3);
+    fireEvent.click(keypad.getByRole("button", { name: "2" }));
+    expect(amount).toHaveValue("7,20");
+    expect(amount.selectionStart).toBe(3);
+    amount.setSelectionRange(0, 1);
+    fireEvent.click(keypad.getByRole("button", { name: "⌫" }));
+    expect(amount).toHaveValue(",20");
+    expect(amount.selectionStart).toBe(0);
+    expect(amount).toHaveFocus();
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("keeps dot amounts unchanged and prevents a third decimal without rounding", async () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ }) as HTMLInputElement;
+    await waitFor(() => expect(amount).toHaveFocus());
+    fireEvent.change(amount, { target: { value: "12.34" } });
+    amount.setSelectionRange(5, 5);
+    const keypad = within(container.querySelector(".sale-checkout-keypad") as HTMLElement);
+    fireEvent.click(keypad.getByRole("button", { name: "9" }));
+    expect(amount).toHaveValue("12.34");
+    amount.setSelectionRange(3, 4);
+    fireEvent.click(keypad.getByRole("button", { name: "9" }));
+    expect(amount).toHaveValue("12.94");
+    expect(amount.selectionStart).toBe(4);
+  });
+
+  it("routes letters and numbers to reference or comment and cancellation does not add a payment", async () => {
+    const onAdd = vi.fn();
+    const onClose = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={onAdd} onQuery={vi.fn()} onClose={onClose}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    await waitFor(() => expect(amount).toHaveFocus());
+    const reference = within(container).getByRole("textbox", { name: "Nº DOCUMENTO" }) as HTMLInputElement;
+    const comment = within(container).getByRole("textbox", { name: "COMENTARIO" }) as HTMLInputElement;
+    fireEvent.focus(reference);
+    let keyboard = within(container).getByRole("group", { name: "Teclado alfanumérico" });
+    expect(container.querySelector(".sale-checkout-keypad")).toBeNull();
+    fireEvent.click(within(keyboard).getByRole("button", { name: "R" }));
+    fireEvent.click(within(keyboard).getByRole("button", { name: "1" }));
+    expect(reference).toHaveValue("R1");
+
+    fireEvent.change(comment, { target: { value: "AB" } });
+    fireEvent.focus(comment);
+    comment.setSelectionRange(1, 1);
+    keyboard = within(container).getByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(keyboard).getByRole("button", { name: "7" }));
+    expect(comment).toHaveValue("A7B");
+    expect(comment.selectionStart).toBe(2);
+    expect(reference).toHaveValue("R1");
+    expect(amount).toHaveValue("12,00");
+    expect(comment).toHaveFocus();
+
+    fireEvent.focus(amount);
+    expect(within(container).queryByRole("group", { name: "Teclado alfanumérico" })).toBeNull();
+    expect(container.querySelector(".sale-checkout-keypad")).not.toBeNull();
+    fireEvent.click(within(container).getAllByRole("button", { name: "CANCELAR" })[0]);
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("edits a voucher code with the alpha keyboard while its amount remains disabled", async () => {
+    const onAdd = vi.fn();
+    const onResolveVoucher = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled initialMethod="VOUCHER" interfaceMode="TOUCH"
+      onAdd={onAdd} onQuery={vi.fn()} onResolveVoucher={onResolveVoucher}
+    />);
+    const voucher = within(container).getByRole("textbox", { name: "CÓDIGO DE VALE" }) as HTMLInputElement;
+    await waitFor(() => expect(voucher).toHaveFocus());
+    const keyboard = within(within(container).getByRole("group", { name: "Teclado alfanumérico" }));
+    fireEvent.click(keyboard.getByRole("button", { name: "V" }));
+    fireEvent.click(keyboard.getByRole("button", { name: "8" }));
+    expect(voucher).toHaveValue("V8");
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    expect(amount).toBeDisabled();
+    expect(amount).toHaveValue("12,00");
+    expect(container.querySelector(".sale-checkout-keypad")).toBeNull();
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(onResolveVoucher).not.toHaveBeenCalled();
+  });
+
+  it("hides the amount keypad while using the native transfer date picker", async () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled initialMethod="TRANSFER" transferDateEnabled interfaceMode="TOUCH"
+      onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    await waitFor(() => expect(amount).toHaveFocus());
+    fireEvent.focus(within(container).getByLabelText("FECHA DE TRANSFERENCIA"));
+    expect(container.querySelector(".sale-checkout-keypad")).toBeNull();
+    expect(within(container).queryByRole("group", { name: "Teclado alfanumérico" })).toBeNull();
+    expect(amount).toHaveValue("12,00");
   });
 
   it("disables pending when the operator lacks permission", () => {

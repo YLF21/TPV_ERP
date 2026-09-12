@@ -1,0 +1,179 @@
+/* Touch workspace only. The keyboard layout and its menus remain unchanged. */
+.sale-screen.work-screen.touch-mode .work-shell {
+  grid-template-columns: clamp(300px, 24vw, 380px) minmax(0, 1fr) !important;
+}
+
+.sale-screen.work-screen.touch-mode .sale-tools {
+  display: flex !important;
+  flex-direction: column;
+  gap: 7px !important;
+  overflow: visible !important;
+  scrollbar-gutter: auto;
+}
+
+.sale-screen.work-screen.touch-mode .sale-tools > * { flex-shrink: 0; }
+.sale-screen.work-screen.touch-mode .sale-tools .sale-total { position: static; z-index: auto; }
+.sale-screen.work-screen.touch-mode .sale-touch-side-actions {
+  flex: 1 1 auto;
+  min-height: 213px;
+  margin: 4px 10px 0;
+  grid-template-rows: repeat(4, minmax(48px, 1fr));
+  max-height: 310px;
+}
+
+.sale-screen.work-screen.touch-mode .sale-ticket {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sale-screen.work-screen.touch-mode .sale-cart-table-scroll {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.sale-screen.work-screen.touch-mode .sale-touch-bottom-actions {
+  flex: 0 0 auto;
+  grid-template-rows: repeat(2, minmax(64px, 1fr));
+}
+.sale-screen.work-screen.touch-mode .promotion-preview-panel {
+  flex: 0 0 auto;
+  min-height: 0 !important;
+  max-height: 150px;
+  overflow: auto;
+  margin: 6px 0 0 !important;
+  padding: 8px 12px !important;
+}
+
+.sale-screen.work-screen.touch-mode .sale-cart-table [data-column-key="quantity"] {
+  min-width: 0;
+}
+
+.sale-screen.work-screen.touch-mode .sale-payment {
+  z-index: auto;
+  position: static;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Checkout remains mounted for hydration and dialogs, not as an empty panel. */
+.sale-screen.work-screen.touch-mode .sale-payment:not(:has(*)) { display: none !important; }
+
+.sale-screen.work-screen.touch-mode .sale-touch-top-actions { margin-left: auto; }
+.sale-screen.work-screen.touch-mode .sale-command-topbar .verifactu-pos { flex: 0 0 auto; margin-left: 0; }
+.sale-screen.work-screen.touch-mode .sale-touch-button { font-size: clamp(15px, 1.25vw, 20px); }
+.sale-screen.work-screen.touch-mode .sale-touch-side-actions .sale-touch-button svg { width: 32px; height: 32px; }
+.sale-screen.work-screen.touch-mode .sale-touch-button-checkout { font-size: clamp(20px, 2vw, 30px); }
+.sale-screen.work-screen.touch-mode .sale-touch-more-group .sale-touch-button { font-size: clamp(16px, 1.25vw, 20px); }
+
+.sale-screen.touch-mode .sale-action-dialog:has(.touch-alpha-keyboard) {
+  width: min(1000px, calc(100dvw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.sale-screen.touch-mode .sale-customer-selection-dialog:has(.touch-alpha-keyboard) {
+  grid-template-rows: auto auto auto minmax(80px, 1fr) auto auto;
+}
+
+.sale-screen.touch-mode .sale-customer-selection-dialog > .touch-alpha-keyboard { margin: 6px 12px; }
+.sale-screen.touch-mode .sale-comment-dialog textarea { min-height: 70px; max-height: 100px; }
+.sale-screen.touch-mode .sale-action-dialog.sale-touch-entry-dialog { width: min(500px, calc(100dvw - 32px)); }
+.sale-screen.touch-mode .sale-touch-entry-dialog > header {
+  margin: -20px -20px 0;
+  padding: 10px 16px;
+  background: #103358;
+  color: #fff;
+}
+.sale-screen.touch-mode .sale-action-dialog > header > button {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 2px;
+}
+.sale-screen.touch-mode .sale-touch-entry-dialog > header > button {
+  background: #103358;
+  color: #fff;
+}
+.sale-screen.touch-mode .sale-action-dialog .sale-action-buttons button { min-height: 48px !important; }
+.sale-screen.touch-mode .sale-touch-price-actions { display: grid; grid-template-columns: 1fr 1fr; }
+.sale-screen.touch-mode .sale-action-dialog .sale-touch-price-actions button { min-height: 54px !important; white-space: normal; }
+.sale-screen.touch-mode .sale-touch-price-actions .sale-touch-change-price {
+  background: #e7edf4 !important;
+  color: #12365e !important;
+  border-color: #8ea6c1 !important;
+}
+.sale-screen.touch-mode .sale-touch-price-actions .sale-touch-change-price:hover:not(:disabled) { background: #d8e8f7 !important; }
+
+.sale-screen.touch-mode .sale-action-dialog.sale-touch-remove-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  border-radius: 0;
+}
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 4px;
+}
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons button {
+  min-height: 54px !important;
+  border-radius: 0 !important;
+}
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons button:first-child {
+  background: #fff !important; color: #173f6e !important; border-color: #8293a6 !important;
+}
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons button:first-child:hover { background: #e5edf5 !important; }
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons button.danger {
+  background: #b42318 !important; color: #fff !important; border-color: #9f1f16 !important;
+}
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons button.danger:hover { background: #8f1c14 !important; }
+.sale-screen.touch-mode .sale-touch-remove-dialog .sale-action-buttons button:focus-visible { outline: 3px solid #176eb4; outline-offset: 2px; }
+
+.sale-screen.touch-mode .sale-action-dialog.sale-touch-numeric-dialog {
+  width: min(500px, calc(100dvw - 32px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  gap: 0;
+  overflow-y: auto;
+  border-radius: 0;
+}
+.sale-screen.touch-mode .sale-touch-numeric-dialog > header { margin: 0; padding: 10px 16px; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .sale-action-form { padding: 16px 20px 20px; gap: 14px; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .sale-action-form > label { gap: 6px; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog input { min-height: 44px; font-size: 20px; border-radius: 0; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog input:focus { outline: 2px solid #2775b7; outline-offset: 1px; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .touch-numeric-keypad { --touch-numeric-key-height: clamp(52px, 8dvh, 64px); }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .sale-dialog-hint { line-height: 1.4; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .sale-action-buttons { display: grid; grid-template-columns: 1fr 1fr; margin-top: 2px; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .sale-action-buttons button { border-radius: 0 !important; }
+.sale-screen.touch-mode .sale-touch-numeric-dialog .sale-action-buttons:not(.sale-touch-price-actions) button:first-child {
+  background: #fff !important; color: #12365e !important; border: 1px solid #7a90ab !important;
+}
+
+@media (max-height: 800px) {
+  .sale-screen.work-screen.touch-mode .sale-touch-bottom-actions { grid-template-rows: repeat(2, minmax(54px, 1fr)); }
+  .sale-screen.work-screen.touch-mode .sale-tools { gap: 3px !important; }
+  .sale-screen.work-screen.touch-mode .sale-tools:has(.has-customer) .sale-touch-side-actions {
+    /* A complete customer card must not push actions below the viewport. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(64px, 1fr));
+    min-height: 133px;
+    max-height: 160px;
+    margin-top: 0;
+    gap: 5px;
+  }
+  .sale-screen.work-screen.touch-mode .sale-tools:has(.has-customer) .sale-touch-side-actions .sale-touch-button { padding: 6px; gap: 5px; font-size: 15px; }
+  .sale-screen.work-screen.touch-mode .sale-tools:has(.has-customer) .sale-touch-side-actions .sale-touch-button svg { width: 24px; height: 24px; }
+  .sale-screen.work-screen.touch-mode .sale-search-results { min-height: 0 !important; max-height: 32px !important; overflow: auto; }
+  .sale-screen.work-screen.touch-mode .sale-search-results .sale-search-status { margin: 0; padding: 4px; }
+}
+
+@media (max-width: 1200px) {
+  .sale-screen.work-screen.touch-mode .sale-command-menu-trigger { min-width: 88px; padding-inline: 7px; font-size: 10px; }
+  .sale-screen.work-screen.touch-mode .sale-touch-top-actions .sale-touch-button { padding-inline: 7px; gap: 5px; font-size: 12px; }
+}

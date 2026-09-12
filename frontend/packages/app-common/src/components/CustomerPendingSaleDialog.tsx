@@ -1216,6 +1216,7 @@ export function CustomerPendingSaleDialog({
       <SaleMutationAuthorizationDialog
         open={Boolean(mutationAuthorizationAction)}
         locale={locale}
+        interfaceMode={interfaceMode}
         currentUsername={currentUsername}
         requirements={mutationCredentialRequirements}
         busy={submitting}
@@ -1386,6 +1387,7 @@ export function CustomerPendingSaleDialog({
     <SaleMutationAuthorizationDialog
       open={Boolean(mutationAuthorizationAction)}
       locale={locale}
+      interfaceMode={interfaceMode}
       currentUsername={currentUsername}
       requirements={mutationCredentialRequirements}
       busy={submitting}

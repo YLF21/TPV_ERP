@@ -10,6 +10,8 @@ import type {
 import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
+import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 
 type Draft = {
   username: string;
@@ -19,6 +21,7 @@ type Draft = {
 type Props = {
   open: boolean;
   locale: LocaleCode;
+  interfaceMode?: SaleInterfaceMode;
   currentUsername?: string;
   requirements: readonly SaleMutationAuthorizationRequirement[];
   busy?: boolean;
@@ -66,6 +69,7 @@ function emptyDrafts(
 export function SaleMutationAuthorizationDialog({
   open,
   locale,
+  interfaceMode,
   currentUsername = "",
   requirements,
   busy = false,
@@ -74,6 +78,9 @@ export function SaleMutationAuthorizationDialog({
   onConfirm,
 }: Props) {
   const dialogRef = useRef<HTMLElement>(null);
+  const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const activeCredentialRef = useRef<{ code: string; field: keyof Draft } | null>(null);
+  const [activeCredential, setActiveCredential] = useState<{ code: string; field: keyof Draft } | null>(null);
   const submittingRef = useRef(false);
   const requirementKey = requirements
     .map((requirement) => `${requirement.code}:${requirement.authorization.mode}`)
@@ -131,7 +138,7 @@ export function SaleMutationAuthorizationDialog({
     <div className="sale-action-overlay sale-mutation-authorization-overlay" role="presentation">
       <section
         ref={dialogRef}
-        className="sale-action-dialog sale-mutation-authorization-dialog"
+        className={`sale-action-dialog sale-mutation-authorization-dialog${interfaceMode === "TOUCH" ? " sale-touch-keyboard-dialog" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-mutation-authorization-title"
@@ -189,6 +196,14 @@ export function SaleMutationAuthorizationDialog({
                   className="sale-mutation-authorization-requirement"
                   role="group"
                   aria-label={requirement.label}
+                  onFocusCapture={(event) => {
+                    if (!(event.target instanceof HTMLInputElement)) return;
+                    activeInputRef.current = event.target;
+                    if (interfaceMode === "TOUCH") event.target.inputMode = "none";
+                    const credential = { code: requirement.code, field: event.target.type === "password" ? "password" as const : "username" as const };
+                    activeCredentialRef.current = credential;
+                    setActiveCredential(credential);
+                  }}
                 >
                   <div className="sale-mutation-authorization-operation">
                     <small>{t.protectedOperation}</small>
@@ -215,6 +230,23 @@ export function SaleMutationAuthorizationDialog({
               );
             })}
           </div>
+          {interfaceMode === "TOUCH" && (
+            <TouchAlphaKeyboard
+              locale={locale}
+              value={activeCredential ? drafts[activeCredential.code]?.[activeCredential.field] ?? "" : ""}
+              onChange={(value) => {
+                const credential = activeCredentialRef.current;
+                if (!credential || busy) return;
+                setDrafts((current) => ({
+                  ...current,
+                  [credential.code]: { ...current[credential.code], [credential.field]: value },
+                }));
+              }}
+              inputRef={activeInputRef}
+              maxLength={128}
+              disabled={busy || !activeCredential}
+            />
+          )}
           {error && <p className="sale-action-error" role="alert">{error}</p>}
           <div className="sale-action-buttons">
             <button type="button" disabled={busy} onClick={clearAndCancel}>

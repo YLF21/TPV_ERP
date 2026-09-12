@@ -17,6 +17,10 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Keep language dictionaries independently cacheable instead of
+          // rebuilding the startup monolith on every UI change.
+          const messages = id.replace(/\\/g, "/").match(/\/i18n\/Messages(Es|En|Zh)\.ts$/);
+          if (messages) return `messages-${messages[1].toLowerCase()}`;
           if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) {
             return "react-vendor";
           }
