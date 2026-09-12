@@ -99,16 +99,16 @@ describe("SaleScreen payment cleanup across restart", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect(screen.queryByText(/Venta reservada en cobro/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cobrar" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Efectivo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tarjeta/ })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/cash/quote")).toHaveLength(0);
     expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/payment-sessions")).toHaveLength(0);
     expect(apiRequestMock.mock.calls.filter(([path]) => path === "/customers/sale-options")).toHaveLength(0);
 
     await act(async () => { resolveActive(null); await activeResponse; });
-    await waitFor(() => expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled());
-    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cobrar" })).toBeEnabled());
 
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(await screen.findByRole("dialog", { name: "COBRO" }, { timeout: 3000 })).toBeInTheDocument();
@@ -147,8 +147,9 @@ describe("SaleScreen payment cleanup across restart", () => {
     expect(screen.getByRole("table", { name: "Líneas del ticket" }).querySelectorAll(".sale-cart-row")).toHaveLength(0);
     expect(screen.queryByText("Cobro pendiente")).not.toBeInTheDocument();
     expect(screen.queryByText(/El ticket está reservado/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cobrar" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Efectivo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tarjeta/ })).not.toBeInTheDocument();
   });
 
   it("fails closed for live rejection and logs out only after a later CANCELLED cleanup", async () => {

@@ -5,6 +5,7 @@ import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { TableSortButton } from "./TableSortButton";
+import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import "./SaleProductSearchDialog.css";
 
@@ -136,6 +137,13 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
     onSelectionChange?.(productId);
   }
 
+  function updateQuery(nextQuery: string) {
+    setQuery(nextQuery);
+    onQueryChange?.(nextQuery);
+    setSelectedId("");
+    onSelectionChange?.("");
+  }
+
   function moveSelection(offset: -1 | 1) {
     if (results.length === 0) return;
     const index = Math.max(0, results.findIndex((product) => product.id === activeId));
@@ -210,7 +218,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
     >
       <section
         ref={dialogRef}
-        className="sale-product-search-dialog"
+        className={`sale-product-search-dialog${interfaceMode === "TOUCH" ? " sale-product-search-touch-dialog" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-product-search-title"
@@ -241,14 +249,9 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               ? `sale-product-search-option-${encodeURIComponent(activeId)}`
               : undefined}
             autoComplete="off"
+            inputMode={interfaceMode === "TOUCH" ? "none" : undefined}
             value={query}
-            onChange={(event) => {
-              const nextQuery = event.target.value;
-              setQuery(nextQuery);
-              onQueryChange?.(nextQuery);
-              setSelectedId("");
-              onSelectionChange?.("");
-            }}
+            onChange={(event) => updateQuery(event.target.value)}
           />
           {interfaceMode === "KEYBOARD" && onCreateProduct && createProductLabel && (
             <button
@@ -332,6 +335,9 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               <span><kbd>Esc</kbd>{labels.close}</span>
             </div>
           </footer>
+        )}
+        {interfaceMode === "TOUCH" && (
+          <TouchAlphaKeyboard locale={locale} value={query} onChange={updateQuery} inputRef={inputRef} />
         )}
         {interfaceMode === "TOUCH" && (
           <footer className="sale-product-search-touch-actions">

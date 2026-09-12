@@ -92,6 +92,62 @@ describe("SaleCalculatorDialog arithmetic", () => {
 });
 
 describe("SaleCalculatorDialog interaction", () => {
+  it("edits the focused tax percentage with calculator keys and preserves its cursor", () => {
+    render(<SaleCalculatorDialog locale="es" defaultTaxPercent={21} onClose={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
+    for (const key of ["1", "0", "0"]) fireEvent.keyDown(dialog, { key });
+    const percentage = screen.getByDisplayValue("21") as HTMLInputElement;
+    fireEvent.focus(percentage);
+    percentage.setSelectionRange(0, 2);
+    for (const key of ["7", ",", "5"]) fireEvent.click(screen.getByRole("button", { name: key }));
+    expect(percentage.value).toBe("7,5");
+    expect(percentage.selectionStart).toBe(3);
+    expect(document.activeElement).toBe(percentage);
+    expect(document.querySelector("output")?.textContent).toBe("100");
+    percentage.setSelectionRange(0, 1);
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    expect(percentage.value).toBe("2,5");
+    expect(percentage.selectionStart).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retroceso" }));
+    expect(percentage.value).toBe(",5");
+    expect(percentage.selectionStart).toBe(0);
+    expect(percentage.dataset.touchKeyboard).toBe("off");
+  });
+
+  it("returns the keypad to arithmetic after selecting the display or an operator", () => {
+    render(<SaleCalculatorDialog locale="es" defaultTaxPercent={21} onClose={vi.fn()} />);
+    const percentage = screen.getByDisplayValue("21") as HTMLInputElement;
+    fireEvent.focus(percentage);
+    percentage.setSelectionRange(0, 2);
+    fireEvent.click(screen.getByRole("button", { name: "7" }));
+    fireEvent.click(document.querySelector(".sale-calculator-display")!);
+    fireEvent.click(screen.getByRole("button", { name: "8" }));
+    expect(document.querySelector("output")?.textContent).toBe("8");
+    expect(percentage.value).toBe("7");
+
+    fireEvent.focus(percentage);
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resultado" }));
+    expect(document.querySelector("output")?.textContent).toBe("10");
+    expect(percentage.value).toBe("7");
+  });
+
+  it("clears only the focused percentage and keeps physical typing in that field", () => {
+    render(<SaleCalculatorDialog locale="en" defaultTaxPercent={21} onClose={vi.fn()} />);
+    const percentage = screen.getByDisplayValue("21") as HTMLInputElement;
+    fireEvent.focus(percentage);
+    fireEvent.click(screen.getByRole("button", { name: "Clear entry" }));
+    expect(percentage.value).toBe("");
+    fireEvent.keyDown(percentage, { key: "4" });
+    fireEvent.change(percentage, { target: { value: "4" } });
+    percentage.setSelectionRange(1, 1);
+    fireEvent.click(screen.getByRole("button", { name: "." }));
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(percentage.value).toBe("4.5");
+    expect(document.querySelector("output")?.textContent).toBe("0");
+  });
+
   it("accepts keyboard arithmetic and Enter", () => {
     render(<SaleCalculatorDialog locale="es" defaultTaxPercent={21} onClose={vi.fn()} />);
     const dialog = screen.getByRole("dialog");

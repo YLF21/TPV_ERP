@@ -132,6 +132,28 @@ afterEach(() => {
 });
 
 describe("SalesDocumentScreen", () => {
+  it("opens product search by touch and types into the contextual customer keyboard", async () => {
+    configureDocumentApi([]);
+    render(<SalesDocumentScreen locale="es" session={session} terminalContext={terminalContext} interfaceMode="TOUCH" />);
+    const quickEntry = await screen.findByLabelText(/entrada.*c.digo/i);
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    expect(screen.queryByRole("group", { name: "Teclado alfanumérico" })).not.toBeInTheDocument();
+    fireEvent.click(quickEntry);
+    const productDialog = screen.getByRole("dialog", { name: /buscador de productos/i });
+    const productKeyboard = within(productDialog).getByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(productKeyboard).getByRole("button", { name: "P" }));
+    expect(within(productDialog).getByRole("combobox")).toHaveValue("P");
+    fireEvent.click(within(productDialog).getByRole("button", { name: "Cerrar" }));
+    await waitFor(() => expect(quickEntry).toHaveFocus());
+    fireEvent.keyDown(window, { key: "End" });
+    const customerDialog = screen.getByRole("dialog", { name: /seleccionar cliente/i });
+    const customerInput = within(customerDialog).getByRole("textbox", { name: "Buscar cliente" });
+    fireEvent.focus(customerInput);
+    const customerKeyboard = await within(customerDialog).findByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(customerKeyboard).getByRole("button", { name: "C" }));
+    expect(customerInput).toHaveValue("C");
+  });
+
   it("starts blank, quotes authoritatively and saves an independent invoice draft", async () => {
     apiRequest.mockImplementation((path: string, options?: { body?: unknown }) => {
       if (path === "/products/sale") return Promise.resolve([{
@@ -873,7 +895,7 @@ describe("SalesDocumentScreen", () => {
     expect(await screen.findByRole("dialog", { name: "COBRO" })).toBeInTheDocument();
   });
 
-  it("preserves fiscal data and authorization for economic Ctrl+F shortcuts", async () => {
+  it.each(["KEYBOARD", "TOUCH"] as const)("preserves fiscal data and authorization for economic Ctrl+F shortcuts in %s", async (interfaceMode) => {
     const savedBodies: unknown[] = [];
     const delegatedTemporaryNameSecurity = {
       ...documentOperationSecurity,
@@ -903,6 +925,7 @@ describe("SalesDocumentScreen", () => {
       locale="es"
       session={session}
       terminalContext={terminalContext}
+      interfaceMode={interfaceMode}
     />);
 
     const quickEntry = await screen.findByLabelText(/entrada.*c.digo/i);
@@ -955,6 +978,8 @@ describe("SalesDocumentScreen", () => {
 
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     const serialDialog = await screen.findByRole("dialog", { name: /n.* de serie/i });
+    expect(within(serialDialog).queryAllByRole("group", { name: "Teclado alfanumérico" }))
+      .toHaveLength(interfaceMode === "TOUCH" ? 1 : 0);
     fireEvent.change(within(serialDialog).getByLabelText(/unidad 1/i), {
       target: { value: "serie-001" },
     });
@@ -968,6 +993,8 @@ describe("SalesDocumentScreen", () => {
     const authorizationDialog = await screen.findByRole("dialog", {
       name: /autorizaci.n de la venta/i,
     });
+    expect(within(authorizationDialog).queryAllByRole("group", { name: "Teclado alfanumérico" }))
+      .toHaveLength(interfaceMode === "TOUCH" ? 1 : 0);
     fireEvent.change(within(authorizationDialog).getByLabelText("Usuario autorizador"), {
       target: { value: "supervisor" },
     });

@@ -42,6 +42,27 @@ afterEach(() => {
 });
 
 describe("SaleProductSearchDialog", () => {
+  it("provides the alpha keyboard only for touch mode and preserves scanning and query notifications", () => {
+    const onQueryChange = vi.fn();
+    const props = { initialQuery: "OLD", labels, products, onQueryChange, onClose: vi.fn(), onSelect: vi.fn() };
+    const { rerender } = render(<SaleProductSearchDialog {...props} interfaceMode="KEYBOARD" />);
+    expect(screen.queryByRole("group", { name: "Teclado alfanumérico" })).not.toBeInTheDocument();
+    rerender(<SaleProductSearchDialog {...props} interfaceMode="TOUCH" />);
+    const input = screen.getByRole<HTMLInputElement>("combobox", { name: labels.query });
+    expect(input).toHaveAttribute("inputmode", "none");
+    input.focus();
+    input.select();
+    fireEvent.click(screen.getByRole("button", { name: "P" }));
+    fireEvent.click(screen.getByRole("button", { name: "A" }));
+    fireEvent.click(screen.getByRole("button", { name: "N" }));
+    expect(input).toHaveValue("PAN");
+    expect(input).toHaveFocus();
+    expect(onQueryChange).toHaveBeenLastCalledWith("PAN");
+    expect(screen.getByRole("option")).toHaveAccessibleName(/Pan integral/);
+    fireEvent.change(input, { target: { value: "8410000000011" } });
+    expect(screen.getByRole("option")).toHaveAccessibleName(/Café molido/);
+  });
+
   it("filters partially by both codes, both barcodes and name", () => {
     expect(filterSaleProductSearch(products, "cafe").map((product) => product.id)).toEqual(["coffee"]);
     expect(filterSaleProductSearch(products, "PAN-0").map((product) => product.id)).toEqual(["bread"]);

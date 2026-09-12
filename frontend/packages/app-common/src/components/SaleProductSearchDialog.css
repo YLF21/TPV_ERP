@@ -2,6 +2,16 @@
   grid-template-columns: 250px minmax(0, 1fr) auto;
 }
 
+.sale-product-search-dialog.sale-product-search-touch-dialog {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+
+.sale-product-search-touch-dialog > .touch-alpha-keyboard {
+  width: min(920px, 100%);
+  box-sizing: border-box;
+  justify-self: center;
+}
+
 .sale-product-search-field > label {
   color: var(--tpv-v3-navy, #163f72);
   font-size: 11px;

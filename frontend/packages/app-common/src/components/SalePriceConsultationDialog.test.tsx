@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
+import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 
 afterEach(() => {
   cleanup();
@@ -19,6 +20,28 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("SalePriceConsultationDialog", () => {
+  it("provides a visible touch input, keyboard and explicit search without physical Enter", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      productId: "product-1", code: "Q1", name: "Consulta táctil", salePrice: 10, activePriceType: "NORMAL",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SaleTouchKeyboardScope locale="es" interfaceMode="TOUCH">
+      <SalePriceConsultationDialog locale="es" token="token" interfaceMode="TOUCH" onClose={vi.fn()} />
+    </SaleTouchKeyboardScope>);
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    expect(input).toHaveClass("sale-price-consultation-touch-input");
+    fireEvent.focus(input);
+    fireEvent.click(screen.getByRole("button", { name: "Q" }));
+    fireEvent.click(screen.getByRole("button", { name: "1" }));
+    expect(input).toHaveValue("Q1");
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+    expect(await screen.findByText("Consulta táctil")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost");
+    expect(request.searchParams.get("identifier")).toBe("Q1");
+  });
+
   it("opens empty and waits for a scan or a manually entered code", () => {
     render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
 

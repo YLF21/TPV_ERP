@@ -4,6 +4,7 @@ import { devTerminalContext } from "../../../packages/app-common/src/api/runtime
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
 import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
+import { SaleTouchKeyboardScope } from "../../../packages/app-common/src/components/SaleTouchKeyboardScope";
 import {
   defaultSaleInterfaceMode,
   loadSaleInterfaceConfiguration,
@@ -170,6 +171,7 @@ type SalesUtilityBootstrap = {
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
+  interfaceMode?: SaleInterfaceMode;
   initialProductId?: string;
   authorization?: SaleOperationAuthorization;
 };
@@ -252,8 +254,10 @@ export function SalesUtilityWindowApp() {
     </section></main>;
   }
 
+  const utilityInterfaceMode = bootstrap.interfaceMode === "TOUCH" ? "TOUCH" : "KEYBOARD";
   if (bootstrap.kind === "PRODUCT_LABEL") {
-    return <SaleProductLabelDialog
+    return <SaleTouchKeyboardScope locale={bootstrap.locale} interfaceMode={utilityInterfaceMode}>
+    <SaleProductLabelDialog
       open
       locale={bootstrap.locale}
       storeName={bootstrap.terminalContext.storeName}
@@ -273,7 +277,8 @@ export function SalesUtilityWindowApp() {
       onPrinted={(pdf) => {
         productLabelOutputRef.current = { printed: true, pdf };
       }}
-    />;
+    />
+    </SaleTouchKeyboardScope>;
   }
 
   if (!bootstrap.authorization) {
@@ -285,7 +290,8 @@ export function SalesUtilityWindowApp() {
   }
 
   if (productReservation) {
-    return <ProductCreateDialog
+    return <SaleTouchKeyboardScope locale={bootstrap.locale} interfaceMode={utilityInterfaceMode}>
+    <ProductCreateDialog
       open
       locale={bootstrap.locale}
       token={bootstrap.session.accessToken}
@@ -305,10 +311,12 @@ export function SalesUtilityWindowApp() {
       }}
       onClose={close}
       onCreated={() => finish({ catalogChanged: true })}
-    />;
+    />
+    </SaleTouchKeyboardScope>;
   }
 
-  return <SaleInternalEanDialog
+  return <SaleTouchKeyboardScope locale={bootstrap.locale} interfaceMode={utilityInterfaceMode}>
+  <SaleInternalEanDialog
     open
     locale={bootstrap.locale}
     currentUsername={bootstrap.session.username}
@@ -319,7 +327,8 @@ export function SalesUtilityWindowApp() {
     onClose={close}
     onAssigned={() => finish({ catalogChanged: true })}
     onCreateProduct={setProductReservation}
-  />;
+  />
+  </SaleTouchKeyboardScope>;
 }
 
 export function App() {
@@ -449,6 +458,7 @@ export function App() {
       locale,
       session,
       terminalContext,
+      interfaceMode: saleInterfaceMode,
     }).then((result) => {
       if (!result.ok) {
         setAppNotice(settingsTranslator("hardware.printing.openError"));

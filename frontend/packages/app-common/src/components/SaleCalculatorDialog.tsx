@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { LocaleCode } from "../types";
+import { editTouchText } from "./TouchAlphaKeyboard";
 
 export type CalculatorOperator = "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE";
 
@@ -318,6 +319,9 @@ function rememberTaxPercentage(terminalKey: string | undefined, value: string) {
 export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, onClose }: Props) {
   const t = copy[locale];
   const dialogRef = useRef<HTMLElement>(null);
+  const taxInputRef = useRef<HTMLInputElement>(null);
+  const taxInputActiveRef = useRef(false);
+  const taxCursorRef = useRef<number | null>(null);
   const [state, setState] = useState(initialCalculatorState);
   const [taxPercent, setTaxPercent] = useState(() => initialTaxPercentage(
     rememberedTaxPercentage(terminalKey) ?? defaultTaxPercent,
@@ -337,6 +341,46 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
 
   useEffect(() => { dialogRef.current?.focus(); }, []);
 
+  useLayoutEffect(() => {
+    const input = taxInputRef.current;
+    const cursor = taxCursorRef.current;
+    taxCursorRef.current = null;
+    if (cursor == null || !input) return;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(cursor, cursor);
+  });
+
+  function focusCalculation() {
+    taxInputActiveRef.current = false;
+    dialogRef.current?.focus({ preventScroll: true });
+  }
+
+  function pressKey(action: CalculatorAction) {
+    const input = taxInputRef.current;
+    const editKey = action.type === "DIGIT" ? action.digit
+      : action.type === "DECIMAL" ? (locale === "en" ? "." : ",")
+        : action.type === "BACKSPACE" ? "BACKSPACE"
+          : action.type === "CLEAR_ENTRY" || action.type === "CLEAR_ALL" ? "CLEAR"
+            : null;
+    if (taxInputActiveRef.current && input && editKey != null) {
+      const edited = editTouchText(
+        input.value,
+        editKey,
+        input.selectionStart ?? input.value.length,
+        input.selectionEnd ?? input.value.length,
+      );
+      input.focus({ preventScroll: true });
+      if (edited.value === input.value) input.setSelectionRange(edited.cursor, edited.cursor);
+      else {
+        taxCursorRef.current = edited.cursor;
+        setTaxPercent(edited.value);
+      }
+      return;
+    }
+    focusCalculation();
+    dispatch(action);
+  }
+
   function closeDialog() {
     if (validTax) rememberTaxPercentage(terminalKey, taxPercent);
     onClose();
@@ -345,6 +389,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
   function applyTax(mode: "ADD" | "REMOVE") {
     const result = mode === "ADD" ? taxPreview.added : taxPreview.removed;
     if (result == null || currentAmount == null) return;
+    focusCalculation();
     dispatch({
       type: "SET_RESULT",
       value: Math.round((result + Number.EPSILON) * 100) / 100,
@@ -411,7 +456,8 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
 
         <div className="sale-calculator-layout">
           <section className="sale-calculator-main" aria-label={t.title}>
-            <div className={`sale-calculator-display ${state.error ? "error" : ""}`} aria-live="polite">
+            <div className={`sale-calculator-display ${state.error ? "error" : ""}`} aria-live="polite"
+              tabIndex={0} onFocus={() => { taxInputActiveRef.current = false; }} onClick={focusCalculation}>
               <small>{state.expression || "\u00a0"}</small>
               <output aria-label={t.equals}>{localizedDisplay(state.display, locale, t.error)}</output>
             </div>
@@ -422,7 +468,8 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
                   key={`${key.label}-${index}`}
                   className={key.className ?? ""}
                   aria-label={key.ariaLabel ?? key.label}
-                  onClick={() => dispatch(key.action)}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => pressKey(key.action)}
                 >
                   {key.label}
                 </button>
@@ -438,9 +485,12 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
               <span>{t.taxRate}</span>
               <div className="sale-calculator-tax-input">
                 <input
+                  ref={taxInputRef}
                   data-calculator-tax-rate
+                  data-touch-keyboard="off"
                   inputMode="decimal"
                   value={taxPercent}
+                  onFocus={() => { taxInputActiveRef.current = true; }}
                   onChange={(event) => setTaxPercent(event.currentTarget.value.replace(/[^0-9,.]/g, ""))}
                   aria-invalid={!validTax}
                 />

@@ -73,6 +73,7 @@ import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
 import { SaleProductInformationDialog } from "./SaleProductInformationDialog";
 import { SaleProductSearchDialog } from "./SaleProductSearchDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
+import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
@@ -1336,6 +1337,7 @@ export function SalesDocumentScreen({
       ? recovery.draft.completionMode : null);
 
   return (
+    <SaleTouchKeyboardScope locale={locale} interfaceMode={interfaceMode}>
     <main className="sales-document-screen">
       <header className="sales-document-topbar">
         <div className="sales-document-heading">
@@ -1457,6 +1459,7 @@ export function SalesDocumentScreen({
                 value={query}
                 disabled={catalogLoading || Boolean(loadError)}
                 placeholder={t("sale.main.searchPlaceholder")}
+                onClick={() => { if (interfaceMode === "TOUCH") openProductSearch(); }}
                 onChange={(event) => {
                   setQuery(event.target.value);
                   clearShortcutFeedback();
@@ -1692,6 +1695,7 @@ export function SalesDocumentScreen({
         <SaleMutationAuthorizationDialog
           open
           locale={locale}
+          interfaceMode={interfaceMode}
           currentUsername={session.username}
           requirements={[{
             code: "TEMPORARY_PRICE_CHANGE",
@@ -1716,6 +1720,7 @@ export function SalesDocumentScreen({
         <SaleMutationAuthorizationDialog
           open
           locale={locale}
+          interfaceMode={interfaceMode}
           currentUsername={session.username}
           requirements={saleMutationCredentialsRequired(saleMutationAuthorizations)}
           busy={saving}
@@ -1734,6 +1739,7 @@ export function SalesDocumentScreen({
       {serialNumberOpen && selectedLine && (
         <SaleSerialNumberDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           productName={selectedLine.temporaryName
             ?? selectedLine.product.name ?? selectedLine.product.code ?? ""}
           quantity={selectedLine.quantity}
@@ -1875,5 +1881,6 @@ export function SalesDocumentScreen({
         />
       )}
     </main>
+    </SaleTouchKeyboardScope>
   );
 }

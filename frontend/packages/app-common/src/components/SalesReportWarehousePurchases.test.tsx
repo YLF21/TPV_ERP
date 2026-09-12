@@ -117,6 +117,9 @@ describe("current warehouse purchase reports", () => {
       return base(path);
     });
     mount(request);
+    const firstRow = await screen.findByText("FE-001");
+    // Request the next page explicitly; jsdom has no real viewport for automatic loading.
+    fireEvent.scroll(firstRow.closest(".report-table-scroll")!);
     await waitFor(() => expect(request.mock.calls.some(([path]) => path.includes("cursor=invoice-page"))).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: createTranslator("es")("salesReport.inputDeliveryNotes") }));
     expect(await screen.findByText("AE-001")).toBeVisible();

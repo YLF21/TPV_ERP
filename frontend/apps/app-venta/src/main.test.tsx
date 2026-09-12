@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { saleUserLocaleStorageKey } from "./saleUserLocale";
@@ -128,7 +128,8 @@ vi.mock("../../../packages/app-common/src/components/SaleProductLabelDialog", ()
     onClose: () => void;
     onPrinted: (pdf: boolean) => void;
   }) => (
-    <section aria-label="product label utility">
+    <section role="dialog" aria-label="product label utility">
+      <input aria-label="Label product query" autoFocus />
       <button type="button" onClick={() => onPrinted(false)}>Print label</button>
       <button type="button" onClick={onClose}>Close label utility</button>
     </section>
@@ -240,6 +241,7 @@ describe("APP VENTA locale wiring", () => {
       locale: "es",
       session: loginSession,
       terminalContext: expect.objectContaining({ terminalId: "terminal-real" }),
+      interfaceMode: "KEYBOARD",
     })));
     expect(await screen.findByRole("alert")).toHaveTextContent("Etiqueta enviada a la impresora");
   });
@@ -369,7 +371,7 @@ describe("APP VENTA locale wiring", () => {
     expect(screen.queryByRole("button", { name: "Log in" })).not.toBeInTheDocument();
   });
 
-  it("keeps the Ctrl+I label window open after printing until manual close", async () => {
+  it("inherits the touch keyboard and keeps the Ctrl+I label window open after printing until manual close", async () => {
     const complete = vi.fn().mockResolvedValue({ ok: true });
     const close = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([]), {
@@ -383,6 +385,7 @@ describe("APP VENTA locale wiring", () => {
           locale: "es",
           session: { ...session, accessToken: "token" },
           terminalContext: { storeName: "TIENDA DEMO", terminalCode: "SERVIDOR" },
+          interfaceMode: "TOUCH",
         }),
         complete,
         close,
@@ -391,6 +394,11 @@ describe("APP VENTA locale wiring", () => {
 
     render(<SalesUtilityWindowApp />);
     const utility = await screen.findByLabelText("product label utility");
+    const query = within(utility).getByRole("textbox", { name: "Label product query" });
+    fireEvent.focus(query);
+    const keyboard = await within(utility).findByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(keyboard).getByRole("button", { name: "A" }));
+    expect(query).toHaveValue("A");
 
     fireEvent.click(screen.getByRole("button", { name: "Print label" }));
     expect(utility).toBeInTheDocument();

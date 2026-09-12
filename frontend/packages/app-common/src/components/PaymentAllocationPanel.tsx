@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { localizePaymentDiagnostic } from "../i18n/PaymentMessages";
 import {
@@ -9,6 +9,8 @@ import {
 import { remainingPaymentCents, type AllocationKind, type PaymentSession } from "../sale/paymentOrchestration";
 import type { LocaleCode } from "../types";
 import { MemberWalletDialog, type MemberWalletLot } from "./MemberWalletDialog";
+import { editTouchText, TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
+import "./PaymentTouchKeyboard.css";
 
 export type CheckoutMethod = "CASH" | "CARD" | "VOUCHER" | "PENDING" | "TRANSFER" | "MEMBER_BALANCE" | "MEMBER_CREDIT" | "DISCOUNT";
 
@@ -355,12 +357,18 @@ export function PaymentAllocationPanel({
   const [validation, setValidation] = useState("");
   const [voucherResolving, setVoucherResolving] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
+  const [focusEntryAfterWallet, setFocusEntryAfterWallet] = useState(false);
   const [focusAmountAfterSubmit, setFocusAmountAfterSubmit] = useState(false);
   const [focusVoucherAfterResolve, setFocusVoucherAfterResolve] = useState(false);
+  const [touchField, setTouchField] = useState<"amount" | "voucher" | "reference" | "comment" | "date">("amount");
+  const touchTextKeyboardVisible = interfaceMode === "TOUCH" && !zero && !walletOpen
+    && (touchField === "voucher" || touchField === "reference" || touchField === "comment");
   const amountRef = useRef<HTMLInputElement>(null);
+  const amountCursorRef = useRef<number | null>(null);
   const voucherCodeRef = useRef<HTMLInputElement>(null);
   const voucherResolveGuardRef = useRef(false);
   const referenceRef = useRef<HTMLInputElement>(null);
+  const commentRef = useRef<HTMLInputElement>(null);
   const transferDateRef = useRef<HTMLInputElement>(null);
   const scannerCaptureRef = useRef(idleScannerTimingCapture);
   const amountCents = parseCents(amount);
@@ -496,6 +504,21 @@ export function PaymentAllocationPanel({
       voucherCodeRef.current?.select();
     });
   }, [allowAdd, busy, compensationRequired, focusVoucherAfterResolve, voucherResolving]);
+
+  useEffect(() => {
+    if (!focusEntryAfterWallet || walletOpen || entryLocked) return;
+    setFocusEntryAfterWallet(false);
+    queueMicrotask(() => {
+      const input = selectedMethod === "VOUCHER" && !refund ? voucherCodeRef.current : amountRef.current;
+      input?.focus({ preventScroll: true });
+      input?.select();
+    });
+  }, [entryLocked, focusEntryAfterWallet, refund, selectedMethod, walletOpen]);
+
+  function closeWallet() {
+    setWalletOpen(false);
+    if (interfaceMode === "TOUCH") setFocusEntryAfterWallet(true);
+  }
 
   useEffect(() => {
     const protectCheckoutFromScanner = (event: KeyboardEvent) => {
@@ -705,16 +728,44 @@ export function PaymentAllocationPanel({
     setFocusAmountAfterSubmit(true);
   }
 
+  useLayoutEffect(() => {
+    const input = amountRef.current;
+    const cursor = amountCursorRef.current;
+    amountCursorRef.current = null;
+    if (cursor == null || !input || input.disabled) return;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(cursor, cursor);
+  });
+
   function appendKey(value: string) {
-    setAmount((current) => {
-      if (value === "clear") return "";
-      if (value === "backspace") return current.slice(0, -1);
-      if (value === "," && current.includes(",")) return current;
-      const next = current === "0,00" ? value : `${current}${value}`;
-      const [, decimals = ""] = next.split(",");
-      return decimals.length <= 2 ? next : current;
-    });
-    amountRef.current?.focus();
+    const input = amountRef.current;
+    if (touchField !== "amount" || !input || input.disabled || walletOpen) return;
+    const edited = editTouchText(
+      input.value,
+      value === "clear" ? "CLEAR" : value === "backspace" ? "BACKSPACE" : value,
+      input.selectionStart ?? input.value.length,
+      input.selectionEnd ?? input.value.length,
+    );
+    if (value !== "clear" && value !== "backspace" && !/^\d*(?:[,.]\d{0,2})?$/.test(edited.value)) return;
+    input.focus({ preventScroll: true });
+    if (edited.value === input.value) {
+      input.setSelectionRange(edited.cursor, edited.cursor);
+    } else {
+      amountCursorRef.current = edited.cursor;
+      setAmount(edited.value);
+    }
+  }
+
+  function selectTouchAmount(cents: number) {
+    const input = amountRef.current;
+    if (touchField !== "amount" || !input || input.disabled || walletOpen) return;
+    const next = centsInput(cents);
+    input.focus({ preventScroll: true });
+    if (next === amount) input.setSelectionRange(next.length, next.length);
+    else {
+      amountCursorRef.current = next.length;
+      setAmount(next);
+    }
   }
 
   useEffect(() => {
@@ -790,7 +841,7 @@ export function PaymentAllocationPanel({
   })[value];
 
   return <><div className="sale-checkout-overlay" role="presentation">
-    <section className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}`}
+    <section className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}${touchTextKeyboardVisible ? " has-touch-text-keyboard" : ""}`}
       role="dialog" aria-modal="true" aria-hidden={walletOpen ? true : undefined}
       aria-labelledby="sale-checkout-title" aria-busy={busy}>
       <header className="sale-checkout-header">
@@ -808,29 +859,34 @@ export function PaymentAllocationPanel({
                 ? (locale === "es" ? "IMPORTE A DEVOLVER" : locale === "en" ? "REFUND AMOUNT" : "\u9000\u6b3e\u91d1\u989d")
                 : copy.amount}</span>
               <input ref={amountRef} inputMode="decimal" autoComplete="off" value={amount}
+                data-touch-keyboard="off" onFocus={() => setTouchField("amount")}
                 disabled={entryLocked || (selectedMethod === "VOUCHER" && !refund)}
                 onChange={(event) => setAmount(event.currentTarget.value)} />
             </label>
             <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled && !refund ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
               {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
                 <input ref={voucherCodeRef} id="checkout-voucher-code" autoComplete="off"
+                  data-touch-keyboard="off" onFocus={() => setTouchField("voucher")}
                   value={voucherCode}
                   disabled={entryLocked}
                   onChange={(event) => setVoucherCode(event.currentTarget.value)} />
               </label>}
               <label><span>{copy.document}</span>
                 <input ref={referenceRef} id="checkout-reference" autoComplete="off" value={reference}
+                  data-touch-keyboard="off" onFocus={() => setTouchField("reference")}
                   disabled={entryLocked}
                   onChange={(event) => setReference(event.currentTarget.value)} />
               </label>
               {selectedMethod === "TRANSFER" && transferDateEnabled && !refund && <label>
                 <span>{locale === "es" ? "FECHA DE TRANSFERENCIA" : locale === "en" ? "TRANSFER DATE" : "转账日期"}</span>
                 <input ref={transferDateRef} id="checkout-transfer-date" type="date"
+                  onFocus={() => setTouchField("date")}
                   max={localDateInput()} value={transferDate} disabled={entryLocked}
                   onChange={(event) => setTransferDate(event.currentTarget.value)} />
               </label>}
               {commentEnabled && <label><span>{copy.comment}</span>
-                <input id="checkout-comment" autoComplete="off" maxLength={512} value={comment}
+                <input ref={commentRef} id="checkout-comment" autoComplete="off" maxLength={512} value={comment}
+                  data-touch-keyboard="off" onFocus={() => setTouchField("comment")}
                   disabled={entryLocked}
                   onChange={(event) => setComment(event.currentTarget.value)} />
               </label>}
@@ -940,12 +996,13 @@ export function PaymentAllocationPanel({
           </footer>
         </div>
 
-        {interfaceMode === "TOUCH" && !zero && <aside className="sale-checkout-keypad" aria-label="Teclado numérico">
+        {interfaceMode === "TOUCH" && !zero && !walletOpen && touchField === "amount" && <aside className="sale-checkout-keypad" aria-label="Teclado numérico"
+          onPointerDown={(event) => event.preventDefault()}>
           <button type="button" className="exact" disabled={entryLocked}
-            onClick={() => setAmount(centsInput(remaining))}>{copy.exact}</button>
+            onClick={() => selectTouchAmount(remaining)}>{copy.exact}</button>
           {[500, 1000, 2000, 5000].map((cents) =>
             <button type="button" key={cents} disabled={entryLocked}
-              onClick={() => setAmount(centsInput(cents))}>{cents / 100} €</button>)}
+              onClick={() => selectTouchAmount(cents)}>{cents / 100} €</button>)}
           {["7", "8", "9", "4", "5", "6", "1", "2", "3", ",", "0", "backspace"].map((key) =>
             <button type="button" key={key} disabled={entryLocked} onClick={() => appendKey(key)}>
               {key === "backspace" ? "⌫" : key}
@@ -956,6 +1013,13 @@ export function PaymentAllocationPanel({
             onClick={() => submit(true)}>↵</button>
         </aside>}
       </div>
+      {touchTextKeyboardVisible && <TouchAlphaKeyboard
+          locale={locale}
+          value={touchField === "voucher" ? voucherCode : touchField === "reference" ? reference : comment}
+          onChange={touchField === "voucher" ? setVoucherCode : touchField === "reference" ? setReference : setComment}
+          inputRef={touchField === "voucher" ? voucherCodeRef : touchField === "reference" ? referenceRef : commentRef}
+          disabled={entryLocked}
+        />}
     </section>
   </div>
     {walletOpen && memberWallet && <MemberWalletDialog
@@ -967,7 +1031,7 @@ export function PaymentAllocationPanel({
       retentionHeldCents={retentionHeldTotalCents}
       busy={busy}
       error={error || undefined}
-      onCancel={() => setWalletOpen(false)}
+      onCancel={closeWallet}
       onConfirm={(requestedCents) => {
         const loyaltyCents = Math.min(requestedCents, walletLoyaltyLimit);
         const returnCreditCents = Math.min(
@@ -981,7 +1045,7 @@ export function PaymentAllocationPanel({
           returnCreditCents,
           returnCreditAvailableCents: walletReturnCreditAvailableCents,
         });
-        setWalletOpen(false);
+        closeWallet();
       }}
     />}
   </>;

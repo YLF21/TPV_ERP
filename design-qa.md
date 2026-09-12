@@ -332,3 +332,162 @@ final result: passed
 
 - Vitest focalizado: 2 archivos y 10 pruebas superadas.
 - Compilación de APP GESTIÓN: superada.
+
+---
+
+# Design QA — APP VENTA táctil, 2026-09-12
+
+## Fuente y entorno
+
+- Rama: `codex/sale-touch-layout`.
+- Directorio de imágenes aprobadas: `C:/Users/YLF/.codex/generated_images/01a06d6c-6a96-7540-b3af-881b70f7494f/`.
+- Vacío: `exec-eeeea327-607b-490b-a386-9b5afcb1427d.png`.
+- Promoción: `exec-6a544b5d-2886-45b1-8fd9-cc15dcae2cd0.png`.
+- Más opciones: `exec-b8ca3d5f-cdc5-454d-b772-19314f40954c.png`.
+- Bloque protegido: `C:/Users/YLF/AppData/Local/Temp/codex-clipboard-24f20453-3928-443b-be42-8843ca1f91bd.png`.
+- Implementación: `http://127.0.0.1:5181/`, escenario aislado que monta los componentes reales. Datos DEMO y respuestas controladas; ninguna conexión a BD.
+- Implementation screenshot path: capturas inline en esta tarea de Codex mediante CUA; la API utilizada devuelve bytes/imagen y no proporciona ruta persistente. No se inventa un archivo PNG local.
+- Fuente: 1586 × 992 píxeles. Comparación principal: viewport CSS 1586 × 992, DPR 1; capturas a igual tamaño, sin marco de dispositivo ni reescalado CSS.
+- Comprobaciones adicionales: 1600 × 1000 y 1280 × 720, DPR 1.
+
+## Evidencias conjuntas y estados
+
+- 13:10:16: fuente vacía y captura renderizada emitidas juntas. Se verificaron las dimensiones por DOM: cuerpo 1586 × 992; controles inferiores de 64 px y Cobrar de 134 px.
+- 13:11:12: fuente con promoción y captura juntas; dos artículos DEMO, cantidades 2 y 1, total simulado 3,40 y ahorro 0,60. A continuación se comparó Más opciones abierto con su fuente en la misma entrada visual.
+- 13:15:03: captura y medición de la corrección responsive con cliente, documento, deuda y mensaje de búsqueda. Los cuatro botones laterales terminan en y=685 dentro de un viewport de 720 px, sin scroll de acciones.
+- 13:16:13: región Precio ampliada; teclado cuadrado y botones independientes de 54 px bajo el teclado. Ambos permanecen visibles.
+- 13:12: autorización de precio temporal con campo de contraseña enmascarado y teclado alfanumérico; confirmar deshabilitado sin credenciales. No se enviaron contraseñas.
+- 13:16: buscador de productos mediante las teclas P/A/P; devuelve y selecciona PAPEL DE REGALO. Teclado y botón Añadir al ticket visibles a 1280 × 720.
+- 13:19: captura del modo KEYBOARD; medición confirma cero barras táctiles y cero teclados alfanuméricos montados, sin errores de consola.
+- También se capturaron comentarios, selector de clientes y estados sin selección. Consola: sin errores de aplicación en las consultas realizadas.
+
+## Historial de hallazgos y correcciones
+
+1. P2: quedaba un marco vacío del componente de cobro en el lateral. Se oculta únicamente cuando no tiene elementos; el componente sigue montado para hidratar sesiones y mostrar sus diálogos. Verificado sin marco después del cambio.
+2. P2: acciones nuevas pequeñas y teclado numérico redondeado. Se aumentaron fuente/altura, se aplicaron controles cuadrados y cabecera ERP al diálogo Precio. Recaptura confirma botones de 54 px.
+3. P2: un cliente con datos y deuda desplazaba Más opciones por debajo de 720 px. En pantallas de hasta 800 px de alto y con cliente seleccionado, los cuatro botones nuevos se distribuyen 2 × 2; sin cliente se conservan las cuatro filas. No se recortan los datos del cliente ni se cambia la lógica de deuda. Medición final: y=685, altura de cada botón aproximadamente 68 px.
+4. P2: la etiqueta del menú era Descuento de compra. Se usa Descuento documento y cambia a Eliminar descuento documento, con ES/EN/ZH y pruebas actualizadas.
+
+## Superficies de fidelidad
+
+- Tipografía: se conserva Segoe UI y los fallbacks existentes; no se copia la tipografía sintética de la imagen generada. Nuevas acciones entre 15 y 20 px, con icono y texto. Los bloques originales conservan su densidad.
+- Composición: menús y Total/Buscar/Cantidad/Cliente preservados; Factura/albarán junto a Calculadora; acciones fijas abajo; promociones sin espacio reservado cuando no existen. La tabla mantiene las columnas/preferencias reales, aunque la maqueta simplificaba su inventario.
+- Color: azul marino, fondo claro, foco visible y rojo para acciones destructivas. Los botones no disponibles se distinguen por estado disabled. Se mantiene el indicador fiscal original, ausente en la maqueta.
+- Iconos: Phosphor existente, sin dependencias nuevas ni SVG artesanal. Tamaños coherentes y sin recursos raster estirados.
+- Contenido: los textos operativos se traducen a ES/EN/ZH. Se omite la leyenda MAQUETA en producción; el escenario de pruebas se identifica como aislado.
+- Interacción: selección de filas, +1/−1, confirmación de cantidad cero, dos operaciones de Precio, permisos, teclado alfanumérico, descuento documental y escáner cubiertos por pruebas. Los permisos y cálculos existentes no se sustituyen por lógica visual.
+
+## Validación y límites
+
+- 394 pruebas distintas de 11 archivos relevantes superadas: 272 en el conjunto de pantalla/controles/i18n y 122 adicionales de SalePaymentCheckout. La última ejecución conjunta de pantalla/autorización/cobro pasó 354/354.
+- Compilaciones APP VENTA y APP GESTIÓN correctas.
+- Presupuesto de bundle respetado; diccionarios de idioma separados en chunks cacheables. No se aumentaron límites. CSS VENTA mantiene el aviso de proximidad al límite.
+- No se ejecutaron cobros reales, impresiones físicas ni cambios de BD. Falta la comprobación operativa en el dispositivo táctil y con sus periféricos reales; la revisión descrita es visual y automatizada en navegador.
+- No quedan hallazgos P0/P1/P2 en los estados y resoluciones revisados.
+
+final result: passed
+
+---
+
+# Design QA — teclado alfanumérico con números a la derecha, 2026-09-12
+
+## Fuente y alcance
+
+- Source visual truth: `C:/Users/YLF/AppData/Local/Temp/codex-clipboard-6dd0f6c3-03df-4330-99cf-08d75a6cb43c.png` (1942 × 809 px). La última instrucción modifica la maqueta: `@` se traslada a `#+=` y el espacio liberado amplía Espacio.
+- Implementación real: `TouchAlphaKeyboard.tsx` y `TouchAlphaKeyboard.css`, compartidos por los diálogos táctiles. No se cambian API, cálculos, permisos ni datos.
+- URL de revisión aislada: `http://127.0.0.1:5181/?promotions`. Usa SaleScreen y los diálogos reales con datos DEMO y red interceptada, sin BD.
+- Implementation screenshot path: imágenes inline capturadas mediante CUA en esta tarea; la herramienta devuelve imágenes/bytes, no una ruta de archivo. No se inventa una ruta PNG.
+- Viewports: 1600 × 1000 y 1280 × 720 CSS px, DPR 1. Capturas completas de iguales dimensiones; fuente es una ilustración del componente aislado, no una captura de toda la pantalla. Se compara su región de teclado ignorando márgenes blancos y el resto del diálogo real, sin inferir diferencias por esos márgenes.
+- Normalización: la fuente contiene un teclado de aproximadamente 1856 × 578 px; a 920 px de ancho equivale aproximadamente a 287 px de alto. El componente de escritorio mide 920 × 296 CSS px; la variante a 720 px de altura usa 920 × 241,56 px para conservar controles y tabla visibles. Diferencia responsive intencionada.
+
+## Comparación conjunta y fidelidad
+
+- Fuente y captura renderizada completa emitidas juntas a las 14:33, estado letras y mayúsculas. Una captura con clip que devolvió una región incorrecta fue descartada y sustituida por la captura completa.
+- Se examina específicamente el teclado dentro de las capturas, con texto legible y mediciones DOM complementarias; no se necesitan detalles raster adicionales. Se comprueban también símbolos y autorización a 1280 × 720.
+- Tipografía: familia heredada del ERP, letras de 20 px en escritorio, peso 700, etiquetas centradas y sin recortes. No se introduce una tipografía nueva para imitar artefactos del texto generado.
+- Composición: cuatro filas, QWERTY español escalonado, Shift y borrar en la tercera, Espacio ampliado, pad derecho 7–9/4–6/1–3/0 y coma. El cero ocupa dos columnas; ambas capas conservan la misma altura y el pad permanece estable.
+- Color: fondo `#e7edf4`, teclas blancas, texto `#102e51`, activo `#12365e` con texto blanco, bordes cuadrados y foco visible. No se reproducen sombras/gradientes sintéticos del mockup.
+- Iconos: ArrowFatUp y Backspace de Phosphor ya instalado, sin dependencias nuevas ni dibujos manuales.
+- Contenido: `@` no existe como tecla en la capa de letras; aparece en símbolos. Se conserva todo el repertorio anterior, incluidas tildes y minúsculas. Los textos operativos reutilizan las claves ES/EN/ZH existentes.
+
+## Historial de correcciones y evidencia final
+
+1. P2: Limpiar quedaba estrecho en la capa de símbolos. Se amplió solo ese control; recaptura y medición final no muestran texto desbordado.
+2. P2: el hover de una tecla activada podía dejar texto blanco sobre fondo claro. Se igualó la especificidad de los estilos de estado. Verificado sobre Mayúsculas activado bajo el puntero: fondo `rgb(18, 54, 94)` y texto blanco.
+3. Verificación posterior a ambas correcciones, 14:34: teclas de símbolos de al menos 46,79 × 50,39 px en el buscador a 1280 × 720, sin desbordamientos; letras y números permanecen a ambos lados del divisor.
+4. Autorización, 14:35: teclado de 962 × 241,56 px, anchura mínima en símbolos 48,87 px, Confirmar/Cancelar visibles, contraseña de tipo password. Se cancela sin introducir credenciales ni enviar la operación.
+
+## Validación y límites
+
+- 253 pruebas distintas correctas: 9 del teclado y 244 de SaleScreen, buscador, autorización y números de serie. Casos: selección, cursor, escáner simulado, textarea, readonly, disabled, contraseña enmascarada, cambio de capa, `@`, signos y pad persistente.
+- Prueba en navegador: escribir `@7,` conserva foco y cursor; cambiar a letras y escribir PAP encuentra y selecciona el producto DEMO. Cambiar de capa no mueve ni oculta el pad numérico.
+- Compilaciones APP VENTA y APP GESTIÓN correctas. Se corrigió un error de tipos en las nuevas pruebas antes de la compilación final.
+- Presupuestos de bundle respetados. Permanece el aviso anterior del CSS principal de VENTA (445757 / 460000 bytes); no se aumentan límites.
+- Consola de aplicación sin errores durante la revisión. Sin reiniciar backend, sin cambios de BD, commit ni push.
+- Pendiente únicamente prueba física con la pantalla táctil y escáner del terminal; la revisión actual es de navegador y pruebas automatizadas, no certificación del hardware.
+- No quedan hallazgos visuales P0/P1/P2 en los estados revisados.
+
+final result: passed
+
+---
+
+# Design QA — teclados contextuales en venta táctil, 2026-09-12
+
+## Alcance implementado
+
+- `SaleTouchKeyboardScope` integra el teclado del campo activo en los diálogos de venta, documentos y utilidades auxiliares. No añade un teclado fijo al escáner principal. Respeta campos bloqueados, de solo lectura, contraseñas y teclados gestionados por cada ventana.
+- Los formularios conservan sus validaciones, permisos y acciones de guardado. El teclado genera eventos de entrada, no envíos de formularios ni llamadas de negocio.
+- Cobro: teclado alfanumérico para referencia, comentario y vale; numérico para importe. Calculadora: sus teclas editan el porcentaje cuando ese campo está activo. Cobro en efectivo conserva su teclado propio sin duplicarlo.
+- Selección numérica: sustituir el valor inicial, editar en el cursor y alternar teclado físico/táctil conservando decimales. Consulta de precios muestra campo y botón Buscar en modo táctil.
+
+## Evidencia y correcciones
+
+- Vista aislada `http://127.0.0.1:5181/?promotions`, datos ficticios y sin conexión a BD. Revisión a 1280 × 720; tamaño del navegador restaurado al terminar.
+- Cliente: el cuerpo del formulario desplaza sus campos y reserva espacio separado para acciones y teclado. Devolución: código escrito mediante teclas en pantalla, Buscar/Cancelar visibles, sin ejecutar la devolución.
+- Cobro: comentario escrito con teclado alfanumérico; al volver al importe queda un solo teclado numérico. Se cancela sin añadir pagos. Se corrige la capa del total principal que se superponía a la ventana y se mantienen los métodos en dos filas.
+- Calculadora: porcentaje 21 → 7 con las teclas existentes, sin cambiar el operando; restaurado a 21 antes de cerrar. Consola sin errores en la revisión final.
+- Pruebas focalizadas de pantalla de venta, documentos, ventanas auxiliares/IPC, cobro, calculadora, teclado contextual, consulta de precios e idiomas superadas. Las pruebas comprueban escritura en el campo activo, selección, cancelación, readonly/disabled, portales y ausencia de envíos automáticos.
+- Compilaciones APP VENTA y APP GESTIÓN correctas después de los últimos ajustes. `git diff --check` correcto. Presupuestos de bundle respetados; persiste el aviso de proximidad del CSS de VENTA (450659 / 460000 bytes), sin elevar límites.
+- No se han reiniciado backend ni aplicaciones reales, realizado cobros, modificado BD ni publicado commits. Pendiente la prueba física en el terminal táctil y con sus periféricos; las utilidades Electron se han validado mediante pruebas de integración/IPC, no con una ventana nativa real.
+
+---
+
+# Design QA — teclado numérico y edición de línea táctil, 2026-09-12
+
+## Objetivo y alcance
+
+- Variante 1 elegida, con cero debajo de 1–2 y coma debajo de 3. Referencia revisada: `C:/Users/YLF/.codex/generated_images/01a06d6c-6a96-7540-b3af-881b70f7494f/exec-9160d77a-9cbc-4958-9fe0-e95921254922.png`.
+- Cantidad y Descuento reutilizan la cabecera azul marino y la banda de producto de Precio. Se conserva cada operación y sus validaciones/permisos. El texto explicativo de sustitución se retira a petición del usuario, pero las tres ventanas seleccionan todo el valor al abrir.
+- Teclado compartido de cuatro columnas. Con signo: retroceso, limpiar y signo doble; sin signo: retroceso y limpiar de doble altura. Coma deshabilitada para UNIT; WEIGHT y SERVICE conservan precisión de tres decimales. No se modifican reglas de devolución ni cálculos.
+- Los estilos numéricos se trasladan al componente compartido y se eliminan los estilos antiguos de tres columnas, incluida la coma de ancho completo.
+
+## Revisión visual y funcional
+
+- Vista aislada `http://127.0.0.1:5181/?promotions`, con componentes reales y datos ficticios; ninguna petición alcanza backend/BD. Se añade un producto WEIGHT únicamente a esta fixture.
+- Se compararon referencia y captura del navegador en la misma entrada de revisión. Se adaptó la maqueta de 995 px a una ventana de 500 px, conservando geometría, jerarquía, banda de producto, utilidades laterales y la disposición de 0/coma. Se mantiene el título existente de cada operación y el aviso de devolución de Cantidad; no el texto de sustitución descartado.
+- Cantidad, Precio y Descuento revisados a 1280 × 720: cabecera, campo, teclado y acciones visibles sin scroll. Teclas numéricas de 108,5 × 57,59 px; cero de 225 px. Cantidad revisada también a 1600 × 1000: ventana de 500 × 621,48 px, sin desbordamiento; altura de teclas 64 px. Tamaño temporal del navegador restaurado al terminar.
+- Corregida durante QA la prioridad del estilo global que pintaba Cancelar azul: ahora tiene fondo blanco y borde, mientras Guardar y las dos operaciones de Precio permanecen azules.
+- Verificada selección completa en las tres ventanas. Teclado virtual: 1 → 0.125 y guardado de la cantidad de peso; Precio 2.5 → 8 sin guardar cambio. Teclado físico: Descuento 0 → 12,5, guardado como 12,5 %. Solo cambios en el carrito ficticio, sin cobrar ni enviar autorizaciones.
+- Consola sin errores/avisos durante la revisión final. No quedan diferencias visuales P0/P1/P2 en los estados revisados.
+
+## Validación
+
+- 343 pruebas distintas correctas: 14 del teclado, 326 de SaleScreen/Scope/PaymentAllocation/Calculator y 3 de idiomas. Nueve pruebas antiguas TOUCH esperaban spinbutton; se adaptaron a textbox y se reejecutaron solo esas nueve, todas correctas.
+- Cobertura nueva: selección/reemplazo inicial, edición en cursor, readonly/disabled, disposición de las teclas, coma y tres decimales en WEIGHT, rechazo de cuarto decimal, UNIT sin fracciones y descuento físico con coma.
+- Compilaciones APP VENTA y APP GESTIÓN correctas; presupuesto de bundle y git diff --check correctos. Se mantiene el aviso de proximidad del CSS VENTA: 450949 / 460000 bytes, sin aumentar límites.
+- Pendiente únicamente la comprobación física en el terminal táctil. No se reinician backend ni aplicaciones, no se escribe en BD ni se hace commit/push.
+
+final result: passed
+
+---
+
+# Validación previa a publicación — venta táctil, 2026-09-12
+
+- Ajustes finales aprobados: Cambiar precio a la izquierda con estilo secundario, Aplicar descuento a la derecha como acción principal; confirmación de Anular línea con cabecera marino, banda de producto y acción destructiva diferenciada.
+- Corregido el teclado alfanumérico en campos nativos de correo: no invoca la API de selección cuando el control no la admite. Conserva el foco, edición, borrado, límite de longitud y validación nativa de email, sin cambiar el tipo de campo.
+- Tres regresiones de correo reprodujeron `InvalidStateError` antes del arreglo; después pasan las 20 pruebas completas de TouchAlphaKeyboard y SaleTouchKeyboardScope.
+- La prueba de paginación de compras ahora solicita la segunda página mediante scroll, después de cargar la primera fila. Se conservan las aserciones contra el cursor reutilizado y la respuesta obsoleta, sin ampliar timeouts ni modificar el informe de producción. Archivo completo: 9/9 correcto.
+- Suite frontend final: 233 archivos, 2.405 pruebas correctas. Compilaciones GESTIÓN, PDA y VENTA correctas; sintaxis Electron y `git diff --check` correctos. Las pruebas de traducciones ES/EN/ZH e IPC están incluidas en la suite.
+- Presupuestos respetados: GESTIÓN JS 403036/600000 y CSS 445154/520000; VENTA JS 363658/800000 y CSS 450949/460000 bytes. Persiste el aviso de proximidad de CSS VENTA y el aviso de chunk grande de PDA; no se elevan límites.
+- Validación local con Node 20.20.2 y Vitest 4.1.11 instalados; no se sustituyen dependencias. Estos resultados no equivalen a CI remoto ni a prueba física del terminal y sus periféricos.
+- Publicación limitada a la rama `codex/sale-touch-layout`. Se excluyen el cambio ajeno de Docker, capturas temporales, documentos anteriores y herramientas de reparación. Sin cambios de BD, backend ni reglas de cálculo.

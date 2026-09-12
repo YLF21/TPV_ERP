@@ -34,6 +34,7 @@ declare global {
           locale: LocaleCode;
           session: UserSession;
           terminalContext: TerminalContext;
+          interfaceMode?: SaleInterfaceMode;
           initialProductId?: string;
           authorization?: SaleOperationAuthorization;
         }) => Promise<DesktopResult & {
@@ -46,6 +47,7 @@ declare global {
           locale: LocaleCode;
           session: UserSession;
           terminalContext: TerminalContext;
+          interfaceMode?: SaleInterfaceMode;
           initialProductId?: string;
           authorization?: SaleOperationAuthorization;
         } | null>;

@@ -1,0 +1,124 @@
+.touch-alpha-keyboard {
+  --touch-alpha-key-height: clamp(44px, 7dvh, 64px);
+  display: grid;
+  grid-template-columns: minmax(0, 3.2fr) minmax(0, 1fr);
+  flex: 0 0 auto;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #afbed0;
+  background: #e7edf4;
+}
+
+.touch-alpha-keyboard-text-pad,
+.touch-alpha-keyboard-number-pad {
+  display: grid;
+  grid-template-rows: repeat(4, var(--touch-alpha-key-height));
+  gap: 6px;
+  min-width: 0;
+}
+
+.touch-alpha-keyboard-number-pad {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-left: 10px;
+  border-left: 1px solid #9aadc2;
+}
+
+.touch-alpha-keyboard-zero { grid-column: span 2; }
+
+.touch-alpha-keyboard-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.touch-alpha-keyboard:not(.touch-alpha-keyboard-extra-symbols) .touch-alpha-keyboard-row-1 {
+  padding-left: 1%;
+  padding-right: 1%;
+}
+
+.touch-alpha-keyboard:not(.touch-alpha-keyboard-extra-symbols) .touch-alpha-keyboard-row-2 {
+  padding-left: 4%;
+}
+
+.touch-alpha-keyboard button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 3px;
+  border: 1px solid #7a90ab;
+  border-radius: 0;
+  background: #fff;
+  color: #102e51;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  touch-action: manipulation;
+}
+
+.touch-alpha-keyboard-row > button { flex: 1 1 0; }
+.touch-alpha-keyboard-row > .touch-alpha-keyboard-case,
+.touch-alpha-keyboard-row > .touch-alpha-keyboard-backspace { flex: 1.65 1 0; }
+.touch-alpha-keyboard button svg { flex: 0 0 auto; }
+
+.touch-alpha-keyboard button:hover:not(:disabled) {
+  background: #daeafa;
+}
+
+.touch-alpha-keyboard button:active:not(:disabled),
+.touch-alpha-keyboard button[aria-pressed="true"]:not(:disabled) {
+  background: #12365e;
+  color: #fff;
+}
+
+.touch-alpha-keyboard button:focus-visible {
+  outline: 3px solid #236eaa;
+  outline-offset: 1px;
+}
+
+.touch-alpha-keyboard button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.touch-alpha-keyboard .touch-alpha-keyboard-utilities > .space {
+  flex: 4 1 0;
+}
+
+.touch-alpha-keyboard .touch-alpha-keyboard-utilities > .touch-alpha-keyboard-period {
+  flex: 0.7 1 0;
+}
+
+.touch-alpha-keyboard-extra-symbols .touch-alpha-keyboard-utilities > .touch-alpha-keyboard-clear {
+  flex: 1.8 1 0;
+}
+
+@media (max-width: 900px) {
+  .touch-alpha-keyboard { gap: 6px; padding: 6px; }
+  .touch-alpha-keyboard-number-pad { padding-left: 6px; }
+  .touch-alpha-keyboard-text-pad,
+  .touch-alpha-keyboard-number-pad,
+  .touch-alpha-keyboard-row { gap: 4px; }
+  .touch-alpha-keyboard button { font-size: 17px; }
+}
+
+.sale-action-dialog.sale-touch-keyboard-dialog,
+.sale-action-dialog.sale-mutation-authorization-dialog.sale-touch-keyboard-dialog {
+  width: min(900px, calc(100dvw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+
+.sale-serial-number-dialog.sale-touch-keyboard-dialog .sale-serial-number-fields {
+  max-height: min(200px, 24dvh);
+}
+
+.sale-mutation-authorization-dialog.sale-touch-keyboard-dialog .sale-mutation-authorization-list {
+  max-height: 28dvh;
+  overflow-y: auto;
+}

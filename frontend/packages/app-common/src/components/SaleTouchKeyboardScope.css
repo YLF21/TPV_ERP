@@ -1,0 +1,77 @@
+.sale-touch-keyboard-scope { display: contents; }
+
+/* Reserve space in the dialog layout: the keyboard must not cover fields or actions. */
+.sale-touch-keyboard-host {
+  display: flex !important;
+  flex-direction: column;
+  width: min(1000px, calc(100dvw - 32px)) !important;
+  max-height: calc(100dvh - 32px) !important;
+  overflow: hidden !important;
+}
+.sale-touch-keyboard-host > header,
+.sale-touch-keyboard-host > footer,
+.sale-touch-keyboard-host > .sale-action-buttons { flex-shrink: 0; }
+.sale-touch-keyboard-host > form,
+.sale-touch-keyboard-host > div:not(.sale-touch-field-keyboard) {
+  min-height: 0;
+  overflow-y: auto;
+}
+.sale-touch-keyboard-host > form { flex: 1 1 auto; }
+.sale-touch-keyboard-host > form > footer,
+.sale-touch-keyboard-host > form > .sale-action-buttons {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: #edf2f7;
+}
+.sale-touch-keyboard-host > form:has(> fieldset) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sale-touch-keyboard-host > form > fieldset {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.sale-touch-keyboard-host > form:has(> fieldset) > footer {
+  position: static;
+  flex-shrink: 0;
+}
+.sale-touch-keyboard-host > header button,
+.sale-touch-keyboard-host .filter-actions button,
+.sale-touch-keyboard-host .sale-action-buttons button { min-height: 44px; }
+.sale-touch-field-keyboard {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 6px;
+  border-top: 1px solid #9aadc2;
+  background: #e7edf4;
+  color: #102e51;
+}
+.sale-touch-field-keyboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 4px;
+}
+.sale-touch-field-keyboard-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sale-touch-field-keyboard-heading > button {
+  min-width: 80px;
+  min-height: 44px;
+  border: 1px solid #7a90ab;
+  border-radius: 0;
+  background: #12365e;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+}
+.sale-touch-field-keyboard .touch-alpha-keyboard { --touch-alpha-key-height: clamp(44px, 6dvh, 56px); }
+.sale-touch-field-keyboard .touch-numeric-keypad {
+  max-width: 440px;
+  margin: 0 auto;
+  --touch-numeric-key-height: 52px;
+}
+.sale-touch-field-keyboard button:focus-visible { outline: 3px solid #236eaa; outline-offset: 1px; }
+.sale-touch-field-keyboard button:active { background: #daeafa; }
