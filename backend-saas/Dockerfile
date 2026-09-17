@@ -6,7 +6,7 @@ RUN mvn -f backend-saas/pom.xml -B -q dependency:go-offline
 COPY backend-saas/src ./backend-saas/src
 RUN mvn -f backend-saas/pom.xml -B -q -DskipTests package
 
-FROM eclipse-temurin:25-jre@sha256:15090d159279e5c158473eccb48cd87f57b3e3a47511a797eb5a7a7ea6f86b0f
+FROM eclipse-temurin:25-jre@sha256:611e326900ba9edcedfb246ede24efc66a911fa496ac623db9f33cae88a2d83b
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
