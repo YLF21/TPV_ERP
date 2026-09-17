@@ -3,7 +3,7 @@ import { AppFrame, createTranslator, type UserSession } from "@tpverp/app-common
 import "../../../packages/app-common/src/styles/tpv.css";
 import { GestionDashboard, type DashboardDataSource } from "./GestionDashboard";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
-import type { DashboardWidgetLayout } from "./dashboardModel";
+import { defaultDashboardOptions, type DashboardWidgetLayout } from "./dashboardModel";
 import { gestionNavigationGroups } from "./gestionNavigation";
 import "./gestion.css";
 
@@ -25,11 +25,20 @@ const widgets: DashboardWidgetLayout[] = [
 const dataSource: DashboardDataSource = {
   loadPreference: async () => ({
     widgets,
+    options: { ...defaultDashboardOptions },
+    businessDate: "2026-08-01",
+    storeTimezone: "Europe/Madrid",
     availableWidgets: widgets.map((widget) => widget.key)
   }),
-  savePreference: async (nextWidgets) => ({
+  savePreference: async (nextWidgets, _token, options) => ({
     widgets: nextWidgets,
+    options: options ?? { ...defaultDashboardOptions },
     availableWidgets: widgets.map((widget) => widget.key)
+  }),
+  loadSalesOverview: async (_token, scope) => ({
+    ...scope, previousFrom: "2026-07-31", previousTo: "2026-07-31", storeTimezone: "Europe/Madrid", currency: "EUR",
+    current: { netSales: 0, operationCount: 0, averageAmount: 0 }, previous: { netSales: 0, operationCount: 0, averageAmount: 0 },
+    daily: [{ date: scope.from, netSales: 0, operationCount: 0 }], previousDaily: [{ date: "2026-07-31", netSales: 0, operationCount: 0 }], topProducts: []
   }),
   loadSalesToday: async () => ({
     date: "2026-08-01",

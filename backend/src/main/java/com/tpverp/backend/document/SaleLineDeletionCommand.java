@@ -7,6 +7,10 @@ public record SaleLineDeletionCommand(
         UUID productId,
         String code,
         String name,
-        int quantity,
+        BigDecimal quantity,
         BigDecimal unitPrice) {
+
+    public SaleLineDeletionCommand(UUID productId, String code, String name, int quantity, BigDecimal unitPrice) {
+        this(productId, code, name, BigDecimal.valueOf(quantity), unitPrice);
+    }
 }

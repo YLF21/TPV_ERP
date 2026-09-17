@@ -3,6 +3,7 @@ package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
@@ -15,6 +16,7 @@ import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -91,10 +93,8 @@ class SaleLineDeletionServiceTest {
         assertThat(result.getFirst().userId()).isEqualTo(user.getId());
         assertThat(result.getFirst().total()).isEqualByComparingTo("7.00");
         verify(jdbc, times(2)).update(anyString(), any(Object[].class));
-        verify(controlAlerts).detectConsecutiveLineDeletions(
-                org.mockito.ArgumentMatchers.eq(saleOperationId),
-                org.mockito.ArgumentMatchers.eq(1),
-                any(), org.mockito.ArgumentMatchers.eq(terminalId), any());
+        verify(controlAlerts).detectRecordedDeletion(eq(saleOperationId), eq(deletionOperationId), eq(false),
+                eq(result), any(), any(), eq(terminalId), eq(NOW), eq(NOW), any());
     }
 
     @Test
@@ -106,10 +106,8 @@ class SaleLineDeletionServiceTest {
                 true, auth());
 
         assertThat(result.getFirst().type()).isEqualTo("LISTA");
-        verify(controlAlerts).detectSaleScreenCleared(
-                org.mockito.ArgumentMatchers.eq(deletionOperationId),
-                org.mockito.ArgumentMatchers.eq(result),
-                org.mockito.ArgumentMatchers.eq(terminalId), any());
+        verify(controlAlerts).detectRecordedDeletion(any(), eq(deletionOperationId), eq(true),
+                eq(result), any(), any(), eq(terminalId), eq(NOW), eq(NOW), any());
     }
 
     @Test
@@ -123,16 +121,21 @@ class SaleLineDeletionServiceTest {
         var deletionOperationId = UUID.randomUUID();
         var command = new SaleLineDeletionCommand(
                 UUID.randomUUID(), "P-1", "Producto", 1, new BigDecimal("10.00"));
+        var stored = new SaleLineDeletionView(UUID.randomUUID(), store.getId(), terminalId,
+                user.getId(), NOW, "LINEA", command.productId(), command.code(), command.name(),
+                1, command.unitPrice(), command.unitPrice());
+        when(jdbc.query(org.mockito.ArgumentMatchers.contains("operacion_eliminacion_id = ?"),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<SaleLineDeletionView>>any(),
+                any(Object[].class))).thenReturn(List.of(stored));
 
         service.record(saleOperationId, deletionOperationId,
                 List.of(command), false, auth());
         var repeated = service.record(saleOperationId, deletionOperationId,
                 List.of(command), false, auth());
 
-        assertThat(repeated).isEmpty();
-        verify(controlAlerts, times(1)).detectConsecutiveLineDeletions(
-                org.mockito.ArgumentMatchers.eq(saleOperationId), any(Integer.class),
-                any(), org.mockito.ArgumentMatchers.eq(terminalId), any());
+        assertThat(repeated).containsExactly(stored);
+        verify(controlAlerts, times(1)).detectRecordedDeletion(eq(saleOperationId), eq(deletionOperationId),
+                eq(false), any(), any(), any(), eq(terminalId), eq(NOW), eq(NOW), any());
     }
 
     @Test
@@ -142,10 +145,10 @@ class SaleLineDeletionServiceTest {
         var ordered = inOrder(jdbc);
         ordered.verify(jdbc).update(
                 org.mockito.ArgumentMatchers.contains("delete from venta_linea_eliminada"),
-                org.mockito.ArgumentMatchers.eq(NOW.minus(365, ChronoUnit.DAYS)));
+                org.mockito.ArgumentMatchers.eq(Timestamp.from(NOW.minus(365, ChronoUnit.DAYS))));
         ordered.verify(jdbc).update(
                 org.mockito.ArgumentMatchers.contains("delete from venta_operacion_eliminacion"),
-                org.mockito.ArgumentMatchers.eq(NOW.minus(365, ChronoUnit.DAYS)));
+                org.mockito.ArgumentMatchers.eq(Timestamp.from(NOW.minus(365, ChronoUnit.DAYS))));
     }
 
     private static UsernamePasswordAuthenticationToken auth() {

@@ -7,11 +7,13 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class ControlAlertTest {
 
     @Test
-    void supportsReviewAndTerminalCloseWithoutReopening() {
+    void requiresExplicitReopeningBeforeChangingAClosedAlert() {
         var alert = alert();
 
         assertThat(alert.transition(ControlAlertStatus.REVIEWED, Instant.EPOCH.plusSeconds(1)))
@@ -24,7 +26,7 @@ class ControlAlertTest {
     }
 
     @Test
-    void canDismissANewAlertButCannotReturnToNew() {
+    void cannotReopenThroughTheOrdinaryTransitionMethod() {
         var alert = alert();
 
         assertThat(alert.transition(ControlAlertStatus.DISMISSED, Instant.EPOCH.plusSeconds(1)))
@@ -59,6 +61,41 @@ class ControlAlertTest {
         assertThatThrownBy(() -> alert.updateWork(
                 ControlAlertPriority.HIGH, null, null, Instant.EPOCH.plusSeconds(3)))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ControlAlertStatus.class, names = {"REVIEWED", "CLOSED", "DISMISSED"})
+    void explicitlyReopensWithoutChangingEvidenceOrWorkAssignment(ControlAlertStatus before) {
+        var alert = alert();
+        var event = alert.getEvent();
+        var assignee = UUID.randomUUID();
+        var dueAt = Instant.EPOCH.plusSeconds(3600);
+        alert.updateWork(ControlAlertPriority.HIGH, assignee, dueAt, Instant.EPOCH.plusSeconds(1));
+        alert.transition(before, Instant.EPOCH.plusSeconds(2));
+        assertThatThrownBy(() -> alert.transition(ControlAlertStatus.NEW, Instant.EPOCH.plusSeconds(3)))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(alert.reopen(Instant.EPOCH.plusSeconds(4))).isEqualTo(before);
+
+        assertThat(alert.getStatus()).isEqualTo(ControlAlertStatus.NEW);
+        assertThat(alert.getUpdatedAt()).isEqualTo(Instant.EPOCH.plusSeconds(4));
+        assertThat(alert.getCreatedAt()).isEqualTo(Instant.EPOCH);
+        assertThat(alert.getEvent()).isSameAs(event);
+        assertThat(alert.getPriority()).isEqualTo(ControlAlertPriority.HIGH);
+        assertThat(alert.getAssigneeId()).isEqualTo(assignee);
+        assertThat(alert.getDueAt()).isEqualTo(dueAt);
+        assertThat(alert.transition(ControlAlertStatus.REVIEWED, Instant.EPOCH.plusSeconds(5)))
+                .isEqualTo(ControlAlertStatus.NEW);
+    }
+
+    @Test
+    void rejectsReopeningAnAlreadyNewAlertWithoutChangingIt() {
+        var alert = alert();
+
+        assertThatThrownBy(() -> alert.reopen(Instant.EPOCH.plusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(alert.getStatus()).isEqualTo(ControlAlertStatus.NEW);
+        assertThat(alert.getUpdatedAt()).isEqualTo(Instant.EPOCH);
     }
 
     private static ControlAlert alert() {

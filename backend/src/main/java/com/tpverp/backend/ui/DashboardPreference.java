@@ -47,6 +47,10 @@ public class DashboardPreference {
     @Column(nullable = false, columnDefinition = "jsonb")
     private List<DashboardWidgetLayout> widgets = new ArrayList<>();
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false, columnDefinition = "jsonb")
+    private DashboardOptions options = DashboardOptions.defaults();
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -73,6 +77,15 @@ public class DashboardPreference {
     public void update(List<DashboardWidgetLayout> nextWidgets, Instant now) {
         this.widgets = validateWidgets(nextWidgets);
         this.updatedAt = Objects.requireNonNull(now, "now");
+    }
+
+    public void update(List<DashboardWidgetLayout> nextWidgets, DashboardOptions nextOptions, Instant now) {
+        update(nextWidgets, now);
+        this.options = Objects.requireNonNull(nextOptions, "options");
+    }
+
+    public DashboardOptions getOptions() {
+        return options;
     }
 
     public UserAccount getUser() {

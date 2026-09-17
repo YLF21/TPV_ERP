@@ -53,8 +53,13 @@ public class ControlAlertController {
     @GetMapping("/groups")
     public java.util.List<ControlAlertService.RuleAlertCountView> groups(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
-        return service.countsByRule(from, to);
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(required = false) ControlAlertStatus status,
+            @RequestParam(required = false) ControlAlertPriority priority,
+            @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(required = false) Boolean overdue,
+            @RequestParam(required = false) String search) {
+        return service.countsByRule(from, to, status, priority, assigneeId, overdue, search);
     }
 
     @GetMapping("/summary")
@@ -92,6 +97,15 @@ public class ControlAlertController {
             @Valid @RequestBody ControlAlertService.TransitionRequest request,
             Authentication authentication) {
         return service.transition(id, ControlAlertStatus.DISMISSED, request, authentication);
+    }
+
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('CONTROL_ALERTS_MANAGE'))")
+    public ControlAlertService.AlertDetailView reopen(
+            @PathVariable UUID id,
+            @Valid @RequestBody ControlAlertService.TransitionRequest request,
+            Authentication authentication) {
+        return service.reopen(id, request, authentication);
     }
 
     @PutMapping("/{id}/work")

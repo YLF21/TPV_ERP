@@ -4,6 +4,9 @@ import {
   loadControlAlertGroups,
   loadControlAlertsAnalytics,
   loadControlAlerts,
+  defaultControlAlertView,
+  loadControlAlertViewPreference,
+  saveControlAlertViewPreference,
   loadControlRuleCatalog,
   saveControlRule,
   transitionControlAlert,
@@ -13,6 +16,35 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("control alerts API", () => {
+  it("loads the signed-in user's view and never sends store context in preference writes", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      ...defaultControlAlertView, storeTimezone: "Atlantic/Canary", storeLocale: "es-ES"
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const preference = await loadControlAlertViewPreference("first-user-token");
+    await saveControlAlertViewPreference({ ...preference, showDetail: false }, "first-user-token");
+    await loadControlAlertViewPreference("second-user-token");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/control/alerts/view-preference");
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer first-user-token");
+    expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe("Bearer second-user-token");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ ...defaultControlAlertView, showDetail: false });
+  });
+
+  it("uses the same non-type filters for indicators and propagates cancellation to fetch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    await loadControlAlertGroups("2026-09-16T00:00:00Z", "2026-09-17T00:00:00Z", "token", controller.signal, {
+      status: "NEW", search: " T-10 ", priority: "HIGH", assigneeId: "u-1", overdue: true
+    });
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("status=NEW");
+    expect(url).toContain("search=T-10");
+    expect(url).toContain("priority=HIGH");
+    expect(url).toContain("assigneeId=u-1");
+    expect(url).toContain("overdue=true");
+    expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  });
   it("uses backend pagination and real filters", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       content: [], number: 2, size: 25, totalElements: 0, totalPages: 0
@@ -83,6 +115,21 @@ describe("control alerts API", () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain("/control/alerts/a-1/review");
     expect(JSON.parse(String(options.body))).toEqual({ comment: "checked", version: 4 });
     expect(controlAlertTypes).toContain("MANUAL_PRICE_CHANGED");
+  });
+
+  it("posts reopening with the expected version and preserves returned history", async () => {
+    const history = [{ previousStatus: "CLOSED", newStatus: "NEW", comment: "Check again" }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ alert: { id: "a-1", status: "NEW", version: 5 }, history, workHistory: [] }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await transitionControlAlert("a-1", "REOPEN", " Check again ", 4, "token");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/control/alerts/a-1/reopen");
+    const options = fetchMock.mock.calls[0][1];
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toBe("Bearer token");
+    expect(JSON.parse(options.body)).toEqual({ comment: "Check again", version: 4 });
+    expect(result).toMatchObject({ status: "NEW", version: 5, history });
   });
 
   it("creates a system rule without editable name or severity", async () => {

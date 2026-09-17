@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -40,7 +41,7 @@ public class SaleLineDeletionController {
             Authentication authentication) {
         return service.record(
                 request.saleOperationId(), request.deletionOperationId(),
-                request.toCommands(), request.fullTicketClear(), authentication);
+                request.toCommands(), request.fullTicketClear(), request.occurredAt(), request.context(), authentication);
     }
 
     @DeleteMapping("/{id}")
@@ -54,7 +55,9 @@ public class SaleLineDeletionController {
             @NotNull UUID saleOperationId,
             @NotNull UUID deletionOperationId,
             boolean fullTicketClear,
-            @NotEmpty List<@Valid Line> lines) {
+            @NotEmpty List<@Valid Line> lines,
+            Instant occurredAt,
+            @Valid SaleLineDeletionContext context) {
 
         List<SaleLineDeletionCommand> toCommands() {
             return lines.stream().map(Line::toCommand).toList();
@@ -63,9 +66,9 @@ public class SaleLineDeletionController {
 
     public record Line(
             @NotNull UUID productId,
-            @NotNull String code,
+            String code,
             @NotNull String name,
-            int quantity,
+            @NotNull BigDecimal quantity,
             @NotNull BigDecimal unitPrice) {
 
         SaleLineDeletionCommand toCommand() {

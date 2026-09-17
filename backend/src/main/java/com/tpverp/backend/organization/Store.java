@@ -107,6 +107,10 @@ public class Store {
         return moneda;
     }
 
+    public String getLocale() {
+        return locale;
+    }
+
     public Map<String, String> getDireccion() {
         return Map.copyOf(direccion);
     }

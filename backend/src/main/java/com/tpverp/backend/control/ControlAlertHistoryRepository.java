@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ControlAlertHistoryRepository extends JpaRepository<ControlAlertHistory, UUID> {
     List<ControlAlertHistory> findAllByAlertIdOrderByChangedAtAsc(UUID alertId);
+
+    List<ControlAlertHistory> findAllByAlertIdAndStoreIdOrderByChangedAtAscIdAsc(UUID alertId, UUID storeId);
 }

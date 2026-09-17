@@ -54,6 +54,7 @@ public class DevSampleDataSeeder {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
+    private final Clock clock;
     private final LocalDate seedDate;
     private final Instant seedInstant;
     private final CommercialBootstrapService commercialBootstrap;
@@ -77,6 +78,7 @@ public class DevSampleDataSeeder {
             CommercialBootstrapService commercialBootstrap) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
+        this.clock = clock;
         this.commercialBootstrap = commercialBootstrap;
         this.seedDate = configuredBaseDate == null || configuredBaseDate.isBlank()
                 ? LocalDate.now(clock)
@@ -321,7 +323,10 @@ public class DevSampleDataSeeder {
                 """, roleId, permission);
     }
 
-    private void seedLicense(UUID installation) {
+    void seedLicense(UUID installation) {
+        // The sample documents may use a configured historical date; this runtime
+        // credential must be usable immediately, including before 09:00 UTC.
+        var issuedAt = clock.instant();
         jdbc.update("""
                 insert into licencia
                     (id, tienda_id, instalacion_id, referencia, valida_desde, valida_hasta,
@@ -333,10 +338,11 @@ public class DevSampleDataSeeder {
                     'SOCIEDAD', ?, 'VALIDA')
                 on conflict (referencia) do update
                 set activa = true,
+                    valida_desde = excluded.valida_desde,
                     valida_hasta = excluded.valida_hasta,
                     estado_saas = 'VALIDA'
-                """, id("license"), STORE, installation, ts(NOW.minusSeconds(3600)),
-                ts(NOW.plusSeconds(365L * 24L * 60L * 60L)), ts(NOW), ts(NOW));
+                """, id("license"), STORE, installation, ts(issuedAt.minusSeconds(3600)),
+                ts(issuedAt.plusSeconds(365L * 24L * 60L * 60L)), ts(issuedAt), ts(issuedAt));
     }
 
     private void seedCatalog() {

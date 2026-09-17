@@ -23,6 +23,7 @@ describe("control alerts dashboard widget", () => {
   it("renders counters, recent alerts and opens the real module", async () => {
     vi.mocked(dashboard.loadDashboardPreference).mockResolvedValue({
       widgets: [{ key: "control.alerts", width: 4, height: 2 }],
+      options: { ...dashboard.defaultDashboardOptions },
       availableWidgets: ["control.alerts"]
     });
     vi.mocked(dashboard.loadControlAlertsSummary).mockResolvedValue({
@@ -35,6 +36,8 @@ describe("control alerts dashboard widget", () => {
         occurredAt: "2026-07-18T10:30:00Z",
         documentNumber: "T-100",
         userName: "cashier"
+      }, {
+        id: "alert-closed", type: "MANUAL_PRICE_CHANGED", status: "CLOSED", occurredAt: "2026-07-18T10:40:00Z", documentNumber: "T-101", userName: "cashier"
       }]
     });
     const onOpenControlAlerts = vi.fn();
@@ -53,6 +56,8 @@ describe("control alerts dashboard widget", () => {
     expect(await screen.findByText("gestion.controlAlerts.type.TICKET_CANCELLED")).not.toBeNull();
     expect(screen.getAllByText("4")).not.toHaveLength(0);
     expect(screen.getAllByText("7")).not.toHaveLength(0);
+    expect(screen.getByText("gestion.dashboard.recentActivity")).not.toBeNull();
+    expect(screen.getByText(/gestion.controlAlerts.status.CLOSED/)).not.toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: /gestion.widget.controlAlerts.open/ })[0]);
     expect(onOpenControlAlerts).toHaveBeenCalledOnce();
   });

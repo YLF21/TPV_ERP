@@ -4,7 +4,6 @@ import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.UserAccountRepository;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.constraints.NotNull;
@@ -14,6 +13,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -33,8 +35,8 @@ public class ControlAlertService {
     private final ControlRuleRepository rules;
     private final ControlAlertHistoryRepository history;
     private final ControlAlertWorkHistoryRepository workHistory;
-    private final UserAccountRepository users;
     private final CommercialDocumentRepository documents;
+    private final ControlAlertReadRepository read;
     private final CurrentOrganization organization;
     private final Clock clock;
 
@@ -43,16 +45,16 @@ public class ControlAlertService {
             ControlRuleRepository rules,
             ControlAlertHistoryRepository history,
             ControlAlertWorkHistoryRepository workHistory,
-            UserAccountRepository users,
             CommercialDocumentRepository documents,
+            ControlAlertReadRepository read,
             CurrentOrganization organization,
             Clock clock) {
         this.alerts = alerts;
         this.rules = rules;
         this.history = history;
         this.workHistory = workHistory;
-        this.users = users;
         this.documents = documents;
+        this.read = read;
         this.organization = organization;
         this.clock = clock;
     }
@@ -76,25 +78,23 @@ public class ControlAlertService {
         if (size < 1 || size > 100) throw new IllegalArgumentException("size debe estar entre 1 y 100");
         validateRange(from, to);
         var pageable = PageRequest.of(page, size, alertSort(sortBy, sortDirection));
-        var normalizedSearch = search == null || search.isBlank() ? null : search.trim();
-        if (normalizedSearch != null && normalizedSearch.length() > 160) {
-            throw new IllegalArgumentException("search no puede superar 160 caracteres");
-        }
-        return alerts.findAll(filter(
+        var normalizedSearch = normalizedSearch(search);
+        var result = alerts.findAll(filter(
                         organization.currentStore().getId(), status, type, ruleId, priority,
-                        assigneeId, overdue, clock.instant(), from, to, normalizedSearch), pageable)
-                .map(ControlAlertService::summary);
+                        assigneeId, overdue, clock.instant(), from, to, normalizedSearch), pageable);
+        var views = summaries(result.getContent());
+        return result.map(alert -> views.get(alert.getId()));
     }
 
     private static Sort alertSort(String sortBy, String sortDirection) {
         if (sortBy == null || sortBy.isBlank()) {
-            return Sort.by(Sort.Direction.DESC, "createdAt", "id");
+            return Sort.by(Sort.Direction.DESC, "event.occurredAt", "id");
         }
         var property = switch (sortBy) {
             case "occurredAt" -> "event.occurredAt";
             case "username" -> "event.userName";
             case "terminal" -> "event.terminalId";
-            case "document" -> "documentNumber";
+            case "document" -> "event.documentNumber";
             case "detail" -> "event.type";
             case "status" -> "status";
             default -> throw new IllegalArgumentException("sortBy no es valido");
@@ -105,13 +105,29 @@ public class ControlAlertService {
 
     @Transactional(readOnly = true)
     public List<RuleAlertCountView> countsByRule(Instant from, Instant to) {
+        return countsByRule(from, to, null, null, null, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RuleAlertCountView> countsByRule(
+            Instant from, Instant to, ControlAlertStatus status,
+            ControlAlertPriority priority, UUID assigneeId, Boolean overdue, String search) {
         if (from == null || to == null) {
             throw new IllegalArgumentException("from y to son obligatorios para agrupar alertas");
         }
         validateRange(from, to);
         var storeId = organization.currentStore().getId();
         var counts = new java.util.HashMap<UUID, MutableRuleCounts>();
-        for (var item : alerts.countByRuleAndStatus(storeId, from, to)) {
+        var normalizedSearch = normalizedSearch(search);
+        var filtered = status != null || priority != null || assigneeId != null
+                || Boolean.TRUE.equals(overdue) || normalizedSearch != null;
+        var groupedCounts = filtered
+                ? alerts.countByRuleAndStatusFiltered(storeId, from, to, status, priority,
+                        assigneeId, Boolean.TRUE.equals(overdue), clock.instant(),
+                        normalizedSearch == null ? null
+                                : "%" + normalizedSearch.toLowerCase(java.util.Locale.ROOT) + "%")
+                : alerts.countByRuleAndStatus(storeId, from, to);
+        for (var item : groupedCounts) {
             counts.computeIfAbsent(item.getRuleId(), ignored -> new MutableRuleCounts())
                     .add(item.getStatus(), item.getTotal());
         }
@@ -132,12 +148,11 @@ public class ControlAlertService {
                 reviewedCount = count.getTotal();
             }
         }
-        var recent = alerts.findAllByStoreId(
+        var recentAlerts = alerts.findAllByStoreId(
                         storeId,
-                        PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAt", "id")))
-                .stream()
-                .map(ControlAlertService::summary)
-                .toList();
+                        PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "event.occurredAt", "id")));
+        var views = summaries(recentAlerts);
+        var recent = recentAlerts.stream().map(alert -> views.get(alert.getId())).toList();
         return new AlertDashboardSummaryView(newCount, reviewedCount, recent);
     }
 
@@ -165,6 +180,8 @@ public class ControlAlertService {
                 predicates.add(builder.lessThan(root.get("dueAt"), now));
             }
             var event = root.join("event");
+            // Scope both sides so the event's store/date index can serve chronological pages.
+            predicates.add(builder.equal(event.get("storeId"), storeId));
             if (type != null) predicates.add(builder.equal(event.get("type"), type));
             if (ruleId != null) predicates.add(builder.equal(event.get("ruleId"), ruleId));
             if (from != null) predicates.add(builder.greaterThanOrEqualTo(event.get("occurredAt"), from));
@@ -186,6 +203,14 @@ public class ControlAlertService {
         }
     }
 
+    private static String normalizedSearch(String search) {
+        var value = search == null || search.isBlank() ? null : search.trim();
+        if (value != null && value.length() > 160) {
+            throw new IllegalArgumentException("search no puede superar 160 caracteres");
+        }
+        return value;
+    }
+
     @Transactional(readOnly = true)
     public AlertDetailView get(UUID id) {
         var alert = find(id);
@@ -199,11 +224,21 @@ public class ControlAlertService {
             TransitionRequest request,
             Authentication authentication) {
         if (next == ControlAlertStatus.NEW) throw new IllegalArgumentException("No se puede volver al estado NEW");
+        return changeStatus(id, next, request, authentication);
+    }
+
+    @Transactional
+    public AlertDetailView reopen(UUID id, TransitionRequest request, Authentication authentication) {
+        return changeStatus(id, ControlAlertStatus.NEW, request, authentication);
+    }
+
+    private AlertDetailView changeStatus(UUID id, ControlAlertStatus next,
+            TransitionRequest request, Authentication authentication) {
         var alert = find(id);
         requireVersion(alert, request.version());
         var user = organization.currentUser(authentication);
         var now = clock.instant();
-        var previous = alert.transition(next, now);
+        var previous = next == ControlAlertStatus.NEW ? alert.reopen(now) : alert.transition(next, now);
         try {
             alerts.saveAndFlush(alert);
         } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
@@ -216,13 +251,8 @@ public class ControlAlertService {
 
     @Transactional(readOnly = true)
     public List<AssigneeOptionView> assigneeOptions() {
-        var store = organization.currentStore();
-        return users.findAllByEmpresaIdOrderByNombre(store.getEmpresa().getId()).stream()
-                .filter(user -> user.isActivo())
-                .filter(user -> user.getTienda().getId().equals(store.getId())
-                        || users.hasStoreAccess(user.getId(), store.getId()))
-                .map(user -> new AssigneeOptionView(
-                        user.getId(), user.getNombre(), user.getUserName()))
+        return read.eligibleAssignees(organization.currentStore().getId(), null).stream()
+                .map(user -> new AssigneeOptionView(user.getUserId(), user.getName(), user.getUserName()))
                 .toList();
     }
 
@@ -237,13 +267,9 @@ public class ControlAlertService {
         if (request.dueAt() != null && request.dueAt().isBefore(alert.getCreatedAt())) {
             throw new IllegalArgumentException("El vencimiento no puede ser anterior a la alerta");
         }
-        if (request.assigneeId() != null) {
-            users.findByIdAndEmpresaId(request.assigneeId(), store.getEmpresa().getId())
-                    .filter(user -> user.isActivo())
-                    .filter(user -> user.getTienda().getId().equals(store.getId())
-                            || users.hasStoreAccess(user.getId(), store.getId()))
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "El responsable no esta activo o no pertenece a la tienda"));
+        if (request.assigneeId() != null
+                && read.eligibleAssignees(store.getId(), request.assigneeId()).isEmpty()) {
+            throw new IllegalArgumentException("message.control.alert_assignee_not_eligible");
         }
         var actor = organization.currentUser(authentication);
         var now = clock.instant();
@@ -268,7 +294,7 @@ public class ControlAlertService {
         var document = documents.findByIdAndTiendaId(
                         event.getDocumentId(), organization.currentStore().getId())
                 .orElseThrow(() -> new NoSuchElementException("Documento relacionado no encontrado"));
-        return documentView(document);
+        return documentView(document, read.customerName(organization.currentStore().getId(), document.getId()));
     }
 
     private ControlAlert find(UUID id) {
@@ -287,34 +313,103 @@ public class ControlAlertService {
                 "Conflicto de version en la alerta " + id + ": se esperaba " + expected + " y " + detail);
     }
 
-    private static AlertSummaryView summary(ControlAlert alert) {
+    private Map<UUID, AlertSummaryView> summaries(List<ControlAlert> page) {
+        if (page.isEmpty()) return Map.of();
+        var storeId = organization.currentStore().getId();
+        var ids = page.stream().map(ControlAlert::getId).toList();
+        var labels = new HashMap<UUID, ControlAlertReadRepository.SummaryLabels>();
+        read.summaryLabels(storeId, ids).forEach(item -> labels.put(item.getAlertId(), item));
+        var lineLabels = new HashMap<UUID, Map<LineIdentity, ControlAlertReadRepository.EvidenceLineLabels>>();
+        var evidenceIds = page.stream().filter(alert -> EVIDENCE_LINE_KEYS.stream()
+                        .anyMatch(key -> alert.getEvent().getData().get(key) instanceof List<?> lines
+                                && !lines.isEmpty()))
+                .map(ControlAlert::getId).toList();
+        if (!evidenceIds.isEmpty()) {
+            read.evidenceLineLabels(storeId, evidenceIds).forEach(item -> lineLabels
+                    .computeIfAbsent(item.getAlertId(), ignored -> new HashMap<>())
+                    .put(new LineIdentity(Integer.toString(item.getPosition()), item.getProductId().toString()), item));
+        }
+        var result = new HashMap<UUID, AlertSummaryView>();
+        for (var alert : page) {
+            result.put(alert.getId(), summary(alert, labels.get(alert.getId()),
+                    lineLabels.getOrDefault(alert.getId(), Map.of())));
+        }
+        return result;
+    }
+
+    private static final List<String> EVIDENCE_LINE_KEYS = List.of("changedLines", "discountedLines", "matchingLines");
+    private record LineIdentity(String position, String productId) {}
+
+    private static Map<String, Object> evidenceData(Map<String, Object> data,
+            Map<LineIdentity, ControlAlertReadRepository.EvidenceLineLabels> labels) {
+        if (labels.isEmpty()) return data;
+        var result = new LinkedHashMap<>(data);
+        for (var key : EVIDENCE_LINE_KEYS) {
+            if (!(data.get(key) instanceof List<?> lines)) continue;
+            result.put(key, lines.stream().map(value -> {
+                if (!(value instanceof Map<?, ?> line)) return value;
+                var label = labels.get(new LineIdentity(
+                        String.valueOf(line.get("position")), String.valueOf(line.get("productId"))));
+                if (label == null) return value;
+                var enriched = new LinkedHashMap<Object, Object>(line);
+                // Presentation only: keep original evidence and amounts, including stored labels.
+                enriched.putIfAbsent("name", label.getName());
+                enriched.putIfAbsent("code", label.getCode());
+                return enriched;
+            }).toList());
+        }
+        return result;
+    }
+
+    private static AlertSummaryView summary(ControlAlert alert,
+            ControlAlertReadRepository.SummaryLabels labels,
+            Map<LineIdentity, ControlAlertReadRepository.EvidenceLineLabels> lineLabels) {
         var event = alert.getEvent();
         return new AlertSummaryView(
                 alert.getId(), alert.getStatus(), event.getType(), event.getRuleId(),
                 event.getRuleVersion(), event.getRuleName(), event.getDocumentId(),
                 event.getDocumentNumber(), event.getTerminalId(),
                 event.getUserId(), event.getUserName(), event.getOccurredAt(),
-                event.getData(), alert.getPriority(), alert.getAssigneeId(), alert.getDueAt(),
-                alert.getUpdatedAt(), alert.getVersion());
+                evidenceData(event.getData(), lineLabels), alert.getPriority(), alert.getAssigneeId(), alert.getDueAt(),
+                alert.getUpdatedAt(), alert.getVersion(), labels == null ? null : labels.getTerminalName(),
+                labels == null ? null : labels.getReviewComment(), labels == null ? null : labels.getAssigneeName());
     }
 
     private AlertDetailView detail(ControlAlert alert) {
+        var storeId = organization.currentStore().getId();
+        var transitions = history.findAllByAlertIdAndStoreIdOrderByChangedAtAscIdAsc(alert.getId(), storeId);
+        var work = workHistory.findAllByAlertIdAndStoreIdOrderByChangedAtAscIdAsc(alert.getId(), storeId);
+        var userIds = new HashSet<UUID>();
+        transitions.forEach(item -> userIds.add(item.getChangedBy()));
+        work.forEach(item -> {
+            userIds.add(item.getChangedBy());
+            userIds.add(item.getPreviousAssigneeId());
+            userIds.add(item.getNewAssigneeId());
+        });
+        userIds.remove(null);
+        var names = new HashMap<UUID, String>();
+        var ids = List.copyOf(userIds);
+        for (int start = 0; start < ids.size(); start += 100) {
+            read.userLabels(storeId, ids.subList(start, Math.min(start + 100, ids.size())))
+                    .forEach(item -> names.put(item.getUserId(), item.getName()));
+        }
         return new AlertDetailView(
-                summary(alert),
-                history.findAllByAlertIdOrderByChangedAtAsc(alert.getId()).stream()
+                summaries(List.of(alert)).get(alert.getId()),
+                transitions.stream()
                         .map(item -> new HistoryView(
                         item.getPreviousStatus(), item.getNewStatus(), item.getComment(),
-                        item.getChangedBy(), item.getChangedAt())).toList(),
-                workHistory.findAllByAlertIdOrderByChangedAtAsc(alert.getId()).stream()
+                        item.getChangedBy(), item.getChangedAt(), names.get(item.getChangedBy()))).toList(),
+                work.stream()
                         .map(item -> new WorkHistoryView(
                                 item.getPreviousPriority(), item.getNewPriority(),
                                 item.getPreviousAssigneeId(), item.getNewAssigneeId(),
                                 item.getPreviousDueAt(), item.getNewDueAt(), item.getComment(),
-                                item.getChangedBy(), item.getChangedAt()))
+                                item.getChangedBy(), item.getChangedAt(), names.get(item.getChangedBy()),
+                                names.get(item.getPreviousAssigneeId()), names.get(item.getNewAssigneeId())))
                         .toList());
     }
 
-    private static RelatedDocumentView documentView(CommercialDocument document) {
+    private static RelatedDocumentView documentView(CommercialDocument document, String customerName) {
         return new RelatedDocumentView(
                 document.getId(), document.getTipo().name(), document.getEstado().name(),
                 document.getNumero(), document.getFecha(), document.getClienteId(),
@@ -329,7 +424,7 @@ public class ControlAlertService {
                         payment.getReferencia(), payment.getCardMode() == null ? null : payment.getCardMode().name(),
                         payment.getPaymentTerminalStatus() == null
                                 ? null : payment.getPaymentTerminalStatus().name()))
-                .toList());
+                .toList(), customerName);
     }
 
     private static RelatedDocumentLineView lineView(DocumentLine line) {
@@ -371,7 +466,10 @@ public class ControlAlertService {
             UUID assigneeId,
             Instant dueAt,
             Instant updatedAt,
-            long version) {
+            long version,
+            String terminalName,
+            String reviewComment,
+            String assigneeName) {
     }
 
     public record AlertDashboardSummaryView(
@@ -434,7 +532,8 @@ public class ControlAlertService {
             ControlAlertStatus newStatus,
             String comment,
             UUID changedBy,
-            Instant changedAt) {
+            Instant changedAt,
+            String changedByName) {
     }
 
     public record WorkHistoryView(
@@ -446,7 +545,10 @@ public class ControlAlertService {
             Instant newDueAt,
             String comment,
             UUID changedBy,
-            Instant changedAt) {
+            Instant changedAt,
+            String changedByName,
+            String previousAssigneeName,
+            String newAssigneeName) {
     }
 
     public record AssigneeOptionView(UUID id, String name, String userName) {
@@ -467,7 +569,8 @@ public class ControlAlertService {
             String currency,
             String cancellationReason,
             List<RelatedDocumentLineView> lines,
-            List<RelatedDocumentPaymentView> payments) {
+            List<RelatedDocumentPaymentView> payments,
+            String customerName) {
     }
 
     public record RelatedDocumentLineView(

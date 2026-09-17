@@ -30,6 +30,7 @@ const { productionBackendConfigPath, resolveBackendConfig } = require("./backend
 const { createDesktopServer } = require("./loopback-server.cjs");
 const { resolveRendererAppUrl } = require("./renderer-runtime-config.cjs");
 const { createPrivilegedIpcRegistrar } = require("./electron-security.cjs");
+const { createSaleControlOutbox } = require("./sale-control-outbox.cjs");
 
 const desktopAppConfig = getDesktopAppConfig(process.env.TPV_DESKTOP_APP_KIND);
 const appName = process.env.TPV_DESKTOP_APP_NAME || desktopAppConfig.name;
@@ -131,6 +132,7 @@ let salesUtilityResult;
 const salesUtilityBootstraps = new Map();
 let trustedAppOrigin;
 let desktopServer;
+let saleControlOutbox;
 const registerPrivilegedHandler = createPrivilegedIpcRegistrar({
   ipcMain,
   getTrustedOrigin: () => trustedAppOrigin
@@ -1195,6 +1197,21 @@ registerIpc("tpv:close-application", () => {
 });
 
 registerIpc("tpv:terminal-identity:load", () => readTerminalIdentity());
+const controlStorageCall = (action) => {
+  try {
+    if (!saleControlOutbox) throw new Error("CONTROL_STORAGE_UNAVAILABLE");
+    return { ok: true, ...action(saleControlOutbox) };
+  } catch (error) {
+    const code = String(error?.message || "");
+    return { ok: false, code: /^CONTROL_[A-Z_]+$/.test(code) ? code : "CONTROL_STORAGE_FAILED" };
+  }
+};
+registerIpc("tpv:sale-control:list", (_event, context) =>
+  controlStorageCall(store => ({ events: store.list(context) })));
+registerIpc("tpv:sale-control:put", (_event, value) =>
+  controlStorageCall(store => { store.put(value); return {}; }));
+registerIpc("tpv:sale-control:remove", (_event, context, id) =>
+  controlStorageCall(store => { store.remove(context, id); return {}; }));
 registerIpc("tpv:terminal-identity:save", (_event, identity) => writeTerminalIdentity(identity));
 registerIpc("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
 registerIpc("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
@@ -1375,12 +1392,19 @@ async function initializeDesktopRuntime() {
       backendUrl: backendConfig.backendUrl,
       backendAllowedHosts: backendConfig.allowedHosts
     });
+    saleControlOutbox = createSaleControlOutbox({
+      userDataPath: app.getPath("userData"), backendScope: backendConfig.backendUrl
+    });
     appUrl = await desktopServer.start();
   } else {
     appUrl = resolveRendererAppUrl({
       isPackaged: false,
       envValue: configuredAppUrl,
       allowRemoteDevelopment: process.env.TPV_DESKTOP_ALLOW_REMOTE_DEV_URL === "1"
+    });
+    // Development renderer URLs are stable; production always uses the configured backend above.
+    saleControlOutbox = createSaleControlOutbox({
+      userDataPath: app.getPath("userData"), backendScope: process.env.TPV_DESKTOP_BACKEND_URL || appUrl
     });
   }
   trustedAppOrigin = trustedOrigin(appUrl);

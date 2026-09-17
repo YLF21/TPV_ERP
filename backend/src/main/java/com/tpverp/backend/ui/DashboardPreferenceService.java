@@ -7,16 +7,22 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.PermissionChecks;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.security.core.Authentication;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +31,9 @@ public class DashboardPreferenceService {
 
     private static final List<WidgetDefinition> CATALOG = List.of(
             new WidgetDefinition("sales.today", Set.of(GESTION_VENTAS), 4, 1),
+            new WidgetDefinition("sales.operations", Set.of(GESTION_VENTAS), 4, 1),
+            new WidgetDefinition("sales.average", Set.of(GESTION_VENTAS), 4, 1),
+            new WidgetDefinition("sales.trend", Set.of(GESTION_VENTAS), 12, 2),
             new WidgetDefinition("sales.top-products", Set.of(GESTION_VENTAS), 8, 2),
             new WidgetDefinition("promotions.active", Set.of(GESTION_PRODUCTO), 4, 2),
             new WidgetDefinition(
@@ -52,10 +61,12 @@ public class DashboardPreferenceService {
     @Transactional(readOnly = true)
     public PreferenceView get(Authentication authentication) {
         var user = organization.currentUser(authentication);
-        var widgets = preferences.findByUser(user)
+        var existing = preferences.findByUser(user);
+        var widgets = existing
                 .map(DashboardPreference::getWidgets)
                 .orElseGet(() -> defaults(authentication));
-        return view(widgets, authentication);
+        var options = existing.map(DashboardPreference::getOptions).orElseGet(DashboardOptions::defaults);
+        return view(widgets, options, authentication);
     }
 
     @Transactional
@@ -74,12 +85,38 @@ public class DashboardPreferenceService {
         var normalized = DashboardPreference.validateWidgets(merged);
         var preference = existing.orElseGet(() -> new DashboardPreference(
                 user, normalized, clock.instant()));
-        preference.update(normalized, clock.instant());
-        return view(preferences.save(preference).getWidgets(), authentication);
+        var options = request.options() == null ? preference.getOptions() : request.options();
+        preference.update(normalized, options, clock.instant());
+        try {
+            // Flush here so both a concurrent first insert and an optimistic update
+            // become the same actionable conflict before this transaction returns.
+            preferences.saveAndFlush(preference);
+        } catch (OptimisticLockingFailureException | OptimisticLockException exception) {
+            throw preferenceConflict(exception);
+        } catch (DataIntegrityViolationException exception) {
+            if (isConcurrentFirstSave(exception)) throw preferenceConflict(exception);
+            throw exception;
+        }
+        return view(preference.getWidgets(), preference.getOptions(), authentication);
+    }
+
+    private static boolean isConcurrentFirstSave(Throwable exception) {
+        for (var cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation
+                    && "preferencia_dashboard_usuario_uq".equals(violation.getConstraintName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static IllegalStateException preferenceConflict(RuntimeException cause) {
+        return new IllegalStateException("message.dashboard.preference_conflict", cause);
     }
 
     private PreferenceView view(
             List<DashboardWidgetLayout> widgets,
+            DashboardOptions options,
             Authentication authentication) {
         var visible = widgets.stream()
                 .filter(widget -> KNOWN_KEYS.contains(widget.key()))
@@ -89,7 +126,9 @@ public class DashboardPreferenceService {
                 .filter(definition -> canUse(definition.key(), authentication))
                 .map(WidgetDefinition::key)
                 .toList();
-        return new PreferenceView(visible, available);
+        var timezone = organization.currentStore().getTimezone();
+        var businessDate = LocalDate.now(clock.withZone(ZoneId.of(timezone)));
+        return new PreferenceView(visible, available, options, businessDate, timezone);
     }
 
     private List<DashboardWidgetLayout> defaults(Authentication authentication) {
@@ -127,7 +166,10 @@ public class DashboardPreferenceService {
 
     public record PreferenceView(
             List<DashboardWidgetLayout> widgets,
-            List<String> availableWidgets) {
+            List<String> availableWidgets,
+            DashboardOptions options,
+            LocalDate businessDate,
+            String storeTimezone) {
 
         public PreferenceView {
             widgets = List.copyOf(widgets);
@@ -138,7 +180,12 @@ public class DashboardPreferenceService {
     public record SavePreferenceRequest(
             @NotNull
             @Size(max = DashboardPreference.MAX_WIDGETS)
-            List<@NotNull @Valid DashboardWidgetLayout> widgets) {
+            List<@NotNull @Valid DashboardWidgetLayout> widgets,
+            @Valid DashboardOptions options) {
+
+        public SavePreferenceRequest(List<DashboardWidgetLayout> widgets) {
+            this(widgets, null);
+        }
     }
 
     private record WidgetDefinition(

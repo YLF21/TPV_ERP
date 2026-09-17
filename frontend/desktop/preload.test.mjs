@@ -3,6 +3,21 @@ import vm from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 describe("desktop preload hardware bridge", () => {
+  it("exposes only scoped control-event storage operations through dedicated channels", async () => {
+    const invoke = vi.fn().mockResolvedValue({ ok: true });
+    let desktopApi;
+    vm.runInNewContext(fs.readFileSync(new URL("./preload.cjs", import.meta.url), "utf8"), {
+      require: () => ({ contextBridge: { exposeInMainWorld: (_name, api) => { desktopApi = api; } }, ipcRenderer: { invoke } }),
+    });
+    const context = { storeId: "store", terminalId: "terminal", userId: "user" };
+    const event = { context, deletionOperationId: "event" };
+    await desktopApi.saleControlOutbox.list(context);
+    await desktopApi.saleControlOutbox.put(event);
+    await desktopApi.saleControlOutbox.remove(context, "event");
+    expect(invoke.mock.calls).toEqual([
+      ["tpv:sale-control:list", context], ["tpv:sale-control:put", event], ["tpv:sale-control:remove", context, "event"],
+    ]);
+  });
   it("forwards fiscal ticket totals without transforming the payload", async () => {
     const invoke = vi.fn().mockResolvedValue({ ok: true });
     let desktopApi;
