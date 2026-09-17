@@ -142,3 +142,9 @@ La primera suite completa de frontend detectó dos esperas prematuras en los nue
 La revisión final no deja defectos confirmados pendientes dentro del alcance. Se autoriza la publicación técnica de esta rama como PR con los límites de producción y recuperación ya documentados.
 
 Logs de esta revisión: `prepublish-frontend-final.log`, `prepublish-receivables-rerun.log`, `prepublish-electron-tests.log`, `prepublish-gestion-build.log`, `prepublish-venta-build.log`, `prepublish-bundle.log` y `prepublish-e2e-final.log`, todos en `.codex-tmp/gestion-fullstack-20260917/`. Los logs y datos de prueba no se publican. Crear la PR no despliega ni fusiona el cambio; la CI de GitHub debe evaluarse sobre el commit publicado.
+
+## Corrección de CI de la PR #169 · 17/09
+
+La primera ejecución de GitHub sobre `fc24de9f` aprobó diez checks y falló dos de Quality. Backend ejecutó 4.133 casos y detectó una aserción de infraestructura desactualizada: `DocumentSyncPublisherPostgreSqlTest` esperaba que la última migración fuera V244, aunque esta rama incorpora V245–V248. Se actualiza la versión esperada a V248, conservando la comparación exacta y todas las comprobaciones de publicación, pagos, relaciones, concurrencia y recuperación. La clase completa pasa **13/13 casos sin omitir ninguno** contra PostgreSQL temporal; log `pr169-backend-fix-test.log`.
+
+Quality frontend falló al esperar la solicitud de segunda página en `SalesReportWarehousePurchases.test.tsx`. Tanto la prueba como `SalesReportScreen.tsx` son idénticos a la base `a727e27e`. El job JavaScript de CI aprobó la suite completa en el mismo commit y el focalizado local pasa **9/9**: es un fallo intermitente cuya causa exacta no se ha demostrado. No se modifican esa prueba, sus timeouts, las dependencias ni los workflows. La nueva ejecución de GitHub debe confirmar todos los checks tras publicar la corrección de backend.
