@@ -19,6 +19,7 @@ import com.tpverp.backend.document.DocumentPayment;
 import com.tpverp.backend.document.FiscalPrintView;
 import com.tpverp.backend.document.InvoiceFiscalProfile;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
+import com.tpverp.backend.document.MemberDiscountDocumentTestFixture;
 import com.tpverp.backend.document.PaymentMethod;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
@@ -51,6 +52,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class InvoiceJasperRendererTest {
+
+    private static final String LAYOUT_OBSERVATIONS = """
+            OBS-LINE-1: texto de comprobación de separación
+            OBS-LINE-2: texto de comprobación de separación
+            OBS-LINE-3: texto de comprobación de separación
+            OBS-LINE-4: fin de observaciones""";
 
     @TempDir Path temporaryDirectory;
 
@@ -138,7 +145,7 @@ class InvoiceJasperRendererTest {
                 template.getId(), template.getCode(), template.getTemplateVersion(),
                 SafeJrxmlCompiler.DATA_SCHEMA_VERSION, compiled.sha256(), false);
         var presentation = new InvoicePresentationSnapshot(
-                4, InvoiceFiscalProfile.IVA, "Gracias por su confianza", List.of(),
+                4, InvoiceFiscalProfile.IVA, LAYOUT_OBSERVATIONS, List.of(),
                 snapshot(fixture.template(), "a".repeat(64)).template(),
                 ticketReference, null);
 
@@ -151,12 +158,97 @@ class InvoiceJasperRendererTest {
             assertThat(document.getPage(0).getMediaBox().getWidth()).isEqualTo(227f);
             assertThat(new PDFTextStripper().getText(document))
                     .contains("FACTURA", "FV-2026-1", "Cód. cliente", "C-001", "8430000000010",
-                            "TOTAL FACTURA", "Gracias por su confianza");
+                            "TOTAL FACTURA", "OBS-LINE-4", "QR tributario:");
+            var observations = textBounds(document, "OBS-LINE-4");
+            var qrPrefix = textBounds(document, "QR tributario:");
+            assertThat(qrPrefix.top()).isGreaterThan(observations.bottom() + 2f);
         }
         var raster = ImageIO.read(new ByteArrayInputStream(rendered.ticketRasterPng()));
         assertThat(raster.getWidth()).isEqualTo(576);
         assertThat(raster.getHeight()).isBetween(100, 5_073);
         assertThat(decodeQr(raster)).isEqualTo("https://www2.agenciatributaria.gob.es/qr");
+    }
+
+    @Test
+    void ticketInvoicePrintsThePersistedMemberPercentageInsteadOfTheTechnicalLineName()
+            throws Exception {
+        var fixture = fixture();
+        var document = new CommercialDocument(
+                fixture.store().getId(), UUID.randomUUID(),
+                CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.of(2026, 9, 18), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE,
+                "P-MIEMBRO", "Producto miembro", "VENTA", new BigDecimal("100.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        MemberDiscountDocumentTestFixture.apply(document, new BigDecimal("7.50"));
+        document.confirm("FV-2026-MIEMBRO", UUID.randomUUID(),
+                Instant.parse("2026-09-18T10:01:00Z"), false);
+        var compiler = new SafeJrxmlCompiler();
+        var builtIns = new BuiltInDocumentJrxmlCatalog(compiler);
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                compiler, new ObjectMapper(), builtIns);
+        var presentation = new InvoicePresentationSnapshot(
+                4, InvoiceFiscalProfile.IVA, null, List.of(),
+                builtIns.reference(DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.A4),
+                builtIns.reference(DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateFormat.TICKET_80),
+                null);
+
+        var rendered = renderer.renderDocument(
+                document, fixture.store(), fixture.company(), fixture.customer(),
+                presentation, null, null, DocumentTemplateFormat.TICKET_80)
+                .orElseThrow();
+
+        try (var pdf = Loader.loadPDF(rendered.pdf())) {
+            assertThat(new PDFTextStripper().getText(pdf))
+                    .contains("Descuento miembro 7.5%")
+                    .doesNotContain("DESCUENTO DOCUMENTAL");
+        }
+    }
+
+    @Test
+    void ticketRectificationKeepsTheFiscalQrBlockBelowTheTotal() throws Exception {
+        var fixture = fixture();
+        var document = new CommercialDocument(
+                fixture.store().getId(), UUID.randomUUID(),
+                CommercialDocumentType.RECTIFICATIVA_VENTA,
+                LocalDate.of(2026, 9, 18), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE.negate(),
+                "P-RECT", "Producto rectificado", "VENTA", new BigDecimal("10.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        document.confirm("FRV-2026-1", UUID.randomUUID(),
+                Instant.parse("2026-09-18T10:01:00Z"), false);
+        var compiler = new SafeJrxmlCompiler();
+        var builtIns = new BuiltInDocumentJrxmlCatalog(compiler);
+        var renderer = new InvoiceJasperRenderer(
+                mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory),
+                compiler, new ObjectMapper(), builtIns);
+        var presentation = new InvoicePresentationSnapshot(
+                4, InvoiceFiscalProfile.IVA, null, List.of(),
+                builtIns.reference(DocumentTemplateType.RECTIFICATIVA_VENTA,
+                        DocumentTemplateFormat.A4),
+                builtIns.reference(DocumentTemplateType.RECTIFICATIVA_VENTA,
+                        DocumentTemplateFormat.TICKET_80),
+                null);
+
+        var rendered = renderer.renderDocument(
+                document, fixture.store(), fixture.company(), fixture.customer(),
+                presentation, "https://www2.agenciatributaria.gob.es/qr-rectificativa",
+                null, DocumentTemplateFormat.TICKET_80).orElseThrow();
+
+        try (var pdf = Loader.loadPDF(rendered.pdf())) {
+            assertThat(new PDFTextStripper().getText(pdf))
+                    .contains("FACTURA RECTIFICATIVA", "TOTAL:", "QR tributario:");
+            var total = textBounds(pdf, "TOTAL:");
+            var qrPrefix = textBounds(pdf, "QR tributario:");
+            assertThat(qrPrefix.top()).isGreaterThan(total.bottom() + 2f);
+        }
     }
 
     @Test
@@ -670,6 +762,32 @@ class InvoiceJasperRendererTest {
         assertThat(positions).isNotEmpty();
         return positions.get(0);
     }
+
+    private static TextBounds textBounds(
+            org.apache.pdfbox.pdmodel.PDDocument document, String expected) throws Exception {
+        var matches = new java.util.ArrayList<TextBounds>();
+        var stripper = new PDFTextStripper() {
+            @Override
+            protected void writeString(String text, List<TextPosition> textPositions) {
+                if (text.contains(expected) && !textPositions.isEmpty()) {
+                    float top = textPositions.stream()
+                            .map(TextPosition::getYDirAdj)
+                            .min(Float::compareTo)
+                            .orElseThrow();
+                    float bottom = textPositions.stream()
+                            .map(position -> position.getYDirAdj() + position.getHeightDir())
+                            .max(Float::compareTo)
+                            .orElseThrow();
+                    matches.add(new TextBounds(top, bottom));
+                }
+            }
+        };
+        stripper.getText(document);
+        assertThat(matches).as(expected).singleElement();
+        return matches.get(0);
+    }
+
+    private record TextBounds(float top, float bottom) {}
 
     private record Fixture(
             Company company,

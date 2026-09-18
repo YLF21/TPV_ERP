@@ -49,8 +49,17 @@ SELECT
     d.total AS total_anulado,
     COALESCE(pagos.resumen, 'Sin información de pago') AS resumen_pagos,
     dl.posicion,
-    NULLIF(TRIM(dl.codigo), '') AS codigo_articulo,
-    dl.nombre AS articulo,
+    CASE
+        WHEN da.tipo IN ('MEMBER_PERCENT', 'MANUAL_PERCENT') THEN NULL
+        ELSE NULLIF(TRIM(dl.codigo), '')
+    END AS codigo_articulo,
+    CASE
+        WHEN da.tipo = 'MEMBER_PERCENT' THEN 'Descuento miembro '
+            || RTRIM(RTRIM(TO_CHAR(da.porcentaje, 'FM999990.00'), '0'), '.') || '%'
+        WHEN da.tipo = 'MANUAL_PERCENT' THEN 'Descuento documento '
+            || RTRIM(RTRIM(TO_CHAR(da.porcentaje, 'FM999990.00'), '0'), '.') || '%'
+        ELSE dl.nombre
+    END AS articulo,
     dl.cantidad,
     dl.precio_unitario AS precio_unitario,
     dl.total AS total_linea,
@@ -98,6 +107,9 @@ LEFT JOIN LATERAL (
 LEFT JOIN documento_linea dl
     ON dl.documento_id = d.id
    AND dl.tipo_linea NOT IN ('MANUAL_DISCOUNT', 'PROMOTIONAL_COUPON')
+LEFT JOIN documento_ajuste da
+    ON da.id = dl.documento_ajuste_id
+   AND da.documento_id = d.id
 LEFT JOIN LATERAL (
     SELECT string_agg(dlns.numero_serie, ', ' ORDER BY dlns.posicion) AS numeros_serie
     FROM documento_linea_numero_serie dlns

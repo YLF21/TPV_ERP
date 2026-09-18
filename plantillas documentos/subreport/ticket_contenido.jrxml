@@ -368,9 +368,7 @@ ORDER BY dl.posicion]]></query>
 		<element kind="textField" uuid="382b80f0-7062-4fa5-b62e-c7ae68c1c66f" x="0" y="0" width="120" height="13" fontSize="8.0" removeLineWhenBlank="true">
 			<printWhenExpression><![CDATA[$F{importe_descuento_miembro} != null
 && $F{importe_descuento_miembro}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
-			<expression><![CDATA["Descuento de miembro ("
-    + new java.text.DecimalFormat("#,##0.##").format($F{porcentaje_descuento_miembro})
-    + "%)"]]></expression>
+			<expression><![CDATA[com.tpverp.backend.document.MemberDiscountPrintLabel.format($F{porcentaje_descuento_miembro})]]></expression>
 		</element>
 		<element kind="textField" uuid="29789ed4-b722-40f5-b0ee-eb265a8441cb" x="125" y="0" width="70" height="13" fontSize="8.0" removeLineWhenBlank="true" hTextAlign="Right">
 			<printWhenExpression><![CDATA[$F{importe_descuento_miembro} != null

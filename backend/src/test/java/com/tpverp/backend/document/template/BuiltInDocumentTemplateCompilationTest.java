@@ -2,6 +2,10 @@ package com.tpverp.backend.document.template;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
@@ -33,5 +37,19 @@ class BuiltInDocumentTemplateCompilationTest {
                 }
             }).as(resource).doesNotThrowAnyException();
         }
+    }
+
+    @Test
+    void compilesTheLegacyTicketInvoiceVariantKeptAsAnEditableSource() {
+        assertThatCode(() -> {
+            var source = Files.readAllBytes(Path.of(
+                    "..", "plantillas documentos", "FACTURA_VENTA_TICKET_80_v2.jrxml"));
+            try (var input = new ByteArrayInputStream(source);
+                    var output = new ByteArrayOutputStream()) {
+                net.sf.jasperreports.engine.JasperCompileManager
+                        .getInstance(SafeJrxmlCompiler.secureContext())
+                        .compileToStream(input, output);
+            }
+        }).doesNotThrowAnyException();
     }
 }
