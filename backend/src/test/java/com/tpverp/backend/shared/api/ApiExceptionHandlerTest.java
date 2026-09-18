@@ -86,6 +86,28 @@ class ApiExceptionHandlerTest {
         assertEquals("Incorrect username or password", problem.getDetail());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "es,La clave idempotente,Ya existe una subsanación",
+            "en,The idempotency key,Another correction",
+            "zh,此幂等键,此记录已有"
+    })
+    void fiscalCorrectionConflictsExposeStableCodesInEveryLanguage(
+            String locale, String idempotencyText, String pendingText) {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, locale);
+        var idempotency = handler.fiscalCorrectionConflict(
+                new com.tpverp.backend.verifactu.FiscalCorrectionIdempotencyConflictException(), request);
+        var pending = handler.fiscalCorrectionConflict(
+                new com.tpverp.backend.verifactu.FiscalCorrectionPendingConflictException(), request);
+        assertEquals(409, idempotency.getStatus());
+        assertEquals(409, pending.getStatus());
+        assertEquals("subsanacion_idempotency_conflict", idempotency.getProperties().get("code"));
+        assertEquals("subsanacion_pending_conflict", pending.getProperties().get("code"));
+        org.assertj.core.api.Assertions.assertThat(idempotency.getDetail()).startsWith(idempotencyText);
+        org.assertj.core.api.Assertions.assertThat(pending.getDetail()).startsWith(pendingText);
+    }
+
     @Test
     void mapsStaleWarehouseExcelSnapshotToConflict() {
         var request = new MockHttpServletRequest();

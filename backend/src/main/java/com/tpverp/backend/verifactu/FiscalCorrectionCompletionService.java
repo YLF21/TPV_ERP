@@ -19,7 +19,8 @@ public class FiscalCorrectionCompletionService {
     // Cierra la incidencia original unicamente cuando AEAT acepta su subsanacion.
     @Transactional
     public void accepted(FiscalRecord record) {
-        relations.findByRecordIdAndType(record.getId(), FiscalRelationType.SUBSANA)
-                .ifPresent(relation -> states.markSubsanado(relation.getRelatedId()));
+        // Oldest ancestor first, matching the canonical correction lock order.
+        // An empty scoped result is final: never fall back to an unscoped relation.
+        relations.findSubsanationAncestorIds(record.getId()).forEach(states::markSubsanado);
     }
 }

@@ -271,7 +271,7 @@ class FiscalRecordServiceTest {
         chain.advance(previous, TRUNCATED_NOW.minusSeconds(60));
         when(chains.findForUpdate(command.companyId(), command.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 command.documentId(), command.operation()))
                 .thenReturn(Optional.empty());
         when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -374,10 +374,10 @@ class FiscalRecordServiceTest {
         stubActive(cancellation, cancelled);
         when(chains.findForUpdate(cancellation.companyId(), cancellation.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 cancellation.documentId(), FiscalRecordOperation.ANULACION))
                 .thenReturn(Optional.empty());
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 cancellation.documentId(), FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.empty());
 
@@ -401,10 +401,10 @@ class FiscalRecordServiceTest {
         stubActive(cancellation, cancelled);
         when(chains.findForUpdate(cancellation.companyId(), cancellation.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 cancellation.documentId(), FiscalRecordOperation.ANULACION))
                 .thenReturn(Optional.empty());
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 cancellation.documentId(), FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(original));
         when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -440,9 +440,9 @@ class FiscalRecordServiceTest {
         stubActive(invoice);
         when(chains.findForUpdate(command.companyId(), command.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(command.documentId(), FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(command.documentId(), FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.empty());
-        when(records.findByDocumentIdAndOperation(ticketId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(ticketId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(original));
         when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -480,9 +480,9 @@ class FiscalRecordServiceTest {
         stubActive(rectification);
         when(chains.findForUpdate(command.companyId(), command.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(command.documentId(), FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(command.documentId(), FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.empty());
-        when(records.findByDocumentIdAndOperation(originalDocumentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(originalDocumentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(original));
         when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -543,6 +543,47 @@ class FiscalRecordServiceTest {
     }
 
     @Test
+    void subsanacionUsaLaVersionDeBuildActualAunqueElAltaSeaHistorica() {
+        var original = fiscalRecord(
+                chain, command, FiscalRecordOperation.ALTA, FiscalDocumentType.F2, 1, null);
+        chain.advance(original, TRUNCATED_NOW.minusSeconds(60));
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(runtime.systemVersion()).thenReturn("4.2.9");
+        var service = service();
+        service.setRuntimeProperties(runtime);
+
+        var correction = service.registerCorrection(original, Map.of(
+                "impuestoTotal", new BigDecimal("2.10"),
+                "total", new BigDecimal("12.10"), "subsanacion", "S"));
+
+        assertThat(correction.getApplicationVersion()).isEqualTo("4.2.9");
+    }
+
+    @Test
+    void rechazaObjetivoDeSubsanacionDeOtroDocumentoAntesDePersistir() {
+        var original = fiscalRecord(
+                chain, command, FiscalRecordOperation.ALTA, FiscalDocumentType.F2, 1, null);
+        chain.advance(original, TRUNCATED_NOW.minusSeconds(60));
+        var foreign = fiscalRecord(
+                chain, command,
+                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, 2, original.getHash());
+        org.springframework.test.util.ReflectionTestUtils.setField(foreign, "documentId", UUID.randomUUID());
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.findById(foreign.getId())).thenReturn(Optional.of(foreign));
+        assertThatThrownBy(() -> service().registerCorrection(original, Map.of(
+                "impuestoTotal", new BigDecimal("2.10"),
+                "total", new BigDecimal("12.10"),
+                "subsanacion", "S",
+                "subsanacionObjetivoId", foreign.getId().toString())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("El objetivo de subsanacion no es valido");
+        verify(records, never()).save(any());
+    }
+
+    @Test
     void subsanacionPosteriorALaFechaObligatoriaUsaElModoActualVerifactu() {
         var original = new FiscalRecord(
                 chain.getId(), command.companyId(), command.installationId(), command.storeId(),
@@ -586,7 +627,7 @@ class FiscalRecordServiceTest {
         stubActive(document);
         when(chains.findForUpdate(command.companyId(), command.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 command.documentId(), command.operation()))
                 .thenReturn(Optional.of(fiscalRecord(
                         chain, command, command.operation(), command.documentType(), 1, null)));
@@ -597,7 +638,7 @@ class FiscalRecordServiceTest {
 
         var order = inOrder(chains, records);
         order.verify(chains).findForUpdate(command.companyId(), command.installationId());
-        order.verify(records).findByDocumentIdAndOperation(
+        order.verify(records).findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 command.documentId(), command.operation());
     }
 
@@ -663,7 +704,7 @@ class FiscalRecordServiceTest {
     private void stubEmptyChain() {
         when(chains.findForUpdate(command.companyId(), command.installationId()))
                 .thenReturn(Optional.of(chain));
-        when(records.findByDocumentIdAndOperation(
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
                 command.documentId(), command.operation()))
                 .thenReturn(Optional.empty());
         when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));

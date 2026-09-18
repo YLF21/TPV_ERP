@@ -141,8 +141,9 @@ public class DocumentFiscalIntegration {
     }
 
     public boolean hasFiscalRecord(java.util.UUID documentId) {
-        return recordRepository.findByDocumentIdAndOperation(
-                documentId, FiscalRecordOperation.ALTA).isPresent();
+        var ordered = recordRepository.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                documentId, FiscalRecordOperation.ALTA);
+        return ordered.isPresent();
     }
     // Indicates whether the document fiscal content is already frozen.
 

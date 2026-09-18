@@ -1,21 +1,23 @@
 # Despliegue productivo del backend TPV ERP en Windows
 
-Este procedimiento prepara y verifica el backend `4.2.0` con capacidad
-`VERIFACTU_ONLY` y esquema esperado `V234` (parametrizable si cambia). Es deliberadamente conservador:
-no descarga WinSW, no escribe secretos, no arranca el backend y no instala un
-servicio durante el preflight.
+Este procedimiento prepara y verifica un backend con capacidad `VERIFACTU_ONLY`.
+La version, identidad y secuencias se leen del perfil `production-release` de
+`backend/pom.xml`; el esquema se lee de `META-INF/tpv-erp-release.properties`.
+No hay un numero de migracion duplicado en los scripts. No descarga WinSW ni
+escribe secretos. Registrar, aplicar ACL y arrancar son fases separadas; un
+preflight no instala ni arranca servicios.
 
 ## Requisitos de promoción
 
 El bundle debe contener un único fat JAR, su sidecar `JAR.sha256`,
 `META-INF/tpv-erp-release.properties` y el PDF legal versionado dentro del
 JAR en `META-INF/fiscal/declaracion-responsable-4.2.0.pdf`. El manifiesto debe
-tener `release.id=tpv-erp-4.2.0`, `system.version=4.2.0`,
-`capability=VERIFACTU_ONLY`, `schema.version=V234`, `release.sequence=1`,
-`build.sequence=1`, un `commit.hash`,
+tener identidad/secuencias aprobadas para esa publicacion,
+`capability=VERIFACTU_ONLY`, un `schema.version`, un `commit.hash`,
 `declaration.hash` y un `manifest.hash` coherente. El verificador compara todos
 los hashes y la firma `%PDF-`; nunca imprime contraseñas, tokens ni contenido
-del PDF.
+del PDF. Ademas exige `PropertiesLauncher` y `OfflineRestoreCli` dentro del
+fat JAR: la recuperacion no depende de clases de desarrollo no distribuidas.
 
 La ausencia del PDF legal/identidad, un manifiesto sin filtrar, un sidecar
 incorrecto o cualquier versión `DEV` bloquean la promoción. En el estado
@@ -36,13 +38,14 @@ Desde la raíz del repositorio, en un checkout limpio:
 El script calcula el commit de Git y los hashes de declaración/manifiesto,
 pasa explícitamente `ExpectedReleaseId` y `ExpectedVersion` a las propiedades
 Maven del perfil, invoca `backend\mvnw.cmd -Pproduction-release clean package` y publica el JAR y su
-sidecar en `artifacts\backend-4.2.0`. No se deben usar credenciales Maven ni
+sidecar en `artifacts\backend-<release-id>`. No se deben usar credenciales Maven ni
 variables con secretos en la línea de comandos. Para verificar un bundle ya
 preparado sin compilar:
 
 ```powershell
 .\tools\Test-TpvBackendProductionBundle.ps1 `
-  -BundleDirectory .\artifacts\backend-4.2.0
+  -BundleDirectory '.\artifacts\backend-<release-id>' `
+  -ExpectedReleaseId '<release-id-aprobado>'
 ```
 
 `ExpectedReleaseId` puede cambiar para una nueva identidad manteniendo la misma
@@ -50,7 +53,9 @@ versión pública `4.2.0`. El nombre del JAR depende del `<version>` de
 `backend\pom.xml`; el preparador exige que `ExpectedVersion` coincida con ese
 `project.version` y no cambia el nombre del artefacto Maven.
 
-Si cambia el orden de publicación, pase también
+Sin expectativas explicitas, el verificador comprueba la integridad e identidad
+del propio bundle, no su autorizacion operativa. El instalador y el CLI exigen
+siempre `ExpectedReleaseId` confirmado por el operador. Si cambia el orden de publicación, pase también
 `-ExpectedReleaseSequence` y `-ExpectedBuildSequence` tanto al preparador como
 al verificador; ambas secuencias forman parte del hash canónico.
 
@@ -67,27 +72,38 @@ configuración Spring y el directorio de secretos deben estar fuera del bundle;
 el fichero de configuración se referencia por ruta y nunca se copia dentro de
 la release.
 
-Primero ejecutar siempre el preflight (como administrador):
+En un host nuevo, prepare el fichero externo sin secretos en la linea de
+comandos. Ejecute como administrador el preflight de **registro**; no requiere
+un SID virtual que aun no existe ni directorios fiscales aprovisionados:
 
 ```powershell
-.\tools\Install-TpvBackendWindowsService.ps1 `
-  -BundleDirectory .\artifacts\backend-4.2.0 `
-  -WinSwExecutable 'D:\provision\WinSW-x64.exe' `
-  -WinSwSha256 '<SHA256_DE_WINSW>' `
-  -JavaExecutable 'C:\Program Files\Java\jdk-25\bin\java.exe' `
-  -ConfigurationFile 'C:\ProgramData\TPV ERP\config\application-prod.yml' `
-  -SecretDirectory 'C:\ProgramData\TPV ERP\secrets\verifactu' `
-  -ExportDirectory 'C:\ProgramData\TPV ERP\exports\fiscal' `
-  -Preflight
+$installArgs = @{
+  BundleDirectory = 'D:\releases\backend-<release-id>'
+  ExpectedReleaseId = '<release-id-aprobado>'
+  WinSwExecutable = 'D:\provision\WinSW-x64.exe'
+  WinSwSha256 = '<SHA256_DE_WINSW>'
+  JavaExecutable = 'C:\Program Files\Java\jdk-25\bin\java.exe'
+  ConfigurationFile = 'C:\ProgramData\TPV ERP\config\application-prod.yml'
+}
+.\tools\Install-TpvBackendWindowsService.ps1 @installArgs -Phase Register -Preflight
+.\tools\Install-TpvBackendWindowsService.ps1 @installArgs -Phase Register
+# Servicio registrado, detenido y con inicio Manual; ahora existe su SID.
+.\tools\Set-TpvBackendWindowsAcl.ps1 -Phase Apply `
+  -ConfigurationFile $installArgs.ConfigurationFile
+.\tools\Install-TpvBackendWindowsService.ps1 @installArgs -Phase Start -Preflight
+# Solo despues de validar configuracion fiscal, certificado y pruebas de aceptacion:
+.\tools\Install-TpvBackendWindowsService.ps1 @installArgs -Phase Start
 ```
 
-Después de revisar el resultado, la misma orden sin `-Preflight` registra o
-actualiza el servicio `TPVERPBackend` mediante WinSW. El bind obligatorio es
+`Register` registra o actualiza `TPVERPBackend` mediante WinSW, siempre sin
+arrancarlo y con inicio Manual. `Start` es la accion explicita que habilita
+inicio Automatic y arranca; exige release/hash/XML/configuracion/cuenta
+coherentes y ACL completas, y revierte a Manual si WinSW falla. El bind obligatorio es
 loopback (`127.0.0.1:8080` por defecto; también se admite `::1`). No se permite
-exponer el backend directamente en otra interfaz. Solo se aceptan las
-cuentas integradas `LocalService`, `NetworkService` y `LocalSystem`; no se
-serializan contraseñas de cuentas personalizadas. El backend no se arranca
-automáticamente al terminar.
+exponer el backend directamente en otra interfaz. Se recomienda la cuenta
+virtual `NT SERVICE\TPVERPBackend` (predeterminada); se conservan las cuentas
+integradas para compatibilidad, sin contraseñas serializadas. El aplicador
+general de ACL requiere la cuenta virtual.
 
 `-WhatIf` se puede usar en lugar del preflight para simular las operaciones de
 escritura. Cada release se conserva de forma inmutable en
@@ -112,13 +128,15 @@ de `C:\ProgramData\TPV ERP\...` no se separan en varios argumentos. El
 preflight exige Java 25 y un `ListenAddress` loopback literal (`127.0.0.1` o
 `::1`); no se permite exponer este backend directamente en una interfaz de red.
 
-El preflight también exige que exista el directorio de secretos indicado por
+El preflight de `Start` exige que exista el directorio de secretos indicado por
 `-SecretDirectory` (por defecto
 `C:\ProgramData\TPV ERP\secrets\verifactu`), que él y sus archivos no sean
-reparse points y que no tengan denegaciones ACL de lectura para la identidad
-efectiva del servicio. Cuando Windows no permite demostrar el permiso efectivo
-solo desde las reglas ACL, se emite una advertencia para validarlo con el
-servicio detenido y el usuario de servicio.
+reparse points. La ACL de secretos exige FullControl para servicio, SYSTEM y
+Administrators, sin herencia ni otros titulares, en coherencia con la politica
+Java que protege nuevos blobs DPAPI. Exportaciones exige Modify para el
+servicio y FullControl para SYSTEM/Administrators. Releases/configuracion no
+son escribibles por el servicio. La falta de lectura directa de configuracion
+bloquea el inicio, no se reduce a una advertencia.
 
 El aprovisionamiento de ACL del directorio VeriFactu continúa siendo una
 operación separada y explícita con

@@ -23,7 +23,7 @@ export function FiscalModeControlView({
   t: VerifactuTranslator;
   onChanged: (status: FiscalStatus) => void;
 }) {
-  const targets = useMemo(() => transitionTargets(status?.mode), [status?.mode]);
+  const targets = useMemo(() => transitionTargets(status), [status?.mode, status?.productCapability]);
   const [targetMode, setTargetMode] = useState<FiscalMode>(targets[0] ?? "VERIFACTU");
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -44,7 +44,7 @@ export function FiscalModeControlView({
     setAeatAckReference("");
     setError(false);
     setSuccess(false);
-  }, [status?.modeVersion, status?.scheduledTransition?.status, status?.scheduledTransition?.newMode]);
+  }, [status?.modeVersion, status?.scheduledTransition?.status, status?.scheduledTransition?.newMode, targets]);
 
   if (!status) {
     return <div className="gestion-verifactu-message error" role="alert">{t("verifactu.mode.statusRequired")}</div>;
@@ -55,7 +55,8 @@ export function FiscalModeControlView({
   const requiresExitData = currentStatus.mode === "VERIFACTU"
     && targetMode === "NO_VERIFACTU"
     && status.runtimeClass === "REAL";
-  const valid = reason.trim().length >= 10
+  const valid = targets.includes(targetMode)
+    && reason.trim().length >= 10
     && confirmation === confirmationPhrase
     && (!requiresExitData || Boolean(verifactuEndDate && aeatAckReference.trim()));
 
@@ -111,7 +112,12 @@ export function FiscalModeControlView({
           <span>{formatVerifactuDate(status.scheduledTransition.effectiveAt, locale)}</span>
         </div>
       )}
-      <form onSubmit={submit}>
+      {status.productCapability !== "DUAL" && <p className="gestion-fiscal-mode-warning" role="status">
+        {t(status.productCapability === "VERIFACTU_ONLY"
+          ? "verifactu.mode.verifactuOnly"
+          : "verifactu.mode.capabilityUnavailable")}
+      </p>}
+      {targets.length > 0 && <form onSubmit={submit}>
         {status.scheduledTransition?.status === "FALLIDA" && <p className="gestion-fiscal-mode-warning" role="status">{t("verifactu.mode.retryHint")}</p>}
         {status.scheduledTransition?.status !== "FALLIDA" && <p className="gestion-fiscal-mode-warning">{transitionWarning(status.mode, targetMode, t)}</p>}
           <label htmlFor="fiscal-mode-target">
@@ -137,15 +143,16 @@ export function FiscalModeControlView({
           <button type="submit" className="primary" disabled={working || !valid}>{working ? t("verifactu.mode.changing") : status.scheduledTransition?.status === "FALLIDA" ? t("verifactu.mode.retryChange") : t("verifactu.mode.confirmChange")}</button>
           {success && <p className="gestion-form-success" role="status">{t("verifactu.mode.success")}</p>}
           {error && <p className="gestion-form-error" role="alert">{t("verifactu.mode.error")}</p>}
-      </form>
+      </form>}
     </section>
   </div>;
 }
 
-function transitionTargets(mode: FiscalMode | undefined): FiscalMode[] {
-  if (mode === "PRE_SIF") return ["VERIFACTU", "NO_VERIFACTU"];
-  if (mode === "NO_VERIFACTU") return ["VERIFACTU"];
-  if (mode === "VERIFACTU") return ["NO_VERIFACTU"];
+function transitionTargets(status: FiscalStatus | null): FiscalMode[] {
+  const allowsNoVerifactu = status?.productCapability === "DUAL";
+  if (status?.mode === "PRE_SIF") return allowsNoVerifactu ? ["VERIFACTU", "NO_VERIFACTU"] : ["VERIFACTU"];
+  if (status?.mode === "NO_VERIFACTU") return ["VERIFACTU"];
+  if (status?.mode === "VERIFACTU") return allowsNoVerifactu ? ["NO_VERIFACTU"] : [];
   return [];
 }
 

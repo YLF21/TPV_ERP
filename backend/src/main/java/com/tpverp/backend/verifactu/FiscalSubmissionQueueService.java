@@ -220,6 +220,7 @@ public class FiscalSubmissionQueueService {
         }
         var owner = UUID.randomUUID();
         var until = now.plus(CLAIM_LEASE);
+        scope.markTransportIncident(now);
         state.claimManual(owner, UUID.randomUUID(), now, until);
         scope.claim(owner, now, until);
         flows.save(scope);
@@ -308,6 +309,15 @@ public class FiscalSubmissionQueueService {
                 .collect(java.util.stream.Collectors.toMap(FiscalRecord::getId, value -> value));
         var artifactsById = artifacts.findAllByRecordIdIn(selectedIds).stream()
                 .collect(java.util.stream.Collectors.toMap(FiscalRecordArtifact::getRecordId, value -> value));
+        selected = compatiblePrefix(selected, recordsById, artifactsById);
+        // Only a full *compatible* batch may bypass AEAT's requested wait.
+        if (paced && selected.size() != 1000) return Optional.empty();
+        if (scope.getLeaseUntil() != null && !scope.getLeaseUntil().isAfter(now)
+                || selected.stream().anyMatch(state -> state.getStatus() != FiscalSubmissionStatus.PENDIENTE)) {
+            // Covers a JVM crash before failure persistence, and legacy retry
+            // rows created before incident metadata was introduced.
+            scope.markTransportIncident(now);
+        }
         var claimed = new java.util.ArrayList<ClaimedFiscalSubmission>(selected.size());
         for (var state : selected) {
             var record = java.util.Optional.ofNullable(recordsById.get(state.getRecordId()))
@@ -323,6 +333,40 @@ public class FiscalSubmissionQueueService {
         scope.claim(owner, now, until);
         flows.save(scope);
         return Optional.of(new ClaimedFiscalBatch(scope, claimed));
+    }
+
+    /** Keep a contiguous prefix: do not overtake the first incompatible issuer. */
+    private List<FiscalSubmissionState> compatiblePrefix(
+            List<FiscalSubmissionState> selected,
+            java.util.Map<UUID, FiscalRecord> recordsById,
+            java.util.Map<UUID, FiscalRecordArtifact> artifactsById) {
+        var first = artifactsById.get(selected.getFirst().getRecordId());
+        if (first == null) throw new IllegalStateException("artefacto fiscal no encontrado");
+        var identities = new java.util.HashSet<BatchInvoiceKey>();
+        int length = 0;
+        for (var state : selected) {
+            var artifact = artifactsById.get(state.getRecordId());
+            var record = recordsById.get(state.getRecordId());
+            if (artifact == null || record == null) {
+                throw new IllegalStateException("artefacto fiscal no encontrado");
+            }
+            if (length > 0 && (first.getIssuerName() == null || first.getIssuerTaxId() == null
+                    || !java.util.Objects.equals(first.getIssuerName(), artifact.getIssuerName())
+                    || !java.util.Objects.equals(first.getIssuerTaxId(), artifact.getIssuerTaxId()))) break;
+            // A legacy artifact without frozen issuer columns is resolved and
+            // validated by the submission service, alone, from immutable XML.
+            // Distinct historical corrections may also share an invoice ID;
+            // never submit them together because AEAT replies identify that ID.
+            if (record.getNumber() != null && record.getIssueDate() != null
+                    && !identities.add(new BatchInvoiceKey(record.getIssuerTaxId(),
+                            record.getNumber(), record.getIssueDate(), record.getOperation()))) break;
+            length++;
+        }
+        return selected.subList(0, length);
+    }
+
+    private record BatchInvoiceKey(String issuerTaxId, String number,
+            java.time.LocalDate issueDate, FiscalRecordOperation operation) {
     }
 
     private FiscalSubmissionScopeFlow createFlow(

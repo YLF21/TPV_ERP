@@ -138,10 +138,11 @@ public class VerifactuSubmissionService {
                     throw new IllegalArgumentException("El lote mezcla identidades fiscales");
                 }
             }
-            var fiscalXml = xml.frozenBatchXml(
-                    first.issuerName(), first.issuerTaxId(),
-                    artifactsByRecord.stream()
-                            .map(value -> value.artifact().getUnsignedXml()).toList());
+            var frozenRecords = artifactsByRecord.stream()
+                    .map(value -> value.artifact().getUnsignedXml()).toList();
+            var fiscalXml = batch.scope().hasTransportIncident()
+                    ? xml.frozenBatchXml(first.issuerName(), first.issuerTaxId(), frozenRecords, true)
+                    : xml.frozenBatchXml(first.issuerName(), first.issuerTaxId(), frozenRecords);
             validator.validate(fiscalXml);
             envelope = soap.wrap(fiscalXml);
             if (batchPersistence != null) {

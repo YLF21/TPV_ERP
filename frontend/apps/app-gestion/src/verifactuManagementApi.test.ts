@@ -27,6 +27,17 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("VeriFactu management API", () => {
+  it("conserva la clave de idempotencia en la subsanación normalizada", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "correction-1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createVerifactuCorrection("record-1", {
+      reason: " Motivo ", operationDescription: " Descripción ", idempotencyKey: "stable-correction-key"
+    }, "token");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      reason: "Motivo", operationDescription: "Descripción", recipientTaxId: null,
+      recipientName: null, idempotencyKey: "stable-correction-key"
+    });
+  });
   it("crea trabajos con payload exacto para filtros y conserva el prefijo", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "job-1", status: "QUEUED" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

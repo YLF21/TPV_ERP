@@ -32,7 +32,9 @@ manifest.hash=$manifestHash
     $archive = [IO.Compression.ZipFile]::Open($jar, [IO.Compression.ZipArchiveMode]::Create)
     try {
         foreach ($entryName in @('BOOT-INF/classes/', 'BOOT-INF/lib/', 'BOOT-INF/lib/runtime.jar',
-                'org/springframework/boot/loader/launch/JarLauncher.class')) {
+                'org/springframework/boot/loader/launch/JarLauncher.class',
+                'org/springframework/boot/loader/launch/PropertiesLauncher.class',
+                'BOOT-INF/classes/com/tpverp/backend/backup/application/OfflineRestoreCli.class')) {
             $entry = $archive.CreateEntry($entryName)
             $stream = $entry.Open()
             try { if ($entryName -notmatch '/$') { $stream.WriteByte(0) } }
@@ -120,6 +122,45 @@ Describe 'Despliegue productivo backend Windows' {
                 & $verifier -BundleDirectory $directory -ExpectedSchemaVersion V234 `
                     -ExpectedReleaseSequence 2 -ExpectedBuildSequence 1 -AsObject | Out-Null
             } catch { $threw = $true }
+            $threw | Should Be $true
+        }
+        finally { Remove-Item -LiteralPath $directory -Recurse -Force }
+    }
+
+    It 'lee la identidad embebida sin defaults historicos y mantiene overrides estrictos' {
+        $directory = New-ContractBundle 'tpv-erp-next-release'
+        try {
+            $verifier = Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1'
+            $result = & $verifier -BundleDirectory $directory -AsObject
+            $result.ReleaseId | Should Be 'tpv-erp-next-release'
+            $result.SchemaVersion | Should Be V234
+            $threw = $false
+            try { & $verifier -BundleDirectory $directory -ExpectedReleaseId 'otra-release' -AsObject | Out-Null }
+            catch { $threw = $true }
+            $threw | Should Be $true
+        }
+        finally { Remove-Item -LiteralPath $directory -Recurse -Force }
+    }
+
+    It 'obtiene schema y release del manifiesto y perfil Maven actuales' {
+        $defaults = & (Join-Path $PSScriptRoot 'Get-TpvBackendReleaseDefaults.ps1')
+        $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\backend\src\main\resources\META-INF\tpv-erp-release.properties') -Raw
+        $manifest | Should Match ([Regex]::Escape("schema.version=$($defaults.SchemaVersion)"))
+        $defaults.Version | Should Be '4.2.0'
+        $defaults.ReleaseSequence | Should BeGreaterThan 0
+    }
+
+    It 'exige launcher y CLI offline realmente incluidos en el bundle' {
+        $directory = New-ContractBundle
+        try {
+            $jar = (Get-ChildItem -LiteralPath $directory -Filter '*.jar' -File)[0].FullName
+            $archive = [IO.Compression.ZipFile]::Open($jar, [IO.Compression.ZipArchiveMode]::Update)
+            try { $archive.GetEntry('BOOT-INF/classes/com/tpverp/backend/backup/application/OfflineRestoreCli.class').Delete() }
+            finally { $archive.Dispose() }
+            (Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash | Set-Content -LiteralPath "$jar.sha256" -NoNewline
+            $threw = $false
+            try { & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') -BundleDirectory $directory -AsObject | Out-Null }
+            catch { $threw = $true }
             $threw | Should Be $true
         }
         finally { Remove-Item -LiteralPath $directory -Recurse -Force }

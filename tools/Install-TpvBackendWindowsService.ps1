@@ -11,13 +11,14 @@ param(
     [string] $ServiceAccount = 'VirtualService',
     [string] $ListenAddress = '127.0.0.1',
     [ValidateRange(1, 65535)] [int] $Port = 8080,
-    [string] $ExpectedVersion = '4.2.0',
-    [string] $ExpectedReleaseId = 'tpv-erp-4.2.0',
-    [string] $ExpectedSchemaVersion = 'V234',
-    [long] $ExpectedReleaseSequence = 1,
-    [long] $ExpectedBuildSequence = 1,
+    [string] $ExpectedVersion,
+    [Parameter(Mandatory)] [string] $ExpectedReleaseId,
+    [string] $ExpectedSchemaVersion,
+    [Nullable[long]] $ExpectedReleaseSequence,
+    [Nullable[long]] $ExpectedBuildSequence,
     [string] $SecretDirectory = 'C:\ProgramData\TPV ERP\secrets\verifactu',
     [string] $ExportDirectory = 'C:\ProgramData\TPV ERP\exports\fiscal',
+    [ValidateSet('Register', 'Start')] [string] $Phase = 'Register',
     [switch] $Preflight
 )
 
@@ -31,10 +32,12 @@ function Assert-SafeExpectedSegment([string] $Value, [string] $Name) {
     }
 }
 
-Assert-SafeExpectedSegment $ExpectedVersion 'ExpectedVersion'
 Assert-SafeExpectedSegment $ExpectedReleaseId 'ExpectedReleaseId'
-Assert-SafeExpectedSegment $ExpectedSchemaVersion 'ExpectedSchemaVersion'
-if ($ExpectedReleaseSequence -lt 0 -or $ExpectedBuildSequence -lt 0) {
+foreach ($key in @('ExpectedVersion', 'ExpectedSchemaVersion')) {
+    if ($PSBoundParameters.ContainsKey($key)) { Assert-SafeExpectedSegment $PSBoundParameters[$key] $key }
+}
+if (($null -ne $ExpectedReleaseSequence -and $ExpectedReleaseSequence -lt 0) -or
+    ($null -ne $ExpectedBuildSequence -and $ExpectedBuildSequence -lt 0)) {
     throw 'ExpectedReleaseSequence y ExpectedBuildSequence deben ser no negativos'
 }
 
@@ -179,7 +182,7 @@ function Assert-ServiceCanRead([string] $Path, [Security.Principal.SecurityIdent
         $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
         (($_.FileSystemRights -band $readMask) -ne 0)
     }).Count -eq 0) {
-        Write-Warning "No se puede demostrar con una regla ACL directa que la cuenta del servicio lea $Description; se conserva la validacion de seguridad de la ruta: $Path"
+        throw "Falta una regla ACL directa de lectura para la cuenta del servicio en ${Description}: $Path"
     }
 }
 
@@ -192,23 +195,35 @@ function Assert-SecretTreeReadable([string] $Path, [Security.Principal.SecurityI
 }
 
 function Assert-RestrictedExportAcl([string] $Path, [Security.Principal.SecurityIdentifier] $ServiceSid) {
-    $allowed = @($ServiceSid.Value, 'S-1-5-18', 'S-1-5-32-544')
+    Assert-RestrictedTreeAcl $Path $ServiceSid ([Security.AccessControl.FileSystemRights]::Modify)
+}
+
+function Assert-RestrictedTreeAcl([string] $Path, [Security.Principal.SecurityIdentifier] $ServiceSid,
+    [Security.AccessControl.FileSystemRights] $ServiceRights) {
+    if ($null -eq $ServiceSid) { throw 'Registre primero el servicio detenido antes de verificar sus ACL.' }
+    $allowed = @($ServiceSid.Value, 'S-1-5-18', 'S-1-5-32-544') | Select-Object -Unique
     $targets = @((Get-Item -LiteralPath $Path -Force)) +
         @(Get-ChildItem -LiteralPath $Path -Force -Recurse)
     foreach ($target in $targets) {
         $acl = Get-Acl -LiteralPath $target.FullName
-        if (-not $acl.AreAccessRulesProtected) {
-            throw "La ACL del directorio de exportaciones no puede heredar reglas: $($target.FullName)"
+        # New operational files may inherit only the verified root's closed ACL.
+        # Secrets retain the stricter Java contract: every object is protected.
+        if (-not $acl.AreAccessRulesProtected -and
+            ($target.FullName -eq (Get-Item -LiteralPath $Path -Force).FullName -or
+             $ServiceRights -eq [Security.AccessControl.FileSystemRights]::FullControl)) {
+            throw "La ACL raiz (o secreto) no puede heredar reglas: $($target.FullName)"
         }
         foreach ($rule in @($acl.Access)) {
             $ruleSid = try {
                 $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
             } catch { throw "No se pudo resolver una identidad ACL en exportaciones: $($target.FullName)" }
+            $requiredRights = if ($ruleSid -eq $ServiceSid.Value -and $ruleSid -notin @('S-1-5-18', 'S-1-5-32-544')) {
+                $ServiceRights -bor [Security.AccessControl.FileSystemRights]::Synchronize
+            } else { [Security.AccessControl.FileSystemRights]::FullControl }
             if ($ruleSid -notin $allowed -or
                 $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
-                ($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -ne
-                    [Security.AccessControl.FileSystemRights]::FullControl) {
-                throw "La ACL de exportaciones contiene una regla no autorizada (Users/herencia/permiso parcial): $($target.FullName)"
+                $rule.FileSystemRights -ne $requiredRights) {
+                throw "La ACL contiene una regla no autorizada o derechos divergentes: $($target.FullName)"
             }
         }
         $present = @($acl.Access | ForEach-Object {
@@ -235,19 +250,19 @@ function Assert-Java25([string] $Path) {
 
 Assert-Administrator
 $bundle = (Resolve-Path -LiteralPath $BundleDirectory -ErrorAction Stop).Path
-$bundleInfo = & $verifier -BundleDirectory $bundle `
-    -ExpectedVersion $ExpectedVersion -ExpectedReleaseId $ExpectedReleaseId `
-    -ExpectedSchemaVersion $ExpectedSchemaVersion `
-    -ExpectedReleaseSequence $ExpectedReleaseSequence -ExpectedBuildSequence $ExpectedBuildSequence -AsObject
+$verificationArgs = @{ ExpectedReleaseId = $ExpectedReleaseId; AsObject = $true }
+foreach ($key in @('ExpectedVersion', 'ExpectedSchemaVersion', 'ExpectedReleaseSequence', 'ExpectedBuildSequence')) {
+    if ($PSBoundParameters.ContainsKey($key)) { $verificationArgs[$key] = $PSBoundParameters[$key] }
+}
+$bundleInfo = & $verifier -BundleDirectory $bundle @verificationArgs
 $jar = $bundleInfo.Jar
 $wrapperSource = Resolve-ExistingFile $WinSwExecutable 'WinSW'
 $java = Resolve-ExistingFile $JavaExecutable 'Java'
 $configuration = Resolve-ExistingFile $ConfigurationFile 'El fichero de configuracion externo'
-$secretDirectory = (Resolve-Path -LiteralPath $SecretDirectory -ErrorAction Stop).Path
 Assert-Java25 $java
 $configuration = Assert-SafeRegularFile $configuration 'El fichero de configuracion externo'
-$secretDirectory = Assert-SafeDirectoryTree $secretDirectory 'El directorio de secretos'
-$exportDirectory = Assert-SafeDirectoryTree $ExportDirectory 'El directorio de exportaciones fiscales'
+Assert-SafePlannedPath $SecretDirectory 'El directorio de secretos' 'Directory'
+Assert-SafePlannedPath $ExportDirectory 'El directorio de exportaciones' 'Directory'
 $wrapperActualHash = (Get-FileHash -LiteralPath $wrapperSource -Algorithm SHA256).Hash
 if ($wrapperActualHash -cne $WinSwSha256.ToUpperInvariant()) { throw 'El SHA-256 de WinSW no coincide.' }
 $expectedStartName = switch ($ServiceAccount) {
@@ -271,11 +286,15 @@ if ($configurationFull.StartsWith(([IO.Path]::GetFullPath($bundle)).TrimEnd('\')
 Assert-LoopbackAddress $ListenAddress
 $configurationUri = ConvertTo-FileUri $configurationFull
 $serviceSid = Get-ServiceAccountSid $ServiceAccount
-if ($null -ne $serviceSid) {
+if ($Phase -eq 'Start') {
+    if ($null -eq $serviceSid) { throw 'Fase Start requiere el servicio registrado; ejecute primero -Phase Register y aplique las ACL.' }
+    $secretDirectory = Assert-SafeDirectoryTree $SecretDirectory 'El directorio de secretos'
+    $exportDirectory = Assert-SafeDirectoryTree $ExportDirectory 'El directorio de exportaciones fiscales'
     Assert-ServiceCanRead $configuration $serviceSid 'El fichero de configuracion externo'
     Assert-SecretTreeReadable $secretDirectory $serviceSid
+    Assert-RestrictedTreeAcl $secretDirectory $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl)
+    Assert-RestrictedExportAcl $exportDirectory $serviceSid
 }
-Assert-RestrictedExportAcl $exportDirectory $serviceSid
 
 $service = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$ServiceName'"
 $serviceExe = Join-Path $install "$ServiceName.exe"
@@ -300,10 +319,48 @@ if ($null -ne $service) {
     }
 }
 
+if ($Phase -eq 'Start') {
+    if ($null -eq $service) { throw 'No existe el servicio que se pretende arrancar.' }
+    [void](Assert-SafeRegularFile $serviceExe 'WinSW instalado')
+    [void](Assert-SafeRegularFile $serviceXml 'XML WinSW instalado')
+    if ((Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256).Hash -cne $wrapperActualHash) { throw 'WinSW instalado no coincide con el binario aprobado.' }
+    $installed = & $verifier -BundleDirectory $releaseDirectory @verificationArgs
+    if ($installed.ArtifactSha256 -cne $bundleInfo.ArtifactSha256) { throw 'La release instalada no coincide con el bundle aprobado.' }
+    Assert-RestrictedTreeAcl $releaseDirectory $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
+    Assert-RestrictedTreeAcl $serviceExe $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
+    Assert-RestrictedTreeAcl $serviceXml $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
+    Assert-RestrictedTreeAcl $configuration $serviceSid ([Security.AccessControl.FileSystemRights]::Read)
+    $installedXml = [xml]::new()
+    $installedXml.XmlResolver = $null
+    $installedXml.Load($serviceXml)
+    $expectedArguments = "--enable-native-access=ALL-UNNAMED -jar `"$releaseJar`" --spring.profiles.active=prod --server.address=$ListenAddress --server.port=$Port `"--spring.config.additional-location=$configurationUri`""
+    if ([string]$installedXml.service.executable -cne $java -or
+        [string]$installedXml.service.arguments -cne $expectedArguments -or
+        [string]$installedXml.service.id -cne $ServiceName -or
+        [string]$installedXml.service.serviceaccount.username -cne $expectedStartName) {
+        throw 'El XML instalado no coincide con la release, configuracion, Java o identidad aprobados.'
+    }
+}
+
 if ($Preflight) {
-    Write-Host "Preflight correcto: $($bundleInfo.ReleaseId), $($bundleInfo.SchemaVersion), cuenta $ServiceAccount, bind $ListenAddress`:$Port" -ForegroundColor Yellow
+    Write-Host "Preflight fase ${Phase}: $($bundleInfo.ReleaseId), $($bundleInfo.SchemaVersion), cuenta $ServiceAccount, bind $ListenAddress`:$Port" -ForegroundColor Yellow
+    if ($Phase -eq 'Register') { Write-Host 'El preflight de registro NO acredita ACL ni aptitud para arrancar; falta aplicar ACL y pasar -Phase Start -Preflight.' }
     if ($null -ne $service) { Write-Host "Servicio existente: $($service.State)" }
     Write-Host 'No se han creado directorios, copiado binarios, registrado ni detenido ningun servicio.'
+    return
+}
+
+if ($Phase -eq 'Start') {
+    if ($PSCmdlet.ShouldProcess($ServiceName, 'Habilitar inicio automatico y arrancar tras verificar ACL y release')) {
+        try {
+            Set-Service -Name $ServiceName -StartupType Automatic
+            & $serviceExe start
+            if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo arrancar; revise logs y conserve la evidencia.' }
+        } catch {
+            Set-Service -Name $ServiceName -StartupType Manual
+            throw
+        }
+    }
     return
 }
 
@@ -338,10 +395,7 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
             throw 'La verificacion posterior a la copia del JAR fallo.'
         }
     }
-    $destinationInfo = & $verifier -BundleDirectory $releaseDirectory `
-        -ExpectedVersion $ExpectedVersion -ExpectedReleaseId $ExpectedReleaseId `
-        -ExpectedSchemaVersion $ExpectedSchemaVersion `
-        -ExpectedReleaseSequence $ExpectedReleaseSequence -ExpectedBuildSequence $ExpectedBuildSequence -AsObject
+    $destinationInfo = & $verifier -BundleDirectory $releaseDirectory @verificationArgs
     if ($destinationInfo.ArtifactSha256 -cne $bundleInfo.ArtifactSha256) {
         throw 'La verificacion del bundle destino no coincide con el bundle origen.'
     }
@@ -387,10 +441,9 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
   <name>TPV ERP Backend</name>
   <description>Backend productivo TPV ERP VeriFactu.</description>
   <executable>$escapedJava</executable>
-  <arguments>-jar &quot;$escapedJar&quot; --spring.profiles.active=prod --server.address=$escapedListen --server.port=$Port &quot;--spring.config.additional-location=$escapedConfigurationUri&quot;</arguments>
+  <arguments>--enable-native-access=ALL-UNNAMED -jar &quot;$escapedJar&quot; --spring.profiles.active=prod --server.address=$escapedListen --server.port=$Port &quot;--spring.config.additional-location=$escapedConfigurationUri&quot;</arguments>
   <workingdirectory>$escapedInstall</workingdirectory>
-  <startmode>Automatic</startmode>
-  <delayedAutoStart>true</delayedAutoStart>
+  <startmode>Manual</startmode>
   <env name="TPV_VERIFACTU_SERVICE_ACCOUNT" value="$([Security.SecurityElement]::Escape($expectedStartName))" />
   $accountXml
   <onfailure action="restart" delay="10 sec" />

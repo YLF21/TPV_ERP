@@ -93,6 +93,24 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void recuperacionIncluyeIncidenciaSoloEnCabeceraYConservaRegistro() {
+        var frozen = service().recordXml(request(record(FiscalRecordOperation.ALTA), "Empresa congelada"),
+                record(FiscalRecordOperation.ALTA));
+        var normal = parse(service().frozenBatchXml("Empresa congelada", "B12345674", List.of(frozen)));
+        var recoveryXml = service().frozenBatchXml("Empresa congelada", "B12345674", List.of(frozen), true);
+        var recovery = parse(recoveryXml);
+
+        assertThat(normal.getElementsByTagNameNS("*", "Incidencia").getLength()).isZero();
+        var incidence = recovery.getElementsByTagNameNS("*", "Incidencia");
+        assertThat(incidence.getLength()).isEqualTo(1);
+        assertThat(incidence.item(0).getTextContent()).isEqualTo("S");
+        assertThat(incidence.item(0).getParentNode().getLocalName()).isEqualTo("RemisionVoluntaria");
+        assertThat(normal.getElementsByTagNameNS("*", "RegistroAlta").item(0).isEqualNode(
+                recovery.getElementsByTagNameNS("*", "RegistroAlta").item(0))).isTrue();
+        new VerifactuOfficialXsdValidator().validate(recoveryXml);
+    }
+
+    @Test
     void usaElRegimenYPorcentajeFiscalDelSnapshotSiExistenLineas() {
         var xml = service().batchXml(request(record(
                 FiscalRecordOperation.ALTA,

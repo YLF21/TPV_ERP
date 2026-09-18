@@ -21,6 +21,8 @@ import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class FiscalStatusSyncPublisher {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(FiscalStatusSyncPublisher.class);
     private static final String ENTITY_TYPE = "FISCAL_STATUS";
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofHours(12);
 
@@ -111,8 +114,13 @@ public class FiscalStatusSyncPublisher {
         try {
             activeLicenses = licenses.findByActivaTrueOrderByValidaDesdeDesc();
         } catch (RuntimeException ignored) {
+            // Do not log exception messages or payloads: repository/transport
+            // exceptions can include tenant identifiers or credentials.
+            LOGGER.warn("FISCAL_STATUS_LICENSE_READ_FAILED: no se pudo consultar el estado fiscal; "
+                    + "se reintentara en el siguiente ciclo sin bloquear la venta");
             return;
         }
+        int failures = 0;
         for (var license : activeLicenses) {
             if (license.getSaasCompanyId() == null || license.getSaasStoreId() == null) {
                 continue;
@@ -125,7 +133,13 @@ public class FiscalStatusSyncPublisher {
             } catch (RuntimeException ignored) {
                 // Each licensed store is isolated. Its outbox/status will be retried
                 // without preventing APP VENTA or the remaining stores from working.
+                failures++;
             }
+        }
+        if (failures > 0) {
+            LOGGER.warn("FISCAL_STATUS_PUBLICATION_FAILED: {} estados fiscales no pudieron "
+                    + "publicarse; se reintentaran en el siguiente ciclo sin bloquear la venta",
+                    failures);
         }
     }
 

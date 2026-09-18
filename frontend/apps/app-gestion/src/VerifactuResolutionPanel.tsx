@@ -13,6 +13,7 @@ import {
   type VerifactuTranslator
 } from "./verifactuPresentation";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
+import { clearFiscalCorrectionAttempt, loadFiscalCorrectionAttempt, reserveFiscalCorrectionAttempt, type FiscalCorrectionAttempt } from "./fiscalCorrectionRecovery";
 
 export type VerifactuResolutionTarget = {
   recordId: string;
@@ -38,6 +39,7 @@ const emptyCorrection: CorrectionDraft = {
 export function VerifactuResolutionPanel({
   target,
   token,
+  recoveryScope,
   locale,
   timezone: _timezone,
   t,
@@ -46,6 +48,7 @@ export function VerifactuResolutionPanel({
 }: {
   target: VerifactuResolutionTarget | null;
   token?: string;
+  recoveryScope: string;
   locale: LocaleCode;
   timezone?: string | null;
   t: VerifactuTranslator;
@@ -59,9 +62,12 @@ export function VerifactuResolutionPanel({
   const [retryReason, setRetryReason] = useState("");
   const [correction, setCorrection] = useState(emptyCorrection);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<"conflict" | "generic" | null>(null);
+  const [submitError, setSubmitError] = useState<"conflict" | "generic" | "pendingCorrection" | "idempotency" | "recovery" | "recoveryStorage" | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
+  const [recoveryBlocked, setRecoveryBlocked] = useState(true);
   const [success, setSuccess] = useState<"retry" | "correction" | null>(null);
   const request = useRef(0);
+  const correctionInFlight = useRef(false);
 
   useEffect(() => {
     setResolution(null);
@@ -70,6 +76,8 @@ export function VerifactuResolutionPanel({
     setCorrection(emptyCorrection);
     setSubmitError(null);
     setSuccess(null);
+    setRecoveryPending(false);
+    setRecoveryBlocked(true);
     if (!target) {
       request.current += 1;
       setLoading(false);
@@ -79,6 +87,16 @@ export function VerifactuResolutionPanel({
     const requestId = ++request.current;
     setLoading(true);
     setLoadError(false);
+    void loadFiscalCorrectionAttempt(recoveryScope, target.recordId)
+      .then((attempt) => {
+        if (requestId !== request.current) return;
+        setRecoveryBlocked(false);
+        setRecoveryPending(Boolean(attempt));
+        if (attempt) setForm("correction");
+      })
+      .catch(() => {
+        if (requestId === request.current) setSubmitError("recoveryStorage");
+      });
     void loadVerifactuResolution(target.recordId, token)
       .then((next) => {
         if (requestId === request.current) setResolution(next);
@@ -90,7 +108,7 @@ export function VerifactuResolutionPanel({
         if (requestId === request.current) setLoading(false);
       });
     return () => { request.current += 1; };
-  }, [target, token]);
+  }, [target, token, recoveryScope]);
 
   if (!target) return null;
 
@@ -118,17 +136,44 @@ export function VerifactuResolutionPanel({
 
   async function submitCorrection(event: FormEvent) {
     event.preventDefault();
-    if (!resolution || !validCorrection(correction) || submitting) return;
+    if (!resolution || !validCorrection(correction) || submitting || correctionInFlight.current || recoveryBlocked) return;
+    correctionInFlight.current = true;
     setSubmitting(true);
     setSubmitError(null);
+    const requestId = request.current;
+    let attempt: FiscalCorrectionAttempt | null = null;
     try {
-      await createVerifactuCorrection(resolution.recordId, correction, token);
+      attempt = await reserveFiscalCorrectionAttempt(recoveryScope, resolution.recordId, correction);
+      if (requestId !== request.current) {
+        // No POST was sent. Release only this new reservation, never a prior
+        // uncertain attempt that was being recovered.
+        if (attempt.newAttempt) clearFiscalCorrectionAttempt(attempt);
+        return;
+      }
+      setRecoveryPending(true);
+      await createVerifactuCorrection(resolution.recordId, { ...correction, idempotencyKey: attempt.idempotencyKey }, token);
+      clearFiscalCorrectionAttempt(attempt);
+      if (requestId !== request.current) return;
+      setRecoveryPending(false);
       setSuccess("correction");
       setForm(null);
       onCompleted();
     } catch (error) {
-      setSubmitError(error instanceof ApiError && error.status === 409 ? "conflict" : "generic");
+      if (requestId !== request.current) return;
+      // Only a definitive validation rejection of a new request allows editing
+      // into a new intent. Uncertain attempts and conflicts retain the same key.
+      if (attempt?.newAttempt && error instanceof ApiError && [400, 422].includes(error.status)) {
+        try { clearFiscalCorrectionAttempt(attempt); setRecoveryPending(false); }
+        catch { setRecoveryBlocked(true); setSubmitError("recoveryStorage"); return; }
+      }
+      const code = error instanceof ApiError ? error.problem?.code : undefined;
+      if (code === "subsanacion_idempotency_conflict") setSubmitError("idempotency");
+      else if (code === "subsanacion_pending_conflict") setSubmitError("pendingCorrection");
+      else if (error instanceof Error && error.message === "fiscal_correction_pending_payload") setSubmitError("recovery");
+      else if (!attempt) { setRecoveryBlocked(true); setSubmitError("recoveryStorage"); }
+      else setSubmitError(error instanceof ApiError && error.status === 409 ? "conflict" : "generic");
     } finally {
+      correctionInFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -140,7 +185,7 @@ export function VerifactuResolutionPanel({
           <span>{t("verifactu.resolution.eyebrow")}</span>
           <h3>{target.documentNumber}</h3>
         </div>
-        <button type="button" onClick={onClose}>{t("verifactu.management.close")}</button>
+        <button type="button" disabled={submitting} onClick={onClose}>{t("verifactu.management.close")}</button>
       </header>
 
       <div className="gestion-verifactu-resolution-body">
@@ -215,6 +260,7 @@ export function VerifactuResolutionPanel({
             {form === "correction" && (
               <form className="gestion-verifactu-action-form" onSubmit={submitCorrection}>
                 <p>{t("verifactu.resolution.correctionWarning")}</p>
+                {recoveryPending && <p role="status">{t("verifactu.resolution.recoveryPending")}</p>}
                 <label>
                   <span>{t("verifactu.resolution.reason")}</span>
                   <textarea
@@ -241,7 +287,7 @@ export function VerifactuResolutionPanel({
                   <p className="field-error">{t("verifactu.resolution.correctionValidation")}</p>
                 )}
                 <div>
-                  <button type="submit" className="primary" disabled={!validCorrection(correction) || submitting}>
+                  <button type="submit" className="primary" disabled={!validCorrection(correction) || submitting || recoveryBlocked}>
                     {submitting ? t("verifactu.resolution.processing") : t("verifactu.resolution.confirmCorrection")}
                   </button>
                   <button type="button" disabled={submitting} onClick={() => setForm(null)}>{t("verifactu.resolution.cancel")}</button>

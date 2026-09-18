@@ -72,6 +72,17 @@ class FiscalCorrectionSnapshotTest {
                 .hasMessage("NIF y nombre del destinatario deben corregirse juntos");
     }
 
+    @Test
+    void persistsIdempotencyKeyAsPartOfTheCorrectionIntent() {
+        var corrected = corrections.apply(
+                snapshot(),
+                new FiscalCorrectionRequest(
+                        "Correccion", null, null, "Venta corregida", "corr-2026-01"),
+                UUID.randomUUID(), UUID.randomUUID(), Instant.now(), false);
+
+        assertThat(corrected).containsEntry("subsanacionIdempotencyKey", "corr-2026-01");
+    }
+
     private static Map<String, Object> snapshot() {
         var customer = new LinkedHashMap<String, Object>();
         customer.put("numeroDocumento", "B00000000");

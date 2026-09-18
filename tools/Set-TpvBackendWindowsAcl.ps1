@@ -28,22 +28,33 @@ function Resolve-ServiceSid {
     if ([string]$service.StartName -ne "NT SERVICE\$ServiceName") {
         throw "El servicio $ServiceName no usa la cuenta virtual NT SERVICE\$ServiceName; no se aplican ACL parciales."
     }
+    if ([string]$service.State -ne 'Stopped') { throw 'Detenga el servicio antes de aplicar ACL.' }
     $account = [Security.Principal.NTAccount]::new('NT SERVICE\' + $ServiceName)
     try { return $account.Translate([Security.Principal.SecurityIdentifier]) }
     catch { throw "No se pudo resolver la cuenta virtual NT SERVICE\$ServiceName despues del registro." }
 }
 function Ensure-Directory([string] $Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { throw 'Ruta ACL vacia.' }
-    New-Item -ItemType Directory -LiteralPath $Path -Force | Out-Null
+    [void][IO.Directory]::CreateDirectory([IO.Path]::GetFullPath($Path))
     $item = Get-Item -LiteralPath $Path -Force
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Ruta ACL insegura: $Path" }
     return $item.FullName
 }
 function Set-TreeAcl([string] $Path, [Security.Principal.SecurityIdentifier] $ServiceSid,
     [Security.AccessControl.FileSystemRights] $ServiceRights, [switch] $RequireFile) {
+    $current = [IO.Path]::GetFullPath($Path)
+    if ([IO.Path]::GetPathRoot($current) -eq $current) { throw 'No se aplica ACL a una raiz de unidad.' }
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        $ancestor = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($null -ne $ancestor -and ($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Ancestro ACL inseguro: $current"
+        }
+        $current = [IO.Path]::GetDirectoryName($current)
+    }
     $existing = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if ($null -eq $existing) {
         if ($RequireFile) { throw "El fichero de configuracion no existe; aprovisionelo antes de aplicar ACL: $Path" }
+        if (-not $PSCmdlet.ShouldProcess($Path, 'Crear directorio operativo para aplicar ACL')) { return }
         $resolved = Ensure-Directory $Path
     } else {
         if (($existing.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Ruta ACL insegura: $Path" }
@@ -63,6 +74,7 @@ function Set-TreeAcl([string] $Path, [Security.Principal.SecurityIdentifier] $Se
             New-Object Security.AccessControl.FileSecurity
         }
         $acl.SetAccessRuleProtection($true, $false)
+        $acl.SetOwner($admin)
         $inherit = if ($item.PSIsContainer) {
             [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
         } else { [Security.AccessControl.InheritanceFlags]::None }
@@ -89,15 +101,17 @@ if ($Phase -eq 'Register') {
 $serviceSid = Resolve-ServiceSid
 $immutable = if ([string]::IsNullOrWhiteSpace($ImmutableRoot)) { Join-Path $InstallRoot 'releases' } else { $ImmutableRoot }
 $logs = if ([string]::IsNullOrWhiteSpace($LogsRoot)) { Join-Path $InstallRoot 'logs' } else { $LogsRoot }
+Set-TreeAcl $InstallRoot $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
 Set-TreeAcl $immutable $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
 Set-TreeAcl $ConfigurationFile $serviceSid ([Security.AccessControl.FileSystemRights]::Read) -RequireFile
-Set-TreeAcl $SecretRoot $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
-Set-TreeAcl $InstallRoot $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
+Set-TreeAcl $SecretRoot $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl)
 Set-TreeAcl $logs $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $ExportsRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
+Set-TreeAcl (Join-Path $SecretRoot 'verifactu') $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl)
+Set-TreeAcl (Join-Path $ExportsRoot 'fiscal') $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $OperationalRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $BackupRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $ProductImagesRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $DocumentTemplatesRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $RestoreJournalRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
-Write-Output "ACL de dos fases aplicada para NT SERVICE\$ServiceName (RX en instalación/inmutables/config/secrets; Modify en logs/exports/operacional/backup/imágenes/plantillas/restore)."
+Write-Output "ACL aplicada para NT SERVICE\${ServiceName}: RX instalacion/releases, Read config, FullControl secretos (politica Java), Modify datos operativos. Solo servicio/SYSTEM/Administrators. Ejecute -Phase Start -Preflight antes de arrancar."

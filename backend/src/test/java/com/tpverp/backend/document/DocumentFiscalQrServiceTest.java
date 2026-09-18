@@ -41,7 +41,7 @@ class DocumentFiscalQrServiceTest {
     @Test
     void returnsQrUrlForDocumentWithFiscalAlta() {
         var documentId = UUID.randomUUID();
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record(documentId)));
         var service = new DocumentFiscalQrService(records, new FiscalQrUrlService());
 
@@ -52,7 +52,7 @@ class DocumentFiscalQrServiceTest {
     @Test
     void returnsNullWhenDocumentHasNoFiscalAlta() {
         var documentId = UUID.randomUUID();
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.empty());
         var service = new DocumentFiscalQrService(records, new FiscalQrUrlService());
 
@@ -63,7 +63,7 @@ class DocumentFiscalQrServiceTest {
     void reprintUsesFrozenSnapshotEvenIfRuntimeEndpointChanges() {
         var documentId = UUID.randomUUID();
         var record = record(documentId);
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         var snapshot = mock(FiscalPrintSnapshotRecord.class);
@@ -83,7 +83,7 @@ class DocumentFiscalQrServiceTest {
     void productionWiringDoesNotRecalculateQrForLegacyRecordWithoutSnapshot() {
         var documentId = UUID.randomUUID();
         var record = record(documentId);
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         when(snapshots.findByRecordId(record.getId())).thenReturn(Optional.empty());
@@ -102,7 +102,7 @@ class DocumentFiscalQrServiceTest {
         var qrUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR"
                 + "?nif=B12345674&numserie=FV-001-26-000001"
                 + "&fecha=02-06-2026&importe=157.26";
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         var snapshot = mock(FiscalPrintSnapshotRecord.class);
@@ -157,7 +157,7 @@ class DocumentFiscalQrServiceTest {
         var qrUrl = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR"
                 + "?nif=B12345674&numserie=FV-001-26-000001"
                 + "&fecha=02-06-2026&importe=157.26";
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         var snapshot = mock(FiscalPrintSnapshotRecord.class);
@@ -194,7 +194,7 @@ class DocumentFiscalQrServiceTest {
         var record = record(documentId);
         var qrUrl = "https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR"
                 + "?nif=B12345674&numserie=FV-1&fecha=02-06-2026&importe=157.26";
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         var snapshot = mock(FiscalPrintSnapshotRecord.class);
@@ -220,7 +220,7 @@ class DocumentFiscalQrServiceTest {
     void fiscalPrintFailsInsteadOfRecalculatingWhenFrozenSnapshotIsMissing() {
         var documentId = UUID.randomUUID();
         var record = record(documentId);
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         when(snapshots.findByRecordId(record.getId())).thenReturn(Optional.empty());
@@ -239,7 +239,7 @@ class DocumentFiscalQrServiceTest {
     void fiscalPrintNeverAcceptsArtifactAsSubstituteForPrintSnapshot() {
         var documentId = UUID.randomUUID();
         var record = record(documentId);
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         when(snapshots.findByRecordId(record.getId())).thenReturn(Optional.empty());
@@ -259,7 +259,7 @@ class DocumentFiscalQrServiceTest {
     void fiscalPrintDetectsAnyQrPayloadChangeAgainstFrozenHash() throws Exception {
         var documentId = UUID.randomUUID();
         var record = record(documentId);
-        when(records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA))
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(documentId, FiscalRecordOperation.ALTA))
                 .thenReturn(Optional.of(record));
         var snapshots = mock(FiscalPrintSnapshotRecordRepository.class);
         var snapshot = mock(FiscalPrintSnapshotRecord.class);

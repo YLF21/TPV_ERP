@@ -3,6 +3,7 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -63,13 +64,11 @@ class FiscalCorrectionServiceTest {
         when(store.getId()).thenReturn(storeId);
         when(organization.currentCompany()).thenReturn(company);
         when(organization.currentStore()).thenReturn(store);
-        when(records.findByIdAndCompanyIdAndStoreId(original.getId(), companyId, storeId))
-                .thenReturn(Optional.of(original));
-        when(states.findForUpdate(original.getId())).thenReturn(Optional.of(state));
     }
 
     @Test
     void createsPendingCorrectionAndQueuesItForImmediateSubmission() {
+        givenOriginal();
         var user = mock(UserAccount.class);
         when(user.getId()).thenReturn(userId);
         when(organization.currentUser(authentication)).thenReturn(user);
@@ -90,6 +89,7 @@ class FiscalCorrectionServiceTest {
 
     @Test
     void rejectsNonDefectiveStateWithoutCreatingCorrection() {
+        givenOriginal();
         state.mark(FiscalSubmissionStatus.ACEPTADO, NOW);
 
         assertThatThrownBy(() -> service().correct(
@@ -105,6 +105,7 @@ class FiscalCorrectionServiceTest {
 
     @Test
     void rejectsTechnicalDefectInsteadOfCreatingAdministrativeCorrection() {
+        givenOriginal();
         state.markIncident(
                 FiscalSubmissionStatus.DEFECTUOSO,
                 "INVALID_XSD",
@@ -124,6 +125,8 @@ class FiscalCorrectionServiceTest {
 
     @Test
     void rejectsCancellationRecordEvenWhenItsSubmissionWasRejected() {
+        when(records.findByIdAndCompanyIdAndStoreId(original.getId(), companyId, storeId))
+                .thenReturn(Optional.of(original));
         set(original, "operation", FiscalRecordOperation.ANULACION);
 
         assertThatThrownBy(() -> service().correct(
@@ -135,6 +138,255 @@ class FiscalCorrectionServiceTest {
 
         verify(fiscalRecords, never()).registerCorrection(any(), any());
         verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void recoversSameAttemptAfterTheOriginalWasMarkedSubsanado() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var request = new FiscalCorrectionRequest(
+                "NIF incorrecto", "B12345674", "Cliente SL", null, "corr-1");
+        var persistedSnapshot = new FiscalCorrectionSnapshot().apply(
+                original.getSnapshot(), request, original.getId(), userId, NOW, true);
+        persistedSnapshot = new java.util.LinkedHashMap<>(persistedSnapshot);
+        persistedSnapshot.put("subsanacionObjetivoId", original.getId().toString());
+        var correction = record(companyId, storeId, 2, persistedSnapshot);
+        var accepted = new FiscalSubmissionState(
+                correction.getId(), FiscalSubmissionStatus.ACEPTADO, NOW);
+        state.mark(FiscalSubmissionStatus.SUBSANADO, NOW);
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                original.getDocumentId(), FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(original));
+        when(records.findCorrectionByOriginalIdAndIdempotencyKey(
+                original.getId(), "corr-1")).thenReturn(Optional.of(correction));
+        when(states.findById(correction.getId())).thenReturn(Optional.of(accepted));
+
+        var result = service().correct(original.getId(), request, authentication);
+
+        assertThat(result.id()).isEqualTo(correction.getId());
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.ACEPTADO);
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+    }
+
+    @Test
+    void rejectsSameKeyWithDifferentCorrectionPayload() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var persistedSnapshot = new FiscalCorrectionSnapshot().apply(
+                original.getSnapshot(),
+                new FiscalCorrectionRequest("NIF incorrecto", "B12345674", "Cliente SL",
+                        null, "corr-1"),
+                original.getId(), userId, NOW, true);
+        var correction = record(companyId, storeId, 2, persistedSnapshot);
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                original.getDocumentId(), FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(original));
+        when(records.findCorrectionByOriginalIdAndIdempotencyKey(
+                original.getId(), "corr-1")).thenReturn(Optional.of(correction));
+
+        assertThatThrownBy(() -> service().correct(
+                original.getId(),
+                new FiscalCorrectionRequest("Otro motivo", "B12345674", "Cliente SL",
+                        null, "corr-1"),
+                authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("subsanacion_idempotency_conflict");
+    }
+
+    @Test
+    void rejectsDifferentPayloadWhileAnotherCorrectionIsPending() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var pending = record(companyId, storeId, 2, Map.of(
+                "subsanacion", "S", "subsanacionMotivo", "Anterior",
+                "subsanacionObjetivoId", original.getId().toString(),
+                "subsanacionIdempotencyKey", "old-key",
+                "impuestoTotal", new BigDecimal("2.10"), "total", new BigDecimal("12.10")));
+        when(records.findLatestCorrectionByOriginalId(original.getId()))
+                .thenReturn(Optional.of(pending));
+        when(states.findById(pending.getId())).thenReturn(Optional.of(new FiscalSubmissionState(
+                pending.getId(), FiscalSubmissionStatus.PENDIENTE, NOW)));
+
+        assertThatThrownBy(() -> service().correct(original.getId(),
+                new FiscalCorrectionRequest("Nueva", null, null, "Venta", "new-key"),
+                authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("subsanacion_pending_conflict");
+    }
+
+    @Test
+    void allowsNewKeyAfterRejectedCorrection() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var rejected = record(companyId, storeId, 2, Map.of(
+                "subsanacion", "S", "subsanacionMotivo", "Anterior",
+                "subsanacionObjetivoId", original.getId().toString(),
+                "subsanacionIdempotencyKey", "old-key",
+                "impuestoTotal", new BigDecimal("2.10"), "total", new BigDecimal("12.10")));
+        when(records.findLatestCorrectionByOriginalId(original.getId()))
+                .thenReturn(Optional.of(rejected));
+        when(states.findById(rejected.getId())).thenReturn(Optional.of(new FiscalSubmissionState(
+                rejected.getId(), FiscalSubmissionStatus.RECHAZADO, NOW)));
+        var created = record(companyId, storeId, 3, original.getSnapshot());
+        when(fiscalRecords.registerCorrection(any(), any())).thenReturn(created);
+
+        var result = service().correct(original.getId(),
+                new FiscalCorrectionRequest("Nueva", null, null, "Venta", "new-key"),
+                authentication);
+
+        assertThat(result.id()).isEqualTo(created.getId());
+        verify(fiscalRecords).registerCorrection(any(), any());
+    }
+
+    @Test
+    void allowsSuccessiveCorrectionAgainstAcceptedWithErrorsTarget() {
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var first = record(companyId, storeId, 2, Map.of(
+                "subsanacion", "S", "subsanacionMotivo", "Primera",
+                "subsanacionObjetivoId", original.getId().toString(),
+                "subsanacionIdempotencyKey", "first",
+                "impuestoTotal", new BigDecimal("2.10"), "total", new BigDecimal("12.10")));
+        var next = record(companyId, storeId, 3, Map.of(
+                "subsanacion", "S", "subsanacionMotivo", "Segunda",
+                "subsanacionObjetivoId", first.getId().toString(),
+                "subsanacionIdempotencyKey", "second",
+                "impuestoTotal", new BigDecimal("2.10"), "total", new BigDecimal("12.10")));
+        when(records.findByIdAndCompanyIdAndStoreId(first.getId(), companyId, storeId))
+                .thenReturn(Optional.of(first));
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                first.getDocumentId(), FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(original));
+        when(states.findForUpdate(original.getId())).thenReturn(Optional.of(state));
+        when(states.findById(first.getId())).thenReturn(Optional.of(new FiscalSubmissionState(
+                first.getId(), FiscalSubmissionStatus.ACEPTADO_CON_ERRORES, NOW)));
+        when(records.findCorrectionByOriginalIdAndIdempotencyKey(
+                original.getId(), "second")).thenReturn(Optional.empty());
+        when(records.findLatestCorrectionByOriginalId(original.getId()))
+                .thenReturn(Optional.of(first));
+        when(fiscalRecords.registerCorrection(any(), any())).thenReturn(next);
+
+        var result = service().correct(first.getId(),
+                new FiscalCorrectionRequest("Segunda", null, null, "Venta", "second"),
+                authentication);
+
+        assertThat(result.id()).isEqualTo(next.getId());
+        verify(fiscalRecords).registerCorrection(eq(original), any());
+    }
+
+    @Test
+    void blocksNewRootCorrectionWhileLatestCorrectionIsTechnicallyDefective() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var defective = record(companyId, storeId, 2, Map.of(
+                "subsanacion", "S", "subsanacionMotivo", "Anterior",
+                "subsanacionObjetivoId", original.getId().toString(),
+                "subsanacionIdempotencyKey", "old-key",
+                "impuestoTotal", new BigDecimal("2.10"), "total", new BigDecimal("12.10")));
+        when(records.findLatestCorrectionByOriginalId(original.getId()))
+                .thenReturn(Optional.of(defective));
+        defectiveState(defective, "INVALID_XSD");
+
+        assertThatThrownBy(() -> service().correct(original.getId(),
+                new FiscalCorrectionRequest("Nueva", null, null, "Venta", "new-key"),
+                authentication))
+                .isInstanceOf(FiscalCorrectionPendingConflictException.class);
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+    }
+
+    @Test
+    void replaysSameKeyForDefectiveCorrectionWithoutCreatingAnotherRecord() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var request = new FiscalCorrectionRequest("Anterior", null, null, "Venta", "same-key");
+        var defectiveSnapshot = new FiscalCorrectionSnapshot().apply(
+                original.getSnapshot(), request, original.getId(), userId, NOW, true);
+        defectiveSnapshot = new java.util.LinkedHashMap<>(defectiveSnapshot);
+        defectiveSnapshot.put("subsanacionObjetivoId", original.getId().toString());
+        var defective = record(companyId, storeId, 2, defectiveSnapshot);
+        when(records.findCorrectionByOriginalIdAndIdempotencyKey(
+                original.getId(), "same-key")).thenReturn(Optional.of(defective));
+        when(states.findById(defective.getId())).thenReturn(Optional.of(new FiscalSubmissionState(
+                defective.getId(), FiscalSubmissionStatus.DEFECTUOSO, NOW)));
+
+        var result = service().correct(original.getId(), request, authentication);
+
+        assertThat(result.id()).isEqualTo(defective.getId());
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+    }
+
+    @Test
+    void replaysLegacyDefectiveCorrectionWithoutCreatingAnotherRecord() {
+        givenOriginal();
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var request = new FiscalCorrectionRequest("Anterior", null, null, "Venta");
+        var snapshot = new java.util.LinkedHashMap<>(new FiscalCorrectionSnapshot().apply(
+                original.getSnapshot(), request, original.getId(), userId, NOW, true));
+        snapshot.put("subsanacionObjetivoId", original.getId().toString());
+        var defective = record(companyId, storeId, 2, snapshot);
+        when(records.findLatestCorrectionByOriginalId(original.getId()))
+                .thenReturn(Optional.of(defective));
+        defectiveState(defective, "INVALID_AEAT_RESPONSE");
+
+        var result = service().correct(original.getId(), request, authentication);
+
+        assertThat(result.id()).isEqualTo(defective.getId());
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+    }
+
+    @Test
+    void rejectsNewCorrectionTargetingLatestTechnicalDefectEvenWithNewKey() {
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        var defective = record(companyId, storeId, 2, original.getSnapshot());
+        set(defective, "documentId", original.getDocumentId());
+        when(records.findByIdAndCompanyIdAndStoreId(defective.getId(), companyId, storeId))
+                .thenReturn(Optional.of(defective));
+        when(records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                original.getDocumentId(), FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(original));
+        when(states.findForUpdate(original.getId())).thenReturn(Optional.of(state));
+        when(records.findLatestCorrectionByOriginalId(original.getId()))
+                .thenReturn(Optional.of(defective));
+        defectiveState(defective, "INVALID_AEAT_RESPONSE");
+
+        assertThatThrownBy(() -> service().correct(defective.getId(),
+                new FiscalCorrectionRequest("Nueva", null, null, "Venta", "new-key"),
+                authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("El registro fiscal no admite subsanacion");
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+    }
+
+    private void defectiveState(FiscalRecord record, String errorCode) {
+        var defective = new FiscalSubmissionState(
+                record.getId(), FiscalSubmissionStatus.DEFECTUOSO, NOW);
+        defective.markIncident(FiscalSubmissionStatus.DEFECTUOSO, errorCode, "error", NOW);
+        when(states.findById(record.getId())).thenReturn(Optional.of(defective));
+    }
+
+    private void givenOriginal() {
+        when(records.findByIdAndCompanyIdAndStoreId(original.getId(), companyId, storeId))
+                .thenReturn(Optional.of(original));
+        when(states.findForUpdate(original.getId())).thenReturn(Optional.of(state));
     }
 
     private FiscalCorrectionService service() {

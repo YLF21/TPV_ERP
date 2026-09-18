@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.licensing.LicenseRepository;
@@ -23,6 +24,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageRequest;
@@ -136,7 +140,7 @@ class VerifactuPosServiceTest {
     @Test
     void statusCountsOnlyTheAuthenticatedTerminalAndPrioritizesReview() {
         authenticatedScope();
-        voluntarilyActive();
+        effectiveVerifactuMode();
         when(states.countPosQueueByStatusIn(
                 COMPANY_ID, STORE_ID, TERMINAL_ID,
                 List.of(FiscalSubmissionStatus.PENDIENTE, FiscalSubmissionStatus.ENVIADO)))
@@ -163,8 +167,6 @@ class VerifactuPosServiceTest {
     void inactiveVerifactuAlwaysPresentsInactiveEvenWithOldQueueEntries() {
         authenticatedScope();
         when(configurations.findByCompanyId(COMPANY_ID)).thenReturn(Optional.empty());
-        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(STORE_ID))
-                .thenReturn(List.of());
         when(states.countPosQueueByStatusIn(
                 org.mockito.ArgumentMatchers.eq(COMPANY_ID),
                 org.mockito.ArgumentMatchers.eq(STORE_ID),
@@ -179,6 +181,50 @@ class VerifactuPosServiceTest {
                 .isEqualTo(VerifactuPosPresentationStatus.INACTIVO);
     }
 
+    @ParameterizedTest
+    @CsvSource({"PRE_SIF,false", "PRE_SIF,true", "NO_VERIFACTU,false",
+            "NO_VERIFACTU,true", "VERIFACTU,false", "VERIFACTU,true"})
+    void effectiveModeWinsOverLegacyActivationAndLicencePolicy(
+            FiscalMode mode, boolean legacyVoluntaryActivation) {
+        authenticatedScope();
+        var configuration = new VerifactuConfiguration(COMPANY_ID, mode);
+        if (legacyVoluntaryActivation) {
+            configuration.activateVoluntarily(NOW.minusSeconds(60));
+        }
+        when(configurations.findByCompanyId(COMPANY_ID)).thenReturn(Optional.of(configuration));
+
+        var result = service.status(authentication);
+
+        assertThat(result.fiscalMode()).isEqualTo(mode);
+        assertThat(result.active()).isEqualTo(mode == FiscalMode.VERIFACTU);
+        assertThat(result.presentationStatus()).isEqualTo(mode == FiscalMode.VERIFACTU
+                ? VerifactuPosPresentationStatus.OPERATIVO
+                : VerifactuPosPresentationStatus.INACTIVO);
+        // Policy expiry does not pretend that a pending transition was applied.
+        verifyNoInteractions(licenses, activation);
+    }
+
+    @ParameterizedTest
+    @EnumSource(FiscalMode.class)
+    void sandboxWithoutConfigurationUsesTheSameInitialModeAsFiscalStatus(FiscalMode mode) {
+        authenticatedScope();
+        when(configurations.findByCompanyId(COMPANY_ID)).thenReturn(Optional.empty());
+        var runtime = mock(FiscalRuntimeProperties.class);
+        when(runtime.isSandbox()).thenReturn(true);
+        when(runtime.sandboxInitialMode()).thenReturn(mode);
+        when(runtime.runtimeClass()).thenReturn(FiscalRuntimeClass.SANDBOX);
+        when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
+        when(runtime.transportMode()).thenReturn(FiscalTransportMode.SIMULATED);
+        service.setRuntime(runtime);
+
+        var result = service.status(authentication);
+
+        assertThat(result.fiscalMode()).isEqualTo(mode);
+        assertThat(result.active()).isEqualTo(mode == FiscalMode.VERIFACTU);
+        assertThat(result.runtimeClass()).isEqualTo(FiscalRuntimeClass.SANDBOX);
+        verifyNoInteractions(licenses, activation);
+    }
+
     private void authenticatedScope() {
         when(organization.currentStore()).thenReturn(store);
         when(store.getId()).thenReturn(STORE_ID);
@@ -191,9 +237,9 @@ class VerifactuPosServiceTest {
         when(terminal.isAprobada()).thenReturn(true);
     }
 
-    private void voluntarilyActive() {
+    private void effectiveVerifactuMode() {
         var configuration = mock(VerifactuConfiguration.class);
-        when(configuration.isVoluntarilyActive()).thenReturn(true);
+        when(configuration.getCurrentMode()).thenReturn(FiscalMode.VERIFACTU);
         when(configurations.findByCompanyId(COMPANY_ID))
                 .thenReturn(Optional.of(configuration));
     }
