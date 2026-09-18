@@ -1102,7 +1102,8 @@ export function SalesDocumentScreen({
     }
   }
 
-  useEffect(() => {
+  // Keyboard commands must observe the same readiness as the committed buttons.
+  useLayoutEffect(() => {
     function handleDocumentShortcut(event: KeyboardEvent) {
       if (documentLocked || event.repeat || document.querySelector(
         '[role="dialog"][aria-modal="true"], dialog[open]',

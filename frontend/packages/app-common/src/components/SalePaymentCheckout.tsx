@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { apiRequest, ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import {
@@ -360,7 +360,8 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
   }
  useEffect(()=>{let current=true;entryHydratedSessionIdRef.current=null;setHydrationComplete(false);setHydrationFailed(false);void (async()=>{try{const active=await apiRequest<ServerSession|null>("/pos/payment-sessions/active",{token});if(current){if(active){entryHydratedSessionIdRef.current=active.id;setServer(active);globalThis.sessionStorage?.setItem(storageKey,active.id);}else{globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);}setHydrationComplete(true);}}catch{const id=globalThis.sessionStorage?.getItem(storageKey);if(id)try{const recovered=await apiRequest<ServerSession>(`/pos/payment-sessions/${id}`,{token});if(current){entryHydratedSessionIdRef.current=recovered.id;setServer(recovered);setHydrationComplete(true);}}catch{/* Recovery remains authoritative only after a successful response. */}if(current)setHydrationFailed(true);}})();return()=>{current=false;};},[storageKey,attemptKey,token,hydrationRetry]);
  useEffect(()=>onHydrationChange?.(hydrationComplete),[hydrationComplete,onHydrationChange]);
- useEffect(()=>{serverRef.current=server;},[server]);
+ // Checkout actions must see the committed session as soon as their buttons enable.
+ useLayoutEffect(()=>{serverRef.current=server;},[server]);
  useEffect(()=>onLockedChange?.(paymentSessionLocksSale(server?.status),server?Math.round(Number(server.total)*100):undefined),[server,onLockedChange]);
  useEffect(()=>{if(unifiedCheckout&&server&&server.status!=="FINALIZED"&&server.status!=="CANCELLED")setCheckoutOpen(true);},[server?.id,server?.status,unifiedCheckout]);
  function clearRecoveryStorage(expectedSessionId?:string){const storedSessionId=globalThis.sessionStorage?.getItem(storageKey);const ownsStoredSession=!expectedSessionId||storedSessionId===expectedSessionId;if(ownsStoredSession)globalThis.sessionStorage?.removeItem(storageKey);const storedAttempt=globalThis.localStorage?.getItem(attemptKey);let attemptSessionId:string|undefined;try{attemptSessionId=storedAttempt?(JSON.parse(storedAttempt) as {sessionId?:string}).sessionId:undefined;}catch{/* Legacy malformed attempts belong to the matching stored session only. */}if(!expectedSessionId||attemptSessionId===expectedSessionId||(ownsStoredSession&&!attemptSessionId))globalThis.localStorage?.removeItem(attemptKey);}

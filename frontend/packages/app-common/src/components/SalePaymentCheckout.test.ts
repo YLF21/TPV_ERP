@@ -2064,7 +2064,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
  });
 
- it("discards an uncertain simulated card payment so the operator can choose another method",async()=>{
+ it.each([false,true])("discards an uncertain simulated card payment so the operator can choose another method (immediate retry: %s)",async(immediateRetry)=>{
   const first={id:"session-cancel-card-1",total:"12.10",status:"COLLECTING",allocations:[]};
   const second={id:"session-cancel-card-2",total:"12.10",status:"COLLECTING",allocations:[]};
   let creations=0;
@@ -2090,12 +2090,32 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(card);
   await waitFor(()=>expect(screen.getByRole("button",{name:"Cancelar sesión de cobro"})).toBeEnabled());
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  let retryObservedClearedRecovery=false;
+  // Retry when the committed UI first enables the method, before passive effects.
+  const retryObserver=new MutationObserver(()=>{
+   const retryCard=screen.queryByRole("button",{name:/Tarjeta/});
+   if(!(retryCard instanceof HTMLButtonElement)||retryCard.disabled)return;
+   retryObserver.disconnect();
+   retryObservedClearedRecovery=localStorage.getItem("tpverp.payment-session.01.allocation-attempt")===null;
+   retryCard.click();
+  });
+  if(immediateRetry)retryObserver.observe(document.body,{subtree:true,childList:true,attributes:true});
   fireEvent.click(screen.getByRole("button",{name:"Cancelar sesión de cobro"}));
-  await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
-  expect(screen.getByRole("button",{name:/Efectivo/})).toBeEnabled();
-  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
-  fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
-  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-cancel-card-2/allocations")).toHaveLength(1));
+  try{
+   if(immediateRetry){
+    await waitFor(()=>expect(retryObservedClearedRecovery).toBe(true));
+   }else{
+    await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+    expect(screen.getByRole("button",{name:/Efectivo/})).toBeEnabled();
+    expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
+    fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
+   }
+   await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-cancel-card-2/allocations")).toHaveLength(1));
+   expect(creations).toBe(2);
+   expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-cancel-card-1/allocations")).toHaveLength(1);
+  }finally{
+   retryObserver.disconnect();
+  }
  });
 
  it("clears card recovery state after compensation acknowledgement so a later card checkout can start",async()=>{

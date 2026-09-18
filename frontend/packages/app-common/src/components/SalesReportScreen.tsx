@@ -3008,8 +3008,8 @@ export function SalesReportScreen({
     reportLoading,
     reportLoadingMore,
     selectedReport,
-    selectedReportPage?.hasMore,
-    selectedReportPage?.nextCursor
+    // A range reload can retain the cursor flags without rendering a loading state.
+    selectedReportPage
   ]);
 
   function handleReportTableScroll(event: UIEvent<HTMLDivElement>) {

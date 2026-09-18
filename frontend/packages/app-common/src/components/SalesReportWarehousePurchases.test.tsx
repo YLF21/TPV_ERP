@@ -49,6 +49,7 @@ async function openInvoice() {
 }
 afterEach(() => {
   cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.clearAllMocks();
+  vi.useRealTimers();
   Reflect.deleteProperty(window, "tpvDesktop");
 });
 
@@ -127,6 +128,38 @@ describe("current warehouse purchase reports", () => {
     expect(screen.queryByText("OLD-PAGE")).toBeNull();
     expect(screen.queryByText("FE-001")).toBeNull();
     expect(request.mock.calls.some(([path]) => path.includes("type=ALBARAN_ENTRADA") && path.includes("cursor=invoice-page"))).toBe(false);
+  });
+
+  it("loads the next page after the store date replaces the initial range with the same cursor", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-18T12:00:00"));
+    let finishDates!: (value: { earliestDate: string; currentDate: string }) => void;
+    const dates = new Promise((resolve) => { finishDates = resolve; });
+    let storeRangeRequested = false;
+    // Only the new range needs another page to fill the viewport.
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() =>
+      storeRangeRequested ? 0 : 500);
+    const request = fixture();
+    const base = request.getMockImplementation()!;
+    request.mockImplementation(async (path) => {
+      if (path.startsWith("/document-reports/date-options")) return dates;
+      if (path.includes("cursor=invoice-page")) return empty;
+      if (path.includes("type=FACTURA_ENTRADA")) {
+        storeRangeRequested = path.includes(`dateFrom=${today}`);
+        return { items: [{ ...invoice, document: { ...invoice.document,
+          date: storeRangeRequested ? today : "2026-09-18",
+          number: storeRangeRequested ? "FE-STORE-DATE" : "FE-LOCAL-DATE" } }],
+        hasMore: true, nextCursor: "invoice-page" };
+      }
+      return base(path);
+    });
+    mount(request);
+    await screen.findByText("FE-LOCAL-DATE");
+    expect(request.mock.calls.some(([path]) => path.includes("cursor=invoice-page"))).toBe(false);
+    finishDates({ earliestDate: "2025-01-01", currentDate: today });
+    await screen.findByText("FE-STORE-DATE");
+    await waitFor(() => expect(request.mock.calls.some(([path]) =>
+      path.includes("cursor=invoice-page") && path.includes(`dateFrom=${today}`))).toBe(true));
   });
 
   it("formats document discounts as percentages, not money", () => {

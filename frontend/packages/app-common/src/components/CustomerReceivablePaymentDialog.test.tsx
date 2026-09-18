@@ -128,7 +128,7 @@ describe("CustomerReceivablePaymentDialog", () => {
     });
   });
 
-  it("registers a partial transfer with its optional transfer date and stable request id", async () => {
+  it.each([false, true])("registers a partial transfer with its optional transfer date and stable request id (immediate selection: %s)", async (immediateSelection) => {
     const onPayment = vi.fn();
     const onPaid = vi.fn();
     const request = configuredRequest();
@@ -142,8 +142,26 @@ describe("CustomerReceivablePaymentDialog", () => {
       onPaid={onPaid}
     />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
+    let selectedWhenEnabled = false;
+    // Select as soon as configuration enables the committed control, before passive effects.
+    const selectionObserver = new MutationObserver(() => {
+      const transfer = screen.queryByRole("button", { name: "Transferencia" });
+      if (!(transfer instanceof HTMLButtonElement) || transfer.disabled) return;
+      selectionObserver.disconnect();
+      selectedWhenEnabled = true;
+      transfer.click();
+    });
+    try {
+      if (immediateSelection) {
+        selectionObserver.observe(document.body, { subtree: true, childList: true, attributes: true });
+        await waitFor(() => expect(selectedWhenEnabled).toBe(true));
+      } else {
+        await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
+        fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
+      }
+    } finally {
+      selectionObserver.disconnect();
+    }
     fireEvent.change(screen.getByLabelText("IMPORTE / RECIBIDO"), { target: { value: "20" } });
     fireEvent.change(screen.getByLabelText("Nº DOCUMENTO"), { target: { value: "TR-123" } });
     const transferDate = await screen.findByLabelText("FECHA DE TRANSFERENCIA");
