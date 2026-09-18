@@ -1,6 +1,8 @@
 package com.tpverp.backend.document;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.tpverp.backend.terminal.PaymentTerminalResult;
 import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
 import com.tpverp.backend.security.sales.SaleOperationCode;
@@ -104,7 +106,7 @@ public class CustomerPendingSaleController {
                     operationAuthorizations,
             @jakarta.validation.constraints.Min(0) Long draftVersion,
             @DecimalMin("0.00") BigDecimal documentDiscountPercent,
-            boolean wholesaleMode) {
+            @JsonSetter(nulls = Nulls.AS_EMPTY) boolean wholesaleMode) {
 
         public CreateRequest {
             operationAuthorizations = OperationAuthorizationRequest.immutableCopy(

@@ -1745,53 +1745,93 @@ textarea {
   z-index: 10000;
   display: grid;
   place-items: center;
-  background: rgba(20, 34, 56, 0.34);
-  backdrop-filter: blur(3px);
+  box-sizing: border-box;
+  padding: 16px;
+  background: rgba(12, 29, 53, 0.42);
 }
 
 .shutdown-dialog {
-  width: min(390px, calc(100vw - 48px));
-  padding: 26px;
-  background: rgba(235, 243, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 20px;
-  box-shadow: 0 24px 70px rgba(22, 49, 93, 0.28);
-  backdrop-filter: blur(14px);
+  box-sizing: border-box;
+  width: min(460px, 100%);
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid #8295aa;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #172033;
+  box-shadow: 0 18px 44px rgba(4, 18, 35, 0.32);
 }
 
-.shutdown-dialog h2 {
+.shutdown-dialog > h2 {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
   margin: 0;
-  font-size: 24px;
+  padding: 12px 16px;
+  background: #0b2e59;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
-.shutdown-dialog p {
-  margin: 10px 0 22px;
-  color: #3b4656;
-  font-weight: 700;
+.shutdown-dialog > p {
+  margin: 0;
+  padding: 24px 20px;
+  color: #172033;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .shutdown-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  justify-content: flex-end;
   gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #c7d2df;
+  background: #edf2f7;
 }
 
 .shutdown-actions button {
-  height: 44px;
-  border: 0;
-  border-radius: 13px;
-  font-weight: 900;
+  min-width: 112px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #8295aa;
+  border-radius: 2px;
+  font: inherit;
+  font-weight: 800;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
-.shutdown-no {
-  background: rgba(99, 151, 238, 0.78);
-  color: white;
+.shutdown-actions .shutdown-no {
+  background: #ffffff;
+  color: #173250;
 }
 
-.shutdown-yes {
-  background: rgba(255, 255, 255, 0.56);
-  color: #182233;
+.shutdown-actions .shutdown-yes {
+  border-color: #0b2e59;
+  background: #0b2e59;
+  color: #ffffff;
+}
+
+.shutdown-actions .shutdown-no:hover:not(:disabled) {
+  background: #e1ebf5;
+}
+
+.shutdown-actions .shutdown-yes:hover:not(:disabled) {
+  background: #173f6e;
+}
+
+.shutdown-actions button:focus-visible {
+  outline: 2px solid #286fba;
+  outline-offset: 2px;
+}
+
+.shutdown-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .login-app-mark {
@@ -2920,71 +2960,6 @@ textarea {
   color: #c52828;
   font-size: 13px;
   font-weight: 850;
-}
-
-.login-screen .shutdown-overlay,
-.home-screen .shutdown-overlay {
-  z-index: 6;
-  background: rgba(9, 20, 38, 0.34);
-  backdrop-filter: none;
-}
-
-.login-screen .shutdown-dialog,
-.home-screen .shutdown-dialog {
-  border: 1px solid #d7e0ea;
-  border-radius: 20px;
-  background: #ffffff;
-  color: #17233b;
-  box-shadow: 0 24px 70px rgba(22, 49, 93, 0.24);
-  backdrop-filter: none;
-}
-
-.login-screen .shutdown-dialog h2,
-.home-screen .shutdown-dialog h2 {
-  color: #0b1f3f;
-  font-size: 24px;
-  line-height: 1;
-  font-weight: 950;
-}
-
-.login-screen .shutdown-dialog p,
-.home-screen .shutdown-dialog p {
-  color: #5b6f8c;
-  font-weight: 760;
-}
-
-.login-screen .shutdown-actions button,
-.home-screen .shutdown-actions button {
-  height: 40px;
-  border: 1px solid #d7e0ea;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #17233b;
-}
-
-.login-screen .shutdown-actions .shutdown-no,
-.home-screen .shutdown-actions .shutdown-no {
-  border-color: #244e86;
-  background: #244e86;
-  color: #ffffff;
-}
-
-.login-screen .shutdown-actions button:hover,
-.login-screen .shutdown-actions button:focus-visible,
-.home-screen .shutdown-actions button:hover,
-.home-screen .shutdown-actions button:focus-visible {
-  border-color: #9db8db;
-  background: #f3f7fb;
-  color: #17233b;
-  outline: 3px solid rgba(36, 78, 134, 0.12);
-}
-
-.login-screen .shutdown-actions .shutdown-no:hover,
-.login-screen .shutdown-actions .shutdown-no:focus-visible,
-.home-screen .shutdown-actions .shutdown-no:hover,
-.home-screen .shutdown-actions .shutdown-no:focus-visible {
-  background: #17233b;
-  color: #ffffff;
 }
 
 .login-screen > .report-footer-context,
@@ -5614,9 +5589,7 @@ textarea {
 .sale-customer-table {
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: 38px minmax(0, 1fr);
-  overflow: hidden;
+  overflow: auto;
   background: #fff;
 }
 
@@ -5629,6 +5602,10 @@ textarea {
 }
 
 .sale-customer-table-header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  min-height: 38px;
   color: #fff;
   background: #0b2e59;
   font-size: 11px;
@@ -5656,9 +5633,8 @@ textarea {
 }
 
 .sale-customer-table-body {
-  min-width: 0;
+  min-width: 1180px;
   min-height: 0;
-  overflow: auto;
   background: repeating-linear-gradient(
     to bottom,
     #fff 0,
@@ -5733,6 +5709,18 @@ textarea {
   min-width: 130px;
   min-height: 36px;
   border-radius: 2px;
+}
+
+@media (max-width: 1220px) {
+  .sale-customer-table-header,
+  .sale-customer-table-row {
+    min-width: 980px;
+    grid-template-columns: 125px minmax(180px, 1fr) 150px 110px 115px 150px 150px;
+  }
+
+  .sale-customer-table-body {
+    min-width: 980px;
+  }
 }
 
 .sale-customer-receivables-overlay {
@@ -11056,8 +11044,6 @@ button.danger,
 .shutdown-button,
 .language-picker,
 .language-picker button,
-.shutdown-dialog,
-.shutdown-actions button,
 .home-action,
 .home-action-icon,
 .report-nav,
@@ -11089,7 +11075,6 @@ button.danger,
 
 .login-panel,
 .language-picker,
-.shutdown-dialog,
 .home-action,
 .report-nav,
 .report-workspace,
@@ -20183,7 +20168,6 @@ textarea:focus,
 .sales-document-lines {
   min-height: 0;
   overflow: auto;
-  scrollbar-gutter: stable;
 }
 
 .sales-document-lines-table {
@@ -22048,40 +22032,162 @@ textarea:focus,
 
 .sale-checkout-keypad {
   display: grid;
-  width: 290px;
-  flex: 0 0 290px;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
-  align-content: start;
+  width: 320px;
+  flex: 0 0 320px;
+  grid-template-rows: auto auto minmax(54px, 1fr) auto;
+  gap: 10px;
 }
 
 .sale-checkout-keypad button {
   min-height: 56px;
   border: 1px solid #8192a6;
-  border-radius: 4px;
+  border-radius: 3px;
   background: #fff;
   color: #172c47;
-  font-size: 1.08rem;
+  font-size: 1.25rem;
   font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .sale-checkout-keypad .exact {
-  grid-column: 1 / -1;
-  border-color: #225b91;
-  background: #e5f0fa;
-  color: #123d67;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-color: #94650a;
+  background: #fff2c6;
+  color: #63430a;
+  font-size: 1rem;
+}
+
+.sale-checkout-quick-amounts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.sale-checkout-quick-amounts button {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.sale-checkout-quick-amounts [data-banknote="5"] {
+  border-color: #747d79;
+  background: #dce0da;
+  color: #303a34;
+}
+
+.sale-checkout-quick-amounts [data-banknote="10"] {
+  border-color: #a44744;
+  background: #f3ceca;
+  color: #752622;
+}
+
+.sale-checkout-quick-amounts [data-banknote="20"] {
+  border-color: #386c98;
+  background: #c7e0f2;
+  color: #154b76;
+}
+
+.sale-checkout-quick-amounts [data-banknote="50"] {
+  border-color: #a66b29;
+  background: #f5d4a3;
+  color: #71440d;
+}
+
+.sale-checkout-banknote-space {
+  position: relative;
+  min-height: 54px;
+}
+
+.sale-checkout-banknote-sum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #b1bfce;
+  padding: 4px 8px;
+  background: #edf2f7;
+}
+
+.sale-checkout-banknote-sum output {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-self: stretch;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  color: #172c47;
+  line-height: 20px;
+}
+
+.sale-checkout-banknote-sum output > span {
+  min-height: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: .85rem;
+}
+
+.sale-checkout-banknote-sum output > strong {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.sale-checkout-banknote-sum button {
+  flex-shrink: 0;
+  min-height: 44px;
+  border-color: #a44744;
+  padding: 0 10px;
+  background: #fff5f3;
+  color: #9c241b;
+  font-size: .85rem;
+}
+
+.sale-checkout-number-pad {
+  display: grid;
+  align-self: end;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(56px, 1fr));
+  grid-template-areas:
+    "digit-7 digit-8 digit-9 backspace"
+    "digit-4 digit-5 digit-6 clear"
+    "digit-1 digit-2 digit-3 enter"
+    "digit-0 digit-0 decimal enter";
+  gap: 6px;
+}
+
+.sale-checkout-keypad .backspace-key {
+  grid-area: backspace;
+  background: #edf2f7;
 }
 
 .sale-checkout-keypad .clear-key {
-  grid-column: span 2;
+  grid-area: clear;
+  background: #fff5f3;
   color: #9c241b;
 }
 
 .sale-checkout-keypad .enter-key {
+  grid-area: enter;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border-color: #0d6544;
   background: #0d6544;
   color: #fff;
 }
+
+.sale-checkout-keypad .enter-key span { font-size: .85rem; }
+.sale-checkout-keypad button:focus-visible { outline: 3px solid #236eaa; outline-offset: 1px; }
+.sale-checkout-keypad button:active:not(:disabled) { filter: brightness(.92); }
+.sale-checkout-keypad button:disabled { cursor: default; opacity: .5; }
 
 @media (max-width: 900px) {
   .sale-checkout-body { flex-direction: column; }

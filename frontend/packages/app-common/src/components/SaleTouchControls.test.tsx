@@ -26,12 +26,12 @@ describe("Touch sale controls", () => {
   });
 
   it("shows just the four approved left actions, with icons and visible text", () => {
-    const parked = action("parked", "Ventas aparcadas");
+    const parked = action("parked", "Ventas guardadas");
     render(<TouchSaleSideActions parked={parked} returnAction={action("return", "Devolución")}
       copy={action("copy", "Copia último ticket")} more={action("more", "Más opciones")} />);
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "Ventas aparcadas", "Devolución", "Copia último ticket", "Más opciones",
+      "Ventas guardadas", "Devolución", "Copia último ticket", "Más opciones",
     ]);
     buttons.forEach((button) => expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull());
     fireEvent.click(buttons[0]);

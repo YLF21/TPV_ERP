@@ -7,6 +7,7 @@ type Props = {
   children: ReactNode;
   locale: LocaleCode;
   onConfirmHome: () => void;
+  navigationBlocked?: boolean;
 };
 
 const modalSelector = '[role="dialog"], [role="alertdialog"]';
@@ -15,7 +16,7 @@ export function hasOpenAppVentaFunctionalLayer(root: ParentNode = document) {
   return Boolean(root.querySelector(`${modalSelector}, [aria-expanded="true"]`));
 }
 
-export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome }: Props) {
+export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, navigationBlocked = false }: Props) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -29,6 +30,7 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome }
   }
 
   function confirmNavigation() {
+    if (navigationBlocked) return;
     setConfirmationOpen(false);
     onConfirmHome();
   }
@@ -48,6 +50,7 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome }
       if (event.target instanceof HTMLSelectElement || hasOpenAppVentaFunctionalLayer()) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (navigationBlocked) return;
       previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
@@ -55,7 +58,11 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmationOpen, onConfirmHome]);
+  }, [confirmationOpen, navigationBlocked, onConfirmHome]);
+
+  useEffect(() => {
+    if (navigationBlocked) setConfirmationOpen(false);
+  }, [navigationBlocked]);
 
   useEffect(() => {
     if (!confirmationOpen || !dialogRef.current) return;
@@ -70,7 +77,7 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome }
   return (
     <>
       {children}
-      {confirmationOpen && (
+      {confirmationOpen && !navigationBlocked && (
         <div className="app-venta-home-confirm-overlay" role="presentation">
           <section
             ref={dialogRef}

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { ArrowElbowDownLeft, Backspace } from "@phosphor-icons/react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { localizePaymentDiagnostic } from "../i18n/PaymentMessages";
 import {
@@ -122,6 +123,8 @@ const labels = {
     transfer: "Transferencia", memberBalance: "Saldo de miembro", memberBalanceAvailable: "Disponible", memberBalanceTotal: "Total", partialHold: "Bloqueo parcial de saldo", returnCredit: "Saldo a favor", discount: "Descuento", method: "FORMA DE PAGO",
     tableAmount: "IMPORTE", change: "Cambio", total: "TOTAL A COBRAR", paid: "COBRADO",
     remaining: "FALTA", accept: "ACEPTAR", cancel: "CANCELAR", exact: "Exacto",
+    keypad: "Teclado numérico", quickAmounts: "Importes rápidos", backspace: "Borrar dígito", clearAmount: "Limpiar importe", enter: "Intro",
+    banknoteSum: "Suma de billetes", clearBanknoteSum: "Limpiar suma", clearBanknotes: "Limpiar",
     clear: "Eliminar pagos", customerRequired: "Selecciona un cliente para dejar el ticket pendiente",
     referenceRequired: "Este método requiere Nº Documento", invalid: "Introduce un importe válido",
     scannerIgnored: "Código de barras ignorado durante el cobro",
@@ -139,6 +142,8 @@ const labels = {
     transfer: "Transfer", memberBalance: "Member balance", memberBalanceAvailable: "Available", memberBalanceTotal: "Total", partialHold: "Partial balance hold", returnCredit: "Return credit", discount: "Discount", method: "PAYMENT METHOD",
     tableAmount: "AMOUNT", change: "Change", total: "TOTAL DUE", paid: "PAID",
     remaining: "REMAINING", accept: "ACCEPT", cancel: "CANCEL", exact: "Exact",
+    keypad: "Numeric keypad", quickAmounts: "Quick amounts", backspace: "Backspace", clearAmount: "Clear amount", enter: "Enter",
+    banknoteSum: "Banknote sum", clearBanknoteSum: "Clear sum", clearBanknotes: "Clear",
     clear: "Clear payments", customerRequired: "Select a customer before leaving the ticket pending",
     referenceRequired: "This method requires a document number", invalid: "Enter a valid amount",
     scannerIgnored: "Barcode ignored during checkout",
@@ -156,6 +161,8 @@ const labels = {
     transfer: "转账", memberBalance: "会员余额", memberBalanceAvailable: "可用", memberBalanceTotal: "总额", partialHold: "余额部分锁定", returnCredit: "退货余额", discount: "折扣", method: "付款方式",
     tableAmount: "金额", change: "找零", total: "应收合计", paid: "已收",
     remaining: "未收", accept: "确认", cancel: "取消", exact: "正好",
+    keypad: "数字键盘", quickAmounts: "快捷金额", backspace: "退格", clearAmount: "清除金额", enter: "回车",
+    banknoteSum: "纸币合计", clearBanknoteSum: "清除合计", clearBanknotes: "清除",
     clear: "清除付款", customerRequired: "挂账前请选择客户",
     referenceRequired: "此方式需要单据号", invalid: "请输入有效金额",
     scannerIgnored: "收款期间已忽略条码",
@@ -350,6 +357,8 @@ export function PaymentAllocationPanel({
   );
   const [method, setMethod] = useState<CheckoutMethod>(initialMethod);
   const [amount, setAmount] = useState(centsInput(remaining));
+  const [touchBanknotes, setTouchBanknotes] = useState<number[]>([]);
+  const touchBanknoteTotal = touchBanknotes.reduce((sum, cents) => sum + cents, 0);
   const [voucherCode, setVoucherCode] = useState("");
   const [reference, setReference] = useState("");
   const [transferDate, setTransferDate] = useState("");
@@ -364,13 +373,16 @@ export function PaymentAllocationPanel({
   const touchTextKeyboardVisible = interfaceMode === "TOUCH" && !zero && !walletOpen
     && (touchField === "voucher" || touchField === "reference" || touchField === "comment");
   const amountRef = useRef<HTMLInputElement>(null);
-  const amountCursorRef = useRef<number | null>(null);
+  const checkoutDialogRef = useRef<HTMLElement>(null);
+  const amountSelectionRef = useRef<{ start: number; end: number } | null>(null);
   const voucherCodeRef = useRef<HTMLInputElement>(null);
   const voucherResolveGuardRef = useRef(false);
   const referenceRef = useRef<HTMLInputElement>(null);
   const commentRef = useRef<HTMLInputElement>(null);
   const transferDateRef = useRef<HTMLInputElement>(null);
   const scannerCaptureRef = useRef(idleScannerTimingCapture);
+  const touchBanknotesRef = useRef(touchBanknotes);
+  const scannerBanknotesRef = useRef<number[]>([]);
   const amountCents = parseCents(amount);
   const cashAppliedCents = Math.min(amountCents, remaining);
   const cashChangeCents = method === "CASH" ? Math.max(0, amountCents - remaining) : 0;
@@ -428,8 +440,13 @@ export function PaymentAllocationPanel({
         ? "INTEGRATED_CARD"
         : "MANUAL_CARD";
 
+  function replaceAmount(next: string) {
+    setTouchBanknotes([]);
+    setAmount(next);
+  }
+
   useEffect(() => {
-    setAmount(centsInput(method === "MEMBER_BALANCE"
+    replaceAmount(centsInput(method === "MEMBER_BALANCE"
       ? memberBalanceLimit
       : method === "DISCOUNT" ? checkoutDiscountInputLimit : remaining));
   }, [checkoutDiscountInputLimit, memberBalanceLimit, method, remaining]);
@@ -520,14 +537,23 @@ export function PaymentAllocationPanel({
     if (interfaceMode === "TOUCH") setFocusEntryAfterWallet(true);
   }
 
+  function resetScannerCapture() {
+    scannerCaptureRef.current = idleScannerTimingCapture;
+    scannerBanknotesRef.current = [];
+  }
+
+  useLayoutEffect(() => {
+    touchBanknotesRef.current = touchBanknotes;
+  }, [touchBanknotes]);
+
   useEffect(() => {
     const protectCheckoutFromScanner = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.altKey || event.metaKey) {
-        scannerCaptureRef.current = idleScannerTimingCapture;
+        resetScannerCapture();
         return;
       }
       if (event.target !== amountRef.current) {
-        scannerCaptureRef.current = idleScannerTimingCapture;
+        resetScannerCapture();
         return;
       }
 
@@ -539,11 +565,20 @@ export function PaymentAllocationPanel({
         amountRef.current?.value ?? centsInput(remaining),
       );
       scannerCaptureRef.current = decision.next;
-      if (!decision.detected) return;
+      // The first digit is treated as manual input until Enter identifies a scan.
+      if (event.key.length === 1 && decision.next.value === event.key) {
+        scannerBanknotesRef.current = touchBanknotesRef.current;
+      }
+      if (!decision.detected) {
+        if (!decision.next.value) scannerBanknotesRef.current = [];
+        return;
+      }
 
       event.preventDefault();
       event.stopImmediatePropagation();
       setAmount(decision.restoreInput ?? centsInput(remaining));
+      setTouchBanknotes(scannerBanknotesRef.current);
+      scannerBanknotesRef.current = [];
       setValidation(copy.scannerIgnored);
       queueMicrotask(() => {
         amountRef.current?.focus();
@@ -559,7 +594,8 @@ export function PaymentAllocationPanel({
   ]);
 
   function selectMethod(next: CheckoutMethod) {
-    if (!allowAdd || compensationRequired || busy || !methodAvailable(next)) return;
+    if (entryLocked || !methodAvailable(next)) return;
+    resetScannerCapture();
     if (next === "MEMBER_BALANCE" && onMemberWallet) {
       setValidation("");
       setWalletOpen(true);
@@ -567,7 +603,7 @@ export function PaymentAllocationPanel({
     }
     setMethod(next);
     setValidation("");
-    setAmount(centsInput(next === "MEMBER_BALANCE"
+    replaceAmount(centsInput(next === "MEMBER_BALANCE"
       ? memberBalanceLimit
       : next === "DISCOUNT" ? checkoutDiscountInputLimit : remaining));
     queueMicrotask(() => {
@@ -656,6 +692,7 @@ export function PaymentAllocationPanel({
         return;
       }
       onMemberBalance(amountCents);
+      setTouchBanknotes([]);
       setValidation("");
       return;
     }
@@ -666,6 +703,7 @@ export function PaymentAllocationPanel({
         return;
       }
       onDiscount(amountCents);
+      setTouchBanknotes([]);
       setValidation("");
       return;
     }
@@ -720,6 +758,7 @@ export function PaymentAllocationPanel({
     } else {
       onAdd({ kind: "PENDING", ...common }, { finalizeWhenCovered });
     }
+    setTouchBanknotes([]);
     setVoucherCode("");
     setReference("");
     setTransferDate("");
@@ -730,11 +769,11 @@ export function PaymentAllocationPanel({
 
   useLayoutEffect(() => {
     const input = amountRef.current;
-    const cursor = amountCursorRef.current;
-    amountCursorRef.current = null;
-    if (cursor == null || !input || input.disabled) return;
+    const selection = amountSelectionRef.current;
+    amountSelectionRef.current = null;
+    if (!selection || !input || input.disabled) return;
     input.focus({ preventScroll: true });
-    input.setSelectionRange(cursor, cursor);
+    input.setSelectionRange(selection.start, selection.end);
   });
 
   function appendKey(value: string) {
@@ -747,31 +786,39 @@ export function PaymentAllocationPanel({
       input.selectionEnd ?? input.value.length,
     );
     if (value !== "clear" && value !== "backspace" && !/^\d*(?:[,.]\d{0,2})?$/.test(edited.value)) return;
+    resetScannerCapture();
+    setTouchBanknotes([]);
     input.focus({ preventScroll: true });
     if (edited.value === input.value) {
       input.setSelectionRange(edited.cursor, edited.cursor);
     } else {
-      amountCursorRef.current = edited.cursor;
+      amountSelectionRef.current = { start: edited.cursor, end: edited.cursor };
       setAmount(edited.value);
     }
   }
 
-  function selectTouchAmount(cents: number) {
+  function selectTouchAmount(cents: number, addBanknote = false) {
     const input = amountRef.current;
     if (touchField !== "amount" || !input || input.disabled || walletOpen) return;
-    const next = centsInput(cents);
+    resetScannerCapture();
+    const next = centsInput(addBanknote ? touchBanknoteTotal + cents : cents);
+    setTouchBanknotes(addBanknote ? [...touchBanknotes, cents] : []);
     input.focus({ preventScroll: true });
-    if (next === amount) input.setSelectionRange(next.length, next.length);
+    if (next === amount) input.setSelectionRange(0, next.length);
     else {
-      amountCursorRef.current = next.length;
+      amountSelectionRef.current = { start: 0, end: next.length };
       setAmount(next);
     }
   }
 
   useEffect(() => {
-    if (interfaceMode !== "KEYBOARD") return;
     const handleKey = (event: KeyboardEvent) => {
-      if (walletOpen) return;
+      if (walletOpen || event.defaultPrevented || event.repeat || event.isComposing) return;
+      const modalSelector = '[role="dialog"], .sale-action-dialog, .filter-dialog';
+      const eventDialog = event.target instanceof Element ? event.target.closest(modalSelector) : null;
+      const focusedDialog = document.activeElement?.closest(modalSelector);
+      if ((eventDialog && eventDialog !== checkoutDialogRef.current)
+          || (focusedDialog && focusedDialog !== checkoutDialogRef.current)) return;
       if (event.ctrlKey && event.key.toLocaleLowerCase() === "o") {
         event.preventDefault();
         document.getElementById("checkout-comment")?.focus();
@@ -794,10 +841,10 @@ export function PaymentAllocationPanel({
       }
       if (event.key === "F12") {
         event.preventDefault();
-        if (!busy && !integratedPaymentLocked) onClear?.();
+        if (!busy && !voucherResolving && !integratedPaymentLocked) onClear?.();
       } else if (event.key === "Escape") {
         event.preventDefault();
-        if (!busy && !integratedPaymentLocked && !closeDisabled) onClose?.();
+        if (!busy && !voucherResolving && !integratedPaymentLocked && !closeDisabled) onClose?.();
       } else if (event.key === "Enter"
           && (event.target === amountRef.current
             || event.target === voucherCodeRef.current
@@ -816,7 +863,7 @@ export function PaymentAllocationPanel({
     cardEnabled, cashEnabled, commentEnabled, manualCardEnabled, manualCardRequiresReference, method,
     checkoutDiscountEligibleLimit, checkoutDiscountInputLimit, memberBalanceAvailableCents, memberBalanceBlockedByReturn, memberBalanceCents, memberBalanceEligibleTotalCents, memberWallet, memberWalletLimit,
     walletNetAvailableCents,
-    onClear, onClose, onDiscount, onMemberBalance, onMemberWallet, pendingEnabled, pricingReady, providers, reference, refund, remaining,
+    onClear, onClose, onDiscount, onMemberBalance, onMemberWallet, pendingEnabled, pendingVisible, discountVisible, pricingReady, providers, reference, refund, remaining,
     session.totalCents, transferDate, transferDateEnabled, transferEnabled, transferRequiresReference, voucherCode,
     voucherEnabled, voucherOnlyRefund, voucherResolving, onResolveVoucher, walletOpen,
   ]);
@@ -841,13 +888,13 @@ export function PaymentAllocationPanel({
   })[value];
 
   return <><div className="sale-checkout-overlay" role="presentation">
-    <section className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}${touchTextKeyboardVisible ? " has-touch-text-keyboard" : ""}`}
+    <section ref={checkoutDialogRef} className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}${touchTextKeyboardVisible ? " has-touch-text-keyboard" : ""}`}
       role="dialog" aria-modal="true" aria-hidden={walletOpen ? true : undefined}
-      aria-labelledby="sale-checkout-title" aria-busy={busy}>
+      aria-labelledby="sale-checkout-title" aria-busy={busy || voucherResolving}>
       <header className="sale-checkout-header">
         <h2 id="sale-checkout-title">{refund ? (locale === "es" ? "DEVOLUCIÓN" : locale === "en" ? "REFUND" : "退款") : copy.title}</h2>
         <button type="button" aria-label={copy.cancel}
-          disabled={busy || integratedPaymentLocked || closeDisabled}
+          disabled={busy || voucherResolving || integratedPaymentLocked || closeDisabled}
           onClick={onClose}>×</button>
       </header>
 
@@ -861,7 +908,7 @@ export function PaymentAllocationPanel({
               <input ref={amountRef} inputMode="decimal" autoComplete="off" value={amount}
                 data-touch-keyboard="off" onFocus={() => setTouchField("amount")}
                 disabled={entryLocked || (selectedMethod === "VOUCHER" && !refund)}
-                onChange={(event) => setAmount(event.currentTarget.value)} />
+                onChange={(event) => replaceAmount(event.currentTarget.value)} />
             </label>
             <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled && !refund ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
               {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
@@ -924,7 +971,7 @@ export function PaymentAllocationPanel({
                   {t("payment.refund.originalAvailable")}: {money(refundAvailabilityForMethod(item.value) ?? 0)} €
                 </small>}
               </span>
-              {interfaceMode === "KEYBOARD" && <kbd aria-hidden="true">{item.shortcut}</kbd>}
+              <kbd aria-hidden="true">{item.shortcut}</kbd>
             </button>)}
           </div>}
 
@@ -978,16 +1025,24 @@ export function PaymentAllocationPanel({
           {(validation || error) && <p className="sale-checkout-error" role="alert">{validation || error}</p>}
           {compensationRequired && <p className="sale-checkout-error" role="alert">{t("payment.split.compensationRequired")}</p>}
 
+          {touchTextKeyboardVisible && <TouchAlphaKeyboard
+            locale={locale}
+            value={touchField === "voucher" ? voucherCode : touchField === "reference" ? reference : comment}
+            onChange={touchField === "voucher" ? setVoucherCode : touchField === "reference" ? setReference : setComment}
+            inputRef={touchField === "voucher" ? voucherCodeRef : touchField === "reference" ? referenceRef : commentRef}
+            disabled={entryLocked}
+          />}
+
           <footer className="sale-checkout-footer">
             {clearVisible && <button type="button" className="clear"
-              disabled={busy || integratedPaymentLocked
+              disabled={busy || voucherResolving || integratedPaymentLocked
                 || (session.allocations.length === 0 && memberBalanceCents === 0 && checkoutDiscountCents === 0)}
-              onClick={onClear}>{interfaceMode === "KEYBOARD" && <kbd>F12</kbd>}{copy.clear}</button>}
+              onClick={onClear}><kbd>F12</kbd>{copy.clear}</button>}
             <span />
-            <button type="button" disabled={busy || integratedPaymentLocked || closeDisabled}
+            <button type="button" disabled={busy || voucherResolving || integratedPaymentLocked || closeDisabled}
               onClick={onClose}>{copy.cancel}</button>
             {acceptVisible && <button type="button" className="primary"
-              disabled={busy || integratedPaymentBlocksAccept || (acceptAddsCurrentPayment
+              disabled={busy || voucherResolving || integratedPaymentBlocksAccept || (acceptAddsCurrentPayment
                 ? !allowAdd || compensationRequired || remaining <= 0
                 : !acceptOpenSession && session.status !== "COVERED")}
               onClick={acceptAddsCurrentPayment ? () => submit(true) : onAccept}>
@@ -996,30 +1051,39 @@ export function PaymentAllocationPanel({
           </footer>
         </div>
 
-        {interfaceMode === "TOUCH" && !zero && !walletOpen && touchField === "amount" && <aside className="sale-checkout-keypad" aria-label="Teclado numérico"
+        {interfaceMode === "TOUCH" && !zero && !walletOpen && touchField === "amount" && <aside className="sale-checkout-keypad" aria-label={copy.keypad}
           onPointerDown={(event) => event.preventDefault()}>
-          <button type="button" className="exact" disabled={entryLocked}
-            onClick={() => selectTouchAmount(remaining)}>{copy.exact}</button>
-          {[500, 1000, 2000, 5000].map((cents) =>
-            <button type="button" key={cents} disabled={entryLocked}
-              onClick={() => selectTouchAmount(cents)}>{cents / 100} €</button>)}
-          {["7", "8", "9", "4", "5", "6", "1", "2", "3", ",", "0", "backspace"].map((key) =>
-            <button type="button" key={key} disabled={entryLocked} onClick={() => appendKey(key)}>
-              {key === "backspace" ? "⌫" : key}
-            </button>)}
-          <button type="button" className="clear-key" disabled={entryLocked}
-            onClick={() => appendKey("clear")}>C</button>
-          <button type="button" className="enter-key" disabled={entryLocked}
-            onClick={() => submit(true)}>↵</button>
+          <button type="button" className="exact" disabled={entryLocked} aria-label={copy.exact}
+            onClick={() => selectTouchAmount(remaining)}><span>{copy.exact}</span><strong>{money(remaining)} €</strong></button>
+          <div className="sale-checkout-quick-amounts" role="group" aria-label={copy.quickAmounts}>
+            {[500, 1000, 2000, 5000].map((cents) =>
+              <button type="button" key={cents} data-banknote={cents / 100} disabled={entryLocked}
+                onClick={() => selectTouchAmount(cents, true)}>{cents / 100} €</button>)}
+          </div>
+          <div className="sale-checkout-banknote-space">
+            {touchBanknotes.length > 0 && <section className="sale-checkout-banknote-sum" aria-label={copy.banknoteSum}>
+              <output aria-live="polite">
+                <span>{touchBanknotes.map((cents) => cents / 100).join(" + ")}</span>
+                <strong>= {money(touchBanknoteTotal)} €</strong>
+              </output>
+              <button type="button" disabled={entryLocked} aria-label={copy.clearBanknoteSum}
+                onClick={() => appendKey("clear")}>{copy.clearBanknotes}</button>
+            </section>}
+          </div>
+          <div className="sale-checkout-number-pad">
+            {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ","].map((key) =>
+              <button type="button" key={key} disabled={entryLocked}
+                style={{ gridArea: key === "," ? "decimal" : `digit-${key}` }}
+                onClick={() => appendKey(key)}>{key}</button>)}
+            <button type="button" className="backspace-key" disabled={entryLocked} aria-label={copy.backspace}
+              onClick={() => appendKey("backspace")}><Backspace aria-hidden="true" size={26} /></button>
+            <button type="button" className="clear-key" disabled={entryLocked} aria-label={copy.clearAmount}
+              onClick={() => appendKey("clear")}>C</button>
+            <button type="button" className="enter-key" disabled={entryLocked} aria-label={copy.enter}
+              onClick={() => submit(true)}><ArrowElbowDownLeft aria-hidden="true" size={26} /><span>{copy.enter}</span></button>
+          </div>
         </aside>}
       </div>
-      {touchTextKeyboardVisible && <TouchAlphaKeyboard
-          locale={locale}
-          value={touchField === "voucher" ? voucherCode : touchField === "reference" ? reference : comment}
-          onChange={touchField === "voucher" ? setVoucherCode : touchField === "reference" ? setReference : setComment}
-          inputRef={touchField === "voucher" ? voucherCodeRef : touchField === "reference" ? referenceRef : commentRef}
-          disabled={entryLocked}
-        />}
     </section>
   </div>
     {walletOpen && memberWallet && <MemberWalletDialog

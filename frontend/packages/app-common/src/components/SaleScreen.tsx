@@ -1619,6 +1619,7 @@ type SaleScreenProps = {
   terminalContext: TerminalContext;
   interfaceMode?: SaleInterfaceMode;
   onBack: () => void;
+  onExitBlockedChange?: (blocked: boolean) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onOpenCustomerReceivables?: (customerId?: string) => void;
@@ -1633,6 +1634,7 @@ export function SaleScreen({
   terminalContext,
   interfaceMode = "KEYBOARD",
   onBack,
+  onExitBlockedChange,
   onLocaleChange,
   onLogout,
   onOpenCustomerReceivables,
@@ -1993,6 +1995,22 @@ export function SaleScreen({
   const selectedCustomerRef = useRef(selectedCustomer);
   linesRef.current = lines;
   selectedCustomerRef.current = selectedCustomer;
+  const exitBlocked = lines.length > 0 || controlSaving;
+  useLayoutEffect(() => {
+    onExitBlockedChange?.(exitBlocked);
+  }, [exitBlocked, onExitBlockedChange]);
+  useLayoutEffect(() => {
+    if (!window.tpvDesktop) return;
+    const blockDesktopExit = (event: BeforeUnloadEvent) => {
+      if (linesRef.current.length === 0 && !controlSavingRef.current) return;
+      // Electron cancels close/reload silently; browsers would show a prompt.
+      event.preventDefault();
+      event.returnValue = false;
+    };
+    window.addEventListener("beforeunload", blockDesktopExit);
+    return () => window.removeEventListener("beforeunload", blockDesktopExit);
+  }, []);
+  useLayoutEffect(() => () => onExitBlockedChange?.(false), [onExitBlockedChange]);
   const selectableProducts = useMemo(
     () => saleSelectableProducts(products, allowInactiveProductSales),
     [allowInactiveProductSales, products]
@@ -2857,7 +2875,7 @@ export function SaleScreen({
             setCashSessionCloseFlow(null);
             setCashSessionCloseOpen(false);
             setShortcutStatus(cashSessionCopy.recovered);
-            onBack?.();
+            handleBack();
             return;
           }
           const nextAttemptId = recovery.latestReconciliationAttemptId
@@ -3185,17 +3203,19 @@ export function SaleScreen({
       .then((outcome) => updateMatchingVoucherPrintOutcome(snapshot.code, outcome));
   }
 
+  function handleBack() {
+    if (linesRef.current.length > 0 || controlSavingRef.current) return;
+    onBack();
+  }
+
   async function handleSaleLogout() {
     if (controlSavingRef.current) return;
     if (logoutInProgressRef.current) return;
-    if (lines.length > 0) {
-      setShortcutStatus("No se puede cerrar sesión mientras el carrito tenga productos");
-      return;
-    }
+    if (linesRef.current.length > 0) return;
     logoutInProgressRef.current = true;
     try {
       const result = await paymentCheckoutRef.current?.prepareLogout();
-      if (result === "READY") onLogout?.();
+      if (result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current) onLogout?.();
     } catch {
       // Fail closed: checkout keeps the recoverable payment state visible.
     } finally {
@@ -3204,11 +3224,12 @@ export function SaleScreen({
   }
 
   async function handleApplicationClose() {
-    if (controlSavingRef.current) return false;
+    if (linesRef.current.length > 0 || controlSavingRef.current) return false;
     if (shutdownInProgressRef.current || !paymentCheckoutRef.current) return false;
     shutdownInProgressRef.current = true;
     try {
-      return await paymentCheckoutRef.current.prepareApplicationClose() === "READY";
+      const result = await paymentCheckoutRef.current.prepareApplicationClose();
+      return result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current;
     } catch {
       return false;
     } finally {
@@ -5605,12 +5626,13 @@ export function SaleScreen({
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
         onLogout={() => void handleSaleLogout()}
+        exitBlocked={exitBlocked}
         onPrepareShutdown={handleApplicationClose}
         onBrowserClose={onLogout}
       /></div>
       <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined}>
         <header className="work-topbar sale-command-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          <button type="button" className="report-brand-back" onClick={handleBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
           <h1 className="sale-command-screen-title">{t("sale.main.screen")}</h1>
@@ -7037,7 +7059,7 @@ export function SaleScreen({
           mode="OPEN"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}
-          onExitSales={onBack}
+          onExitSales={handleBack}
           onOpened={() => setCashSessionState("OPEN")}
         />
       )}
@@ -7055,7 +7077,7 @@ export function SaleScreen({
             </header>
             {cashSessionState === "ERROR" && <p className="sale-cash-session-error" role="alert">{cashSessionError}</p>}
             <footer>
-              <button type="button" className="secondary" onClick={onBack}>{cashSessionCopy.exit}</button>
+              <button type="button" className="secondary" onClick={handleBack}>{cashSessionCopy.exit}</button>
               {cashSessionState === "ERROR" && (
                 <button type="button" onClick={() => void prepareSalesCashSession()}>{cashSessionCopy.retry}</button>
               )}
@@ -7086,7 +7108,7 @@ export function SaleScreen({
           }}
           onClosed={() => {
             clearPersistedCashSessionClose();
-            onBack?.();
+            handleBack();
           }}
         />
       )}

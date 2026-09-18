@@ -134,10 +134,12 @@
 .table-layout-header-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .report-screen .table-layout-header-cell .table-layout-drag-handle,
+.sales-document-lines-table .table-layout-header-cell .table-layout-drag-handle,
 .stock-screen .table-layout-header-cell .table-layout-drag-handle { display: none !important; }
 .report-screen .table-layout-header-cell.movable > .table-layout-header-label,
 .report-screen .table-layout-header-cell.movable > .table-layout-sort-button,
 .report-screen .table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button,
+.sales-document-lines-table .table-layout-header-cell.movable > .table-layout-sort-button,
 .stock-screen .table-layout-header-cell.movable > .table-layout-header-label,
 .stock-screen .table-layout-header-cell.movable > .table-layout-sort-button,
 .stock-screen .table-layout-header-cell.movable > .table-layout-header-controls .table-layout-sort-button { padding-left: 0; }
@@ -149,11 +151,26 @@
 .stock-screen .table-layout-header-controls { width: 100% !important; max-width: 100%; margin: 0 !important; padding: 0 !important; box-sizing: border-box; }
 .report-screen .table-layout-header-controls .table-layout-sort-button,
 .stock-screen .table-layout-header-controls .table-layout-sort-button { width: 100%; max-width: 100%; margin: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; box-sizing: border-box; }
+.sales-document-lines-table .table-layout-header-cell > .table-layout-sort-button,
+.sale-customer-table-header > [role="columnheader"] > .table-layout-sort-button,
 .stock-screen .stock-header-cell > .table-layout-sort-button {
   width: 100%;
   max-width: 100%;
   margin: 0;
   box-sizing: border-box;
+}
+.sales-document-lines-table .table-layout-header-cell > .table-layout-sort-button,
+.sale-customer-table-header > [role="columnheader"] > .table-layout-sort-button {
+  position: relative;
+  padding-right: 22px;
+}
+.sale-customer-table-header > [role="columnheader"] > .table-layout-sort-button {
+  padding-left: 0;
+}
+.sale-customer-table-header .table-layout-sort-indicator,
+.sales-document-lines-table .table-layout-sort-indicator {
+  position: absolute;
+  right: 0;
 }
 .stock-screen .stock-row-head > .stock-header-cell {
   align-self: stretch;
@@ -173,6 +190,8 @@
 .stock-screen .table-layout-header-cell:focus-within .table-layout-sort-label { max-width: calc(100% - 58px); }
 .report-screen .table-layout-sort-indicator,
 .report-screen .table-layout-column-menu-button,
+.sale-customer-table-header .table-layout-sort-indicator,
+.sales-document-lines-table .table-layout-sort-indicator,
 .stock-screen .table-layout-sort-indicator,
 .stock-screen .table-layout-column-menu-button { visibility: hidden; opacity: 0; transition: opacity 120ms ease; }
 .report-screen .table-layout-header-cell:hover .table-layout-sort-indicator,
@@ -180,6 +199,10 @@
 .report-screen .table-layout-header-cell:hover .table-layout-column-menu-button,
 .report-screen .table-layout-header-cell:focus-within .table-layout-column-menu-button,
 .report-screen .table-layout-column-menu-button.is-open,
+.sale-customer-table-header > [role="columnheader"]:hover .table-layout-sort-indicator,
+.sale-customer-table-header > [role="columnheader"]:focus-within .table-layout-sort-indicator,
+.sales-document-lines-table .table-layout-header-cell:hover .table-layout-sort-indicator,
+.sales-document-lines-table .table-layout-header-cell:focus-within .table-layout-sort-indicator,
 .stock-screen .table-layout-header-cell:hover .table-layout-sort-indicator,
 .stock-screen .table-layout-header-cell:focus-within .table-layout-sort-indicator,
 .stock-screen .table-layout-header-cell:hover .table-layout-column-menu-button,
