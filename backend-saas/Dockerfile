@@ -1,4 +1,4 @@
-FROM maven:3-eclipse-temurin-26@sha256:166ca19b6b5fe1e924ab2d66b64ba9854c739f16210b94bbe0074b036c5c7992 AS build
+FROM maven:3-eclipse-temurin-26@sha256:4e980a3c7def35292c12ce1a1dc7872f02165f11717204c7b1c2dc477e40c1b8 AS build
 WORKDIR /workspace
 COPY backend-saas/pom.xml backend-saas/mvnw backend-saas/mvnw.cmd ./backend-saas/
 COPY backend-saas/.mvn ./backend-saas/.mvn
@@ -6,7 +6,7 @@ RUN mvn -f backend-saas/pom.xml -B -q dependency:go-offline
 COPY backend-saas/src ./backend-saas/src
 RUN mvn -f backend-saas/pom.xml -B -q -DskipTests package
 
-FROM eclipse-temurin:25-jre@sha256:15090d159279e5c158473eccb48cd87f57b3e3a47511a797eb5a7a7ea6f86b0f
+FROM eclipse-temurin:25-jre@sha256:611e326900ba9edcedfb246ede24efc66a911fa496ac623db9f33cae88a2d83b
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
