@@ -945,7 +945,7 @@ describe("SalesDocumentScreen", () => {
     }
   });
 
-  it("supports the operational SaleScreen shortcuts in the Ctrl+F document window", async () => {
+  it.each([false, true])("supports the operational SaleScreen shortcuts in the Ctrl+F document window (immediate checkout: %s)", async (immediateCheckout) => {
     configureDocumentApi([{
       id: "product-1",
       code: "P-001",
@@ -1084,10 +1084,29 @@ describe("SalesDocumentScreen", () => {
       .not.toBeInTheDocument();
     expect(within(secondLine).getByText("3")).toBeVisible();
 
-    await waitFor(() => expect(
-      screen.getByRole("button", { name: /confirmar y cobrar/i }),
-    ).toBeEnabled());
-    expect(fireEvent.keyDown(window, { key: "PageDown" })).toBe(false);
+    let shortcutConsumed = false;
+    // Use PageDown on the first enabled render, before passive listener synchronization.
+    const checkoutObserver = new MutationObserver(() => {
+      const checkout = screen.queryByRole("button", { name: /confirmar y cobrar/i });
+      if (!(checkout instanceof HTMLButtonElement) || checkout.disabled) return;
+      checkoutObserver.disconnect();
+      shortcutConsumed = !window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "PageDown", bubbles: true, cancelable: true,
+      }));
+    });
+    try {
+      if (immediateCheckout) {
+        checkoutObserver.observe(document.body, { subtree: true, childList: true, attributes: true });
+        await waitFor(() => expect(shortcutConsumed).toBe(true));
+      } else {
+        await waitFor(() => expect(
+          screen.getByRole("button", { name: /confirmar y cobrar/i }),
+        ).toBeEnabled());
+        expect(fireEvent.keyDown(window, { key: "PageDown" })).toBe(false);
+      }
+    } finally {
+      checkoutObserver.disconnect();
+    }
     expect(await screen.findByRole("dialog", { name: "COBRO" })).toBeInTheDocument();
   });
 

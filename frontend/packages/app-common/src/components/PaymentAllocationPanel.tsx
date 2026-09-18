@@ -488,7 +488,8 @@ export function PaymentAllocationPanel({
       candidates.indexOf(candidate) === index && methodAvailable(candidate)) ?? preferred;
   }
 
-  useEffect(() => {
+  // Resolve the initial method before newly enabled controls can receive input.
+  useLayoutEffect(() => {
     const nextMethod = availableMethod(initialMethod);
     setMethod(nextMethod);
     queueMicrotask(() => {
