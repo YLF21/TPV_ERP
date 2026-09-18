@@ -78,6 +78,7 @@
 }
 
 .sale-screen.touch-mode .sale-customer-selection-dialog:has(.touch-alpha-keyboard) {
+  width: min(1500px, calc(100dvw - 40px));
   grid-template-rows: auto auto auto minmax(80px, 1fr) auto auto;
 }
 

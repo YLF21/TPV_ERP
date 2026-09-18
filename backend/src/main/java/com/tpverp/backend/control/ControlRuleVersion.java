@@ -45,6 +45,7 @@ public class ControlRuleVersion {
     }
 
     public UUID getRuleId() { return ruleId; }
+    public UUID getStoreId() { return storeId; }
     public int getRuleVersion() { return ruleVersion; }
     public ControlAlertType getType() { return type; }
     public String getName() { return name; }

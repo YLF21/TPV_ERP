@@ -1,0 +1,280 @@
+.sales-document-customer-overlay .sales-document-customer-selector {
+  --customer-dialog-navy: var(--tpv-v3-navy, #07254f);
+  --customer-dialog-border: var(--tpv-v3-line, #aeb9c8);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(960px, calc(100dvw - 32px));
+  height: min(560px, calc(100dvh - 32px));
+  min-height: 0;
+}
+
+.sales-document-customer-selector > .sales-document-customer-heading {
+  flex: 0 0 auto;
+}
+
+.sales-document-customer-actions > button {
+  min-height: 44px;
+  border: 1px solid var(--customer-dialog-border);
+  border-radius: var(--tpv-v3-radius, 3px);
+  background: #fff;
+  color: var(--tpv-v3-text, #102033);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sales-document-customer-selector > .sales-document-customer-search {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--customer-dialog-border);
+  background: var(--tpv-v3-surface-alt, #f4f7fa);
+  color: var(--tpv-v3-muted, #516175);
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.sales-document-customer-search > input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--customer-dialog-border);
+  border-radius: var(--tpv-v3-radius, 3px);
+  background: #fff;
+  color: var(--tpv-v3-text, #102033);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.sales-document-customer-selector > .sales-document-customer-table {
+  display: block;
+  flex: 1 1 0;
+  min-height: 130px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: #fff;
+}
+
+.sales-document-customer-columns,
+.sales-document-customer-option {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 3fr) minmax(140px, 1.1fr);
+  align-items: center;
+  gap: 0;
+  text-align: left;
+}
+
+.sales-document-customer-columns {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 32px;
+  background: var(--customer-dialog-navy);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.sales-document-customer-columns > span,
+.sales-document-customer-option > span,
+.sales-document-customer-option > strong {
+  min-width: 0;
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+
+.sales-document-customer-columns > span + span {
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.sales-document-customer-options {
+  min-height: 0;
+}
+
+.sales-document-customer-option {
+  min-height: 36px;
+  border-bottom: 1px solid var(--tpv-v3-line-soft, #d5dde7);
+  background: #fff;
+  color: var(--tpv-v3-text, #102033);
+  font-size: 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sales-document-customer-option > span {
+  font-variant-numeric: tabular-nums;
+}
+
+.sales-document-customer-option > strong {
+  font-weight: 700;
+}
+
+.sales-document-customer-option:hover {
+  background: #edf3f9;
+}
+
+.sales-document-customer-option[aria-selected="true"] {
+  background: var(--customer-dialog-navy);
+  color: #fff;
+  box-shadow: inset 4px 0 var(--tpv-v3-blue, #2a72b6);
+}
+
+.sales-document-customer-selector :is(button, input):focus-visible {
+  outline: 2px solid #236eaa;
+  outline-offset: 2px;
+}
+
+.sales-document-customer-option:focus-visible {
+  outline: 2px solid #236eaa;
+  outline-offset: -2px;
+}
+
+.sales-document-customer-status {
+  margin: 0;
+  padding: 20px 12px;
+  color: #4a6179;
+  font-size: 14px;
+}
+
+.sales-document-customer-selector > .sales-document-customer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--customer-dialog-border);
+  background: var(--tpv-v3-surface-alt, #f4f7fa);
+}
+
+.sales-document-customer-help {
+  display: grid;
+  gap: 4px;
+  margin-right: auto;
+  color: #405872;
+  font-size: 12px;
+}
+
+.sales-document-customer-count {
+  font-weight: 700;
+}
+
+.sales-document-customer-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.sales-document-customer-actions kbd {
+  padding: 2px 4px;
+  border: 1px solid currentColor;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.sales-document-customer-actions > .sales-document-customer-confirm {
+  border-color: var(--customer-dialog-navy);
+  background: var(--customer-dialog-navy);
+  color: #fff;
+}
+
+.sales-document-customer-actions > button:hover:not(:disabled) {
+  background: #e5eff8;
+}
+
+.sales-document-customer-actions > .sales-document-customer-confirm:hover:not(:disabled) {
+  background: #215488;
+}
+
+.sales-document-customer-actions > button:disabled {
+  border-color: #c4ced8;
+  background: #e8edf2;
+  color: #677b91;
+  cursor: default;
+}
+
+/* The parent's touch keyboard is a real layout row; keep the result list usable. */
+.sales-document-customer-overlay .sales-document-customer-selector.sale-touch-keyboard-host {
+  width: min(1000px, calc(100dvw - 32px)) !important;
+  height: min(820px, calc(100dvh - 32px));
+}
+
+.sales-document-customer-selector.sale-touch-keyboard-host > .sales-document-customer-table {
+  min-height: 130px;
+  overflow: auto;
+}
+
+.sales-document-customer-selector.sale-touch-keyboard-host .sales-document-customer-option {
+  min-height: 44px;
+}
+
+.sales-document-customer-selector > .sale-touch-field-keyboard {
+  flex: 0 1 auto;
+  min-height: 120px;
+  max-height: 310px;
+  overflow: auto;
+}
+
+.sales-document-customer-selector .sale-touch-field-keyboard .touch-alpha-keyboard {
+  --touch-alpha-key-height: clamp(44px, 5.5dvh, 52px);
+}
+
+@media (max-width: 650px) {
+  .sales-document-customer-columns,
+  .sales-document-customer-option {
+    grid-template-columns: minmax(54px, 0.7fr) minmax(0, 2fr) minmax(94px, 1fr);
+  }
+
+  .sales-document-customer-columns > span,
+  .sales-document-customer-option > span,
+  .sales-document-customer-option > strong {
+    padding: 10px 7px;
+  }
+
+  .sales-document-customer-actions {
+    flex-wrap: wrap;
+  }
+
+  .sales-document-customer-help {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .sales-document-customer-actions > button {
+    flex: 1 1 auto;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .sales-document-customer-actions > button kbd {
+    display: none;
+  }
+}
+
+@media (max-height: 640px) {
+  .sales-document-customer-selector > .sales-document-customer-search,
+  .sales-document-customer-selector > .sales-document-customer-actions {
+    padding: 8px 12px;
+  }
+
+  .sales-document-customer-selector.sale-touch-keyboard-host > .sales-document-customer-table {
+    min-height: 130px;
+  }
+
+  .sales-document-customer-selector > .sale-touch-field-keyboard {
+    max-height: 190px;
+  }
+}

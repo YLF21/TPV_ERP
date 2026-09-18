@@ -10,8 +10,11 @@ import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.document.SaleLineDeletionView;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,7 @@ public class ControlAlertDetectionService {
             CommercialDocumentType.ALBARAN_VENTA);
 
     private final ControlRuleRepository rules;
+    private final ControlRuleVersionRepository ruleVersions;
     private final ControlEventRepository events;
     private final ControlAlertRepository alerts;
     private final ControlAlertHistoryRepository history;
@@ -38,6 +42,7 @@ public class ControlAlertDetectionService {
 
     public ControlAlertDetectionService(
             ControlRuleRepository rules,
+            ControlRuleVersionRepository ruleVersions,
             ControlEventRepository events,
             ControlAlertRepository alerts,
             ControlAlertHistoryRepository history,
@@ -45,6 +50,7 @@ public class ControlAlertDetectionService {
             CurrentOrganization organization,
             Clock clock) {
         this.rules = rules;
+        this.ruleVersions = ruleVersions;
         this.events = events;
         this.alerts = alerts;
         this.history = history;
@@ -77,12 +83,9 @@ public class ControlAlertDetectionService {
             UUID userId,
             String userName,
             java.time.Instant now) {
-        // APP VENTA expresses its "precio deseado" action as the percentage needed
-        // to lower the line price. Only the original request preserves that manual
-        // intent; the confirmed document can also contain automatic promotions.
         if (originalSnapshot == null) return;
-        var changedLines = originalSnapshot.lines().stream()
-                .filter(line -> line.discountPercent().signum() > 0)
+        var changedLines = originalSnapshot.priceChanges().stream()
+                .filter(line -> line.originalPrice().compareTo(line.appliedPrice()) != 0)
                 .toList();
         if (changedLines.isEmpty()) return;
 
@@ -94,7 +97,7 @@ public class ControlAlertDetectionService {
                 document.getTiendaId(), ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT)) {
             var threshold = ControlRuleConfiguration.threshold(rule.getConfiguration());
             var matchingLines = changedLines.stream()
-                    .filter(line -> line.discountPercent().compareTo(threshold) > 0)
+                    .filter(line -> line.reductionExceeds(threshold))
                     .toList();
             if (matchingLines.isEmpty()) continue;
             emit(rule, "DOCUMENT", document.getId(), document.getId(), document.getNumero(), terminalId,
@@ -104,16 +107,19 @@ public class ControlAlertDetectionService {
 
     private static Map<String, Object> manualPriceData(
             CommercialDocument document,
-            List<ManualLineDiscount> lines,
+            List<ManualPriceChange> lines,
             BigDecimal threshold) {
         var data = new LinkedHashMap<String, Object>();
         data.put("documentType", document.getTipo().name());
         data.put("documentNumber", document.getNumero());
+        data.put("currency", document.getMoneda());
         if (threshold != null) data.put("thresholdPercent", threshold);
         data.put("changedLines", lines.stream().map(line -> Map.<String, Object>of(
                 "position", line.position(),
                 "productId", line.productId().toString(),
-                "changePercent", line.discountPercent())).toList());
+                "originalPrice", line.originalPrice(),
+                "appliedPrice", line.appliedPrice(),
+                "changePercent", line.reductionPercent())).toList());
         return data;
     }
 
@@ -152,58 +158,78 @@ public class ControlAlertDetectionService {
     }
 
     @Transactional
-    public void detectSaleScreenCleared(
-            UUID operationId,
-            List<SaleLineDeletionView> deletedLines,
-            UUID terminalId,
-            Authentication authentication) {
+    public void detectRecordedDeletion(UUID saleOperationId, UUID deletionOperationId, boolean fullTicketClear,
+            List<SaleLineDeletionView> recorded, List<DeletionPoint> points, List<SaleLineDeletionView> sequenceLines,
+            UUID terminalId, Instant occurredAt, Instant receivedAt, Authentication authentication) {
         var storeId = organization.currentStore().getId();
         var user = organization.currentUser(authentication);
-        var now = clock.instant();
-        var data = new LinkedHashMap<String, Object>();
-        data.put("lineCount", deletedLines.size());
-        data.put("total", deletedLines.stream().map(SaleLineDeletionView::total)
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
-        data.put("lines", deletedLines.stream().map(line -> Map.<String, Object>of(
-                "productId", line.productId().toString(),
-                "code", line.code(),
-                "name", line.name(),
-                "quantity", line.quantity(),
-                "unitPrice", line.unitPrice(),
-                "total", line.total())).toList());
-        for (var rule : activeRules(storeId, ControlAlertType.SALE_SCREEN_CLEARED)) {
-            emit(rule, "SALE_SCREEN", operationId, null, null, terminalId,
-                    user.getId(), user.getUserName(), now, data);
+        var versions = ruleVersions.findEffectiveForDeletionSequence(storeId, terminalId, user.getId(),
+                saleOperationId, occurredAt, List.of(ControlAlertType.SALE_SCREEN_CLEARED.name(),
+                        ControlAlertType.CONSECUTIVE_LINE_DELETIONS.name()));
+        if (fullTicketClear) {
+            var rule = effectiveDeletionRule(versions, ControlAlertType.SALE_SCREEN_CLEARED, occurredAt);
+            if (rule != null && rule.isActive()) {
+                var data = new LinkedHashMap<String, Object>();
+                data.put("lineCount", recorded.size());
+                data.put("total", recorded.stream().map(SaleLineDeletionView::total)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
+                data.put("occurredAt", occurredAt.toString());
+                data.put("receivedAt", receivedAt.toString());
+                data.put("lines", deletionLineData(recorded));
+                emitDeletion(rule, "SALE_SCREEN", deletionOperationId, terminalId,
+                        user.getId(), user.getUserName(), occurredAt, receivedAt, data);
+            }
+        }
+        // A late point can complete an already received later prefix. Never attach future evidence
+        // to an earlier occurrence, or use the current mutable rule to interpret that occurrence.
+        for (var point : points) {
+            if (point.occurredAt().isBefore(occurredAt)) continue;
+            var rule = effectiveDeletionRule(versions, ControlAlertType.CONSECUTIVE_LINE_DELETIONS,
+                    point.occurredAt());
+            if (rule == null || !rule.isActive()) continue;
+            var minimumCount = ControlRuleConfiguration.minimumCount(rule.getConfiguration());
+            if (point.deletionCount() < minimumCount) continue;
+            var data = new LinkedHashMap<String, Object>();
+            data.put("minimumCount", minimumCount);
+            data.put("deletionCount", point.deletionCount());
+            data.put("occurredAt", point.occurredAt().toString());
+            data.put("receivedAt", point.receivedAt().toString());
+            data.put("lines", deletionLineData(sequenceLines.stream()
+                    .filter(line -> !line.deletedAt().isAfter(point.occurredAt())).toList()));
+            emitDeletion(rule, "SALE_LINE_DELETION_SEQUENCE", saleOperationId, terminalId,
+                    user.getId(), user.getUserName(), point.occurredAt(), receivedAt, data);
+            break; // The existing contract produces at most one alert per rule and sale sequence.
         }
     }
 
-    @Transactional
-    public void detectConsecutiveLineDeletions(
-            UUID saleOperationId,
-            int deletionCount,
-            List<SaleLineDeletionView> deletedLines,
-            UUID terminalId,
-            Authentication authentication) {
-        var storeId = organization.currentStore().getId();
-        var user = organization.currentUser(authentication);
-        var now = clock.instant();
-        for (var rule : activeRules(storeId, ControlAlertType.CONSECUTIVE_LINE_DELETIONS)) {
-            var minimumCount = ControlRuleConfiguration.minimumCount(rule.getConfiguration());
-            if (deletionCount < minimumCount) continue;
-            var data = new LinkedHashMap<String, Object>();
-            data.put("minimumCount", minimumCount);
-            data.put("deletionCount", deletionCount);
-            data.put("lines", deletedLines.stream().map(line -> Map.<String, Object>of(
+    private static ControlRuleVersion effectiveDeletionRule(List<ControlRuleVersion> versions,
+            ControlAlertType type, Instant occurredAt) {
+        return versions.stream().filter(version -> version.getType() == type
+                        && !version.getChangedAt().isAfter(occurredAt))
+                .max(Comparator.comparingInt(ControlRuleVersion::getRuleVersion)).orElse(null);
+    }
+
+    private static List<Map<String, Object>> deletionLineData(List<SaleLineDeletionView> lines) {
+        return lines.stream().map(line -> Map.<String, Object>of(
                     "productId", line.productId().toString(),
                     "code", line.code(),
                     "name", line.name(),
                     "quantity", line.quantity(),
                     "unitPrice", line.unitPrice(),
                     "total", line.total(),
-                    "deletedAt", line.deletedAt().toString())).toList());
-            emit(rule, "SALE_LINE_DELETION_SEQUENCE", saleOperationId,
-                    null, null, terminalId, user.getId(), user.getUserName(), now, data);
-        }
+                    "deletedAt", line.deletedAt().toString(),
+                    "receivedAt", line.receivedAt().toString())).toList();
+    }
+
+    public record DeletionPoint(UUID operationId, Instant occurredAt, Instant receivedAt, int deletionCount) { }
+
+    private void emitDeletion(ControlRuleVersion rule, String sourceType, UUID sourceId, UUID terminalId,
+            UUID userId, String userName, Instant occurredAt, Instant createdAt, Map<String, Object> data) {
+        if (events.existsByRuleIdAndSourceTypeAndSourceId(rule.getRuleId(), sourceType, sourceId)) return;
+        var event = events.save(new ControlEvent(rule, sourceType, sourceId, terminalId,
+                userId, userName, occurredAt, data));
+        var alert = alerts.save(new ControlAlert(event, createdAt));
+        history.save(new ControlAlertHistory(alert, null, ControlAlertStatus.NEW, null, userId, createdAt));
     }
 
     private void detectManualDiscount(
@@ -213,7 +239,10 @@ public class ControlAlertDetectionService {
             UUID userId,
             String userName,
             java.time.Instant now) {
-        var values = snapshot == null ? ManualDiscountSnapshot.from(document) : snapshot;
+        // A repriced line can contain automatic benefits. Only original evidence
+        // can establish that the operator entered its discount.
+        var values = snapshot == null
+                ? ManualDiscountSnapshot.globalOnly(document.getDescuentoGlobal()) : snapshot;
         for (var rule : activeRules(document.getTiendaId(), ControlAlertType.MANUAL_DISCOUNT_OVER_PERCENT)) {
             var threshold = ControlRuleConfiguration.threshold(rule.getConfiguration());
             var matchingLines = new ArrayList<Map<String, Object>>();
@@ -502,15 +531,23 @@ public class ControlAlertDetectionService {
 
     public record ManualDiscountSnapshot(
             BigDecimal globalDiscountPercent,
-            List<ManualLineDiscount> lines) {
+            List<ManualLineDiscount> lines,
+            List<ManualPriceChange> priceChanges) {
+
+        public ManualDiscountSnapshot(BigDecimal globalDiscountPercent, List<ManualLineDiscount> lines) {
+            this(globalDiscountPercent, lines, List.of());
+        }
 
         public ManualDiscountSnapshot {
             globalDiscountPercent = globalDiscountPercent == null ? BigDecimal.ZERO : globalDiscountPercent;
             lines = List.copyOf(lines == null ? List.of() : lines);
+            priceChanges = List.copyOf(priceChanges == null ? List.of() : priceChanges);
         }
 
         public static ManualDiscountSnapshot from(DocumentCommand command) {
-            return new ManualDiscountSnapshot(command.descuentoGlobal(), fromCommands(command.lineas()));
+            var explicit = command.documentDiscountPercent();
+            var global = explicit != null && explicit.signum() > 0 ? explicit : command.descuentoGlobal();
+            return new ManualDiscountSnapshot(global, fromCommands(command.lineas()));
         }
 
         public static ManualDiscountSnapshot from(
@@ -522,14 +559,14 @@ public class ControlAlertDetectionService {
             return new ManualDiscountSnapshot(globalDiscount, List.of());
         }
 
-        public static ManualDiscountSnapshot from(CommercialDocument document) {
-            return new ManualDiscountSnapshot(
-                    document.getDescuentoGlobal(),
-                    document.getLineas().stream()
-                            .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
-                            .map(line -> new ManualLineDiscount(
-                                    line.getPosicion(), line.getProductoId(), line.getDescuento()))
-                            .toList());
+        public ManualDiscountSnapshot remapPositions(Map<Integer, Integer> positions) {
+            return new ManualDiscountSnapshot(globalDiscountPercent,
+                    lines.stream().filter(line -> positions.containsKey(line.position()))
+                            .map(line -> new ManualLineDiscount(positions.get(line.position()),
+                                    line.productId(), line.discountPercent())).toList(),
+                    priceChanges.stream().filter(line -> positions.containsKey(line.position()))
+                            .map(line -> new ManualPriceChange(positions.get(line.position()),
+                                    line.productId(), line.originalPrice(), line.appliedPrice())).toList());
         }
 
         private static List<ManualLineDiscount> fromCommands(List<DocumentLineCommand> lines) {
@@ -537,7 +574,10 @@ public class ControlAlertDetectionService {
             int position = 0;
             for (var line : lines == null ? List.<DocumentLineCommand>of() : lines) {
                 position++;
-                if (line == null || line.productoId() == null) continue;
+                if (line == null || line.productoId() == null
+                        || line.originalDocumentLineId() != null
+                        || line.historicalOpenPriceOverride()
+                        || line.lineType() != null && line.lineType() != DocumentLineType.PRODUCT) continue;
                 result.add(new ManualLineDiscount(
                         position, line.productoId(),
                         line.descuento() == null ? BigDecimal.ZERO : line.descuento()));
@@ -547,6 +587,29 @@ public class ControlAlertDetectionService {
     }
 
     public record ManualLineDiscount(int position, UUID productId, BigDecimal discountPercent) {
+    }
+
+    public record ManualPriceChange(
+            int position, UUID productId, BigDecimal originalPrice, BigDecimal appliedPrice) {
+
+        public ManualPriceChange {
+            java.util.Objects.requireNonNull(productId, "productId");
+            java.util.Objects.requireNonNull(originalPrice, "originalPrice");
+            java.util.Objects.requireNonNull(appliedPrice, "appliedPrice");
+            if (position < 1 || originalPrice.signum() <= 0 || appliedPrice.signum() < 0) {
+                throw new IllegalArgumentException("Evidencia de cambio de precio invalida");
+            }
+        }
+
+        boolean reductionExceeds(BigDecimal threshold) {
+            return originalPrice.subtract(appliedPrice).multiply(new BigDecimal("100"))
+                    .compareTo(originalPrice.multiply(threshold)) > 0;
+        }
+
+        BigDecimal reductionPercent() {
+            return originalPrice.subtract(appliedPrice).multiply(new BigDecimal("100"))
+                    .divide(originalPrice, 6, RoundingMode.HALF_UP).stripTrailingZeros();
+        }
     }
 
     public record ParkedSaleDeletionSnapshot(

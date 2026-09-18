@@ -279,7 +279,7 @@ test.describe("APP VENTA operational flows", () => {
     await expect(page.locator(".sale-ticket-lines.sale-empty-state")).toHaveText("Sin venta iniciada");
 
     await page.keyboard.press("Control+G");
-    const dialog = page.getByRole("dialog", { name: "Ventas aparcadas" });
+    const dialog = page.getByRole("dialog", { name: "Ventas guardadas" });
     await expect(dialog.getByText(marker)).toBeVisible();
 
     const list = dialog.getByRole("listbox");
@@ -420,6 +420,18 @@ test.describe("APP VENTA operational flows", () => {
     await expect(tickets).toBeVisible();
     await expect(tickets.getByPlaceholder("Número, cliente, fecha o estado")).toBeVisible();
     await tickets.getByRole("button", { name: "Cerrar", exact: true }).click();
+
+    await page.locator(".report-user-button").click();
+    await page.getByRole("menuitem", { name: "Cerrar usuario" }).click();
+    await expect(page.locator(".sale-screen")).toBeVisible();
+    await expect(page.locator(".login-screen")).not.toBeVisible();
+    await expect(page.locator(".sale-ticket-line", { hasText: products[0].name })).toBeVisible();
+
+    await page.getByRole("combobox", { name: /Buscar producto/i }).click();
+    await page.keyboard.press("Control+F4");
+    await page.getByRole("dialog", { name: "Eliminar venta actual" })
+      .getByRole("button", { name: "Eliminar venta", exact: true }).click();
+    await expect(page.locator(".sale-ticket-lines.sale-empty-state")).toHaveText("Sin venta iniciada");
 
     await page.locator(".report-user-button").click();
     await page.getByRole("menuitem", { name: "Cerrar usuario" }).click();

@@ -138,6 +138,7 @@ export function pendingCreateBody(
   };
   return {
     ...documentDraft,
+    wholesaleMode: draft.wholesaleMode === true,
     ...(draft.creditOverride
       ? {
           creditOverride: {

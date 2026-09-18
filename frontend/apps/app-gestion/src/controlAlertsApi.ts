@@ -12,6 +12,7 @@ export const controlAlertTypes = [
   "MANUAL_NEGATIVE_QUANTITY",
   "REFUND_POLICY_OVERRIDE",
   "CASH_DRAWER_OPENED",
+  "CASH_SESSION_DISCREPANCY",
   "PRODUCT_CATALOG_MODIFIED",
   "PARKED_SALE_DELETED"
 ] as const;
@@ -22,7 +23,7 @@ export const controlAlertPriorities = ["INFORMATIONAL", "MEDIUM", "HIGH", "CRITI
 export type ControlAlertType = typeof controlAlertTypes[number];
 export type ControlAlertStatus = typeof controlAlertStatuses[number];
 export type ControlAlertPriority = typeof controlAlertPriorities[number];
-export type ControlAlertTransition = "REVIEW" | "CLOSE" | "DISMISS";
+export type ControlAlertTransition = "REVIEW" | "CLOSE" | "DISMISS" | "REOPEN";
 export type ControlRuleParameterKind = "NONE" | "QUANTITY" | "PERCENTAGE";
 
 export type ControlAlert = {
@@ -36,11 +37,14 @@ export type ControlAlert = {
   ruleVersion?: number | null;
   ruleName?: string | null;
   terminalId?: string | null;
+  terminalName?: string | null;
   userId?: string | null;
   userName?: string | null;
   data?: Record<string, unknown> | null;
   priority: ControlAlertPriority;
   assigneeId?: string | null;
+  assigneeName?: string | null;
+  reviewComment?: string | null;
   dueAt?: string | null;
   updatedAt?: string | null;
   history?: ControlAlertHistoryEntry[];
@@ -53,6 +57,7 @@ export type ControlAlertHistoryEntry = {
   newStatus: ControlAlertStatus;
   comment?: string | null;
   changedBy?: string | null;
+  changedByName?: string | null;
   changedAt: string;
 };
 
@@ -94,6 +99,33 @@ export type ControlAlertFilters = {
   sortDirection?: "asc" | "desc";
 };
 
+export type ControlAlertViewPreference = {
+  showIndicators: boolean;
+  showDetail: boolean;
+  groupByDay: boolean;
+  compact: boolean;
+  defaultPeriod: "LAST_7_DAYS" | "TODAY" | "CURRENT_MONTH";
+  refreshSeconds: 0 | 15 | 30 | 60;
+  sortBy: string;
+  sortDirection: "asc" | "desc";
+  storeTimezone?: string;
+  storeLocale?: string;
+};
+
+export const defaultControlAlertView: ControlAlertViewPreference = {
+  showIndicators: true, showDetail: true, groupByDay: true, compact: false,
+  defaultPeriod: "LAST_7_DAYS", refreshSeconds: 30, sortBy: "occurredAt", sortDirection: "desc"
+};
+
+export function loadControlAlertViewPreference(token?: string, signal?: AbortSignal) {
+  return apiRequest<ControlAlertViewPreference>("/control/alerts/view-preference", { token, signal });
+}
+
+export function saveControlAlertViewPreference(preference: ControlAlertViewPreference, token?: string) {
+  const { storeTimezone: _timezone, storeLocale: _locale, ...body } = preference;
+  return apiRequest<ControlAlertViewPreference>("/control/alerts/view-preference", { method: "PUT", body, token });
+}
+
 export type RelatedDocument = {
   id: string;
   type: string;
@@ -101,6 +133,7 @@ export type RelatedDocument = {
   status: string;
   date: string;
   customerId?: string | null;
+  customerName?: string | null;
   supplierId?: string | null;
   globalDiscount: number;
   lines: Array<{
@@ -188,10 +221,13 @@ export type ControlAlertWorkHistoryEntry = {
   newPriority: ControlAlertPriority;
   previousAssigneeId?: string | null;
   newAssigneeId?: string | null;
+  previousAssigneeName?: string | null;
+  newAssigneeName?: string | null;
   previousDueAt?: string | null;
   newDueAt?: string | null;
   comment?: string | null;
   changedBy?: string | null;
+  changedByName?: string | null;
   changedAt: string;
 };
 
@@ -231,8 +267,8 @@ function queryString(filters: ControlAlertFilters): string {
   return params.toString();
 }
 
-export async function loadControlAlerts(filters: ControlAlertFilters, token?: string): Promise<ControlAlertPage> {
-  const page = await apiRequest<SpringPage<ControlAlert>>(`/control/alerts?${queryString(filters)}`, { token });
+export async function loadControlAlerts(filters: ControlAlertFilters, token?: string, signal?: AbortSignal): Promise<ControlAlertPage> {
+  const page = await apiRequest<SpringPage<ControlAlert>>(`/control/alerts?${queryString(filters)}`, { token, signal });
   return {
     items: page.content,
     page: page.number,
@@ -242,8 +278,8 @@ export async function loadControlAlerts(filters: ControlAlertFilters, token?: st
   };
 }
 
-export async function loadControlAlert(id: string, token?: string): Promise<ControlAlert> {
-  const detail = await apiRequest<ControlAlertDetailResponse>(`/control/alerts/${encodeURIComponent(id)}`, { token });
+export async function loadControlAlert(id: string, token?: string, signal?: AbortSignal): Promise<ControlAlert> {
+  const detail = await apiRequest<ControlAlertDetailResponse>(`/control/alerts/${encodeURIComponent(id)}`, { token, signal });
   return { ...detail.alert, history: detail.history, workHistory: detail.workHistory };
 }
 
@@ -291,9 +327,15 @@ export function loadControlRuleCatalog(token?: string) {
   return apiRequest<ControlRuleCatalogItem[]>("/control/rules/catalog", { token });
 }
 
-export function loadControlAlertGroups(from: string, to: string, token?: string) {
+export function loadControlAlertGroups(from: string, to: string, token?: string, signal?: AbortSignal,
+  filters?: Pick<ControlAlertFilters, "status" | "search" | "priority" | "assigneeId" | "overdue">) {
   const params = new URLSearchParams({ from, to });
-  return apiRequest<ControlRuleAlertGroup[]>(`/control/alerts/groups?${params}`, { token });
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.search.trim()) params.set("search", filters.search.trim());
+  if (filters?.priority) params.set("priority", filters.priority);
+  if (filters?.assigneeId) params.set("assigneeId", filters.assigneeId);
+  if (filters?.overdue) params.set("overdue", "true");
+  return apiRequest<ControlRuleAlertGroup[]>(`/control/alerts/groups?${params}`, { token, signal });
 }
 
 export function loadControlAlertsAnalytics(from: string, to: string, overdueHours: number, token?: string) {

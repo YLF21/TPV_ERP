@@ -526,7 +526,7 @@ describe("SalesDocumentScreen", () => {
         }],
       });
       if (path === "/pos/sales-document-drafts/draft-normal/quote") {
-        expect(options?.body).not.toHaveProperty("wholesaleMode");
+        expect(options?.body).toHaveProperty("wholesaleMode", false);
         expect(options?.body).toMatchObject({
           lines: [{
             cartLineId: "line-normal",
@@ -560,7 +560,7 @@ describe("SalesDocumentScreen", () => {
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(save);
     await waitFor(() => expect(updatedBodies).toHaveLength(1));
-    expect(updatedBodies[0]).not.toHaveProperty("wholesaleMode");
+    expect(updatedBodies[0]).toHaveProperty("wholesaleMode", false);
     expect(updatedBodies[0]).toMatchObject({
       lines: [{
         cartLineId: "line-normal",
@@ -679,6 +679,202 @@ describe("SalesDocumentScreen", () => {
       wholesaleMode: true,
     });
     expect(checkoutBodies[0].checkoutId).not.toBe(draftSaveBodies[0].checkoutId);
+  });
+
+  it.each(["Factura", "Albarán"])("keeps %s editable and payable after cancelling checkout", async (documentType) => {
+    const savedBodies: unknown[] = [];
+    configureDocumentApi([{
+      id: "product-1",
+      code: "P-001",
+      name: "Producto fiscal",
+      salePrice: 10,
+      active: true,
+      taxesIncluded: true,
+      taxRegime: "IVA",
+      taxPercentage: 21,
+    }], savedBodies);
+
+    render(<SalesDocumentScreen
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: documentType }));
+    fireEvent.click(screen.getByRole("button", { name: /seleccionar cliente/i }));
+    fireEvent.doubleClick(await within(screen.getByRole("dialog", {
+      name: /seleccionar cliente/i,
+    })).findByRole("option", { name: /cliente fiscal sl/i }));
+    const quickEntry = screen.getByLabelText(/entrada.*c.digo/i);
+    fireEvent.change(quickEntry, { target: { value: "P-001" } });
+    fireEvent.submit(quickEntry.closest("form")!);
+
+    const confirm = screen.getByRole("button", { name: /confirmar y cobrar/i });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    const payment = await screen.findByRole("dialog", { name: "COBRO" });
+    await waitFor(() => expect(within(payment).getByRole("button", {
+      name: "ACEPTAR",
+    })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "COBRO" })).not.toBeInTheDocument());
+    expect(screen.getByRole("table", { name: "Líneas del documento" })).toHaveTextContent("Producto fiscal");
+    expect(screen.getByRole("button", { name: /cliente fiscal sl/i })).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar borrador" })).toBeEnabled());
+    expect(confirm).toBeEnabled();
+    expect(savedBodies).toHaveLength(0);
+
+    fireEvent.click(confirm);
+    const reopenedPayment = await screen.findByRole("dialog", { name: "COBRO" });
+    await waitFor(() => expect(within(reopenedPayment).getByRole("button", {
+      name: "ACEPTAR",
+    })).toBeEnabled());
+  });
+
+  it.each(["success", "failure"])("locks document edits until a slow draft save returns %s", async (outcome) => {
+    const savedBodies: unknown[] = [];
+    configureDocumentApi([{
+      id: "product-1", code: "P-001", name: "Producto fiscal", salePrice: 10, active: true,
+      taxesIncluded: true, taxRegime: "IVA", taxPercentage: 21,
+    }, {
+      id: "product-2", code: "P-002", name: "Producto adicional", salePrice: 5, active: true,
+      taxesIncluded: true, taxRegime: "IVA", taxPercentage: 21,
+    }]);
+    let finishSave!: () => void;
+    const saveResponse = new Promise((resolve, reject) => {
+      finishSave = () => outcome === "success"
+        ? resolve({ document: { id: "draft-1" } })
+        : reject(new Error("No se pudo guardar el borrador"));
+    });
+    const respond = apiRequest.getMockImplementation()!;
+    apiRequest.mockImplementation((path: string, options?: { body?: unknown }) => {
+      if (path === "/pos/sales-document-checkouts") {
+        savedBodies.push(options?.body);
+        return saveResponse;
+      }
+      return respond(path, options);
+    });
+
+    render(<SalesDocumentScreen
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+      interfaceMode="TOUCH"
+    />);
+    fireEvent.click(screen.getByRole("button", { name: /seleccionar cliente/i }));
+    fireEvent.doubleClick(await within(screen.getByRole("dialog", {
+      name: /seleccionar cliente/i,
+    })).findByRole("option", { name: /cliente fiscal sl/i }));
+    const quickEntry = screen.getByLabelText(/entrada.*c.digo/i);
+    fireEvent.change(quickEntry, { target: { value: "P-001" } });
+    fireEvent.submit(quickEntry.closest("form")!);
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad +1" }));
+    const save = screen.getByRole("button", { name: "Guardar borrador" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.change(quickEntry, { target: { value: "P-002" } });
+    fireEvent.click(save);
+    expect(savedBodies).toHaveLength(1);
+    expect(savedBodies[0]).toMatchObject({ lines: [{ productoId: "product-1", cantidad: 2 }] });
+
+    fireEvent.submit(quickEntry.closest("form")!);
+    expect(screen.queryByText("Producto adicional")).not.toBeInTheDocument();
+    expect(quickEntry).toBeDisabled();
+    expect(within(quickEntry.closest("form")!).getByRole("button")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /cliente fiscal sl/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Factura" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Albarán" })).toBeDisabled();
+    for (const name of ["Cantidad +1", "Cantidad -1"]) {
+      const quantityButton = screen.getByRole("button", { name });
+      expect(quantityButton).toBeDisabled();
+      fireEvent.click(quantityButton);
+      expect(within(screen.getByText("Producto fiscal").closest("tr")!).getByText("2")).toBeVisible();
+    }
+    fireEvent.keyDown(window, { key: "x" });
+    expect(quickEntry).toHaveValue("P-002");
+
+    finishSave();
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Albarán" })).toBeEnabled();
+    if (outcome === "success") {
+      expect(screen.queryByText("Producto fiscal")).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByText("No se pudo guardar el borrador")).toBeVisible();
+      expect(save).toBeEnabled();
+      fireEvent.submit(quickEntry.closest("form")!);
+      expect(screen.getByText("Producto adicional")).toBeVisible();
+    }
+  });
+
+  it.each([
+    ["1.", "1.00"], ["1.5", "1.50"], ["1,", "1.00"], ["1,50", "1.50"],
+  ])("adds product code zero at the quick price %s", async (input, expectedPrice) => {
+    const savedBodies: unknown[] = [];
+    configureDocumentApi([{
+      id: "product-zero", code: "0", name: "Artículo libre", salePrice: 0,
+      active: true, taxesIncluded: true, taxRegime: "IVA", taxPercentage: 21,
+    }], savedBodies);
+    render(<SalesDocumentScreen locale="es" session={session} terminalContext={terminalContext} />);
+    const quickEntry = screen.getByLabelText(/entrada.*c.digo/i);
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /seleccionar cliente/i }));
+    fireEvent.doubleClick(within(screen.getByRole("dialog", {
+      name: /seleccionar cliente/i,
+    })).getByRole("option", { name: /cliente fiscal sl/i }));
+    fireEvent.change(quickEntry, { target: { value: "2" } });
+    fireEvent.keyDown(quickEntry, { key: "*", code: "Digit8" });
+    fireEvent.change(quickEntry, { target: { value: input } });
+    fireEvent.submit(quickEntry.closest("form")!);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Artículo libre")).toBeVisible();
+    expect(quickEntry).toHaveValue("");
+    expect(screen.getByText(/^Cantidad: 1$/)).toBeVisible();
+    const save = screen.getByRole("button", { name: "Guardar borrador" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(savedBodies).toHaveLength(1));
+    expect(savedBodies[0]).toMatchObject({
+      lines: [{ productoId: "product-zero", cantidad: 2, precioUnitario: expectedPrice,
+        temporaryPriceOverride: false }],
+      quotedTotal: (2 * Number(expectedPrice)).toFixed(2),
+    });
+  });
+
+  it("keeps exact decimal product identifiers ahead of quick prices", async () => {
+    configureDocumentApi([
+      { id: "product-zero", code: "0", name: "Artículo libre", salePrice: 0, active: true },
+      { id: "product-code", code: "1.5", name: "Código decimal", salePrice: 9, active: true },
+      { id: "product-barcode", code: "P-2", barcode: "2.5", name: "Barras decimal", salePrice: 8, active: true },
+    ]);
+    render(<SalesDocumentScreen locale="es" session={session} terminalContext={terminalContext} />);
+    const quickEntry = screen.getByLabelText(/entrada.*c.digo/i);
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    for (const value of ["1.5", "2.5"]) {
+      fireEvent.change(quickEntry, { target: { value } });
+      fireEvent.submit(quickEntry.closest("form")!);
+    }
+    expect(screen.getByText("Código decimal")).toBeVisible();
+    expect(screen.getByText("Barras decimal")).toBeVisible();
+    expect(screen.queryByText("Artículo libre")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { product: null, input: "1.5", error: "No está configurado el producto con código 0" },
+    { product: { active: false }, input: "1.5", error: "El producto con código 0 no está activo" },
+    { product: { active: true }, input: "0.", error: "Introduce un precio mayor que 0" },
+  ])("rejects an unavailable product zero or invalid quick price: $error", async ({ product, input, error }) => {
+    configureDocumentApi(product ? [{
+      id: "product-zero", code: "0", name: "Artículo libre", salePrice: 0, ...product,
+    }] : []);
+    render(<SalesDocumentScreen locale="es" session={session} terminalContext={terminalContext} />);
+    const quickEntry = screen.getByLabelText(/entrada.*c.digo/i);
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    fireEvent.change(quickEntry, { target: { value: input } });
+    fireEvent.submit(quickEntry.closest("form")!);
+    expect(screen.getByRole("alert")).toHaveTextContent(error);
+    expect(screen.queryByText("Artículo libre")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("sorts, reorders, resizes and aligns the document line columns", async () => {

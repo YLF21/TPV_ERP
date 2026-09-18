@@ -82,7 +82,7 @@ export async function apiPut<T>(request: APIRequestContext, token: string, path:
   return response.json() as Promise<T>;
 }
 
-export async function createProductFixture(request: APIRequestContext, token: string, marker: string) {
+export async function createProductFixture(request: APIRequestContext, token: string, marker: string, salePrice = 10) {
   const [families, taxes] = await Promise.all([
     apiGet<Array<{ id: string }>>(request, token, "/families"),
     apiGet<Array<{ id: string }>>(request, token, "/taxes/selectable")
@@ -105,7 +105,7 @@ export async function createProductFixture(request: APIRequestContext, token: st
     code: marker,
     barcode: null,
     barcode2: null,
-    salePrice: 10,
+    salePrice,
     memberPrice: null,
     wholesalePrice: null,
     offerPrice: null,

@@ -239,6 +239,189 @@ class DocumentServiceTest {
     }
 
     @Test
+    void currentDocumentPercentReachesControlDetectionAfterCashConfirmation() {
+        var legacy = command(CommercialDocumentType.TICKET);
+        var command = new DocumentCommand(legacy.almacenId(), legacy.tipo(), legacy.fecha(),
+                legacy.clienteId(), null, null, BigDecimal.ZERO, true, legacy.lineas(),
+                null, new BigDecimal("20.00"));
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(command,
+                List.of(new PaymentCommand(cash.getId(), new BigDecimal("8.00"), true, null, null)),
+                null, null, null, command.documentDiscountPercent(), authentication());
+
+        var evidence = org.mockito.ArgumentCaptor.forClass(
+                com.tpverp.backend.control.ControlAlertDetectionService.ManualDiscountSnapshot.class);
+        verify(controlAlerts).detectConfirmedDocument(same(ticket), evidence.capture(), eq(terminalId), any());
+        assertThat(evidence.getValue().globalDiscountPercent()).isEqualByComparingTo("20.00");
+        assertThat(ticket.getTotal()).isEqualByComparingTo("8.00");
+        assertThat(ticket.getDescuentoGlobal()).isZero();
+    }
+
+    @Test
+    void paymentSnapshotPreservesOriginalManualEvidenceSeparatelyFromRepricedLines() throws Exception {
+        var manualId = UUID.randomUUID();
+        var automaticId = UUID.randomUUID();
+        var changedId = UUID.randomUUID();
+        var requested = List.of(
+                new DocumentLineCommand(manualId, BigDecimal.ONE, "M", "Manual", null,
+                        new BigDecimal("10"), new BigDecimal("5"), true, "IVA", new BigDecimal("21")),
+                new DocumentLineCommand(automaticId, BigDecimal.ONE, "A", "Automatico", null,
+                        new BigDecimal("10"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21")),
+                new DocumentLineCommand(changedId, BigDecimal.ONE, "P", "Precio", null,
+                        new BigDecimal("8"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21"),
+                        DocumentLineType.PRODUCT, null, null, null, List.of(), false, true));
+        var command = new DocumentCommand(UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 9, 16), null, null, null, BigDecimal.ZERO, true,
+                requested, null, new BigDecimal("20"));
+        var quoted = new CommercialDocument(store.getId(), command.almacenId(), command.tipo(),
+                command.fecha(), user.getId(), BigDecimal.ZERO);
+        requested.forEach(line -> quoted.addLine(line.withDiscount(
+                new BigDecimal("25"), "SOCIO").toEntity(quoted)));
+        when(promotionPricing.basePrice(any(), eq(command.fecha()), any(), eq(false)))
+                .thenReturn(new BigDecimal("10"));
+        var pos = new PosCashService(service, productRepository,
+                org.mockito.Mockito.mock(com.tpverp.backend.catalog.StoreTaxRepository.class),
+                org.mockito.Mockito.mock(com.tpverp.backend.catalog.WarehouseRepository.class),
+                paymentMethodRepository, currentOrganization,
+                org.mockito.Mockito.mock(PosCashCheckoutRepository.class),
+                new PosCashTicketSnapshot(), currentTerminal);
+        var snapshot = pos.snapshot(quoted, UUID.randomUUID(),
+                new PosCashService.PreparedSale(command, java.util.Set.of()));
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+        var codec = new PosCardDocumentSnapshot(mapper);
+        var encoded = codec.serialize(snapshot);
+        var restored = codec.deserialize(encoded);
+        var evidence = DocumentService.snapshotManualDiscounts(restored);
+
+        assertThat(evidence.globalDiscountPercent()).isEqualByComparingTo("20");
+        assertThat(evidence.lines()).extracting(
+                com.tpverp.backend.control.ControlAlertDetectionService.ManualLineDiscount::discountPercent)
+                .containsExactly(new BigDecimal("5"), BigDecimal.ZERO, BigDecimal.ZERO);
+        assertThat(evidence.priceChanges()).singleElement().satisfies(change -> {
+            assertThat(change.position()).isEqualTo(3);
+            assertThat(change.originalPrice()).isEqualByComparingTo("10");
+            assertThat(change.appliedPrice()).isEqualByComparingTo("8");
+        });
+        assertThat(restored.total()).isEqualByComparingTo(quoted.getTotal());
+        assertThat(restored.lines()).allSatisfy(line ->
+                assertThat(line.descuento()).isEqualByComparingTo("25"));
+
+        var old = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(encoded);
+        old.put("schemaVersion", 4);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) old.get("ticket")).remove("manualControl");
+        var legacyEvidence = DocumentService.snapshotManualDiscounts(codec.deserialize(old.toString()));
+        assertThat(legacyEvidence.lines()).isEmpty();
+        assertThat(legacyEvidence.priceChanges()).isEmpty();
+        assertThat(legacyEvidence.globalDiscountPercent()).isZero();
+    }
+
+    @Test
+    void rejectedDiscountOnProtectedProductDoesNotGenerateControlAlerts() {
+        var productId = UUID.randomUUID();
+        var protectedProduct = product(productId, DiscountType.NONE);
+        when(protectedProduct.getSalePrice()).thenReturn(new BigDecimal("10"));
+        var requested = line(productId, "P", "Protegido", new BigDecimal("10"))
+                .withDiscount(new BigDecimal("20"), "VENTA");
+        var command = command(CommercialDocumentType.TICKET, List.of(requested));
+        var authoritative = new AuthoritativePromotionPricing(customerRepository,
+                org.mockito.Mockito.mock(com.tpverp.backend.party.MemberRepository.class));
+        var accepted = authoritative.priceLine(protectedProduct, command.fecha(),
+                AuthoritativePromotionPricing.CustomerContext.anonymous(), requested);
+        var ticket = new CommercialDocument(store.getId(), command.almacenId(), command.tipo(),
+                command.fecha(), user.getId(), BigDecimal.ZERO);
+        ticket.addLine(accepted.toEntity(ticket));
+        ticket.confirm("T-PROTECTED", user.getId(), NOW, false);
+        var evidence = service.captureManualControlSnapshot(command, ticket, 0, 0);
+        var rules = org.mockito.Mockito.mock(com.tpverp.backend.control.ControlRuleRepository.class);
+        var events = org.mockito.Mockito.mock(com.tpverp.backend.control.ControlEventRepository.class);
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(eq(store.getId()), any()))
+                .thenAnswer(call -> {
+                    com.tpverp.backend.control.ControlAlertType type = call.getArgument(1);
+                    return switch (type) {
+                        case PRODUCT_DISCOUNT_APPLIED -> List.of(new com.tpverp.backend.control.ControlRule(
+                                store.getId(), type, true, Map.of(), user.getId(), NOW));
+                        case MANUAL_DISCOUNT_OVER_PERCENT -> List.of(new com.tpverp.backend.control.ControlRule(
+                                store.getId(), type, true, Map.of("thresholdPercent", 10), user.getId(), NOW));
+                        default -> List.of();
+                    };
+                });
+        var detector = new com.tpverp.backend.control.ControlAlertDetectionService(rules,
+                org.mockito.Mockito.mock(com.tpverp.backend.control.ControlRuleVersionRepository.class), events,
+                org.mockito.Mockito.mock(com.tpverp.backend.control.ControlAlertRepository.class),
+                org.mockito.Mockito.mock(com.tpverp.backend.control.ControlAlertHistoryRepository.class),
+                productRepository, currentOrganization, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        detector.detectConfirmedDocument(ticket, evidence, terminalId, authentication());
+
+        assertThat(accepted.descuento()).isZero();
+        assertThat(evidence.lines()).isEmpty();
+        verify(events, never()).save(any());
+    }
+
+    @Test
+    void controlEvidenceExcludesReplayedLinesAndKeepsCurrentSnapshotPositions() {
+        var historical = line(UUID.randomUUID(), "H", "Historico", new BigDecimal("10"))
+                .withDiscount(new BigDecimal("30"), "VENTA");
+        var current = line(UUID.randomUUID(), "C", "Actual", new BigDecimal("10"))
+                .withDiscount(new BigDecimal("5"), "VENTA");
+        var command = command(CommercialDocumentType.TICKET, List.of(historical, current));
+        var quoted = new CommercialDocument(store.getId(), command.almacenId(), command.tipo(),
+                command.fecha(), user.getId(), BigDecimal.ZERO);
+        command.lineas().forEach(line -> quoted.addLine(line.toEntity(quoted)));
+
+        var evidence = service.captureManualControlSnapshot(command, quoted, 1, 0);
+
+        assertThat(evidence.lines()).singleElement().satisfies(line -> {
+            assertThat(line.position()).isEqualTo(2);
+            assertThat(line.productId()).isEqualTo(current.productoId());
+            assertThat(line.discountPercent()).isEqualByComparingTo("5");
+        });
+        var remapped = evidence.remapPositions(Map.of(2, 1));
+        assertThat(remapped.lines()).singleElement().satisfies(line ->
+                assertThat(line.position()).isEqualTo(1));
+    }
+
+    @Test
+    void immediateInvoiceAndDeliveryNoteConfirmationKeepTheOriginalManualDiscounts() {
+        var customer = completeCustomer();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        var saved = new java.util.HashMap<UUID, CommercialDocument>();
+        when(documentRepository.save(any())).thenAnswer(call -> {
+            CommercialDocument document = call.getArgument(0);
+            saved.put(document.getId(), document);
+            return document;
+        });
+        when(documentRepository.findById(any())).thenAnswer(call ->
+                Optional.ofNullable(saved.get(call.getArgument(0))));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+
+        for (var type : List.of(CommercialDocumentType.ALBARAN_VENTA, CommercialDocumentType.FACTURA_VENTA)) {
+            var original = command(type, List.of(line(UUID.randomUUID(), "P", "Producto",
+                    new BigDecimal("10")).withDiscount(new BigDecimal("7"), "VENTA")), customer.getId());
+            if (type == CommercialDocumentType.ALBARAN_VENTA) {
+                service.createAndConfirmDeliveryNote(original, authentication());
+            } else {
+                service.createAndConfirmInvoice(original, authentication());
+            }
+        }
+
+        var evidence = org.mockito.ArgumentCaptor.forClass(
+                com.tpverp.backend.control.ControlAlertDetectionService.ManualDiscountSnapshot.class);
+        verify(controlAlerts, times(2)).detectConfirmedDocument(any(), evidence.capture(), eq(terminalId), any());
+        assertThat(evidence.getAllValues()).allSatisfy(snapshot ->
+                assertThat(snapshot.lines()).singleElement().satisfies(line ->
+                        assertThat(line.discountPercent()).isEqualByComparingTo("7")));
+    }
+
+    @Test
     void fullSalesInvoiceReturnCreatesOperationalCancellationRectification() {
         var original = new CommercialDocument(
                 store.getId(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
@@ -2317,6 +2500,7 @@ class DocumentServiceTest {
                         null, "TR-2", null, null, null, null, null, UUID.randomUUID())),
                 authentication());
         assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+        verify(controlAlerts, times(3)).detectConfirmedDocument(any(), any(), eq(terminalId), any());
     }
 
     @Test

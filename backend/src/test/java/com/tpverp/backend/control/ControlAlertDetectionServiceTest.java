@@ -40,6 +40,7 @@ class ControlAlertDetectionServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-18T12:00:00Z");
 
     @Mock private ControlRuleRepository rules;
+    @Mock private ControlRuleVersionRepository ruleVersions;
     @Mock private ControlEventRepository events;
     @Mock private ControlAlertRepository alerts;
     @Mock private ControlAlertHistoryRepository history;
@@ -65,7 +66,7 @@ class ControlAlertDetectionServiceTest {
         lenient().when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         lenient().when(alerts.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         service = new ControlAlertDetectionService(
-                rules, events, alerts, history, products, organization,
+                rules, ruleVersions, events, alerts, history, products, organization,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -100,7 +101,7 @@ class ControlAlertDetectionServiceTest {
     }
 
     @Test
-    void createsManualPriceChangedAlertFromOriginalDesiredPriceSnapshot() {
+    void createsManualPriceChangedAlertFromOriginalTemporaryPriceEvidence() {
         var document = confirmedTicket();
         var rule = priceRule(ControlAlertType.MANUAL_PRICE_CHANGED, Map.of());
         when(rules.findAllByStoreIdAndTypeAndActiveTrue(
@@ -113,6 +114,53 @@ class ControlAlertDetectionServiceTest {
         verify(events).save(event.capture());
         assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.MANUAL_PRICE_CHANGED);
         assertThat(event.getValue().getData().get("changedLines")).asList().hasSize(1);
+    }
+
+    @Test
+    void manualDiscountDoesNotMasqueradeAsAPriceChange() {
+        var document = confirmedTicket();
+
+        service.detectConfirmedDocument(document,
+                new ControlAlertDetectionService.ManualDiscountSnapshot(BigDecimal.ZERO,
+                        List.of(new ControlAlertDetectionService.ManualLineDiscount(1,
+                                document.getLineas().getFirst().getProductoId(), new BigDecimal("20")))),
+                UUID.randomUUID(), authentication());
+
+        verify(events, never()).save(any());
+        verify(rules, never()).findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_PRICE_CHANGED);
+    }
+
+    @Test
+    void increasesOnlyGenerateTheAnyPriceChangeRule() {
+        var document = confirmedTicket();
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_PRICE_CHANGED))
+                .thenReturn(List.of(priceRule(ControlAlertType.MANUAL_PRICE_CHANGED, Map.of())));
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT))
+                .thenReturn(List.of(priceRule(ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT,
+                        Map.of("thresholdPercent", 10))));
+
+        service.detectConfirmedDocument(document, snapshotWithLineChange(document, "-20"),
+                UUID.randomUUID(), authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.MANUAL_PRICE_CHANGED);
+        assertThat(event.getValue().getData().get("changedLines")).asList()
+                .singleElement().satisfies(value -> {
+                    var line = (Map<?, ?>) value;
+                    assertThat(line.get("originalPrice")).isEqualTo(new BigDecimal("100"));
+                    assertThat(line.get("appliedPrice")).isEqualTo(new BigDecimal("120"));
+                });
+    }
+
+    @Test
+    void thresholdComparisonDoesNotRoundATinyExcessDownToTheBoundary() {
+        var change = new ControlAlertDetectionService.ManualPriceChange(
+                1, UUID.randomUUID(), new BigDecimal("999999.991"), new BigDecimal("899999.991"));
+        assertThat(change.reductionExceeds(new BigDecimal("10"))).isTrue();
     }
 
     @Test
@@ -402,9 +450,8 @@ class ControlAlertDetectionServiceTest {
         var rule = new ControlRule(store.getId(), ControlAlertType.CONSECUTIVE_LINE_DELETIONS,
                 true,
                 Map.of("minimumCount", 3), user.getId(), NOW);
-        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
-                store.getId(), ControlAlertType.CONSECUTIVE_LINE_DELETIONS))
-                .thenReturn(List.of(rule));
+        when(ruleVersions.findEffectiveForDeletionSequence(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(new ControlRuleVersion(rule)));
         var saleOperationId = UUID.randomUUID();
         var terminalId = UUID.randomUUID();
         var deleted = new com.tpverp.backend.document.SaleLineDeletionView(
@@ -412,13 +459,15 @@ class ControlAlertDetectionServiceTest {
                 UUID.randomUUID(), "P-1", "Producto", 1,
                 new BigDecimal("10.00"), new BigDecimal("10.00"));
 
-        service.detectConsecutiveLineDeletions(
-                saleOperationId, 2, List.of(deleted), terminalId, authentication());
+        service.detectRecordedDeletion(saleOperationId, UUID.randomUUID(), false, List.of(deleted),
+                List.of(new ControlAlertDetectionService.DeletionPoint(UUID.randomUUID(), NOW, NOW, 2)),
+                List.of(deleted), terminalId, NOW, NOW, authentication());
 
         verify(events, never()).save(any());
 
-        service.detectConsecutiveLineDeletions(
-                saleOperationId, 3, List.of(deleted), terminalId, authentication());
+        service.detectRecordedDeletion(saleOperationId, UUID.randomUUID(), false, List.of(deleted),
+                List.of(new ControlAlertDetectionService.DeletionPoint(UUID.randomUUID(), NOW, NOW, 3)),
+                List.of(deleted), terminalId, NOW, NOW, authentication());
 
         var event = ArgumentCaptor.forClass(ControlEvent.class);
         verify(events).save(event.capture());
@@ -442,10 +491,10 @@ class ControlAlertDetectionServiceTest {
     private ControlAlertDetectionService.ManualDiscountSnapshot snapshotWithLineChange(
             CommercialDocument document, String percentage) {
         return new ControlAlertDetectionService.ManualDiscountSnapshot(
-                BigDecimal.ZERO,
-                List.of(new ControlAlertDetectionService.ManualLineDiscount(
+                BigDecimal.ZERO, List.of(),
+                List.of(new ControlAlertDetectionService.ManualPriceChange(
                         1, document.getLineas().getFirst().getProductoId(),
-                        new BigDecimal(percentage))));
+                        new BigDecimal("100"), new BigDecimal("100").subtract(new BigDecimal(percentage)))));
     }
 
     private CommercialDocument confirmedTicket() {

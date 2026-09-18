@@ -36,7 +36,8 @@ class ControlControllerContractTest {
         assertThat(summary.getAnnotation(GetMapping.class).value()).containsExactly("/summary");
 
         Method groups = ControlAlertController.class.getDeclaredMethod(
-                "groups", java.time.Instant.class, java.time.Instant.class);
+                "groups", java.time.Instant.class, java.time.Instant.class, ControlAlertStatus.class,
+                ControlAlertPriority.class, UUID.class, Boolean.class, String.class);
         assertThat(groups.getAnnotation(GetMapping.class).value()).containsExactly("/groups");
 
         Method catalog = ControlRuleController.class.getDeclaredMethod("catalog");

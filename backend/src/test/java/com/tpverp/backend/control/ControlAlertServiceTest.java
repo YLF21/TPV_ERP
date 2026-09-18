@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
-import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -72,8 +71,8 @@ class ControlAlertServiceTest {
                 mock(ControlRuleRepository.class),
                 history,
                 mock(ControlAlertWorkHistoryRepository.class),
-                mock(UserAccountRepository.class),
                 documents,
+                mock(ControlAlertReadRepository.class),
                 organization,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -90,7 +89,7 @@ class ControlAlertServiceTest {
         verify(alerts).findAllByStoreId(eq(storeId), pageable.capture());
         assertThat(pageable.getValue().getPageNumber()).isZero();
         assertThat(pageable.getValue().getPageSize()).isEqualTo(5);
-        assertThat(pageable.getValue().getSort().getOrderFor("createdAt"))
+        assertThat(pageable.getValue().getSort().getOrderFor("event.occurredAt"))
                 .extracting(Sort.Order::getDirection)
                 .isEqualTo(Sort.Direction.DESC);
     }
@@ -119,7 +118,8 @@ class ControlAlertServiceTest {
         when(alerts.countByRuleAndStatus(storeId, from, to)).thenReturn(List.of(count));
         var service = new ControlAlertService(
                 alerts, rules, history, mock(ControlAlertWorkHistoryRepository.class),
-                mock(UserAccountRepository.class), documents, organization, Clock.fixed(NOW, ZoneOffset.UTC));
+                documents, mock(ControlAlertReadRepository.class),
+                organization, Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.countsByRule(from, to);
 
@@ -140,7 +140,8 @@ class ControlAlertServiceTest {
         var service = new ControlAlertService(
                 mock(ControlAlertRepository.class), mock(ControlRuleRepository.class),
                 mock(ControlAlertHistoryRepository.class), mock(ControlAlertWorkHistoryRepository.class),
-                mock(UserAccountRepository.class), mock(CommercialDocumentRepository.class),
+                mock(CommercialDocumentRepository.class),
+                mock(ControlAlertReadRepository.class),
                 mock(CurrentOrganization.class), Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() -> service.countsByRule(null, NOW))

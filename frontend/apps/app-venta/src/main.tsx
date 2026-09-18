@@ -1,6 +1,7 @@
 import { Component, lazy, StrictMode, Suspense, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { devTerminalContext } from "../../../packages/app-common/src/api/runtime";
+import { useSaleControlDelivery } from "../../../packages/app-common/src/sale/useSaleControlDelivery";
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
 import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
@@ -29,7 +30,7 @@ import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/c
 import { createTranslator } from "../../../packages/app-common/src/i18n/LocalizedMessages";
 import type { SaleSettingsDestination } from "../../../packages/app-common/src/components/SaleSettingsShell";
 
-type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
+type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string; sessionToken?: string };
 
 type AppLoadingPhase = "application" | "compatibility";
 
@@ -336,10 +337,14 @@ export function App() {
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings">("home");
   const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("sale");
+  const [saleExitBlocked, setSaleExitBlocked] = useState(false);
   const [receivablesOpen, setReceivablesOpen] = useState(false);
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
+  const compatibleSession = compatibilityGate.status === "ready"
+    && compatibilityGate.sessionToken === session?.accessToken ? session : null;
+  const { delivery: controlDelivery } = useSaleControlDelivery(compatibleSession, terminalContext);
   const [saleInterfaceMode, setSaleInterfaceMode] =
     useState<SaleInterfaceMode>(defaultSaleInterfaceMode);
   const [appNotice, setAppNotice] = useState<string | null>(null);
@@ -363,20 +368,21 @@ export function App() {
       setCompatibilityGate({ status: "ready" });
       return () => { active = false; };
     }
-    setCompatibilityGate({ status: "checking" });
-    loadBackendCompatibility(session.accessToken).then(backend => {
+    const sessionToken = session.accessToken;
+    setCompatibilityGate({ status: "checking", sessionToken });
+    loadBackendCompatibility(sessionToken).then(backend => {
       if (!active) return;
       const result = evaluateCompatibility(backend);
       setCompatibilityGate(result.compatible
-        ? { status: "ready" }
-        : { status: "blocked", reason: result.reason ?? "BACKEND_TOO_OLD" });
+        ? { status: "ready", sessionToken }
+        : { status: "blocked", sessionToken, reason: result.reason ?? "BACKEND_TOO_OLD" });
     }).catch(error => {
       if (!active) return;
       const reason = error instanceof ApiConnectionError ? "BACKEND_UNREACHABLE"
         : error instanceof ApiError && error.status === 404 ? "BACKEND_TOO_OLD"
           : error instanceof InvalidCompatibilityContractError ? "BACKEND_TOO_OLD"
             : "COMPATIBILITY_CHECK_FAILED";
-      setCompatibilityGate({ status: "blocked", reason });
+      setCompatibilityGate({ status: "blocked", sessionToken, reason });
     });
     return () => { active = false; };
   }, [session?.accessToken]);
@@ -404,18 +410,21 @@ export function App() {
     setScreen("home");
   };
   const handleLogout = () => {
+    if (screen === "sale" && saleExitBlocked) return;
     void window.tpvDesktop?.salesDocuments?.close();
     setSession(null);
     setSaleInterfaceMode(defaultSaleInterfaceMode);
     resetLocale();
   };
   const handleReturnHome = () => {
+    if (screen === "sale" && saleExitBlocked) return;
     setReceivablesOpen(false);
     setReceivablesCustomerId(undefined);
     setScreen("home");
   };
   const withHomeEscapeConfirmation = (content: ReactNode) => (
-    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={handleReturnHome}>
+    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={handleReturnHome}
+      navigationBlocked={screen === "sale" && saleExitBlocked}>
       {content}
     </AppVentaHomeEscapeNavigation>
   );
@@ -517,7 +526,8 @@ export function App() {
     );
   }
 
-  if (compatibilityGate.status === "checking") {
+  if (compatibilityGate.status === "checking"
+      || (session.accessToken && compatibilityGate.sessionToken !== session.accessToken)) {
     return <AppLoadingFallback phase="compatibility" locale={locale} />;
   }
 
@@ -572,11 +582,13 @@ export function App() {
       <>
         <SaleScreen
           app="venta"
+          controlDelivery={controlDelivery}
           locale={locale}
           session={session}
           terminalContext={terminalContext}
           interfaceMode={saleInterfaceMode}
-          onBack={() => setScreen("home")}
+          onBack={handleReturnHome}
+          onExitBlockedChange={setSaleExitBlocked}
           onLogout={handleLogout}
           onLocaleChange={handleLocaleChange}
           onOpenCustomerReceivables={(customerId?: string) => {
