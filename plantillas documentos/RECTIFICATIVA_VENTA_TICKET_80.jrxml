@@ -78,25 +78,25 @@
       </element>
     </band>
   </detail>
-  <summary height="180">
+  <summary height="188">
     <element kind="textField" x="0" y="5" width="211" height="18" fontSize="9" bold="true" hTextAlign="Right" uuid="b4b4b4b4-0000-4000-8000-000000000010">
       <expression><![CDATA["TOTAL: " + $F{total}]]></expression>
     </element>
-    <element kind="textField" x="0" y="26" width="211" height="14" fontSize="8" bold="true" hTextAlign="Center" blankWhenNull="true" uuid="b4b4b4b4-0000-4000-8000-000000000011">
+    <element kind="textField" x="0" y="30" width="211" height="14" fontSize="8" bold="true" hTextAlign="Center" blankWhenNull="true" uuid="b4b4b4b4-0000-4000-8000-000000000011">
       <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty()]]></printWhenExpression>
       <expression><![CDATA[$F{fiscalQrPrefix}]]></expression>
     </element>
-    <element kind="component" x="56" y="42" width="100" height="100" uuid="b4b4b4b4-0000-4000-8000-000000000012">
+    <element kind="component" x="56" y="46" width="100" height="100" uuid="b4b4b4b4-0000-4000-8000-000000000012">
       <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty()]]></printWhenExpression>
       <component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
         <codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
       </component>
     </element>
-    <element kind="textField" x="0" y="145" width="211" height="18" fontSize="7" hTextAlign="Center" textAdjust="StretchHeight" uuid="b4b4b4b4-0000-4000-8000-000000000013">
+    <element kind="textField" x="0" y="149" width="211" height="18" fontSize="7" hTextAlign="Center" textAdjust="StretchHeight" uuid="b4b4b4b4-0000-4000-8000-000000000013">
       <printWhenExpression><![CDATA[$F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty()]]></printWhenExpression>
       <expression><![CDATA[$F{fiscalLegend}]]></expression>
     </element>
-    <element kind="textField" x="0" y="165" width="211" height="12" fontSize="7" bold="true" hTextAlign="Center" blankWhenNull="true" uuid="b4b4b4b4-0000-4000-8000-000000000014">
+    <element kind="textField" x="0" y="169" width="211" height="12" fontSize="7" bold="true" hTextAlign="Center" blankWhenNull="true" uuid="b4b4b4b4-0000-4000-8000-000000000014">
       <printWhenExpression><![CDATA[$F{fiscalTestNotice} != null && !$F{fiscalTestNotice}.trim().isEmpty()]]></printWhenExpression>
       <expression><![CDATA[$F{fiscalTestNotice}]]></expression>
     </element>

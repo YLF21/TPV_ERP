@@ -63,10 +63,10 @@ class TicketJrxmlBundleCompilerTest {
                             .contains("FROM documento_ajuste da")
                             .contains("da.tipo = 'MEMBER_PERCENT'")
                             .contains("da.tipo = 'MANUAL_PERCENT'")
-                            .contains("Descuento de miembro (")
+                            .contains("MemberDiscountPrintLabel.format($F{porcentaje_descuento_miembro})")
                             .contains("Descuento documento (")
                             .contains("<![CDATA[\"Descuento:\"]]>")
-                            .doesNotContain("Descuento Adicional");
+                            .doesNotContain("Descuento Adicional", "Descuento de miembro");
                 });
     }
 
@@ -84,8 +84,10 @@ class TicketJrxmlBundleCompilerTest {
                     assertThat(source)
                             .contains("FROM documento_ajuste da")
                             .contains("da.tipo = 'MEMBER_PERCENT'")
+                            .contains("MemberDiscountPrintLabel.format($F{porcentaje_descuento})")
                             .doesNotContain("c.descuento AS porcentaje_descuento")
-                            .doesNotContain("ROUND(d.total * c.descuento / 100, 2)");
+                            .doesNotContain("ROUND(d.total * c.descuento / 100, 2)")
+                            .doesNotContain("Descuento de miembro");
                 });
     }
 
@@ -121,6 +123,7 @@ class TicketJrxmlBundleCompilerTest {
     void compilesTheEditableStandaloneTicketExample() throws Exception {
         byte[] source = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
                 "..", "plantillas documentos", "ticekt_v1.jrxml"));
+        var sourceText = new String(source, java.nio.charset.StandardCharsets.UTF_8);
 
         var bundle = compiler.compileUpload(java.util.Map.of(
                 TicketJrxmlBundleCompiler.MASTER_FILENAME, source));
@@ -129,6 +132,13 @@ class TicketJrxmlBundleCompilerTest {
                 TicketJrxmlBundleCompiler.MASTER_FILENAME);
         assertThat(bundle.reports().get(TicketJrxmlBundleCompiler.MASTER_FILENAME).compiled())
                 .isNotEmpty();
+        assertThat(sourceText)
+                .contains("da.tipo = 'MEMBER_PERCENT'")
+                .contains("MemberDiscountPrintLabel.format($F{porcentaje_descuento_cliente})")
+                .contains("dl.tipo_linea = 'DOCUMENT_DISCOUNT' AND da.tipo = 'MEMBER_PERCENT'")
+                .contains("'Descuento documento '")
+                .doesNotContain("c.descuento AS porcentaje_descuento_cliente")
+                .doesNotContain("Descuento de miembro");
     }
 
     @Test

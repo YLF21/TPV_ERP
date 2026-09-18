@@ -29,6 +29,7 @@ import javax.sql.DataSource;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,11 @@ class TicketJasperRendererPostgreSqlTest {
     private static final String QR_URL = "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR"
             + "?nif=B12345674&numserie=001-260823-000001"
             + "&fecha=23-08-2026&importe=10.00";
+    private static final String LAYOUT_OBSERVATIONS = """
+            OBS-LINE-1: texto de comprobación de separación
+            OBS-LINE-2: texto de comprobación de separación
+            OBS-LINE-3: texto de comprobación de separación
+            OBS-LINE-4: fin de observaciones""";
 
     static {
         execute("create schema " + SCHEMA);
@@ -114,7 +120,10 @@ class TicketJasperRendererPostgreSqlTest {
         assertThat(rendered.pdf()).startsWith(0x25, 0x50, 0x44, 0x46);
         try (var pdf = Loader.loadPDF(rendered.pdf())) {
             assertThat(new PDFTextStripper().getText(pdf))
-                    .contains(fixture.document().getNumero(), "QR tributario:");
+                    .contains(fixture.document().getNumero(), "OBS-LINE-4", "QR tributario:");
+            var observations = textBounds(pdf, "OBS-LINE-4");
+            var qrPrefix = textBounds(pdf, "QR tributario:");
+            assertThat(qrPrefix.top()).isGreaterThan(observations.bottom() + 2f);
         }
         var raster = ImageIO.read(new java.io.ByteArrayInputStream(rendered.png()));
         assertThat(raster.getWidth()).isEqualTo(576);
@@ -148,8 +157,11 @@ class TicketJasperRendererPostgreSqlTest {
             assertThat(new PDFTextStripper().getText(loaded))
                     .contains("Obligado congelado SL", "B12345674",
                             "Calle congelada 7", "QR tributario:",
-                            "Factura verificable", "ENTORNO DE PRUEBAS")
-                    .doesNotContain("Calle Test 1");
+                            "Factura verificable", "ENTORNO DE PRUEBAS", "OBS-LINE-4")
+                    .doesNotContain("Calle Test 1", "null");
+            var observations = textBounds(loaded, "OBS-LINE-4");
+            var qrPrefix = textBounds(loaded, "QR tributario:");
+            assertThat(qrPrefix.top()).isGreaterThan(observations.bottom() + 2f);
         }
     }
 
@@ -202,6 +214,11 @@ class TicketJasperRendererPostgreSqlTest {
                 values (?, ?, '001', 'Tienda TEST', cast(? as jsonb),
                     'ticket-jasper-store', 'Atlantic/Canary', 'EUR', 'es-ES')
                 """, storeId, companyId, address());
+        jdbc.update("""
+                insert into configuracion_documento_impreso_tienda (
+                    tienda_id, observaciones_ticket)
+                values (?, ?)
+                """, storeId, LAYOUT_OBSERVATIONS);
         jdbc.update("insert into rol (id, tienda_id, nombre) values (?, ?, 'VENTA')",
                 roleId, storeId);
         jdbc.update("""
@@ -294,6 +311,30 @@ class TicketJasperRendererPostgreSqlTest {
                 Map.of(DecodeHintType.TRY_HARDER, Boolean.TRUE)).getText();
     }
 
+    private static TextBounds textBounds(
+            org.apache.pdfbox.pdmodel.PDDocument document, String expected) throws Exception {
+        var matches = new java.util.ArrayList<TextBounds>();
+        var stripper = new PDFTextStripper() {
+            @Override
+            protected void writeString(String text, java.util.List<TextPosition> textPositions) {
+                if (text.contains(expected) && !textPositions.isEmpty()) {
+                    float top = textPositions.stream()
+                            .map(TextPosition::getYDirAdj)
+                            .min(Float::compareTo)
+                            .orElseThrow();
+                    float bottom = textPositions.stream()
+                            .map(position -> position.getYDirAdj() + position.getHeightDir())
+                            .max(Float::compareTo)
+                            .orElseThrow();
+                    matches.add(new TextBounds(top, bottom));
+                }
+            }
+        };
+        stripper.getText(document);
+        assertThat(matches).as(expected).singleElement();
+        return matches.get(0);
+    }
+
     private static String address() {
         return address("Calle Test 1");
     }
@@ -328,4 +369,6 @@ class TicketJasperRendererPostgreSqlTest {
     }
 
     private record Fixture(CommercialDocument document) {}
+
+    private record TextBounds(float top, float bottom) {}
 }

@@ -21,9 +21,16 @@ class OperationalReceiptJasperRendererTest {
             try (var input = resource.getInputStream()) {
                 source = input.readAllBytes();
             }
-            assertThat(new String(source, StandardCharsets.UTF_8))
+            var sourceText = new String(source, StandardCharsets.UTF_8);
+            assertThat(sourceText)
                     .as(filename)
                     .contains("UPPER(REPLACE(COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO'), '_', ' '))");
+            if ("ticket_anulado.jrxml".equals(filename)) {
+                assertThat(sourceText)
+                        .contains("da.tipo = 'MEMBER_PERCENT'")
+                        .contains("'Descuento miembro '")
+                        .doesNotContain("Descuento de miembro");
+            }
             try (var input = new java.io.ByteArrayInputStream(source);
                     var output = new ByteArrayOutputStream()) {
                 JasperCompileManager.getInstance(SafeJrxmlCompiler.secureContext())

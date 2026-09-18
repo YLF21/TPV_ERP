@@ -6,10 +6,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.DocumentAdjustment;
 import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.document.DocumentLineTotals;
 import com.tpverp.backend.document.FiscalPrintView;
 import com.tpverp.backend.document.InvoicePresentationSnapshot;
+import com.tpverp.backend.document.MemberDiscountPrintLabel;
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.document.PaymentMethodPrintLabel;
 import com.tpverp.backend.document.SalesInvoiceRectificationRepository;
@@ -505,11 +508,13 @@ public class InvoiceJasperRenderer {
         fiscalNode.put("testData", frozenFiscal != null
                 && frozenFiscal.environment() == FiscalEndpointEnvironment.TEST);
 
+        var adjustmentsById = document.getAjustes().stream()
+                .collect(Collectors.toMap(DocumentAdjustment::getId, adjustment -> adjustment));
         var lines = root.putArray("lines");
         document.getLineas().stream()
                 .filter(line -> !DocumentLineTotals.isMemberBalance(line))
                 .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
-                .forEach(line -> line(lines.addObject(), line));
+                .forEach(line -> line(lines.addObject(), line, adjustmentsById));
         taxBreakdown(root.putArray("taxBreakdown"), document);
 
         var totals = root.putObject("totals");
@@ -608,11 +613,16 @@ public class InvoiceJasperRenderer {
         };
     }
 
-    private static void line(ObjectNode node, DocumentLine line) {
+    private static void line(
+            ObjectNode node,
+            DocumentLine line,
+            Map<java.util.UUID, DocumentAdjustment> adjustmentsById) {
+        var memberDiscountLabel = printableMemberDiscountLabel(line, adjustmentsById);
         node.put("position", line.getPosicion());
-        node.put("code", line.getCodigo());
+        node.put("code", memberDiscountLabel == null ? line.getCodigo() : "");
         putNullable(node, "barcode", line.getCodigoBarras());
-        node.put("articleName", line.getNombre());
+        node.put("articleName", memberDiscountLabel == null
+                ? line.getNombre() : memberDiscountLabel);
         node.put("quantity", line.getCantidad());
         putNullable(node, "unit", null);
         node.put("unitPriceNet", netUnitPrice(line));
@@ -624,6 +634,19 @@ public class InvoiceJasperRenderer {
         node.put("taxAmount", line.getImpuesto());
         node.put("lineTotal", line.getTotal());
         node.put("priceIncludesTax", "");
+    }
+
+    static String printableMemberDiscountLabel(
+            DocumentLine line,
+            Map<java.util.UUID, DocumentAdjustment> adjustmentsById) {
+        if (line.getLineType() != DocumentLineType.DOCUMENT_DISCOUNT
+                || line.getDocumentAdjustmentId() == null) {
+            return null;
+        }
+        var adjustment = adjustmentsById.get(line.getDocumentAdjustmentId());
+        return adjustment != null && "MEMBER_PERCENT".equals(adjustment.getTipo())
+                ? MemberDiscountPrintLabel.format(adjustment.getPorcentaje())
+                : null;
     }
 
     private static BigDecimal netUnitPrice(DocumentLine line) {
