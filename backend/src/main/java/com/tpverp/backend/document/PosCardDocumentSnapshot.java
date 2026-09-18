@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PosCardDocumentSnapshot {
 
-    private static final int CURRENT_SCHEMA_VERSION = 4;
+    private static final int CURRENT_SCHEMA_VERSION = 5;
 
     private final ObjectMapper mapper;
 
@@ -38,7 +38,7 @@ public class PosCardDocumentSnapshot {
                 throw new ApprovedCardSnapshotException(
                         "Version de instantanea no soportada");
             }
-            var legacy = snapshot.schemaVersion() < CURRENT_SCHEMA_VERSION;
+            var legacy = snapshot.schemaVersion() < 4;
             var ticket = legacy ? withLegacyPolicies(snapshot.ticket()) : snapshot.ticket();
             validate(ticket, !legacy);
             return ticket;
@@ -69,7 +69,8 @@ public class PosCardDocumentSnapshot {
                             return normalized;
                         })
                         .toList(),
-                value.internalComment(), value.historicalReplay(), value.adjustments());
+                value.internalComment(), value.historicalReplay(), value.adjustments(),
+                value.manualControl());
     }
 
     private static void validate(ApprovedCardTicketSnapshot value) {

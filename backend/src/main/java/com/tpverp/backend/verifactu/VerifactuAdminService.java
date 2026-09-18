@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
@@ -104,6 +105,7 @@ public class VerifactuAdminService {
         this.installations = installations;
     }
 
+    @Transactional(readOnly = true)
     public VerifactuAdminStatusView status() {
         var activationStatus = activationStatus();
         try {
@@ -203,7 +205,6 @@ public class VerifactuAdminService {
             return VerifactuActivationStatus.unavailable();
         }
         var configuration = currentConfiguration();
-        var license = activeLicense();
         var store = requiredOrganization().currentStore();
         var now = Instant.now(requiredClock());
         var zone = ZoneId.of(store.getTimezone());
@@ -216,6 +217,10 @@ public class VerifactuAdminService {
             return new VerifactuActivationStatus(
                     true, "LOCKED", configuration.getActivatedAt(),
                     configuration.getFirstSubmissionAt());
+        }
+        var license = activeLicenseIfPresent().orElse(null);
+        if (license == null) {
+            return VerifactuActivationStatus.unavailable();
         }
         if (activation.isAutomaticallyRequired(
                 license.getTaxpayerType(),
@@ -237,10 +242,8 @@ public class VerifactuAdminService {
 
     private VerifactuConfiguration currentConfiguration() {
         var companyId = requiredOrganization().currentCompany().getId();
-        configurations.insertIfMissing(UUID.randomUUID(), companyId);
         return configurations.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "No se pudo inicializar la configuracion VERI*FACTU"));
+                .orElseGet(() -> new VerifactuConfiguration(companyId));
     }
 
     private VerifactuConfiguration currentConfigurationForUpdate() {
@@ -252,20 +255,21 @@ public class VerifactuAdminService {
     }
 
     private License activeLicense() {
+        return activeLicenseIfPresent().orElseThrow(() -> new IllegalStateException(
+                "No existe una licencia activa para la tienda e instalacion"));
+    }
+
+    private Optional<License> activeLicenseIfPresent() {
         var store = requiredOrganization().currentStore();
         if (installations != null && licenses != null) {
             var installation = FiscalInstallationResolver.resolveCurrent(
                     requiredOrganization(), installations, licenses);
             return licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
-                            store.getId(), installation.getId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "No existe una licencia activa para la tienda e instalacion"));
+                            store.getId(), installation.getId());
         }
         return licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId()).stream()
                 .filter(License::isActiva)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "No existe una licencia activa para la tienda e instalacion"));
+                .findFirst();
     }
 
     private CurrentOrganization requiredOrganization() {

@@ -2,6 +2,11 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("tpvDesktop", {
   closeApplication: () => ipcRenderer.invoke("tpv:close-application"),
+  saleControlOutbox: {
+    list: (context) => ipcRenderer.invoke("tpv:sale-control:list", context),
+    put: (event) => ipcRenderer.invoke("tpv:sale-control:put", event),
+    remove: (context, id) => ipcRenderer.invoke("tpv:sale-control:remove", context, id)
+  },
   terminalIdentity: {
     load: () => ipcRenderer.invoke("tpv:terminal-identity:load"),
     save: (identity) => ipcRenderer.invoke("tpv:terminal-identity:save", identity)

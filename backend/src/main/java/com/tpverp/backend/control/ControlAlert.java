@@ -37,13 +37,17 @@ public class ControlAlert {
     }
 
     public ControlAlert(ControlEvent event) {
+        this(event, event.getOccurredAt());
+    }
+
+    public ControlAlert(ControlEvent event, Instant createdAt) {
         this.id = UUID.randomUUID();
         this.event = Objects.requireNonNull(event, "event");
         this.storeId = event.getStoreId();
         this.status = ControlAlertStatus.NEW;
         this.priority = ControlAlertPriority.MEDIUM;
-        this.createdAt = event.getOccurredAt();
-        this.updatedAt = event.getOccurredAt();
+        this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+        this.updatedAt = createdAt;
     }
 
     public ControlAlertStatus transition(ControlAlertStatus next, Instant now) {
@@ -60,6 +64,16 @@ public class ControlAlert {
         var previous = status;
         status = next;
         updatedAt = Objects.requireNonNull(now, "now");
+        return previous;
+    }
+
+    public ControlAlertStatus reopen(Instant now) {
+        if (status == ControlAlertStatus.NEW) {
+            throw new IllegalStateException("La transicion de alerta no es valida");
+        }
+        var previous = status;
+        updatedAt = Objects.requireNonNull(now, "now");
+        status = ControlAlertStatus.NEW;
         return previous;
     }
 

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { useSaleControlDelivery } from "../sale/useSaleControlDelivery";
+import type { SaleControlDelivery } from "../sale/saleControlDelivery";
 import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
 import { hasPermission } from "../auth/auth";
@@ -1610,12 +1612,14 @@ export function pendingSaleDraftForCustomer(
 }
 
 type SaleScreenProps = {
+  controlDelivery?: SaleControlDelivery | null;
   app: AppKind;
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
   interfaceMode?: SaleInterfaceMode;
   onBack: () => void;
+  onExitBlockedChange?: (blocked: boolean) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onOpenCustomerReceivables?: (customerId?: string) => void;
@@ -1623,18 +1627,30 @@ type SaleScreenProps = {
 };
 
 export function SaleScreen({
+  controlDelivery: sharedControlDelivery,
   app,
   locale,
   session,
   terminalContext,
   interfaceMode = "KEYBOARD",
   onBack,
+  onExitBlockedChange,
   onLocaleChange,
   onLogout,
   onOpenCustomerReceivables,
   onOpenSalesDocumentWindow,
 }: SaleScreenProps) {
   const t = createTranslator(locale);
+  const { delivery: controlDelivery, state: controlDeliveryState } = useSaleControlDelivery(session, terminalContext, sharedControlDelivery);
+  const [controlSaving, setControlSaving] = useState(false);
+  const controlSavingRef = useRef(false);
+  const [controlSaveError, setControlSaveError] = useState(false);
+  useEffect(() => {
+    if (!controlSaving) return;
+    const block = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); };
+    window.addEventListener("keydown", block, true);
+    return () => window.removeEventListener("keydown", block, true);
+  }, [controlSaving]);
   const commandLabels: SaleCommandLabels = {
     shortcuts: t("sale.main.shortcuts"),
     priceLookup: t("sale.shortcut.priceLookup"),
@@ -1979,6 +1995,22 @@ export function SaleScreen({
   const selectedCustomerRef = useRef(selectedCustomer);
   linesRef.current = lines;
   selectedCustomerRef.current = selectedCustomer;
+  const exitBlocked = lines.length > 0 || controlSaving;
+  useLayoutEffect(() => {
+    onExitBlockedChange?.(exitBlocked);
+  }, [exitBlocked, onExitBlockedChange]);
+  useLayoutEffect(() => {
+    if (!window.tpvDesktop) return;
+    const blockDesktopExit = (event: BeforeUnloadEvent) => {
+      if (linesRef.current.length === 0 && !controlSavingRef.current) return;
+      // Electron cancels close/reload silently; browsers would show a prompt.
+      event.preventDefault();
+      event.returnValue = false;
+    };
+    window.addEventListener("beforeunload", blockDesktopExit);
+    return () => window.removeEventListener("beforeunload", blockDesktopExit);
+  }, []);
+  useLayoutEffect(() => () => onExitBlockedChange?.(false), [onExitBlockedChange]);
   const selectableProducts = useMemo(
     () => saleSelectableProducts(products, allowInactiveProductSales),
     [allowInactiveProductSales, products]
@@ -2561,6 +2593,7 @@ export function SaleScreen({
     );
   const saleMutationSecurityUnavailable = saleMutationAuthorizations === null;
   const paymentActionsDisabled = basePaymentActionsDisabled
+    || controlSaving
     || saleMutationSecurityUnavailable
     || !temporaryPriceAuthorizationsReady;
   const cashSessionCopy = locale === "en"
@@ -2842,7 +2875,7 @@ export function SaleScreen({
             setCashSessionCloseFlow(null);
             setCashSessionCloseOpen(false);
             setShortcutStatus(cashSessionCopy.recovered);
-            onBack?.();
+            handleBack();
             return;
           }
           const nextAttemptId = recovery.latestReconciliationAttemptId
@@ -3170,16 +3203,19 @@ export function SaleScreen({
       .then((outcome) => updateMatchingVoucherPrintOutcome(snapshot.code, outcome));
   }
 
+  function handleBack() {
+    if (linesRef.current.length > 0 || controlSavingRef.current) return;
+    onBack();
+  }
+
   async function handleSaleLogout() {
+    if (controlSavingRef.current) return;
     if (logoutInProgressRef.current) return;
-    if (lines.length > 0) {
-      setShortcutStatus("No se puede cerrar sesión mientras el carrito tenga productos");
-      return;
-    }
+    if (linesRef.current.length > 0) return;
     logoutInProgressRef.current = true;
     try {
       const result = await paymentCheckoutRef.current?.prepareLogout();
-      if (result === "READY") onLogout?.();
+      if (result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current) onLogout?.();
     } catch {
       // Fail closed: checkout keeps the recoverable payment state visible.
     } finally {
@@ -3188,10 +3224,12 @@ export function SaleScreen({
   }
 
   async function handleApplicationClose() {
+    if (linesRef.current.length > 0 || controlSavingRef.current) return false;
     if (shutdownInProgressRef.current || !paymentCheckoutRef.current) return false;
     shutdownInProgressRef.current = true;
     try {
-      return await paymentCheckoutRef.current.prepareApplicationClose() === "READY";
+      const result = await paymentCheckoutRef.current.prepareApplicationClose();
+      return result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current;
     } catch {
       return false;
     } finally {
@@ -3918,7 +3956,7 @@ export function SaleScreen({
     void beginPendingSale(selectedCustomer);
   }
 
-  function confirmRemoveLine() {
+  async function confirmRemoveLine() {
     if (!selectedLineId || !selectedLine) return;
     if (selectedLine.previousTicketImportOrigin) {
       setActionDialog(null);
@@ -3927,6 +3965,7 @@ export function SaleScreen({
     }
     const removedLine = selectedLine;
     const fullTicketClear = lines.length === 1;
+    if (!await recordSaleLinesDeletion([removedLine], fullTicketClear)) return;
     setLines((current) => {
       const nextSelectedLineId = selectedProductAfterRemoval(current, selectedLineId);
       const remaining = removeSaleLine(current, selectedLineId);
@@ -3934,7 +3973,7 @@ export function SaleScreen({
       return remaining;
     });
     setActionDialog(null);
-    recordSaleLinesDeletion([removedLine], fullTicketClear);
+    controlDelivery?.deliver();
   }
 
   function handleRemoveLineKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -4319,17 +4358,20 @@ export function SaleScreen({
     deletionControl.reset("CART_EMPTIED");
   }
 
-  function recordSaleLinesDeletion(
+  async function recordSaleLinesDeletion(
     removedLines: SaleLine[],
     fullTicketClear: boolean,
   ) {
-    if (removedLines.length === 0) return;
+    if (removedLines.length === 0) return true;
+    if (controlSavingRef.current) return false;
+    controlSavingRef.current = true;
+    setControlSaving(true);
+    setControlSaveError(false);
     const saleOperationId = deletionControl.currentSaleOperationId();
     const deletionOperationId = deletionControl.newDeletionOperationId();
-    void deletionControl.enqueue(
-      () => apiRequest("/sale-line-deletions", {
-        token: session.accessToken,
-        body: {
+    try {
+      if (!controlDelivery) throw new Error("CONTROL_NOT_READY");
+      await controlDelivery.persist({
           saleOperationId,
           deletionOperationId,
           fullTicketClear,
@@ -4340,18 +4382,21 @@ export function SaleScreen({
             quantity: line.quantity,
             unitPrice: saleLineUnitPrice(line, activeMember, wholesaleMode),
           })),
-        },
-      }),
-      (error: unknown) => {
-        // Best effort: a control-event outage must never block the active sale.
-        console.warn("sale_line_deletion_not_recorded", error);
-      },
-    );
-    if (fullTicketClear) deletionControl.reset("CART_EMPTIED");
+      });
+      if (fullTicketClear) deletionControl.reset("CART_EMPTIED");
+      return true;
+    } catch {
+      setControlSaveError(true);
+      return false;
+    } finally {
+      controlSavingRef.current = false;
+      setControlSaving(false);
+    }
   }
 
-  function clearSaleLines() {
+  async function clearSaleLines() {
     const removedLines = lines;
+    if (!await recordSaleLinesDeletion(removedLines, true)) return;
     setLines([]);
     setPreviousTicketImportBatch(null);
     setSelectedLineId(null);
@@ -4363,15 +4408,16 @@ export function SaleScreen({
     setWholesaleMode(false);
     setActionDialog(null);
     setShortcutStatus("");
-    recordSaleLinesDeletion(removedLines, true);
+    controlDelivery?.deliver();
     queueMicrotask(() => searchInputRef.current?.focus());
   }
 
-  function clearSaleFromCommand() {
+  async function clearSaleFromCommand() {
     const removedLines = lines;
-    recordSaleLinesDeletion(removedLines, true);
+    if (!await recordSaleLinesDeletion(removedLines, true)) return;
     clearCurrentSale();
     setActionDialog(null);
+    controlDelivery?.deliver();
     queueMicrotask(() => searchInputRef.current?.focus());
   }
 
@@ -4985,6 +5031,7 @@ export function SaleScreen({
     command: SaleCommandId,
     source: "KEYBOARD" | "UI" = "UI",
   ) {
+    if (controlSavingRef.current) return false;
     if (previousTicketImportBusyRef.current && command !== "import-previous-ticket") return false;
     const keyboardReturnRemoval = command === "quantity"
       && source === "KEYBOARD"
@@ -5565,7 +5612,7 @@ export function SaleScreen({
 
   return (
     <SaleTouchKeyboardScope locale={locale} interfaceMode={interfaceMode}>
-    <main className={`sale-screen work-screen ${interfaceMode === "TOUCH" ? "touch-mode" : "keyboard-mode"}`}>
+    <main inert={controlSaving || undefined} aria-busy={controlSaving} className={`sale-screen work-screen ${interfaceMode === "TOUCH" ? "touch-mode" : "keyboard-mode"}`}>
       <div aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined} style={{ display: "contents" }}><SessionTopControls
         locale={locale}
         session={session}
@@ -5579,12 +5626,13 @@ export function SaleScreen({
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
         onLogout={() => void handleSaleLogout()}
+        exitBlocked={exitBlocked}
         onPrepareShutdown={handleApplicationClose}
         onBrowserClose={onLogout}
       /></div>
       <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined}>
         <header className="work-topbar sale-command-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          <button type="button" className="report-brand-back" onClick={handleBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
           <h1 className="sale-command-screen-title">{t("sale.main.screen")}</h1>
@@ -5786,7 +5834,7 @@ export function SaleScreen({
               ? ` ${t(nextScanQuantity === 1 ? "sale.quantity.package" : "sale.quantity.packages")}`
               : ""}
           </p>
-          {(catalogLoading || catalogError || shortcutStatus
+          {(catalogLoading || catalogError || shortcutStatus || controlDeliveryState.pending > 0 || controlDeliveryState.error || controlSaveError || controlSaving
             || (temporaryPriceLines.length > 0 && !temporaryPriceAuthorizationsReady)) && (
             <div aria-live="polite" className="sale-search-results">
               {catalogLoading && <p className="sale-search-status">{t("sale.main.loadingProducts")}</p>}
@@ -5797,6 +5845,17 @@ export function SaleScreen({
                 </div>
               )}
               {shortcutStatus && <p className="sale-search-status" role="status">{shortcutStatus}</p>}
+              {(controlDeliveryState.pending > 0 || controlDeliveryState.error || controlSaveError || controlSaving) && (
+                <div className={`sale-search-status ${controlSaveError || controlDeliveryState.error ? "sale-search-error" : ""}`} role={controlSaveError || controlDeliveryState.error ? "alert" : "status"}>
+                  <span>{controlSaving ? t("sale.controlDelivery.saving")
+                    : controlSaveError ? t(controlDeliveryState.ready ? "sale.controlDelivery.saveFailed" : `sale.controlDelivery.${controlDeliveryState.error ?? "context"}`)
+                    : controlDeliveryState.error ? t(`sale.controlDelivery.${controlDeliveryState.error}`)
+                    : controlDeliveryState.sending ? t("sale.controlDelivery.sending")
+                    : t("sale.controlDelivery.pending")}</span>
+                  {controlDeliveryState.pending > 0 && <span> {controlDeliveryState.pending}</span>}
+                  {!controlSaving && <button type="button" onClick={() => { setControlSaveError(false); controlDelivery?.retry(); }}>{t("sale.controlDelivery.retry")}</button>}
+                </div>
+              )}
               {temporaryPriceLines.length > 0 && !temporaryPriceAuthorizationsReady && (
                 <p className="sale-search-status sale-search-error" role="alert">
                   {t("sale.temporaryPrice.authorizationRequired")}
@@ -7000,7 +7059,7 @@ export function SaleScreen({
           mode="OPEN"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}
-          onExitSales={onBack}
+          onExitSales={handleBack}
           onOpened={() => setCashSessionState("OPEN")}
         />
       )}
@@ -7018,7 +7077,7 @@ export function SaleScreen({
             </header>
             {cashSessionState === "ERROR" && <p className="sale-cash-session-error" role="alert">{cashSessionError}</p>}
             <footer>
-              <button type="button" className="secondary" onClick={onBack}>{cashSessionCopy.exit}</button>
+              <button type="button" className="secondary" onClick={handleBack}>{cashSessionCopy.exit}</button>
               {cashSessionState === "ERROR" && (
                 <button type="button" onClick={() => void prepareSalesCashSession()}>{cashSessionCopy.retry}</button>
               )}
@@ -7049,7 +7108,7 @@ export function SaleScreen({
           }}
           onClosed={() => {
             clearPersistedCashSessionClose();
-            onBack?.();
+            handleBack();
           }}
         />
       )}

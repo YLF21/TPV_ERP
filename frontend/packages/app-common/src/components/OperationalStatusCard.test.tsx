@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { OperationalStatusCard } from "./OperationalStatusCard";
@@ -11,6 +11,52 @@ afterEach(() => {
 });
 
 describe("OperationalStatusCard", () => {
+  it.each([
+    ["es", "No disponible", "No se pudo consultar el estado de VERI*FACTU. Pulsa Actualizar para reintentar.", "Inactivo", "No configurado"],
+    ["en", "Unavailable", "The VERI*FACTU status could not be retrieved. Select Refresh to try again.", "Inactive", "Not configured"],
+    ["zh", "不可用", "无法查询 VERI*FACTU 状态，请点击刷新重试。", "未启用", "未配置"],
+  ] as const)("does not present a failed fiscal request as inactive or unconfigured in %s", async (
+    locale, unavailable, message, inactive, missing,
+  ) => {
+    const request = vi.fn(async (path: string) => {
+      if (path === "/verifactu/admin/status") throw new Error("Unavailable");
+      if (path === "/verifactu/admin/clock") return { warning: false, driftSeconds: 0 };
+      if (path === "/sync/outbox/status") return { pending: 0, sent: 42, error: 0 };
+      return [];
+    }) as unknown as typeof apiRequest;
+
+    render(<OperationalStatusCard locale={locale} token="token" request={request} />);
+
+    expect(await screen.findByText(message)).toBeVisible();
+    const fiscalPanel = within(screen.getByRole("heading", { name: "VERI*FACTU" })
+      .closest(".operational-status-panel") as HTMLElement);
+    expect(fiscalPanel.getByText(unavailable)).toBeVisible();
+    expect(fiscalPanel.queryByText(inactive)).not.toBeInTheDocument();
+    expect(fiscalPanel.queryByText(missing)).not.toBeInTheDocument();
+    expect(screen.getByText("42")).toBeVisible();
+  });
+
+  it("distinguishes unavailable activation from a confirmed inactive state", async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === "/verifactu/admin/status") return {
+        certificateConfigured: true, certificateValid: true, workerEnabled: true,
+        verifactuActive: false, activationMode: "UNAVAILABLE", endpointMode: "TEST",
+      };
+      if (path === "/verifactu/admin/clock") return { warning: false, driftSeconds: 0 };
+      if (path === "/sync/outbox/status") return { pending: 0 };
+      return [];
+    }) as unknown as typeof apiRequest;
+
+    render(<OperationalStatusCard locale="es" token="token" request={request} />);
+
+    expect(await screen.findByText("No disponible")).toBeVisible();
+    const fiscalPanel = within(screen.getByRole("heading", { name: "VERI*FACTU" })
+      .closest(".operational-status-panel") as HTMLElement);
+    expect(fiscalPanel.queryByText("Inactivo")).not.toBeInTheDocument();
+    expect(fiscalPanel.getByText("Configurado · Válido")).toBeVisible();
+    expect(fiscalPanel.getByText("TEST")).toBeVisible();
+  });
+
   it("summarizes fiscal, clock and synchronization state", async () => {
     const request = vi.fn(async (path: string) => {
       if (path === "/verifactu/admin/status") {

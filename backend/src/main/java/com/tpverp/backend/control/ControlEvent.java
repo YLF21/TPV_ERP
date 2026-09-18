@@ -49,12 +49,27 @@ public class ControlEvent {
             String userName,
             Instant occurredAt,
             Map<String, Object> data) {
+        this(storeId, new RuleIdentity(rule.getId(), rule.getRuleVersion(), rule.getName(), rule.getType()),
+                sourceType, sourceId, documentId, documentNumber, terminalId, userId, userName, occurredAt, data);
+    }
+
+    public ControlEvent(ControlRuleVersion rule, String sourceType, UUID sourceId, UUID terminalId,
+            UUID userId, String userName, Instant occurredAt, Map<String, Object> data) {
+        this(rule.getStoreId(), new RuleIdentity(rule.getRuleId(), rule.getRuleVersion(), rule.getName(), rule.getType()),
+                sourceType, sourceId, null, null, terminalId, userId, userName, occurredAt, data);
+    }
+
+    private record RuleIdentity(UUID id, int version, String name, ControlAlertType type) { }
+
+    private ControlEvent(UUID storeId, RuleIdentity rule, String sourceType, UUID sourceId, UUID documentId,
+            String documentNumber, UUID terminalId, UUID userId, String userName, Instant occurredAt,
+            Map<String, Object> data) {
         this.id = UUID.randomUUID();
         this.storeId = Objects.requireNonNull(storeId, "storeId");
-        this.ruleId = Objects.requireNonNull(rule, "rule").getId();
-        this.ruleVersion = rule.getRuleVersion();
-        this.ruleName = rule.getName();
-        this.type = rule.getType();
+        this.ruleId = rule.id();
+        this.ruleVersion = rule.version();
+        this.ruleName = rule.name();
+        this.type = rule.type();
         this.sourceType = required(sourceType, "sourceType", 32);
         this.sourceId = Objects.requireNonNull(sourceId, "sourceId");
         this.documentId = documentId;

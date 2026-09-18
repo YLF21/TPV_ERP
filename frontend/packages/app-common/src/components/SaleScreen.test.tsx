@@ -88,6 +88,11 @@ import { defaultHardwareConfig, type HardwareBridge } from "../hardware/hardware
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
 import { ApiError } from "../api/client";
+const controlDeliveryMock = vi.hoisted(() => ({ persist: vi.fn(), deliver: vi.fn(), retry: vi.fn() }));
+vi.mock("../sale/useSaleControlDelivery", () => ({
+  useSaleControlDelivery: () => ({ delivery: controlDeliveryMock,
+    state: { ready: true, pending: 0, sending: false, error: null } }),
+}));
 import {
   cashCloseRecoveryKey,
   saveCashCloseRecovery,
@@ -278,6 +283,9 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  controlDeliveryMock.persist.mockReset().mockResolvedValue(undefined);
+  controlDeliveryMock.deliver.mockReset();
+  controlDeliveryMock.retry.mockReset();
   prepareCashSessionForSales.mockReset().mockResolvedValue({
     cashSessionRequired: false,
     open: true,
@@ -1190,9 +1198,9 @@ describe("SaleScreen", () => {
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
-    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas aparcadas" });
+    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas guardadas" });
     await waitFor(() => expect(within(parkedDialog).getByText("10,00 €")).toBeInTheDocument());
-    fireEvent.keyDown(within(parkedDialog).getByRole("listbox", { name: "Ventas aparcadas" }), { key: "Enter" });
+    fireEvent.keyDown(within(parkedDialog).getByRole("listbox", { name: "Ventas guardadas" }), { key: "Enter" });
 
     await waitFor(() => expect(screen.getByText("MAYORISTA")).toBeInTheDocument());
     await waitFor(() => expect(quoteBodies.length).toBeGreaterThan(0));
@@ -1235,12 +1243,12 @@ describe("SaleScreen", () => {
     expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
 
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
-    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas aparcadas" });
+    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas guardadas" });
     await waitFor(() => expect(within(parkedDialog).getByText("10,00 €")).toBeInTheDocument());
-    fireEvent.keyDown(within(parkedDialog).getByRole("listbox", { name: "Ventas aparcadas" }), { key: "Enter" });
+    fireEvent.keyDown(within(parkedDialog).getByRole("listbox", { name: "Ventas guardadas" }), { key: "Enter" });
 
     await waitFor(() => expect(within(parkedDialog).getByRole("alert")).toBeInTheDocument());
-    expect(screen.getByRole("dialog", { name: "Ventas aparcadas" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Ventas guardadas" })).toBeInTheDocument();
     expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
     expect(acknowledge).not.toHaveBeenCalled();
   });
@@ -2076,6 +2084,8 @@ describe("SaleScreen", () => {
       session?: UserSession;
       terminalContext?: TerminalContext;
       interfaceMode?: "KEYBOARD" | "TOUCH";
+      onBack?: () => void;
+      onExitBlockedChange?: (blocked: boolean) => void;
     } = {},
   ) {
     render(
@@ -2085,7 +2095,8 @@ describe("SaleScreen", () => {
         session={options.session ?? session}
         terminalContext={options.terminalContext ?? terminalContext}
         interfaceMode={options.interfaceMode}
-        onBack={vi.fn()}
+        onBack={options.onBack ?? vi.fn()}
+        onExitBlockedChange={options.onExitBlockedChange}
         onLocaleChange={vi.fn()}
         onLogout={onLogout}
       />
@@ -2244,6 +2255,98 @@ describe("SaleScreen", () => {
 
     await waitFor(() => expect(prepareLogout).toHaveBeenCalledTimes(1));
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["KEYBOARD", "TOUCH"] as const)("silently blocks sale exits with lines and restores them after removing the last line in %s mode", async (interfaceMode) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      const body = path.endsWith("/products/sale") ? [products[0]]
+        : path.endsWith("/pos/sales/quote") ? authoritativeQuote(products[0]) : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    prepareLogout.mockResolvedValue("READY");
+    const onBack = vi.fn();
+    const onExitBlockedChange = vi.fn();
+    const onLogout = renderSaleScreen(vi.fn(), "es", { interfaceMode, onBack, onExitBlockedChange });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    onBack.mockClear();
+
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
+    const statuses = screen.queryAllByRole("status").map((status) => status.textContent);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(await logoutButton());
+    fireEvent.click(screen.getByRole("button", { name: "Apagar" }));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(onLogout).not.toHaveBeenCalled();
+    expect(prepareLogout).not.toHaveBeenCalled();
+    expect(prepareApplicationClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("status").map((status) => status.textContent)).toEqual(statuses);
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(1);
+
+    fireEvent.pointerDown(search);
+    fireEvent.change(search, { target: { value: "0" } });
+    fireEvent.keyDown(search, { key: "Pause" });
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    fireEvent.click(await logoutButton());
+    await waitFor(() => expect(onLogout).toHaveBeenCalledOnce());
+    expect(prepareLogout).toHaveBeenCalledOnce();
+  });
+
+  it("keeps exits blocked for a zero-total sale that still contains a line", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      const body = path.endsWith("/products/sale") ? [products[0]]
+        : path.endsWith("/pos/sales/quote") ? authoritativeQuote(products[0], "0.00") : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    const onBack = vi.fn();
+    const onExitBlockedChange = vi.fn();
+    renderSaleScreen(vi.fn(), "es", { onBack, onExitBlockedChange });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.pricingReady).toBe(true));
+    expect(screen.getByText("0,00", { selector: ".sale-total strong" })).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(1);
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("guards native beforeunload only in Electron (desktop=%s) and releases the guard on unmount", async (desktop) => {
+    if (desktop) window.tpvDesktop = { closeApplication: vi.fn().mockResolvedValue(undefined) };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+      String(url).includes("/products/sale") ? [products[0]] : [],
+    ), { status: 200 })));
+    const onExitBlockedChange = vi.fn();
+    renderSaleScreen(vi.fn(), "es", { onExitBlockedChange });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    const emptyExit = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(emptyExit);
+    expect(emptyExit.defaultPrevented).toBe(false);
+
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(onExitBlockedChange).toHaveBeenLastCalledWith(true));
+    const occupiedExit = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(occupiedExit);
+    expect(occupiedExit.defaultPrevented).toBe(desktop);
+
+    cleanup();
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
+    const afterUnmount = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(afterUnmount);
+    expect(afterUnmount.defaultPrevented).toBe(false);
   });
 
   it("does not log out when payment checkout blocks it", async () => {
@@ -2898,7 +3001,7 @@ describe("SaleScreen", () => {
 
     fireEvent.change(search, { target: { value: "0" } });
     fireEvent.keyDown(search, { key: "Pause" });
-    expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument());
   });
 
   it("shows and consumes package quantity for the next scanned product", async () => {
@@ -2998,13 +3101,8 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "0" } });
     fireEvent.keyDown(search, { key: "Pause" });
 
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/sale-line-deletions"))).toBe(true));
-    const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
-    expect(request).toMatchObject({
-      method: "POST",
-      headers: expect.objectContaining({ Authorization: "Bearer access-token" }),
-    });
-    expect(JSON.parse(String(request?.body))).toEqual({
+    await waitFor(() => expect(controlDeliveryMock.deliver).toHaveBeenCalledOnce());
+    expect(controlDeliveryMock.persist).toHaveBeenCalledWith({
       saleOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       deletionOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       fullTicketClear: true,
@@ -3018,8 +3116,8 @@ describe("SaleScreen", () => {
     });
   });
 
-  it("removes one line even when recording the best-effort event fails", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("keeps the line when the durable local control record cannot be saved", async () => {
+    controlDeliveryMock.persist.mockRejectedValueOnce(new Error("disk full"));
     const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
       const path = new URL(String(url), "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -3043,17 +3141,77 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "0" } });
     fireEvent.keyDown(search, { key: "Pause" });
 
-    expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
+    await screen.findByText(/No se pudo guardar el registro de control/);
+    expect(screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
-    await waitFor(() => expect(warning).toHaveBeenCalledWith("sale_line_deletion_not_recorded", expect.any(Error)));
-    const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
-    expect(JSON.parse(String(request?.body))).toMatchObject({
+    expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
+    expect(controlDeliveryMock.persist).toHaveBeenCalledWith(expect.objectContaining({
       saleOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       deletionOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       fullTicketClear: false,
       lines: [{ productId: "bread", code: "PAN-001", name: "Pan integral", quantity: 1, unitPrice: 2.5 }],
-    });
-    warning.mockRestore();
+    }));
+  });
+
+  it("waits for durable storage before removing a line and ignores another removal while saving", async () => {
+    let saved!: () => void;
+    controlDeliveryMock.persist.mockImplementationOnce(() => new Promise<void>(resolve => { saved = resolve; }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(
+      JSON.stringify(String(url).includes("/products/sale") ? [products[0]] : []), { status: 200 },
+    )));
+    const onBack = vi.fn();
+    const onExitBlockedChange = vi.fn();
+    renderSaleScreen(vi.fn(), "es", { onBack, onExitBlockedChange });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    fireEvent.change(search, { target: { value: "0" } });
+    fireEvent.keyDown(search, { key: "Pause" });
+    expect(screen.getByRole("button", { name: /Cafe molido/ })).toBeInTheDocument();
+    expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
+    expect(document.querySelector("main.sale-screen")).toHaveAttribute("inert");
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: "Pause" });
+    expect(controlDeliveryMock.persist).toHaveBeenCalledOnce();
+    await act(async () => saved());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument());
+    expect(controlDeliveryMock.deliver).toHaveBeenCalledOnce();
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { key: "A", ctrlKey: true, shiftKey: true, label: "Eliminar artículos" },
+    { key: "F4", ctrlKey: true, shiftKey: false, label: "Eliminar venta" },
+  ])("preserves the entire cart and exit guard after persistence fails for $label, then releases both on retry", async ({ label, ...shortcut }) => {
+    controlDeliveryMock.persist.mockRejectedValueOnce(new Error("storage unavailable"));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(
+      JSON.stringify(String(url).includes("/products/sale") ? products.slice(0, 2) : []), { status: 200 },
+    )));
+    const onBack = vi.fn();
+    const onExitBlockedChange = vi.fn();
+    renderSaleScreen(vi.fn(), "es", { onBack, onExitBlockedChange });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001"); submitQuickEntry(search, "PAN-001");
+    fireEvent.keyDown(window, shortcut);
+    fireEvent.click(await screen.findByRole("button", { name: label }));
+    await screen.findByText(/No se pudo guardar el registro de control/);
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(2);
+    expect(controlDeliveryMock.persist).toHaveBeenCalledWith(expect.objectContaining({ fullTicketClear: true, lines: expect.any(Array) }));
+    expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   it("adds and subtracts the written operand with Ctrl++ and Ctrl+-", async () => {
@@ -3315,7 +3473,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(loadSalesOperationSecurity).toHaveBeenCalledTimes(1));
 
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
-    expect(await screen.findByRole("dialog", { name: "Ventas aparcadas" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Ventas guardadas" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F10" });
     expect(onOpenCustomerReceivables).not.toHaveBeenCalled();
     fireEvent.keyDown(document, { key: "Escape" });
@@ -3504,7 +3662,7 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(confirmClearLines, { key: "ArrowLeft" });
     expect(cancelClearLines).toHaveFocus();
     fireEvent.click(confirmClearLines);
-    expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(checkoutProps.current?.sale?.internalComment).toBe(
       "Entregar en almacén interior",
     );
@@ -3592,6 +3750,50 @@ describe("SaleScreen", () => {
 
     fireEvent.click(customerSummary);
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+  });
+
+  it("keeps exits blocked while parking is pending or failed and releases them only after a successful save", async () => {
+    let rejectPark!: (error: Error) => void;
+    let resolvePark!: (response: Response) => void;
+    const parkRequest = vi.fn(() => new Promise<Response>((resolve, reject) => {
+      resolvePark = resolve;
+      rejectPark = reject;
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/parked-sales/from-pos")) return parkRequest();
+      const body = path.endsWith("/products/sale") ? [products[0]]
+        : path.endsWith("/pos/sales/quote") ? authoritativeQuote(products[0]) : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    const onBack = vi.fn();
+    const onExitBlockedChange = vi.fn();
+    renderSaleScreen(vi.fn(), "es", { onBack, onExitBlockedChange });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.pricingReady).toBe(true));
+
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
+    await waitFor(() => expect(parkRequest).toHaveBeenCalledOnce());
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).not.toHaveBeenCalled();
+
+    await act(async () => rejectPark(new Error("park service unavailable")));
+    await screen.findByText("park service unavailable");
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(1);
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "g", ctrlKey: true });
+    await waitFor(() => expect(parkRequest).toHaveBeenCalledTimes(2));
+    await act(async () => resolvePark(new Response(JSON.stringify({ id: "parked-exit" }), { status: 200 })));
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
+    expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   it("parks directly with Ctrl+G and preserves the cart customer and comment", async () => {
@@ -3688,7 +3890,7 @@ describe("SaleScreen", () => {
       },
     });
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
-    expect(screen.queryByRole("dialog", { name: "Ventas aparcadas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Ventas guardadas" })).not.toBeInTheDocument();
   });
 
   it("parks a duplicate member sale without releasing a lease owned elsewhere", async () => {
@@ -4627,7 +4829,7 @@ describe("SaleScreen", () => {
     expect(html).not.toContain('class="sale-shortcut-bar keyboard-sale-command-bar"');
     expect(html).toContain("Buscar");
     expect(html).toContain("Factura / albarán");
-    expect(html).toContain("Ventas aparcadas");
+    expect(html).toContain("Ventas guardadas");
     expect(html).toContain("Más opciones");
     expect(html).toContain("Fila anterior");
     expect(html).toContain("Fila siguiente");
@@ -4658,7 +4860,7 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Anular último ticket", createTranslator("es")("sale.shortcut.cancelOtherTicket"), "Convertir ticket a factura", "Importar ticket anterior"]],
+    ["es", ["Gesti\u00f3n", "Ventas guardadas", "Guardar o recuperar", "Anular último ticket", createTranslator("es")("sale.shortcut.cancelOtherTicket"), "Convertir ticket a factura", "Importar ticket anterior"]],
     ["en", ["Management", "Parked sales", "Save or recover", "Cancel last ticket", createTranslator("en")("sale.shortcut.cancelOtherTicket"), "Convert ticket to invoice", "Import previous ticket"]],
     ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "取消上一张小票", createTranslator("zh")("sale.shortcut.cancelOtherTicket"), "小票转发票", "\u5bfc\u5165\u4e0a\u4e00\u5f20\u5c0f\u7968"]],
   ] as const)("localizes sale management actions in %s", (locale, labels) => {
@@ -5554,7 +5756,7 @@ describe("SaleScreen", () => {
     expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(-1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Anular línea" }));
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toEqual([]));
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/sale-line-deletions"))).toHaveLength(1);
+    expect(controlDeliveryMock.persist).toHaveBeenCalledOnce();
   });
 
   it("applies a target price as a discount and preserves delegated authorization for checkout", async () => {

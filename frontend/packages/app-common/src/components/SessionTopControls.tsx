@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LocaleCode, UserSession } from "../types";
 import languageIcon from "../assets/language.png";
 import { TopDateTime } from "./TopDateTime";
@@ -20,6 +20,7 @@ type SessionTopControlsProps = {
   onLogout?: () => void;
   onPrepareShutdown?: () => Promise<boolean>;
   onBrowserClose?: () => void | Promise<void>;
+  exitBlocked?: boolean;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -43,18 +44,24 @@ export function SessionTopControls({
   onChangePassword,
   onLogout,
   onPrepareShutdown,
-  onBrowserClose
+  onBrowserClose,
+  exitBlocked = false
 }: SessionTopControlsProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [shutdownPreparing, setShutdownPreparing] = useState(false);
   const shutdownPreparingRef = useRef(false);
+  const exitBlockedRef = useRef(exitBlocked);
+  exitBlockedRef.current = exitBlocked;
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
 
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
+  useEffect(() => {
+    if (exitBlocked) setShutdownOpen(false);
+  }, [exitBlocked]);
 
   async function closeApplication() {
     if (window.tpvDesktop) {
@@ -65,21 +72,19 @@ export function SessionTopControls({
   }
 
   async function handleApplicationClose() {
-    if (shutdownPreparingRef.current) return;
+    if (exitBlocked || shutdownPreparingRef.current) return;
     shutdownPreparingRef.current = true;
     setShutdownPreparing(true);
-    let ready = false;
     try {
-      ready = await (onPrepareShutdown?.() ?? Promise.resolve(true));
-      if (ready) await closeApplication();
+      const ready = await (onPrepareShutdown?.() ?? Promise.resolve(true));
+      if (ready && !exitBlockedRef.current) await closeApplication();
     } catch {
-      ready = false;
+      // Keep the application open when preparation or the close request fails.
     } finally {
-      if (!ready) {
-        setShutdownOpen(false);
-        shutdownPreparingRef.current = false;
-        setShutdownPreparing(false);
-      }
+      // A desktop beforeunload veto can keep the window alive after IPC resolves.
+      setShutdownOpen(false);
+      shutdownPreparingRef.current = false;
+      setShutdownPreparing(false);
     }
   }
 
@@ -113,6 +118,7 @@ export function SessionTopControls({
               type="button"
               role="menuitem"
               onClick={() => {
+                if (exitBlocked) return;
                 setUserMenuOpen(false);
                 onLogout?.();
               }}
@@ -161,11 +167,11 @@ export function SessionTopControls({
         className="shutdown-button"
         aria-label={shutdownLabel}
         title={shutdownLabel}
-        onClick={() => setShutdownOpen(true)}
+        onClick={() => { if (!exitBlocked) setShutdownOpen(true); }}
       >
         {"\u23FB"}
       </button>
-      {shutdownOpen && (
+      {shutdownOpen && !exitBlocked && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">
           <section className="shutdown-dialog">
             <h2 id="shutdown-title">{shutdownConfirmTitle}</h2>

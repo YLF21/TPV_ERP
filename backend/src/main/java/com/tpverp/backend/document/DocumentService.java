@@ -233,7 +233,8 @@ public class DocumentService {
     public CommercialDocument createAndConfirmDeliveryNote(
             DocumentCommand command, Authentication authentication) {
         var draft = createDeliveryNote(command, authentication);
-        return confirm(draft.getId(), authentication);
+        return confirm(draft.getId(), authentication,
+                captureManualControlSnapshot(command, draft, 0, 0));
     }
 
     @Transactional(readOnly = true)
@@ -268,13 +269,15 @@ public class DocumentService {
             List<PaymentCommand> payments,
             Authentication authentication) {
         var document = quotePendingSale(command, dueDate, authentication);
-        return completePreparedPendingSale(document, payments, authentication);
+        return completePreparedPendingSale(document, payments, authentication,
+                captureManualControlSnapshot(command, document, 0, 0));
     }
 
     private CommercialDocument completePreparedPendingSale(
             CommercialDocument document,
             List<PaymentCommand> payments,
-            Authentication authentication) {
+            Authentication authentication,
+            ControlAlertDetectionService.ManualDiscountSnapshot manualControl) {
         var customer = requireActiveCustomer(document.getClienteId());
         var promotions = promotionContext(document);
         var commands = List.copyOf(payments == null ? List.of() : payments);
@@ -309,6 +312,7 @@ public class DocumentService {
         generatePromotionalCoupons(saved, promotions);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
+        controlAlerts.detectConfirmedDocument(saved, manualControl, terminalId, authentication);
         return saved;
     }
 
@@ -381,6 +385,12 @@ public class DocumentService {
     // Confirms, numbers, and records stock in one transaction.
     @Transactional
     public CommercialDocument confirm(UUID id, Authentication authentication) {
+        return confirm(id, authentication, null);
+    }
+
+    private CommercialDocument confirm(
+            UUID id, Authentication authentication,
+            ControlAlertDetectionService.ManualDiscountSnapshot originalManualControl) {
         var document = find(id);
         requireDocumentWritePermission(
                 document.getTipo(), authentication, confirmPermission(document.getTipo()));
@@ -389,8 +399,9 @@ public class DocumentService {
         validateConfirmation(document);
         // A persisted line discount may come from member pricing. Only the global discount
         // remains unambiguously manual when a draft is confirmed in a later request.
-        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
-                persistedManualDocumentPercent(document));
+        var manualDiscounts = originalManualControl != null ? originalManualControl
+                : ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
+                        persistedManualDocumentPercent(document));
         PromotionContext promotionContext;
         if (document.getDescuentoGlobal().signum() > 0) {
             promotionContext = applyRequestedLegacyGlobalDiscount(
@@ -540,9 +551,10 @@ public class DocumentService {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
-        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.from(command);
         var customer = pricingCustomer(command);
         var ticket = createDraft(command, authentication, customer);
+        var manualDiscounts = captureManualControlSnapshot(command, ticket,
+                resolvedDocumentPercent(command, documentDiscountPercent), 0, 0);
         var promotionContext = promotionContext(ticket, customer);
         applyDirectPromotions(ticket, promotionContext);
         if (hasText(promotionalCouponCode)) {
@@ -733,7 +745,9 @@ public class DocumentService {
                 snapshot.globalDiscount(),
                 sale.getBaseTotal(), sale.getImpuestoTotal(), sale.getTotal(),
                 sale.getLineas().stream().map(DocumentLineCommand::from).toList(),
-                snapshot.internalComment(), null, saleAdjustments);
+                snapshot.internalComment(), null, saleAdjustments,
+                snapshot.manualControl() == null ? null
+                        : snapshot.manualControl().remapPositions(snapshotToSalePositions));
     }
 
     @Transactional
@@ -851,12 +865,19 @@ public class DocumentService {
                 result.redeemedAmount(), discountEligibleProductIds(ticket));
     }
 
-    private static ControlAlertDetectionService.ManualDiscountSnapshot snapshotManualDiscounts(
+    static ControlAlertDetectionService.ManualDiscountSnapshot snapshotManualDiscounts(
             ApprovedCardTicketSnapshot snapshot) {
+        if (snapshot.manualControl() != null) return snapshot.manualControl();
         var replay = snapshot.historicalReplay();
         if (replay == null || replay.historicalLineCount() == null) {
+            var manualPercent = replay == null
+                    ? snapshot.adjustments().stream()
+                            .filter(adjustment -> "MANUAL_PERCENT".equals(adjustment.type()))
+                            .map(DocumentAdjustmentSnapshot::percent)
+                            .reduce(snapshot.globalDiscount(), BigDecimal::max)
+                    : snapshot.globalDiscount();
             return ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
-                    snapshot.globalDiscount());
+                    manualPercent);
         }
         return new ControlAlertDetectionService.ManualDiscountSnapshot(
                 BigDecimal.ZERO,
@@ -864,6 +885,64 @@ public class DocumentService {
                         .map(line -> new ControlAlertDetectionService.ManualLineDiscount(
                                 line.position(), line.productId(), line.discountPercent()))
                         .toList());
+    }
+
+    ControlAlertDetectionService.ManualDiscountSnapshot captureManualControlSnapshot(
+            DocumentCommand command, CommercialDocument priced,
+            int ignoredLeadingLines, int positionOffset) {
+        return captureManualControlSnapshot(command, priced, resolvedDocumentPercent(command),
+                ignoredLeadingLines, positionOffset);
+    }
+
+    private ControlAlertDetectionService.ManualDiscountSnapshot captureManualControlSnapshot(
+            DocumentCommand command, CommercialDocument priced, BigDecimal manualPercent,
+            int ignoredLeadingLines, int positionOffset) {
+        var requested = command.lineas();
+        var current = requested.subList(ignoredLeadingLines, requested.size());
+        var positions = new HashMap<Integer, Integer>();
+        for (int index = 0; index < current.size(); index++) {
+            positions.put(index + 1, positionOffset + ignoredLeadingLines + index + 1);
+        }
+        var requestedDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot
+                .from(manualPercent, current).remapPositions(positions);
+        var appliedLines = priced.getLineas().stream()
+                .collect(java.util.stream.Collectors.toMap(DocumentLine::getPosicion, line -> line));
+        // Catalogue restrictions may reject an entered discount. Preserve only
+        // accepted manual evidence; automatic benefits never supply its percent.
+        var discounts = new ControlAlertDetectionService.ManualDiscountSnapshot(manualPercent,
+                requestedDiscounts.lines().stream().filter(line -> {
+                    var applied = appliedLines.get(line.position());
+                    return applied != null && line.productId().equals(applied.getProductoId())
+                            && (line.discountPercent().signum() == 0 || applied.getDescuento().signum() > 0);
+                }).toList());
+        var changedProductIds = current.stream()
+                .filter(line -> line.productoId() != null && line.temporaryPriceOverride()
+                        && line.originalDocumentLineId() == null && !line.historicalOpenPriceOverride())
+                .map(DocumentLineCommand::productoId).distinct().toList();
+        if (changedProductIds.isEmpty()) return discounts;
+        var catalog = products.findAllByStoreIdAndIdIn(priced.getTiendaId(), changedProductIds).stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, product -> product));
+        var customer = pricingCustomer(command);
+        var changes = new java.util.ArrayList<ControlAlertDetectionService.ManualPriceChange>();
+        for (int index = 0; index < current.size(); index++) {
+            var line = current.get(index);
+            if (!line.temporaryPriceOverride() || line.originalDocumentLineId() != null
+                    || line.historicalOpenPriceOverride()) continue;
+            var product = catalog.get(line.productoId());
+            if (product == null || product.getDiscountType() == DiscountType.NONE) continue;
+            var position = positions.get(index + 1);
+            var applied = appliedLines.get(position);
+            if (applied == null || !line.productoId().equals(applied.getProductoId())) continue;
+            var originalPrice = promotionPricing.basePrice(
+                    product, command.fecha(), customer, command.wholesaleMode());
+            if (originalPrice.signum() > 0
+                    && originalPrice.compareTo(applied.getPrecioUnitario()) != 0) {
+                changes.add(new ControlAlertDetectionService.ManualPriceChange(
+                        position, product.getId(), originalPrice, applied.getPrecioUnitario()));
+            }
+        }
+        return new ControlAlertDetectionService.ManualDiscountSnapshot(
+                discounts.globalDiscountPercent(), discounts.lines(), changes);
     }
 
     private void validateAndConsumeSnapshotCoupon(
@@ -2800,7 +2879,11 @@ public class DocumentService {
                     organization.currentUser(authentication).getId(),
                     currentTerminalOrNull(authentication), Instant.now(clock));
         }
-        return completePreparedPendingSale(draft, payments, authentication);
+        var manualControl = replacement == null
+                ? ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
+                        persistedManualDocumentPercent(draft))
+                : captureManualControlSnapshot(replacement, draft, 0, 0);
+        return completePreparedPendingSale(draft, payments, authentication, manualControl);
     }
 
     boolean pendingSaleDraftMatches(
@@ -2902,7 +2985,8 @@ public class DocumentService {
     public CommercialDocument createAndConfirmInvoice(
             DocumentCommand command, Authentication authentication) {
         var draft = createInvoice(command, authentication);
-        return confirm(draft.getId(), authentication);
+        return confirm(draft.getId(), authentication,
+                captureManualControlSnapshot(command, draft, 0, 0));
     }
 
     @Transactional(readOnly = true)
