@@ -61,7 +61,7 @@ function Assert-SafeExistingAncestors([string] $Path) {
     $current = $expected
     while (-not [string]::IsNullOrWhiteSpace($current)) {
         $segments += $current
-        $parent = Split-Path -LiteralPath $current -Parent
+        $parent = [IO.Path]::GetDirectoryName($current)
         if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) { break }
         $current = $parent
     }
@@ -119,9 +119,13 @@ function New-StrictFileSystemAcl(
     }
 
     foreach ($sid in $AllowedSids) {
+        $rights = if ($DirectoryKind -eq 'FiscalExport' -and
+            $sid.Value -notin @($AllowedSystemSid, $AllowedAdministratorsSid)) {
+            [Security.AccessControl.FileSystemRights]::Modify
+        } else { [Security.AccessControl.FileSystemRights]::FullControl }
         $rule = [Security.AccessControl.FileSystemAccessRule]::new(
             $sid,
-            [Security.AccessControl.FileSystemRights]::FullControl,
+            $rights,
             $inheritance,
             [Security.AccessControl.PropagationFlags]::None,
             [Security.AccessControl.AccessControlType]::Allow)
@@ -159,13 +163,16 @@ function Assert-StrictFileSystemAcl(
     foreach ($rule in $rules) {
         $sid = $rule.IdentityReference.Translate(
             [Security.Principal.SecurityIdentifier]).Value
+        $rights = if ($DirectoryKind -eq 'FiscalExport' -and
+            $sid -notin @($AllowedSystemSid, $AllowedAdministratorsSid)) {
+            [Security.AccessControl.FileSystemRights]::Modify -bor [Security.AccessControl.FileSystemRights]::Synchronize
+        } else { [Security.AccessControl.FileSystemRights]::FullControl }
         if ($sid -notin $AllowedSidValues -or
                 $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
                 $rule.IsInherited -or
                 $rule.InheritanceFlags -ne $expectedInheritance -or
                 $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None -or
-                ($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -ne
-                    [Security.AccessControl.FileSystemRights]::FullControl) {
+                $rule.FileSystemRights -ne $rights) {
             throw "La ACL contiene una regla no autorizada en: $Path"
         }
     }
@@ -192,16 +199,16 @@ if ($service.State -ne 'Stopped') {
 $serviceSid = Resolve-Sid $effectiveServiceIdentity
 $systemSid = [Security.Principal.SecurityIdentifier]::new($AllowedSystemSid)
 $administratorsSid = [Security.Principal.SecurityIdentifier]::new($AllowedAdministratorsSid)
-$allowedSids = [Security.Principal.SecurityIdentifier[]] @(
+$allowedSids = [Security.Principal.SecurityIdentifier[]] (@(
     $serviceSid,
     $systemSid,
     $administratorsSid
-)
-$allowedSidValues = [string[]] @(
+) | Sort-Object Value -Unique)
+$allowedSidValues = [string[]] (@(
     $serviceSid.Value,
     $systemSid.Value,
     $administratorsSid.Value
-)
+) | Select-Object -Unique)
 
 if (-not $PSCmdlet.ShouldProcess(
         $secretDirectory,

@@ -16,5 +16,12 @@ public record FiscalCorrectionView(
                 correction.getId(), originalRecordId, correction.getNumber(),
                 correction.getGeneratedAt(), FiscalSubmissionStatus.PENDIENTE);
     }
+
+    public static FiscalCorrectionView from(
+            FiscalRecord correction, UUID originalRecordId, FiscalSubmissionStatus status) {
+        return new FiscalCorrectionView(
+                correction.getId(), originalRecordId, correction.getNumber(),
+                correction.getGeneratedAt(), status);
+    }
     // Returns the initial persisted state before asynchronous submission.
 }

@@ -197,6 +197,7 @@ export type VerifactuManualRetryResult = {
 
 export type VerifactuCorrectionRequest = {
   reason: string;
+  idempotencyKey?: string;
   recipientTaxId?: string | null;
   recipientName?: string | null;
   operationDescription?: string | null;
@@ -233,6 +234,8 @@ export type FiscalStatus = {
   endpointEnvironment: "TEST" | "PRODUCTION";
   transportMode: "SIMULATED" | "AEAT";
   productionEnabled: boolean;
+  /** Older servers may omit this field; do not assume they permit NO VERI*FACTU. */
+  productCapability?: "VERIFACTU_ONLY" | "DUAL" | null;
   verifactuBlockedUntil?: string | null;
   scheduledTransition?: FiscalScheduledTransition | null;
 };
@@ -812,6 +815,7 @@ export function createVerifactuCorrection(
       token,
       body: {
         reason: request.reason.trim(),
+        ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
         recipientTaxId: optionalText(request.recipientTaxId),
         recipientName: optionalText(request.recipientName),
         operationDescription: optionalText(request.operationDescription)

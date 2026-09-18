@@ -81,8 +81,46 @@ public interface FiscalRecordRepository extends JpaRepository<FiscalRecord, UUID
     Optional<FiscalRecord> findTopByCompanyIdAndInstallationIdOrderBySequenceDesc(
             UUID companyId, UUID installationId);
 
-    Optional<FiscalRecord> findByDocumentIdAndOperation(
+    /**
+     * A document may have several ALTA records after a correction.  Callers
+     * which need the immutable source must always resolve the first one in
+     * fiscal-chain order instead of relying on an ambiguous Optional query.
+     */
+    Optional<FiscalRecord> findFirstByDocumentIdAndOperationOrderBySequenceAsc(
             UUID documentId, FiscalRecordOperation operation);
+
+    @Query(value = """
+            select correction.*
+              from registro_fiscal correction
+              join registro_fiscal_relacion relation
+                on relation.registro_id = correction.id
+              join registro_fiscal original on original.id = :originalId
+             where correction.cadena_id = original.cadena_id
+               and (correction.documento_id = original.documento_id
+                    or (original.documento_id is null and relation.relacionado_id = original.id))
+               and relation.tipo = 'SUBSANA'
+               and correction.snapshot ->> 'subsanacionIdempotencyKey' = :idempotencyKey
+             order by correction.secuencia desc
+             limit 1
+            """, nativeQuery = true)
+    Optional<FiscalRecord> findCorrectionByOriginalIdAndIdempotencyKey(
+            @Param("originalId") UUID originalId,
+            @Param("idempotencyKey") String idempotencyKey);
+
+    @Query(value = """
+            select correction.*
+              from registro_fiscal correction
+              join registro_fiscal_relacion relation
+                on relation.registro_id = correction.id
+              join registro_fiscal original on original.id = :originalId
+             where correction.cadena_id = original.cadena_id
+               and (correction.documento_id = original.documento_id
+                    or (original.documento_id is null and relation.relacionado_id = original.id))
+               and relation.tipo = 'SUBSANA'
+             order by correction.secuencia desc
+             limit 1
+            """, nativeQuery = true)
+    Optional<FiscalRecord> findLatestCorrectionByOriginalId(@Param("originalId") UUID originalId);
 
     Optional<FiscalRecord> findByIdAndCompanyIdAndStoreId(
             UUID id, UUID companyId, UUID storeId);

@@ -41,6 +41,8 @@ class FiscalSubmissionQueuePostgreSqlTest {
     }
 
     @Autowired private FiscalSubmissionStateRepository states;
+    @Autowired private FiscalSubmissionScopeFlowRepository flows;
+    @Autowired private jakarta.persistence.EntityManager entityManager;
     @Autowired private JdbcTemplate jdbc;
 
     @DynamicPropertySource
@@ -121,6 +123,49 @@ class FiscalSubmissionQueuePostgreSqlTest {
 
         assertThat(states.findClaimable(NOW, 1000)).extracting(FiscalSubmissionState::getRecordId)
                 .containsExactly(fixture.recordOne(), fixture.recordTwo());
+    }
+
+    @Test
+    void incidentSurvivesPersistenceAndIsIsolatedByCompanyInstallationAndEnvironment() {
+        var f = fixture();
+        var flow = new FiscalSubmissionScopeFlow(f.company(), f.installation(), FiscalEndpointEnvironment.TEST);
+        flow.markTransportIncident(NOW);
+        flows.saveAndFlush(flow);
+        entityManager.clear();
+        var restored = flows.findForUpdate(f.company(), f.installation(), FiscalEndpointEnvironment.TEST).orElseThrow();
+        assertThat(restored.getIncidentSince()).isEqualTo(NOW);
+        assertThat(flows.findForUpdate(f.company(), f.installation(), FiscalEndpointEnvironment.PRODUCTION)).isEmpty();
+        assertThat(flows.findForUpdate(UUID.randomUUID(), f.installation(), FiscalEndpointEnvironment.TEST)).isEmpty();
+        assertThat(flows.findForUpdate(f.company(), UUID.randomUUID(), FiscalEndpointEnvironment.TEST)).isEmpty();
+        restored.clearTransportIncident();
+        flows.saveAndFlush(restored);
+        entityManager.clear();
+        assertThat(flows.findForUpdate(f.company(), f.installation(), FiscalEndpointEnvironment.TEST)
+                .orElseThrow().hasTransportIncident()).isFalse();
+    }
+
+    @Test
+    void incidentDrainQueryIncludesMissingStateAndDefectsButNotFinalResponses() {
+        var f = fixture();
+        insertRecord(f, f.recordOne(), 1, "A".repeat(64), null);
+        jdbc.update("""
+                insert into artefacto_registro_fiscal (registro_id,modo_fiscal,entorno,sandbox,
+                    xml_sin_firmar,xml_hash,qr_url,qr_hash,qr_prefijo,creado_en,
+                    obligado_nombre,obligado_nif,obligado_direccion)
+                values (?, 'VERIFACTU','TEST',true,'<RegistroAlta/>',?,
+                    'https://prewww2.aeat.es/test',?,'QR tributario:',?,
+                    'Claim test','B12345674',cast(? as jsonb))
+                """, f.recordOne(), "C".repeat(64), "D".repeat(64), timestamp(NOW),
+                "{\"linea1\":\"Calle\",\"ciudad\":\"Las Palmas\",\"codigoPostal\":\"35001\",\"provincia\":\"Las Palmas\",\"pais\":\"ES\"}");
+        assertThat(states.hasUnsubmittedInScope(f.company(), f.installation(), "TEST")).isTrue();
+        assertThat(states.hasUnsubmittedInScope(f.company(), f.installation(), "PRODUCTION")).isFalse();
+        assertThat(states.hasUnsubmittedInScope(UUID.randomUUID(), f.installation(), "TEST")).isFalse();
+        insertState(f.recordOne(), "DEFECTUOSO", null, null, null);
+        assertThat(states.hasUnsubmittedInScope(f.company(), f.installation(), "TEST")).isTrue();
+        for (var status : java.util.List.of("ACEPTADO", "ACEPTADO_CON_ERRORES", "RECHAZADO", "SUBSANADO")) {
+            jdbc.update("update estado_envio_fiscal set estado=? where registro_id=?", status, f.recordOne());
+            assertThat(states.hasUnsubmittedInScope(f.company(), f.installation(), "TEST")).as(status).isFalse();
+        }
     }
 
     private Fixture fixture() {

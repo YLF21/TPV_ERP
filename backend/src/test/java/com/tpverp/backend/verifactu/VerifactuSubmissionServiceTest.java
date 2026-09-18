@@ -293,6 +293,31 @@ class VerifactuSubmissionServiceTest {
     }
 
     @Test
+    void recoveryBatchUsesIncidentEnvelopeAndTheExactFrozenRecords() {
+        var batch = claimedBatchForTest();
+        batch.scope().markTransportIncident(Instant.parse("2026-06-16T09:00:00Z"));
+        when(artifacts.findAllByRecordIdIn(anyList()))
+                .thenReturn(List.of(artifact(FROZEN_XML, sha256(FROZEN_XML))));
+        when(xml.frozenBatchXml("Empresa congelada", "B12345674", List.of(FROZEN_XML), true))
+                .thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
+        var parsed = new VerifactuBatchResponse(FiscalSubmissionStatus.ACEPTADO, 60,
+                Map.of(record.getId(), new VerifactuBatchResponse.Line(
+                        record.getId(), FiscalSubmissionStatus.ACEPTADO, null, null)),
+                null, null, "respuesta", false);
+        when(transport.send(record.getCompanyId(), record.getInstallationId(),
+                "https://aeat.test/soap", "<soap/>"))
+                .thenReturn(new VerifactuTransportResponse(200, "respuesta"));
+        doReturn(parsed).when(responses).parseBatch(any(), anyList());
+        service.setBatchPersistence(batchPersistence);
+
+        assertThat(service.submitBatch(batch).processed()).isTrue();
+
+        verify(xml).frozenBatchXml("Empresa congelada", "B12345674", List.of(FROZEN_XML), true);
+        verify(xml, never()).frozenBatchXml(any(), any(), any());
+        verify(batchPersistence).recordResponse(batch, parsed);
+    }
+
+    @Test
     void excepcionDelParserPostRedTambienQuedaReintentable() {
         var batch = claimedBatchForTest();
         when(artifacts.findAllByRecordIdIn(anyList()))

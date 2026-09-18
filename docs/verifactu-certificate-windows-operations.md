@@ -17,8 +17,9 @@ unidad de red o una ruta situada dentro de imagenes de producto o backups.
 ## Orden de instalacion
 
 1. Instale el backend como servicio de Windows con el nombre exacto
-   `TPVERPBackend`; el instalador conserva la cuenta integrada efectiva (por
-   defecto `NT AUTHORITY\LocalService`).
+   `TPVERPBackend` mediante `Install-TpvBackendWindowsService.ps1 -Phase Register`;
+   la cuenta predeterminada es `NT SERVICE\TPVERPBackend`. Esta fase no requiere
+   secretos existentes y deja el servicio detenido, con inicio Manual.
 2. Mantenga el servicio detenido. El script rechaza la operacion si el servicio
    no existe, usa otra identidad o esta iniciado.
 3. Abra Windows PowerShell como administrador desde la raiz del repositorio y
@@ -121,12 +122,16 @@ herencia y reemplaza las reglas de acceso de todo el arbol por tres identidades:
 
 - La cuenta que figure en `Win32_Service.StartName` para `TPVERPBackend`:
   el script de aprovisionamiento la lee y valida; no se debe asumir una cuenta
-  virtual distinta a la configurada en WinSW.
+  virtual distinta a la configurada en WinSW. En secretos requiere FullControl,
+  como la politica Java; con `-DirectoryKind FiscalExport` requiere Modify.
 - `SYSTEM`: control total.
 - `BUILTIN\Administrators`: control total.
 
 Una ejecucion parcial se puede corregir repitiendo el script. No copie archivos
-manualmente mientras el backend este iniciado.
+manualmente mientras el backend este iniciado. El preflight de `-Phase Start`
+del instalador verifica estas ACL y la identidad exacta del bundle antes del
+arranque explicito. El aplicador general `Set-TpvBackendWindowsAcl.ps1 -Phase Apply`
+tambien crea ambos subdirectorios con estos derechos, sin usar cuentas genericas.
 
 ## Backup
 

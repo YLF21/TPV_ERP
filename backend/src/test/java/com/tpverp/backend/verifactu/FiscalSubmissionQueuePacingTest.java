@@ -30,6 +30,7 @@ class FiscalSubmissionQueuePacingTest {
     private final UUID companyId = UUID.randomUUID();
     private final UUID installationId = UUID.randomUUID();
     private FiscalSubmissionQueueService queue;
+    private FiscalSubmissionScopeFlow scope;
 
     @BeforeEach
     void setUp() {
@@ -38,7 +39,7 @@ class FiscalSubmissionQueuePacingTest {
                 new VerifactuDefectClassifier(), null, null, flows);
         queue.setArtifacts(artifacts);
 
-        var scope = new FiscalSubmissionScopeFlow(
+        scope = new FiscalSubmissionScopeFlow(
                 companyId, installationId, FiscalEndpointEnvironment.TEST);
         scope.completed(NOW, 60);
         when(flows.findForUpdate(companyId, installationId, FiscalEndpointEnvironment.TEST))
@@ -70,7 +71,72 @@ class FiscalSubmissionQueuePacingTest {
         verify(states, never()).findClaimableBatch(any(), any(), any(), any(), any(Integer.class));
     }
 
-    private void stubSelectedBatch(List<FiscalSubmissionState> selected) {
+    @Test
+    void incompatibleFrozenIdentityCannotBypassPacingEvenWithOneThousandCandidates() {
+        var selected = claimableStates(1000);
+        var selectedArtifacts = stubSelectedBatch(selected);
+        when(selectedArtifacts.get(1).getIssuerName()).thenReturn("Nueva razon social");
+        when(states.countClaimableBatch(companyId, installationId, "TEST", NOW)).thenReturn(1000L);
+
+        assertThat(queue.claimBatch(companyId, installationId, FiscalEndpointEnvironment.TEST, 1000)).isEmpty();
+        assertThat(selected).allMatch(state -> state.getStatus() == FiscalSubmissionStatus.PENDIENTE);
+        verify(states, never()).save(any());
+        verify(flows, never()).save(any());
+    }
+
+    @Test
+    void splitsAtFirstChangedIssuerWithoutOvertakingIt() {
+        scope.completed(NOW.minusSeconds(61), 60);
+        var selected = claimableStates(3);
+        var selectedArtifacts = stubSelectedBatch(selected);
+        when(selectedArtifacts.get(1).getIssuerName()).thenReturn("Nueva razon social");
+
+        var claimed = queue.claimBatch(companyId, installationId, FiscalEndpointEnvironment.TEST, 1000).orElseThrow();
+
+        assertThat(claimed.submissions()).extracting(item -> item.state().getRecordId())
+                .containsExactly(selected.getFirst().getRecordId());
+        assertThat(selected.get(1).getStatus()).isEqualTo(FiscalSubmissionStatus.PENDIENTE);
+        assertThat(selected.get(2).getStatus()).isEqualTo(FiscalSubmissionStatus.PENDIENTE);
+        assertThat(scope.hasTransportIncident()).isFalse();
+    }
+
+    @Test
+    void duplicateInvoiceIdentityIsSplitBeforeTheAmbiguousResponse() {
+        scope.completed(NOW.minusSeconds(61), 60);
+        var selected = claimableStates(2);
+        stubSelectedBatch(selected);
+        var invoices = selected.stream().map(state -> {
+            var record = mock(FiscalRecord.class);
+            when(record.getId()).thenReturn(state.getRecordId());
+            when(record.getFiscalMode()).thenReturn(FiscalMode.VERIFACTU);
+            when(record.getIssuerTaxId()).thenReturn("B12345674");
+            when(record.getNumber()).thenReturn("F-1");
+            when(record.getIssueDate()).thenReturn(java.time.LocalDate.of(2026, 8, 27));
+            when(record.getOperation()).thenReturn(FiscalRecordOperation.ALTA);
+            return record;
+        }).toList();
+        when(records.findByCompanyIdAndInstallationIdAndIdInOrderBySequenceAsc(
+                eq(companyId), eq(installationId), any())).thenReturn(invoices);
+
+        var claimed = queue.claimBatch(companyId, installationId, FiscalEndpointEnvironment.TEST, 1000).orElseThrow();
+
+        assertThat(claimed.submissions()).hasSize(1);
+        assertThat(selected.get(1).getStatus()).isEqualTo(FiscalSubmissionStatus.PENDIENTE);
+    }
+
+    @Test
+    void expiredScopeLeaseStartsRecoveryAfterProcessRestart() {
+        scope.completed(NOW.minusSeconds(61), 60);
+        scope.claim(UUID.randomUUID(), NOW.minusSeconds(180), NOW.minusSeconds(60));
+        stubSelectedBatch(claimableStates(1));
+
+        var claimed = queue.claimBatch(companyId, installationId, FiscalEndpointEnvironment.TEST, 1000).orElseThrow();
+
+        assertThat(claimed.scope().getIncidentSince()).isEqualTo(NOW);
+        verify(flows).save(scope);
+    }
+
+    private List<FiscalRecordArtifact> stubSelectedBatch(List<FiscalSubmissionState> selected) {
         var selectedRecords = selected.stream().map(state -> {
             var record = mock(FiscalRecord.class);
             when(record.getId()).thenReturn(state.getRecordId());
@@ -81,6 +147,8 @@ class FiscalSubmissionQueuePacingTest {
             var artifact = mock(FiscalRecordArtifact.class);
             when(artifact.getRecordId()).thenReturn(state.getRecordId());
             when(artifact.getEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
+            when(artifact.getIssuerName()).thenReturn("Empresa congelada");
+            when(artifact.getIssuerTaxId()).thenReturn("B12345674");
             return artifact;
         }).toList();
         when(states.findClaimableBatch(companyId, installationId, "TEST", NOW, 1000))
@@ -90,6 +158,7 @@ class FiscalSubmissionQueuePacingTest {
         when(artifacts.findAllByRecordIdIn(any())).thenReturn(selectedArtifacts);
         when(states.save(any(FiscalSubmissionState.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        return selectedArtifacts;
     }
 
     private List<FiscalSubmissionState> claimableStates(int count) {

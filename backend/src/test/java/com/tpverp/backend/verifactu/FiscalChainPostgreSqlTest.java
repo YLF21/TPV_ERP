@@ -63,6 +63,7 @@ class FiscalChainPostgreSqlTest {
     @Autowired private FiscalRecordService service;
     @Autowired private FiscalChainRepository chains;
     @Autowired private FiscalRecordRepository records;
+    @Autowired private FiscalRecordRelationRepository relations;
     @Autowired private FiscalSubmissionStateRepository states;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactionManager;
@@ -168,6 +169,79 @@ class FiscalChainPostgreSqlTest {
                 .allMatch(state -> state.getStatus() == FiscalSubmissionStatus.PENDIENTE);
         assertThat(jdbc.queryForObject(
                 "select ultima_secuencia from cadena_fiscal", Long.class)).isEqualTo(20L);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = FiscalSubmissionStatus.class,
+            names = {"RECHAZADO", "ACEPTADO_CON_ERRORES"})
+    void concurrentCorrectionRetriesShareOneDurableRecordAndKeepTheOriginalAlta(
+            FiscalSubmissionStatus firstCorrectionStatus) throws Exception {
+        var fixture = insertFixture(1);
+        var original = inNewTransaction(() -> service.register(
+                command(fixture, fixture.documentIds().getFirst(), Map.of())));
+        var stateService = new FiscalSubmissionStateService(states, Clock.fixed(NOW, ZoneOffset.UTC));
+        inNewTransaction(() -> stateService.markRejected(original.getId(), "1100", "Datos administrativos"));
+        var organization = org.mockito.Mockito.mock(com.tpverp.backend.organization.CurrentOrganization.class);
+        var company = org.mockito.Mockito.mock(com.tpverp.backend.organization.Company.class);
+        var store = org.mockito.Mockito.mock(com.tpverp.backend.organization.Store.class);
+        var user = org.mockito.Mockito.mock(com.tpverp.backend.security.domain.UserAccount.class);
+        var authentication = org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
+        org.mockito.Mockito.when(company.getId()).thenReturn(fixture.companyId());
+        org.mockito.Mockito.when(store.getId()).thenReturn(fixture.storeId());
+        org.mockito.Mockito.when(user.getId()).thenReturn(fixture.userId());
+        org.mockito.Mockito.when(organization.currentCompany()).thenReturn(company);
+        org.mockito.Mockito.when(organization.currentStore()).thenReturn(store);
+        org.mockito.Mockito.when(organization.currentUser(authentication)).thenReturn(user);
+        var corrections = new FiscalCorrectionService(records, states, service, new FiscalCorrectionSnapshot(),
+                organization, org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
+                Clock.fixed(NOW, ZoneOffset.UTC), new VerifactuDefectClassifier());
+        var request = new FiscalCorrectionRequest("Descripcion administrativa", null, null,
+                "Venta corregida", "correction-concurrent-1");
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var futures = new ArrayList<java.util.concurrent.Future<FiscalCorrectionView>>();
+            for (int i = 0; i < 2; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return inNewTransaction(() -> corrections.correct(original.getId(), request, authentication));
+                }));
+            }
+            start.countDown();
+            var first = futures.get(0).get(30, java.util.concurrent.TimeUnit.SECONDS);
+            var retry = futures.get(1).get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(retry.id()).isEqualTo(first.id());
+            assertThat(jdbc.queryForObject("select count(*) from registro_fiscal where documento_id=?",
+                    Long.class, original.getDocumentId())).isEqualTo(2L);
+            var replay = inNewTransaction(() -> corrections.correct(original.getId(), request, authentication));
+            assertThat(replay.id()).isEqualTo(first.id());
+            assertThat(inNewTransaction(() -> records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                    original.getDocumentId(), FiscalRecordOperation.ALTA).orElseThrow()).getId())
+                    .isEqualTo(original.getId());
+            assertThat(inNewTransaction(() -> records.findById(original.getId()).orElseThrow()).getSnapshotHash())
+                    .isEqualTo(original.getSnapshotHash());
+            // An accepted-with-errors correction may itself be corrected. Its
+            // acceptance must close that immediate target, not just the root.
+            if (firstCorrectionStatus == FiscalSubmissionStatus.ACEPTADO_CON_ERRORES) {
+                inNewTransaction(() -> stateService.markSubsanado(original.getId()));
+                inNewTransaction(() -> stateService.markAcceptedWithErrors(first.id(), "2000", "Revision administrativa"));
+            } else {
+                inNewTransaction(() -> stateService.markRejected(first.id(), "1100", "Revision administrativa"));
+            }
+            var secondRequest = new FiscalCorrectionRequest("Segunda descripcion", null, null,
+                    "Venta corregida de nuevo", "correction-concurrent-2");
+            var second = inNewTransaction(() -> corrections.correct(first.id(), secondRequest, authentication));
+            assertThat(relations.findByRecordIdAndType(second.id(), FiscalRelationType.SUBSANA)
+                    .orElseThrow().getRelatedId()).isEqualTo(first.id());
+            var completion = new FiscalCorrectionCompletionService(relations, stateService);
+            inNewTransaction(() -> {
+                completion.accepted(records.findById(second.id()).orElseThrow());
+                return null;
+            });
+            assertThat(states.findById(first.id()).orElseThrow().getStatus()).isEqualTo(FiscalSubmissionStatus.SUBSANADO);
+            assertThat(states.findById(original.getId()).orElseThrow().getStatus()).isEqualTo(FiscalSubmissionStatus.SUBSANADO);
+            assertThat(inNewTransaction(() -> corrections.correct(first.id(), secondRequest, authentication)).id())
+                    .isEqualTo(second.id());
+        }
     }
 
     @Test

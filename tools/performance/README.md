@@ -1,5 +1,10 @@
 # Medición SQL de Resumen y Alertas
 
+Para el catalogo fiscal, `measure_fiscal_keyset.py` ejecuta la medicion opt-in
+de un millon de registros en un esquema propio de un Docker PostgreSQL aislado,
+sin usar tablas `public`. Consultar
+[resultado y limites de la medicion fiscal](fiscal-keyset-1m-20260918.md).
+
 `measure_gestion_sql.py` mide lecturas con datos sintéticos en un esquema nuevo
 `perf_gestion_<UUID>`. Requiere Python 3 y `psql`, sin paquetes adicionales. La
 base seleccionada debe ser **temporal y aislada**, con `public` migrado con Flyway.

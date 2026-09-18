@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import desktopBuild from "../build/desktop-build-config.cjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appKey = process.argv[2];
@@ -10,6 +11,7 @@ const apps = {
 };
 const app = apps[appKey];
 if (!app) throw new Error("Uso: node scripts/prepare-desktop-app.mjs venta|gestion");
+const metadata = desktopBuild.readBuildMetadata(root, true);
 
 const staging = path.join(root, "desktop-staging", appKey);
 fs.rmSync(staging, { recursive: true, force: true });
@@ -26,18 +28,19 @@ fs.cpSync(path.join(root, app.dist), path.join(staging, app.dist), {
 });
 fs.writeFileSync(path.join(staging, "package.json"), JSON.stringify({
   name: app.name,
-  version: "4.2.0",
+  version: metadata.version,
   private: true,
   description: `TPV ERP ${appKey}`,
   author: "TPV ERP",
-  main: app.main
+  main: app.main,
+  tpvBuild: { electronVersion: metadata.electronVersion }
 }, null, 2) + "\n");
 fs.mkdirSync(path.join(staging, "node_modules"), { recursive: true });
 fs.writeFileSync(path.join(staging, "package-lock.json"), JSON.stringify({
   name: app.name,
-  version: "4.2.0",
+  version: metadata.version,
   lockfileVersion: 3,
   requires: true,
-  packages: { "": { name: app.name, version: "4.2.0" } }
+  packages: { "": { name: app.name, version: metadata.version } }
 }, null, 2) + "\n");
 console.log(`Staging Electron preparado: ${path.relative(root, staging)}`);

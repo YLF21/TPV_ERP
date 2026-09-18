@@ -562,6 +562,7 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
         <VerifactuResolutionPanel
           target={resolutionTarget}
           token={token}
+          recoveryScope={session.userId ?? session.username}
           locale={locale}
           timezone={fiscalStatus?.timezone ?? null}
           t={t}

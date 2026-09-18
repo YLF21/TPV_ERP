@@ -217,6 +217,7 @@ public class FiscalRecordService {
             throw new IllegalStateException("El registro no pertenece a la cadena fiscal activa");
         }
         var snapshot = new LinkedHashMap<>(correctedSnapshot);
+        var target = correctionTarget(original, snapshot, chain);
         addPreviousRecord(snapshot, chain.getLastRecord());
         var previousHash = chain.previousHash();
         var generatedOffset = generatedAt.atZone(ZoneId.of(original.getTimezone()))
@@ -234,13 +235,13 @@ public class FiscalRecordService {
                 original.getIssuerTaxId(), original.getTotalTax(), original.getTotalAmount(),
                 previousHash, hash, jsonHasher.hash(snapshot), snapshot,
                 original.getFormatVersion(), original.getAlgorithmVersion(),
-                original.getApplicationVersion(), mode));
+                currentApplicationVersion(original), mode));
         if (mode == FiscalMode.VERIFACTU) {
             states.save(new FiscalSubmissionState(
                     correction.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
         }
         relations.save(new FiscalRecordRelation(
-                chain.getId(), correction.getId(), original.getId(), FiscalRelationType.SUBSANA));
+                chain.getId(), correction.getId(), target.getId(), FiscalRelationType.SUBSANA));
         chain.advance(correction, generatedAt);
         if (artifacts != null) {
             artifacts.create(correction);
@@ -299,8 +300,7 @@ public class FiscalRecordService {
         requireCapabilityAllows(context.mode());
         policy.validate(context.document(), command.operation(), command.documentType());
         ensureNoActiveIntegrityAlarm(command.companyId(), command.installationId(), context.mode());
-        if (records.findByDocumentIdAndOperation(
-                command.documentId(), command.operation()).isPresent()) {
+        if (findFirstRecord(command.documentId(), command.operation()).isPresent()) {
             throw new IllegalStateException(
                     "La operacion fiscal ya esta registrada para el documento");
         }
@@ -374,7 +374,7 @@ public class FiscalRecordService {
         if (relatedDocumentId == null) {
             return null;
         }
-        var related = records.findByDocumentIdAndOperation(
+        var related = findFirstRecord(
                         relatedDocumentId, FiscalRecordOperation.ALTA)
                 .orElseThrow(() -> new IllegalStateException(
                         "El documento rectificado necesita un alta fiscal previa"));
@@ -549,7 +549,7 @@ public class FiscalRecordService {
         if (command.operation() != FiscalRecordOperation.ANULACION) {
             return null;
         }
-        var original = records.findByDocumentIdAndOperation(
+        var original = findFirstRecord(
                         command.documentId(), FiscalRecordOperation.ALTA)
                 .orElseThrow(() -> new IllegalStateException(
                         "La anulacion requiere un alta fiscal previa"));
@@ -593,6 +593,39 @@ public class FiscalRecordService {
         return operation == FiscalRecordOperation.ALTA ? value : null;
     }
 
+    private String currentApplicationVersion(FiscalRecord original) {
+        if (runtimeProperties != null && runtimeProperties.systemVersion() != null
+                && !runtimeProperties.systemVersion().isBlank()) {
+            return runtimeProperties.systemVersion();
+        }
+        return original.getApplicationVersion();
+    }
+
+    private FiscalRecord correctionTarget(
+            FiscalRecord original, Map<String, Object> snapshot, FiscalChain chain) {
+        var value = snapshot.get("subsanacionObjetivoId");
+        if (!(value instanceof String id)) {
+            return original;
+        }
+        var target = records.findById(UUID.fromString(id)).orElseThrow(() ->
+                new IllegalArgumentException("El objetivo de subsanacion no existe"));
+        if (target.getOperation() != FiscalRecordOperation.ALTA
+                || !target.chainId().equals(chain.getId())
+                || !target.getCompanyId().equals(original.getCompanyId())
+                || !target.getStoreId().equals(original.getStoreId())
+                || !java.util.Objects.equals(target.getDocumentId(), original.getDocumentId())) {
+            throw new IllegalArgumentException("El objetivo de subsanacion no es valido");
+        }
+        return target;
+    }
+
+    private java.util.Optional<FiscalRecord> findFirstRecord(
+            UUID documentId, FiscalRecordOperation operation) {
+        var ordered = records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                documentId, operation);
+        return ordered;
+    }
+
     private static void validateCorrectionEconomics(
             FiscalRecord original, Map<String, Object> snapshot) {
         if (snapshot == null
@@ -605,7 +638,15 @@ public class FiscalRecordService {
     }
 
     private static boolean sameAmount(Object value, BigDecimal expected) {
-        return value instanceof BigDecimal amount && amount.compareTo(expected) == 0;
+        if (!(value instanceof Number number) || number instanceof Double d && !Double.isFinite(d)
+                || number instanceof Float f && !Float.isFinite(f)) {
+            return false;
+        }
+        try {
+            return new BigDecimal(number.toString()).compareTo(expected) == 0;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
     }
 
     private record FiscalContext(

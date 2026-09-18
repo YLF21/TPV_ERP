@@ -34,6 +34,9 @@ public class FiscalCorrectionSnapshot {
                     "La subsanacion requiere algun dato corregido");
         }
         var corrected = new LinkedHashMap<>(original);
+        // A new attempt must not inherit the previous attempt's idempotency
+        // identity when the caller intentionally starts without a key.
+        corrected.remove("subsanacionIdempotencyKey");
         if (taxId != null) {
             corrected.put("cliente", correctedCustomer(original, taxId, name));
         }
@@ -46,6 +49,9 @@ public class FiscalCorrectionSnapshot {
         corrected.put("subsanacionRegistroId", Objects.requireNonNull(originalRecordId).toString());
         corrected.put("subsanacionUsuarioId", Objects.requireNonNull(userId).toString());
         corrected.put("subsanacionFecha", Objects.requireNonNull(correctedAt).toString());
+        if (request.idempotencyKey() != null && !request.idempotencyKey().isBlank()) {
+            corrected.put("subsanacionIdempotencyKey", request.idempotencyKey().trim());
+        }
         return ImmutableJson.copy(corrected);
     }
 

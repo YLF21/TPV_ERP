@@ -19,8 +19,10 @@ const labels: Record<string, string> = {
   "verifactu.mode.confirmationPhrase": "CAMBIAR MODALIDAD FISCAL",
   "verifactu.mode.confirmChange": "Confirmar transición fiscal",
   "verifactu.mode.endDate": "FechaFinVeriFactu comunicada",
-  "verifactu.mode.ack": "Referencia del acuse AEAT"
-  ,"verifactu.mode.retryHint": "La incidencia se conserva",
+  "verifactu.mode.ack": "Referencia del acuse AEAT",
+  "verifactu.mode.verifactuOnly": "Esta versión solo permite VERI*FACTU.",
+  "verifactu.mode.capabilityUnavailable": "No se conoce la capacidad de esta versión.",
+  "verifactu.mode.retryHint": "La incidencia se conserva",
   "verifactu.mode.retryChange": "Reprogramar / reintentar transición",
   "verifactu.management.fiscalTransitionFailed": "Transición fallida:"
 };
@@ -33,12 +35,47 @@ const baseStatus: api.FiscalStatus = {
   runtimeClass: "SANDBOX",
   endpointEnvironment: "TEST",
   transportMode: "SIMULATED",
-  productionEnabled: false
+  productionEnabled: false,
+  productCapability: "DUAL"
 };
 
 describe("FiscalModeControlView", () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(cleanup);
+
+  it.each(["PRE_SIF", "NO_VERIFACTU", "VERIFACTU"] as const)("respeta VERIFACTU_ONLY desde %s", (mode) => {
+    render(<FiscalModeControlView locale="es" status={{ ...baseStatus, mode, productCapability: "VERIFACTU_ONLY" }} t={t} onChanged={vi.fn()} />);
+
+    expect(screen.getByText("Esta versión solo permite VERI*FACTU.")).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "NO VERI*FACTU" })).toBeNull();
+    if (mode === "VERIFACTU") {
+      expect(screen.queryByLabelText("Nueva modalidad")).toBeNull();
+      expect(screen.queryByLabelText("Motivo auditado")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Confirmar transición fiscal" })).toBeNull();
+    } else {
+      expect(screen.getByRole("option", { name: "VERI*FACTU" })).toBeTruthy();
+    }
+    expect(api.transitionFiscalMode).not.toHaveBeenCalled();
+  });
+
+  it("no deduce capacidad DUAL de una respuesta legacy", () => {
+    render(<FiscalModeControlView locale="es" status={{ ...baseStatus, mode: "VERIFACTU", productCapability: undefined }} t={t} onChanged={vi.fn()} />);
+
+    expect(screen.getByText("No se conoce la capacidad de esta versión.")).toBeTruthy();
+    expect(screen.queryByLabelText("Nueva modalidad")).toBeNull();
+    expect(api.transitionFiscalMode).not.toHaveBeenCalled();
+  });
+
+  it("descarta el destino NO al actualizar la capacidad sin cambiar la versión de modalidad", () => {
+    const { rerender } = render(<FiscalModeControlView locale="es" status={baseStatus} t={t} onChanged={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Nueva modalidad"), { target: { value: "NO_VERIFACTU" } });
+
+    rerender(<FiscalModeControlView locale="es" status={{ ...baseStatus, productCapability: "VERIFACTU_ONLY" }} t={t} onChanged={vi.fn()} />);
+
+    expect((screen.getByLabelText("Nueva modalidad") as HTMLSelectElement).value).toBe("VERIFACTU");
+    expect(screen.queryByRole("option", { name: "NO VERI*FACTU" })).toBeNull();
+    expect(api.transitionFiscalMode).not.toHaveBeenCalled();
+  });
 
   it("envía la versión esperada y la confirmación reforzada", async () => {
     vi.mocked(api.transitionFiscalMode).mockResolvedValue({ ...baseStatus, mode: "VERIFACTU", modeVersion: 5 });

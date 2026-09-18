@@ -87,6 +87,7 @@ public class VerifactuBatchPersistenceService {
                     requestXml, responsePayload, item.state().getClaimToken(), evidenceId);
         }
         var now = Instant.now(clock);
+        context.scope().markTransportIncident(now);
         if (waitSeconds != null && waitSeconds >= 0 && waitSeconds <= 9999) {
             context.scope().completed(context.owner(), now, waitSeconds);
         } else {
@@ -101,6 +102,7 @@ public class VerifactuBatchPersistenceService {
             ClaimedFiscalBatch batch, String errorCode, String error) {
         var context = lock(batch);
         var now = Instant.now(clock);
+        context.scope().markTransportIncident(now);
         for (var item : context.items()) {
             var state = states.findForUpdate(item.record().getId()).orElseThrow();
             state.markRetryableFailureWithClaim(errorCode, error, now,
@@ -115,6 +117,7 @@ public class VerifactuBatchPersistenceService {
     public void recordInvalid(
             ClaimedFiscalBatch batch, String errorCode, String error, String payload) {
         var context = lock(batch);
+        context.scope().markTransportIncident(Instant.now(clock));
         for (var item : context.items()) {
             attempts.recordDefective(item.record().getId(), errorCode, error, payload,
                     item.state().getClaimToken());
@@ -159,6 +162,15 @@ public class VerifactuBatchPersistenceService {
             }
         }
         var sentAt = Instant.now(clock);
+        if (context.scope().hasTransportIncident()) {
+            // Flush line transitions before the native existence query. A partial
+            // recovery must retain Incidencia=S for the remaining backlog.
+            states.flush();
+            if (!states.hasUnsubmittedInScope(context.scope().getCompanyId(),
+                    context.scope().getInstallationId(), context.scope().getEnvironment().name())) {
+                context.scope().clearTransportIncident();
+            }
+        }
         context.scope().completed(context.owner(), sentAt, response.waitSeconds());
         flows.save(context.scope());
     }

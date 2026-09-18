@@ -73,8 +73,17 @@ La ejecución efectiva (con el backend detenido) es:
   -ProductImagesDirectory 'C:\ProgramData\TPV ERP\product-images' `
   -DocumentTemplatesDirectory 'C:\ProgramData\TPV ERP\document-templates' `
   -JournalFile 'C:\ProgramData\TPV ERP\restore\tpv-restore-journal.properties' `
-  -BackendClasses 'C:\ProgramData\TPV ERP\Backend\current\classes' -Execute
+  -BundleDirectory 'C:\ProgramData\TPV ERP\Backend\releases\<release-id>-r<secuencia>-b<build>' `
+  -ExpectedReleaseId '<release-id-aprobado>' -Execute
 ```
+
+El wrapper verifica el fat JAR, sidecar, manifiesto y declaracion; ejecuta
+`OfflineRestoreCli` desde ese mismo JAR mediante `PropertiesLauncher`, sin
+iniciar Spring/web y sin depender de `target/classes` ni `current/classes`.
+Rechaza variables `LOADER_*` externas y fija la configuracion del launcher al
+manifiesto verificado; la clave de recuperacion sigue solicitandose en consola.
+No ejecutar desde el repositorio de desarrollo ni con un bundle distinto al
+aprobado. [Launcher oficial Spring Boot](https://docs.spring.io/spring-boot/specification/executable-jar/property-launcher.html).
 
 La herramienta crea un safety backup de los árboles, escribe el journal sin
 secretos y sólo promueve ficheros tras un `pg_restore --single-transaction`
@@ -82,7 +91,7 @@ correcto. Si algo falla, no elimina el journal ni el staging. Antes del arranque
 normal hay que ejecutar el modo no-web:
 
 ```text
-java -jar backend.jar --spring.profiles.active=prod --spring.main.web-application-type=none --tpv.restore-finalize="C:\ProgramData\TPV ERP\restore\tpv-restore-journal.properties"
+java --enable-native-access=ALL-UNNAMED -jar "<JAR verificado del bundle>" --spring.profiles.active=prod --spring.main.web-application-type=none "--spring.config.additional-location=file:///C:/ProgramData/TPV%20ERP/config/application-prod.yml" --tpv.restore-finalize="C:\ProgramData\TPV ERP\restore\tpv-restore-journal.properties"
 ```
 
 Ese finalize comprueba el journal y el modo fiscal restaurado: en NO_VERI*FACTU
@@ -113,9 +122,11 @@ límites explícitos independientes (`TPV_BACKUP_PROD_MAX_ENTRY_BYTES`,
 La instalación mantiene el bootstrap en dos fases: primero se registra el
 servicio con `Install-TpvBackendWindowsService.ps1`; después, ya existente la
 identidad virtual, se ejecuta `Set-TpvBackendWindowsAcl.ps1 -Phase Apply` como
-administrador. La cuenta `NT SERVICE\TPVERPBackend` obtiene sólo lectura y
-ejecución en releases/configuración/secretos, y `Modify` únicamente en
-logs/exports/operacional. Administrators y SYSTEM conservan `FullControl`.
+administrador. La cuenta `NT SERVICE\TPVERPBackend` obtiene lectura y
+ejecución en releases, lectura en configuracion, FullControl en secretos
+(politica exacta de la custodia Java) y `Modify` en
+logs/exports/operacional/backup/imagenes/plantillas/restore. Administrators y SYSTEM conservan `FullControl`.
 El script rechaza rutas inexistentes de configuración, reparse points y
 herencia ACL; así no se resuelve la identidad antes del registro ni se abre un
-bucle de bootstrap inseguro.
+bucle de bootstrap inseguro. El registro deja inicio Manual; solo `-Phase Start`
+tras el preflight de ACL habilita el arranque.

@@ -15,6 +15,24 @@ import org.springframework.data.domain.Pageable;
 public interface FiscalSubmissionStateRepository
         extends JpaRepository<FiscalSubmissionState, UUID> {
 
+    /** Bounded existence check; never load historical XML to close an incident. */
+    @Query(value = """
+            select exists (
+                select 1 from registro_fiscal record
+                join artefacto_registro_fiscal artifact on artifact.registro_id = record.id
+                left join estado_envio_fiscal state on state.registro_id = record.id
+                where record.empresa_id = :companyId
+                  and record.instalacion_id = :installationId
+                  and artifact.entorno = :environment
+                  and record.modo_fiscal = 'VERIFACTU'
+                  and (state.registro_id is null or state.estado not in
+                       ('ACEPTADO', 'ACEPTADO_CON_ERRORES', 'RECHAZADO', 'SUBSANADO')))
+            """, nativeQuery = true)
+    boolean hasUnsubmittedInScope(
+            @Param("companyId") UUID companyId,
+            @Param("installationId") UUID installationId,
+            @Param("environment") String environment);
+
     @Query(value = """
             select exists (
                 select 1

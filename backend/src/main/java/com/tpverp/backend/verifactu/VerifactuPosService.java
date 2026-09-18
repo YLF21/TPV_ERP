@@ -1,14 +1,11 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
@@ -43,11 +40,23 @@ public class VerifactuPosService {
     private final TerminalRepository terminals;
     private final FiscalSubmissionStateRepository states;
     private final VerifactuConfigurationRepository configurations;
-    private final LicenseRepository licenses;
-    private final VerifactuActivationService activation;
-    private final Clock clock;
     private FiscalRuntimeProperties runtime;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public VerifactuPosService(
+            CurrentOrganization organization,
+            CurrentTerminal currentTerminal,
+            TerminalRepository terminals,
+            FiscalSubmissionStateRepository states,
+            VerifactuConfigurationRepository configurations) {
+        this.organization = organization;
+        this.currentTerminal = currentTerminal;
+        this.terminals = terminals;
+        this.states = states;
+        this.configurations = configurations;
+    }
+
+    /** Compatibility constructor; licence policy is not the effective mode. */
     public VerifactuPosService(
             CurrentOrganization organization,
             CurrentTerminal currentTerminal,
@@ -57,14 +66,7 @@ public class VerifactuPosService {
             LicenseRepository licenses,
             VerifactuActivationService activation,
             Clock clock) {
-        this.organization = organization;
-        this.currentTerminal = currentTerminal;
-        this.terminals = terminals;
-        this.states = states;
-        this.configurations = configurations;
-        this.licenses = licenses;
-        this.activation = activation;
-        this.clock = clock;
+        this(organization, currentTerminal, terminals, states, configurations);
     }
 
     @Transactional(readOnly = true)
@@ -73,11 +75,12 @@ public class VerifactuPosService {
         var pendingCount = count(scope, PENDING);
         var sendingCount = count(scope, SENDING);
         var reviewRequiredCount = count(scope, REVIEW_REQUIRED);
-        var active = isActive(scope.store());
         var fiscalMode = configurations.findByCompanyId(scope.companyId())
                 .map(VerifactuConfiguration::getCurrentMode)
                 .filter(java.util.Objects::nonNull)
-                .orElse(active ? FiscalMode.VERIFACTU : FiscalMode.PRE_SIF);
+                .orElseGet(() -> runtime != null && runtime.isSandbox()
+                        ? runtime.sandboxInitialMode() : FiscalMode.PRE_SIF);
+        var active = fiscalMode == FiscalMode.VERIFACTU;
         return new VerifactuPosStatusView(
                 active,
                 presentationStatus(active, pendingCount, sendingCount, reviewRequiredCount),
@@ -124,26 +127,6 @@ public class VerifactuPosService {
                 .orElseThrow(() -> new IllegalStateException(
                         "La terminal autenticada no pertenece a la tienda activa"));
         return new PosScope(store.getEmpresa().getId(), store, terminalId);
-    }
-
-    private boolean isActive(Store store) {
-        var configuration = configurations.findByCompanyId(store.getEmpresa().getId());
-        if (configuration.map(VerifactuConfiguration::isVoluntarilyActive).orElse(false)) {
-            return true;
-        }
-        return activeLicense(store.getId())
-                .map(license -> activation.isAutomaticallyRequired(
-                        license.getTaxpayerType(),
-                        license.getVerifactuActivationDate(),
-                        Instant.now(clock),
-                        ZoneId.of(store.getTimezone())))
-                .orElse(false);
-    }
-
-    private java.util.Optional<License> activeLicense(UUID storeId) {
-        return licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId).stream()
-                .filter(License::isActiva)
-                .findFirst();
     }
 
     private static VerifactuPosPresentationStatus presentationStatus(

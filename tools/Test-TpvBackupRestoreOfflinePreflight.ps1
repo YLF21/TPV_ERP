@@ -34,7 +34,7 @@ function Assert-Magic([string] $Path, [byte[]] $Expected, [string] $Label) {
         if ($stream.Read($actual, 0, $actual.Length) -ne $actual.Length) {
             throw "$Label esta truncado"
         }
-        if ([Convert]::ToHexString($actual) -ne [Convert]::ToHexString($Expected)) {
+        if ([BitConverter]::ToString($actual) -ne [BitConverter]::ToString($Expected)) {
             throw "$Label no tiene la cabecera esperada"
         }
     } finally {

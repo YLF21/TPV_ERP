@@ -1,17 +1,28 @@
 [CmdletBinding()]
 param(
-    [string] $OutputDirectory = 'artifacts\backend-4.2.0',
-    [string] $ExpectedVersion = '4.2.0',
-    [string] $ExpectedReleaseId = 'tpv-erp-4.2.0',
-    [string] $ExpectedSchemaVersion = 'V234',
-    [long] $ExpectedReleaseSequence = 1,
-    [long] $ExpectedBuildSequence = 1,
+    [string] $OutputDirectory,
+    [string] $ExpectedVersion,
+    [string] $ExpectedReleaseId,
+    [string] $ExpectedSchemaVersion,
+    [Nullable[long]] $ExpectedReleaseSequence,
+    [Nullable[long]] $ExpectedBuildSequence,
     [string] $DeclarationPdf,
     [switch] $NoBuild
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$defaults = & (Join-Path $PSScriptRoot 'Get-TpvBackendReleaseDefaults.ps1')
+if (-not $PSBoundParameters.ContainsKey('ExpectedVersion')) { $ExpectedVersion = $defaults.Version }
+if (-not $PSBoundParameters.ContainsKey('ExpectedReleaseId')) { $ExpectedReleaseId = $defaults.ReleaseId }
+if (-not $PSBoundParameters.ContainsKey('ExpectedSchemaVersion')) { $ExpectedSchemaVersion = $defaults.SchemaVersion }
+if (-not $PSBoundParameters.ContainsKey('ExpectedReleaseSequence')) { $ExpectedReleaseSequence = $defaults.ReleaseSequence }
+if (-not $PSBoundParameters.ContainsKey('ExpectedBuildSequence')) { $ExpectedBuildSequence = $defaults.BuildSequence }
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = "artifacts\backend-$ExpectedReleaseId" }
+if ($ExpectedSchemaVersion -cne $defaults.SchemaVersion) {
+    throw 'ExpectedSchemaVersion debe coincidir con el manifiesto fuente; no se permite empaquetar un esquema divergente.'
+}
 
 function Assert-SafeExpectedSegment([string] $Value, [string] $Name) {
     if ([string]::IsNullOrWhiteSpace($Value) -or $Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' -or

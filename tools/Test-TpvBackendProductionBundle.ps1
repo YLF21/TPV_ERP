@@ -2,11 +2,11 @@
 param(
     [Parameter(Mandatory)]
     [string] $BundleDirectory,
-    [string] $ExpectedVersion = '4.2.0',
-    [string] $ExpectedReleaseId = 'tpv-erp-4.2.0',
-    [string] $ExpectedSchemaVersion = 'V234',
-    [long] $ExpectedReleaseSequence = 1,
-    [long] $ExpectedBuildSequence = 1,
+    [string] $ExpectedVersion,
+    [string] $ExpectedReleaseId,
+    [string] $ExpectedSchemaVersion,
+    [Nullable[long]] $ExpectedReleaseSequence,
+    [Nullable[long]] $ExpectedBuildSequence,
     [switch] $AsObject
 )
 
@@ -75,10 +75,11 @@ function Get-Property([hashtable] $Properties, [string] $Name) {
     return $value.Trim()
 }
 
-Assert-SafeExpectedSegment $ExpectedVersion 'ExpectedVersion'
-Assert-SafeExpectedSegment $ExpectedReleaseId 'ExpectedReleaseId'
-Assert-SafeExpectedSegment $ExpectedSchemaVersion 'ExpectedSchemaVersion'
-if ($ExpectedReleaseSequence -lt 0 -or $ExpectedBuildSequence -lt 0) {
+foreach ($key in @('ExpectedVersion', 'ExpectedReleaseId', 'ExpectedSchemaVersion')) {
+    if ($PSBoundParameters.ContainsKey($key)) { Assert-SafeExpectedSegment $PSBoundParameters[$key] $key }
+}
+if (($null -ne $ExpectedReleaseSequence -and $ExpectedReleaseSequence -lt 0) -or
+    ($null -ne $ExpectedBuildSequence -and $ExpectedBuildSequence -lt 0)) {
     Fail 'ExpectedReleaseSequence y ExpectedBuildSequence deben ser no negativos'
 }
 
@@ -123,6 +124,10 @@ try {
     if (-not $hasLauncher) {
         Fail 'el JAR no contiene el launcher Spring Boot'
     }
+    foreach ($requiredEntry in @('org/springframework/boot/loader/launch/PropertiesLauncher.class',
+            'BOOT-INF/classes/com/tpverp/backend/backup/application/OfflineRestoreCli.class')) {
+        if ($requiredEntry -notin $entryNames) { Fail "falta la herramienta offline empaquetada: $requiredEntry" }
+    }
 
     $manifestEntry = $zip.GetEntry('META-INF/tpv-erp-release.properties')
     if ($null -eq $manifestEntry) { Fail 'falta META-INF/tpv-erp-release.properties' }
@@ -147,10 +152,13 @@ try {
     $declarationHash = Get-Property $properties 'declaration.hash'
     $manifestHash = Get-Property $properties 'manifest.hash'
 
-    if ($releaseId -cne $ExpectedReleaseId) { Fail "release.id esperado $ExpectedReleaseId y recibido $releaseId" }
-    if ($version -cne $ExpectedVersion -or $version -match '(?i)dev|snapshot') { Fail 'la version no es una release productiva esperada' }
+    Assert-SafeExpectedSegment $releaseId 'release.id'
+    Assert-SafeExpectedSegment $version 'system.version'
+    Assert-SafeExpectedSegment $schema 'schema.version'
+    if ($PSBoundParameters.ContainsKey('ExpectedReleaseId') -and $releaseId -cne $ExpectedReleaseId) { Fail "release.id esperado $ExpectedReleaseId y recibido $releaseId" }
+    if (($PSBoundParameters.ContainsKey('ExpectedVersion') -and $version -cne $ExpectedVersion) -or $version -match '(?i)dev|snapshot') { Fail 'la version no es una release productiva esperada' }
     if ($capability -cne 'VERIFACTU_ONLY') { Fail 'capability debe ser VERIFACTU_ONLY' }
-    if ($schema -cne $ExpectedSchemaVersion) { Fail "schema.version esperado $ExpectedSchemaVersion y recibido $schema" }
+    if ($PSBoundParameters.ContainsKey('ExpectedSchemaVersion') -and $schema -cne $ExpectedSchemaVersion) { Fail "schema.version esperado $ExpectedSchemaVersion y recibido $schema" }
     if ($releaseSequenceValue -notmatch '^[0-9]+$' -or $buildSequenceValue -notmatch '^[0-9]+$') {
         Fail 'release.sequence y build.sequence deben ser enteros no negativos'
     }
@@ -160,10 +168,10 @@ try {
         $buildSequence = [long]::Parse($buildSequenceValue,
             [Globalization.CultureInfo]::InvariantCulture)
     } catch { Fail 'release.sequence o build.sequence exceden el rango permitido' }
-    if ($releaseSequence -ne $ExpectedReleaseSequence) {
+    if ($PSBoundParameters.ContainsKey('ExpectedReleaseSequence') -and $releaseSequence -ne $ExpectedReleaseSequence) {
         Fail "release.sequence esperado $ExpectedReleaseSequence y recibido $releaseSequence"
     }
-    if ($buildSequence -ne $ExpectedBuildSequence) {
+    if ($PSBoundParameters.ContainsKey('ExpectedBuildSequence') -and $buildSequence -ne $ExpectedBuildSequence) {
         Fail "build.sequence esperado $ExpectedBuildSequence y recibido $buildSequence"
     }
     if ($commitHash -notmatch '^[0-9a-f]{7,64}$') { Fail 'commit.hash no es un commit hexadecimal' }

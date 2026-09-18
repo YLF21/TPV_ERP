@@ -36,7 +36,7 @@ $script:TempRoot = $null
 $script:PsqlPath = $null
 $script:OriginalEnvironment = @{}
 $script:LatestMigrationVersion = $null
-$script:EvidenceDirectory = $null
+$script:ResolvedEvidenceDirectory = $null
 
 function Get-LatestMigrationVersion {
     $migrationDirectory = Join-Path $script:RepositoryRoot "backend\src\main\resources\db\migration"
@@ -254,12 +254,12 @@ try {
         throw "FiscalProof solo puede ejecutarse con FiscalSandbox; nunca contra AEAT TEST ni produccion."
     }
     if ($FiscalProof) {
-        $script:EvidenceDirectory = if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
+        $script:ResolvedEvidenceDirectory = if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
             Join-Path $script:RepositoryRoot "target\verifactu-dev-proof"
         } else {
             [IO.Path]::GetFullPath($EvidenceDirectory)
         }
-        [void](New-Item -ItemType Directory -Path $script:EvidenceDirectory -Force)
+        [void](New-Item -ItemType Directory -Path $script:ResolvedEvidenceDirectory -Force)
     }
     Assert-RequiredValue -Name "la contrasena administrativa de PostgreSQL" `
         -Value $PostgresAdminPassword -EnvironmentHint 'la variable $env:TPV_POSTGRES_ADMIN_PASSWORD'
@@ -410,6 +410,15 @@ try {
 
     if ($FiscalProof) {
         $proofHeaders = @{ Authorization = "Bearer $($login.accessToken)" }
+        # Follow the same reauthentication contract as APP GESTION. The account
+        # and password belong only to this newly created, disposable DEV database.
+        $fiscalUnlock = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:$BackendPort/api/v1/auth/gestion-groups/FISCAL/unlock" `
+            -Headers $proofHeaders -Method Post -ContentType "application/json" `
+            -Body (@{ password = "0000" } | ConvertTo-Json) -TimeoutSec 15
+        if ($fiscalUnlock.group -ne "FISCAL") {
+            throw "No se pudo confirmar el desbloqueo del grupo fiscal del laboratorio."
+        }
         $fiscalStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$BackendPort/api/v1/fiscal/status" `
             -Headers $proofHeaders -Method Get -TimeoutSec 15
         $sandboxStatus = Invoke-RestMethod `
@@ -443,6 +452,7 @@ try {
             runtimeClass = $sandboxStatus.runtimeClass
             endpointEnvironment = $sandboxStatus.endpointEnvironment
             transportMode = $sandboxStatus.transportMode
+            fiscalGroupUnlockVerified = $true
             fiscalStatus = $fiscalStatus
             scenarioRejected = $scenarioRejected
             scenarioAccepted = $scenarioAccepted
@@ -450,7 +460,7 @@ try {
             note = "Prueba API del laboratorio aislado; no contiene token ni realiza conexiones AEAT."
         }
         $proof | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath `
-            (Join-Path $script:EvidenceDirectory "sandbox-api-proof.json") -Encoding UTF8
+            (Join-Path $script:ResolvedEvidenceDirectory "sandbox-api-proof.json") -Encoding UTF8
         @(
             "# Evidencia laboratorio fiscal DEV"
             ""
@@ -461,8 +471,8 @@ try {
             "- PostgreSQL: base efimera, eliminada al finalizar el script"
             "- El archivo JSON solo recoge respuestas del laboratorio y no credenciales."
             "- Esta evidencia no prueba AEAT TEST ni produccion."
-        ) | Set-Content -LiteralPath (Join-Path $script:EvidenceDirectory "README.md") -Encoding UTF8
-        Write-Host "Evidencia del laboratorio fiscal escrita en $script:EvidenceDirectory" -ForegroundColor Green
+        ) | Set-Content -LiteralPath (Join-Path $script:ResolvedEvidenceDirectory "README.md") -Encoding UTF8
+        Write-Host "Evidencia del laboratorio fiscal escrita en $script:ResolvedEvidenceDirectory" -ForegroundColor Green
     }
 
     Write-Host ""

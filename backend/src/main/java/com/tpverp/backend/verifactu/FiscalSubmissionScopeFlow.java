@@ -34,6 +34,8 @@ public class FiscalSubmissionScopeFlow {
     private UUID leaseOwner;
     @Column(name = "lease_hasta")
     private Instant leaseUntil;
+    @Column(name = "incidencia_desde")
+    private Instant incidentSince;
     @Version
     private long version;
 
@@ -57,6 +59,18 @@ public class FiscalSubmissionScopeFlow {
     public Integer getReceivedWaitSeconds() { return receivedWaitSeconds; }
     public UUID getLeaseOwner() { return leaseOwner; }
     public Instant getLeaseUntil() { return leaseUntil; }
+    public Instant getIncidentSince() { return incidentSince; }
+    public boolean hasTransportIncident() { return incidentSince != null; }
+
+    public void markTransportIncident(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (incidentSince == null) incidentSince = now;
+    }
+
+    /** Only call under the scope lock after all unsubmitted lines are drained. */
+    public void clearTransportIncident() {
+        incidentSince = null;
+    }
 
     public boolean available(Instant now) {
         return leaseUntil == null || !leaseUntil.isAfter(now);

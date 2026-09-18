@@ -33,6 +33,8 @@ import com.tpverp.backend.party.loyalty.central.MemberBalanceReservationConflict
 import com.tpverp.backend.party.MemberBalanceOfficialSyncRequiredException;
 import com.tpverp.backend.verifactu.VerifactuCertificateApiException;
 import com.tpverp.backend.verifactu.FiscalProductCapabilityViolationException;
+import com.tpverp.backend.verifactu.FiscalCorrectionIdempotencyConflictException;
+import com.tpverp.backend.verifactu.FiscalCorrectionPendingConflictException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
@@ -75,6 +77,28 @@ public class ApiExceptionHandler {
     public ApiExceptionHandler(MessageSource messageSource, @Nullable AuditService audit) {
         this.messages = new LocalizedMessages(messageSource);
         this.audit = audit;
+    }
+
+    @ExceptionHandler({FiscalCorrectionIdempotencyConflictException.class,
+            FiscalCorrectionPendingConflictException.class})
+    ProblemDetail fiscalCorrectionConflict(RuntimeException exception, HttpServletRequest request) {
+        var language = language(request);
+        boolean idempotency = exception instanceof FiscalCorrectionIdempotencyConflictException;
+        String code = idempotency
+                ? FiscalCorrectionIdempotencyConflictException.CODE
+                : FiscalCorrectionPendingConflictException.CODE;
+        String detail = switch (language) {
+            case EN -> idempotency
+                    ? "The idempotency key was already used with a different correction payload."
+                    : "Another correction for this record is still pending.";
+            case ZH -> idempotency
+                    ? "此幂等键已用于不同的更正内容。"
+                    : "此记录已有待处理的更正。";
+            default -> idempotency
+                    ? "La clave idempotente ya se usó con otro contenido de subsanación."
+                    : "Ya existe una subsanación pendiente para este registro.";
+        };
+        return problem(HttpStatus.CONFLICT, code, detail, language, request);
     }
 
     /** Compatibility helper for direct callers that explicitly handle Excel. */

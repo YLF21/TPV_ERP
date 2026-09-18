@@ -17,4 +17,19 @@ Describe 'TPV offline restore entry point' {
         $text | Should BeLike '*tpv-restore-journal.properties*'
         $text | Should BeLike '*tpv.restore-finalize*'
     }
+    It 'executes the verified release JAR without development class directories' {
+        $text = Get-Content -LiteralPath $script -Raw
+        $text | Should Not Match 'BackendClasses|target.classes|current.classes'
+        $text | Should Match 'Test-TpvBackendProductionBundle.ps1'
+        $text | Should Match 'ExpectedReleaseId'
+        $text | Should Match 'PropertiesLauncher'
+        $text | Should Match 'loader.main=com.tpverp.backend.backup.application.OfflineRestoreCli'
+        $text | Should Match 'ArtifactSha256'
+        $text | Should Match 'loader.config.location=classpath:META-INF/tpv-erp-release.properties'
+    }
+    It 'retains Windows PowerShell 5 compatible magic validation' {
+        $text = Get-Content -LiteralPath $preflight -Raw
+        $text | Should Not Match 'Convert\]::ToHexString'
+        $text | Should Match 'BitConverter\]::ToString'
+    }
 }

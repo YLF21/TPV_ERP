@@ -99,6 +99,12 @@ public class VerifactuXmlService {
      */
     public String frozenBatchXml(
             String issuerName, String issuerTaxId, List<String> frozenRecords) {
+        return frozenBatchXml(issuerName, issuerTaxId, frozenRecords, false);
+    }
+
+    public String frozenBatchXml(
+            String issuerName, String issuerTaxId, List<String> frozenRecords,
+            boolean transportIncident) {
         var name = required(issuerName, "nombre del emisor congelado");
         var taxId = required(issuerTaxId, "NIF del emisor congelado");
         if (frozenRecords == null || frozenRecords.isEmpty()) {
@@ -113,6 +119,10 @@ public class VerifactuXmlService {
             var obligated = child(document, header, "ObligadoEmision");
             text(document, obligated, "NombreRazon", name);
             text(document, obligated, "NIF", taxId);
+            if (transportIncident) {
+                var voluntary = child(document, header, "RemisionVoluntaria");
+                text(document, voluntary, "Incidencia", "S");
+            }
             root.appendChild(header);
             for (String frozenXml : frozenRecords) {
                 var frozenDocument = newDocumentBuilder().parse(

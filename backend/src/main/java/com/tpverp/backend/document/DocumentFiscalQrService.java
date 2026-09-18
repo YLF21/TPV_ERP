@@ -51,7 +51,7 @@ public class DocumentFiscalQrService {
     // Returns the fiscal creation QR URL when the document already has a VERI*FACTU record.
     @Transactional(readOnly = true)
     public String qrUrl(UUID documentId) {
-        return records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA)
+        return firstAlta(documentId)
                 .map(record -> frozenOrCompatibleQrUrl(record))
                 .orElse(null);
     }
@@ -66,9 +66,7 @@ public class DocumentFiscalQrService {
      */
     @Transactional(readOnly = true)
     public Optional<FiscalQrPrintData> resolveForPrint(UUID documentId) {
-        var record = records.findByDocumentIdAndOperation(
-                        Objects.requireNonNull(documentId, "documentId"),
-                        FiscalRecordOperation.ALTA)
+        var record = firstAlta(Objects.requireNonNull(documentId, "documentId"))
                 .orElse(null);
         if (record == null) {
             return Optional.empty();
@@ -108,6 +106,12 @@ public class DocumentFiscalQrService {
                         .map(com.tpverp.backend.verifactu.FiscalRecordArtifact::getQrUrl)
                         .orElseGet(() -> qrUrls.url(record, record.getFiscalMode(),
                                 endpointEnvironment()));
+    }
+
+    private Optional<com.tpverp.backend.verifactu.FiscalRecord> firstAlta(UUID documentId) {
+        var ordered = records.findFirstByDocumentIdAndOperationOrderBySequenceAsc(
+                documentId, FiscalRecordOperation.ALTA);
+        return ordered;
     }
 
     private com.tpverp.backend.verifactu.FiscalEndpointEnvironment endpointEnvironment() {

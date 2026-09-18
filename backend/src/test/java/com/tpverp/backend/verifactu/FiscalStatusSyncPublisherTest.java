@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.installation.InstallationRepository;
@@ -24,10 +25,66 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.mock.env.MockEnvironment;
 
+@ExtendWith(OutputCaptureExtension.class)
 class FiscalStatusSyncPublisherTest {
+
+    @Test
+    void registraFalloDeConsultaSinExponerDetalles(CapturedOutput output) {
+        var licenses = mock(LicenseRepository.class);
+        when(licenses.findByActivaTrueOrderByValidaDesdeDesc())
+                .thenThrow(new IllegalStateException("tenant-secret-that-must-not-be-logged"));
+        var outbox = mock(SyncOutboxService.class);
+        var publisher = new FiscalStatusSyncPublisher(mock(CurrentOrganization.class),
+                mock(StoreRepository.class), mock(InstallationRepository.class), licenses,
+                mock(VerifactuConfigurationRepository.class), mock(FiscalRuntimeProperties.class),
+                outbox, Clock.systemUTC());
+
+        publisher.publishScheduled();
+
+        assertThat(output.getAll()).contains("FISCAL_STATUS_LICENSE_READ_FAILED")
+                .doesNotContain("tenant-secret-that-must-not-be-logged");
+        verifyNoInteractions(outbox);
+    }
+
+    @Test
+    void unFalloNoImpidePublicarOtraTiendaYNoExponeSuIdentidad(CapturedOutput output) {
+        Instant now = Instant.parse("2027-01-02T10:00:00Z");
+        var failed = licensedStore(FiscalMode.VERIFACTU, now);
+        var healthy = licensedStore(FiscalMode.VERIFACTU, now);
+        var licenses = mock(LicenseRepository.class);
+        when(licenses.findByActivaTrueOrderByValidaDesdeDesc())
+                .thenReturn(List.of(failed.license, healthy.license));
+        var stores = mock(StoreRepository.class);
+        when(stores.findWithCompanyById(failed.storeId))
+                .thenThrow(new IllegalStateException("sensitive-store-error"));
+        when(stores.findWithCompanyById(healthy.storeId)).thenReturn(Optional.of(healthy.store));
+        var configurations = mock(VerifactuConfigurationRepository.class);
+        when(configurations.findByCompanyId(healthy.companyId))
+                .thenReturn(Optional.of(healthy.configuration));
+        var runtime = mock(FiscalRuntimeProperties.class);
+        when(runtime.runtimeClass()).thenReturn(FiscalRuntimeClass.REAL);
+        when(runtime.endpointEnvironment()).thenReturn(FiscalEndpointEnvironment.TEST);
+        when(runtime.transportMode()).thenReturn(FiscalTransportMode.AEAT);
+        var outbox = mock(SyncOutboxService.class);
+        var publisher = new FiscalStatusSyncPublisher(mock(CurrentOrganization.class), stores,
+                mock(InstallationRepository.class), licenses, configurations, runtime, outbox,
+                Clock.fixed(now, ZoneOffset.UTC));
+
+        publisher.publishScheduled();
+
+        var command = ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(outbox).enqueue(command.capture());
+        assertThat(command.getValue().companyId()).isEqualTo(healthy.companyId);
+        assertThat(output.getAll()).contains("FISCAL_STATUS_PUBLICATION_FAILED: 1")
+                .doesNotContain("sensitive-store-error", failed.companyId.toString(),
+                        failed.storeId.toString());
+    }
 
     @Test
     void publicaLaModalidadDeTodasLasTiendasConLicenciaSaas() {
