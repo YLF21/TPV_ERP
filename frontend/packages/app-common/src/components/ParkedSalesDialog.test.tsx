@@ -43,9 +43,9 @@ describe("ParkedSalesDialog", () => {
     const recovered = vi.fn().mockResolvedValue(undefined);
     show({ onRecovered: recovered });
 
-    expect(await screen.findByRole("dialog", { name: "Ventas aparcadas" }))
+    expect(await screen.findByRole("dialog", { name: "Ventas guardadas" }))
       .toHaveClass("sale-business-dialog", "parked-sales-dialog");
-    const list = await screen.findByRole("listbox", { name: "Ventas aparcadas" });
+    const list = await screen.findByRole("listbox", { name: "Ventas guardadas" });
     await waitFor(() => expect(list).toHaveFocus());
     expect(screen.getByRole("button", { name: "Eliminar Mesa 1" }))
       .toHaveClass("parked-sales-delete-button");
@@ -109,7 +109,7 @@ describe("ParkedSalesDialog", () => {
     request.mockResolvedValueOnce([summary]).mockResolvedValueOnce(undefined);
     show();
 
-    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas aparcadas" });
+    const parkedDialog = await screen.findByRole("dialog", { name: "Ventas guardadas" });
     fireEvent.click(await screen.findByRole("button", { name: "Eliminar Mesa 1" }));
     const confirmation = screen.getByRole("dialog", { name: "Eliminar venta guardada" });
     expect(confirmation).toHaveClass("sale-business-dialog", "sale-clear-sale-dialog");

@@ -42,7 +42,7 @@ const labels: SaleCommandLabels = {
   customer: "Cliente",
   removeLine: "Anular línea",
   deleteKey: "Supr",
-  parkedSales: "Ventas aparcadas",
+  parkedSales: "Ventas guardadas",
   parkedSalesHint: "Guardar o recuperar",
   manageTickets: "Gestionar tickets",
   manageTicketsHint: "Buscar y realizar acciones",
@@ -142,7 +142,7 @@ describe("sale command presentations", () => {
     expect(onQuantity).toHaveBeenCalledOnce();
     expect(onTemporaryName).toHaveBeenCalledOnce();
     expect(onTemporaryPrice).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: /Ventas aparcadas/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Ventas guardadas/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Deudas de clientes/ })).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
       "Producto",

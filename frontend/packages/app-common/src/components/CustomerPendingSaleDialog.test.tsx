@@ -38,6 +38,11 @@ const draft: PendingSaleDraft = {
 };
 
 describe("customer receivable checkout helpers", () => {
+  it.each([undefined, false, true])("sends an explicit wholesaleMode when the draft has %s", (wholesaleMode) => {
+    const body = pendingCreateBody({ ...draft, wholesaleMode }, [], 1000);
+    expect(JSON.parse(JSON.stringify(body))).toHaveProperty("wholesaleMode", wholesaleMode === true);
+  });
+
   it("never downgrades an approved card from a stale query response", () => {
     expect(cardQueryResultStatus("APPROVED", "TIMEOUT")).toBe("APPROVED");
     expect(cardQueryResultStatus("APPROVED", "DECLINED")).toBe("APPROVED");

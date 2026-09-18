@@ -68,12 +68,22 @@ vi.mock("../../../packages/app-common/src/components/CustomerReceivablesScreen",
 vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
   SaleScreen: ({
     onOpenCustomerReceivables,
-    onOpenSalesDocumentWindow
+    onOpenSalesDocumentWindow,
+    onBack,
+    onLogout,
+    onExitBlockedChange,
   }: {
     onOpenCustomerReceivables?: (customerId?: string) => void;
     onOpenSalesDocumentWindow?: () => void;
+    onBack: () => void;
+    onLogout?: () => void;
+    onExitBlockedChange?: (blocked: boolean) => void;
   }) => (
     <section aria-label="sale">
+      <button type="button" onClick={() => onExitBlockedChange?.(true)}>Report occupied sale</button>
+      <button type="button" onClick={() => onExitBlockedChange?.(false)}>Report empty sale</button>
+      <button type="button" onClick={onBack}>Leave sale</button>
+      <button type="button" onClick={onLogout}>Log out from sale</button>
       <button type="button" onClick={() => onOpenCustomerReceivables?.("customer-from-sale")}>Open sale receivables</button>
       {onOpenSalesDocumentWindow && (
         <button type="button" onClick={onOpenSalesDocumentWindow}>Open sales document window</button>
@@ -432,6 +442,34 @@ describe("APP VENTA locale wiring", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.keyDown(window, { key: "Enter" });
     expect(await screen.findByLabelText("home")).toBeVisible();
+  });
+
+  it.each(["back", "logout", "Escape"] as const)("connects the sale exit guard to %s and releases it when the cart is empty", async (exit) => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Report occupied sale" }));
+    const leaveSale = () => {
+      if (exit === "Escape") fireEvent.keyDown(window, { key: "Escape" });
+      else fireEvent.click(screen.getByRole("button", {
+        name: exit === "back" ? "Leave sale" : "Log out from sale",
+      }));
+    };
+
+    leaveSale();
+    expect(screen.getByLabelText("sale")).toBeVisible();
+    expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("login")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Report empty sale" }));
+    leaveSale();
+    if (exit === "Escape") {
+      expect(screen.getByRole("alertdialog")).toHaveTextContent(/volver al inicio/i);
+      fireEvent.keyDown(window, { key: "Enter" });
+    }
+    expect(await screen.findByLabelText(exit === "logout" ? "login" : "home")).toBeVisible();
   });
 
   it("shows an accessible notice when the sales document window cannot open", async () => {

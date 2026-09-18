@@ -337,6 +337,7 @@ export function App() {
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings">("home");
   const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("sale");
+  const [saleExitBlocked, setSaleExitBlocked] = useState(false);
   const [receivablesOpen, setReceivablesOpen] = useState(false);
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
@@ -409,18 +410,21 @@ export function App() {
     setScreen("home");
   };
   const handleLogout = () => {
+    if (screen === "sale" && saleExitBlocked) return;
     void window.tpvDesktop?.salesDocuments?.close();
     setSession(null);
     setSaleInterfaceMode(defaultSaleInterfaceMode);
     resetLocale();
   };
   const handleReturnHome = () => {
+    if (screen === "sale" && saleExitBlocked) return;
     setReceivablesOpen(false);
     setReceivablesCustomerId(undefined);
     setScreen("home");
   };
   const withHomeEscapeConfirmation = (content: ReactNode) => (
-    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={handleReturnHome}>
+    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={handleReturnHome}
+      navigationBlocked={screen === "sale" && saleExitBlocked}>
       {content}
     </AppVentaHomeEscapeNavigation>
   );
@@ -583,7 +587,8 @@ export function App() {
           session={session}
           terminalContext={terminalContext}
           interfaceMode={saleInterfaceMode}
-          onBack={() => setScreen("home")}
+          onBack={handleReturnHome}
+          onExitBlockedChange={setSaleExitBlocked}
           onLogout={handleLogout}
           onLocaleChange={handleLocaleChange}
           onOpenCustomerReceivables={(customerId?: string) => {

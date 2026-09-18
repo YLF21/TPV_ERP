@@ -1,10 +1,52 @@
 // @vitest-environment jsdom
 import { useEffect } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppVentaHomeEscapeNavigation } from "./AppVentaHomeEscapeNavigation";
 
+afterEach(cleanup);
+
 describe("AppVentaHomeEscapeNavigation", () => {
+  it("silently blocks Escape until navigation is allowed again", () => {
+    const onConfirmHome = vi.fn();
+    const view = (navigationBlocked: boolean) => (
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={onConfirmHome} navigationBlocked={navigationBlocked}>
+        <button type="button">Producto</button>
+      </AppVentaHomeEscapeNavigation>
+    );
+    const { rerender } = render(view(true));
+    const product = screen.getByRole("button", { name: "Producto" });
+    product.focus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(onConfirmHome).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(product);
+
+    rerender(view(false));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onConfirmHome).toHaveBeenCalledOnce();
+  });
+
+  it("dismisses an existing confirmation when navigation becomes blocked", () => {
+    const onConfirmHome = vi.fn();
+    const view = (navigationBlocked: boolean) => (
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={onConfirmHome} navigationBlocked={navigationBlocked}>
+        <main>Venta</main>
+      </AppVentaHomeEscapeNavigation>
+    );
+    const { rerender } = render(view(false));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    rerender(view(true));
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(onConfirmHome).not.toHaveBeenCalled();
+    rerender(view(false));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
   it("asks for confirmation before returning to Home", () => {
     const onConfirmHome = vi.fn();
     render(
@@ -54,7 +96,7 @@ describe("AppVentaHomeEscapeNavigation", () => {
     }
 
     render(
-      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={vi.fn()}>
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={vi.fn()} navigationBlocked>
         <FunctionalDialog />
       </AppVentaHomeEscapeNavigation>,
     );
