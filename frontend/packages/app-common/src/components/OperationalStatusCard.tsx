@@ -107,6 +107,8 @@ const copy = {
     flushSync: "Sincronizar ahora",
     actionDone: "Operación solicitada correctamente.",
     unavailable: "El estado operativo no está disponible para este usuario o entorno.",
+    statusUnavailable: "No disponible",
+    fiscalUnavailable: "No se pudo consultar el estado de VERI*FACTU. Pulsa Actualizar para reintentar.",
     incidents: "Incidencias operativas",
     incidentsDescription: "Elementos que requieren intervención administrativa y quedan registrados en auditoría.",
     incidentsUnavailable: "No se pudieron consultar todas las incidencias operativas.",
@@ -164,6 +166,8 @@ const copy = {
     flushSync: "Synchronize now",
     actionDone: "Operation requested successfully.",
     unavailable: "Operational status is unavailable for this user or environment.",
+    statusUnavailable: "Unavailable",
+    fiscalUnavailable: "The VERI*FACTU status could not be retrieved. Select Refresh to try again.",
     incidents: "Operational incidents",
     incidentsDescription: "Items requiring administrator intervention, with every action recorded in the audit trail.",
     incidentsUnavailable: "Not all operational incidents could be loaded.",
@@ -221,6 +225,8 @@ const copy = {
     flushSync: "立即同步",
     actionDone: "操作请求成功。",
     unavailable: "当前用户或环境无法查看运行状态。",
+    statusUnavailable: "不可用",
+    fiscalUnavailable: "无法查询 VERI*FACTU 状态，请点击刷新重试。",
     incidents: "运行事件",
     incidentsDescription: "需要管理员介入的项目，所有操作均记录在审计跟踪中。",
     incidentsUnavailable: "无法加载所有运行事件。",
@@ -417,21 +423,24 @@ export function OperationalStatusCard({ locale, token, request = apiRequest }: P
           <div className="operational-status-panel">
             <div className="operational-status-title">
               <h4>{t.fiscal}</h4>
-              <span className={`status-pill ${fiscal?.verifactuActive ? "success" : "neutral"}`}>
-                {fiscal?.verifactuActive ? t.active : t.inactive}
+              <span className={`status-pill ${!fiscal || fiscal.activationMode === "UNAVAILABLE"
+                ? "warning" : fiscal.verifactuActive ? "success" : "neutral"}`}>
+                {!fiscal || fiscal.activationMode === "UNAVAILABLE" ? t.statusUnavailable
+                  : fiscal.verifactuActive ? t.active : t.inactive}
               </span>
             </div>
+            {!fiscal ? <div className="settings-inline-message warning" role="alert">{t.fiscalUnavailable}</div> : null}
             <dl>
               <div>
                 <dt>{t.certificate}</dt>
                 <dd>
-                  {fiscal?.certificateConfigured ? t.configured : t.missing}
+                  {!fiscal ? "—" : fiscal.certificateConfigured ? t.configured : t.missing}
                   {fiscal?.certificateConfigured ? ` · ${fiscal.certificateValid ? t.valid : t.invalid}` : ""}
                 </dd>
               </div>
               <div>
                 <dt>{t.worker}</dt>
-                <dd>{fiscal?.workerEnabled ? t.active : t.inactive}</dd>
+                <dd>{!fiscal ? "—" : fiscal.workerEnabled ? t.active : t.inactive}</dd>
               </div>
               <div>
                 <dt>{t.endpoint}</dt>

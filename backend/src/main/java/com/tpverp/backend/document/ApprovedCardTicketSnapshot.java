@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.control.ControlAlertDetectionService.ManualDiscountSnapshot;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -14,10 +15,24 @@ public record ApprovedCardTicketSnapshot(
         BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
         BigDecimal total, List<DocumentLineCommand> lines, String internalComment,
         HistoricalTicketReplayMetadata historicalReplay,
-        List<DocumentAdjustmentSnapshot> adjustments) {
+        List<DocumentAdjustmentSnapshot> adjustments,
+        ManualDiscountSnapshot manualControl) {
     public ApprovedCardTicketSnapshot {
         lines = List.copyOf(lines == null ? List.of() : lines);
         adjustments = List.copyOf(adjustments == null ? List.of() : adjustments);
+    }
+
+    // Snapshots recorded before manual evidence was introduced remain readable.
+    public ApprovedCardTicketSnapshot(
+            UUID storeId, UUID warehouseId, LocalDate date, UUID customerId,
+            boolean wholesaleMode, UUID paymentMethodId, BigDecimal globalDiscount,
+            BigDecimal baseTotal, BigDecimal taxTotal, BigDecimal total,
+            List<DocumentLineCommand> lines, String internalComment,
+            HistoricalTicketReplayMetadata historicalReplay,
+            List<DocumentAdjustmentSnapshot> adjustments) {
+        this(storeId, warehouseId, date, customerId, wholesaleMode, paymentMethodId,
+                globalDiscount, baseTotal, taxTotal, total, lines, internalComment,
+                historicalReplay, adjustments, null);
     }
 
     public ApprovedCardTicketSnapshot(

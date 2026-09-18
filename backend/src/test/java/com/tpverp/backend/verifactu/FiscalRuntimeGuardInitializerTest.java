@@ -138,6 +138,53 @@ class FiscalRuntimeGuardInitializerTest {
     }
 
     @Test
+    void v244MarkerIsUpgradedToTheImmutableV246ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v244", "V244", null, null,
+                null, 11, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("244", "245", "246"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v246", "DEV", FiscalProductCapability.DUAL, 12, 0, "V246"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v246", 12L, 0L);
+        verify(jdbc).update(contains("insert into fiscal_runtime_release_audit"),
+                any(Object[].class));
+    }
+
+    @Test
+    void v246MarkerIsUpgradedToTheImmutableV247ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v246", "V246", null, null,
+                null, 12, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("246", "247"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v247", "DEV", FiscalProductCapability.DUAL, 13, 0, "V247"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v247", 13L, 0L);
+        verify(jdbc).update(contains("insert into fiscal_runtime_release_audit"),
+                any(Object[].class));
+    }
+
+    @Test
+    void v247MarkerIsUpgradedToTheImmutableV248ReleaseIdentity() {
+        var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev-v247", "V247", null, null,
+                null, 13, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("247", "248"));
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-dev-v248", "DEV", FiscalProductCapability.DUAL, 14, 0, "V248"))
+                .run(new DefaultApplicationArguments());
+
+        verifyMarkerUpdate(jdbc, "tpv-erp-dev-v248", 14L, 0L);
+        verify(jdbc).update(contains("insert into fiscal_runtime_release_audit"), any(Object[].class));
+    }
+
+    @Test
     void newReleaseWithTheSameSequenceIsRejectedEvenWithAHigherBuildSequence() {
         var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 5, 99));

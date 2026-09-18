@@ -5561,3 +5561,206 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-terminal-pairing > strong { color: var(--gestion-navy); font-size: 32px; letter-spacing: .14em; }
 .gestion-terminal-pairing > p { margin: 0; color: #71480d; font-weight: 750; }
 .gestion-terminal-pairing > small { color: var(--gestion-muted); font-weight: 750; }
+
+/* Control alerts: chronological workspace and user view preferences. */
+.gestion-control-timeline {
+  display: grid;
+  grid-template-columns: minmax(435px, .9fr) minmax(510px, 1.1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-areas: "heading heading" "dates filters" "types types" "period period" "timeline timeline";
+  column-gap: 10px;
+  row-gap: 9px;
+  min-height: 0;
+  color: #17375b;
+}
+.gestion-control-timeline .gestion-control-toolbar { grid-area: heading; margin: 0; padding-bottom: 3px; }
+.gestion-control-timeline .gestion-control-toolbar h2 { font-size: 28px; line-height: 1.2; }
+.gestion-control-subtitle { margin: 4px 0 0; color: #607a94; font-size: 17px; }
+.gestion-control-timeline .gestion-dashboard-actions { align-items: center; }
+.gestion-control-timeline .gestion-dashboard-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 38px; border-color: #b5c7d9; font-weight: 650; }
+.gestion-control-timeline .gestion-control-date-toolbar { grid-area: dates; grid-template-columns: 128px minmax(112px, 1fr) minmax(112px, 1fr) auto; gap: 6px; margin: 0; padding: 7px; border: 1px solid #c2d0dc; border-radius: 3px; background: #fff; }
+.gestion-control-timeline .gestion-control-date-toolbar label { gap: 2px; }
+.gestion-control-timeline .gestion-control-date-toolbar label > span { font-size: 10px; letter-spacing: 0; font-weight: 650; }
+.gestion-control-timeline .gestion-control-date-toolbar input { height: 32px; padding: 0 5px; border-color: #b8c9da; font-size: 12px; }
+.gestion-control-timeline .gestion-control-date-toolbar > select { min-width: 0; height: 32px; align-self: end; border: 1px solid #b8c9da; border-radius: 2px; padding: 0 5px; color: #17375b; background: #fff; font: inherit; font-size: 12px; }
+.gestion-control-timeline .gestion-control-date-toolbar > button { min-height: 32px; padding: 0 7px; font-size: 12px; font-weight: 650; }
+.gestion-control-type-strip { grid-area: types; display: flex; min-width: 0; overflow: auto; border: 1px solid #c2d0dc; border-radius: 3px; background: #fff; }
+.gestion-control-type-strip > button { flex: 1 0 165px; display: flex; align-items: center; gap: 14px; min-height: 67px; max-width: 280px; padding: 8px 15px; border: 0; border-right: 1px solid #d7e1eb; background: #fff; color: #18395e; font: inherit; text-align: left; cursor: pointer; }
+.gestion-control-type-strip > button:first-child { flex-basis: 145px; }
+.gestion-control-type-strip > button:last-child { border-right: 0; }
+.gestion-control-type-strip > button > svg { flex: 0 0 auto; }
+.gestion-control-type-strip > button > span { display: grid; gap: 3px; font-size: 12px; line-height: 1.25; }
+.gestion-control-type-strip strong { font-size: 24px; font-variant-numeric: tabular-nums; line-height: 1; }
+.gestion-control-type-strip > button:hover { background: #f1f7fc; }
+.gestion-control-type-strip > button.selected { background: #e0efff; box-shadow: inset 0 0 0 1px #528bd1; }
+.gestion-control-type-strip .discount > svg, .gestion-alert-operation.discount > svg { color: #c91325; }
+.gestion-control-type-strip .price > svg, .gestion-alert-operation.price > svg { color: #0761d2; }
+.gestion-control-type-strip .cleared > svg, .gestion-alert-operation.cleared > svg { color: #778aa0; }
+.gestion-control-type-strip .cash > svg, .gestion-alert-operation.cash > svg { color: #a16513; }
+.gestion-control-period-note { grid-area: period; color: #627a91; font-size: 11px; line-height: 1.2; }
+.gestion-control-timeline .gestion-control-list-stage { display: contents; }
+.gestion-control-timeline .gestion-alert-filters.compact { grid-area: filters; grid-template-columns: minmax(110px, 1.1fr) 94px minmax(105px, 1fr) auto auto; margin: 0; padding: 7px; border: 1px solid #c2d0dc; border-radius: 3px; background: #fff; gap: 6px; }
+.gestion-control-timeline .gestion-alert-filters label { gap: 2px; font-size: 10px; font-weight: 650; letter-spacing: 0; }
+.gestion-control-timeline .gestion-alert-filters select, .gestion-control-timeline .gestion-alert-filters input { min-height: 32px; border-color: #b8c9da; font-size: 12px; padding: 0 6px; }
+.gestion-control-timeline .gestion-alert-filters button { min-height: 32px; font-size: 12px; padding: 0 9px; }
+.gestion-alert-extra-filters { position: relative; align-self: end; }
+.gestion-alert-extra-filters > summary { display: flex; align-items: center; min-height: 32px; padding: 0 7px; border: 1px solid #b8c9da; border-radius: 2px; color: #17375b; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.gestion-alert-extra-filters > div { position: absolute; z-index: 12; top: calc(100% + 5px); right: 0; display: grid; gap: 10px; width: 245px; padding: 12px; border: 1px solid #b4c6d7; border-radius: 3px; background: #fff; box-shadow: 0 5px 15px #1d3a5526; }
+.gestion-control-timeline .gestion-control-grid { grid-area: timeline; grid-template-columns: minmax(0, 1.6fr) minmax(330px, 1fr); gap: 10px; border: 0; background: transparent; }
+.gestion-control-timeline .gestion-control-grid.without-detail { grid-template-columns: minmax(0, 1fr); }
+.gestion-alert-list-heading > .gestion-alert-list-title { display: grid; gap: 3px; }
+.gestion-alert-list-title > small { color: #627a91; font-size: 12px; }
+.gestion-control-timeline .gestion-alert-row > .gestion-alert-review-comment { white-space: pre-wrap; overflow-wrap: anywhere; align-items: center; color: #42617e; }
+.gestion-control-dialog-backdrop { padding: 20px; }
+.gestion-control-dialog { width: min(860px, 96vw); max-height: calc(100vh - 40px); min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #17395e; border-radius: 3px; background: #fff; box-shadow: 0 15px 45px #00182d55; }
+.gestion-control-dialog > header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 50px; padding: 8px 16px; background: var(--gestion-navy); color: #fff; }
+.gestion-control-dialog > header h2 { margin: 0; font-size: 19px; }
+.gestion-control-dialog > header button { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #ffffff80; border-radius: 2px; background: transparent; color: #fff; cursor: pointer; }
+.gestion-control-dialog-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.gestion-control-dialog-theme .gestion-alert-detail { padding: 18px; min-height: 0; overflow: visible; background: #fff; }
+.gestion-control-dialog-theme .gestion-alert-detail-data { gap: 10px 16px; border: 0; }
+.gestion-control-dialog-theme .gestion-alert-detail-data > div { padding: 0; border: 0; }
+.gestion-control-dialog-theme .gestion-alert-detail-data dt { font-size: 12px; font-weight: 500; text-transform: none; }
+.gestion-control-dialog-theme .gestion-alert-detail-data dd { font-size: 14px; }
+.gestion-control-dialog-theme .gestion-alert-price-evidence > p, .gestion-control-dialog-theme .gestion-alert-price-evidence > div > span,
+.gestion-control-dialog-theme .gestion-alert-evidence-values dt, .gestion-control-dialog-theme .gestion-alert-evidence-lines,
+.gestion-control-dialog-theme .gestion-alert-work-options, .gestion-control-dialog-theme .gestion-alert-generated p { font-size: 13px; }
+.gestion-control-dialog-theme .gestion-alert-evidence-lines small { font-size: 12px; }
+.gestion-control-dialog-theme .gestion-alert-work-editor { padding: 12px; background: #f5f8fb; border-color: #d0dce7; }
+.gestion-control-dialog-theme .gestion-alert-work-editor > div { grid-template-columns: 1fr 1fr; }
+.gestion-control-dialog-theme .gestion-alert-work-editor h4, .gestion-control-dialog-theme .gestion-alert-history h4 { font-size: 14px; text-transform: none; }
+.gestion-alert-work-help { margin: 0 0 12px; color: #58718b; font-size: 13px; line-height: 1.45; }
+.gestion-control-dialog-theme .gestion-alert-work-editor label, .gestion-control-dialog-theme .gestion-alert-actions label { display: grid; gap: 5px; color: #42617e; font-size: 13px; font-weight: 500; text-transform: none; }
+.gestion-control-dialog-theme .gestion-alert-work-editor input, .gestion-control-dialog-theme .gestion-alert-work-editor select,
+.gestion-control-dialog-theme .gestion-alert-work-editor textarea, .gestion-control-dialog-theme .gestion-alert-actions textarea { width: 100%; min-width: 0; min-height: 35px; padding: 7px 8px; border: 1px solid #b8c9da; border-radius: 2px; background: #fff; color: var(--gestion-text); font: inherit; font-size: 13px; }
+.gestion-control-dialog-theme .gestion-alert-actions { margin: 12px 0; padding-top: 12px; border-color: #d0dce7; }
+.gestion-control-dialog-theme .gestion-alert-actions button { min-height: 36px; font-size: 13px; }
+.gestion-control-dialog-theme .gestion-alert-actions button:first-child { background: #0c4c88; border-color: #0c4c88; color: #fff; }
+.gestion-control-dialog-theme .gestion-alert-history li { grid-template-columns: minmax(130px, .8fr) minmax(80px, .5fr) minmax(100px, 1fr); font-size: 13px; }
+.gestion-control-dialog-theme .gestion-alert-history small { overflow-wrap: anywhere; font-size: 13px; }
+.gestion-control-dialog-theme button:focus-visible, .gestion-control-dialog-theme summary:focus-visible { outline: 2px solid #2474cb; outline-offset: 2px; }
+.gestion-control-document-modal { width: min(1000px, 96vw); }
+.gestion-control-document-modal .gestion-document-dialog { width: 100%; max-height: none; border: 0; box-shadow: none; grid-template-rows: auto minmax(0, 1fr) auto; }
+.gestion-rule-name-with-icon { display: flex; align-items: center; gap: 10px; }
+.gestion-rule-name-with-icon > svg { flex: 0 0 auto; }
+.gestion-control-timeline .gestion-alert-list { grid-template-rows: auto minmax(0, 1fr) 45px; border: 1px solid #c2d0dc; border-radius: 3px; background: #fff; }
+.gestion-alert-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-height: 43px; padding: 6px 10px; border-bottom: 1px solid #d8e1e9; }
+.gestion-alert-list-heading h3 { margin: 0; color: #10345c; font-size: 17px; line-height: 1.2; }
+.gestion-alert-list-heading > div { display: flex; align-items: center; gap: 6px; }
+.gestion-alert-list-heading select { min-width: 0; max-width: 175px; min-height: 30px; padding: 0 7px; border: 1px solid #b8c9da; background: #fff; color: #17375b; font: inherit; font-size: 12px; }
+.gestion-alert-columns { position: relative; }
+.gestion-alert-columns summary { display: flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; border: 1px solid #b8c9da; border-radius: 2px; cursor: pointer; }
+.gestion-alert-columns > div { position: absolute; z-index: 15; right: 0; top: 34px; display: grid; gap: 10px; width: 195px; padding: 12px; background: #fff; border: 1px solid #b8c9da; box-shadow: 0 3px 10px #17375b26; }
+.gestion-alert-columns label { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.gestion-control-timeline .gestion-alert-row { min-height: 53px; width: 100%; min-width: max-content; background: #fff; font-size: 12px; }
+.gestion-control-timeline .gestion-alert-row > span { padding: 7px 10px; border-right-color: #e4eaf0; }
+.gestion-control-timeline button.gestion-alert-row:nth-of-type(odd) { background: #fff; }
+.gestion-control-timeline button.gestion-alert-row:hover { background: #edf5fc; }
+.gestion-control-timeline button.gestion-alert-row.selected { background: #dcecff; box-shadow: inset 3px 0 0 #1764bb; }
+.gestion-control-timeline .gestion-alert-row-head { min-height: 34px; background: #f0f5f9; color: #426381; letter-spacing: 0; text-transform: none; font-size: 12px; }
+.gestion-alert-day { position: relative; min-height: 30px; display: flex; align-items: center; padding: 5px 10px; border-bottom: 1px solid #dbe4ed; background: #f1f5f8; color: #153859; font-size: 12px; font-weight: 750; }
+.gestion-control-timeline .gestion-alert-row > .gestion-alert-operation { display: flex; gap: 11px; white-space: normal; }
+.gestion-alert-operation > svg { flex: 0 0 auto; }
+.gestion-alert-operation > span { min-width: 0; display: grid; gap: 3px; }
+.gestion-alert-operation strong { font-size: 12px; line-height: 1.3; font-weight: 650; }
+.gestion-alert-operation small { overflow: hidden; color: #69829b; font-size: 11px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.gestion-control-timeline .gestion-alert-document-user { display: grid; align-content: center; gap: 3px; }
+.gestion-alert-document-user strong { font-weight: 600; }
+.gestion-alert-document-user small { color: #607b95; overflow: hidden; text-overflow: ellipsis; }
+.gestion-control-timeline .gestion-alert-status { min-height: 24px; border: 0; border-radius: 3px; padding: 3px 9px; text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 650; }
+.gestion-control-timeline .gestion-alert-status.new { color: #0b58b9; background: #e1efff; }
+.gestion-control-timeline .gestion-alert-status.reviewed { color: #315d78; background: #e9f1f6; }
+.gestion-control-timeline .gestion-alert-pagination { background: #fff; border-top-color: #dbe4ed; font-size: 11px; font-weight: 500; }
+.gestion-control-timeline .gestion-alert-pagination > span { display: grid; gap: 2px; }
+.gestion-control-timeline .gestion-alert-pagination small { color: #7c90a4; font-size: 10px; }
+.gestion-control-timeline .gestion-alert-pagination button { border-color: #bccddd; font-weight: 500; font-size: 11px; }
+.gestion-alert-detail-wrap { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; border: 1px solid #c2d0dc; border-radius: 3px; background: #fff; }
+.gestion-alert-detail-wrap > h3 { position: sticky; top: 0; z-index: 3; flex: 0 0 auto; margin: 0; min-height: 43px; display: flex; align-items: center; padding: 6px 12px; border-bottom: 1px solid #d8e1e9; background: #fff; color: #10345c; font-size: 18px; }
+.gestion-control-timeline .gestion-alert-detail { flex: 1 0 auto; padding: 12px; overflow: visible; background: #fff; }
+.gestion-control-timeline .gestion-alert-detail h3 { font-size: 18px; }
+.gestion-control-timeline .gestion-alert-detail-data { border: 0; margin: 12px 0; gap: 9px 0; }
+.gestion-control-timeline .gestion-alert-detail-data > div { padding: 0 8px; border: 0; border-left: 1px solid #d2dee8; }
+.gestion-control-timeline .gestion-alert-detail-data > div:first-child { border-left: 0; padding-left: 0; }
+.gestion-control-timeline .gestion-alert-detail-data > .wide { display: none; }
+.gestion-control-timeline .gestion-alert-detail-data dt { color: #617b95; font-size: 10px; font-weight: 500; text-transform: none; }
+.gestion-control-timeline .gestion-alert-detail-data dd { font-size: 12px; }
+.gestion-alert-evidence { margin: 12px 0; }
+.gestion-alert-price-evidence { margin: 0 0 8px; padding: 11px 12px; border: 1px solid #d0dfec; border-radius: 3px; background: #f5f8fb; }
+.gestion-alert-price-evidence h4 { margin: 0 0 5px; color: #153c66; font-size: 14px; }
+.gestion-alert-price-evidence > p { margin: 5px 0; color: #637d98; font-size: 11px; }
+.gestion-alert-price-evidence > div { display: grid; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr); align-items: center; gap: 10px; margin: 12px 0; color: #7d92ab; }
+.gestion-alert-price-evidence > div > span { display: grid; gap: 6px; color: #536d88; font-size: 12px; }
+.gestion-alert-price-evidence > div strong { color: #173c67; font-size: 25px; line-height: 1; }
+.gestion-alert-price-evidence > div > span:last-child strong { color: #0958b8; }
+.gestion-alert-price-evidence > p > strong { margin-left: 6px; color: #0958b8; font-size: 15px; }
+.gestion-alert-evidence-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0; padding: 10px; background: #f4f8fc; border: 1px solid #d6e1ea; }
+.gestion-alert-evidence-values dt { color: #627e98; font-size: 11px; }
+.gestion-alert-evidence-values dd { margin: 3px 0 0; color: #194878; font-size: 15px; font-weight: 650; }
+.gestion-alert-evidence-lines { list-style: none; margin: 8px 0; padding: 0; }
+.gestion-alert-evidence-lines li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 7px 0; border-bottom: 1px solid #e0e7ee; font-size: 12px; }
+.gestion-alert-evidence-lines strong, .gestion-alert-evidence-lines small { flex: 1 0 100%; overflow-wrap: anywhere; }
+.gestion-alert-evidence-lines small { font-size: 10px; color: #768ba1; }
+.gestion-alert-applied-rule { margin: 9px 0 13px; color: #395a79; font-size: 12px; line-height: 1.4; }
+.gestion-control-timeline .gestion-alert-work-editor { margin: 0 0 10px; border: 0; border-top: 1px solid #d0dce7; padding: 10px 0 0; background: #fff; }
+.gestion-control-timeline .gestion-alert-work-editor h4 { font-size: 12px; text-transform: none; }
+.gestion-control-timeline .gestion-alert-work-editor > div { grid-template-columns: 1fr 1fr; }
+.gestion-control-timeline .gestion-alert-work-editor > div > label:last-child { grid-column: 1 / -1; }
+.gestion-control-timeline .gestion-alert-work-editor label, .gestion-control-timeline .gestion-alert-actions label { color: #486887; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.gestion-control-timeline .gestion-alert-work-editor input, .gestion-control-timeline .gestion-alert-work-editor select, .gestion-control-timeline .gestion-alert-work-editor textarea, .gestion-control-timeline .gestion-alert-actions textarea { border-color: #bccddd; font-size: 12px; }
+.gestion-control-timeline .gestion-alert-actions { margin: 11px 0; padding: 0; background: #fff; border: 0; }
+.gestion-control-timeline .gestion-alert-actions > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.gestion-control-timeline .gestion-alert-actions button { min-height: 35px; border-color: #b9ccdc; font-size: 11px; font-weight: 600; flex: 1; white-space: nowrap; }
+.gestion-control-timeline .gestion-alert-actions button:first-child { background: #0c4c88; border-color: #0c4c88; color: #fff; }
+.gestion-alert-generated h4 { margin: 12px 0 7px; padding-top: 10px; border-top: 1px solid #d7e2eb; font-size: 13px; }
+.gestion-alert-generated p { color: #637f98; font-size: 11px; }
+.gestion-control-timeline .gestion-alert-history h4 { font-size: 12px; text-transform: none; }
+.gestion-control-timeline .gestion-alert-history ol { border-color: #d7e2eb; }
+.gestion-control-inline-state { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #d8c59e; background: #fff9ed; color: #735325; font-size: 12px; }
+.gestion-control-inline-state.error { color: #8a3030; border-color: #e0bfbf; background: #fff4f4; }
+.gestion-control-inline-state button { min-height: 29px; padding: 3px 9px; border: 1px solid currentColor; border-radius: 2px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
+.gestion-control-rules-manager { width: min(1200px, 94vw); max-height: 88vh; display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #9fb8cf; border-radius: 4px; background: #f4f7fa; overflow: hidden; }
+.gestion-control-rules-manager > header, .gestion-control-preferences > header { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 1px solid #c4d2df; }
+.gestion-control-rules-manager > header h2, .gestion-control-preferences > header h2 { margin: 0; font-size: 20px; }
+.gestion-control-rules-manager > header > div { display: flex; align-items: center; gap: 10px; }
+.gestion-control-rules-manager button, .gestion-control-preferences button { min-height: 34px; padding: 5px 10px; border: 1px solid #afc3d5; border-radius: 2px; background: #fff; color: #15395d; font: inherit; font-size: 13px; cursor: pointer; }
+.gestion-control-rules-manager .gestion-rule-overview { flex: 1; min-height: 0; }
+.gestion-control-preferences { width: min(490px, 92vw); max-height: 90vh; overflow: auto; display: grid; gap: 16px; padding: 20px; border: 1px solid #abc1d4; border-radius: 4px; background: #fff; }
+.gestion-control-preferences > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #345877; font-size: 14px; }
+.gestion-control-preferences > label:has(input[type="checkbox"]) { justify-content: flex-start; }
+.gestion-control-preferences input[type="checkbox"] { width: 17px; height: 17px; accent-color: #145391; }
+.gestion-control-preferences select { min-height: 34px; max-width: 220px; border: 1px solid #b8c9da; border-radius: 2px; background: #fff; padding: 0 8px; color: #294d6f; font: inherit; }
+.gestion-control-preferences > p { margin: 0; color: #6b8299; font-size: 12px; line-height: 1.45; }
+.gestion-control-preferences > footer { display: flex; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid #d2dfea; }
+.gestion-control-preferences button.primary { background: #124e89; border-color: #124e89; color: #fff; }
+.gestion-control-timeline.compact-view .gestion-alert-row { min-height: 40px; }
+.gestion-control-timeline.compact-view .gestion-alert-row > span { padding-top: 4px; padding-bottom: 4px; }
+.gestion-control-timeline button:focus-visible, .gestion-control-timeline summary:focus-visible { outline: 2px solid #2474cb; outline-offset: 2px; }
+.gestion-control-timeline .gestion-alert-row, .gestion-alert-operation strong, .gestion-alert-operation small,
+.gestion-control-timeline .gestion-alert-detail-data dd, .gestion-alert-applied-rule,
+.gestion-control-timeline .gestion-alert-work-editor input, .gestion-control-timeline .gestion-alert-work-editor select,
+.gestion-control-timeline .gestion-alert-work-editor textarea, .gestion-control-timeline .gestion-alert-actions textarea,
+.gestion-control-timeline .gestion-alert-actions button { font-size: 13px; }
+.gestion-control-timeline .gestion-alert-row-head { font-size: 13px; }
+.gestion-alert-operation strong { font-weight: 600; }
+.gestion-control-timeline .gestion-alert-status { font-size: 12px; }
+.gestion-control-timeline .gestion-alert-work-editor > div > label:last-child { grid-column: auto; }
+.gestion-alert-detail-summary { margin: 8px 0; color: #526e87; font-size: 13px; line-height: 1.4; }
+.gestion-alert-work-options { margin: 8px 0 0; color: #6c849a; font-size: 11px; }
+.gestion-alert-work-options > summary { padding: 3px 0; cursor: pointer; }
+.gestion-alert-work-options > label { margin-top: 8px; }
+@media (max-width: 1370px) {
+  .gestion-control-timeline { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto auto minmax(0, 1fr); grid-template-areas: "heading" "dates" "filters" "types" "period" "timeline"; }
+  .gestion-control-timeline .gestion-control-date-toolbar { grid-template-columns: 160px minmax(130px, 1fr) minmax(130px, 1fr) auto; }
+  .gestion-control-timeline .gestion-control-toolbar h2 { font-size: 24px; }
+  .gestion-control-timeline .gestion-dashboard-actions button { padding: 0 9px; gap: 6px; font-size: 12px; }
+  .gestion-control-timeline .gestion-control-grid { grid-template-columns: minmax(0, 1.45fr) minmax(310px, 1fr); }
+}
+@media (max-width: 1000px) {
+  .gestion-control-timeline { overflow: auto; height: auto; min-height: 100%; }
+  .gestion-control-timeline .gestion-control-toolbar { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .gestion-control-timeline .gestion-control-grid { grid-template-columns: minmax(0, 1fr); }
+  .gestion-control-timeline .gestion-alert-list { min-height: 420px; max-height: 65vh; }
+  .gestion-alert-detail-wrap { max-height: 65vh; min-height: 300px; }
+  .gestion-control-timeline .gestion-alert-filters.compact { grid-template-columns: minmax(100px, 1fr) 105px minmax(115px, 1fr) auto; }
+  .gestion-control-timeline .gestion-alert-filters.compact > button { grid-column: 1 / -1; }
+}

@@ -8,4 +8,6 @@ public interface ControlAlertWorkHistoryRepository
         extends JpaRepository<ControlAlertWorkHistory, UUID> {
 
     List<ControlAlertWorkHistory> findAllByAlertIdOrderByChangedAtAsc(UUID alertId);
+
+    List<ControlAlertWorkHistory> findAllByAlertIdAndStoreIdOrderByChangedAtAscIdAsc(UUID alertId, UUID storeId);
 }

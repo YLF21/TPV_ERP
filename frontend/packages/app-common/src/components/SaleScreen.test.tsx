@@ -88,6 +88,11 @@ import { defaultHardwareConfig, type HardwareBridge } from "../hardware/hardware
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
 import { ApiError } from "../api/client";
+const controlDeliveryMock = vi.hoisted(() => ({ persist: vi.fn(), deliver: vi.fn(), retry: vi.fn() }));
+vi.mock("../sale/useSaleControlDelivery", () => ({
+  useSaleControlDelivery: () => ({ delivery: controlDeliveryMock,
+    state: { ready: true, pending: 0, sending: false, error: null } }),
+}));
 import {
   cashCloseRecoveryKey,
   saveCashCloseRecovery,
@@ -278,6 +283,9 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  controlDeliveryMock.persist.mockReset().mockResolvedValue(undefined);
+  controlDeliveryMock.deliver.mockReset();
+  controlDeliveryMock.retry.mockReset();
   prepareCashSessionForSales.mockReset().mockResolvedValue({
     cashSessionRequired: false,
     open: true,
@@ -2898,7 +2906,7 @@ describe("SaleScreen", () => {
 
     fireEvent.change(search, { target: { value: "0" } });
     fireEvent.keyDown(search, { key: "Pause" });
-    expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument());
   });
 
   it("shows and consumes package quantity for the next scanned product", async () => {
@@ -2998,13 +3006,8 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "0" } });
     fireEvent.keyDown(search, { key: "Pause" });
 
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/sale-line-deletions"))).toBe(true));
-    const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
-    expect(request).toMatchObject({
-      method: "POST",
-      headers: expect.objectContaining({ Authorization: "Bearer access-token" }),
-    });
-    expect(JSON.parse(String(request?.body))).toEqual({
+    await waitFor(() => expect(controlDeliveryMock.deliver).toHaveBeenCalledOnce());
+    expect(controlDeliveryMock.persist).toHaveBeenCalledWith({
       saleOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       deletionOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       fullTicketClear: true,
@@ -3018,8 +3021,8 @@ describe("SaleScreen", () => {
     });
   });
 
-  it("removes one line even when recording the best-effort event fails", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("keeps the line when the durable local control record cannot be saved", async () => {
+    controlDeliveryMock.persist.mockRejectedValueOnce(new Error("disk full"));
     const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
       const path = new URL(String(url), "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -3043,17 +3046,58 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "0" } });
     fireEvent.keyDown(search, { key: "Pause" });
 
-    expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
+    await screen.findByText(/No se pudo guardar el registro de control/);
+    expect(screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
-    await waitFor(() => expect(warning).toHaveBeenCalledWith("sale_line_deletion_not_recorded", expect.any(Error)));
-    const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
-    expect(JSON.parse(String(request?.body))).toMatchObject({
+    expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
+    expect(controlDeliveryMock.persist).toHaveBeenCalledWith(expect.objectContaining({
       saleOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       deletionOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       fullTicketClear: false,
       lines: [{ productId: "bread", code: "PAN-001", name: "Pan integral", quantity: 1, unitPrice: 2.5 }],
-    });
-    warning.mockRestore();
+    }));
+  });
+
+  it("waits for durable storage before removing a line and ignores another removal while saving", async () => {
+    let saved!: () => void;
+    controlDeliveryMock.persist.mockImplementationOnce(() => new Promise<void>(resolve => { saved = resolve; }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(
+      JSON.stringify(String(url).includes("/products/sale") ? [products[0]] : []), { status: 200 },
+    )));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    fireEvent.change(search, { target: { value: "0" } });
+    fireEvent.keyDown(search, { key: "Pause" });
+    expect(screen.getByRole("button", { name: /Cafe molido/ })).toBeInTheDocument();
+    expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
+    expect(document.querySelector("main.sale-screen")).toHaveAttribute("inert");
+    fireEvent.keyDown(search, { key: "Pause" });
+    expect(controlDeliveryMock.persist).toHaveBeenCalledOnce();
+    await act(async () => saved());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument());
+    expect(controlDeliveryMock.deliver).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { key: "A", ctrlKey: true, shiftKey: true, label: "Eliminar artículos" },
+    { key: "F4", ctrlKey: true, shiftKey: false, label: "Eliminar venta" },
+  ])("preserves the entire cart if local persistence fails for $label", async ({ label, ...shortcut }) => {
+    controlDeliveryMock.persist.mockRejectedValueOnce(new Error("storage unavailable"));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(
+      JSON.stringify(String(url).includes("/products/sale") ? products.slice(0, 2) : []), { status: 200 },
+    )));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001"); submitQuickEntry(search, "PAN-001");
+    fireEvent.keyDown(window, shortcut);
+    fireEvent.click(await screen.findByRole("button", { name: label }));
+    await screen.findByText(/No se pudo guardar el registro de control/);
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(2);
+    expect(controlDeliveryMock.persist).toHaveBeenCalledWith(expect.objectContaining({ fullTicketClear: true, lines: expect.any(Array) }));
+    expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
   });
 
   it("adds and subtracts the written operand with Ctrl++ and Ctrl+-", async () => {
@@ -3504,7 +3548,7 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(confirmClearLines, { key: "ArrowLeft" });
     expect(cancelClearLines).toHaveFocus();
     fireEvent.click(confirmClearLines);
-    expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(checkoutProps.current?.sale?.internalComment).toBe(
       "Entregar en almacén interior",
     );
@@ -5554,7 +5598,7 @@ describe("SaleScreen", () => {
     expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(-1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Anular línea" }));
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toEqual([]));
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/sale-line-deletions"))).toHaveLength(1);
+    expect(controlDeliveryMock.persist).toHaveBeenCalledOnce();
   });
 
   it("applies a target price as a discount and preserves delegated authorization for checkout", async () => {

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
+import type { SaleControlContext, SaleControlEvent } from "../../../packages/app-common/src/sale/saleControlOutboxStorage";
 import { saleUserLocaleStorageKey } from "./saleUserLocale";
 
 const session: UserSession = {
@@ -137,6 +138,152 @@ vi.mock("../../../packages/app-common/src/components/SaleProductLabelDialog", ()
 }));
 
 import { App, AppLoadingFallback, SalesUtilityWindowApp } from "./main";
+
+describe("APP VENTA sale control compatibility", () => {
+  const uuid = (id: number) => `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`;
+  const context: SaleControlContext = { storeId: uuid(1), terminalId: uuid(2), userId: uuid(3) };
+  const compatibleBackend = {
+    backendVersion: "2.0.0", apiVersion: "1", minimumFrontendVersion: "0.0.1",
+    capabilities: ["PAYMENT_IDEMPOTENCY", "PAYMENT_RECOVERY", "PAYMENT_STATUS_QUERY", "PAYMENT_VOID",
+      "PAYMENT_REFUND", "PAYMENT_RECONCILIATION", "CORRELATION_ID"], paymentStates: {},
+  };
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+  function deferredResponse() {
+    let resolve!: (response: Response) => void;
+    const promise = new Promise<Response>(complete => { resolve = complete; });
+    return { promise, resolve };
+  }
+  function deliveryFixture(options: {
+    compatibility: (authorization: string) => Promise<Response>;
+    send?: (authorization: string) => Promise<Response>;
+  }) {
+    const savedEvent: SaleControlEvent = {
+      version: 1, context: { ...context }, occurredAt: "2026-09-17T10:00:00.000Z",
+      saleOperationId: uuid(4), deletionOperationId: uuid(5), fullTicketClear: false,
+      lines: [{ productId: uuid(6), code: "ITEM", name: "Item", quantity: 1, unitPrice: 10 }],
+    };
+    const pending = [savedEvent];
+    const list = vi.fn(async (scope: SaleControlContext) => ({
+      ok: true, events: pending.filter(event => event.context.userId === scope.userId
+        && event.context.storeId === scope.storeId && event.context.terminalId === scope.terminalId),
+    }));
+    const remove = vi.fn(async (scope: SaleControlContext, id: string) => {
+      const index = pending.findIndex(event => event.deletionOperationId === id && event.context.userId === scope.userId);
+      if (index >= 0) pending.splice(index, 1);
+      return { ok: true };
+    });
+    const loadContext = vi.fn(async (authorization: string) => json({
+      ...context, userId: authorization === "Bearer token-other" ? uuid(9) : context.userId,
+      serverTime: "2026-09-17T12:00:00.000Z",
+    }));
+    const send = vi.fn((authorization: string, _body: unknown) => options.send?.(authorization) ?? Promise.resolve(json([])));
+    const compatibility = vi.fn(options.compatibility);
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") ?? "";
+      if (String(input).endsWith("/system/compatibility")) return compatibility(authorization);
+      if (String(input).endsWith("/sale-line-deletions/context")) return loadContext(authorization);
+      if (String(input).endsWith("/sale-line-deletions")) return send(authorization, JSON.parse(String(init?.body)));
+      return Promise.resolve(json({}));
+    }));
+    vi.stubGlobal("tpvDesktop", {
+      terminalIdentity: {
+        load: vi.fn().mockResolvedValue({
+          ok: true, identity: { storeName: "TIENDA DEMO", terminalCode: "CAJA", terminalId: context.terminalId,
+            terminalCredential: "protected-secret" },
+        }),
+      },
+      saleControlOutbox: { list, remove, put: vi.fn().mockResolvedValue({ ok: true }) },
+    });
+    loginSession = { ...session, userId: context.userId, accessToken: "token-a", permissions: ["VENTA"] };
+    return { pending, savedEvent, list, remove, loadContext, send, compatibility };
+  }
+
+  it("keeps pending events untouched until this session passes compatibility, then delivers the original event", async () => {
+    const check = deferredResponse();
+    const fixture = deliveryFixture({ compatibility: () => check.promise });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Comprobando compatibilidad");
+    expect(fixture.compatibility).toHaveBeenCalledWith("Bearer token-a");
+    expect(fixture.loadContext).not.toHaveBeenCalled();
+    expect(fixture.list).not.toHaveBeenCalled();
+    expect(fixture.send).not.toHaveBeenCalled();
+    expect(fixture.remove).not.toHaveBeenCalled();
+    expect(fixture.pending).toEqual([fixture.savedEvent]);
+
+    await act(async () => { check.resolve(json(compatibleBackend)); });
+    await waitFor(() => expect(fixture.remove).toHaveBeenCalledOnce());
+    const { version: _version, ...body } = fixture.savedEvent;
+    expect(fixture.send).toHaveBeenCalledExactlyOnceWith("Bearer token-a", body);
+    expect(fixture.remove).toHaveBeenCalledWith(context, fixture.savedEvent.deletionOperationId);
+    expect(fixture.pending).toEqual([]);
+    expect(screen.getByLabelText("home")).toBeVisible();
+  });
+
+  it.each([
+    { reason: "API_VERSION", response: () => json({ ...compatibleBackend, apiVersion: "2" }) },
+    { reason: "FRONTEND_TOO_OLD", response: () => json({ ...compatibleBackend, minimumFrontendVersion: "999.0.0" }) },
+    { reason: "COMPATIBILITY_CHECK_FAILED", response: () => json({}, 503) },
+    { reason: "BACKEND_UNREACHABLE", response: () => { throw new TypeError("Failed to fetch"); } },
+  ])("preserves the queue without starting delivery when compatibility fails with $reason", async ({ reason, response }) => {
+    const fixture = deliveryFixture({ compatibility: async () => response() });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(reason));
+    fireEvent(window, new Event("online"));
+    expect(fixture.loadContext).not.toHaveBeenCalled();
+    expect(fixture.list).not.toHaveBeenCalled();
+    expect(fixture.send).not.toHaveBeenCalled();
+    expect(fixture.remove).not.toHaveBeenCalled();
+    expect(fixture.pending).toEqual([fixture.savedEvent]);
+    expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
+  });
+
+  it("requires a new session check and preserves the queue if the previous session acknowledges late", async () => {
+    const nextCheck = deferredResponse();
+    const previousAck = deferredResponse();
+    const fixture = deliveryFixture({
+      compatibility: authorization => authorization === "Bearer token-a" ? Promise.resolve(json(compatibleBackend)) : nextCheck.promise,
+      send: authorization => authorization === "Bearer token-a" ? previousAck.promise : Promise.resolve(json([])),
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(fixture.send).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    loginSession = { ...loginSession, accessToken: "token-b" };
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Comprobando compatibilidad");
+    expect(fixture.compatibility).toHaveBeenLastCalledWith("Bearer token-b");
+    await act(async () => { previousAck.resolve(json([])); });
+    expect(fixture.loadContext).toHaveBeenCalledOnce();
+    expect(fixture.send).toHaveBeenCalledOnce();
+    expect(fixture.remove).not.toHaveBeenCalled();
+    expect(fixture.pending).toEqual([fixture.savedEvent]);
+
+    await act(async () => { nextCheck.resolve(json(compatibleBackend)); });
+    await waitFor(() => expect(fixture.remove).toHaveBeenCalledOnce());
+    expect(fixture.loadContext).toHaveBeenLastCalledWith("Bearer token-b");
+    expect(fixture.send).toHaveBeenCalledTimes(2);
+    expect(fixture.send.mock.calls[1]).toEqual(["Bearer token-b", fixture.send.mock.calls[0][1]]);
+    expect(fixture.pending).toEqual([]);
+  });
+
+  it("keeps another user's pending events when a different compatible user signs in", async () => {
+    const fixture = deliveryFixture({ compatibility: async () => json(compatibleBackend) });
+    loginSession = { ...loginSession, userId: uuid(9), accessToken: "token-other" };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+
+    await waitFor(() => expect(fixture.list).toHaveBeenCalled());
+    expect(fixture.list).toHaveBeenCalledWith({ ...context, userId: uuid(9) });
+    expect(fixture.send).not.toHaveBeenCalled();
+    expect(fixture.remove).not.toHaveBeenCalled();
+    expect(fixture.pending).toEqual([fixture.savedEvent]);
+  });
+});
 
 afterEach(() => {
   cleanup();

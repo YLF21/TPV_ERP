@@ -2,12 +2,14 @@ import type { HardwareBridge } from "./hardware/hardware";
 import type { LocaleCode, TerminalContext, UserSession } from "./types";
 import type { SaleOperationAuthorization } from "./sale/operationSecurity";
 import type { SaleInterfaceMode } from "./components/saleInterfacePreferences";
+import type { SaleControlStorageBridge } from "./sale/saleControlOutboxStorage";
 
 type DesktopResult = { ok: true; canceled?: boolean; filePath?: string } | { ok: false; code: string; message: string };
 
 declare global {
   interface Window {
     tpvDesktop?: {
+      saleControlOutbox?: SaleControlStorageBridge;
       closeApplication: () => Promise<void>;
       terminalIdentity?: {
         load: () => Promise<DesktopResult & { identity?: TerminalContext | null }>;

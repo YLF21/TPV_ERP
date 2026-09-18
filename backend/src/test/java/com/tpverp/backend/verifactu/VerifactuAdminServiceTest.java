@@ -142,6 +142,22 @@ class VerifactuAdminServiceTest {
     }
 
     @Test
+    void statusDoesNotInitializeMissingConfigurationAndReportsUnavailableWithoutAnActiveLicense() {
+        var dependencies = activationDependencies(TaxpayerType.SOCIEDAD);
+        when(dependencies.configurations().findByCompanyId(dependencies.organization().currentCompany().getId()))
+                .thenReturn(Optional.empty());
+        when(dependencies.licenses().findByTiendaIdOrderByValidaDesdeDesc(dependencies.organization().currentStore().getId()))
+                .thenReturn(List.of());
+
+        var status = service(dependencies, configuredProperties()).status();
+
+        assertThat(status.verifactuActive()).isFalse();
+        assertThat(status.activationMode()).isEqualTo("UNAVAILABLE");
+        Mockito.verify(dependencies.configurations(), Mockito.never()).insertIfMissing(Mockito.any(), Mockito.any());
+        Mockito.verify(dependencies.configurations(), Mockito.never()).save(Mockito.any());
+    }
+
+    @Test
     void statusUsaElCertificadoActivoGestionado() {
         var dependencies = activationDependencies(TaxpayerType.SOCIEDAD);
         var repository = Mockito.mock(ManagedVerifactuCertificateRepository.class);

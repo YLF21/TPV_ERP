@@ -888,7 +888,12 @@ public class PosCashService {
                                 .withDiscountEligible(
                                         frozenDiscountPolicies.get(line.productoId())))
                         .toList(), snapshot.internalComment(), snapshot.historicalReplay(),
-                snapshot.adjustments());
+                snapshot.adjustments(),
+                documents.captureManualControlSnapshot(prepared.command(), quoted,
+                        prepared.replay() != null && prepared.replay().currentRepricing()
+                                ? prepared.replay().commands().size() : 0,
+                        prepared.replay() != null && prepared.replay().frozenExact()
+                                ? prepared.replay().commands().size() : 0));
     }
 
     private HistoricalTicketReplayMetadata historicalReplayMetadata(
