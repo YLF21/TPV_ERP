@@ -79,7 +79,7 @@ class CommercialDocumentSyncProjectorTest {
         projector.project(event, request);
 
         verify(documents).project(event, CommercialDocumentSnapshot.parse(request),
-                CommercialDocumentQueryMetadata.parse(request));
+                CommercialDocumentQueryMetadata.parse(request), CommercialDocumentLines.parse(request.payload()));
     }
 
     @Test

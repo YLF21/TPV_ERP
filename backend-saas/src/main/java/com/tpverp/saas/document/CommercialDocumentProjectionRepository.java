@@ -15,20 +15,21 @@ import org.springframework.web.server.ResponseStatusException;
 public class CommercialDocumentProjectionRepository {
 
     private final JdbcTemplate jdbc;
+    private final CommercialDocumentLineProjectionRepository lines;
 
-    public CommercialDocumentProjectionRepository(JdbcTemplate jdbc) {
+    public CommercialDocumentProjectionRepository(JdbcTemplate jdbc, CommercialDocumentLineProjectionRepository lines) {
         this.jdbc = jdbc;
+        this.lines = lines;
     }
 
     void project(SaasSyncEvent event, CommercialDocumentSnapshot snapshot,
-                 CommercialDocumentQueryMetadata metadata) {
+                 CommercialDocumentQueryMetadata metadata, CommercialDocumentLines lineSnapshot) {
         UUID companyId = event.getCompany().getId();
         UUID storeId = event.getStore().getId();
         UUID documentId = event.getEntityId();
         UUID installationId = event.getInstallation().getId();
-        String lockKey = "saas_commercial_document:" + companyId + ":" + storeId + ":" + documentId;
         // The same transaction lock serializes the first INSERT and later revisions of this document.
-        jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", Object.class, lockKey);
+        lock(jdbc, companyId, storeId, documentId);
         List<Current> rows = jdbc.query("""
                 select source_installation_id, source_revision, source_payload_hash
                   from saas_commercial_document
@@ -121,7 +122,13 @@ public class CommercialDocumentProjectionRepository {
                 statement.setObject(5, relation.originDocumentId());
             });
         }
+        lines.replace(companyId, storeId, documentId, lineSnapshot);
         rememberRevision(event, snapshot);
+    }
+
+    static void lock(JdbcTemplate jdbc, UUID companyId, UUID storeId, UUID documentId) {
+        String key = "saas_commercial_document:" + companyId + ":" + storeId + ":" + documentId;
+        jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", Object.class, key);
     }
 
     private void rememberRevision(SaasSyncEvent event, CommercialDocumentSnapshot snapshot) {

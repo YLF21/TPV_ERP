@@ -234,8 +234,11 @@ public class InvoiceJasperRenderer {
                     logoBytes == null ? null : new ByteArrayInputStream(logoBytes));
             parameters.put(ISSUER_LOGO_PRESENT_PARAMETER, logoBytes != null);
             var context = SafeJrxmlCompiler.secureContext();
-            var print = JasperFillManager.getInstance(context).fill(
-                    new ByteArrayInputStream(compiled), parameters);
+            var print = templateType == DocumentTemplateType.HISTORIAL_VENTAS_PRODUCTO
+                    ? JasperFillManager.getInstance(context).fill(
+                            StockSalesHistoryJasperLayout.prepare(compiled, data, parameters), parameters)
+                    : JasperFillManager.getInstance(context).fill(
+                            new ByteArrayInputStream(compiled), parameters);
             byte[] pdf = JasperExportManager.getInstance(context).exportToPdf(print);
             byte[] ticketRaster = format == DocumentTemplateFormat.TICKET_80
                     ? ticketRaster(print) : null;

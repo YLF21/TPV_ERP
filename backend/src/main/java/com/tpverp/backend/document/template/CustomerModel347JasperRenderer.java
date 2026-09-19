@@ -109,7 +109,7 @@ public class CustomerModel347JasperRenderer {
     }
 
     /** Jasper styled text selects the built-in PDF font per run, without interpreting party markup. */
-    private static String styledText(String value) {
+    static String styledText(String value) {
         var encoder = WESTERN_PDF_CHARSET.newEncoder();
         var result = new StringBuilder();
         var run = new StringBuilder();

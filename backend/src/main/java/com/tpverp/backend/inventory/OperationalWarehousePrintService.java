@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.OperationalDocumentJasperRenderer;
@@ -10,6 +11,8 @@ import com.tpverp.backend.document.template.RenderedDocumentView;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -31,6 +34,7 @@ public class OperationalWarehousePrintService {
     private final WarehouseOutputService outputs;
     private final StockSalesHistoryService history;
     private final OperationalDocumentJasperRenderer renderer;
+    private final ProductRepository products;
 
     public OperationalWarehousePrintService(
             ObjectMapper mapper,
@@ -38,13 +42,15 @@ public class OperationalWarehousePrintService {
             WarehouseInputService inputs,
             WarehouseOutputService outputs,
             StockSalesHistoryService history,
-            OperationalDocumentJasperRenderer renderer) {
+            OperationalDocumentJasperRenderer renderer,
+            ProductRepository products) {
         this.mapper = mapper;
         this.organization = organization;
         this.inputs = inputs;
         this.outputs = outputs;
         this.history = history;
         this.renderer = renderer;
+        this.products = products;
     }
 
     @Transactional(readOnly = true)
@@ -94,14 +100,19 @@ public class OperationalWarehousePrintService {
         }
         var sortedRows = rows.stream().sorted(historyComparator(sortBy,
                 command == null ? null : command.sortDirection())).toList();
-        var data = base("", LocalDate.now(), "CONFIRMADO", "Producto: " + productId,
-                "Columnas: " + String.join(", ", columns) + " · Orden: "
-                        + sortBy, false);
+        var product = products.findAllByStoreIdAndIdIn(organization.currentStore().getId(), List.of(productId))
+                .stream().findFirst().orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
+        var data = base("", LocalDate.now(), "CONFIRMADO", "Producto: " + value(product.getCode()) + " · " + product.getName(),
+                historyFilters(command), false);
+        columns.forEach(data.putArray("visibleColumns")::add);
+        var dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                .withZone(ZoneId.of(organization.currentStore().getTimezone()));
         var lines = (ArrayNode) data.withArray("lines");
         sortedRows.forEach(row -> {
             var line = lines.addObject();
             line.put("date", row.occurredAt() == null ? "" : row.occurredAt().toString());
             line.put("occurredAt", row.occurredAt() == null ? "" : row.occurredAt().toString());
+            line.put("occurredAtLabel", row.occurredAt() == null ? "" : dateFormat.format(row.occurredAt()));
             line.put("document", value(row.documentNumber()));
             line.put("status", row.status() == null ? "" : row.status().name());
             line.put("customer", value(row.customerName()));
@@ -115,6 +126,21 @@ public class OperationalWarehousePrintService {
         });
         return renderer.render(DocumentTemplateType.HISTORIAL_VENTAS_PRODUCTO, DocumentTemplateFormat.A4,
                 data, "historial-ventas-producto.pdf");
+    }
+
+    private static String historyFilters(HistoryPrintCommand command) {
+        var from = command == null ? null : command.from();
+        var to = command == null ? null : command.to();
+        if (from != null && to != null && from.isAfter(to)) {
+            var previousFrom = from;
+            from = to;
+            to = previousFrom;
+        }
+        var format = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        return "Desde: " + (from == null ? "-" : format.format(from))
+                + " · Hasta: " + (to == null ? "-" : format.format(to))
+                + " · Estado: " + (command == null || command.status() == null || command.status().isBlank()
+                        ? "Todos" : command.status());
     }
 
     private ObjectNode base(String number, LocalDate date, String status, String origin, String concept, boolean draft) {

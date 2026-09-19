@@ -36,6 +36,7 @@ public class CommercialDocumentSyncProjector {
                 || event.getOperation() != request.operation()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La procedencia documental no coincide");
         }
-        documents.project(event, snapshot, CommercialDocumentQueryMetadata.parse(request));
+        documents.project(event, snapshot, CommercialDocumentQueryMetadata.parse(request),
+                CommercialDocumentLines.parse(request.payload()));
     }
 }

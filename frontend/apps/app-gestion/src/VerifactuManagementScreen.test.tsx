@@ -303,7 +303,7 @@ describe("VerifactuManagementScreen", () => {
       name: "verifactu.resolution.title"
     })).toBeInTheDocument();
     expect(api.loadVerifactuResolution).toHaveBeenCalledWith("record-1", "fiscal-token");
-    expect(screen.getByText("verifactu.resolution.permissionRequired")).toBeInTheDocument();
+    expect(await screen.findByText("verifactu.resolution.permissionRequired")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "verifactu.resolution.prepareCorrection" }))
       .not.toBeInTheDocument();
   });
