@@ -39,7 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
 @SpringBootTest(properties = {
         "spring.flyway.default-schema=commercial_document_test",
         "spring.datasource.hikari.schema=commercial_document_test",
-        "spring.jpa.properties.hibernate.default_schema=commercial_document_test"
+        "spring.jpa.properties.hibernate.default_schema=commercial_document_test",
+        "tpv.saas.document-lines.backfill-initial-delay=3600000"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -56,11 +57,167 @@ class CommercialDocumentSyncPostgreSqlTest {
     @Autowired ObjectMapper mapper;
     @Autowired MockMvc mvc;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired CommercialDocumentLineProjectionRepository projectedLines;
 
     @BeforeEach
     void assertIsolatedSchema() {
         assertThat(jdbc.queryForObject("select current_schema()", String.class))
                 .isEqualTo("commercial_document_test");
+    }
+
+    @Test
+    void lineProjectionKeepsExactProductCodeDecimalAmountsAndLatestRevision() {
+        Site site = site();
+        UUID id = UUID.randomUUID();
+        var first = payloadWithLines(1, "CONFIRMADO", "00012");
+        var line = (Map<String, Object>) ((List<?>) first.get("lineas")).getFirst();
+        line.put("cantidad", "-2.1250000001");
+        line.put("precioUnitario", "1.235123456");
+        line.put("descuento", "7.123456789");
+        line.put("total", "-9007199254740993.123456");
+        line.put("tarifa", "DIFERENCIA");
+        UUID warehouse = UUID.randomUUID();
+        first.put("almacenId", warehouse.toString());
+        var request = request(site, id, SyncOperation.CONFIRMAR, first);
+        sync.receive(request, site.token());
+        sync.receive(request, site.token());
+        assertThat(row(site, id)).containsEntry("line_projection_status", "READY")
+                .containsEntry("warehouse_local_id", warehouse);
+        assertThat(lines(site, id)).singleElement().satisfies(value -> {
+            assertThat(value).containsEntry("product_code", "00012").containsEntry("line_position", 1)
+                    .containsEntry("price_tariff", "DIFERENCIA");
+            assertThat((BigDecimal) value.get("quantity")).isEqualByComparingTo("-2.1250000001");
+            assertThat((BigDecimal) value.get("unit_price")).isEqualByComparingTo("1.235123456");
+            assertThat((BigDecimal) value.get("discount_percent")).isEqualByComparingTo("7.123456789");
+            assertThat((BigDecimal) value.get("line_total")).isEqualByComparingTo("-9007199254740993.123456");
+        });
+        sync.receive(request(site, id, SyncOperation.ANULAR, payloadWithLines(2, "ANULADO", "00013")), site.token());
+        sync.receive(request(site, id, SyncOperation.CONFIRMAR, first), site.token());
+        assertThat(row(site, id)).containsEntry("document_status", "ANULADO").containsEntry("source_revision", 2L);
+        assertThat(lines(site, id)).singleElement().satisfies(value -> assertThat(value).containsEntry("product_code", "00013"));
+    }
+
+    @Test
+    void missingAndInvalidLinesNeverRejectValidHeadersAndReplaceObsoleteLineRows() {
+        Site site = site();
+        UUID id = UUID.randomUUID();
+        sync.receive(request(site, id, SyncOperation.CONFIRMAR, payloadWithLines(1, "CONFIRMADO", "001")), site.token());
+        var malformed = payloadWithLines(2, "CONFIRMADO", "002");
+        malformed.put("lineas", List.of(CommercialDocumentLinesTest.line("001"), CommercialDocumentLinesTest.line("002")));
+        var invalidRequest = request(site, id, SyncOperation.ACTUALIZAR, malformed);
+        sync.receive(invalidRequest, site.token());
+        assertThat(row(site, id)).containsEntry("source_revision", 2L).containsEntry("line_projection_status", "INVALID");
+        assertThat(events.findById(invalidRequest.eventId()).orElseThrow().getProjectionStatus()).isEqualTo(SaasSyncEvent.ProjectionStatus.PROJECTED);
+        assertThat(lines(site, id)).isEmpty();
+        receive(site, id, 3, "PAGADO", "2.47");
+        assertThat(row(site, id)).containsEntry("line_projection_status", "MISSING");
+        var empty = payload(4, "PAGADO", "0.00");
+        empty.put("lineas", List.of());
+        sync.receive(request(site, id, SyncOperation.ACTUALIZAR, empty), site.token());
+        assertThat(row(site, id)).containsEntry("line_projection_status", "READY");
+        assertThat(lines(site, id)).isEmpty();
+    }
+
+    @Test
+    void conflictingRevisionAndLaterRollbackCannotChangeCommittedLines() {
+        Site site = site();
+        UUID id = UUID.randomUUID();
+        sync.receive(request(site, id, SyncOperation.CONFIRMAR, payloadWithLines(1, "CONFIRMADO", "ORIGINAL")), site.token());
+        var conflict = request(site, id, SyncOperation.ACTUALIZAR, payloadWithLines(1, "CONFIRMADO", "CONFLICT"));
+        assertThatThrownBy(() -> sync.receive(conflict, site.token())).isInstanceOf(ResponseStatusException.class);
+        var update = request(site, id, SyncOperation.ACTUALIZAR, payloadWithLines(2, "CONFIRMADO", "ROLLBACK"));
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).execute(status -> {
+            sync.receive(update, site.token());
+            throw new IllegalStateException("rollback fixture");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(row(site, id)).containsEntry("source_revision", 1L);
+        assertThat(lines(site, id)).singleElement().satisfies(value -> assertThat(value).containsEntry("product_code", "ORIGINAL"));
+        assertThat(events.existsById(update.eventId())).isFalse();
+    }
+
+    @Test
+    void backfillUsesTheWinningEventAndResumesInBoundedIdempotentBatches() {
+        Site site = site();
+        var ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        for (UUID id : ids) {
+            var current = payloadWithLines(2, "CONFIRMADO", "CURRENT");
+            ((Map<String, Object>) ((List<?>) current.get("lineas")).getFirst()).put("tarifa", "DIFERENCIA");
+            sync.receive(request(site, id, SyncOperation.CONFIRMAR, current), site.token());
+            sync.receive(request(site, id, SyncOperation.CONFIRMAR, payloadWithLines(1, "CONFIRMADO", "OLD")), site.token());
+            makePending(site, id);
+        }
+        var worker = new CommercialDocumentLineBackfill(projectedLines, 2);
+        assertThat(worker.runBatch()).isEqualTo(2);
+        assertThat(worker.runBatch()).isEqualTo(1);
+        assertThat(worker.runBatch()).isZero();
+        for (UUID id : ids) {
+            assertThat(row(site, id)).containsEntry("source_revision", 2L).containsEntry("line_projection_status", "READY");
+            assertThat(lines(site, id)).singleElement().satisfies(value -> assertThat(value)
+                    .containsEntry("product_code", "CURRENT").containsEntry("price_tariff", "DIFERENCIA"));
+            assertThat(projectedLines.backfill(key(site, id))).isFalse();
+        }
+    }
+
+    @Test
+    void backfillMarksMissingAndInvalidLegacyPayloadsWithoutLosingHeaders() {
+        Site site = site();
+        UUID missing = UUID.randomUUID();
+        receive(site, missing, 1, "PAGADO", "2.47");
+        makePending(site, missing);
+        assertThat(projectedLines.backfill(key(site, missing))).isTrue();
+        assertThat(row(site, missing)).containsEntry("line_projection_status", "MISSING");
+        UUID invalid = UUID.randomUUID();
+        var data = payload(1, "CONFIRMADO", "2.47");
+        data.put("lineas", List.of(Map.of("cantidad", "unknown")));
+        sync.receive(request(site, invalid, SyncOperation.CONFIRMAR, data), site.token());
+        makePending(site, invalid);
+        assertThat(projectedLines.backfill(key(site, invalid))).isTrue();
+        assertThat(row(site, invalid)).containsEntry("line_projection_status", "INVALID");
+        assertThat(lines(site, invalid)).isEmpty();
+    }
+
+    @Test
+    void backfillWaitingOnWriterLockCannotReplaceANewerSnapshot() throws Exception {
+        Site site = site();
+        UUID id = UUID.randomUUID();
+        sync.receive(request(site, id, SyncOperation.CONFIRMAR, payloadWithLines(1, "CONFIRMADO", "OLD")), site.token());
+        makePending(site, id);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var started = new CountDownLatch(1);
+            var future = new TransactionTemplate(transactions).execute(status -> {
+                CommercialDocumentProjectionRepository.lock(jdbc, site.company().getId(), site.store().getId(), id);
+                var pending = executor.submit(() -> { started.countDown(); return projectedLines.backfill(key(site, id)); });
+                try { assertThat(started.await(10, TimeUnit.SECONDS)).isTrue(); }
+                catch (InterruptedException exception) { throw new IllegalStateException(exception); }
+                sync.receive(request(site, id, SyncOperation.ACTUALIZAR, payloadWithLines(2, "CONFIRMADO", "NEW")), site.token());
+                return pending;
+            });
+            assertThat(future.get(15, TimeUnit.SECONDS)).isFalse();
+        }
+        assertThat(row(site, id)).containsEntry("source_revision", 2L).containsEntry("line_projection_status", "READY");
+        assertThat(lines(site, id)).singleElement().satisfies(value -> assertThat(value).containsEntry("product_code", "NEW"));
+    }
+
+    private void makePending(Site site, UUID id) {
+        jdbc.update("delete from saas_commercial_document_line where company_id=? and store_id=? and source_document_id=?",
+                site.company().getId(), site.store().getId(), id);
+        jdbc.update("update saas_commercial_document set line_projection_status='PENDING' where company_id=? and store_id=? and source_document_id=?",
+                site.company().getId(), site.store().getId(), id);
+    }
+
+    private static CommercialDocumentLineProjectionRepository.DocumentKey key(Site site, UUID id) {
+        return new CommercialDocumentLineProjectionRepository.DocumentKey(site.company().getId(), site.store().getId(), id);
+    }
+
+    private List<Map<String, Object>> lines(Site site, UUID id) {
+        return jdbc.queryForList("select * from saas_commercial_document_line where company_id=? and store_id=? and source_document_id=? order by line_position",
+                site.company().getId(), site.store().getId(), id);
+    }
+
+    private static Map<String, Object> payloadWithLines(long revision, String status, String code) {
+        var data = payload(revision, status, "2.47");
+        data.put("lineas", List.of(CommercialDocumentLinesTest.line(code)));
+        return data;
     }
 
     @Test

@@ -2853,6 +2853,7 @@ export function StockScreen({
     }
     const row = detailRow;
     function handleDetailKey(event: globalThis.KeyboardEvent) {
+      if (event.defaultPrevented || (event.key === "Escape" && detailTab === "sales")) return;
       if (event.key === "Enter"
           && (event.target as HTMLElement | null)?.closest("input, textarea, select, button, [role='combobox']")) {
         return;
@@ -2878,7 +2879,7 @@ export function StockScreen({
     }
     window.addEventListener("keydown", handleDetailKey);
     return () => window.removeEventListener("keydown", handleDetailKey);
-  }, [canManageProducts, detailRow]);
+  }, [canManageProducts, detailRow, detailTab]);
 
   stockExportShortcutRef.current = () => { void exportStockExcel(); };
 

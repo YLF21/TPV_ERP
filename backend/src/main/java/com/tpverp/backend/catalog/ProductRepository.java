@@ -63,6 +63,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     List<Product> findAllByStoreIdAndIdIn(UUID storeId, Collection<UUID> ids);
 
+    /** Loads the code needed by a remote history read after the persistence context has closed. */
+    @Query("""
+            select distinct product from Product product
+            left join fetch product.identifiers
+            where product.storeId = :storeId and product.id = :id
+            """)
+    Optional<Product> findWithIdentifiersByStoreIdAndId(@Param("storeId") UUID storeId, @Param("id") UUID id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select product from Product product where product.storeId = :storeId and product.id in :ids order by product.id")
     List<Product> findAllByStoreIdAndIdInForUpdate(

@@ -1,0 +1,137 @@
+<jasperReport name="historial_ventas_saas_a4" language="java" pageWidth="842" pageHeight="595" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" whenNoDataType="AllSectionsNoDetail">
+  <parameter name="TITLE" class="java.lang.String"/>
+  <parameter name="METADATA" class="java.lang.String"/>
+  <parameter name="TOTALS" class="java.lang.String"/>
+  <parameter name="PAGE_LABEL" class="java.lang.String"/>
+  <parameter name="COLUMN_COUNT" class="java.lang.Integer"/>
+  <parameter name="LABEL_0" class="java.lang.String"/>
+  <parameter name="LABEL_1" class="java.lang.String"/>
+  <parameter name="LABEL_2" class="java.lang.String"/>
+  <parameter name="LABEL_3" class="java.lang.String"/>
+  <parameter name="LABEL_4" class="java.lang.String"/>
+  <parameter name="LABEL_5" class="java.lang.String"/>
+  <parameter name="LABEL_6" class="java.lang.String"/>
+  <parameter name="LABEL_7" class="java.lang.String"/>
+  <parameter name="LABEL_8" class="java.lang.String"/>
+  <parameter name="LABEL_9" class="java.lang.String"/>
+  <parameter name="LABEL_10" class="java.lang.String"/>
+  <parameter name="LABEL_11" class="java.lang.String"/>
+  <field name="CELL_0" class="java.lang.String"/>
+  <field name="CELL_1" class="java.lang.String"/>
+  <field name="CELL_2" class="java.lang.String"/>
+  <field name="CELL_3" class="java.lang.String"/>
+  <field name="CELL_4" class="java.lang.String"/>
+  <field name="CELL_5" class="java.lang.String"/>
+  <field name="CELL_6" class="java.lang.String"/>
+  <field name="CELL_7" class="java.lang.String"/>
+  <field name="CELL_8" class="java.lang.String"/>
+  <field name="CELL_9" class="java.lang.String"/>
+  <field name="CELL_10" class="java.lang.String"/>
+  <field name="CELL_11" class="java.lang.String"/>
+  <title height="92" splitType="Stretch">
+    <element kind="textField" x="0" y="0" width="802" height="24" fontSize="15" bold="true" markup="styled" textAdjust="StretchHeight"><expression><![CDATA[$P{TITLE}]]></expression></element>
+    <element kind="textField" x="0" y="30" width="802" height="56" fontSize="9" markup="styled" textAdjust="StretchHeight" positionType="Float"><expression><![CDATA[$P{METADATA}]]></expression></element>
+  </title>
+  <columnHeader height="30">
+    <element kind="textField" key="column.0" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 0]]></printWhenExpression><expression><![CDATA[$P{LABEL_0}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.1" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 1]]></printWhenExpression><expression><![CDATA[$P{LABEL_1}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.2" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 2]]></printWhenExpression><expression><![CDATA[$P{LABEL_2}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.3" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 3]]></printWhenExpression><expression><![CDATA[$P{LABEL_3}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.4" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 4]]></printWhenExpression><expression><![CDATA[$P{LABEL_4}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.5" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 5]]></printWhenExpression><expression><![CDATA[$P{LABEL_5}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.6" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 6]]></printWhenExpression><expression><![CDATA[$P{LABEL_6}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.7" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 7]]></printWhenExpression><expression><![CDATA[$P{LABEL_7}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.8" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 8]]></printWhenExpression><expression><![CDATA[$P{LABEL_8}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.9" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 9]]></printWhenExpression><expression><![CDATA[$P{LABEL_9}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.10" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 10]]></printWhenExpression><expression><![CDATA[$P{LABEL_10}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="textField" key="column.11" x="0" y="0" width="60" height="30" fontSize="8" bold="true" markup="styled" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 11]]></printWhenExpression><expression><![CDATA[$P{LABEL_11}]]></expression>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+  </columnHeader>
+  <detail><band height="24" splitType="Prevent">
+    <element kind="textField" key="column.0" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 0]]></printWhenExpression><expression><![CDATA[$F{CELL_0}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.1" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 1]]></printWhenExpression><expression><![CDATA[$F{CELL_1}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.2" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 2]]></printWhenExpression><expression><![CDATA[$F{CELL_2}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.3" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 3]]></printWhenExpression><expression><![CDATA[$F{CELL_3}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.4" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 4]]></printWhenExpression><expression><![CDATA[$F{CELL_4}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.5" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 5]]></printWhenExpression><expression><![CDATA[$F{CELL_5}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.6" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 6]]></printWhenExpression><expression><![CDATA[$F{CELL_6}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.7" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 7]]></printWhenExpression><expression><![CDATA[$F{CELL_7}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.8" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 8]]></printWhenExpression><expression><![CDATA[$F{CELL_8}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.9" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 9]]></printWhenExpression><expression><![CDATA[$F{CELL_9}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.10" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 10]]></printWhenExpression><expression><![CDATA[$F{CELL_10}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+    <element kind="textField" key="column.11" x="0" y="0" width="60" height="24" fontSize="8" markup="styled" blankWhenNull="true" vTextAlign="Middle" textAdjust="StretchHeight" stretchType="ContainerHeight">
+      <printWhenExpression><![CDATA[$P{COLUMN_COUNT} > 11]]></printWhenExpression><expression><![CDATA[$F{CELL_11}]]></expression>
+      <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+    </element>
+  </band></detail>
+  <pageFooter height="22"><element kind="textField" x="0" y="4" width="802" height="18" fontSize="8" hTextAlign="Right" markup="styled"><expression><![CDATA[$P{PAGE_LABEL} + " " + $V{PAGE_NUMBER}]]></expression></element></pageFooter>
+  <summary height="36" splitType="Stretch"><element kind="textField" x="0" y="8" width="802" height="24" fontSize="10" bold="true" markup="styled" textAdjust="StretchHeight"><expression><![CDATA[$P{TOTALS}]]></expression></element></summary>
+</jasperReport>
