@@ -6,6 +6,10 @@ import { SalesReportScreen } from "./SalesReportScreen";
 import type { AppKind, LocaleCode } from "../types";
 import { createSalesActivityTranslator } from "../i18n/SalesActivityMessages";
 
+vi.mock("./useScreenConnectionStatus", () => ({
+  useScreenConnectionStatus: () => ({ backendLabel: "LOCAL", saasConnected: false }),
+}));
+
 vi.mock("../api/client", async () => ({
   ...await vi.importActual<typeof import("../api/client")>("../api/client"),
   apiRequest: vi.fn().mockResolvedValue(null),

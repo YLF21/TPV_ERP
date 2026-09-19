@@ -1,9 +1,10 @@
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
+import { backendAddressPlugin } from "../../scripts/vite-backend-address.mjs";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), backendAddressPlugin()],
   define: {
     __TPV_APP_KIND__: JSON.stringify("venta")
   },

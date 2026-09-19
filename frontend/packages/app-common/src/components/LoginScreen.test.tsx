@@ -143,7 +143,7 @@ describe("LoginScreen", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Reintentar conexion" }));
 
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Backend conectado"));
+    await waitFor(() => expect(screen.getByText("Backend conectado")).toHaveAttribute("role", "status"));
     expect(screen.getByRole("button", { name: "Entrar" })).toBeEnabled();
   });
 

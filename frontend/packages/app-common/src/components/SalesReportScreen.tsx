@@ -32,6 +32,7 @@ import { ErpSelect } from "./ErpSelect";
 import { ModuleNavBackButton } from "./ModuleNavBackButton";
 import { ModuleNavItem } from "./ModuleNavItem";
 import { TopDateTime } from "./TopDateTime";
+import { ScreenContextFooter } from "./ScreenContextFooter";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { SalesActivityPanel } from "./SalesActivityPanel";
 import { ReportDateRangeFilter, isValidReportDate, reportDateRangeLabel, type ReportDateRange } from "./ReportDateRangeFilter";
@@ -129,21 +130,6 @@ const languageOptions: Array<{ code: LocaleCode; label: string }> = [
   { code: "en", label: "English" },
   { code: "zh", label: "中文" }
 ];
-
-function apiServerLabel() {
-  if (apiBaseUrl.startsWith("/")) {
-    return "local";
-  }
-  try {
-    return new URL(apiBaseUrl).host;
-  } catch {
-    return apiBaseUrl;
-  }
-}
-
-function currentOnlineStatus() {
-  return typeof navigator === "undefined" ? false : navigator.onLine;
-}
 
 function renderedPdfBlob(renderedPdf: { contentType: "application/pdf"; base64: string }): Blob {
   const binary = window.atob(renderedPdf.base64);
@@ -1955,7 +1941,6 @@ export function SalesReportScreen({
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [saasConnected, setSaasConnected] = useState(currentOnlineStatus);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
   const [reportExportBusy, setReportExportBusy] = useState(false);
   const [reportExportProgress, setReportExportProgress] = useState(0);
@@ -2106,7 +2091,6 @@ export function SalesReportScreen({
   );
   const selectedIsRectificationDraft = selectedReportRow?.__documentType === "RECTIFICATIVA_VENTA"
     && selectedReportRow.__documentStatus === "BORRADOR";
-  const dbLabel = apiServerLabel();
   const monthTitleLocale = locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES";
   const calendarTitle = new Intl.DateTimeFormat(monthTitleLocale, { month: "long", year: "numeric" }).format(calendarMonth);
   const hasDateFilter = sample.availableAttributes.includes("date");
@@ -2303,19 +2287,6 @@ export function SalesReportScreen({
       reportQueryGeneration.current += 1;
     };
   }, [request, session, terminalContext, reportReloadKey, isSalesActivityReport, selectedReport, filters.dateFrom, filters.dateTo]);
-
-  useEffect(() => {
-    function updateConnectionStatus() {
-      setSaasConnected(currentOnlineStatus());
-    }
-
-    window.addEventListener("online", updateConnectionStatus);
-    window.addEventListener("offline", updateConnectionStatus);
-    return () => {
-      window.removeEventListener("online", updateConnectionStatus);
-      window.removeEventListener("offline", updateConnectionStatus);
-    };
-  }, []);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -4050,15 +4021,7 @@ export function SalesReportScreen({
           )}
         </section>
 
-        <footer className="report-footer-context">
-          <span>{terminalContext.storeName}</span>
-          <span>{`${t("login.terminalPrefix")}: ${terminalContext.terminalCode}`}</span>
-          <span>{`DB: ${dbLabel}`}</span>
-          <span className={`report-connection ${saasConnected ? "online" : "offline"}`}>
-            <i aria-hidden="true" />
-            {t("salesReport.connection")}
-          </span>
-        </footer>
+        <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
       </section>
 
       {activityDocumentId && (
@@ -4330,4 +4293,3 @@ export function SalesReportScreen({
     </main>
   );
 }
-

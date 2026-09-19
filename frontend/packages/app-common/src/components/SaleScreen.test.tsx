@@ -88,6 +88,13 @@ import { defaultHardwareConfig, type HardwareBridge } from "../hardware/hardware
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
 import { ApiError } from "../api/client";
+
+// Connectivity has its own integration coverage; keep sale API fixtures scoped
+// to the business requests made by this screen.
+vi.mock("./useScreenConnectionStatus", () => ({
+  useScreenConnectionStatus: () => ({ backendLabel: "LOCAL", saasConnected: false }),
+}));
+
 const controlDeliveryMock = vi.hoisted(() => ({ persist: vi.fn(), deliver: vi.fn(), retry: vi.fn() }));
 vi.mock("../sale/useSaleControlDelivery", () => ({
   useSaleControlDelivery: () => ({ delivery: controlDeliveryMock,
@@ -4572,10 +4579,10 @@ describe("SaleScreen", () => {
     act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-PRINT"), { kind: "CASH", totalCents: 1210, receivedCents: 2000 }));
 
     expect(screen.getByText("Pago completado")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
     resolvePrint({ ok: true });
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
 
   it("automatically prints a pure CARD checkout ticket", async () => {
@@ -4587,9 +4594,9 @@ describe("SaleScreen", () => {
     act(() => checkoutProps.current?.onFinalized(printSnapshot("CARD-PRINT"), { kind: "CARD", totalCents: 1210 }));
 
     expect(screen.getByText("Pago completado")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
     const search = screen.getByRole("combobox", { name: "Buscar producto" });
     fireEvent.keyDown(document.body, { key: "8" });
     expect(screen.queryByText("Pago completado")).not.toBeInTheDocument();
@@ -4604,9 +4611,9 @@ describe("SaleScreen", () => {
 
     act(() => checkoutProps.current?.onFinalized(printSnapshot("MIXED-PRINT"), { kind: "MIXED", totalCents: 1210 }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
 
   it("prints exchange rectification before replacement and retries only the failed fiscal document", async () => {
@@ -4645,7 +4652,7 @@ describe("SaleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(3));
     expect(printTicket.mock.calls[2][0].documentNumber).toBe("RECT-EXCHANGE");
-    await waitFor(() => expect(screen.getByRole("status"))
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status"))
       .toHaveTextContent("Ticket enviado a la impresora"));
   });
 
@@ -4706,10 +4713,10 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("El cobro se ha completado");
     expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/pos/cash"))).toHaveLength(0);
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
 
   it("keeps a late print failure recoverable after the operator has already continued", async () => {
@@ -4742,9 +4749,9 @@ describe("SaleScreen", () => {
     resolvers[0]({ ok: false, code: "PRINT_FAILED", message: "old failure" });
     await act(async () => { await Promise.resolve(); });
     expect(screen.getByText("CASH-NEW")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     resolvers[1]({ ok: true });
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
   it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);
@@ -7063,7 +7070,7 @@ describe("SaleScreen", () => {
     fireEvent.click(within(cashDialog).getByRole("button", { name: "Confirmar cobro" }));
 
     expect(await screen.findByText("Pago completado")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    expect(within(screen.getByRole("region", { name: "Pago completado" })).getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
     expect(printTicket).toHaveBeenNthCalledWith(1, expect.objectContaining({ documentNumber: "DIRECT-UI" }), expect.anything());
     failFirstPrint({ ok: false, code: "PRINT_FAILED", message: "paper jam" });

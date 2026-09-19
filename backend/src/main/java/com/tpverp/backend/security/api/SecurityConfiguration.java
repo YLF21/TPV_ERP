@@ -61,6 +61,7 @@ class SecurityConfiguration {
 
 	private List<String> publicPaths(Environment environment) {
 		var paths = new ArrayList<>(List.of(
+				"/api/v1/connectivity",
 				"/api/v1/auth/login",
 				"/api/v1/auth/installation-login",
 				"/api/v1/installation/status",

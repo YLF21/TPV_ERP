@@ -2499,24 +2499,21 @@ textarea {
   border-right: 0;
 }
 
-.report-connection {
+.report-connection,
+.report-database {
   gap: 7px;
 }
 
-.report-connection i {
-  width: 9px;
-  height: 9px;
-  display: inline-block;
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(31, 55, 86, 0.08);
+.report-footer-context svg {
+  flex-shrink: 0;
 }
 
-.report-connection.online i {
-  background: #19a463;
+.report-connection.online svg {
+  color: #16804a;
 }
 
-.report-connection.offline i {
-  background: #d52d2d;
+.report-connection.offline svg {
+  color: #d52d2d;
 }
 
 .report-screen .filter-overlay {
