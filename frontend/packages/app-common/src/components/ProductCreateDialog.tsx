@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { X } from "@phosphor-icons/react";
+import "./ProductCreateDialog.css";
 import { ApiConnectionError, ApiError, apiRequest } from "../api/client";
 import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
@@ -1381,6 +1383,7 @@ export function ProductCreateDialog({
     }
 
     function handleProductShortcut(event: globalThis.KeyboardEvent) {
+      if (event.defaultPrevented) return;
       const action = productCreateKeyAction(event.key);
       if (!action) {
         return;
@@ -2122,16 +2125,18 @@ export function ProductCreateDialog({
   return (
     <div className="filter-overlay product-create-overlay" role="dialog" aria-modal="true" aria-labelledby="product-create-title">
       <section className="filter-dialog product-create-dialog">
-        <header className="filter-header">
+        <header className="product-editor-header">
           <div>
             <h2 id="product-create-title">{t(editingProduct ? "product.edit.title" : "product.create.title")}</h2>
-            <span>{selectedFamily?.name ?? t("product.create.subtitle")}</span>
+            <span>{editingProduct ? editProduct?.form.code : t("product.create.subtitle")}</span>
           </div>
-          <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
+          <button type="button" aria-label={t("common.close")} onClick={closeProductDialog}><X size={20} weight="bold" aria-hidden="true" /></button>
         </header>
 
         <div className="product-create-body" ref={formRef} onKeyDown={focusProductField}>
           <div className="product-create-form">
+            <fieldset className="product-create-fieldset product-identification-fieldset">
+              <legend>{t("product.fieldset.identification")}</legend>
             <div className="product-create-row product-create-row-two">
               <label className={fieldClass("barcode")}>
                 <span>{requiredLabel("stock.column.barcode", true)}</span>
@@ -2159,10 +2164,6 @@ export function ProductCreateDialog({
                 }))
               )}
             </div>
-            <label className="product-create-full">
-              <span>{t("product.field.description")}</span>
-              <textarea data-product-field data-product-field-name="description" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
-            </label>
             <div className="product-create-row product-create-row-family-tax">
               <div className={`filter-field product-family-field ${familyPickerOpen ? "open" : ""} ${fieldClass("familyBusinessCode")}`}>
                 <span>{requiredLabel("stock.column.family")} · {requiredLabel("product.field.familyBusinessCode", true)}</span>
@@ -2246,6 +2247,7 @@ export function ProductCreateDialog({
                 </label>
               )}
             </div>
+            </fieldset>
             <fieldset className="product-create-fieldset product-pricing-fieldset">
               <legend>{t("product.fieldset.prices")}</legend>
             <div className="product-create-row product-create-row-prices">
@@ -2465,12 +2467,22 @@ export function ProductCreateDialog({
                 </label>
               </div>
             </fieldset>
-            <label className="product-create-full">
-              <span>{t("product.field.comments")}</span>
-              <textarea data-product-field data-product-field-name="comments" value={form.comments} onChange={(event) => updateField("comments", event.target.value)} />
-            </label>
+            <fieldset className="product-create-fieldset product-notes-fieldset">
+              <legend>{t("product.fieldset.notes")}</legend>
+              <div className="product-create-row product-create-row-two">
+                <label className="product-create-full">
+                  <span>{t("product.field.description")}</span>
+                  <textarea data-product-field data-product-field-name="description" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
+                </label>
+                <label className="product-create-full">
+                  <span>{t("product.field.comments")}</span>
+                  <textarea data-product-field data-product-field-name="comments" value={form.comments} onChange={(event) => updateField("comments", event.target.value)} />
+                </label>
+              </div>
+            </fieldset>
           </div>
           <aside className="product-create-media">
+            <h3>{t("product.fieldset.additional")}</h3>
             <div className="product-image-preview">
               {imagePreview || existingImagePreview
                 ? <img alt={form.name} src={imagePreview || existingImagePreview} />
@@ -2538,7 +2550,7 @@ export function ProductCreateDialog({
             {status}
           </p>
         )}
-        <footer className="filter-actions">
+        <footer className="product-editor-footer">
           <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
           <button type="button" disabled={saving} onClick={() => void submitProduct(true)}>
             {saving ? t("product.create.saving") : t("product.create.save")}

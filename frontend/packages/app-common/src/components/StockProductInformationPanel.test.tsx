@@ -57,7 +57,7 @@ describe("StockProductInformationPanel", () => {
     expect(suppliers.map((supplier) => supplier.supplierId)).toEqual(["c", "b", "a"]);
   });
 
-  it("renders product information on the right without exposing supplier economics without permission", () => {
+  it("renders product information without exposing supplier economics without permission", () => {
     const html = renderToStaticMarkup(
       <StockProductInformationPanel
         product={product}
@@ -91,5 +91,45 @@ describe("StockProductInformationPanel", () => {
 
     expect(html).toContain("Precio compra");
     expect(html).toContain("Precio compra neto");
+  });
+
+  it("keeps the product fields and warehouse stock together in the information view", () => {
+    const html = renderToStaticMarkup(
+      <StockProductInformationPanel
+        product={{
+          ...product,
+          purchaseDiscountPercent: "5",
+          packageQuantity: "2",
+          offerActive: "common.yes",
+          offerPrice: "5.75",
+          offerDiscountPercent: "10",
+          offerFrom: "2026-09-01",
+          offerUntil: "2026-09-30",
+          promotionNames: "Promoción de septiembre",
+          stockMin: "3",
+          stockMax: "24"
+        }}
+        locale="es"
+        canReadSuppliers={false}
+        canViewPurchaseFields
+        stockContent={
+          <table aria-label="Stock por almacén">
+            <tbody><tr><td>GENERAL</td><td>12</td></tr></tbody>
+          </table>
+        }
+      />
+    );
+
+    for (const value of [
+      "Cafe molido", "A001", "8430000000011", "8430000000012", "Activo",
+      "Tueste natural", "Proveedor habitual", "Unidad", "Bebidas", "Cafe", "IGIC 7%",
+      "2,00", "4,20", "5,00%", "3,99", "6,50", "6,00", "5,30",
+      "5,75", "10,00%", "1/9/26", "30/9/26", "Promoción de septiembre",
+      "3,00", "24,00", "18,00", "GENERAL"
+    ]) {
+      expect(html).toContain(value);
+    }
+    expect(html).toContain('<table aria-label="Stock por almacén">');
+    expect(html).not.toContain("<button");
   });
 });

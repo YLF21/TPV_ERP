@@ -11,7 +11,8 @@ import {
   Table,
   Tag,
   Truck,
-  UsersThree
+  UsersThree,
+  X
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "../api/client";
@@ -84,6 +85,7 @@ import { applyStockBulkPriceRulePreview } from "./stockBulkPriceRules";
 import { StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
 import { StockPromotionGroups } from "./StockPromotionGroups";
 import { StockProductInformationPanel } from "./StockProductInformationPanel";
+import "./StockProductDetail.css";
 import type { PromotionView } from "./PromotionForm";
 import { ErpSelect } from "./ErpSelect";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -2643,7 +2645,8 @@ export function StockScreen({
     gridTemplateColumns: tableLayoutGridTemplate(selectedColumnSettings)
   };
   const warehouseDetailGridStyle: CSSProperties = {
-    gridTemplateColumns: tableLayoutGridTemplate(warehouseDetailTableLayout.layout)
+    gridTemplateColumns: visibleWarehouseDetailColumns.map((column, index) => index === visibleWarehouseDetailColumns.length - 1
+      ? `minmax(${column.width}px, 1fr)` : `${column.width}px`).join(" ")
   };
   const selectedStockRow = visibleRows[selectedStockIndex] ?? visibleRows[0] ?? null;
   const detailStockRows = detailRow ? allStockRows.filter((row) => row.productId === detailRow.productId) : [];
@@ -2848,7 +2851,7 @@ export function StockScreen({
   }, [inventoryFilterOpen, productCreateOpen, selectedView, topSalesFilterOpen]);
 
   useEffect(() => {
-    if (!detailRow) {
+    if (!detailRow || productCreateOpen) {
       return;
     }
     const row = detailRow;
@@ -2879,7 +2882,7 @@ export function StockScreen({
     }
     window.addEventListener("keydown", handleDetailKey);
     return () => window.removeEventListener("keydown", handleDetailKey);
-  }, [canManageProducts, detailRow, detailTab]);
+  }, [canManageProducts, detailRow, detailTab, productCreateOpen]);
 
   stockExportShortcutRef.current = () => { void exportStockExcel(); };
 
@@ -2966,6 +2969,29 @@ export function StockScreen({
     setRetirementNotice("");
     setRetirementRow(detailRow);
     setDetailRow(null);
+  }
+
+  function handleProductSaved(product: ProductView) {
+    // The management API returns the canonical product, including omitted null
+    // fields. Refresh the open snapshot before another F7 can reuse old values;
+    // waiting for the paged list misses products that leave the current filter.
+    const [savedRow] = buildStockInventoryRows([product], warehouseCatalog, [], stockCatalog);
+    function updateSavedProduct(row: StockInventoryRow): StockInventoryRow {
+      if (row.productId !== product.id) return row;
+      return {
+        ...row,
+        ...savedRow,
+        warehouseId: row.warehouseId,
+        warehouseName: row.warehouseName,
+        quantity: row.quantity,
+        totalQuantity: row.totalQuantity,
+        supplierName: row.supplierName,
+      };
+    }
+    setDetailRow((current) => current ? updateSavedProduct(current) : current);
+    setAllStockRows((current) => current.map(updateSavedProduct));
+    setSelectedView((current) => stockViewAfterProductCreated(current));
+    setStockRefreshCounter((current) => current + 1);
   }
 
   async function completeProductRetirement(result: RetirementResult) {
@@ -7637,19 +7663,23 @@ export function StockScreen({
       {detailRow && (
         <div className="filter-overlay stock-detail-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-detail-title">
           <section className="filter-dialog stock-detail-dialog">
-            <header className="filter-header">
-              <div>
-                <h2 id="stock-detail-title">{detailRow.name}</h2>
-                <span>{detailRow.code}</span>
-              </div>
-              <button type="button" onClick={() => setDetailRow(null)}>{t("common.close")}</button>
+            <header className="stock-detail-header">
+              <h2 id="stock-detail-title">{t("stock.detail.informationTitle")}</h2>
+              <button type="button" aria-label={t("common.close")} onClick={() => setDetailRow(null)}><X size={20} weight="bold" aria-hidden="true" /></button>
             </header>
             <div className="stock-detail-toolbar">
-              <div className="stock-detail-tabs" role="tablist">
-                <button type="button" className={detailTab === "stock" ? "selected" : ""} onClick={() => setDetailTab("stock")}>
+              <div className="stock-detail-tabs" role="tablist" aria-label={t("stock.detail.informationTitle")}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const nextTab = event.key === "Home" ? "stock" : event.key === "End" ? "sales" : detailTab === "stock" ? "sales" : "stock";
+                  setDetailTab(nextTab);
+                  event.currentTarget.querySelector<HTMLButtonElement>(`#stock-detail-tab-${nextTab}`)?.focus();
+                }}>
+                <button type="button" role="tab" id="stock-detail-tab-stock" aria-controls="stock-detail-panel" aria-selected={detailTab === "stock"} tabIndex={detailTab === "stock" ? 0 : -1} className={detailTab === "stock" ? "selected" : ""} onClick={() => setDetailTab("stock")}>
                   {t("stock.detail.stockTab")}
                 </button>
-                <button type="button" className={detailTab === "sales" ? "selected" : ""} onClick={() => setDetailTab("sales")}>
+                <button type="button" role="tab" id="stock-detail-tab-sales" aria-controls="stock-detail-panel" aria-selected={detailTab === "sales"} tabIndex={detailTab === "sales" ? 0 : -1} className={detailTab === "sales" ? "selected" : ""} onClick={() => setDetailTab("sales")}>
                   {t("stock.detail.salesTab")}
                 </button>
               </div>
@@ -7677,9 +7707,15 @@ export function StockScreen({
                 </button>
               )}
             </div>
-            <div className="stock-detail-content">
-              <div className="stock-detail-primary">
-                {detailTab === "stock" && (
+            <div className={`stock-detail-content stock-detail-content--${detailTab}`} id="stock-detail-panel" role="tabpanel" aria-labelledby={`stock-detail-tab-${detailTab}`}>
+              {detailTab === "stock" && (
+                <StockProductInformationPanel
+                  product={detailRow}
+                  locale={locale}
+                  token={session.accessToken}
+                  canReadSuppliers={canReadProductSuppliers}
+                  canViewPurchaseFields={canManageProducts}
+                  stockContent={
                   <div className="stock-detail-table">
                     <div className="stock-detail-row header" style={warehouseDetailGridStyle}>
                       {visibleWarehouseDetailColumns.map((column) => {
@@ -7722,10 +7758,13 @@ export function StockScreen({
                         : <strong key={column.key}>{detailRow.totalQuantity}</strong>)}
                     </div>
                   </div>
-                )}
-                {detailTab === "sales" && (
+                  }
+                />
+              )}
+              {detailTab === "sales" && (
                   <StockSalesHistoryPanel
                     productId={detailRow.productId}
+                    productCode={detailRow.code}
                     productName={detailRow.name}
                     productType={detailRow.productType}
                     locale={locale}
@@ -7736,16 +7775,12 @@ export function StockScreen({
                     onClose={() => setDetailRow(null)}
                     onOpenDocument={onOpenDocument}
                   />
-                )}
-              </div>
-              <StockProductInformationPanel
-                product={detailRow}
-                locale={locale}
-                token={session.accessToken}
-                canReadSuppliers={canReadProductSuppliers}
-                canViewPurchaseFields={canManageProducts}
-              />
+              )}
             </div>
+            <footer className="stock-detail-footer">
+              <span><kbd>{t("stock.detail.closeKey")}</kbd> {t("common.close")}</span>
+              <button type="button" onClick={() => setDetailRow(null)}>{t("common.close")}</button>
+            </footer>
           </section>
         </div>
       )}
@@ -7773,10 +7808,7 @@ export function StockScreen({
           setProductCreateOpen(false);
           setEditingProduct(null);
         }}
-        onCreated={() => {
-          setSelectedView((current) => stockViewAfterProductCreated(current));
-          setStockRefreshCounter((current) => current + 1);
-        }}
+        onCreated={handleProductSaved}
       />
       <StockSettingsDialog
         open={stockSettingsMode === "configuration"}
