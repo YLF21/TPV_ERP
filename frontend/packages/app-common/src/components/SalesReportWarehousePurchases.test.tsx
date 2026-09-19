@@ -168,11 +168,14 @@ describe("current warehouse purchase reports", () => {
   });
 
   it("does not match invisible line payloads when searching the report", async () => {
+    // Keep this search test independent of the separate store-date initialization reload.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${today}T12:00:00`));
     mount(); await screen.findByText("FE-001");
     const search = screen.getByPlaceholderText(createTranslator("es")("salesReport.searchPlaceholder"));
     fireEvent.change(search, { target: { value: "product-uuid" } });
     expect(screen.queryByText("FE-001")).toBeNull();
     fireEvent.change(search, { target: { value: "Proveedor de prueba" } });
-    expect(screen.getByText("FE-001")).toBeVisible();
+    expect(await screen.findByText("FE-001")).toBeVisible();
   });
 });
