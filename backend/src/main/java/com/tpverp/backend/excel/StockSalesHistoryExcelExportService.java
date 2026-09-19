@@ -7,10 +7,15 @@ import com.tpverp.backend.document.DocumentStatus;
 import com.tpverp.backend.inventory.StockSalesHistoryRow;
 import com.tpverp.backend.inventory.StockSalesHistoryService;
 import com.tpverp.backend.organization.CurrentOrganization;
+import java.awt.font.FontRenderContext;
+import java.awt.font.LineBreakMeasurer;
+import java.awt.font.TextAttribute;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.text.AttributedString;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,13 +23,15 @@ import java.util.function.Function;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.SheetUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -99,26 +106,32 @@ public class StockSalesHistoryExcelExportService {
             var sheet = workbook.createSheet(safeSheetName(request.labels().title()));
             sheet.setDisplayGridlines(false);
             var styles = Styles.create(workbook);
+            int layoutColumns = Math.max(2, columns.size());
             int rowIndex = 0;
 
             var title = sheet.createRow(rowIndex++);
             title.setHeightInPoints(26);
             writeText(title.createCell(0), request.labels().title(), styles.title());
-            if (columns.size() > 1) {
-                sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, columns.size() - 1));
-            }
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, layoutColumns - 1));
 
             writePair(sheet.createRow(rowIndex++), request.labels().product(), product.getName(), styles);
             writePair(sheet.createRow(rowIndex++), request.labels().code(), productCode(product), styles);
             writePair(sheet.createRow(rowIndex++), request.labels().period(), period(request), styles);
             writePair(sheet.createRow(rowIndex++), request.labels().status(),
                     request.status() == null ? request.labels().allStatuses() : request.status().name(), styles);
+            if (layoutColumns > 2) {
+                for (int metadataRow = 1; metadataRow <= 4; metadataRow++) {
+                    sheet.addMergedRegion(new CellRangeAddress(metadataRow, metadataRow, 1, layoutColumns - 1));
+                }
+            }
             rowIndex++;
 
             int headerIndex = rowIndex;
             var header = sheet.createRow(rowIndex++);
             for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
-                writeText(header.createCell(columnIndex), columns.get(columnIndex).label(), styles.header());
+                var column = columns.get(columnIndex);
+                writeText(header.createCell(columnIndex), column.label(),
+                        numericColumn(column.key()) ? styles.numericHeader() : styles.header());
             }
 
             for (var historyRow : rows) {
@@ -138,16 +151,62 @@ public class StockSalesHistoryExcelExportService {
                     quantityStyle(product.getProductType(), styles), styles);
             writeTotal(sheet.createRow(rowIndex), request.labels().totalAmount(), totals.amount(), styles.currency(), styles);
 
-            for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
-                sheet.autoSizeColumn(columnIndex);
-                sheet.setColumnWidth(columnIndex, Math.min(sheet.getColumnWidth(columnIndex) + 700, 48 * 256));
+            for (int columnIndex = 0; columnIndex < layoutColumns; columnIndex++) {
+                String key = columnIndex < columns.size() ? columns.get(columnIndex).key() : "";
+                int minimum = "occurredAt".equals(key) ? 22 : numericColumn(key) ? 16 : 20;
+                double measured = SheetUtil.getColumnWidth(sheet, columnIndex, false, headerIndex, sheet.getLastRowNum());
+                sheet.setColumnWidth(columnIndex, (int) Math.ceil(Math.min(48, Math.max(minimum, measured + 3)) * 256));
             }
+            fitTextRows(sheet, layoutColumns, headerIndex);
 
             var output = new ByteArrayOutputStream();
             workbook.write(output);
             return output.toByteArray();
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo exportar el historial de ventas", exception);
+        }
+    }
+
+    private static boolean numericColumn(String key) {
+        return "quantity".equals(key) || "unitPrice".equals(key) || "discount".equals(key) || "total".equals(key);
+    }
+
+    private static void fitTextRows(Sheet sheet, int layoutColumns, int headerIndex) {
+        var fonts = new HashMap<Integer, java.awt.Font>();
+        var context = new FontRenderContext(null, true, true);
+        float defaultCharWidth = SheetUtil.getDefaultCharWidthAsFloat(sheet.getWorkbook());
+        for (Row row : sheet) {
+            float height = row.getRowNum() == 0 || row.getRowNum() == headerIndex ? 28 : 20;
+            for (Cell cell : row) {
+                if (cell.getCellType() != org.apache.poi.ss.usermodel.CellType.STRING) continue;
+                int lastColumn = row.getRowNum() == 0 || (row.getRowNum() <= 4 && cell.getColumnIndex() == 1)
+                        ? layoutColumns - 1 : cell.getColumnIndex();
+                float width = 0;
+                for (int column = cell.getColumnIndex(); column <= lastColumn; column++) {
+                    width += sheet.getColumnWidth(column) / 256f * defaultCharWidth;
+                }
+                var font = fonts.computeIfAbsent(cell.getCellStyle().getFontIndex(), index -> {
+                    var source = sheet.getWorkbook().getFontAt(index);
+                    return new java.awt.Font(source.getFontName(), source.getBold() ? java.awt.Font.BOLD : java.awt.Font.PLAIN,
+                            source.getFontHeightInPoints());
+                });
+                float textHeight = 8;
+                for (String line : cell.getStringCellValue().split("\\r\\n|\\r|\\n", -1)) {
+                    if (line.isEmpty()) {
+                        textHeight += font.getSize2D() * 1.25f;
+                        continue;
+                    }
+                    var text = new AttributedString(line);
+                    text.addAttribute(TextAttribute.FONT, font);
+                    var measurer = new LineBreakMeasurer(text.getIterator(), context);
+                    while (measurer.getPosition() < line.length()) {
+                        var layout = measurer.nextLayout(Math.max(1, width - 10));
+                        textHeight += layout.getAscent() + layout.getDescent() + layout.getLeading();
+                    }
+                }
+                height = Math.max(height, textHeight);
+            }
+            row.setHeightInPoints(Math.min(409.5f, height));
         }
     }
 
@@ -243,6 +302,7 @@ public class StockSalesHistoryExcelExportService {
     private record Styles(
             CellStyle title,
             CellStyle header,
+            CellStyle numericHeader,
             CellStyle metaLabel,
             CellStyle metaValue,
             CellStyle body,
@@ -254,61 +314,66 @@ public class StockSalesHistoryExcelExportService {
             CellStyle totalLabel) {
 
         static Styles create(Workbook workbook) {
+            var body = workbook.createCellStyle();
+            body.setFont(font(workbook, false, (short) 10));
+            body.setAlignment(HorizontalAlignment.LEFT);
+            body.setVerticalAlignment(VerticalAlignment.CENTER);
+            body.setWrapText(true);
+
             var title = workbook.createCellStyle();
-            title.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
-            title.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            title.setAlignment(HorizontalAlignment.LEFT);
-            title.setFont(font(workbook, true, IndexedColors.WHITE, (short) 15));
+            title.cloneStyleFrom(body);
+            title.setFont(font(workbook, true, (short) 15));
 
             var header = workbook.createCellStyle();
-            header.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
-            header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            header.setFont(font(workbook, true, IndexedColors.WHITE, (short) 10));
+            header.cloneStyleFrom(body);
+            header.setFont(font(workbook, true, (short) 10));
             header.setBorderBottom(BorderStyle.THIN);
-            header.setBottomBorderColor(IndexedColors.GREY_50_PERCENT.getIndex());
+            var numericHeader = workbook.createCellStyle();
+            numericHeader.cloneStyleFrom(header);
+            numericHeader.setAlignment(HorizontalAlignment.RIGHT);
 
             var metaLabel = workbook.createCellStyle();
-            metaLabel.setFont(font(workbook, true, IndexedColors.DARK_BLUE, (short) 10));
+            metaLabel.cloneStyleFrom(body);
+            metaLabel.setFont(font(workbook, true, (short) 10));
             var metaValue = workbook.createCellStyle();
-            metaValue.setFont(font(workbook, false, IndexedColors.BLACK, (short) 10));
-
-            var body = workbook.createCellStyle();
-            body.setBorderBottom(BorderStyle.HAIR);
-            body.setBottomBorderColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            metaValue.cloneStyleFrom(body);
 
             var date = workbook.createCellStyle();
             date.cloneStyleFrom(body);
+            date.setWrapText(false);
             date.setDataFormat(workbook.createDataFormat().getFormat("dd/mm/yyyy hh:mm"));
 
             var integerQuantity = workbook.createCellStyle();
             integerQuantity.cloneStyleFrom(body);
+            integerQuantity.setAlignment(HorizontalAlignment.RIGHT);
+            integerQuantity.setWrapText(false);
             integerQuantity.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
 
             var decimalQuantity = workbook.createCellStyle();
-            decimalQuantity.cloneStyleFrom(body);
+            decimalQuantity.cloneStyleFrom(integerQuantity);
             decimalQuantity.setDataFormat(workbook.createDataFormat().getFormat("#,##0.###"));
 
             var currency = workbook.createCellStyle();
-            currency.cloneStyleFrom(body);
+            currency.cloneStyleFrom(integerQuantity);
             currency.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00 [$€-x-euro2]"));
 
             var percent = workbook.createCellStyle();
-            percent.cloneStyleFrom(body);
+            percent.cloneStyleFrom(integerQuantity);
             percent.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00\"%\""));
 
             var totalLabel = workbook.createCellStyle();
-            totalLabel.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
-            totalLabel.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            totalLabel.setFont(font(workbook, true, IndexedColors.DARK_BLUE, (short) 11));
+            totalLabel.cloneStyleFrom(body);
+            totalLabel.setFont(font(workbook, true, (short) 11));
 
-            return new Styles(title, header, metaLabel, metaValue, body, date,
+            return new Styles(title, header, numericHeader, metaLabel, metaValue, body, date,
                     integerQuantity, decimalQuantity, currency, percent, totalLabel);
         }
 
-        private static Font font(Workbook workbook, boolean bold, IndexedColors color, short size) {
+        private static Font font(Workbook workbook, boolean bold, short size) {
             var font = workbook.createFont();
+            font.setFontName("Arial");
             font.setBold(bold);
-            font.setColor(color.getIndex());
+            font.setColor(IndexedColors.BLACK.getIndex());
             font.setFontHeightInPoints(size);
             return font;
         }

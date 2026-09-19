@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { X } from "@phosphor-icons/react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
 import { useProductInformationResources } from "./productInformationResources";
@@ -31,18 +32,6 @@ function exactProduct(products: SaleProduct[], query: string) {
   if (!search) return undefined;
   return products.find((product) => [product.code, product.barcode, product.barcode2]
     .some((candidate) => normalized(candidate) === search));
-}
-
-function SalesHistoryProductImage({ product, imageSource }: { product: SaleProduct; imageSource: string }) {
-  const productName = product.name?.trim() || "Producto";
-
-  return (
-    <div className="sale-sales-history-product-image" aria-hidden="true">
-      {imageSource
-        ? <img src={imageSource} alt="" />
-        : <span>{productName.slice(0, 1).toLocaleUpperCase()}</span>}
-    </div>
-  );
 }
 
 export function SaleProductSalesHistoryDialog({
@@ -92,35 +81,55 @@ export function SaleProductSalesHistoryDialog({
   return (
     <div className="sale-action-overlay sale-sales-history-overlay" role="presentation">
       <section
-        className="sale-action-dialog sale-sales-history-dialog"
+        className="sale-action-dialog sale-business-dialog sale-sales-history-dialog"
         role="dialog"
         aria-modal="true"
         aria-label={t("stock.history.title")}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !selectedProduct) {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+          }
+        }}
       >
         <header>
-          <h2>{t("stock.history.title")}</h2>
+          <h2>{t("stock.history.title")} <kbd aria-hidden="true">F6</kbd></h2>
           <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
         </header>
 
         <div className="sale-sales-history-search">
           <label>
-            <span>{t("sale.searchDialog.query")}</span>
-            <input
-              ref={inputRef}
-              autoFocus={!initialProduct}
-              value={query}
-              onChange={(event) => {
-                setQuery(event.currentTarget.value);
-                setSelectedProduct(null);
-              }}
-              onKeyDown={handleSearchKeyDown}
-            />
+            <span>{t("stock.search.article")}</span>
+            <span className="sale-sales-history-search-field">
+              <input
+                ref={inputRef}
+                autoFocus={!initialProduct}
+                aria-label={t("sale.searchDialog.query")}
+                placeholder={t("sale.searchDialog.query")}
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.currentTarget.value);
+                  setSelectedProduct(null);
+                }}
+                onKeyDown={handleSearchKeyDown}
+              />
+              {query && (
+                <button type="button" aria-label={t("sale.touch.keyboard.clear")} title={t("sale.touch.keyboard.clear")}
+                  onClick={() => {
+                    setQuery("");
+                    setSelectedProduct(null);
+                    inputRef.current?.focus();
+                  }}>
+                  <X size={18} aria-hidden="true" />
+                </button>
+              )}
+            </span>
           </label>
           {selectedProduct && (
             <div className="sale-sales-history-product">
-              <SalesHistoryProductImage product={selectedProduct} imageSource={imageSource} />
               <div>
-                <span>{selectedProduct.code ?? selectedProduct.barcode ?? selectedProduct.barcode2 ?? "—"}</span>
+                <span>{t("stock.column.code")}: {selectedProduct.code ?? selectedProduct.barcode ?? selectedProduct.barcode2 ?? "—"}</span>
                 <strong title={selectedProduct.name ?? ""}>{selectedProduct.name ?? t("sale.main.unnamedProduct")}</strong>
               </div>
             </div>
@@ -159,6 +168,7 @@ export function SaleProductSalesHistoryDialog({
               productName={selectedProduct.name ?? selectedProduct.code ?? ""}
               productType={selectedProduct.productType}
               productImageSource={imageSource}
+              showProductHeading={false}
               locale={locale}
               app={app}
               username={username}

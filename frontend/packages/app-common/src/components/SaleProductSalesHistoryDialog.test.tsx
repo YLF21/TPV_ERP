@@ -27,7 +27,11 @@ const product: SaleProduct = {
 describe("SaleProductSalesHistoryDialog", () => {
   beforeEach(() => {
     apiRequestMock.mockReset();
-    apiRequestMock.mockResolvedValue([]);
+    apiRequestMock.mockImplementation(async (path) => path.includes("/sales-history/saas?") ? {
+      companyId: "company-1", productCode: "2004461", coverage: "RECEIVED_IN_SAAS",
+      items: [], stores: [{ id: "store-1", code: "S01", name: "Principal" }], totals: [], comparison: [],
+      nextCursor: null, hasMore: false, incompleteDocuments: 0,
+    } : []);
     localStorage.clear();
   });
 
@@ -55,8 +59,8 @@ describe("SaleProductSalesHistoryDialog", () => {
 
     expect((await screen.findAllByText(product.name ?? "")).length).toBeGreaterThan(0);
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
-      expect.stringContaining("/stock/products/product-1/sales-history"),
-      { token: "access-token" },
+      expect.stringContaining("/stock/products/product-1/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
     ));
   });
 
@@ -73,10 +77,58 @@ describe("SaleProductSalesHistoryDialog", () => {
 
     expect((screen.getByRole("textbox", { name: "Código, código de barras o nombre" }) as HTMLInputElement).value)
       .toBe("2004461");
-    expect(document.querySelector(".sale-sales-history-product-image")?.textContent).toBe("C");
+    expect(screen.getAllByText(product.name ?? "")).toHaveLength(1);
+    expect(screen.getByText("Código: 2004461")).toBeTruthy();
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
-      expect.stringContaining("/stock/products/product-1/sales-history"),
-      { token: "access-token" },
+      expect.stringContaining("/stock/products/product-1/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
     ));
+  });
+
+  it("clears the current article and returns focus to search for the next one", async () => {
+    const onClose = vi.fn();
+    render(<SaleProductSalesHistoryDialog products={[product]} initialProduct={product}
+      locale="es" accessToken="access-token" onClose={onClose} />);
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    const search = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(document.activeElement).toBe(search);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.change(search, { target: { value: product.barcode2 } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(screen.getAllByText(product.name ?? "")).toHaveLength(1);
+    await waitFor(() => expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/sales-history")))
+      .toHaveLength(2));
+  });
+
+  it("closes with Escape from a search result before an article is selected", () => {
+    const onClose = vi.fn();
+    render(<SaleProductSalesHistoryDialog products={[product]} locale="es" onClose={onClose} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código, código de barras o nombre" }),
+      { target: { value: "cargador" } });
+    const result = screen.getByRole("option");
+    result.focus();
+    fireEvent.keyDown(result, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the shared SaaS store and comparison controls from F6", async () => {
+    const onClose = vi.fn();
+    render(<SaleProductSalesHistoryDialog products={[product]} initialProduct={product}
+      locale="es" accessToken="access-token" onClose={onClose} />);
+    await screen.findByText(/Sin líneas recibidas en SaaS/);
+    expect(screen.queryByText("Solo datos recibidos en SaaS")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
+    expect(screen.getByRole("columnheader", { name: /Cantidad total/ })).toBeTruthy();
+    const store = screen.getByRole("button", { name: "Tienda" });
+    fireEvent.click(store);
+    fireEvent.keyDown(screen.getByRole("option", { name: "Todas las tiendas" }), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(store, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

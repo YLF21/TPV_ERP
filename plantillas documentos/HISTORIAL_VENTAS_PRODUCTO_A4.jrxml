@@ -1,1 +1,175 @@
-<jasperReport name="historial_ventas_producto_a4" language="java" pageWidth="842" pageHeight="595" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20"><parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream"/><parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean"/><query language="jsonql"><![CDATA[lines]]></query><field name="date" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="date"/></field><field name="document" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="document"/></field><field name="customer" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="customer"/></field><field name="quantity" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="quantity"/></field><field name="unitPrice" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="unitPrice"/></field><field name="total" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="total"/></field><field name="details" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.details"/></field><title height="80"><element kind="image" x="0" y="0" width="90" height="55" scaleImage="RetainShape" uuid="c6c6c6c6-0000-4000-8000-000000000001"><printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression><expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression></element><element kind="staticText" x="105" y="0" width="697" height="22" fontSize="15" bold="true" uuid="c6c6c6c6-0000-4000-8000-000000000002"><text><![CDATA[HISTORIAL DE VENTAS DEL PRODUCTO]]></text></element><element kind="textField" x="105" y="28" width="697" height="38" fontSize="8" textAdjust="StretchHeight" uuid="c6c6c6c6-0000-4000-8000-000000000003"><expression><![CDATA[$F{details}]]></expression></element></title><columnHeader height="24"><element kind="staticText" x="0" y="0" width="105" height="24" fontSize="8" bold="true" uuid="c6c6c6c6-0000-4000-8000-000000000004"><text><![CDATA[Fecha]]></text></element><element kind="staticText" x="105" y="0" width="145" height="24" fontSize="8" bold="true" uuid="c6c6c6c6-0000-4000-8000-000000000005"><text><![CDATA[Documento]]></text></element><element kind="staticText" x="250" y="0" width="250" height="24" fontSize="8" bold="true" uuid="c6c6c6c6-0000-4000-8000-000000000006"><text><![CDATA[Cliente]]></text></element><element kind="staticText" x="500" y="0" width="75" height="24" fontSize="8" bold="true" hTextAlign="Right" uuid="c6c6c6c6-0000-4000-8000-000000000007"><text><![CDATA[Cantidad]]></text></element><element kind="staticText" x="575" y="0" width="110" height="24" fontSize="8" bold="true" hTextAlign="Right" uuid="c6c6c6c6-0000-4000-8000-000000000008"><text><![CDATA[Precio]]></text></element><element kind="staticText" x="685" y="0" width="117" height="24" fontSize="8" bold="true" hTextAlign="Right" uuid="c6c6c6c6-0000-4000-8000-000000000009"><text><![CDATA[Total]]></text></element></columnHeader><detail><band height="22"><element kind="textField" x="0" y="0" width="105" height="22" fontSize="8" uuid="c6c6c6c6-0000-4000-8000-000000000010"><expression><![CDATA[$F{date}]]></expression></element><element kind="textField" x="105" y="0" width="145" height="22" fontSize="8" uuid="c6c6c6c6-0000-4000-8000-000000000011"><expression><![CDATA[$F{document}]]></expression></element><element kind="textField" x="250" y="0" width="250" height="22" fontSize="8" uuid="c6c6c6c6-0000-4000-8000-000000000012"><expression><![CDATA[$F{customer}]]></expression></element><element kind="textField" x="500" y="0" width="75" height="22" fontSize="8" hTextAlign="Right" uuid="c6c6c6c6-0000-4000-8000-000000000013"><expression><![CDATA[$F{quantity}]]></expression></element><element kind="textField" x="575" y="0" width="110" height="22" fontSize="8" hTextAlign="Right" uuid="c6c6c6c6-0000-4000-8000-000000000014"><expression><![CDATA[$F{unitPrice}]]></expression></element><element kind="textField" x="685" y="0" width="117" height="22" fontSize="8" hTextAlign="Right" uuid="c6c6c6c6-0000-4000-8000-000000000015"><expression><![CDATA[$F{total}]]></expression></element></band></detail></jasperReport>
+<jasperReport name="historial_ventas_producto_a4" language="java" pageWidth="842" pageHeight="595" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" whenNoDataType="AllSectionsNoDetail">
+  <parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream"/>
+  <parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean"/>
+  <parameter name="TPV_HISTORY_DETAILS" class="java.lang.String"/>
+  <parameter name="TPV_HISTORY_FILTERS" class="java.lang.String"/>
+  <parameter name="TPV_HISTORY_EMPTY" class="java.lang.Boolean"/>
+  <parameter name="TPV_HISTORY_occurredAt" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_document" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_status" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_customer" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_quantity" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_unitPrice" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_discount" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_total" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_user" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_store" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <parameter name="TPV_HISTORY_warehouse" class="java.lang.Boolean"><defaultValueExpression><![CDATA[java.lang.Boolean.TRUE]]></defaultValueExpression></parameter>
+  <query language="jsonql"><![CDATA[lines]]></query>
+  <field name="occurredAt" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="occurredAtLabel"/></field>
+  <field name="document" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="document"/></field>
+  <field name="status" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="status"/></field>
+  <field name="customer" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="customer"/></field>
+  <field name="quantity" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="quantity"/></field>
+  <field name="unitPrice" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="unitPrice"/></field>
+  <field name="discount" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="discount"/></field>
+  <field name="total" class="java.math.BigDecimal"><property name="net.sf.jasperreports.jsonql.field.expression" value="total"/></field>
+  <field name="user" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="user"/></field>
+  <field name="store" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="store"/></field>
+  <field name="warehouse" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="warehouse"/></field>
+  <title height="90" splitType="Stretch">
+    <element kind="image" x="0" y="0" width="80" height="48" scaleImage="RetainShape">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+      <expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
+    </element>
+    <element kind="staticText" x="95" y="0" width="707" height="22" fontSize="15" bold="true" forecolor="#132A43">
+      <text><![CDATA[HISTORIAL DE VENTAS DEL PRODUCTO]]></text>
+    </element>
+    <element kind="textField" x="95" y="26" width="707" height="28" fontSize="8" textAdjust="StretchHeight">
+      <expression><![CDATA[$P{TPV_HISTORY_DETAILS}]]></expression>
+    </element>
+    <element kind="textField" x="0" y="64" width="802" height="20" fontSize="9" positionType="Float" textAdjust="StretchHeight">
+      <expression><![CDATA[$P{TPV_HISTORY_FILTERS}]]></expression>
+    </element>
+  </title>
+  <columnHeader height="26">
+    <element kind="staticText" key="history.column.occurredAt" x="0" y="0" width="72" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_occurredAt})]]></printWhenExpression>
+      <text><![CDATA[Fecha]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.document" x="72" y="0" width="90" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_document})]]></printWhenExpression>
+      <text><![CDATA[Documento]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.status" x="162" y="0" width="65" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_status})]]></printWhenExpression>
+      <text><![CDATA[Estado]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.customer" x="227" y="0" width="104" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_customer})]]></printWhenExpression>
+      <text><![CDATA[Cliente]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.quantity" x="331" y="0" width="46" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" hTextAlign="Right">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_quantity})]]></printWhenExpression>
+      <text><![CDATA[Cantidad]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.unitPrice" x="377" y="0" width="54" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" hTextAlign="Right">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_unitPrice})]]></printWhenExpression>
+      <text><![CDATA[Precio]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.discount" x="431" y="0" width="45" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" hTextAlign="Right">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_discount})]]></printWhenExpression>
+      <text><![CDATA[Dto. %]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.total" x="476" y="0" width="57" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle" hTextAlign="Right">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_total})]]></printWhenExpression>
+      <text><![CDATA[Total]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.user" x="533" y="0" width="58" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_user})]]></printWhenExpression>
+      <text><![CDATA[Usuario]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.store" x="591" y="0" width="53" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_store})]]></printWhenExpression>
+      <text><![CDATA[Tienda]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+    <element kind="staticText" key="history.column.warehouse" x="644" y="0" width="67" height="26" fontSize="8" bold="true" mode="Opaque" backcolor="#132A43" forecolor="#FFFFFF" vTextAlign="Middle">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_warehouse})]]></printWhenExpression>
+      <text><![CDATA[Almacén]]></text>
+      <box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#132A43"/></box>
+    </element>
+  </columnHeader>
+  <detail>
+    <band height="24" splitType="Prevent">
+      <element kind="textField" key="history.column.occurredAt" x="0" y="0" width="72" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_occurredAt})]]></printWhenExpression>
+        <expression><![CDATA[$F{occurredAt}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.document" x="72" y="0" width="90" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_document})]]></printWhenExpression>
+        <expression><![CDATA[$F{document}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.status" x="162" y="0" width="65" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_status})]]></printWhenExpression>
+        <expression><![CDATA[$F{status}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.customer" x="227" y="0" width="104" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_customer})]]></printWhenExpression>
+        <expression><![CDATA[$F{customer}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.quantity" x="331" y="0" width="46" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle" hTextAlign="Right" pattern="#,##0.###">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_quantity})]]></printWhenExpression>
+        <expression><![CDATA[$F{quantity}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.unitPrice" x="377" y="0" width="54" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle" hTextAlign="Right" pattern="#,##0.00#">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_unitPrice})]]></printWhenExpression>
+        <expression><![CDATA[$F{unitPrice}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.discount" x="431" y="0" width="45" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle" hTextAlign="Right" pattern="#,##0.##">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_discount})]]></printWhenExpression>
+        <expression><![CDATA[$F{discount}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.total" x="476" y="0" width="57" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle" hTextAlign="Right" pattern="#,##0.00">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_total})]]></printWhenExpression>
+        <expression><![CDATA[$F{total}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.user" x="533" y="0" width="58" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_user})]]></printWhenExpression>
+        <expression><![CDATA[$F{user}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.store" x="591" y="0" width="53" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_store})]]></printWhenExpression>
+        <expression><![CDATA[$F{store}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+      <element kind="textField" key="history.column.warehouse" x="644" y="0" width="67" height="24" fontSize="8" textAdjust="StretchHeight" stretchType="ContainerHeight" blankWhenNull="true" vTextAlign="Middle">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_warehouse})]]></printWhenExpression>
+        <expression><![CDATA[$F{warehouse}]]></expression>
+        <box topPadding="4" bottomPadding="4" leftPadding="4" rightPadding="4"><pen lineWidth="0.3" lineColor="#B7C2CE"/></box>
+      </element>
+    </band>
+  </detail>
+  <pageFooter height="22">
+    <element kind="staticText" x="0" y="5" width="700" height="15" fontSize="8" forecolor="#516173">
+      <text><![CDATA[HISTORIAL DE VENTAS DEL PRODUCTO]]></text>
+    </element>
+    <element kind="textField" x="702" y="5" width="100" height="15" fontSize="8" hTextAlign="Right">
+      <expression><![CDATA["Página " + $V{PAGE_NUMBER}]]></expression>
+    </element>
+  </pageFooter>
+  <summary height="32">
+    <element kind="staticText" x="0" y="8" width="802" height="20" fontSize="10" hTextAlign="Center">
+      <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_HISTORY_EMPTY})]]></printWhenExpression>
+      <text><![CDATA[Sin movimientos para los filtros seleccionados.]]></text>
+    </element>
+  </summary>
+</jasperReport>
