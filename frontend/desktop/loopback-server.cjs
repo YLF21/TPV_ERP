@@ -3,6 +3,7 @@ const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
 const { validateBackendUrl } = require("./backend-config.cjs");
+const { BACKEND_ADDRESS_PATH, createBackendAddressResolver } = require("./backend-address.cjs");
 
 const DEFAULT_MAX_REQUEST_BYTES = 50 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -78,8 +79,28 @@ function createDesktopServer({
   }
   const rootReal = fs.realpathSync(root);
   const backend = new URL(validateBackendUrl(backendUrl, { allowedHosts: backendAllowedHosts }));
+  const resolveBackendAddress = createBackendAddressResolver(backend.href);
   const transport = backend.protocol === "https:" ? https : http;
   let server;
+
+  async function serveBackendAddress(request, response) {
+    if (!["GET", "HEAD"].includes(request.method)) {
+      writeError(response, 405, "Método no permitido");
+      return;
+    }
+    try {
+      const result = await resolveBackendAddress(request.socket.remoteAddress, request.socket.localAddress);
+      if (response.destroyed) return;
+      const body = JSON.stringify(result);
+      response.writeHead(200, {
+        ...securityHeaders("application/json; charset=utf-8"),
+        "content-length": Buffer.byteLength(body)
+      });
+      response.end(request.method === "HEAD" ? undefined : body);
+    } catch {
+      writeError(response, 503, "No se pudo consultar la dirección del backend");
+    }
+  }
 
   async function serveStatic(request, response, pathname) {
     if (!["GET", "HEAD"].includes(request.method)) {
@@ -176,6 +197,10 @@ function createDesktopServer({
       requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     } catch {
       writeError(response, 400, "URL no válida");
+      return;
+    }
+    if (requestUrl.pathname === BACKEND_ADDRESS_PATH) {
+      void serveBackendAddress(request, response);
       return;
     }
     if (requestUrl.pathname === "/api/v1" || requestUrl.pathname.startsWith("/api/v1/")) {

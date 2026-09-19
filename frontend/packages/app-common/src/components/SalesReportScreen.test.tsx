@@ -1779,7 +1779,7 @@ describe("SalesReportScreen", () => {
       writable: true,
       value: { reports: { saveFile } }
     });
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(new Uint8Array([1, 2, 3]), { status: 200 })
     );
     const request = vi.fn().mockImplementation((path: string) => {

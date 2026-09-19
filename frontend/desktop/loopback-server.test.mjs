@@ -28,6 +28,20 @@ afterEach(async () => {
 });
 
 describe("desktop loopback server", () => {
+  it("reports the configured backend independently of its availability and rejects mutations", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tpv-desktop-test-"));
+    fs.writeFileSync(path.join(root, "index.html"), "ok");
+    const desktop = createDesktopServer({ staticRoot: root, backendUrl: "http://127.0.0.1:1" });
+    resources.push({ root, close: desktop.close });
+    const origin = await desktop.start();
+    const response = await request(`${origin}/__tpv/backend-address?backendUrl=https://example.com`);
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ backendLabel: "LOCAL" });
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect((await request(`${origin}/__tpv/backend-address`, { method: "POST" })).status).toBe(405);
+  });
+
   it("serves the SPA from loopback with security headers and fallback routing", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "tpv-desktop-test-"));
     fs.writeFileSync(path.join(root, "index.html"), "<!doctype html><title>APP</title>");
