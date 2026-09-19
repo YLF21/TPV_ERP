@@ -293,7 +293,7 @@ describe("StockSalesHistoryPanel", () => {
     const { container } = panel({ onClose });
     await screen.findByRole("alert");
     expect(container.querySelector(".stock-history-totals")?.textContent).toContain("—");
-    expect(screen.queryByText(/Sin líneas recibidas/)).toBeNull();
+    expect(screen.queryByText("SIN DATOS")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     await screen.findByText("TICKET T-0001");
     expect(apiRequestMock.mock.calls.every(([path]) => path.includes("/sales-history/saas?"))).toBe(true);
@@ -301,11 +301,11 @@ describe("StockSalesHistoryPanel", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("discloses incomplete received data and does not represent an empty response as no sales", async () => {
+  it("discloses incomplete received data and shows a concise empty state", async () => {
     apiRequestMock.mockResolvedValue(response({ items: [], totals: [], incompleteDocuments: 2 }));
     const { container } = panel();
     await screen.findByText(/2 documentos recibidos están incompletos/);
-    expect(screen.getByText(/Esto no confirma que no existan ventas pendientes de sincronizar/)).toBeTruthy();
+    expect(screen.getByText("SIN DATOS")).toBeTruthy();
     expect(container.querySelector(".stock-history-totals")?.textContent).toBe("Sin totales recibidos para estos filtros");
   });
 

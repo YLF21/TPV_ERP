@@ -120,7 +120,7 @@ describe("SaleProductSalesHistoryDialog", () => {
     const onClose = vi.fn();
     render(<SaleProductSalesHistoryDialog products={[product]} initialProduct={product}
       locale="es" accessToken="access-token" onClose={onClose} />);
-    await screen.findByText(/Sin líneas recibidas en SaaS/);
+    await screen.findByText("SIN DATOS");
     expect(screen.queryByText("Solo datos recibidos en SaaS")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
     expect(screen.getByRole("columnheader", { name: /Cantidad total/ })).toBeTruthy();
