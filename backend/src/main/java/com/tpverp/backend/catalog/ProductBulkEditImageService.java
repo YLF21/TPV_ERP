@@ -287,11 +287,8 @@ public class ProductBulkEditImageService {
         }
     }
 
-    private static IllegalStateException staleVersion(UUID id, long expected, Long actual) {
-        String detail = actual == null ? "ya fue modificada" : "tiene version " + actual;
-        return new IllegalStateException(
-                "Conflicto de version en la lista " + id + ": se esperaba "
-                        + expected + " y " + detail);
+    private static ProductBulkEditConflictException staleVersion(UUID id, long expected, Long actual) {
+        return ProductBulkEditConflictException.list(id, expected, actual);
     }
 
     private static IllegalArgumentException invalid(int index, String detail) {

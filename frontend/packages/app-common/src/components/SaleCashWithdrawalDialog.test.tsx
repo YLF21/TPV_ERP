@@ -155,10 +155,11 @@ describe("SaleCashWithdrawalDialog", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it("registers a cash entry from the same F9 dialog without printing a withdrawal receipt", async () => {
+  it("registers a cash entry and prints its own receipt from the same F9 dialog", async () => {
     const entry = { ...movement, id: "entry-1", type: "ENTRADA" as const, comment: "Aporte de cambio" };
     const request = vi.fn().mockResolvedValue(entry);
     const printReceipt = vi.fn();
+    const printEntryReceipt = vi.fn().mockResolvedValue({ status: "PRINTED" });
     const onCompleted = vi.fn();
     render(
       <SaleCashWithdrawalDialog
@@ -173,6 +174,7 @@ describe("SaleCashWithdrawalDialog", () => {
         denominations={[]}
         request={request}
         printReceipt={printReceipt}
+        printEntryReceipt={printEntryReceipt}
         onCancel={vi.fn()}
         onCompleted={onCompleted}
       />,
@@ -195,10 +197,17 @@ describe("SaleCashWithdrawalDialog", () => {
       },
     });
     expect(printReceipt).not.toHaveBeenCalled();
+    expect(printEntryReceipt).toHaveBeenCalledWith(
+      entry.id, "token", { storeName: "Tienda", terminalCode: "01" }, "es", undefined, request,
+    );
   });
 
-  it("retries only the receipt print after the movement has been recorded", async () => {
-    const request = vi.fn().mockResolvedValue(movement);
+  it.each([
+    { type: "RETIRADA" as const, button: "Registrar retirada", message: "La retirada se registró" },
+    { type: "ENTRADA" as const, button: "Registrar entrada", message: "La entrada se registró" },
+  ])("retries only the $type receipt after recording the movement", async ({ type, button, message }) => {
+    const recorded = { ...movement, type };
+    const request = vi.fn().mockResolvedValue(recorded);
     const printReceipt = vi.fn()
       .mockResolvedValueOnce({ status: "FAILED" })
       .mockResolvedValueOnce({ status: "PRINTED" });
@@ -213,24 +222,29 @@ describe("SaleCashWithdrawalDialog", () => {
         requireDenominationBreakdown={false}
         denominations={[]}
         request={request}
-        printReceipt={printReceipt}
+        printReceipt={type === "RETIRADA" ? printReceipt : vi.fn()}
+        printEntryReceipt={type === "ENTRADA" ? printReceipt : vi.fn()}
         onCancel={vi.fn()}
         onCompleted={onCompleted}
       />,
     );
 
+    if (type === "ENTRADA") fireEvent.click(screen.getByLabelText("Entrada"));
     fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "20" } });
     fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "Ingreso en banco" } });
     fireEvent.change(screen.getByLabelText("Tu contraseña"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Registrar retirada" }));
+    fireEvent.click(screen.getByRole("button", { name: button }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "La retirada se registró, pero no se pudo imprimir el justificante.",
+      `${message}, pero no se pudo imprimir el justificante.`,
     );
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.submit(screen.getByRole("button", { name: "Reimprimir justificante" }).closest("form")!);
     expect(request).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Reimprimir justificante" }));
 
-    await waitFor(() => expect(onCompleted).toHaveBeenCalledWith(movement));
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledWith(recorded));
     expect(request).toHaveBeenCalledTimes(1);
     expect(printReceipt).toHaveBeenCalledTimes(2);
   });

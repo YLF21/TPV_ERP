@@ -41,6 +41,9 @@ class ProductBulkEditServiceTest {
     @Mock private ProductBulkEditImageRepository images;
     @Mock private ProductImageService productImages;
     @Mock private ProductRepository products;
+    @Mock private FamilyRepository families;
+    @Mock private SubfamilyRepository subfamilies;
+    @Mock private StoreTaxRepository taxes;
     @Mock private Store store;
     @Mock private UserAccount user;
 
@@ -68,7 +71,72 @@ class ProductBulkEditServiceTest {
                 images,
                 productImages,
                 products,
+                families,
+                subfamilies,
+                taxes,
                 Clock.fixed(Instant.parse("2026-07-11T10:00:00Z"), ZoneOffset.UTC));
+    }
+
+    @Test
+    void refreshesCompleteStaleSnapshotsOnlyForUnchangedPendingRows() {
+        UUID familyId = UUID.randomUUID();
+        UUID taxId = UUID.randomUUID();
+        Product old = new Product(storeId, familyId, null, taxId, "Anterior", "Eliminar", BigDecimal.TEN, true);
+        old.replaceIdentifier(IdentifierType.CODIGO, "P-1");
+        old.setPrice(PriceTier.VENTA, new BigDecimal("12"));
+        old.setPrice(PriceTier.MEMBER, new BigDecimal("9"));
+        var snapshot = ProductBulkEditContent.ProductData.fromProduct(old);
+        var row = new ProductBulkEditContent.Row("row-1", true, "P-1", snapshot, snapshot, List.of(), null);
+        ProductBulkEdit edit = new ProductBulkEdit(storeId, "20260711001", "Lista", List.of(row), userId, Instant.now());
+        Product current = new Product(storeId, familyId, null, taxId, "Actual", null, new BigDecimal("18"), true);
+        org.springframework.test.util.ReflectionTestUtils.setField(current, "id", old.getId());
+        org.springframework.test.util.ReflectionTestUtils.setField(current, "version", 3L);
+        current.replaceIdentifier(IdentifierType.CODIGO, "P-1");
+        current.setPrice(PriceTier.VENTA, new BigDecimal("22"));
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(products.findAllByStoreIdAndIdIn(org.mockito.ArgumentMatchers.eq(storeId), org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(current));
+        ProductBulkEditView opened = service.get(edit.getId());
+        var refreshed = opened.content().getFirst().product();
+        assertThat(opened.productSnapshotsRefreshed()).isTrue();
+        assertThat(refreshed.version()).isEqualTo(3L);
+        assertThat(refreshed.name()).isEqualTo("ACTUAL");
+        assertThat(new BigDecimal(refreshed.purchasePrice())).isEqualByComparingTo("18");
+        assertThat(new BigDecimal(refreshed.salePrice())).isEqualByComparingTo("22");
+        assertThat(refreshed.description()).isNull();
+        assertThat(refreshed.memberPrice()).isNull();
+        assertThat(edit.getContenido()).containsExactly(row);
+        verify(repository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void doesNotRefreshSavedEditsPendingSuppliersPrincipalChangesOrStagedImages() {
+        var base = row("edited", UUID.randomUUID());
+        var edited = new ProductBulkEditContent.Row(base.id(), true, base.query(), base.product(),
+                base.product().withActive("false"), List.of(), null);
+        var principal = rowWithPrincipalChange("principal", UUID.randomUUID(), UUID.randomUUID());
+        var supplierBase = row("supplier", UUID.randomUUID());
+        var supplier = new ProductBulkEditContent.Row(supplierBase.id(), false, supplierBase.query(),
+                supplierBase.product(), supplierBase.draft(), List.of(), principal.suppliers().getFirst());
+        var image = row("image", UUID.randomUUID());
+        ProductBulkEdit edit = new ProductBulkEdit(storeId, "20260711001", "Lista", List.of(edited, principal, supplier, image), userId, Instant.now());
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(images.findByEdicion_IdOrderByPosicionAsc(edit.getId())).thenReturn(List.of(stagedImage(edit, image.product().productId(), 0)));
+        var opened = service.get(edit.getId());
+        assertThat(opened.productSnapshotsRefreshed()).isFalse();
+        assertThat(opened.content()).isEqualTo(edit.getContenido());
+        verify(products, never()).findAllByStoreIdAndIdIn(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyCollection());
+    }
+
+    @Test
+    void leavesAppliedHistorySnapshotsUntouched() {
+        ProductBulkEdit edit = editCreatedBy(userId);
+        edit.apply(edit.getContenido(), userId, Instant.now());
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        var history = service.get(edit.getId());
+        assertThat(history.content()).isEqualTo(edit.getContenido());
+        assertThat(history.productSnapshotsRefreshed()).isFalse();
+        verify(images, never()).findByEdicion_IdOrderByPosicionAsc(org.mockito.ArgumentMatchers.any());
+        verify(products, never()).findAllByStoreIdAndIdIn(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyCollection());
     }
 
     @Test

@@ -1,4 +1,4 @@
-<jasperReport name="retirada_caja_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" ignorePagination="true">
+<jasperReport name="entrada_caja_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" ignorePagination="true">
     <parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream"/>
     <parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean"/>
     <query language="jsonql"><![CDATA[lines]]></query>
@@ -18,13 +18,13 @@
             <expression><![CDATA[$F{issuer}]]></expression>
         </element>
         <element kind="staticText" positionType="Float" x="0" y="22" width="211" height="20" fontSize="13" bold="true" pdfFontName="Helvetica-Bold" hTextAlign="Center">
-            <text><![CDATA[RETIRADA DE EFECTIVO]]></text>
+            <text><![CDATA[ENTRADA DE EFECTIVO]]></text>
         </element>
         <element kind="textField" positionType="Float" x="0" y="44" width="211" height="14" fontSize="9" hTextAlign="Center" blankWhenNull="true">
             <expression><![CDATA[$F{createdAtFormatted}]]></expression>
         </element>
         <element kind="staticText" positionType="Float" x="0" y="63" width="211" height="13" fontSize="9" bold="true" pdfFontName="Helvetica-Bold" hTextAlign="Center">
-            <text><![CDATA[IMPORTE RETIRADO]]></text>
+            <text><![CDATA[IMPORTE INGRESADO]]></text>
         </element>
         <element kind="textField" positionType="Float" x="0" y="77" width="211" height="31" fontSize="24" bold="true" pdfFontName="Helvetica-Bold" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
             <expression><![CDATA[$F{amountFormatted}]]></expression>
@@ -39,16 +39,8 @@
             </element>
         </band>
     </detail>
-    <summary height="180" splitType="Prevent">
-        <element kind="staticText" x="0" y="12" width="211" height="14" fontSize="9" bold="true" pdfFontName="Helvetica-Bold">
-            <text><![CDATA[Firma de quien entrega]]></text>
-        </element>
-        <element kind="line" x="0" y="73" width="211" height="1"/>
-        <element kind="staticText" x="0" y="85" width="211" height="14" fontSize="9" bold="true" pdfFontName="Helvetica-Bold">
-            <text><![CDATA[Firma de quien recibe]]></text>
-        </element>
-        <element kind="line" x="0" y="146" width="211" height="1"/>
-        <element kind="staticText" x="0" y="158" width="211" height="22" fontSize="7" hTextAlign="Center">
+    <summary height="36" splitType="Prevent">
+        <element kind="staticText" x="0" y="8" width="211" height="22" fontSize="7" hTextAlign="Center">
             <text><![CDATA[Documento operativo.
 No sustituye justificantes contables.]]></text>
         </element>

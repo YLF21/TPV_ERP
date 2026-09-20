@@ -2,7 +2,7 @@ import { ApiError, apiBaseUrl, apiRequest } from "@tpverp/app-common";
 
 export type DocumentTemplateType =
   | "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET" | "VALE"
-  | "TICKET_REGALO" | "RETIRADA_CAJA" | "RECTIFICATIVA_VENTA"
+  | "TICKET_REGALO" | "ENTRADA_CAJA" | "RETIRADA_CAJA" | "RECTIFICATIVA_VENTA"
   | "SALIDA_ALMACEN" | "ENTRADA_ALMACEN" | "ALBARAN_ENTRADA"
   | "FACTURA_ENTRADA" | "HISTORIAL_VENTAS_PRODUCTO";
 export type DocumentTemplateFormat = "A4" | "TICKET_80";

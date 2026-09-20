@@ -109,19 +109,46 @@ export async function printCashWithdrawalReceipt(
   hardware: HardwareBridge = getHardwareBridge(),
   request: RequestFunction = apiRequest,
 ): Promise<TicketPrintOutcome> {
+  return printCashMovementReceipt("withdrawals", movementId, token, terminal, locale, hardware, request);
+}
+
+export async function printCashEntryReceipt(
+  movementId: string,
+  token: string,
+  terminal: Pick<TerminalContext, "storeName" | "terminalCode">,
+  locale: LocaleCode = "es",
+  hardware: HardwareBridge = getHardwareBridge(),
+  request: RequestFunction = apiRequest,
+): Promise<TicketPrintOutcome> {
+  return printCashMovementReceipt("entries", movementId, token, terminal, locale, hardware, request);
+}
+
+async function printCashMovementReceipt(
+  receiptType: "withdrawals" | "entries",
+  movementId: string,
+  token: string,
+  terminal: Pick<TerminalContext, "storeName" | "terminalCode">,
+  locale: LocaleCode,
+  hardware: HardwareBridge,
+  request: RequestFunction,
+): Promise<TicketPrintOutcome> {
   try {
     const t = createTranslator(locale);
     const rendered = await request<RenderedDocumentResponse>(
-      `/cash/receipts/withdrawals/${encodeURIComponent(movementId)}/print-document`,
+      `/cash/receipts/${receiptType}/${encodeURIComponent(movementId)}/print-document`,
       { token },
     );
     if (!rendered.renderedPdf || !rendered.ticketRenderedImage) {
-      throw new Error("cash_withdrawal_rendered_document_missing");
+      throw new Error(receiptType === "entries"
+        ? "cash_entry_rendered_document_missing"
+        : "cash_withdrawal_rendered_document_missing");
     }
     const config = await hardware.getHardwareConfig();
     const result = await hardware.printTicket({
       requireRenderedDocument: true,
-      documentNumber: rendered.fileName ?? `${t("sale.cashWithdrawal.receiptTitle")} ${movementId.slice(0, 12)}`,
+      documentNumber: rendered.fileName ?? `${t(receiptType === "entries"
+        ? "sale.cashMovement.entry"
+        : "sale.cashWithdrawal.receiptTitle")} ${movementId.slice(0, 12)}`,
       storeName: terminal.storeName,
       terminalCode: terminal.terminalCode,
       issuedAt: new Date().toISOString(),

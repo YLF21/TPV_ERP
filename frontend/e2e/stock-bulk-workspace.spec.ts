@@ -54,7 +54,7 @@ test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios"
 
     await chooseFileAction(page, "Aplicar cambios");
     const applyDialog = page.getByRole("dialog", { name: "Aplicar cambios" });
-    await applyDialog.getByRole("button", { name: "Confirmar" }).press("Enter");
+    await applyDialog.getByRole("button", { name: "Aplicar cambios", exact: true }).press("Enter");
     await expect(page.getByRole("status")).toContainText("Cambios aplicados");
     await expect.poll(async () => (await productById(request, session.accessToken, product.id)).salePrice)
       .toBe(12.75);

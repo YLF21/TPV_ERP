@@ -6,6 +6,7 @@ public enum DocumentTemplateType {
     TICKET,
     VALE,
     TICKET_REGALO,
+    ENTRADA_CAJA,
     RETIRADA_CAJA,
     RECTIFICATIVA_VENTA,
     SALIDA_ALMACEN,

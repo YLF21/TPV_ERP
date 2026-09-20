@@ -566,6 +566,34 @@ public class ApiExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(com.tpverp.backend.catalog.ProductBulkEditConflictException.class)
+    ProblemDetail bulkEditVersionConflict(
+            com.tpverp.backend.catalog.ProductBulkEditConflictException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        boolean listConflict = exception.conflicts().isEmpty();
+        String detail = switch (language) {
+            case EN -> listConflict
+                    ? "The saved list has changed. Reload its current version before continuing."
+                    : "A product in this list has changed. Review its current data before applying your changes.";
+            case ZH -> listConflict
+                    ? "已保存的列表已更改。请重新加载当前版本后再继续。"
+                    : "列表中的商品已更改。请先检查商品的当前数据，再应用您的更改。";
+            default -> listConflict
+                    ? "La lista guardada ha cambiado. Recarga su versión actual antes de continuar."
+                    : "Un producto de esta lista ha cambiado. Revisa sus datos actuales antes de aplicar tus cambios.";
+        };
+        var response = problem(HttpStatus.CONFLICT, exception.code(), detail, language, request);
+        response.setProperty("draftId", exception.draftId());
+        if (listConflict) {
+            response.setProperty("expectedVersion", exception.expectedVersion());
+            response.setProperty("actualVersion", exception.actualVersion());
+        } else {
+            response.setProperty("conflicts", exception.conflicts());
+        }
+        return response;
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     ProblemDetail stateConflict(
             IllegalStateException exception,

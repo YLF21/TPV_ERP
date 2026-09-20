@@ -185,6 +185,29 @@ class FiscalRuntimeGuardInitializerTest {
     }
 
     @Test
+    void packagedV250ManifestCanAdvanceAnExistingV249Database() {
+        var manifest = FiscalReleaseManifest.load();
+        boolean development = manifest.capability() == FiscalProductCapability.DUAL;
+        var jdbc = jdbc(marker("SANDBOX", manifest.capability().name(),
+                development ? "tpv-erp-dev-v249" : "tpv-erp-4.2.0-v249",
+                "V249", null, null, null, development ? 15 : 7, development ? 0 : 1));
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("249", "250"));
+        var runtime = org.mockito.Mockito.mock(FiscalRuntimeProperties.class);
+        when(runtime.releaseManifest()).thenReturn(manifest);
+        when(runtime.runtimeClass()).thenReturn(FiscalRuntimeClass.SANDBOX);
+        when(runtime.productCapability()).thenReturn(manifest.capability());
+
+        new FiscalRuntimeGuardInitializer(jdbc, runtime).run(new DefaultApplicationArguments());
+
+        verify(jdbc).update(org.mockito.ArgumentMatchers.startsWith("update fiscal_runtime_guard"),
+                eq("SANDBOX"), eq(manifest.capability().name()), eq(manifest.releaseId()),
+                eq("V250"), eq(manifest.manifestHash()), org.mockito.ArgumentMatchers.isNull(),
+                eq(manifest.commitHash()), eq(manifest.releaseSequence()), eq(manifest.buildSequence()));
+        verify(jdbc).update(contains("insert into fiscal_runtime_release_audit"), any(Object[].class));
+    }
+
+    @Test
     void newReleaseWithTheSameSequenceIsRejectedEvenWithAHigherBuildSequence() {
         var jdbc = jdbc(marker("SANDBOX", "DUAL", "release-old", "V231", null, null,
                 null, 5, 99));

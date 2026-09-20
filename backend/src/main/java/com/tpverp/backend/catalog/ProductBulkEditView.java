@@ -23,7 +23,8 @@ public record ProductBulkEditView(
         UUID appliedById,
         String appliedBy,
         Instant appliedAt,
-        List<Comment> comments) {
+        List<Comment> comments,
+        boolean productSnapshotsRefreshed) {
 
     public record Comment(
             UUID id,

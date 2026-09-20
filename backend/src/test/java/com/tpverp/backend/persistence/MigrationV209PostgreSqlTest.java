@@ -102,9 +102,11 @@ class MigrationV209PostgreSqlTest {
                     }
                     assertThat(seen).isEqualTo(3);
                 }
+                // Later migrations may add non-fiscal routes, outside V209's scope.
                 try (var routes = statement.executeQuery("""
                         select tipo, origen, version
                         from configuracion_origen_plantilla_documento
+                        where tipo in ('TICKET', 'FACTURA_VENTA', 'RECTIFICATIVA_VENTA')
                         order by tipo
                         """)) {
                     assertThat(routes.next()).isTrue();

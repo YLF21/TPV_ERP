@@ -151,6 +151,15 @@ public class CashController {
         return receipts.withdrawalPrintDocument(movementId, authentication);
     }
 
+    @GetMapping("/receipts/entries/{movementId}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
+            + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public RenderedDocumentView entryPrintDocument(
+            @PathVariable UUID movementId,
+            Authentication authentication) {
+        return receipts.entryPrintDocument(movementId, authentication);
+    }
+
     @GetMapping("/receipts/sessions/{sessionId}")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
             + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")

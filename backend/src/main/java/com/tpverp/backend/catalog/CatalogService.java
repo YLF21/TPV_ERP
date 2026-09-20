@@ -1862,10 +1862,7 @@ public class CatalogService {
 
     private static IllegalStateException staleProductVersion(
             UUID productId, long expectedVersion, long currentVersion) {
-        return new IllegalStateException(
-                "Conflicto de version en el producto " + productId
-                        + ": se esperaba " + expectedVersion
-                        + " y tiene version " + currentVersion);
+        return new ProductVersionConflictException(productId, expectedVersion, currentVersion);
     }
 
     public record ProductRequest(

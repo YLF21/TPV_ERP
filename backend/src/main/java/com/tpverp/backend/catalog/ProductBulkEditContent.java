@@ -410,6 +410,17 @@ public final class ProductBulkEditContent {
             return value == null ? null : value.toString();
         }
 
+        /** Retains row-only warehouse context while replacing every catalog value, including nulls. */
+        public ProductData withDisplayContext(ProductData previous, String familyLabel,
+                String subfamilyLabel, String taxLabel) {
+            return new ProductData(productId, version, imageId, previous.warehouseId(), code, barcode, barcode2,
+                    name, description, comments, purchasePrice, purchaseDiscountPercent, salePrice, memberPrice,
+                    wholesalePrice, offerPrice, offerDiscountPercent, productType, discountType, backendDiscountType,
+                    familyId, familyLabel, subfamilyId, subfamilyLabel, taxId, taxLabel, taxesIncluded, offerActive,
+                    offerFrom, offerUntil, previous.warehouseName(), previous.quantity(), previous.totalQuantity(),
+                    stockMin, stockMax, active, packageQuantity);
+        }
+
         private static String enumName(Enum<?> value) {
             return value == null ? null : value.name();
         }

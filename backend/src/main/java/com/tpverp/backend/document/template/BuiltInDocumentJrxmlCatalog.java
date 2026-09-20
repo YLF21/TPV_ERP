@@ -106,6 +106,8 @@ public class BuiltInDocumentJrxmlCatalog {
                 DocumentTemplateFormat.TICKET_80, "VALE_TICKET_80.jrxml"));
         result.put(DocumentTemplateType.TICKET_REGALO, Map.of(
                 DocumentTemplateFormat.TICKET_80, "TICKET_REGALO_TICKET_80.jrxml"));
+        result.put(DocumentTemplateType.ENTRADA_CAJA, Map.of(
+                DocumentTemplateFormat.TICKET_80, "ENTRADA_CAJA_TICKET_80.jrxml"));
         result.put(DocumentTemplateType.RETIRADA_CAJA, Map.of(
                 DocumentTemplateFormat.TICKET_80, "RETIRADA_CAJA_TICKET_80.jrxml"));
         result.put(DocumentTemplateType.RECTIFICATIVA_VENTA, Map.of(

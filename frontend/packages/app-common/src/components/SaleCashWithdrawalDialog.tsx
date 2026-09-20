@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import {
+  printCashEntryReceipt,
   printCashWithdrawalReceipt,
   registerCashEntry,
   registerCashWithdrawal,
@@ -32,6 +33,7 @@ type Props = {
   denominations: number[];
   request?: typeof apiRequest;
   printReceipt?: typeof printCashWithdrawalReceipt;
+  printEntryReceipt?: typeof printCashEntryReceipt;
   onCancel: () => void;
   onCompleted: (movement: CashWithdrawalMovement) => void;
 };
@@ -73,6 +75,7 @@ export function SaleCashWithdrawalDialog({
   denominations,
   request = apiRequest,
   printReceipt = printCashWithdrawalReceipt,
+  printEntryReceipt = printCashEntryReceipt,
   onCancel,
   onCompleted,
 }: Props) {
@@ -136,7 +139,7 @@ export function SaleCashWithdrawalDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || registeredMovement) return;
     setError("");
     if (effectiveAmount == null || effectiveAmount <= 0) {
       setError(t("sale.cashWithdrawal.invalidAmount"));
@@ -171,7 +174,7 @@ export function SaleCashWithdrawalDialog({
         ),
       }, token, request);
       setRegisteredMovement(movement);
-      if (movementType === "ENTRY" || await outputReceipt(movement)) {
+      if (await outputReceipt(movement)) {
         onCompleted(movement);
       }
     } catch (failure) {
@@ -189,7 +192,8 @@ export function SaleCashWithdrawalDialog({
 
   async function outputReceipt(movement: CashWithdrawalMovement) {
     try {
-      const printOutcome = await printReceipt(
+      const print = movement.type === "ENTRADA" ? printEntryReceipt : printReceipt;
+      const printOutcome = await print(
         movement.id,
         token,
         terminalContext,
@@ -201,7 +205,9 @@ export function SaleCashWithdrawalDialog({
     } catch {
       // The movement is already durable. Only printing may be retried.
     }
-    setError(t("sale.cashWithdrawal.printFailed"));
+    setError(t(movement.type === "ENTRADA"
+      ? "sale.cashMovement.entryPrintFailed"
+      : "sale.cashWithdrawal.printFailed"));
     return false;
   }
 

@@ -9,6 +9,8 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class DocumentTemplateResolverTest {
 
@@ -101,6 +103,26 @@ class DocumentTemplateResolverTest {
         assertThat(resolved.builtIn()).isTrue();
         assertThat(resolved.code()).isEqualTo("TICKET_80");
         assertThat(resolved.artifactReference()).isEqualTo("builtin:ticket");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DocumentTemplateType.class, names = {"ENTRADA_CAJA", "RETIRADA_CAJA"})
+    void cashReceiptUsesBuiltInOrPreservesTheCustomStoreTemplate(DocumentTemplateType type) {
+        var store = DocumentTemplateTest.store();
+
+        var builtIn = resolver.resolve(store, type);
+        assertThat(builtIn.builtIn()).isTrue();
+        assertThat(builtIn.format()).isEqualTo(DocumentTemplateFormat.TICKET_80);
+
+        var custom = active(DocumentTemplate.storeDraft(
+                store, type, "RECIBO_TIENDA", 2, "Recibo de tienda", null, Instant.EPOCH));
+        when(templates.findActiveForStore(store.getId(), type, DocumentTemplateFormat.TICKET_80))
+                .thenReturn(Optional.of(custom));
+
+        var resolved = resolver.resolve(store, type);
+        assertThat(resolved.builtIn()).isFalse();
+        assertThat(resolved.id()).isEqualTo(custom.getId());
+        assertThat(resolved.code()).isEqualTo("RECIBO_TIENDA");
     }
 
     private static DocumentTemplate active(DocumentTemplate template) {
