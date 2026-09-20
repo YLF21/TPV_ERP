@@ -16,6 +16,7 @@ public class DocumentTemplateDefinitionRegistry {
             entry(DocumentTemplateType.TICKET, "Ticket", "Receipt", "小票", "TICKET_80", "issuer,document,lines,totals,payment"),
             entry(DocumentTemplateType.VALE, "Vale", "Voucher", "代金券", "TICKET_80", "issuer,voucher"),
             entry(DocumentTemplateType.TICKET_REGALO, "Ticket regalo", "Gift receipt", "礼品小票", "TICKET_80", "issuer,document,lines"),
+            entry(DocumentTemplateType.ENTRADA_CAJA, "Entrada de caja", "Cash entry", "现金存入", "TICKET_80", "issuer,movement,lines"),
             entry(DocumentTemplateType.RETIRADA_CAJA, "Retirada de caja", "Cash withdrawal", "现金取款", "TICKET_80", "issuer,movement,lines"),
             entry(DocumentTemplateType.RECTIFICATIVA_VENTA, "Factura rectificativa", "Credit/corrective invoice", "更正发票", "A4,TICKET_80", "issuer,document,rectification,lines,totals,fiscal"),
             entry(DocumentTemplateType.SALIDA_ALMACEN, "Salida de almacén", "Warehouse output", "仓库出库", "A4", "issuer,document,warehouse,lines"),

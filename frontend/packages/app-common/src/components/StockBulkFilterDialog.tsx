@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { X } from "@phosphor-icons/react";
 import type { KeyboardEvent } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -108,7 +109,7 @@ export function StockBulkFilterDialog({
         ref={dialogRef}
         aria-labelledby="stock-bulk-filter-title"
         aria-modal="true"
-        className="filter-dialog stock-bulk-filter-dialog"
+        className="filter-dialog bulk-compact-dialog stock-bulk-filter-dialog"
         role="dialog"
         onKeyDown={handleEnter}
       >
@@ -117,7 +118,7 @@ export function StockBulkFilterDialog({
             <h2 id="stock-bulk-filter-title">{t("stock.bulkEdit.filter.title")}</h2>
             <p>{t("stock.bulkEdit.filter.activeCount").replace("{count}", String(activeCount))}</p>
           </div>
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+          <button type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
         </header>
 
         <div className="stock-bulk-filter-grid">

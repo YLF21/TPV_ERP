@@ -1,4 +1,5 @@
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { ApiError, apiProblemCode } from "../api/client";
 import { roundUnitPrice } from "../money";
 import type { LocaleCode } from "../types";
 import type { StockInventoryRow } from "./StockScreen";
@@ -134,6 +135,7 @@ export type StockBulkDraftView = {
   status: "PENDING" | "APPLIED";
   content: StockBulkEditRowData[];
   version: number;
+  productSnapshotsRefreshed?: boolean;
   createdById: string;
   createdBy: string;
   createdAt: string;
@@ -156,6 +158,15 @@ export type StockBulkXlsxDownload = {
   blob: Blob;
   fileName: string;
 };
+
+export function stockBulkRequestConflict(error: unknown): "list" | "product" | "other" | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  switch (apiProblemCode(error)) {
+    case "BULK_EDIT_LIST_VERSION_CONFLICT": return "list";
+    case "BULK_EDIT_PRODUCT_VERSION_CONFLICT": return "product";
+    default: return "other";
+  }
+}
 
 export type StockBulkClassificationCodes = {
   familyCodes?: Record<string, string>;

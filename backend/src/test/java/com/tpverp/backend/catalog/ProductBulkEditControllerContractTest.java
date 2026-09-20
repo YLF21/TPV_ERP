@@ -195,6 +195,33 @@ class ProductBulkEditControllerContractTest {
     }
 
     @Test
+    void applyExposesDistinctListAndProductConflictContracts() throws Exception {
+        UUID draftId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        when(service.apply(eq(draftId), any(), any()))
+                .thenThrow(ProductBulkEditConflictException.list(draftId, 1, 2L))
+                .thenThrow(ProductBulkEditConflictException.product(draftId, productId, 3L, 4));
+        String body = "{\"version\":1,\"updates\":[],\"supplierAssignments\":[],\"content\":[]}";
+        mvc.perform(post("/api/v1/product-bulk-edits/" + draftId + "/apply")
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BULK_EDIT_LIST_VERSION_CONFLICT"))
+                .andExpect(jsonPath("$.draftId").value(draftId.toString()))
+                .andExpect(jsonPath("$.expectedVersion").value(1))
+                .andExpect(jsonPath("$.actualVersion").value(2));
+        mvc.perform(post("/api/v1/product-bulk-edits/" + draftId + "/apply")
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BULK_EDIT_PRODUCT_VERSION_CONFLICT"))
+                .andExpect(jsonPath("$.draftId").value(draftId.toString()))
+                .andExpect(jsonPath("$.conflicts[0].productId").value(productId.toString()))
+                .andExpect(jsonPath("$.conflicts[0].expectedVersion").value(3))
+                .andExpect(jsonPath("$.conflicts[0].actualVersion").value(4));
+    }
+
+    @Test
     void updateApplyAndDeleteRequireTheCurrentVersion() throws Exception {
         UUID id = UUID.randomUUID();
         var manager = user("manager").authorities(() -> GESTION_PRODUCTO);
@@ -244,7 +271,7 @@ class ProductBulkEditControllerContractTest {
                 UUID.randomUUID(),
                 "applier",
                 Instant.parse("2026-07-12T08:30:00Z"),
-                List.of());
+                List.of(), false);
         when(service.rename(
                 eq(id),
                 eq(new ProductBulkEditService.ProductBulkRenameRequest(3L, "Revision aplicada")),

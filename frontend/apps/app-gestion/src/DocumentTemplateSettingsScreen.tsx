@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ApiError, apiRequest, type UserSession } from "@tpverp/app-common";
+import { ApiError, apiRequest, ErpSelect, type UserSession } from "@tpverp/app-common";
 import {
   activateDocumentTemplate,
   createDocumentTemplateDraft,
@@ -42,7 +42,7 @@ type Props = {
 
 const fallbackDocumentTypes: DocumentTemplateType[] = [
   "FACTURA_VENTA", "ALBARAN_VENTA", "TICKET", "VALE", "TICKET_REGALO",
-  "RETIRADA_CAJA", "RECTIFICATIVA_VENTA", "SALIDA_ALMACEN", "ENTRADA_ALMACEN",
+  "ENTRADA_CAJA", "RETIRADA_CAJA", "RECTIFICATIVA_VENTA", "SALIDA_ALMACEN", "ENTRADA_ALMACEN",
   "ALBARAN_ENTRADA", "FACTURA_ENTRADA", "HISTORIAL_VENTAS_PRODUCTO",
 ];
 
@@ -121,6 +121,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         ? selectedFormat
         : selectedType === "TICKET" || selectedType === "VALE"
           || selectedType === "TICKET_REGALO" || selectedType === "RETIRADA_CAJA"
+          || selectedType === "ENTRADA_CAJA"
           ? "TICKET_80"
           : "A4");
   const documentTemplatePreview = documentTemplatePreviews[`${selectedType}:${effectiveFormat}`];
@@ -356,26 +357,26 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         </aside>
       </header>
 
-      <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.documentType")}>
-        {(definitions.length ? definitions.map((definition) => definition.type) : fallbackDocumentTypes).map((type) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedType === type}
-            className={selectedType === type ? "selected" : undefined}
-            key={type}
-            onClick={() => setSelectedType(type)}
-          >
-            {t(`gestion.documentTemplates.type.${type}`) || definitions.find((definition) => definition.type === type)?.labels.es || type}
-          </button>
-        ))}
-      </div>
+      <div className="gestion-document-template-toolbar">
+        <div className="gestion-document-template-type-field">
+          <label htmlFor="document-template-type">{t("gestion.documentTemplates.documentType")}</label>
+          <ErpSelect
+            id="document-template-type"
+            aria-label={t("gestion.documentTemplates.documentType")}
+            value={selectedType}
+            options={(definitions.length ? definitions.map((definition) => definition.type) : fallbackDocumentTypes)
+              .map((type) => ({ value: type, label: t(`gestion.documentTemplates.type.${type}`) }))}
+            onChange={(value) => setSelectedType(value as DocumentTemplateType)}
+          />
+        </div>
 
       {((selectedDefinition?.formats.length ?? 0) > 1
         || selectedType === "FACTURA_VENTA"
         || selectedType === "ALBARAN_VENTA"
         || selectedType === "RECTIFICATIVA_VENTA") && (
-        <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.format")}>
+        <div className="gestion-document-template-format-field">
+          <span>{t("gestion.documentTemplates.format")}</span>
+          <div className="gestion-document-template-tabs" role="tablist" aria-label={t("gestion.documentTemplates.format")}>
           {(["A4", "TICKET_80"] as DocumentTemplateFormat[]).map((format) => (
             <button
               type="button"
@@ -388,8 +389,10 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
               {t(`gestion.documentTemplates.format.${format}`)}
             </button>
           ))}
+          </div>
         </div>
       )}
+      </div>
 
       {message && (
         <p className={`gestion-document-template-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>
@@ -434,180 +437,185 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         </dl>
       </section>
 
-      {selectedType !== "TICKET" && (
-        <section className="gestion-ticket-style-selector" aria-labelledby="document-presentation-title">
-          <div className="gestion-ticket-style-copy">
-            <h3 id="document-presentation-title">
-              {t("gestion.documentTemplates.documentPresentation")}
-            </h3>
-            <p>{t("gestion.documentTemplates.documentPresentationHelp")}</p>
-          </div>
-          <div className="gestion-ticket-imported-summary">
-            <strong>
-              {documentTemplateOrigin === "IMPORTED"
-                ? catalog?.effective?.code ?? t("gestion.documentTemplates.missing")
-                : t("gestion.documentTemplates.presentationOrigin.INTEGRATED")}
-            </strong>
-            {documentTemplateOrigin === "IMPORTED" && (
-              <span>{t("gestion.documentTemplates.version")} {catalog?.effective?.version ?? "-"}</span>
-            )}
-            <small>{t(documentTemplateOrigin === "IMPORTED"
-              ? "gestion.documentTemplates.presentationImportedHelp"
-              : "gestion.documentTemplates.presentationIntegratedHelp")}</small>
-          </div>
-          <div className="gestion-ticket-style-actions">
-            <label>
-              <span>{t("gestion.documentTemplates.presentationOriginLabel")}</span>
-              <select
-                value={documentTemplateOrigin}
-                disabled={!canManage || busyId !== null}
-                onChange={(event) => setDocumentTemplateOrigin(
-                  event.currentTarget.value as DocumentTemplateOrigin,
+      <div className={`gestion-document-template-layout ${selectedType === "TICKET" ? "is-ticket" : ""}`}>
+        <div className="gestion-document-template-editor">
+          {selectedType !== "TICKET" && (
+            <section className="gestion-ticket-style-selector" aria-labelledby="document-presentation-title">
+              <div className="gestion-ticket-style-copy">
+                <h3 id="document-presentation-title">
+                  {t("gestion.documentTemplates.documentPresentation")}
+                </h3>
+                <p>{t("gestion.documentTemplates.documentPresentationHelp")}</p>
+              </div>
+              <div className="gestion-ticket-imported-summary">
+                <strong>
+                  {documentTemplateOrigin === "IMPORTED"
+                    ? catalog?.effective?.code ?? t("gestion.documentTemplates.missing")
+                    : t("gestion.documentTemplates.presentationOrigin.INTEGRATED")}
+                </strong>
+                {documentTemplateOrigin === "IMPORTED" && (
+                  <span>{t("gestion.documentTemplates.version")} {catalog?.effective?.version ?? "-"}</span>
                 )}
-              >
-                <option value="INTEGRATED">
-                  {t("gestion.documentTemplates.presentationOrigin.INTEGRATED")}
-                </option>
-                <option value="IMPORTED" disabled={!catalog?.effective}>
-                  {t("gestion.documentTemplates.presentationOrigin.IMPORTED")}
-                </option>
-              </select>
-            </label>
-            <button
-              type="button"
-              disabled={!canManage || busyId !== null}
-              onClick={() => void updateDocumentPresentation()}
-            >
-              {t("gestion.documentTemplates.ticketStyleSave")}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {selectedType === "TICKET" && (
-        <section className="gestion-ticket-style-selector" aria-labelledby="ticket-style-title">
-          <div className="gestion-ticket-style-copy">
-            <h3 id="ticket-style-title">{t("gestion.documentTemplates.ticketStyle")}</h3>
-            <p>{catalog?.effective?.builtIn
-              ? t("gestion.documentTemplates.ticketStyleHelp")
-              : t("gestion.documentTemplates.ticketStyleReplacesCustomHelp")}</p>
-          </div>
-          {ticketTemplateOrigin === "INTEGRATED" ? (
-            <figure className="gestion-ticket-style-preview">
-              <img
-                src={ticketStylePreviews[ticketStyle]}
-                alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}`}
-              />
-              <figcaption>{t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}</figcaption>
-            </figure>
-          ) : (
-            <div className="gestion-ticket-imported-summary">
-              <strong>{catalog?.effective?.code ?? t("gestion.documentTemplates.missing")}</strong>
-              <span>{t("gestion.documentTemplates.version")} {catalog?.effective?.version ?? "-"}</span>
-              <small>{t("gestion.documentTemplates.ticketOriginImportedHelp")}</small>
-            </div>
-          )}
-          <div className="gestion-ticket-style-actions">
-            <label>
-              <span>{t("gestion.documentTemplates.ticketOriginLabel")}</span>
-              <select
-                value={ticketTemplateOrigin}
-                disabled={!canManage || busyId !== null}
-                onChange={(event) => setTicketTemplateOrigin(
-                  event.currentTarget.value as TicketTemplateOrigin,
-                )}
-              >
-                <option value="INTEGRATED">{t("gestion.documentTemplates.ticketOrigin.INTEGRATED")}</option>
-                <option value="IMPORTED" disabled={!catalog?.effective}>
-                  {t("gestion.documentTemplates.ticketOrigin.IMPORTED")}
-                </option>
-              </select>
-            </label>
-            {ticketTemplateOrigin === "INTEGRATED" && (
-              <label>
-                <span>{t("gestion.documentTemplates.ticketStyleLabel")}</span>
-                <select
-                  value={ticketStyle}
+                <small>{t(documentTemplateOrigin === "IMPORTED"
+                  ? "gestion.documentTemplates.presentationImportedHelp"
+                  : "gestion.documentTemplates.presentationIntegratedHelp")}</small>
+              </div>
+              <div className="gestion-ticket-style-actions">
+                <label>
+                  <span>{t("gestion.documentTemplates.presentationOriginLabel")}</span>
+                  <select
+                    value={documentTemplateOrigin}
+                    disabled={!canManage || busyId !== null}
+                    onChange={(event) => setDocumentTemplateOrigin(
+                      event.currentTarget.value as DocumentTemplateOrigin,
+                    )}
+                  >
+                    <option value="INTEGRATED">
+                      {t("gestion.documentTemplates.presentationOrigin.INTEGRATED")}
+                    </option>
+                    <option value="IMPORTED" disabled={!catalog?.effective}>
+                      {t("gestion.documentTemplates.presentationOrigin.IMPORTED")}
+                    </option>
+                  </select>
+                </label>
+                <button
+                  type="button"
                   disabled={!canManage || busyId !== null}
-                  onChange={(event) => setTicketStyle(event.currentTarget.value as TicketPrintStyle)}
+                  onClick={() => void updateDocumentPresentation()}
                 >
-                  <option value="PRINCIPAL">{t("gestion.documentTemplates.ticketStyle.PRINCIPAL")}</option>
-                  <option value="COMPACTA">{t("gestion.documentTemplates.ticketStyle.COMPACTA")}</option>
-                  <option value="MINIMALISTA">{t("gestion.documentTemplates.ticketStyle.MINIMALISTA")}</option>
-                </select>
-              </label>
-            )}
-            <button
-              type="button"
-              disabled={!canManage || busyId !== null || selectedTicketPresentationIsActive}
-              onClick={() => void updateTicketPresentation()}
-            >
-              {selectedTicketPresentationIsActive
-                ? t("gestion.documentTemplates.ticketStyleActive")
-                : ticketTemplateOrigin === "INTEGRATED" && catalog?.effective?.builtIn === false
-                  ? t("gestion.documentTemplates.ticketStyleReplace")
-                  : t("gestion.documentTemplates.ticketStyleSave")}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {selectedType !== "TICKET" && (
-        <section className="gestion-ticket-style-selector" aria-labelledby="document-built-in-title">
-          <div className="gestion-ticket-style-copy">
-            <h3 id="document-built-in-title">{t("gestion.documentTemplates.builtInTitle")}</h3>
-            <p>{catalog?.effective?.builtIn
-              ? t("gestion.documentTemplates.builtInHelp")
-              : t("gestion.documentTemplates.builtInReplacesCustomHelp")}</p>
-          </div>
-          {documentTemplatePreview ? (
-            <figure className={`gestion-document-template-preview ${effectiveFormat === "A4" ? "is-a4" : "is-ticket"}`}>
-              <img
-                src={documentTemplatePreview}
-                alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.type.${selectedType}`)} · ${t(`gestion.documentTemplates.format.${effectiveFormat}`)}`}
-              />
-              <figcaption>
-                {t(`gestion.documentTemplates.type.${selectedType}`)} · {t(`gestion.documentTemplates.format.${effectiveFormat}`)}
-              </figcaption>
-            </figure>
-          ) : (
-            <div className="gestion-ticket-imported-summary">
-              <strong>{t(`gestion.documentTemplates.type.${selectedType}`)}</strong>
-              <span>{t(`gestion.documentTemplates.format.${effectiveFormat}`)}</span>
-              <small>{catalog?.effective?.builtIn
-                ? t("gestion.documentTemplates.builtInActiveHelp")
-                : t("gestion.documentTemplates.customActiveHelp")}</small>
-            </div>
+                  {t("gestion.documentTemplates.ticketStyleSave")}
+                </button>
+              </div>
+            </section>
           )}
-          <div className="gestion-ticket-style-actions">
-            <button
-              type="button"
-              disabled={!canManage || busyId !== null || catalog?.effective?.builtIn === true}
-              onClick={() => void useBuiltInTemplate()}
-            >
-              {catalog?.effective?.builtIn
-                ? t("gestion.documentTemplates.ticketStyleActive")
-                : t("gestion.documentTemplates.useBuiltIn")}
-            </button>
-          </div>
-        </section>
-      )}
 
-      <form className="gestion-document-template-create" onSubmit={createDraft}>
-        <div>
-          <h3>{t("gestion.documentTemplates.newVersion")}</h3>
-          <p>{t("gestion.documentTemplates.newVersionHelp")}</p>
+          {selectedType === "TICKET" && (
+            <section className="gestion-ticket-style-selector is-ticket" aria-labelledby="ticket-style-title">
+              <div className="gestion-ticket-style-copy">
+                <h3 id="ticket-style-title">{t("gestion.documentTemplates.ticketStyle")}</h3>
+                <p>{catalog?.effective?.builtIn
+                  ? t("gestion.documentTemplates.ticketStyleHelp")
+                  : t("gestion.documentTemplates.ticketStyleReplacesCustomHelp")}</p>
+              </div>
+              {ticketTemplateOrigin === "INTEGRATED" ? (
+                <figure className="gestion-ticket-style-preview">
+                  <img
+                    src={ticketStylePreviews[ticketStyle]}
+                    alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}`}
+                  />
+                  <figcaption>{t(`gestion.documentTemplates.ticketStyle.${ticketStyle}`)}</figcaption>
+                </figure>
+              ) : (
+                <div className="gestion-ticket-imported-summary">
+                  <strong>{catalog?.effective?.code ?? t("gestion.documentTemplates.missing")}</strong>
+                  <span>{t("gestion.documentTemplates.version")} {catalog?.effective?.version ?? "-"}</span>
+                  <small>{t("gestion.documentTemplates.ticketOriginImportedHelp")}</small>
+                </div>
+              )}
+              <div className="gestion-ticket-style-actions">
+                <label>
+                  <span>{t("gestion.documentTemplates.ticketOriginLabel")}</span>
+                  <select
+                    value={ticketTemplateOrigin}
+                    disabled={!canManage || busyId !== null}
+                    onChange={(event) => setTicketTemplateOrigin(
+                      event.currentTarget.value as TicketTemplateOrigin,
+                    )}
+                  >
+                    <option value="INTEGRATED">{t("gestion.documentTemplates.ticketOrigin.INTEGRATED")}</option>
+                    <option value="IMPORTED" disabled={!catalog?.effective}>
+                      {t("gestion.documentTemplates.ticketOrigin.IMPORTED")}
+                    </option>
+                  </select>
+                </label>
+                {ticketTemplateOrigin === "INTEGRATED" && (
+                  <label>
+                    <span>{t("gestion.documentTemplates.ticketStyleLabel")}</span>
+                    <select
+                      value={ticketStyle}
+                      disabled={!canManage || busyId !== null}
+                      onChange={(event) => setTicketStyle(event.currentTarget.value as TicketPrintStyle)}
+                    >
+                      <option value="PRINCIPAL">{t("gestion.documentTemplates.ticketStyle.PRINCIPAL")}</option>
+                      <option value="COMPACTA">{t("gestion.documentTemplates.ticketStyle.COMPACTA")}</option>
+                      <option value="MINIMALISTA">{t("gestion.documentTemplates.ticketStyle.MINIMALISTA")}</option>
+                    </select>
+                  </label>
+                )}
+                <button
+                  type="button"
+                  disabled={!canManage || busyId !== null || selectedTicketPresentationIsActive}
+                  onClick={() => void updateTicketPresentation()}
+                >
+                  {selectedTicketPresentationIsActive
+                    ? t("gestion.documentTemplates.ticketStyleActive")
+                    : ticketTemplateOrigin === "INTEGRATED" && catalog?.effective?.builtIn === false
+                      ? t("gestion.documentTemplates.ticketStyleReplace")
+                      : t("gestion.documentTemplates.ticketStyleSave")}
+                </button>
+              </div>
+            </section>
+          )}
+
+          <form className="gestion-document-template-create" onSubmit={createDraft}>
+            <div>
+              <h3>{t("gestion.documentTemplates.newVersion")}</h3>
+              <p>{t("gestion.documentTemplates.newVersionHelp")}</p>
+            </div>
+            <label>
+              <span>{t("gestion.documentTemplates.code")}</span>
+              <input value={code} pattern="[A-Za-z0-9][A-Za-z0-9_]{2,79}" maxLength={80} required onChange={(event) => setCode(event.target.value.toUpperCase())} />
+            </label>
+            <label>
+              <span>{t("gestion.documentTemplates.name")}</span>
+              <input value={name} maxLength={160} required onChange={(event) => setName(event.target.value)} />
+            </label>
+            <button type="submit" disabled={!canManage || busyId !== null || !name.trim()}>{t("gestion.documentTemplates.createDraft")}</button>
+          </form>
+
         </div>
-        <label>
-          <span>{t("gestion.documentTemplates.code")}</span>
-          <input value={code} pattern="[A-Za-z0-9][A-Za-z0-9_]{2,79}" maxLength={80} required onChange={(event) => setCode(event.target.value.toUpperCase())} />
-        </label>
-        <label>
-          <span>{t("gestion.documentTemplates.name")}</span>
-          <input value={name} maxLength={160} required onChange={(event) => setName(event.target.value)} />
-        </label>
-        <button type="submit" disabled={!canManage || busyId !== null || !name.trim()}>{t("gestion.documentTemplates.createDraft")}</button>
-      </form>
+        {selectedType !== "TICKET" && (
+          <section className="gestion-ticket-style-selector" aria-labelledby="document-built-in-title">
+            <div className="gestion-ticket-style-copy">
+              <h3 id="document-built-in-title">{t("gestion.documentTemplates.builtInTitle")}</h3>
+              <p>{catalog?.effective?.builtIn
+                ? t("gestion.documentTemplates.builtInHelp")
+                : t("gestion.documentTemplates.builtInReplacesCustomHelp")}</p>
+            </div>
+            {documentTemplatePreview ? (
+              <figure className={`gestion-document-template-preview ${effectiveFormat === "A4" ? "is-a4" : "is-ticket"}`}>
+                <img
+                  src={documentTemplatePreview}
+                  alt={`${t("gestion.documentTemplates.ticketStylePreview")}: ${t(`gestion.documentTemplates.type.${selectedType}`)} · ${t(`gestion.documentTemplates.format.${effectiveFormat}`)}`}
+                />
+                <figcaption>
+                  {t(`gestion.documentTemplates.type.${selectedType}`)} · {t(`gestion.documentTemplates.format.${effectiveFormat}`)}
+                </figcaption>
+              </figure>
+            ) : (
+              <div className="gestion-ticket-imported-summary">
+                <strong>{t(`gestion.documentTemplates.type.${selectedType}`)}</strong>
+                <span>{t(`gestion.documentTemplates.format.${effectiveFormat}`)}</span>
+                <small>{catalog?.effective?.builtIn
+                  ? t("gestion.documentTemplates.builtInActiveHelp")
+                  : t("gestion.documentTemplates.customActiveHelp")}</small>
+              </div>
+            )}
+            <div className="gestion-ticket-style-actions">
+              <button
+                type="button"
+                disabled={!canManage || busyId !== null || catalog?.effective?.builtIn === true}
+                onClick={() => void useBuiltInTemplate()}
+              >
+                {catalog?.effective?.builtIn
+                  ? t("gestion.documentTemplates.ticketStyleActive")
+                  : t("gestion.documentTemplates.useBuiltIn")}
+              </button>
+            </div>
+          </section>
+        )}
+
+      </div>
 
       <section className="gestion-document-template-list" aria-label={t("gestion.documentTemplates.versions")}>
         <header>

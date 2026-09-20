@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type UserSession } from "@tpverp/app-common";
 import {
@@ -18,7 +18,79 @@ const session: UserSession = {
 
 afterEach(cleanup);
 
+async function selectDocumentType(name: string, label = "Tipo de documento") {
+  fireEvent.click(await screen.findByRole("button", { name: label }));
+  const options = await screen.findByRole("listbox", { name: label });
+  fireEvent.click(within(options).getByRole("option", { name }));
+}
+
 describe("DocumentTemplateSettingsScreen", () => {
+  it.each(["es", "en", "zh"] as const)(
+    "offers thirteen translated document types in %s and preserves supported formats without saving",
+    async (locale) => {
+      const t = createTranslator(locale);
+      const types = [
+        "FACTURA_VENTA", "ALBARAN_VENTA", "TICKET", "VALE", "TICKET_REGALO",
+        "ENTRADA_CAJA", "RETIRADA_CAJA", "RECTIFICATIVA_VENTA", "SALIDA_ALMACEN", "ENTRADA_ALMACEN",
+        "ALBARAN_ENTRADA", "FACTURA_ENTRADA", "HISTORIAL_VENTAS_PRODUCTO",
+      ];
+      const request = vi.fn().mockImplementation(async (path: string, _options?: { method?: string }) => {
+        if (path === "/document-templates/definitions") return [];
+        if (path.startsWith("/document-templates/presentation?")) {
+          const query = new URLSearchParams(path.split("?")[1]);
+          return { type: query.get("type"), format: query.get("format"), origin: "INTEGRATED" };
+        }
+        return { effective: null, storeTemplates: [] };
+      });
+
+      render(<DocumentTemplateSettingsScreen session={session} t={t} request={request} />);
+
+      const selectorLabel = t("gestion.documentTemplates.documentType");
+      fireEvent.click(await screen.findByRole("button", { name: selectorLabel }));
+      const options = await screen.findByRole("listbox", { name: selectorLabel });
+      expect(within(options).getAllByRole("option")).toHaveLength(13);
+      for (const type of types) {
+        const key = `gestion.documentTemplates.type.${type}`;
+        expect(t(key)).not.toBe(key);
+        expect(within(options).getByRole("option", { name: t(key) })).toBeEnabled();
+      }
+      fireEvent.click(within(options).getByRole("option", {
+        name: t("gestion.documentTemplates.type.FACTURA_VENTA"),
+      }));
+
+      const ticketFormat = t("gestion.documentTemplates.format.TICKET_80");
+      fireEvent.click(screen.getByRole("tab", { name: ticketFormat }));
+      await selectDocumentType(t("gestion.documentTemplates.type.ALBARAN_VENTA"), selectorLabel);
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        "/document-templates?type=ALBARAN_VENTA&format=TICKET_80", { token: "token" },
+      ));
+      expect(screen.getByRole("tab", { name: ticketFormat })).toHaveAttribute("aria-selected", "true");
+
+      await selectDocumentType(t("gestion.documentTemplates.type.SALIDA_ALMACEN"), selectorLabel);
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        "/document-templates?type=SALIDA_ALMACEN&format=A4", { token: "token" },
+      ));
+      expect(screen.queryByRole("tab", { name: ticketFormat })).not.toBeInTheDocument();
+
+      await selectDocumentType(t("gestion.documentTemplates.type.ENTRADA_CAJA"), selectorLabel);
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        "/document-templates?type=ENTRADA_CAJA&format=TICKET_80", { token: "token" },
+      ));
+      expect(screen.queryByRole("tab", { name: "A4" })).not.toBeInTheDocument();
+
+      await selectDocumentType(t("gestion.documentTemplates.type.FACTURA_VENTA"), selectorLabel);
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        "/document-templates/presentation?type=FACTURA_VENTA&format=TICKET_80", { token: "token" },
+      ));
+      await waitFor(() => expect(request.mock.calls
+        .filter(([path]) => path.startsWith("/document-templates?"))
+        .at(-1)?.[0]).toBe("/document-templates?type=FACTURA_VENTA&format=TICKET_80"));
+      expect(screen.getByRole("tab", { name: ticketFormat })).toHaveAttribute("aria-selected", "true");
+      expect(request.mock.calls.every(([, options]) => !options?.method || options.method === "GET"))
+        .toBe(true);
+    },
+  );
+
   it("keeps only the exact 19 ticket JRXML files when a shared folder is selected", () => {
     const sections = ["cabecera", "cliente", "contenido", "impuesto", "pago", "pie"];
     const ticketFiles = [
@@ -65,7 +137,7 @@ describe("DocumentTemplateSettingsScreen", () => {
     expect(screen.getByRole("button", { name: "Usar diseño predeterminado" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Crear borrador" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
+    await selectDocumentType("Albarán de venta");
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/document-templates?type=ALBARAN_VENTA&format=A4",
       { token: "token" },
@@ -78,7 +150,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       .toHaveValue("INTEGRATED");
     expect(screen.getByText("Falta plantilla JRXML activa")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Vale" }));
+    await selectDocumentType("Vale");
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/document-templates?type=VALE&format=TICKET_80",
       { token: "token" },
@@ -142,7 +214,7 @@ describe("DocumentTemplateSettingsScreen", () => {
   });
 
   it.each([
-    ["Albarán", "ALBARAN_VENTA", "A4"],
+    ["Albarán de venta", "ALBARAN_VENTA", "A4"],
     ["Vale", "VALE", "TICKET_80"],
   ])("saves the imported model for %s", async (tab, type, format) => {
     const request = vi.fn().mockImplementation(async (path: string, options?: { body?: unknown }) => {
@@ -165,7 +237,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       request={request}
     />);
 
-    fireEvent.click(await screen.findByRole("tab", { name: tab }));
+    await selectDocumentType(tab);
     const origin = await screen.findByRole("combobox", { name: "Origen del modelo" });
     await waitFor(() => expect(origin).toHaveValue("INTEGRATED"));
     fireEvent.change(origin, { target: { value: "IMPORTED" } });
@@ -232,7 +304,7 @@ describe("DocumentTemplateSettingsScreen", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Ticket 80 mm" }));
 
     const preview = await screen.findByRole("img", {
-      name: /Vista previa de la plantilla: Factura · Ticket 80 mm/,
+      name: /Vista previa de la plantilla: Factura de venta · Ticket 80 mm/,
     });
     expect(preview).toHaveAttribute("src", expect.stringContaining("factura-ticket-80"));
   });
@@ -268,13 +340,13 @@ describe("DocumentTemplateSettingsScreen", () => {
     />);
 
     expect(await screen.findByRole("img", {
-      name: /Vista previa de la plantilla: Factura · A4/,
+      name: /Vista previa de la plantilla: Factura de venta · A4/,
     })).toHaveAttribute("src", expect.stringContaining("factura-a4"));
 
-    fireEvent.click(screen.getByRole("tab", { name: "Albarán" }));
+    await selectDocumentType("Albarán de venta");
 
     expect(await screen.findByRole("img", {
-      name: /Vista previa de la plantilla: Albarán · A4/,
+      name: /Vista previa de la plantilla: Albarán de venta · A4/,
     })).toHaveAttribute("src", expect.stringContaining("albaran-a4"));
   });
 
@@ -299,7 +371,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       request={request}
     />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "Vale" }));
+    await selectDocumentType("Vale");
 
     const preview = await screen.findByRole("img", {
       name: /Vista previa de la plantilla: Vale · Ticket 80 mm/,
@@ -334,7 +406,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       request={request}
     />);
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
+    await selectDocumentType("Ticket");
     const selector = await screen.findByRole("combobox", { name: "Plantilla elegida" });
     await waitFor(() => expect(selector).toHaveValue("COMPACTA"));
     expect(screen.getByText("Versión JRXML en uso")).toBeInTheDocument();
@@ -385,7 +457,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       request={request}
     />);
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
+    await selectDocumentType("Ticket");
     const origin = await screen.findByRole("combobox", { name: "Origen del diseño" });
     await waitFor(() => expect(origin).toHaveValue("IMPORTED"));
     expect(screen.queryByRole("combobox", { name: "Plantilla elegida" })).toBeNull();
@@ -424,7 +496,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       request={request}
     />);
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
+    await selectDocumentType("Ticket");
     expect(await screen.findByText("Plantilla JRXML personalizada")).toBeInTheDocument();
     expect(screen.getByText(/Al guardar uno de estos diseños predeterminados/))
       .toBeInTheDocument();
@@ -468,7 +540,7 @@ describe("DocumentTemplateSettingsScreen", () => {
       request={request}
     />);
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Ticket" }));
+    await selectDocumentType("Ticket");
     const reactivate = await screen.findByRole("button", { name: "Reactivar" });
     expect(screen.getAllByRole("button", { name: "Reactivar" })).toHaveLength(1);
     fireEvent.click(reactivate);

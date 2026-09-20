@@ -712,11 +712,18 @@ export function StockBulkPriceRulesDialog({
                 </header>
                 <div className="stock-bulk-rule-preview-table" role="table">
                   <div className="stock-bulk-rule-preview-row head" role="row">
-                    <span>{t("stock.bulkEdit.rules.product")}</span>
-                    <span>{t("stock.bulkEdit.rules.field")}</span>
-                    <span>{t("stock.bulkEdit.rules.before")}</span>
-                    <span>{t("stock.bulkEdit.rules.after")}</span>
-                    <span>{t("stock.bulkEdit.rules.forms")}</span>
+                    <span role="columnheader">{t("stock.bulkEdit.rules.product")}</span>
+                    <span role="columnheader">{t("stock.bulkEdit.rules.field")}</span>
+                    <div className="stock-bulk-rule-preview-values-header" role="columnheader" aria-colspan={2}>
+                      <div className="bulk-pair-header-content">
+                        <strong>{t("stock.bulkEdit.rules.value")}</strong>
+                        <span className="bulk-pair-subheaders">
+                          <small>{t("stock.bulkEdit.rules.before")}</small>
+                          <small>{t("stock.bulkEdit.rules.after")}</small>
+                        </span>
+                      </div>
+                    </div>
+                    <span role="columnheader">{t("stock.bulkEdit.rules.forms")}</span>
                   </div>
                   {preview.products.flatMap((product) => product.changes.map((change, index) => (
                     <div className="stock-bulk-rule-preview-row" key={`${product.productId}-${change.field}-${index}`} role="row">

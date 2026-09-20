@@ -31,6 +31,7 @@ class BuiltInDocumentJrxmlCatalogTest {
                 Arguments.of(DocumentTemplateType.ALBARAN_VENTA, DocumentTemplateFormat.TICKET_80),
                 Arguments.of(DocumentTemplateType.VALE, DocumentTemplateFormat.TICKET_80),
                 Arguments.of(DocumentTemplateType.TICKET_REGALO, DocumentTemplateFormat.TICKET_80),
+                Arguments.of(DocumentTemplateType.ENTRADA_CAJA, DocumentTemplateFormat.TICKET_80),
                 Arguments.of(DocumentTemplateType.RETIRADA_CAJA, DocumentTemplateFormat.TICKET_80),
                 Arguments.of(DocumentTemplateType.RECTIFICATIVA_VENTA, DocumentTemplateFormat.A4),
                 Arguments.of(DocumentTemplateType.RECTIFICATIVA_VENTA, DocumentTemplateFormat.TICKET_80),

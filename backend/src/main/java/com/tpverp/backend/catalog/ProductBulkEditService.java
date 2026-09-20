@@ -36,6 +36,9 @@ public class ProductBulkEditService {
     private final ProductBulkEditImageRepository images;
     private final ProductImageService productImages;
     private final ProductRepository products;
+    private final FamilyRepository families;
+    private final SubfamilyRepository subfamilies;
+    private final StoreTaxRepository taxes;
     private final Clock clock;
 
     public ProductBulkEditService(
@@ -48,6 +51,9 @@ public class ProductBulkEditService {
             ProductBulkEditImageRepository images,
             ProductImageService productImages,
             ProductRepository products,
+            FamilyRepository families,
+            SubfamilyRepository subfamilies,
+            StoreTaxRepository taxes,
             Clock clock) {
         this.organization = organization;
         this.users = users;
@@ -58,6 +64,9 @@ public class ProductBulkEditService {
         this.images = images;
         this.productImages = productImages;
         this.products = products;
+        this.families = families;
+        this.subfamilies = subfamilies;
+        this.taxes = taxes;
         this.clock = clock;
     }
 
@@ -73,7 +82,52 @@ public class ProductBulkEditService {
     @Transactional(readOnly = true)
     public ProductBulkEditView get(UUID id) {
         UUID storeId = organization.currentStore().getId();
-        return view(find(id, storeId), userIndex(storeId));
+        ProductBulkEdit edit = find(id, storeId);
+        List<ProductBulkEditContent.Row> content = refreshUnchangedProductSnapshots(edit);
+        return view(edit, userIndex(storeId), content, !content.equals(edit.getContenido()));
+    }
+
+    private List<ProductBulkEditContent.Row> refreshUnchangedProductSnapshots(ProductBulkEdit edit) {
+        List<ProductBulkEditContent.Row> content = edit.getContenido();
+        if (edit.getEstado() != ProductBulkEditStatus.PENDING) return content;
+        Set<UUID> imageProductIds = images.findByEdicion_IdOrderByPosicionAsc(edit.getId()).stream()
+                .map(ProductBulkEditImage::getProductId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> eligible = content.stream()
+                .filter(row -> row.product() != null && row.pendingSupplier() == null
+                        && !row.principalSupplierChanged() && !imageProductIds.contains(row.product().productId())
+                        && row.product().equals(row.effectiveProduct()))
+                .map(row -> row.product().productId()).collect(Collectors.toSet());
+        if (eligible.isEmpty()) return content;
+        Map<UUID, Product> current = products.findAllByStoreIdAndIdIn(edit.getStoreId(), eligible).stream()
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        Map<UUID, Product> changed = content.stream().filter(row -> row.product() != null)
+                .filter(row -> current.containsKey(row.product().productId()))
+                .filter(row -> !Objects.equals(row.product().version(), current.get(row.product().productId()).getVersion()))
+                .map(row -> current.get(row.product().productId()))
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        if (changed.isEmpty()) return content;
+        Map<UUID, String> familyNames = families.findAllById(changed.values().stream()
+                        .map(Product::getFamilyId).collect(Collectors.toSet())).stream()
+                .filter(family -> edit.getStoreId().equals(family.getStoreId()))
+                .collect(Collectors.toMap(Family::getId, Family::getName));
+        Map<UUID, String> subfamilyNames = subfamilies.findAllById(changed.values().stream()
+                        .map(Product::getSubfamilyId).filter(Objects::nonNull).collect(Collectors.toSet())).stream()
+                .filter(subfamily -> familyNames.containsKey(subfamily.getFamilyId()))
+                .collect(Collectors.toMap(Subfamily::getId, Subfamily::getName));
+        Map<UUID, String> taxNames = taxes.findAllById(changed.values().stream()
+                        .map(Product::getTaxId).collect(Collectors.toSet())).stream()
+                .filter(tax -> edit.getStoreId().equals(tax.getStoreId()))
+                .collect(Collectors.toMap(StoreTax::getId, tax -> tax.getPercentage().stripTrailingZeros().toPlainString() + "%"));
+        return content.stream().map(row -> {
+            Product product = row.product() == null ? null : changed.get(row.product().productId());
+            if (product == null) return row;
+            ProductBulkEditContent.ProductData refreshed = ProductBulkEditContent.ProductData.fromProduct(product)
+                    .withDisplayContext(row.product(), familyNames.get(product.getFamilyId()),
+                            subfamilyNames.get(product.getSubfamilyId()), taxNames.get(product.getTaxId()));
+            return new ProductBulkEditContent.Row(row.id(), row.selected(), row.query(), refreshed,
+                    ProductBulkEditContent.ProductData.empty(), row.suppliers(), row.pendingSupplier(),
+                    row.principalSupplierChanged(), row.pendingPrincipalSupplierId());
+        }).toList();
     }
 
     @Transactional
@@ -161,8 +215,13 @@ public class ProductBulkEditService {
             }
         }
         if (!request.updates().isEmpty()) {
-            catalog.updateProducts(request.updates()).forEach(
-                    product -> modifiedProducts.put(product.getId(), product));
+            try {
+                catalog.updateProducts(request.updates()).forEach(
+                        product -> modifiedProducts.put(product.getId(), product));
+            } catch (ProductVersionConflictException conflict) {
+                throw ProductBulkEditConflictException.product(edit.getId(), conflict.productId(),
+                        conflict.expectedVersion(), conflict.actualVersion());
+            }
         }
         request.supplierAssignments().forEach(assignment ->
                 productSuppliers.linkProducts(assignment.supplierId(), assignment.productIds()));
@@ -405,12 +464,13 @@ public class ProductBulkEditService {
                                 + row.product().productId());
             }
         }
-        validateStagedImages(storeId, stagedImages, contentProducts);
+        validateStagedImages(storeId, edit.getId(), stagedImages, contentProducts);
         return content;
     }
 
     private void validateStagedImages(
             UUID storeId,
+            UUID draftId,
             List<ProductBulkEditImage> stagedImages,
             Map<UUID, ProductBulkEditContent.ProductData> contentProducts) {
         Set<UUID> productIds = new HashSet<>();
@@ -440,10 +500,8 @@ public class ProductBulkEditService {
             Product current = currentProducts.get(productId);
             Long expectedVersion = contentProducts.get(productId).version();
             if (expectedVersion == null || current.getVersion() != expectedVersion) {
-                throw new IllegalStateException(
-                        "Conflicto de version en el producto " + productId
-                                + ": se esperaba " + expectedVersion
-                                + " y tiene version " + current.getVersion());
+                throw ProductBulkEditConflictException.product(draftId, productId,
+                        expectedVersion, current.getVersion());
             }
         }
     }
@@ -712,10 +770,8 @@ public class ProductBulkEditService {
         }
     }
 
-    private static IllegalStateException staleVersion(UUID id, long expected, Long actual) {
-        String detail = actual == null ? "ya fue modificada" : "tiene version " + actual;
-        return new IllegalStateException(
-                "Conflicto de version en la lista " + id + ": se esperaba " + expected + " y " + detail);
+    private static ProductBulkEditConflictException staleVersion(UUID id, long expected, Long actual) {
+        return ProductBulkEditConflictException.list(id, expected, actual);
     }
 
     private Map<UUID, UserAccount> userIndex(UUID storeId) {
@@ -724,6 +780,11 @@ public class ProductBulkEditService {
     }
 
     private ProductBulkEditView view(ProductBulkEdit edit, Map<UUID, UserAccount> userIndex) {
+        return view(edit, userIndex, edit.getContenido(), false);
+    }
+
+    private ProductBulkEditView view(ProductBulkEdit edit, Map<UUID, UserAccount> userIndex,
+            List<ProductBulkEditContent.Row> content, boolean productSnapshotsRefreshed) {
         Map<UUID, UserAccount> allUsers = new HashMap<>(userIndex);
         return new ProductBulkEditView(
                 edit.getId(),
@@ -733,7 +794,7 @@ public class ProductBulkEditService {
                 edit.getVersionAnteriorId(),
                 edit.getNombre(),
                 edit.getEstado(),
-                edit.getContenido(),
+                content,
                 edit.getVersion(),
                 edit.getCreadoPor(),
                 userName(allUsers, edit.getCreadoPor()),
@@ -749,7 +810,8 @@ public class ProductBulkEditService {
                         comment.getUsuarioId(),
                         userName(allUsers, comment.getUsuarioId()),
                         comment.getTexto(),
-                        comment.getCreadoEn())).toList());
+                        comment.getCreadoEn())).toList(),
+                productSnapshotsRefreshed);
     }
 
     private static String userName(Map<UUID, UserAccount> users, UUID userId) {

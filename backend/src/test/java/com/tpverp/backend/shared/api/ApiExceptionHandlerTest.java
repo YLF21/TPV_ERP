@@ -49,6 +49,34 @@ class ApiExceptionHandlerTest {
 
     private final ApiExceptionHandler handler = new ApiExceptionHandler(messageSource());
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "es,La lista guardada ha cambiado.,Un producto de esta lista ha cambiado.",
+            "en,The saved list has changed.,A product in this list has changed.",
+            "zh,已保存的列表已更改。,列表中的商品已更改。"
+    })
+    void distinguishesBulkListAndProductConflictsWithoutMisidentifyingAnotherSession(
+            String locale, String listText, String productText) {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, locale);
+        UUID draftId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        var list = handler.bulkEditVersionConflict(
+                com.tpverp.backend.catalog.ProductBulkEditConflictException.list(draftId, 2, 3L), request);
+        assertEquals(409, list.getStatus());
+        assertEquals("BULK_EDIT_LIST_VERSION_CONFLICT", list.getProperties().get("code"));
+        assertEquals(draftId, list.getProperties().get("draftId"));
+        assertEquals(2L, list.getProperties().get("expectedVersion"));
+        assertEquals(3L, list.getProperties().get("actualVersion"));
+        org.assertj.core.api.Assertions.assertThat(list.getDetail()).startsWith(listText);
+        var product = handler.bulkEditVersionConflict(
+                com.tpverp.backend.catalog.ProductBulkEditConflictException.product(draftId, productId, 4L, 7), request);
+        assertEquals("BULK_EDIT_PRODUCT_VERSION_CONFLICT", product.getProperties().get("code"));
+        assertEquals(draftId, product.getProperties().get("draftId"));
+        assertEquals(List.of(new com.tpverp.backend.catalog.ProductBulkEditConflictException.ProductConflict(productId, 4L, 7)), product.getProperties().get("conflicts"));
+        org.assertj.core.api.Assertions.assertThat(product.getDetail()).startsWith(productText);
+    }
+
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();

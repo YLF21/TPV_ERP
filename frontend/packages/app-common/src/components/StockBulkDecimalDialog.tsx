@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { X } from "@phosphor-icons/react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { enterNavigationIntent } from "./keyboardNavigation";
@@ -38,13 +39,13 @@ export function StockBulkDecimalDialog({
 
   return (
     <div className="filter-overlay" role="presentation">
-      <section aria-labelledby="stock-bulk-decimal-title" aria-modal="true" className="filter-dialog stock-bulk-decimal-dialog" role="dialog">
+      <section aria-labelledby="stock-bulk-decimal-title" aria-modal="true" className="filter-dialog bulk-compact-dialog stock-bulk-decimal-dialog" role="dialog">
         <header className="filter-header">
           <div>
             <h2 id="stock-bulk-decimal-title">{t("stock.bulkEdit.decimalAdjust")}</h2>
             <p>{fieldLabel} · {t("stock.bulkEdit.decimal.selected").replace("{count}", String(selectedCount))}</p>
           </div>
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+          <button type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
         </header>
         <label className="stock-bulk-decimal-field">
           <span>{t("stock.bulkEdit.decimal.ending")}</span>

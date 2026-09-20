@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -27,6 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import com.tpverp.backend.document.template.DocumentTemplateFormat;
+import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.RenderedDocumentView;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -93,6 +97,10 @@ class CashControllerContractTest {
         assertEndpoint("betweenSessions", PostMapping.class, new String[] {"/movements/between-sessions"},
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
         assertEndpoint("withdrawalReceipt", GetMapping.class, new String[] {"/receipts/withdrawals/{movementId}"},
+                "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
+        assertEndpoint("withdrawalPrintDocument", GetMapping.class, new String[] {"/receipts/withdrawals/{movementId}/print-document"},
+                "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
+        assertEndpoint("entryPrintDocument", GetMapping.class, new String[] {"/receipts/entries/{movementId}/print-document"},
                 "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("sessionReceipt", GetMapping.class, new String[] {"/receipts/sessions/{sessionId}"},
                 "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
@@ -305,6 +313,33 @@ class CashControllerContractTest {
                 .andExpect(jsonPath("$.movementId").value(MOVEMENT_ID.toString()));
 
         verify(receipts).withdrawalReceipt(eq(MOVEMENT_ID), any(Authentication.class));
+    }
+
+    @Test
+    void entryPrintDocumentReturnsItsOwnRenderedTemplateAndDelegatesAuthentication() throws Exception {
+        when(receipts.entryPrintDocument(any(), any())).thenReturn(new RenderedDocumentView(
+                new RenderedDocumentView.TemplateView(DocumentTemplateType.ENTRADA_CAJA,
+                        DocumentTemplateFormat.TICKET_80, "ENTRADA_CAJA_TICKET_80", 1, 1, "hash", true),
+                new RenderedDocumentView.RenderedArtifact("application/pdf", "cGRm"),
+                new RenderedDocumentView.RenderedArtifact("image/png", "cG5n"), "entrada-caja.pdf"));
+
+        mvc.perform(get("/api/v1/cash/receipts/entries/{movementId}/print-document", MOVEMENT_ID)
+                        .with(user("seller").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.template.type").value("ENTRADA_CAJA"))
+                .andExpect(jsonPath("$.renderedPdf.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.ticketRenderedImage.contentType").value("image/png"));
+
+        verify(receipts).entryPrintDocument(eq(MOVEMENT_ID), any(Authentication.class));
+    }
+
+    @Test
+    void entryPrintDocumentRejectsUsersWithoutCashReadPermission() throws Exception {
+        mvc.perform(get("/api/v1/cash/receipts/entries/{movementId}/print-document", MOVEMENT_ID)
+                        .with(user("guest").authorities(() -> "CATALOG_READ")))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(receipts);
     }
 
     @Test

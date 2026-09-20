@@ -21,6 +21,7 @@ class BuiltInDocumentTemplateCompilationTest {
                 "reports/documents/v1/ALBARAN_VENTA_A4.jrxml",
                 "reports/documents/v1/VALE_TICKET_80.jrxml",
                 "reports/documents/v1/TICKET_REGALO_TICKET_80.jrxml",
+                "reports/documents/v1/ENTRADA_CAJA_TICKET_80.jrxml",
                 "reports/documents/v1/RETIRADA_CAJA_TICKET_80.jrxml",
                 "reports/documents/v1/RECTIFICATIVA_VENTA_A4.jrxml",
                 "reports/documents/v1/RECTIFICATIVA_VENTA_TICKET_80.jrxml",

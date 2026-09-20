@@ -8,6 +8,7 @@ public enum DocumentTemplateFormat {
         return type == DocumentTemplateType.TICKET
                 || type == DocumentTemplateType.VALE
                 || type == DocumentTemplateType.TICKET_REGALO
+                || type == DocumentTemplateType.ENTRADA_CAJA
                 || type == DocumentTemplateType.RETIRADA_CAJA
                 ? TICKET_80 : A4;
     }
@@ -26,6 +27,7 @@ public enum DocumentTemplateFormat {
                     || type == DocumentTemplateType.TICKET
                     || type == DocumentTemplateType.VALE
                     || type == DocumentTemplateType.TICKET_REGALO
+                    || type == DocumentTemplateType.ENTRADA_CAJA
                     || type == DocumentTemplateType.RETIRADA_CAJA
                     || type == DocumentTemplateType.ALBARAN_VENTA
                     || type == DocumentTemplateType.RECTIFICATIVA_VENTA;

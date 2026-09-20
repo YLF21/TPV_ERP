@@ -64,7 +64,7 @@ test("empareja una imagen por código, la guarda y la aplica al producto", async
     await page.getByRole("button", { name: "Página principal", exact: true }).click();
     await chooseFileAction(page, "Aplicar cambios");
     const applyDialog = page.getByRole("dialog", { name: "Aplicar cambios" });
-    await applyDialog.getByRole("button", { name: "Confirmar" }).press("Enter");
+    await applyDialog.getByRole("button", { name: "Aplicar cambios", exact: true }).press("Enter");
     await expect(page.getByRole("status")).toContainText("Cambios aplicados");
 
     await expect.poll(async () => (await productById(request, session.accessToken, product.id)).imageId)

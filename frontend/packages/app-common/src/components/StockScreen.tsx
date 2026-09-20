@@ -49,6 +49,7 @@ import {
   stockBulkEffectiveProduct,
   stockOfferPriceFromDiscount,
   stockBulkVersionedDeletePath,
+  stockBulkRequestConflict,
   validateStockBulkRows
 } from "./stockBulkEdit";
 import type {
@@ -138,7 +139,7 @@ const partyNavigationIcon: Record<PartyDirectoryKind, Icon> = {
 type StockDetailTab = "stock" | "sales";
 export type StockBulkEditTab = "main" | "info" | "salePrice" | "memberPrice" | "wholesalePrice" | "offer" | "image";
 export type BulkPriceUseMode = "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
-type BulkWorkspaceDialog = "save" | "comments" | "rename" | "clear" | "close" | "apply" | "delete" | null;
+type BulkWorkspaceDialog = "save" | "comments" | "rename" | "clear" | "close" | "apply" | "delete" | "reload" | null;
 type BulkWorkspaceView = "list" | "editor";
 type BulkSupplierDialogMode = "import" | "assign" | "principal" | null;
 type BulkValueField =
@@ -2231,6 +2232,7 @@ export function StockScreen({
   const [bulkImagesDirty, setBulkImagesDirty] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkConflictDraftId, setBulkConflictDraftId] = useState<string | null>(null);
+  const [bulkRequestConflict, setBulkRequestConflict] = useState(false);
   const [bulkFinder, setBulkFinder] = useState<{ rowId: string; query: string } | null>(null);
   const [stockSettingsMode, setStockSettingsMode] = useState<"configuration" | null>(initialSettingsMode);
 
@@ -3597,12 +3599,14 @@ export function StockScreen({
   }
 
   function showBulkRequestError(error: unknown, fallbackKey: string, draftId?: string) {
-    if (error instanceof ApiError && error.status === 409 && draftId) {
-      setBulkConflictDraftId(draftId);
-      setBulkStatus(t("stock.bulkEdit.conflict"));
+    const conflict = stockBulkRequestConflict(error);
+    setBulkRequestConflict(conflict !== null);
+    setBulkConflictDraftId(conflict === "list" && draftId ? draftId : null);
+    if (conflict) {
+      setBulkStatus(t(conflict === "list" ? "stock.bulkEdit.conflict"
+        : conflict === "product" ? "stock.bulkEdit.productConflict" : "stock.bulkEdit.stateConflict"));
       return;
     }
-    setBulkConflictDraftId(null);
     setBulkStatus(error instanceof Error ? error.message : t(fallbackKey));
   }
 
@@ -3610,11 +3614,7 @@ export function StockScreen({
     if (!session.accessToken || !bulkConflictDraftId || bulkBusy) return;
     setBulkBusy(true);
     try {
-      const latest = await apiRequest<StockBulkDraftView>(
-        `/product-bulk-edits/${encodeURIComponent(bulkConflictDraftId)}`,
-        { token: session.accessToken }
-      );
-      await openBulkDraft(latest);
+      if (!await openBulkDraft({ id: bulkConflictDraftId })) return;
       await reloadBulkDrafts();
       setBulkStatus(t("stock.bulkEdit.reloaded"));
     } catch (error) {
@@ -3672,6 +3672,7 @@ export function StockScreen({
       setBulkDirty(false);
       setBulkImagesDirty(false);
       setBulkConflictDraftId(null);
+      setBulkRequestConflict(false);
       setBulkDialog(null);
       setBulkStatus(t(activeBulkDraft?.status === "APPLIED" ? "stock.bulkEdit.versionCreated" : "stock.bulkEdit.saved"));
       await reloadBulkDrafts();
@@ -3694,20 +3695,30 @@ export function StockScreen({
     }
   }
 
-  async function openBulkDraft(draft: StockBulkDraftView) {
-    if (!session.accessToken) return;
+  async function openBulkDraft(draft: Pick<StockBulkDraftView, "id">) {
+    if (!session.accessToken) return false;
     setBulkBusy(true);
     try {
-      const editableDraft = draft.status === "APPLIED"
+      const latestDraft = await apiRequest<StockBulkDraftView>(
+        `/product-bulk-edits/${encodeURIComponent(draft.id)}`,
+        { token: session.accessToken }
+      );
+      const pendingDraft = latestDraft.status === "APPLIED"
         ? await apiRequest<StockBulkDraftView>(
-            `/product-bulk-edits/${encodeURIComponent(draft.id)}`,
+            `/product-bulk-edits/${encodeURIComponent(latestDraft.id)}`,
             {
               method: "PUT",
               token: session.accessToken,
-              body: { version: draft.version, name: draft.name, content: draft.content }
+              body: { version: latestDraft.version, name: latestDraft.name, content: latestDraft.content }
             }
           )
-        : draft;
+        : latestDraft;
+      const editableDraft = latestDraft.status === "APPLIED"
+        ? await apiRequest<StockBulkDraftView>(
+            `/product-bulk-edits/${encodeURIComponent(pendingDraft.id)}`,
+            { token: session.accessToken }
+          )
+        : pendingDraft;
       const loadedImages = await loadStockBulkDraftImages(editableDraft.id, session.accessToken);
       const nextRows = withLiveBulkSupplierData(withEmptyBulkTail(
         hydrateStockBulkProductActivation(editableDraft.content, bulkProducts)
@@ -3722,20 +3733,24 @@ export function StockScreen({
       bulkHistoryRef.current = [];
       setBulkValidationErrors([]);
       setBulkEditorDialog(null);
-      setBulkDirty(false);
+      setBulkDirty(Boolean(editableDraft.productSnapshotsRefreshed));
       setBulkImagesDirty(false);
       setBulkConflictDraftId(null);
+      setBulkRequestConflict(false);
       setBulkDialog(null);
       setBulkSelectedDraftId(editableDraft.id);
       setBulkWorkspaceView("editor");
-      setBulkStatus(draft.status === "APPLIED"
+      setBulkStatus(latestDraft.status === "APPLIED"
         ? t("stock.bulkEdit.versionCreated")
+        : editableDraft.productSnapshotsRefreshed ? t("stock.bulkEdit.productsRefreshed")
         : `${editableDraft.code} - V${editableDraft.versionNumber}`);
-      if (draft.status === "APPLIED") {
+      if (latestDraft.status === "APPLIED") {
         await reloadBulkDrafts();
       }
+      return true;
     } catch (error) {
       showBulkRequestError(error, "stock.bulkEdit.loadError", draft.id);
+      return false;
     } finally {
       setBulkBusy(false);
     }
@@ -3768,6 +3783,7 @@ export function StockScreen({
     setBulkDirty(false);
     setBulkImagesDirty(false);
     setBulkConflictDraftId(null);
+    setBulkRequestConflict(false);
     setBulkValidationErrors([]);
     setBulkEditorDialog(null);
     setBulkFileOpen(false);
@@ -3879,6 +3895,7 @@ export function StockScreen({
       setBulkDirty(false);
       setBulkImagesDirty(false);
       setBulkConflictDraftId(null);
+      setBulkRequestConflict(false);
       setBulkValidationErrors([]);
       bulkHistoryRef.current = [];
       setBulkDialog(null);
@@ -3886,6 +3903,7 @@ export function StockScreen({
       setStockRefreshCounter((current) => current + 1);
       await reloadBulkDrafts();
     } catch (error) {
+      setBulkDialog(null);
       showBulkRequestError(error, "stock.bulkEdit.applyError", draft.id);
     } finally {
       setBulkBusy(false);
@@ -3973,6 +3991,7 @@ export function StockScreen({
       setBulkDialog(null);
       await reloadBulkDrafts();
       setBulkConflictDraftId(null);
+      setBulkRequestConflict(false);
       setBulkStatus(t("stock.bulkEdit.deleted"));
     } catch (error) {
       showBulkRequestError(error, "stock.bulkEdit.deleteError", bulkDeleteDraft.id);
@@ -5314,11 +5333,13 @@ export function StockScreen({
 
   function renderBulkRows(columns: ReactNode) {
     return (
-      <div className={`bulk-edit-table bulk-edit-${bulkEditTab}`} ref={bulkTableRef}>
-        <div className="bulk-edit-row bulk-edit-head" style={bulkGridStyle}>
-          {configureBulkHeader(columns)}
+      <div className="bulk-edit-table-frame">
+        <div className={`bulk-edit-table bulk-edit-${bulkEditTab}`} ref={bulkTableRef}>
+          <div className="bulk-edit-row bulk-edit-head" style={bulkGridStyle}>
+            {configureBulkHeader(columns)}
+          </div>
+          {filteredBulkRows.map((row) => configureBulkRow(renderBulkRow(row)))}
         </div>
-        {filteredBulkRows.map((row) => configureBulkRow(renderBulkRow(row)))}
       </div>
     );
   }
@@ -5575,11 +5596,13 @@ export function StockScreen({
     const label = (labelKey: string, key = labelKey) => <span key={key}>{t(labelKey)}</span>;
     const pair = (labelKey: string, key = labelKey) => (
       <div className="bulk-pair-header" key={key}>
-        <strong>{t(labelKey)}</strong>
-        <span>
-          <small>{t("stock.bulkEdit.before")}</small>
-          <small>{t("stock.bulkEdit.after")}</small>
-        </span>
+        <div className="bulk-pair-header-content">
+          <strong title={t(labelKey)}>{t(labelKey)}</strong>
+          <span className="bulk-pair-subheaders">
+            <small>{t("stock.bulkEdit.before")}</small>
+            <small>{t("stock.bulkEdit.after")}</small>
+          </span>
+        </div>
       </div>
     );
     const base = [
@@ -5875,10 +5898,10 @@ export function StockScreen({
 
     return (
       <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-editor-title">
-        <section className={`filter-dialog bulk-workspace-dialog bulk-editor-dialog bulk-editor-${editor.kind}`}>
+        <section className={`filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-editor-dialog bulk-editor-${editor.kind}`}>
           <header className="filter-header">
             <h2 id="bulk-editor-title">{t(titleKey)}</h2>
-            <button type="button" onClick={() => setBulkEditorDialog(null)}>{t("common.close")}</button>
+            <button type="button" aria-label={t("common.close")} onClick={() => setBulkEditorDialog(null)}><X size={18} weight="bold" aria-hidden="true" /></button>
           </header>
 
           {editor.kind === "value" && (
@@ -6200,10 +6223,10 @@ export function StockScreen({
     }
     return (
       <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-finder-title">
-        <section className="filter-dialog bulk-finder-dialog">
+        <section className="filter-dialog bulk-compact-dialog bulk-finder-dialog">
           <header className="filter-header">
             <h2 id="bulk-finder-title">{t("stock.bulkEdit.finderTitle")}</h2>
-            <button type="button" onClick={() => setBulkFinder(null)}>{t("common.close")}</button>
+            <button type="button" aria-label={t("common.close")} onClick={() => setBulkFinder(null)}><X size={18} weight="bold" aria-hidden="true" /></button>
           </header>
           <label className="report-search bulk-finder-search">
             <img alt="" src={stockSearchIcon} />
@@ -6258,7 +6281,7 @@ export function StockScreen({
 
     return (
       <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-supplier-title">
-        <section className="filter-dialog bulk-workspace-dialog bulk-supplier-dialog">
+        <section className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-supplier-dialog">
           <header className="filter-header">
             <h2 id="bulk-supplier-title">
               {t(principalMode
@@ -6267,7 +6290,7 @@ export function StockScreen({
                   ? "stock.bulkEdit.assignSupplier"
                   : "stock.bulkEdit.importSupplier")}
             </h2>
-            <button type="button" onClick={closeBulkSupplierDialog}>{t("common.close")}</button>
+            <button type="button" aria-label={t("common.close")} onClick={closeBulkSupplierDialog}><X size={18} weight="bold" aria-hidden="true" /></button>
           </header>
           <label className="report-search bulk-finder-search">
             <img alt="" src={stockSearchIcon} />
@@ -6358,10 +6381,10 @@ export function StockScreen({
     );
     return (
       <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-purchase-document-title">
-        <section className="filter-dialog bulk-workspace-dialog bulk-purchase-document-dialog">
+        <section className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-purchase-document-dialog">
           <header className="filter-header">
             <h2 id="bulk-purchase-document-title">{t(config.titleKey)}</h2>
-            <button type="button" onClick={() => setBulkPurchaseDocumentKind(null)}>{t("common.close")}</button>
+            <button type="button" aria-label={t("common.close")} onClick={() => setBulkPurchaseDocumentKind(null)}><X size={18} weight="bold" aria-hidden="true" /></button>
           </header>
           <label className="report-search bulk-finder-search">
             <img alt="" src={stockSearchIcon} />
@@ -6446,7 +6469,7 @@ export function StockScreen({
       return (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-save-title">
           <section
-            className="filter-dialog bulk-workspace-dialog bulk-small-dialog"
+            className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog"
             onKeyDown={(event) => acceptEnter(
               event,
               () => void saveBulkDraft(),
@@ -6455,7 +6478,7 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="bulk-save-title">{t("stock.bulkEdit.saveList")}</h2>
-              <button type="button" onClick={close}>{t("common.close")}</button>
+              <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
             </header>
             <label className="bulk-dialog-field">
               <span>{t("stock.bulkEdit.listName")}</span>
@@ -6473,7 +6496,7 @@ export function StockScreen({
       return (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-rename-title">
           <section
-            className="filter-dialog bulk-workspace-dialog bulk-small-dialog"
+            className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog"
             onKeyDown={(event) => acceptEnter(
               event,
               () => void renameBulkDraft(),
@@ -6482,7 +6505,7 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="bulk-rename-title">{t("stock.bulkEdit.workspace.rename")}</h2>
-              <button type="button" onClick={close}>{t("common.close")}</button>
+              <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
             </header>
             <label className="bulk-dialog-field">
               <span>{t("stock.bulkEdit.listName")}</span>
@@ -6517,7 +6540,7 @@ export function StockScreen({
       return (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-comments-title">
           <section
-            className="filter-dialog bulk-workspace-dialog bulk-comments-dialog"
+            className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-comments-dialog"
             onKeyDown={(event) => acceptEnter(
               event,
               () => void addBulkComment(),
@@ -6526,7 +6549,7 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="bulk-comments-title">{t("stock.bulkEdit.comments")}</h2>
-              <button type="button" onClick={close}>{t("common.close")}</button>
+              <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
             </header>
             <div className="bulk-comment-list">
               {activeBulkDraft?.comments.length === 0 && <span className="stock-empty-state">{t("stock.bulkEdit.noComments")}</span>}
@@ -6556,22 +6579,29 @@ export function StockScreen({
         ? { title: "stock.bulkEdit.applyChanges", body: "stock.bulkEdit.applyConfirm", action: () => void applyBulkChanges() }
         : bulkDialog === "delete"
           ? { title: "stock.bulkEdit.delete", body: "stock.bulkEdit.deleteConfirm", action: () => void deleteBulkDraft() }
-          : null;
+          : bulkDialog === "reload"
+            ? { title: "stock.bulkEdit.reload", body: "stock.bulkEdit.reloadConfirm", action: () => void reloadConflictedBulkDraft() }
+            : null;
     if (dialogConfig) {
+      const applying = bulkDialog === "apply";
       return (
-        <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-confirm-title">
+        <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-confirm-title" aria-describedby="bulk-confirm-description">
           <section
-            className="filter-dialog bulk-workspace-dialog bulk-small-dialog"
+            className={applying ? "bulk-apply-dialog" : "filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog"}
             onKeyDown={(event) => acceptEnter(event, dialogConfig.action, bulkBusy)}
           >
-            <header className="filter-header">
+            <header className={applying ? "bulk-apply-header" : "filter-header"}>
               <h2 id="bulk-confirm-title">{t(dialogConfig.title)}</h2>
-              <button type="button" onClick={close}>{t("common.close")}</button>
+              <button type="button" aria-label={t("common.close")} onClick={close}>
+                <X size={18} weight="bold" aria-hidden="true" />
+              </button>
             </header>
-            <p className="bulk-confirm-copy">{t(dialogConfig.body)}</p>
-            <footer className="filter-actions">
+            <p className="bulk-confirm-copy" id="bulk-confirm-description">{t(dialogConfig.body)}</p>
+            <footer className={applying ? "bulk-apply-actions" : "filter-actions"}>
               <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
-              <button autoFocus type="button" disabled={bulkBusy} onClick={dialogConfig.action}>{t("common.confirm")}</button>
+              <button autoFocus type="button" disabled={bulkBusy} onClick={dialogConfig.action}>
+                {t(applying ? "stock.bulkEdit.applyChanges" : "common.confirm")}
+              </button>
             </footer>
           </section>
         </div>
@@ -6580,12 +6610,12 @@ export function StockScreen({
     return (
       <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-close-title">
         <section
-          className="filter-dialog bulk-workspace-dialog bulk-small-dialog"
+          className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog"
           onKeyDown={(event) => acceptEnter(event, () => void saveBulkDraft("close"), bulkBusy)}
         >
           <header className="filter-header">
             <h2 id="bulk-close-title">{t("stock.bulkEdit.closeList")}</h2>
-            <button type="button" onClick={close}>{t("common.close")}</button>
+            <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
           </header>
           <p className="bulk-confirm-copy">{t("stock.bulkEdit.closeConfirm")}</p>
           <footer className="filter-actions bulk-close-actions">
@@ -6684,10 +6714,13 @@ export function StockScreen({
           </div>
         </div>
         {bulkStatus && (
-          <div className={`bulk-edit-status ${bulkConflictDraftId ? "conflict" : ""}`} role="status">
+          <div className={`bulk-edit-status ${bulkRequestConflict ? "conflict" : ""}`} role="status">
             <span>{bulkStatus}</span>
             {bulkConflictDraftId && (
-              <button type="button" disabled={bulkBusy} onClick={() => void reloadConflictedBulkDraft()}>
+              <button type="button" disabled={bulkBusy} onClick={() => {
+                if (bulkDirty || bulkImagesDirty) setBulkDialog("reload");
+                else void reloadConflictedBulkDraft();
+              }}>
                 {t("stock.bulkEdit.reload")}
               </button>
             )}
