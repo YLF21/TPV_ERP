@@ -132,7 +132,7 @@ export function SessionHomeScreen({
   ]);
 
   return (
-    <main className="home-screen">
+    <main className="home-screen" data-app={app}>
       <header className="entry-topbar">
         <CashRegisterIcon className="home-brand-icon" weight="duotone" aria-hidden="true" focusable="false" />
         <strong className="app-brand-static">{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
@@ -255,7 +255,7 @@ export function SessionHomeScreen({
         />
       )}
 
-      <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
+      {app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
     </main>
   );
 }

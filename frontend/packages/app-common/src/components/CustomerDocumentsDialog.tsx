@@ -7,6 +7,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { nextTableSort, type TableSort } from "./tableSorting";
 import { ErpSelect } from "./ErpSelect";
+import { ErpFilterChips } from "./ErpFilterChips";
 import { CustomerModel347Dialog } from "./CustomerModel347Dialog";
 import { customerDocumentAmount } from "./customerDocumentAmount";
 import "./CustomerDocumentsDialog.css";
@@ -72,6 +73,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
   const dialogRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const movedHeaderRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const selectedRowRef = useRef<HTMLDivElement>(null);
@@ -108,6 +110,21 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
     if (next.dateFrom && next.dateTo && next.dateFrom > next.dateTo) { setFilterError(true); return; }
     setFilterError(false); setDraftFilters(next); setFilters(next); resetRows(); setRetry((value) => value + 1);
   }
+
+  function removeFilter(key: keyof typeof emptyFilters) {
+    setFilters((current) => ({ ...current, [key]: "" }));
+    setDraftFilters((current) => ({ ...current, [key]: "" }));
+    setFilterError(false); resetRows();
+  }
+
+  const filterChips = [
+    { key: "search", label: t("party.searchLabel"), value: filters.search },
+    { key: "status", label: t("salesReport.filter.status"), value: filters.status ? t(`salesReport.activity.documentStatus.${filters.status}`) : "" },
+    { key: "dateFrom", label: t("salesReport.filter.dateFrom"), value: filters.dateFrom },
+    { key: "dateTo", label: t("salesReport.filter.dateTo"), value: filters.dateTo }
+  ].filter((chip) => chip.value !== "").map((chip) => ({
+    ...chip, onRemove: () => removeFilter(chip.key as keyof typeof emptyFilters)
+  }));
 
   function loadMore() {
     if (loading || errorKey || !page?.hasMore || !page.nextCursor || cursor === page.nextCursor) return;
@@ -321,7 +338,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
       </div>
       <form className="customer-documents-filters" onSubmit={(event) => { event.preventDefault(); applyFilters(); }}>
         <label className="customer-documents-search"><span>{t("party.searchLabel")}</span>
-          <input type="search" maxLength={120} placeholder={t("customerDocuments.search")}
+          <input ref={searchRef} type="search" maxLength={120} placeholder={t("customerDocuments.search")}
             value={draftFilters.search} onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))} />
         </label>
         <label><span>{t("salesReport.filter.status")}</span>
@@ -334,8 +351,9 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
         <label><span>{t("salesReport.filter.dateTo")}</span><input type="date" value={draftFilters.dateTo}
           onChange={(event) => setDraftFilters((current) => ({ ...current, dateTo: event.target.value }))} /></label>
         <button type="submit" disabled={!allowed}>{t("salesReport.filter.apply")}</button>
-        <button type="button" onClick={() => applyFilters(true)}>{t("party.filter.clear")}</button>
+        {(app === "pda" || !hasFilters) && <button type="button" onClick={() => applyFilters(true)}>{t("party.filter.clear")}</button>}
       </form>
+      {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef} onClear={() => applyFilters(true)} />}
       {filterError && <p className="customer-documents-notice" role="alert">{t("customerDocuments.invalidDates")}</p>}
       {filtersDirty && <p className="customer-documents-notice" role="status">{t("customerDocuments.applyPending")}</p>}
       {exportErrorKey && <p className="customer-documents-notice" role="alert">{t(exportErrorKey)}</p>}

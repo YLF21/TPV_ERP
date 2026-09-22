@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   ErpSelect,
   TableLayoutHeaderCell,
@@ -279,6 +280,21 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
     setQueueRevision((current) => current + 1);
   }
 
+  function removeQueueFilter(field: "dateFrom" | "dateTo" | "status" | "documentType" | "operation" | "documentNumber") {
+    setFilterError(false);
+    setDraftFilters((current) => ({ ...current, [field]: "" }));
+    setFilters((current) => ({ ...current, [field]: "", page: 0 }));
+  }
+
+  const queueFilterChips: ErpFilterChip[] = [
+    { key: "dateFrom", label: t("verifactu.management.dateFrom"), value: filters.dateFrom ? formatVerifactuDate(filters.dateFrom, locale) : "", onRemove: () => removeQueueFilter("dateFrom") },
+    { key: "dateTo", label: t("verifactu.management.dateTo"), value: filters.dateTo ? formatVerifactuDate(filters.dateTo, locale) : "", onRemove: () => removeQueueFilter("dateTo") },
+    { key: "status", label: t("verifactu.management.status"), value: filters.status ? statusLabel(filters.status, t) : "", onRemove: () => removeQueueFilter("status") },
+    { key: "documentType", label: t("verifactu.management.documentType"), value: filters.documentType, onRemove: () => removeQueueFilter("documentType") },
+    { key: "operation", label: t("verifactu.management.fiscalOperation"), value: filters.operation ? operationLabel(filters.operation, t) : "", onRemove: () => removeQueueFilter("operation") },
+    { key: "documentNumber", label: t("verifactu.management.documentNumber"), value: filters.documentNumber, onRemove: () => removeQueueFilter("documentNumber") }
+  ];
+
   function changeQueueSort(column: QueueSortColumn) {
     const next = nextTableSort(queueSorting.sort, column);
     queueSorting.setSort(next);
@@ -476,6 +492,7 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
               timezone={fiscalStatus?.timezone ?? null}
               tableLayout={queueTableLayout}
               activeFilterCount={countActiveFilters(filters)}
+              filterChips={queueFilterChips}
               draftFilters={draftFilters}
               onDraftChange={setDraftFilters}
               onApply={applyFilters}
@@ -746,6 +763,7 @@ function QueueView({
   timezone = null,
   tableLayout,
   activeFilterCount,
+  filterChips,
   draftFilters,
   onDraftChange,
   onApply,
@@ -765,6 +783,7 @@ function QueueView({
   timezone?: string | null;
   tableLayout: ReturnType<typeof useTableLayoutPreference<QueueSortColumn>>;
   activeFilterCount: number;
+  filterChips: ErpFilterChip[];
   draftFilters: VerifactuAdminSubmissionFilters;
   onDraftChange: (filters: VerifactuAdminSubmissionFilters) => void;
   onApply: (event: FormEvent) => boolean;
@@ -890,6 +909,7 @@ function QueueView({
             </button>
           </div>
         </header>
+        <ErpFilterChips locale={locale} translate={t} chips={filterChips} onClear={onClear} />
         {page.truncated && (
           <div className="gestion-verifactu-message warning" role="status">
             {t("verifactu.management.queueTruncated")}

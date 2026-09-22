@@ -1,5 +1,10 @@
 export class MessagesZh {
   static readonly values: Record<string, string> = {
+    "filters.applied": "已应用筛选",
+    "party.filter.fields": "字段筛选",
+    "filters.remove": "移除筛选",
+    "filters.clearAll": "清除全部",
+    "filters.resetWeek": "将时间范围重置为本周",
     "stock.history.saas.allStores": "所有门店",
     "stock.history.saas.view": "历史视图",
     "stock.history.saas.detail": "明细",
@@ -712,7 +717,7 @@ export class MessagesZh {
     "stock.all": "全部",
     "stock.warehouse": "仓库",
     "stock.warehouse.local": "本地仓库",
-    "stock.warehouse.total": "总计",
+    "stock.warehouse.total": "全部",
     "stock.nav.inputWarehouse": "仓库入库",
     "stock.nav.outputWarehouse": "仓库出库",
     "stock.settings": "设置",
@@ -1559,6 +1564,8 @@ export class MessagesZh {
     "salesReport.connection": "连接",
     "connection.saasOnline": "已连接 SaaS",
     "connection.saasOffline": "未连接 SaaS",
+    "connection.check": "检查 SaaS 连接",
+    "connection.checking": "正在检查 SaaS 连接",
     "connection.backendAddress": "门店后端地址",
     "salesReport.invoicedTicketTotal": "已开票小票",
     "salesReport.invoicedTicketCount": "已开票小票",

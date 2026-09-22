@@ -1,0 +1,66 @@
+/* Tabla ERP Azul Clásica, limited to APP VENTA's live cart.
+   Keep its row height, thumbnails, wrapping, column layout and operational cues. */
+.sale-cart-table.sale-cart-table--classic {
+  color: #172e4c;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+}
+
+.sale-cart-table--classic thead th {
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 8px;
+  border-right-color: #d9e1e9;
+  border-bottom: 1px solid #aebfd2;
+  border-radius: 0;
+  background: #12385f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.sale-cart-table.sale-cart-table--classic .sale-cart-row > td {
+  border-right-color: #d9e1e9;
+  border-bottom-color: #d9e1e9;
+  background: var(--sale-cart-row-background, #fff) !important;
+  color: #172e4c;
+  font-size: 13px;
+  font-weight: 400;
+  box-shadow: none !important;
+}
+
+.sale-cart-table--classic :where(.sale-cart-row:nth-child(even of .sale-cart-row)) {
+  --sale-cart-row-background: #f2f6fa;
+}
+
+.sale-cart-table--classic .sale-cart-row:hover {
+  --sale-cart-row-background: #e8f1fa;
+}
+
+.sale-cart-table--classic .sale-cart-row.selected {
+  --sale-cart-row-background: #d8e9fb;
+}
+
+.sale-cart-table--classic .sale-cart-select .product-name-text {
+  color: #172e4c;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.sale-cart-table.sale-cart-table--classic .sale-cart-row > .sale-cart-total { font-weight: 700; }
+.sale-cart-table.sale-cart-table--classic .sale-cart-row > .sale-cart-discount { color: #8a4d0a; }
+
+.sale-cart-table--classic .sale-cart-select:focus-visible {
+  outline: 2px solid #1f5a94 !important;
+  outline-offset: -2px !important;
+  box-shadow: none !important;
+}
+
+/* Historical provenance stays visible; return-adjustment rows and the filler
+   intentionally retain their existing styling instead of the product stripes. */
+.sale-cart-table--classic .sale-cart-row.historical-import > td:first-child {
+  box-shadow: inset 3px 0 #466f98 !important;
+}

@@ -9,6 +9,7 @@ import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import deleteImageIcon from "../assets/product/delete.png";
 import { enterNavigationIntent } from "./keyboardNavigation";
+import { ErpFilterChips } from "./ErpFilterChips";
 import {
   familyBusinessCode,
   loadFamilyCatalog,
@@ -25,6 +26,7 @@ import {
 export type ProductCreateDialogProps = {
   open: boolean;
   locale: LocaleCode;
+  filterChips?: boolean;
   token?: string;
   operationalAuthorizationId?: string;
   editProduct?: ProductCreateEditProduct | null;
@@ -793,6 +795,7 @@ function discountTypeLabel(type: PriceUseModeCode) {
 export function ProductCreateDialog({
   open,
   locale,
+  filterChips = false,
   token,
   operationalAuthorizationId,
   editProduct,
@@ -845,6 +848,7 @@ export function ProductCreateDialog({
   const [selectedPrincipalSupplierId, setSelectedPrincipalSupplierId] = useState("");
   const [supplierSaving, setSupplierSaving] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const familySearchInputRef = useRef<HTMLInputElement | null>(null);
   const familyResolveRequestRef = useRef(0);
   const resolvedSubfamilyRef = useRef(new Set<string>());
   const familySubfamiliesRequestRef = useRef(new Map<string, Promise<SubfamilyView[]>>());
@@ -2568,39 +2572,53 @@ export function ProductCreateDialog({
                 setFamilyPickerOpen(false);
               }}>{t("common.close")}</button>
             </header>
-            <label className="stock-family-search">
-              <span>{t("product.family.search")}</span>
-              <input
-                type="search"
-                value={familyPickerSearch}
-                placeholder={t("stock.column.family")}
-                onChange={(event) => setFamilyPickerSearch(event.target.value)}
-                aria-label={t("product.family.search")}
-                aria-controls="product-family-tree"
-              />
-              <small>{t("product.family.searchHint")}</small>
-              {Array.from(normalizeFamilySearch(familyPickerSearch.trim())).length === 1 && (
-                <small>{t("product.family.searchMinChars")}</small>
-              )}
-              {familySearchLoading && <small role="status">{t("product.family.searchLoading")}</small>}
-              {familySearchError && <small role="alert">{familySearchError}</small>}
-              {familySearchError && (
-                <button type="button" onClick={() => setFamilySearchRetry((value) => value + 1)}>
-                  {t("product.family.searchRetry")}
-                </button>
-              )}
-              {!familySearchLoading && familyPickerSearch.trim() && familySearchResults && familyPickerRows.length === 0 && (
-                <small>{t("product.family.searchEmpty")}</small>
-              )}
-              {!familySearchLoading && familySearchHasMore && (
-                <>
-                  <small>{t("product.family.searchMore")}</small>
-                  <button type="button" disabled={familySearchLoading} onClick={loadMoreFamilySearch}>
-                    {t("product.family.searchMoreButton")}
+            <div className="stock-family-filters" style={filterChips ? undefined : { display: "contents" }}>
+              <label className="stock-family-search">
+                <span>{t("product.family.search")}</span>
+                <input
+                  type="search"
+                  ref={familySearchInputRef}
+                  value={familyPickerSearch}
+                  placeholder={t("stock.column.family")}
+                  onChange={(event) => setFamilyPickerSearch(event.target.value)}
+                  aria-label={t("product.family.search")}
+                  aria-controls="product-family-tree"
+                />
+                <small>{t("product.family.searchHint")}</small>
+                {Array.from(normalizeFamilySearch(familyPickerSearch.trim())).length === 1 && (
+                  <small>{t("product.family.searchMinChars")}</small>
+                )}
+                {familySearchLoading && <small role="status">{t("product.family.searchLoading")}</small>}
+                {familySearchError && <small role="alert">{familySearchError}</small>}
+                {familySearchError && (
+                  <button type="button" onClick={() => setFamilySearchRetry((value) => value + 1)}>
+                    {t("product.family.searchRetry")}
                   </button>
-                </>
-              )}
-            </label>
+                )}
+                {!familySearchLoading && familyPickerSearch.trim() && familySearchResults && familyPickerRows.length === 0 && (
+                  <small>{t("product.family.searchEmpty")}</small>
+                )}
+                {!familySearchLoading && familySearchHasMore && (
+                  <>
+                    <small>{t("product.family.searchMore")}</small>
+                    <button type="button" disabled={familySearchLoading} onClick={loadMoreFamilySearch}>
+                      {t("product.family.searchMoreButton")}
+                    </button>
+                  </>
+                )}
+              </label>
+              {filterChips && <ErpFilterChips
+                locale={locale}
+                focusRef={familySearchInputRef}
+                chips={normalizeFamilySearch(familyPickerSearch) ? [{
+                  key: "search",
+                  label: t("product.family.search"),
+                  value: familyPickerSearch.trim(),
+                  onRemove: () => setFamilyPickerSearch("")
+                }] : []}
+                onClear={() => setFamilyPickerSearch("")}
+              />}
+            </div>
             <div className="stock-family-list" id="product-family-tree" role="tree">
               {familyPickerRows.length === 0 && <p>{t("stock.filter.noFamilies")}</p>}
               {familyPickerRows.map((family) => {

@@ -141,6 +141,8 @@
   padding: 12px 14px;
 }
 
+.customer-receivables-dialog-body > .erp-filter-applied { flex: none; margin: 0; }
+
 .customer-receivables-dialog .customer-receivables-filters {
   flex: 0 0 auto;
   grid-template-columns: minmax(220px, 1.7fr) minmax(130px, .8fr) minmax(160px, 1fr) minmax(120px, .75fr) repeat(2, minmax(150px, 1fr));

@@ -1,0 +1,160 @@
+@import "../../../packages/app-common/src/components/ErpClassicTables.css" screen;
+
+/* APP GESTIÓN uses the same desktop table tokens as APP VENTA. Keep existing
+   column templates, scroll containers, editor controls and semantic badges. */
+@media screen {
+  .gestion-classic-tables :is(table, [role="table"], [role="grid"],
+    .gestion-warehouse-list, .gestion-payment-methods-panel, .gestion-taxes-table,
+    .gestion-document-template-list, .gestion-operation-security-table) {
+    color: var(--erp-table-text);
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    font-size: 13px;
+    border-radius: 0;
+  }
+
+  .gestion-classic-tables table:not(.shared-excel-review table, .shared-excel-frozen-table table) {
+    border-spacing: 0;
+    border-collapse: separate;
+  }
+
+  .gestion-classic-tables :is([role="table"], [role="grid"], .gestion-warehouse-list,
+    .gestion-payment-methods-panel, .gestion-taxes-table, .gestion-document-template-list,
+    .gestion-operation-security-table) {
+    border-color: var(--erp-table-border);
+    background: #fff;
+  }
+
+  /* Non-table markup used by editable settings and paginated operational lists. */
+  .gestion-classic-tables :is(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"], .gestion-cash-balances-body > [role="row"],
+    .gestion-warehouse-row, .gestion-payment-methods-row,
+    .gestion-taxes-table > :is(header, article),
+    .gestion-document-template-list > :is(header, article),
+    .gestion-operation-security-row) {
+    box-sizing: border-box;
+    min-height: 36px;
+    gap: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid var(--erp-table-line) !important;
+    font-size: 13px;
+  }
+
+  .gestion-classic-tables :is(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"]:not(.head, .header, .gestion-alert-row-head, .gestion-alert-day),
+    .gestion-cash-balances-body > [role="row"],
+    .gestion-warehouse-row:not(.head), .gestion-payment-methods-row:not(.head),
+    .gestion-taxes-table > article, .gestion-document-template-list > article,
+    .gestion-operation-security-row:not(.head)) {
+    background: var(--gestion-classic-row-background, #fff) !important;
+    color: var(--erp-table-text) !important;
+    box-shadow: none !important;
+  }
+
+  .gestion-classic-tables :where(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"]:nth-child(even of [role="row"]:not(.head, .header, .gestion-alert-row-head, .gestion-alert-day)),
+    .gestion-cash-balances-body > [role="row"]:nth-child(even of [role="row"]),
+    .gestion-warehouse-row:nth-child(even of .gestion-warehouse-row:not(.head)),
+    .gestion-payment-methods-row:nth-child(even of .gestion-payment-methods-row:not(.head)),
+    .gestion-taxes-table > article:nth-child(even of article),
+    .gestion-document-template-list > article:nth-child(even of article),
+    .gestion-operation-security-row:nth-child(even of .gestion-operation-security-row:not(.head))) {
+    --gestion-classic-row-background: var(--erp-table-stripe);
+  }
+
+  .gestion-classic-tables :where(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"]:not(.head, .header, .gestion-alert-row-head, .gestion-alert-day),
+    .gestion-cash-balances-body > [role="row"],
+    .gestion-warehouse-row:not(.head), .gestion-payment-methods-row:not(.head),
+    .gestion-taxes-table > article, .gestion-document-template-list > article,
+    .gestion-operation-security-row:not(.head)):hover {
+    --gestion-classic-row-background: var(--erp-table-hover);
+  }
+
+  .gestion-classic-tables :is([role="row"], .gestion-warehouse-row):is(.selected, [aria-selected="true"]) {
+    --gestion-classic-row-background: var(--erp-table-selected);
+  }
+
+  .gestion-classic-tables :is(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"], .gestion-cash-balances-body > [role="row"], .gestion-warehouse-row, .gestion-payment-methods-row,
+    .gestion-taxes-table > :is(header, article),
+    .gestion-document-template-list > :is(header, article), .gestion-operation-security-row) > :not(button) {
+    box-sizing: border-box;
+    min-width: 0;
+    margin: 0;
+    padding: 5px 8px;
+    align-content: center;
+    border-right: 1px solid var(--erp-table-line);
+    font-size: inherit;
+  }
+
+  .gestion-classic-tables :is(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"]:is(.head, .header, .gestion-alert-row-head),
+    .gestion-warehouse-row.head, .gestion-payment-methods-row.head,
+    .gestion-taxes-table > header, .gestion-document-template-list > header,
+    .gestion-operation-security-row.head) {
+    min-height: 36px !important;
+    background: var(--erp-table-header) !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+  }
+
+  .gestion-classic-tables :is(
+    :is(.gestion-security-table, .gestion-alert-table, .gestion-cash-closures-table, .gestion-cash-balances-table, .gestion-voucher-table, .gestion-license-table, .gestion-stock-count-table, .representative-management-table, .member-settings-channel-table, .member-categories-table) > [role="row"]:is(.head, .header, .gestion-alert-row-head),
+    .gestion-warehouse-row.head, .gestion-payment-methods-row.head,
+    .gestion-taxes-table > header, .gestion-document-template-list > header,
+    .gestion-operation-security-row.head) > * {
+    min-height: 36px;
+    color: inherit !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: none !important;
+  }
+
+  .gestion-classic-tables :is([role="row"], tbody > tr, .gestion-warehouse-row):focus-visible {
+    outline: 2px solid var(--erp-table-focus) !important;
+    outline-offset: -2px;
+  }
+
+  /* Group separators and signed amounts retain their operational meaning. */
+  .gestion-classic-tables .gestion-alert-day {
+    background: var(--erp-table-stripe);
+    font-weight: 700;
+  }
+
+  .gestion-classic-tables .erp-filter-applied { flex: 0 0 auto; }
+  /* Filter tags are optional: reserve the remaining height for rows, even with
+     notices or tags inserted above the scrolling area. */
+  .gestion-classic-tables .gestion-verifactu-table-panel,
+  .gestion-classic-tables .gestion-vouchers-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .gestion-classic-tables .gestion-verifactu-table-panel > :not(.gestion-verifactu-table-scroll),
+  .gestion-classic-tables .gestion-vouchers-workspace > :not(.gestion-voucher-content) { flex: 0 0 auto; }
+  .gestion-classic-tables .gestion-verifactu-table-scroll,
+  .gestion-classic-tables .gestion-voucher-content { flex: 1 1 0; min-height: 0; }
+  .gestion-classic-tables .gestion-security-workspace:has(> .erp-filter-applied) {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+  .gestion-classic-tables .gestion-control-timeline:has(.gestion-control-list-stage > .erp-filter-applied) {
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+    grid-template-areas: "heading heading" "dates filters" "types types" "period period" "tags tags" "timeline timeline";
+  }
+  .gestion-classic-tables .gestion-control-list-stage > .erp-filter-applied { grid-area: tags; }
+  @media (max-width: 1370px) {
+    .gestion-classic-tables .gestion-control-timeline:has(.gestion-control-list-stage > .erp-filter-applied) {
+      grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr);
+      grid-template-areas: "heading" "dates" "filters" "types" "period" "tags" "timeline";
+    }
+  }
+  .gestion-classic-tables .gestion-cash-balances-list { grid-template-rows: auto minmax(0, 1fr) 31px; }
+  .gestion-table-search { display: grid; align-content: start; gap: 6px; margin: 8px; }
+  .gestion-table-search > label { display: grid; gap: 4px; max-width: 560px; font-size: 12px; font-weight: 700; }
+  .gestion-table-search input { box-sizing: border-box; width: 100%; height: 34px; padding: 6px 8px; border: 1px solid #aebfd2; border-radius: 0; background: #fff; color: #172e4c; }
+  .gestion-table-search input:focus-visible { outline: 2px solid #2f78b9; outline-offset: -2px; }
+}

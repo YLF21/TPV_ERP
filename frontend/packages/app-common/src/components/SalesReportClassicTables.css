@@ -1,0 +1,220 @@
+@import "./ErpClassicTableHeaders.css" screen;
+
+/* Tabla ERP Azul Clásica, scoped to the desktop document reports.
+   The shared header keeps the real sort, resize and column-menu controls.
+   Colours use the same tokens as the management tables; fallbacks also allow
+   this lazy report component to be rendered independently. */
+@media screen {
+  .report-classic-document-table.erp-classic-tables {
+    border: 1px solid var(--erp-table-border, #aebfd2) !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) {
+    border-collapse: separate !important;
+    border-spacing: 0;
+    color: var(--erp-table-text, #172e4c) !important;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) thead th {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 8px !important;
+    border-bottom: 0 !important;
+    background: var(--erp-table-header, #12385f) !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 18px !important;
+    letter-spacing: 0 !important;
+    text-align: left !important;
+    text-transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) thead th.table-layout-header-cell {
+    padding-inline: 6px !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr {
+    background: #fff !important;
+    color: var(--erp-table-text, #172e4c) !important;
+    box-shadow: none !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr:nth-child(even) {
+    background: var(--erp-table-stripe, #f2f6fa) !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr:hover {
+    background: var(--erp-table-hover, #e8f1fa) !important;
+    outline: none !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr > td {
+    box-sizing: border-box;
+    height: 36px !important;
+    padding: 5px 8px !important;
+    border: 0;
+    border-right: 1px solid var(--erp-table-line, #d9e1e9) !important;
+    border-bottom: 1px solid var(--erp-table-line, #d9e1e9) !important;
+    background: inherit !important;
+    color: inherit !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    vertical-align: middle;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr:is(.selected, [aria-selected="true"]),
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr:is(.selected, [aria-selected="true"]):is(:hover, :focus-visible) {
+    background: var(--erp-table-selected, #d8e9fb) !important;
+    color: var(--erp-table-text, #172e4c) !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr:focus-visible,
+  .report-classic-document-table.erp-classic-tables :is(.report-table, .sales-documents-table) tbody > tr:is(.selected, [aria-selected="true"]):focus-visible {
+    outline: 2px solid var(--erp-table-focus, #1f5a94) !important;
+    outline-offset: -2px !important;
+  }
+
+  /* Cancellation and return indicators remain semantic, independent of the skin. */
+  .report-classic-document-table.erp-classic-tables .report-table tbody > tr.report-table-row--cancelled:not(.selected) {
+    background: #fff1f2 !important;
+    color: #7f1d1d !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .report-table tbody > tr .report-status-badge--cancelled {
+    border-color: #fca5a5 !important;
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .sales-documents-table .sales-document-row--return .sales-documents-column--total {
+    color: #9a2424 !important;
+    font-weight: 700 !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .sales-documents-table .sales-document-row--cancelled {
+    color: #7f8a94 !important;
+  }
+
+  /* The sale-entry status panel shares this class name. Keep document badges
+     compact and retain their normal / return / cancelled colour semantics. */
+  .report-classic-document-table.erp-classic-tables .sales-document-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 24px;
+    padding: 2px 6px;
+    border: 1px solid #9fb0c1;
+    background: #edf2f6;
+    color: #15283a;
+    font-size: 10px;
+    line-height: 16px;
+    vertical-align: middle;
+  }
+
+  .report-classic-document-table.erp-classic-tables .sales-document-status--return {
+    border-color: #cf9d46;
+    background: #fff5df;
+    color: #79500c;
+  }
+
+  .report-classic-document-table.erp-classic-tables .sales-document-status--cancelled {
+    border-color: #c88e8e;
+    background: #fbecec;
+    color: #8a2929;
+  }
+
+  /* Keep the existing density setting and numeric alignment in body cells. */
+  .report-density-compact .report-classic-document-table.erp-classic-tables .report-table tbody > tr > td {
+    height: 27px !important;
+    padding: 4px 7px !important;
+    font-size: 12px !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .sales-documents-table tfoot th {
+    background: var(--erp-table-stripe, #f2f6fa);
+    border-color: var(--erp-table-line, #d9e1e9);
+    color: var(--erp-table-text, #172e4c);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .report-classic-document-table.erp-classic-tables .sales-documents-table tbody td.sales-documents-column--total,
+  .report-classic-document-table.erp-classic-tables .sales-documents-table tfoot th.sales-documents-column--total {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .report-data > .report-filter-chips {
+    order: 1;
+    flex: 0 0 auto;
+    min-height: 0;
+    margin: 6px 12px;
+  }
+
+  .sales-documents-controls > .report-filter-chips {
+    margin: 6px 12px;
+  }
+
+  .report-screen .report-print-filter-summary {
+    display: none;
+  }
+}
+
+@media print {
+  .report-filter-chips {
+    display: none !important;
+  }
+
+  /* Stock may already have loaded the generic classic-table skin. Keep the
+     existing report-print.css dimensions when the user prints this screen. */
+  .report-classic-document-table.erp-classic-tables .report-table {
+    border-collapse: collapse !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .report-table :is(th, td) {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 2.4mm 2.8mm !important;
+    border-color: #d7e1ec !important;
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .report-table thead th {
+    position: static;
+    padding-block: 2mm !important;
+    border-color: #214e7d !important;
+    background: #082b59 !important;
+    color: #fff !important;
+    font-size: 7.5pt !important;
+    letter-spacing: .04em !important;
+    text-transform: uppercase !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .report-table .table-layout-sort-button {
+    min-height: 0 !important;
+    padding: 0 !important;
+    font-size: inherit !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .report-table tbody > tr:nth-child(odd) > td,
+  .report-classic-document-table.erp-classic-tables .report-table tbody > tr:nth-child(even) > td {
+    background: #fff !important;
+    color: #14233b !important;
+  }
+
+  .report-classic-document-table.erp-classic-tables .report-table tbody > tr:nth-child(even) > td {
+    background: #f4f7fa !important;
+  }
+}

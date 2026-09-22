@@ -29,8 +29,35 @@ body,
   overflow: hidden;
 }
 
+.app-titlebar-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-titlebar .app-titlebar-connection {
+  padding: 3px 8px;
+  color: var(--gestion-text);
+  font-weight: 700;
+}
+
+.app-titlebar-connection .report-connection {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.app-titlebar-connection svg {
+  flex-shrink: 0;
+}
+
 .server-setup-panel {
   max-width: 520px;
+}
+
+.login-screen[data-app="gestion"],
+.home-screen[data-app="gestion"] {
+  padding-bottom: 12px !important;
 }
 
 .server-setup-note {
@@ -343,7 +370,7 @@ body,
   box-sizing: border-box !important;
   margin: 0 !important;
   padding: 14px 18px 10px !important;
-  grid-template-rows: 42px minmax(0, 1fr) 28px !important;
+  grid-template-rows: 42px minmax(0, 1fr) !important;
 }
 
 .report-screen.gestion-embedded-module .report-shell {
@@ -400,16 +427,6 @@ body,
 .promotion-screen.gestion-embedded-module .promotion-detail-panel {
   grid-column: 2 !important;
   grid-row: 2 !important;
-}
-
-.gestion-embedded-module .report-footer-context {
-  position: static !important;
-  grid-column: 1 / -1 !important;
-  grid-row: 3 !important;
-  width: 100% !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  z-index: 1 !important;
 }
 
 .gestion-dashboard-toolbar {
@@ -1652,9 +1669,9 @@ button.gestion-security-row.selected { background: #dceaf6; box-shadow: inset 4p
 .gestion-role-layout { min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--gestion-border-dark); background: #fff; }
 .gestion-role-list { min-height: 0; padding: 11px; overflow: auto; border-right: 1px solid var(--gestion-border-dark); background: #edf1f4; }
 .gestion-role-list > label input { width: 100%; margin-bottom: 9px; }
-.gestion-role-list > div > button { width: 100%; min-height: 56px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #b6c0c8; border-bottom: 0; background: #fff; color: var(--gestion-text); font: inherit; text-align: left; cursor: pointer; }
-.gestion-role-list > div > button:last-of-type { border-bottom: 1px solid #b6c0c8; }
-.gestion-role-list > div > button.selected { background: #dceaf6; box-shadow: inset 4px 0 0 var(--gestion-navy); }
+.gestion-role-list > div:not(.erp-filter-applied) > button { width: 100%; min-height: 56px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #b6c0c8; border-bottom: 0; background: #fff; color: var(--gestion-text); font: inherit; text-align: left; cursor: pointer; }
+.gestion-role-list > div:not(.erp-filter-applied) > button:last-of-type { border-bottom: 1px solid #b6c0c8; }
+.gestion-role-list > div:not(.erp-filter-applied) > button.selected { background: #dceaf6; box-shadow: inset 4px 0 0 var(--gestion-navy); }
 .gestion-role-list button span { display: grid; gap: 2px; }
 .gestion-role-list button strong { color: var(--gestion-navy); font-size: var(--gestion-font-body); }
 .gestion-role-list button small { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }

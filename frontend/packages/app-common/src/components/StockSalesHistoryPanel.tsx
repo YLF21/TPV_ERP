@@ -6,6 +6,7 @@ import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -268,12 +269,54 @@ export function StockSalesHistoryPanel({
   function applyFilters() {
     const from = dateFrom || dateTo;
     const to = dateTo || dateFrom;
-    if (!from || !to) return;
+    if (app === "pda" && (!from || !to)) return;
     setAppliedFrom(from <= to ? from : to);
     setAppliedTo(from <= to ? to : from);
+    if (app !== "pda") {
+      setDateFrom(from <= to ? from : to);
+      setDateTo(from <= to ? to : from);
+    }
     setPage({ query: queryPath, token: requestToken, cursor: null });
     setRetry((value) => value + 1);
   }
+
+  function removeFilter(key: "period" | "status" | "store") {
+    if (key === "period") {
+      setDateFrom("");
+      setDateTo("");
+      setAppliedFrom("");
+      setAppliedTo("");
+    } else if (key === "status") setStatusFilter("");
+    else setStoreFilter("");
+    setPage({ query: "", cursor: null });
+  }
+
+  function clearFilters() {
+    setDateFrom("");
+    setDateTo("");
+    setAppliedFrom("");
+    setAppliedTo("");
+    setStatusFilter("");
+    setStoreFilter("");
+    setPage({ query: "", cursor: null });
+  }
+
+  const dateLabel = (value: string) => new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "short" })
+    .format(new Date(`${value}T00:00:00`));
+  const selectedStore = stores.find((store) => store.id === storeFilter);
+  const filterChips: ErpFilterChip[] = [
+    ...(appliedFrom || appliedTo ? [{
+      key: "period", label: t("salesReport.filter.dateRange"),
+      value: appliedFrom && appliedTo ? `${dateLabel(appliedFrom)} – ${dateLabel(appliedTo)}`
+        : `${t(appliedFrom ? "salesReport.filter.dateFrom" : "salesReport.filter.dateTo")} ${dateLabel(appliedFrom || appliedTo)}`,
+      onRemove: () => removeFilter("period"),
+    }] : []),
+    ...(statusFilter ? [{ key: "status", label: t("salesReport.filter.status"), value: statusFilter,
+      onRemove: () => removeFilter("status") }] : []),
+    ...(storeFilter ? [{ key: "store", label: t("stock.history.store"),
+      value: selectedStore ? `${selectedStore.code} · ${selectedStore.name}` : storeFilter,
+      onRemove: () => removeFilter("store") }] : []),
+  ];
 
   function exportFileName(extension: "xlsx" | "pdf") {
     const identity = (productCode || productName || "producto").normalize("NFD")
@@ -292,7 +335,7 @@ export function StockSalesHistoryPanel({
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${requestToken}` },
         body: JSON.stringify({
-          ...query, status: statusFilter || null, view, locale,
+          ...query, from: appliedFrom || null, to: appliedTo || null, status: statusFilter || null, view, locale,
           comparisonSortBy: comparisonSort.sort?.column ?? "netQuantity",
           comparisonSortDirection: comparisonSort.sort?.direction ?? "desc",
           columns: view === "detail"
@@ -382,6 +425,8 @@ export function StockSalesHistoryPanel({
           </div>}
         </div>
       </div>
+      {app !== "pda" && <ErpFilterChips chips={filterChips} onClear={clearFilters}
+        focusRef={applyButtonRef} locale={locale} />}
       <div className="stock-history-context">
         {showProductHeading && <strong>{productName}</strong>}
         <div className="stock-history-views" role="group" aria-label={t("stock.history.saas.view")}>

@@ -1,0 +1,276 @@
+@import "./ErpClassicTableHeaders.css";
+
+/* Tabla ERP Azul Clásica. Reference: frontend-saas/src/shared/table/table-layout.css.
+   Opt in at desktop management boundaries in APP VENTA and APP GESTIÓN.
+   Important declarations override the legacy tpv.css skin, not table behaviour. */
+.erp-classic-tables {
+  --erp-table-header: #12385f;
+  --erp-table-text: #172e4c;
+  --erp-table-stripe: #f2f6fa;
+  --erp-table-hover: #e8f1fa;
+  --erp-table-selected: #d8e9fb;
+  --erp-table-line: #d9e1e9;
+  --erp-table-border: #aebfd2;
+  --erp-table-focus: #1f5a94;
+}
+
+.erp-classic-tables :is(table, .stock-table, .bulk-edit-table, .party-directory-table,
+  .stock-detail-table, .customer-documents-table, .customer-receivables-table,
+  .stock-bulk-image-table, .stock-bulk-rule-preview-table) {
+  color: var(--erp-table-text);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+}
+
+.erp-classic-tables :is(.stock-table, .bulk-edit-table, .party-directory-table,
+  .stock-detail-table, .stock-history-table-scroll, .stock-bulk-workspace-table-wrap,
+  .customer-documents-table, .customer-receivables-table, .stock-bulk-image-table,
+  .stock-bulk-rule-preview-table, .member-loyalty-list-section table) {
+  border: 1px solid var(--erp-table-border) !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+/* Native tables (history, saved lists, promotion details and member movements).
+   Import previews retain their 32px virtual rows and validation cell colours. */
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) tbody > tr {
+  background: #fff !important;
+  color: var(--erp-table-text) !important;
+}
+
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) tbody > tr:nth-child(even) {
+  background: var(--erp-table-stripe) !important;
+}
+
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) tbody > tr:hover {
+  background: var(--erp-table-hover) !important;
+}
+
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) tbody > tr > td {
+  box-sizing: border-box;
+  height: 36px !important;
+  padding: 5px 8px !important;
+  border: 0;
+  border-right: 1px solid var(--erp-table-line) !important;
+  border-bottom: 1px solid var(--erp-table-line) !important;
+  background: inherit !important;
+  color: var(--erp-table-text) !important;
+  font-size: 13px !important;
+  vertical-align: middle;
+}
+
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) tbody > tr:is(.selected, [aria-selected="true"]) {
+  background: var(--erp-table-selected) !important;
+  color: var(--erp-table-text) !important;
+  box-shadow: none !important;
+}
+
+.erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table) tbody > tr:is(.selected, [aria-selected="true"]) > td {
+  background: var(--erp-table-selected) !important;
+  border-color: var(--erp-table-line) !important;
+  color: var(--erp-table-text) !important;
+}
+
+.erp-classic-tables .stock-bulk-workspace-table tbody > tr:is(.selected, [aria-selected="true"]) .stock-bulk-workspace-status {
+  border-color: var(--erp-table-border) !important;
+  background: var(--erp-table-stripe) !important;
+}
+
+.erp-classic-tables :is(.stock-history-table td > .stock-history-cell-value,
+  .stock-bulk-workspace-table td > span, .stock-bulk-workspace-table td > strong) {
+  color: var(--erp-table-text) !important;
+}
+
+/* The legacy history skin paints individual cells instead of the row. */
+.erp-classic-tables .stock-product-sales-history-panel table.stock-history-table tbody > tr > td {
+  background: inherit !important;
+}
+
+/* Keep negative values recognisable; their meaning is independent of the skin. */
+.erp-classic-tables .stock-history-table td.stock-history-cell-negative,
+.erp-classic-tables .stock-history-table td.stock-history-cell-negative > .stock-history-cell-value {
+  color: #a12626 !important;
+}
+
+/* Grid tables keep their existing column templates, order and numeric alignment. */
+.erp-classic-tables :is(.stock-row, .party-directory-row, .stock-detail-row,
+  .receivable-row, .receivable-history-row, .receivable-account-row,
+  .stock-bulk-rule-preview-row) {
+  box-sizing: border-box;
+  min-height: 36px !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--erp-table-line) !important;
+  border-radius: 0 !important;
+  font-size: 13px;
+}
+
+:is(.erp-classic-tables.stock-screen, .erp-classic-tables.customer-receivables-overlay) :is(.stock-row:not(.stock-row-head), .party-directory-row:not(.header),
+  .stock-detail-row:not(.header), .receivable-row:not(.header),
+  .receivable-history-row:not(.header), .receivable-account-row:not(.header),
+  .stock-bulk-rule-preview-row:not(.head), .customer-documents-table-body .customer-documents-row,
+  .bulk-edit-row:not(.bulk-edit-head)) {
+  background: var(--erp-table-row-bg, #fff) !important;
+  color: var(--erp-table-text) !important;
+}
+
+.erp-classic-tables :is(.stock-row:not(.stock-row-head), .party-directory-row:not(.header),
+  .stock-detail-row:not(.header), .receivable-row:not(.header),
+  .receivable-history-row:not(.header), .receivable-account-row:not(.header),
+  .stock-bulk-rule-preview-row:not(.head)) > * {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 35px !important;
+  align-content: center;
+  align-self: stretch;
+  margin: 0 !important;
+  padding: 5px 8px !important;
+  border: 0;
+  border-right: 1px solid var(--erp-table-line) !important;
+  font-size: 13px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-classic-tables :is(.stock-row, .bulk-edit-row) > * + *::before {
+  display: none;
+}
+
+.erp-classic-tables :is(.stock-cell, .stock-cell > :not(.stock-status-indicator),
+  .stock-detail-row:not(.header) > *) {
+  color: var(--erp-table-text) !important;
+}
+
+.erp-classic-tables :is(.stock-cell, .stock-cell > span, .party-directory-selectable-row) {
+  font-weight: 400 !important;
+}
+
+.erp-classic-tables .stock-cell :is(strong, b) {
+  font-weight: 700 !important;
+}
+
+/* Filtered sibling counting excludes headings, loading rows and expanded panels. */
+.erp-classic-tables :where(
+  .stock-table > .stock-row:nth-child(even of .stock-row:not(.stock-row-head)),
+  .stock-promotion-groups > [role="list"] > article:nth-child(even) > .stock-row,
+  .party-directory-row:nth-child(even of .party-directory-row:not(.header)),
+  .stock-detail-row:nth-child(even of .stock-detail-row:not(.header):not(.total)),
+  .receivable-row:nth-child(even of .receivable-row:not(.header)),
+  .receivable-history-row:nth-child(even of .receivable-history-row:not(.header)),
+  .receivable-account-row:nth-child(even of .receivable-account-row:not(.header)),
+  .stock-bulk-rule-preview-row:nth-child(even of .stock-bulk-rule-preview-row:not(.head)),
+  .bulk-edit-row:nth-child(even of .bulk-edit-row:not(.bulk-edit-head)),
+  .customer-documents-row.even) {
+  --erp-table-row-bg: var(--erp-table-stripe);
+}
+
+.erp-classic-tables :where(.stock-row:not(.stock-row-head), .party-directory-row:not(.header),
+  .stock-detail-row:not(.header):not(.total), .receivable-row:not(.header),
+  .receivable-history-row:not(.header), .receivable-account-row:not(.header),
+  .stock-bulk-rule-preview-row:not(.head), .customer-documents-table-body .customer-documents-row,
+  .bulk-edit-row:not(.bulk-edit-head)):hover {
+  --erp-table-row-bg: var(--erp-table-hover);
+}
+
+.erp-classic-tables :is(.stock-row, .party-directory-row, .customer-documents-row).selected,
+.erp-classic-tables .bulk-edit-row:not(.bulk-edit-head):has(> .bulk-check input:checked) {
+  --erp-table-row-bg: var(--erp-table-selected);
+  color: var(--erp-table-text) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Existing table containers own keyboard focus while arrow keys move selection. */
+.erp-classic-tables :is(.stock-table, .stock-bulk-workspace-table-wrap, .customer-documents-table-body):focus-visible .selected,
+.erp-classic-tables :is(.stock-row, .party-directory-row, .customer-documents-row, tbody > tr):focus-visible,
+.erp-classic-tables .bulk-edit-row:not(.bulk-edit-head):focus-within {
+  outline: 2px solid var(--erp-table-focus) !important;
+  outline-offset: -2px;
+}
+
+.erp-classic-tables .stock-detail-row.total {
+  --erp-table-row-bg: var(--erp-table-stripe);
+  font-weight: 700;
+}
+
+/* Do not change virtual row heights (44px documents / 32px import review). */
+.erp-classic-tables .customer-documents-table-body .customer-documents-row {
+  border-bottom-color: var(--erp-table-line);
+}
+
+.erp-classic-tables .customer-documents-table-body [role="cell"] {
+  padding: 5px 8px;
+  align-content: center;
+  border-right-color: var(--erp-table-line);
+  font-size: 13px;
+}
+
+/* Editors and thumbnails need more height than read-only lists. Preserve their
+   input layout and semantic changed/invalid/error/assigned backgrounds. */
+.erp-classic-tables .bulk-edit-row:not(.bulk-edit-head) > * {
+  border-right: 1px solid var(--erp-table-line);
+}
+
+.erp-classic-tables .stock-bulk-image-row:not(.head, .error, .assigned, .multipleMatches, .productAlreadyMatched, .uploaded) {
+  background: #fff;
+}
+
+.erp-classic-tables .stock-bulk-image-row:not(.head, .error, .assigned, .multipleMatches, .productAlreadyMatched, .uploaded):nth-child(even of .stock-bulk-image-row:not(.head)) {
+  background: var(--erp-table-stripe);
+}
+
+.erp-classic-tables .stock-bulk-image-row:not(.head, .error, .assigned, .multipleMatches, .productAlreadyMatched, .uploaded):hover {
+  background: var(--erp-table-hover);
+}
+
+.erp-classic-tables .receivable-row.overdue {
+  --erp-table-row-bg: #fff2f0;
+}
+
+/* Promotion configuration shares the desktop table; keep its action buttons. */
+.erp-classic-tables .promotion-table {
+  gap: 0;
+  align-content: start;
+  border: 1px solid var(--erp-table-border);
+  border-radius: 0;
+  color: var(--erp-table-text);
+}
+.erp-classic-tables .promotion-row {
+  min-height: 36px !important;
+  gap: 0;
+  padding: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--erp-table-line);
+  box-shadow: none !important;
+  font-size: 13px;
+}
+.erp-classic-tables .promotion-row > span {
+  min-width: 0;
+  padding: 5px 8px;
+  align-content: center;
+  border-right: 1px solid var(--erp-table-line);
+}
+.erp-classic-tables .promotion-row:not(.promotion-row-head) { background: var(--erp-promotion-row-bg, #fff) !important; color: var(--erp-table-text) !important; }
+.erp-classic-tables :where(.promotion-row:nth-child(even of .promotion-row:not(.promotion-row-head))) { --erp-promotion-row-bg: var(--erp-table-stripe); }
+.erp-classic-tables :where(.promotion-row:not(.promotion-row-head)):hover { --erp-promotion-row-bg: var(--erp-table-hover); }
+.erp-classic-tables .promotion-row.selected { --erp-promotion-row-bg: var(--erp-table-selected); box-shadow: none !important; }
+.erp-classic-tables .promotion-row-head {
+  background: var(--erp-table-header) !important;
+  color: #fff !important;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+}
+.erp-classic-tables .promotion-list-panel { grid-template-rows: auto auto minmax(0, 1fr); }
+.erp-classic-tables .promotion-list-panel > .erp-filter-search-controls { display: grid; align-content: start; gap: 6px; }
+.erp-classic-tables .promotion-list-panel .erp-search-frame { display: flex; align-items: center; gap: 8px; min-height: 34px; border: 1px solid var(--erp-table-border); padding-inline: 8px; }
+.erp-classic-tables .promotion-list-panel .erp-search-frame input { flex: 1; min-width: 0; height: 32px; border: 0; box-shadow: none; outline: none; }
+.erp-classic-tables .promotion-list-panel .erp-search-frame:focus-within { outline: 2px solid #2f78b9; outline-offset: -2px; }

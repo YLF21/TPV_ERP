@@ -1,0 +1,72 @@
+@import "./ErpClassicTables.css" screen;
+
+/* Warehouse product/supplier pickers opt in on desktop. Keep thumbnail row height,
+   column templates, scrolling, status badges and the selection commands. */
+@media screen {
+  .warehouse-picker-classic :is(.warehouse-supplier-table, .sale-product-search-table) {
+    border: 1px solid var(--erp-table-border);
+    border-radius: 0;
+    color: var(--erp-table-text);
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+  }
+  .warehouse-picker-classic .warehouse-supplier-table { grid-template-rows: 36px minmax(0, 1fr); }
+  .warehouse-picker-classic :is(.warehouse-supplier-table-header, .sale-product-search-head) {
+    min-height: 36px !important;
+    height: 36px !important;
+    background: var(--erp-table-header) !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+  }
+  .warehouse-picker-classic :is(.warehouse-supplier-table-header, .sale-product-search-head) > * {
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 0 8px !important;
+    border-right: 1px solid var(--erp-table-line);
+    color: inherit;
+    text-align: left;
+    align-content: center;
+  }
+  .warehouse-picker-classic .sale-product-search-head .table-layout-sort-button {
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: none;
+    text-align: left;
+  }
+  .warehouse-picker-classic .sale-product-search-head > span:is(:hover, :focus-within) .table-layout-sort-indicator { opacity: 1 !important; }
+  .warehouse-picker-classic .warehouse-supplier-table-body { background: #fff; }
+  .warehouse-picker-classic :is(.warehouse-supplier-table-row, .sale-product-search-row) {
+    box-sizing: border-box;
+    background: var(--warehouse-picker-row, #fff) !important;
+    color: var(--erp-table-text) !important;
+    border-bottom: 1px solid var(--erp-table-line);
+    border-radius: 0;
+    box-shadow: none !important;
+    outline: none !important;
+    font-size: 13px;
+  }
+  .warehouse-picker-classic .warehouse-supplier-table-row { min-height: 36px; padding: 0; }
+  .warehouse-picker-classic :is(.warehouse-supplier-table-row, .sale-product-search-row) > * {
+    border-right-color: var(--erp-table-line);
+    color: inherit;
+    font-size: 13px;
+  }
+  .warehouse-picker-classic .warehouse-supplier-table-row > * { padding: 5px 8px; }
+  .warehouse-picker-classic :where(.warehouse-supplier-table-row, .sale-product-search-row):nth-child(even) {
+    --warehouse-picker-row: var(--erp-table-stripe);
+  }
+  .warehouse-picker-classic :where(.warehouse-supplier-table-row, .sale-product-search-row):hover {
+    --warehouse-picker-row: var(--erp-table-hover);
+  }
+  .warehouse-picker-classic :is(.warehouse-supplier-table-row, .sale-product-search-row).selected {
+    --warehouse-picker-row: var(--erp-table-selected);
+  }
+  .warehouse-picker-classic :is(.warehouse-supplier-table-row, .sale-product-search-row):focus-visible {
+    outline: 2px solid var(--erp-table-focus) !important;
+    outline-offset: -2px;
+  }
+  .warehouse-picker-classic .sale-product-search-field > .erp-filter-applied { grid-column: 1 / -1; margin: 0; }
+}

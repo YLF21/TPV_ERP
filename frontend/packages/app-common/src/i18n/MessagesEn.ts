@@ -1,5 +1,10 @@
 export class MessagesEn {
   static readonly values: Record<string, string> = {
+    "filters.applied": "Applied filters",
+    "party.filter.fields": "Field filters",
+    "filters.remove": "Remove filter",
+    "filters.clearAll": "Clear all",
+    "filters.resetWeek": "Reset period to Week",
     "stock.history.saas.allStores": "All stores",
     "stock.history.saas.view": "History view",
     "stock.history.saas.detail": "Detail",
@@ -210,7 +215,7 @@ export class MessagesEn {
     "stock.all": "All",
     "stock.warehouse": "Warehouse",
     "stock.warehouse.local": "Local warehouse",
-    "stock.warehouse.total": "TOTAL",
+    "stock.warehouse.total": "ALL",
     "stock.nav.inputWarehouse": "Warehouse input",
     "stock.nav.outputWarehouse": "Warehouse output",
     "stock.settings": "Settings",
@@ -1563,6 +1568,8 @@ export class MessagesEn {
     "salesReport.connection": "Connection",
     "connection.saasOnline": "Connected to SaaS",
     "connection.saasOffline": "No connection to SaaS",
+    "connection.check": "Check SaaS connection",
+    "connection.checking": "Checking SaaS connection",
     "connection.backendAddress": "Store backend address",
     "salesReport.invoicedTicketTotal": "Invoiced tickets",
     "salesReport.invoicedTicketCount": "Invoiced tickets",

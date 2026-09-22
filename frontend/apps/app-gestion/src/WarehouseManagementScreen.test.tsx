@@ -63,6 +63,21 @@ afterEach(() => {
 });
 
 describe("WarehouseManagementScreen", () => {
+  it("removes the search tag without changing selection or reloading warehouses", async () => {
+    render(<WarehouseManagementScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    const generalRow = await screen.findByRole("row", { name: /GENERAL/ });
+    const search = screen.getByRole("searchbox");
+    fireEvent.change(search, { target: { value: "GENERAL" } });
+    expect(screen.getByRole("group", { name: "filters.applied" })).toHaveTextContent("warehouse.management.search: GENERAL");
+    expect(screen.queryByRole("row", { name: /SECUNDARIO/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove warehouse.management.search" }));
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("row", { name: /SECUNDARIO/ })).toBeInTheDocument();
+    expect(generalRow).toHaveAttribute("aria-selected", "true");
+    expect(api.loadManagedWarehouses).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(search).toHaveFocus());
+  });
+
   it("loads real warehouses and keeps GENERAL protected without physical delete actions", async () => {
     render(<WarehouseManagementScreen session={session(["GESTION_ALMACEN"])} t={t} />);
 

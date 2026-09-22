@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ApiError, userCanManageWarehouses, type UserSession } from "@tpverp/app-common";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   createManagedWarehouse,
   loadManagedWarehouses,
@@ -39,6 +40,7 @@ export function WarehouseManagementScreen({ session, t }: WarehouseManagementScr
   const [warehouses, setWarehouses] = useState<WarehouseManagementRecord[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(canManage);
   const [loadError, setLoadError] = useState("");
   const [operationStatus, setOperationStatus] = useState("");
@@ -177,6 +179,7 @@ export function WarehouseManagementScreen({ session, t }: WarehouseManagementScr
         <label>
           <span>{t("warehouse.management.search")}</span>
           <input
+            ref={searchRef}
             type="search"
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
@@ -185,6 +188,10 @@ export function WarehouseManagementScreen({ session, t }: WarehouseManagementScr
         </label>
         <span>{t("warehouse.management.results").replace("{count}", String(visibleWarehouses.length))}</span>
       </div>
+
+      <ErpFilterChips translate={t} focusRef={searchRef}
+        chips={search.trim() ? [{ key: "search", label: t("warehouse.management.search"), value: search.trim(), onRemove: () => setSearch("") }] : []}
+        onClear={() => setSearch("")} />
 
       {operationStatus && <p className="gestion-warehouse-operation-status" role="status">{operationStatus}</p>}
 

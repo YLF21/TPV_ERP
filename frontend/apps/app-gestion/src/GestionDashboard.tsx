@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, ArrowDown, ArrowUp, ChartBar, ChartLine, Check, FloppyDisk, Info, SlidersHorizontal, Table, User } from "@phosphor-icons/react";
 import { OperationalStatusCard, type LocaleCode, type UserSession } from "@tpverp/app-common";
+import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   dashboardPeriodRange, dashboardPreset, dashboardWidgetDefaults, defaultDashboardOptions,
   loadActivePromotions, loadControlAlertsSummary, loadDashboardPreference, loadDashboardWarehouses, loadSalesOverview,
@@ -50,10 +51,12 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
   const [range, setRange] = useState<DashboardDateRange>({ from: "", to: "" });
   const [rangeDraft, setRangeDraft] = useState(range);
   const [period, setPeriod] = useState<DashboardOptions["defaultPeriod"] | "CUSTOM">("MONTH");
+  const [appliedPeriod, setAppliedPeriod] = useState<DashboardOptions["defaultPeriod"] | "CUSTOM">("MONTH");
   const [rangeError, setRangeError] = useState(false);
   const [warehouseId, setWarehouseId] = useState("");
   const [warehouses, setWarehouses] = useState<DashboardWarehouse[]>([]);
   const [warehouseError, setWarehouseError] = useState(false);
+  const periodRef = useRef<HTMLSelectElement>(null);
   const widgets = draft?.widgets ?? preference?.widgets ?? [];
   const options = draft?.options ?? preference?.options ?? defaultDashboardOptions;
   const availableWidgets = preference?.availableWidgets ?? [];
@@ -81,6 +84,7 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
       const businessDate = value.businessDate ?? storeBusinessDate(value.storeTimezone);
       const nextRange = dashboardPeriodRange(normalized.options.defaultPeriod, businessDate);
       setRange(nextRange); setRangeDraft(nextRange); setPeriod(normalized.options.defaultPeriod);
+      setAppliedPeriod(normalized.options.defaultPeriod);
     }).catch(() => { if (active) setPreferenceError(true); })
       .finally(() => { if (active) setPreferenceLoading(false); });
     return () => { active = false; };
@@ -124,6 +128,7 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
     if (next === "CUSTOM") return;
     const nextRange = dashboardPeriodRange(next, storeBusinessDate(preference?.storeTimezone));
     setRange(nextRange); setRangeDraft(nextRange); setRangeError(false);
+    setAppliedPeriod(next);
   };
   const refreshData = () => {
     // Relative periods follow the current store day, even when the workspace stays open overnight.
@@ -135,6 +140,15 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
     setSelectedKey(preset === "PRODUCTS" ? "sales.top-products" : "sales.trend");
   };
   const showDataError = sales.error || promotions.error || alerts.error;
+  const defaultPeriod = preference?.options.defaultPeriod ?? defaultDashboardOptions.defaultPeriod;
+  const filterChips: ErpFilterChip[] = [];
+  if (validRange && appliedPeriod !== defaultPeriod) {
+    filterChips.push({ key: "period", label: t("gestion.dashboard.period"),
+      value: formatDashboardRange(range.from, range.to, locale), onRemove: () => applyPeriod(defaultPeriod) });
+  }
+  if (warehouseId) filterChips.push({ key: "warehouse", label: t("gestion.dashboard.warehouse"),
+    value: warehouses.find(warehouse => warehouse.id === warehouseId)?.name ?? warehouseId,
+    onRemove: () => setWarehouseId("") });
   return <section className={`gestion-workspace gd-workspace ${customizing ? "is-customizing" : ""} ${options.density === "COMPACT" ? "is-compact" : ""}`}>
     <header className="gd-toolbar"><div><h2>{t(customizing ? "gestion.dashboard.customizeTitle" : "gestion.dashboard")}</h2>
       <p>{t(customizing ? "gestion.dashboard.customizeSubtitle" : "gestion.dashboard.subtitle")}</p></div>
@@ -150,7 +164,7 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
       <div className="gd-main">
         {customizing && <div className="gd-user-notice"><Info size={19} aria-hidden="true" />{t("gestion.dashboard.userNotice")}</div>}
         {hasSales && <section className="gd-filters" aria-label={t("gestion.dashboard.period")}>
-          <label><span>{t("gestion.dashboard.period")}</span><select value={period} onChange={(event) => applyPeriod(event.target.value as typeof period)}>
+          <label><span>{t("gestion.dashboard.period")}</span><select ref={periodRef} value={period} onChange={(event) => applyPeriod(event.target.value as typeof period)}>
             {periods.map((value) => <option value={value} key={value}>{t(`gestion.dashboard.period.${value}`)}</option>)}<option value="CUSTOM">{t("gestion.dashboard.period.CUSTOM")}</option>
           </select></label>
           <label><span>{t("gestion.dashboard.from")}</span><input type="date" value={rangeDraft.from} onChange={(event) => { setRangeDraft({ ...rangeDraft, from: event.target.value }); setPeriod("CUSTOM"); }} /></label>
@@ -159,11 +173,14 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
           {(rangeDraft.from !== range.from || rangeDraft.to !== range.to) && <button type="button" className="gd-date-apply" onClick={() => {
             if (!validDashboardRange(rangeDraft)) { setRangeError(true); return; }
             setRange(rangeDraft); setRangeError(false);
+            setAppliedPeriod("CUSTOM");
           }}>{t("gestion.dashboard.apply")}</button>}
           <label className="gd-warehouse"><span>{t("gestion.dashboard.warehouse")}</span><select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}>
             <option value="">{t("gestion.dashboard.allWarehouses")}</option>{warehouses.map((warehouse) => <option value={warehouse.id} key={warehouse.id}>{warehouse.name}</option>)}
           </select></label>
         </section>}
+        {hasSales && <ErpFilterChips translate={t} chips={filterChips} focusRef={periodRef}
+          onClear={() => { setWarehouseId(""); applyPeriod(defaultPeriod); }} />}
         {rangeError && <p className="gd-inline-error" role="alert">{t("gestion.dashboard.invalidRange")}</p>}
         {warehouseError && <p className="gd-inline-error" role="alert">{t("gestion.dashboard.warehouseError")}<button type="button" onClick={refreshData}>{t("gestion.dashboard.retry")}</button></p>}
         {hasSales && <div className="gd-scope-note"><span title={t("gestion.dashboard.salesScopeDetail")}><Info size={14} aria-hidden="true" />{t("gestion.dashboard.salesScope")}</span>

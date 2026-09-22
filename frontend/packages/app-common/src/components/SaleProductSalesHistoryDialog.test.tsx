@@ -131,4 +131,26 @@ describe("SaleProductSalesHistoryDialog", () => {
     fireEvent.keyDown(store, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it("uses the same removable applied criteria in the F6 product history entry point", async () => {
+    render(<SaleProductSalesHistoryDialog products={[product]} initialProduct={product}
+      locale="es" accessToken="access-token" onClose={vi.fn()} />);
+    await screen.findByText("SIN DATOS");
+    fireEvent.click(screen.getByRole("button", { name: "Tienda" }));
+    fireEvent.click(screen.getByRole("option", { name: "S01 · Principal" }));
+    await screen.findByText("SIN DATOS");
+    fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Período" }));
+    await waitFor(() => {
+      const path = apiRequestMock.mock.calls.filter(([value]) => value.includes("/sales-history/saas?")).at(-1)![0];
+      const query = new URL(path, "http://local.test").searchParams;
+      expect(query.has("from")).toBe(false);
+      expect(query.has("to")).toBe(false);
+      expect(query.get("storeIds")).toBe("store-1");
+      expect(query.get("size")).toBe("200");
+    });
+    expect(screen.queryByRole("button", { name: "Quitar filtro Período" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Quitar filtro Tienda" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Comparación por tienda" }).getAttribute("aria-pressed")).toBe("true");
+  });
 });

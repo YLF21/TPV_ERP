@@ -24,6 +24,7 @@ type StockBulkFilterDialogProps = {
   families: StockTopSalesFamilyNode[];
   suppliers: StockBulkFilterOption[];
   taxes: StockBulkFilterOption[];
+  allowIndependentSubfamily?: boolean;
   onApply: (value: StockBulkFilterCriteria) => void;
   onClose: () => void;
 };
@@ -58,6 +59,7 @@ export function StockBulkFilterDialog({
   families,
   suppliers,
   taxes,
+  allowIndependentSubfamily = false,
   onApply,
   onClose
 }: StockBulkFilterDialogProps) {
@@ -72,6 +74,11 @@ export function StockBulkFilterDialog({
   if (!open) return null;
 
   const selectedFamily = families.find((family) => family.id === draft.familyId);
+  const subfamilyOptions = selectedFamily
+    ? selectedFamily.subfamilies.map(subfamily => ({ value: subfamily.id, label: subfamily.name }))
+    : allowIndependentSubfamily
+      ? families.flatMap(family => family.subfamilies.map(subfamily => ({ value: subfamily.id, label: `${family.name} / ${subfamily.name}` })))
+      : [];
   const error = validateStockBulkFilter(draft);
   const activeCount = countActiveStockBulkFilters(draft);
   const update = (patch: Partial<StockBulkFilterCriteria>) => setDraft((current) => ({
@@ -156,11 +163,11 @@ export function StockBulkFilterDialog({
             <span>{t("stock.column.subfamily")}</span>
             <ErpSelect
               aria-label={t("stock.column.subfamily")}
-              disabled={!selectedFamily}
+              disabled={!selectedFamily && !allowIndependentSubfamily}
               value={draft.subfamilyId ?? ""}
               options={[
                 { value: "", label: t("stock.filter.all") },
-                ...(selectedFamily?.subfamilies.map((subfamily) => ({ value: subfamily.id, label: subfamily.name })) ?? [])
+                ...subfamilyOptions
               ]}
               onChange={(next) => update({ subfamilyId: optionValue(next) })}
               onCommit={() => moveFromActiveControl("next")}

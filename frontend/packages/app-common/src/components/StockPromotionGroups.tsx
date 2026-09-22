@@ -18,6 +18,7 @@ import {
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSorting";
+import { sortProductTableRows } from "./productCodeSorting";
 
 export const stockPromotionGroupsMessageKeys = {
   tableLabel: "stock.promotions",
@@ -218,7 +219,7 @@ export function StockPromotionGroups({
     username,
     tableKey: "stock.promotions.products",
     columns: stockPromotionProductColumns.map((column) => column.key),
-    defaultSort: null,
+    defaultSort: app === "venta" ? { column: "code", direction: "asc" } : null,
     persistent: Boolean(username)
   });
   const visibleGroupColumns = visibleTableColumns(groupTableLayout.layout);
@@ -589,7 +590,7 @@ function PromotionProductsTable({
   }
 
   const visibleColumns = visibleTableColumns(tableLayout.layout);
-  const sortedProducts = sortTableRows(products, sort, (product, column) => {
+  const sortedProducts = sortProductTableRows(products, sort, (product, column) => {
     if (column === "code") return product.code;
     if (column === "name") return product.name;
     if (column === "family") return product.familyName || product.familyId;

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest } from "../api/client";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
+import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
+import "./WarehouseClassicTables.css";
+import "./ErpSearchField.css";
 
 export type PurchaseDocument = {
   id: string;
@@ -71,6 +74,7 @@ type PagedResult<T> = {
 };
 
 type GoodsCheckPanelProps = {
+  app?: AppKind;
   locale: LocaleCode;
   token?: string;
   t: (key: string) => string;
@@ -197,7 +201,7 @@ export async function loadGoodsCheckDocuments(token: string) {
     .sort((left, right) => (right.date ?? right.fecha ?? "").localeCompare(left.date ?? left.fecha ?? "") || (right.number ?? right.numero ?? "").localeCompare(left.number ?? left.numero ?? ""));
 }
 
-export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers = [], separateWorkflow = false, onWorkflowViewChange }: GoodsCheckPanelProps) {
+export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = [], suppliers = [], separateWorkflow = false, onWorkflowViewChange }: GoodsCheckPanelProps) {
   const [documents, setDocuments] = useState<PurchaseDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [search, setSearch] = useState("");
@@ -214,6 +218,8 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
   const [workflowView, setWorkflowView] = useState<"documents" | "check">("documents");
   const [documentSort, setDocumentSort] = useState<TableSort<GoodsCheckDocumentSortColumn> | null>(null);
   const codeRef = useRef<HTMLInputElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const allLinesRef = useRef<HTMLButtonElement | null>(null);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { maximumFractionDigits: 3 }
@@ -247,6 +253,13 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
     [check, lineFilter]);
   const activeDocument = displayDocuments.find((document) => document.id === check?.documentId) ?? selectedDocument;
   const { balanced: balancedLines, percent: progressPercent } = goodsCheckProgress(check);
+  const documentFilterChips: ErpFilterChip[] = [];
+  if (search.trim()) documentFilterChips.push({
+    key: "search", label: t("salesReport.search"), value: search.trim(), onRemove: () => setSearch("")
+  });
+  if (typeFilter !== "all") documentFilterChips.push({
+    key: "type", label: t("goodsCheck.column.type"), value: t(`goodsCheck.filter.${typeFilter}`), onRemove: () => setTypeFilter("all")
+  });
 
   function openWorkflowView(nextView: "documents" | "check") {
     setWorkflowView(nextView);
@@ -396,6 +409,8 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
             <label className="goods-check-search">
               <span>{t("salesReport.search")}</span>
               <input
+                ref={searchRef}
+                className={app !== "pda" ? "erp-search-input" : undefined}
                 type="search"
                 value={search}
                 placeholder={t("goodsCheck.searchPlaceholder")}
@@ -427,6 +442,9 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
               </button>
             ))}
           </div>
+          {app !== "pda" && <ErpFilterChips locale={locale} chips={documentFilterChips}
+            className="goods-check-document-filter-chips" focusRef={searchRef}
+            onClear={() => { setSearch(""); setTypeFilter("all"); }} />}
           <div className="goods-check-documents-summary">
             <div>
               <strong>{t("goodsCheck.availableDocuments")}</strong>
@@ -445,7 +463,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
             </button>
           )}
         </header>
-        <div className="stock-history-table-scroll goods-check-document-list">
+        <div className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
           {loading ? (
             <div className="goods-check-empty" role="status" aria-live="polite">
               <strong>{t("common.loading")}</strong>
@@ -556,7 +574,7 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
               <progress max="100" value={progressPercent}>{progressPercent}%</progress>
             </section>
             <div className="goods-check-progress" role="group" aria-label={t("goodsCheck.progress")}>
-              <button type="button" className={lineFilter === "all" ? "selected" : ""} onClick={() => setLineFilter("all")}>
+              <button ref={allLinesRef} type="button" className={lineFilter === "all" ? "selected" : ""} onClick={() => setLineFilter("all")}>
                 <span>{t("goodsCheck.filter.linesAll")}</span><strong>{check.todos.length}</strong>
               </button>
               <button type="button" className={lineFilter === "missing" ? "selected" : ""} onClick={() => setLineFilter("missing")}>
@@ -571,7 +589,12 @@ export function GoodsCheckPanel({ locale, token, t, warehouses = [], suppliers =
                 <strong>{check.todos.filter((item) => Number(item.extraQuantity) > 0).length}</strong>
               </span>
             </div>
-            <div className="stock-history-table-scroll goods-check-lines">
+            {app !== "pda" && <ErpFilterChips locale={locale} className="goods-check-line-filter-chips" focusRef={allLinesRef}
+              chips={lineFilter === "all" ? [] : [{ key: "lines", label: t("salesReport.column.lines"),
+                value: t(lineFilter === "missing" ? "goodsCheck.filter.linesDifferences" : "goodsCheck.filter.linesRegistered"),
+                onRemove: () => setLineFilter("all") }]}
+              onClear={() => setLineFilter("all")} />}
+            <div className={`stock-history-table-scroll goods-check-lines${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
               <table className="report-table">
                 <thead>
                   <tr>

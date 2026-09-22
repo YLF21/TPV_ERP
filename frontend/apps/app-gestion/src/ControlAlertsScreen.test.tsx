@@ -258,8 +258,10 @@ describe("control alert timeline", () => {
     await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ type: "TICKET_CANCELLED", page: 0 }), "manager-token", expect.any(AbortSignal)));
     fireEvent.change(screen.getByRole("combobox", { name: "gestion.controlAlerts.filterStatus" }), { target: { value: "NEW" } });
     await waitFor(() => expect(api.loadControlAlertGroups).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), "manager-token", expect.any(AbortSignal), expect.objectContaining({ status: "NEW" })));
-    fireEvent.click(within(strip).getByRole("button", { name: /gestion.controlAlerts.all/ }));
-    await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ type: "" }), "manager-token", expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.controlAlerts.filterType" }));
+    await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ type: "", status: "NEW", page: 0 }), "manager-token", expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.controlAlerts.filterStatus" }));
+    await waitFor(() => expect(api.loadControlAlertGroups).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), "manager-token", expect.any(AbortSignal), expect.objectContaining({ status: "" })));
   });
 
   it("keeps valid rows visible when a refresh fails", async () => {

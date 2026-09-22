@@ -24,6 +24,32 @@ afterEach(() => {
 });
 
 describe("VoucherManagementScreen", () => {
+  it("keeps unapplied edits out of chips and removes only the selected server filter", async () => {
+    const requests: URL[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname.includes("/vouchers/management")) {
+        requests.push(url);
+        return response({ items: [], page: 0, size: 50, totalElements: 0, totalPages: 1 });
+      }
+      return response({});
+    }));
+    const t = createTranslator("es");
+    render(<VoucherManagementScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "SERVIDOR" }} t={t} />);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "V-" } });
+    fireEvent.change(screen.getByLabelText(t("gestion.vouchers.from")), { target: { value: "2026-08-01" } });
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t("gestion.vouchers.apply") }));
+    await waitFor(() => expect(requests.at(-1)?.searchParams.get("query")).toBe("V-"));
+    fireEvent.click(screen.getByRole("button", { name: `Quitar filtro ${t("gestion.vouchers.search")}` }));
+    await waitFor(() => expect(requests.at(-1)?.searchParams.has("query")).toBe(false));
+    expect(requests.at(-1)?.searchParams.get("from")).toBe("2026-08-01");
+    expect(requests.at(-1)?.searchParams.get("page")).toBe("0");
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByLabelText(t("gestion.vouchers.from"))).toHaveValue("2026-08-01");
+  });
+
   it("shows expiry, opens traceability and limits reactivation to expired vouchers", async () => {
     const voucher = {
       code: "VEXP",

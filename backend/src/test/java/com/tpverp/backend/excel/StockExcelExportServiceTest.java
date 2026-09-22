@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.UUID;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.ResultSetExtractor;
@@ -95,6 +97,48 @@ class StockExcelExportServiceTest {
         assertThatThrownBy(() -> service.create(UUID.randomUUID(), "USER", false, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("stock_excel_export_columns_required");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"code,asc", "code,desc", "ranking,asc", "ranking,desc"})
+    void topSalesExportsNaturalCodeOrderWithoutChangingSalesRank(String sortBy, String direction) throws Exception {
+        var topSales = mock(StockTopSalesService.class);
+        var storeId = UUID.randomUUID();
+        var from = LocalDate.of(2026, 8, 1);
+        var to = LocalDate.of(2026, 8, 17);
+        var rankedCodes = List.of("10", "2", "1", "P10", "P02", "P2");
+        when(topSales.topSales(storeId, from, to, null)).thenReturn(rankedCodes.stream()
+                .map(code -> new StockTopSalesRow(UUID.randomUUID(), code, "",
+                        List.of("A", "B", "a", "b", "z", "c").get(rankedCodes.indexOf(code)),
+                        null, "GENERAL", null, "-", List.of(),
+                        BigDecimal.valueOf(100 - Math.max(0, rankedCodes.indexOf(code) - 3)), BigDecimal.ONE,
+                        BigDecimal.ONE, UUID.randomUUID(), "GENERAL"))
+                .toList());
+        var service = new StockExcelExportService(mock(JdbcTemplate.class), topSales);
+        var request = new StockExcelExportService.ExportRequest(
+                "TOP_SALES", null, null, null, null, null, null, null, null, null,
+                sortBy, direction, "es", from, to, null, null, null,
+                List.of(new StockExcelExportService.ExportColumn("code", "Codigo"),
+                        new StockExcelExportService.ExportColumn("ranking", "Posicion")));
+        var job = service.create(storeId, "ADMIN", true, request);
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        var expectedCodes = "code".equals(sortBy)
+                ? ("asc".equals(direction) ? List.of("1", "2", "10", "P02", "P2", "P10")
+                        : List.of("P10", "P02", "P2", "10", "2", "1"))
+                : ("asc".equals(direction) ? rankedCodes : rankedCodes.reversed());
+        try (var workbook = new XSSFWorkbook(Files.newInputStream(file.path()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getLastRowNum()).isEqualTo(expectedCodes.size());
+            for (int index = 0; index < expectedCodes.size(); index++) {
+                var row = sheet.getRow(index + 1);
+                assertThat(row.getCell(0).getStringCellValue()).isEqualTo(expectedCodes.get(index));
+                assertThat(row.getCell(1).getNumericCellValue())
+                        .isEqualTo(rankedCodes.indexOf(expectedCodes.get(index)) + 1);
+            }
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
     }
 
     @Test

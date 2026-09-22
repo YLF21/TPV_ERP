@@ -100,7 +100,7 @@ export function FiscalWorkspaceDialog({
 
   return createPortal(
     <div
-      className={`gestion-modal-backdrop fiscal-workspace-dialog-backdrop ${isDrawer ? "has-drawer" : ""}`}
+      className={`gestion-modal-backdrop fiscal-workspace-dialog-backdrop gestion-classic-tables erp-classic-tables ${isDrawer ? "has-drawer" : ""}`}
       role="presentation"
       onMouseDown={(event) => {
         if (!closeDisabled && event.target === event.currentTarget) onClose();

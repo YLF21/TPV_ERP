@@ -19,6 +19,20 @@ const rows = [
 afterEach(cleanup);
 
 describe("TaxSettingsScreen", () => {
+  it.each(["es", "en", "zh"] as const)("filters the full list and restores it through its localized chip (%s)", async locale => {
+    const t = createTranslator(locale);
+    const request = vi.fn(async () => rows);
+    render(<TaxSettingsScreen session={taxManager} t={t} request={request as unknown as typeof apiRequest} />);
+    await screen.findByText("21 %");
+    fireEvent.change(screen.getByRole("searchbox", { name: t("party.searchLabel") }), { target: { value: "21" } });
+    expect(screen.queryByText("7 %")).toBeNull();
+    expect(screen.getByRole("group", { name: t("filters.applied") })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: `${t("filters.remove")} ${t("party.searchLabel")}` }));
+    expect(screen.getByText("7 %")).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: t("party.searchLabel") }).getAttribute("value")).toBe("");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("allows TAXES_MANAGE to create, edit, activate and set the default tax", async () => {
     let current = [...rows];
     const request = vi.fn(async (path: string, options?: { method?: string; body?: { percentage?: number; active?: boolean } }) => {

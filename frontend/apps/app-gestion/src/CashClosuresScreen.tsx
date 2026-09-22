@@ -9,6 +9,7 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type UIEvent } from "react";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   loadCashClosureFilterOptions,
   loadCashClosures,
@@ -172,6 +173,15 @@ export function CashClosuresScreen({ session, t }: Props) {
     setFilterOpen(false);
   }
 
+  function removeFilter(field: "period" | "terminalId" | "userId" | "onlyDiscrepancies") {
+    if (!options) return;
+    const reset: Partial<CashClosureFilters> = field === "period"
+      ? { from: options.businessDate, to: options.businessDate }
+      : field === "onlyDiscrepancies" ? { onlyDiscrepancies: false } : { [field]: "" };
+    setDraft((current) => current ? { ...current, ...reset } : current);
+    setFilters((current) => current ? { ...current, ...reset } : current);
+  }
+
   function refresh() {
     if (filters) {
       setFilters({ ...filters });
@@ -218,6 +228,15 @@ export function CashClosuresScreen({ session, t }: Props) {
           {t("gestion.cashClosures.filter")}
         </button>
       </div>
+
+      {filters && options && <ErpFilterChips translate={t} onClear={resetToday} chips={[
+        { key: "period", label: `${t("gestion.cashClosures.from")} / ${t("gestion.cashClosures.to")}`,
+          value: filters.from !== options.businessDate || filters.to !== options.businessDate ? `${formatBusinessDate(filters.from)} — ${formatBusinessDate(filters.to)}` : "",
+          onRemove: () => removeFilter("period") },
+        { key: "terminalId", label: t("gestion.cashClosures.terminal"), value: filters.terminalId ? options.terminals.find((option) => option.id === filters.terminalId)?.name ?? filters.terminalId : "", onRemove: () => removeFilter("terminalId") },
+        { key: "userId", label: t("gestion.cashClosures.user"), value: filters.userId ? options.users.find((option) => option.id === filters.userId)?.name ?? filters.userId : "", onRemove: () => removeFilter("userId") },
+        { key: "onlyDiscrepancies", label: t("gestion.cashClosures.onlyDiscrepancies"), value: filters.onlyDiscrepancies ? t("common.yes") : "", onRemove: () => removeFilter("onlyDiscrepancies") }
+      ]} />}
 
       {filterOpen && draft && options && (
         <form className="gestion-cash-closures-filters" onSubmit={applyFilters}>

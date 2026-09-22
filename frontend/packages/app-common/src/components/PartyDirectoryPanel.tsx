@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ErpSelect } from "./ErpSelect";
+import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
 import { PartyFormFields, type CommercialChannelOption } from "./PartyFormFields";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -13,16 +14,24 @@ import { SafeRetirementDialog, type RetirementResult } from "./SafeRetirementDia
 import { CustomerDocumentsDialog } from "./CustomerDocumentsDialog";
 import { CentralCustomerReuse } from "./CentralCustomerReuse";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
+import stockFilterIcon from "../assets/stock/filter.png";
+import "./PartyDirectoryFilters.css";
 
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
 export type PartyStatusFilter = "all" | "active" | "inactive";
 export type PartyDirectoryColumnKey = "code" | "name" | "document" | "phone" | "email" | "location" | "balance" | "status";
 export type PartyDirectorySort = { column: PartyDirectoryColumnKey; direction: "asc" | "desc" };
+export type PartyDirectoryFieldFilters = Partial<Record<"code" | "name" | "document" | "phone" | "email" | "location" | "category", string>>;
+
+function partyDirectoryFilterFields(kind: PartyDirectoryKind): Array<keyof PartyDirectoryFieldFilters> {
+  return ["code", "name", "document", "phone", "email", kind === "members" ? "category" : "location"];
+}
 
 type PartyDirectoryPreferences = {
   query: string;
   statusFilter: PartyStatusFilter;
   sort: PartyDirectorySort;
+  fieldFilters: PartyDirectoryFieldFilters;
 };
 
 export type PartyDirectoryPanelProps = {
@@ -207,14 +216,26 @@ export function filterPartyDirectoryEntries(
   kind: PartyDirectoryKind,
   query: string,
   statusFilter: PartyStatusFilter,
-  locale: LocaleCode
+  locale: LocaleCode,
+  fieldFilters: PartyDirectoryFieldFilters = {}
 ): PartyDirectoryEntry[] {
   const normalized = normalizedText(query.trim(), locale);
   return entries.filter((entry) => {
     const matchesQuery = !normalized || partyDirectorySearchValues(entry, kind)
       .some((value) => normalizedText(value, locale).includes(normalized));
     const matchesStatus = statusFilter === "all" || entry.active === (statusFilter === "active");
-    return matchesQuery && matchesStatus;
+    const matchesFields = partyDirectoryFilterFields(kind).every((field) => {
+      const criterion = normalizedText(fieldFilters[field]?.trim(), locale);
+      if (!criterion) return true;
+      let values: Array<string | null | undefined>;
+      if (field === "category") values = [(entry as MemberDirectoryView).categoryName];
+      else if (field === "name" && kind === "suppliers") {
+        const supplier = entry as SupplierView;
+        values = [supplier.legalName, supplier.tradeName];
+      } else values = [String(partyDirectorySortValue(entry, kind, field as PartyDirectoryColumnKey))];
+      return values.some(value => normalizedText(value, locale).includes(criterion));
+    });
+    return matchesQuery && matchesStatus && matchesFields;
   });
 }
 
@@ -223,7 +244,7 @@ export function partyDirectoryPreferenceStorageKey(app: AppKind, username: strin
 }
 
 function readPartyDirectoryPreferences(app: AppKind, username: string, kind: PartyDirectoryKind): PartyDirectoryPreferences {
-  const fallback: PartyDirectoryPreferences = { query: "", statusFilter: "all", sort: { column: "name", direction: "asc" } };
+  const fallback: PartyDirectoryPreferences = { query: "", statusFilter: "all", sort: { column: app === "venta" ? "code" : "name", direction: "asc" }, fieldFilters: {} };
   if (typeof localStorage === "undefined") return fallback;
   try {
     const saved = JSON.parse(localStorage.getItem(partyDirectoryPreferenceStorageKey(app, username, kind)) ?? "null") as Partial<PartyDirectoryPreferences> | null;
@@ -231,6 +252,10 @@ function readPartyDirectoryPreferences(app: AppKind, username: string, kind: Par
     return {
       query: typeof saved?.query === "string" ? saved.query : "",
       statusFilter: saved?.statusFilter === "active" || saved?.statusFilter === "inactive" ? saved.statusFilter : "all",
+      fieldFilters: app !== "pda" ? Object.fromEntries(partyDirectoryFilterFields(kind).flatMap(field => {
+        const value = saved?.fieldFilters?.[field];
+        return typeof value === "string" ? [[field, value]] : [];
+      })) : {},
       sort: saved?.sort && validColumns.has(saved.sort.column as PartyDirectoryColumnKey)
         ? { column: saved.sort.column as PartyDirectoryColumnKey, direction: saved.sort.direction === "desc" ? "desc" : "asc" }
         : fallback.sort
@@ -307,9 +332,15 @@ export function PartyDirectoryPanel({
   const [channels, setChannels] = useState<CommercialChannelOption[]>([]);
   const [query, setQuery] = useState(initialPreferences.query);
   const [statusFilter, setStatusFilter] = useState<PartyStatusFilter>(initialPreferences.statusFilter);
+  const [fieldFilters, setFieldFilters] = useState<PartyDirectoryFieldFilters>(initialPreferences.fieldFilters);
+  const [fieldFiltersOpen, setFieldFiltersOpen] = useState(false);
+  const fieldFiltersId = useId();
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
   const [sort, setSort] = useState<PartyDirectorySort>(initialPreferences.sort);
   const [memberCandidateQuery, setMemberCandidateQuery] = useState("");
   const [memberCandidateId, setMemberCandidateId] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const memberSearchRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [status, setStatus] = useState("");
@@ -333,6 +364,8 @@ export function PartyDirectoryPanel({
   const isSupplier = kind === "suppliers";
   const isMember = kind === "members";
   const managementMode = allowSafeRetirement && !isMember;
+  // Paged management endpoints only support the server-side query and status.
+  const supportsFieldFilters = app !== "pda" && !managementMode;
   const title = t(`party.${kind}.title`);
   const canWrite = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
@@ -471,17 +504,17 @@ export function PartyDirectoryPanel({
     try {
       localStorage.setItem(
         partyDirectoryPreferenceStorageKey(app, session.username, kind),
-        JSON.stringify({ query, statusFilter, sort })
+        JSON.stringify({ query, statusFilter, sort, ...(supportsFieldFilters ? { fieldFilters } : {}) })
       );
     } catch {
       // The directory remains usable when browser storage is unavailable.
     }
-  }, [app, kind, query, session.username, sort, statusFilter]);
+  }, [app, kind, query, session.username, sort, statusFilter, supportsFieldFilters, fieldFilters]);
 
   const rows = useMemo(() => {
-    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale);
+    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale, supportsFieldFilters ? fieldFilters : {});
     return managementMode ? filtered : sortPartyDirectoryEntries(filtered, kind, sort, locale);
-  }, [customers, members, suppliers, query, statusFilter, kind, locale, managementMode, sort]);
+  }, [customers, members, suppliers, query, statusFilter, kind, locale, managementMode, sort, supportsFieldFilters, fieldFilters]);
   const memberCandidates = useMemo(
     () => availableMemberCustomers(customers, memberCandidateQuery, locale),
     [customers, memberCandidateQuery, locale]
@@ -588,6 +621,21 @@ export function PartyDirectoryPanel({
       : isMember ? selectedMember?.memberId
         : (selected as CustomerView).clientId
     : null;
+  function fieldFilterLabel(field: keyof PartyDirectoryFieldFilters) {
+    return t(field === "category" ? "party.members.category" : `party.column.${field}`);
+  }
+  function clearDirectoryFilters() {
+    setQuery(""); setStatusFilter("all"); setFieldFilters({});
+  }
+  const activeFieldFilterCount = partyDirectoryFilterFields(kind).filter(field => fieldFilters[field]?.trim()).length;
+  const filterChips: ErpFilterChip[] = [
+    { key: "query", label: t("party.searchLabel"), value: query.trim(), onRemove: () => setQuery("") },
+    { key: "status", label: t("party.column.status"), value: statusFilter === "all" ? "" : t(`party.filter.status.${statusFilter}`), onRemove: () => setStatusFilter("all") },
+    ...(supportsFieldFilters ? partyDirectoryFilterFields(kind).map(field => ({
+      key: field, label: fieldFilterLabel(field), value: fieldFilters[field]?.trim() ?? "",
+      onRemove: () => setFieldFilters(current => ({ ...current, [field]: "" }))
+    })) : [])
+  ].filter((chip) => chip.value !== "");
   const memberDialogContent = selectedMember ? <>
     <div className="party-member-directory-detail">
       <section className="party-member-customer-summary" aria-label={t("party.members.customerIdentity")}>
@@ -604,8 +652,12 @@ export function PartyDirectoryPanel({
       <button type="button" onClick={closeDialog}>{t("common.cancel")}</button>
     </footer>
   </> : <>
-    <div className="party-member-customer-picker">
-      <input autoFocus aria-label={t("party.members.customerSearch")} type="search" value={memberCandidateQuery} onChange={(event) => { setMemberCandidateQuery(event.target.value); setMemberCandidateId(null); }} placeholder={t("party.members.customerSearch")} />
+    <div className="party-member-customer-picker" style={app !== "pda" ? { alignContent: "start" } : undefined}>
+      <input ref={memberSearchRef} autoFocus aria-label={t("party.members.customerSearch")} type="search" value={memberCandidateQuery} onChange={(event) => { setMemberCandidateQuery(event.target.value); setMemberCandidateId(null); }} placeholder={t("party.members.customerSearch")} />
+      {app !== "pda" && <ErpFilterChips locale={locale} focusRef={memberSearchRef} chips={memberCandidateQuery.trim() ? [{
+        key: "search", label: t("party.searchLabel"), value: memberCandidateQuery.trim(),
+        onRemove: () => { setMemberCandidateQuery(""); setMemberCandidateId(null); }
+      }] : []} onClear={() => { setMemberCandidateQuery(""); setMemberCandidateId(null); }} />}
       <div className="party-member-candidate-list" role="listbox" aria-label={t("party.members.selectCustomerTitle")}>
         {memberCandidates.map((customer) => <button
           type="button"
@@ -634,8 +686,8 @@ export function PartyDirectoryPanel({
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
       {canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
-    <div className="party-directory-toolbar">
-      <input aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />
+    <div className={`party-directory-toolbar${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}`}>
+      <input ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />
       <label className="party-directory-status-filter">
         <span>{t("party.column.status")}</span>
         <ErpSelect
@@ -649,7 +701,13 @@ export function PartyDirectoryPanel({
           }))}
         />
       </label>
-      {(query || statusFilter !== "all") && (
+      {supportsFieldFilters && <button ref={filterButtonRef} type="button" className="stock-filter-button party-directory-filter-button"
+        aria-label={t("salesReport.filter")} aria-expanded={fieldFiltersOpen} aria-controls={fieldFiltersId}
+        onClick={() => setFieldFiltersOpen(current => !current)}>
+        <img alt="" className="report-action-icon" src={stockFilterIcon} />
+        {t("salesReport.filter")}{activeFieldFilterCount > 0 ? ` (${activeFieldFilterCount})` : ""}
+      </button>}
+      {app === "pda" && (query || statusFilter !== "all") && (
         <button
           type="button"
           className="party-directory-clear-filters"
@@ -664,10 +722,27 @@ export function PartyDirectoryPanel({
       <span className="party-directory-result-count">
         {t("party.results").replace("{count}", String(rows.length))}
       </span>
-      {(query || statusFilter !== "all") && <div className="party-directory-active-filters" aria-label={t("party.filter.active")}>
+      {supportsFieldFilters && fieldFiltersOpen && <div id={fieldFiltersId} className="party-directory-filter-fields"
+        role="group" aria-label={t("party.filter.fields")}
+        onKeyDown={event => {
+          if (event.key === "Escape") {
+            event.preventDefault(); event.stopPropagation(); setFieldFiltersOpen(false); filterButtonRef.current?.focus();
+          }
+        }}>
+        {partyDirectoryFilterFields(kind).map(field => <label key={field}>
+          <span>{fieldFilterLabel(field)}</span>
+          <input type="text" value={fieldFilters[field] ?? ""} onChange={event => {
+            const value = event.target.value;
+            setFieldFilters(current => ({ ...current, [field]: value }));
+          }} />
+        </label>)}
+      </div>}
+      {app === "pda" && (query || statusFilter !== "all") && <div className="party-directory-active-filters" aria-label={t("party.filter.active")}>
         {query && <button type="button" onClick={() => setQuery("")}>{t("party.searchLabel")}: {query}<span aria-hidden="true"> ×</span></button>}
         {statusFilter !== "all" && <button type="button" onClick={() => setStatusFilter("all")}>{t("party.column.status")}: {t(`party.filter.status.${statusFilter}`)}<span aria-hidden="true"> ×</span></button>}
       </div>}
+      {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
+        className="party-directory-active-filters" onClear={clearDirectoryFilters} />}
     </div>
     <div className="party-directory-table" role="table" aria-label={title}>
       <div className="party-directory-row header" role="row" style={gridStyle}>

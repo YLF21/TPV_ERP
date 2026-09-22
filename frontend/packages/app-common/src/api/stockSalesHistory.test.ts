@@ -24,6 +24,20 @@ describe("SaaS product sales history", () => {
     expect(formatSaasHistoryDecimal("invalid", "es")).toBe("—");
   });
 
+  it("omits a cleared period while keeping bounded cursor pagination and remaining filters", () => {
+    const path = saasSalesHistoryPath("product-1", {
+      from: "", to: "", status: "PAGADO", storeIds: ["store-2"],
+      sortBy: "occurredAt", sortDirection: "desc",
+    }, "next-page");
+    const query = new URL(path, "http://local.test").searchParams;
+    expect(query.has("from")).toBe(false);
+    expect(query.has("to")).toBe(false);
+    expect(query.get("status")).toBe("PAGADO");
+    expect(query.get("storeIds")).toBe("store-2");
+    expect(query.get("size")).toBe("200");
+    expect(query.get("cursor")).toBe("next-page");
+  });
+
   it("ranks signed decimal strings exactly regardless of precision or scale", () => {
     expect(compareSaasHistoryDecimals("9007199254740993.001", "9007199254740993.002")).toBe(-1);
     expect(compareSaasHistoryDecimals("-0.001", "0")).toBe(-1);

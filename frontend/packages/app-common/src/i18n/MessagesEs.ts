@@ -1,5 +1,10 @@
 export class MessagesEs {
   static readonly values: Record<string, string> = {
+    "filters.applied": "Filtros aplicados",
+    "party.filter.fields": "Filtros por campo",
+    "filters.remove": "Quitar filtro",
+    "filters.clearAll": "Limpiar todos",
+    "filters.resetWeek": "Restablecer período a Semana",
     "stock.history.saas.allStores": "Todas las tiendas",
     "stock.history.saas.view": "Vista del historial",
     "stock.history.saas.detail": "Detalle",
@@ -213,7 +218,7 @@ export class MessagesEs {
     "stock.all": "Todos",
     "stock.warehouse": "Almacén",
     "stock.warehouse.local": "Almacén local",
-    "stock.warehouse.total": "TOTAL",
+    "stock.warehouse.total": "TODO",
     "stock.nav.inputWarehouse": "Entrada almacén",
     "stock.nav.outputWarehouse": "Salida almacén",
     "stock.settings": "Ajustes",
@@ -1568,6 +1573,8 @@ export class MessagesEs {
     "salesReport.connection": "Conexión",
     "connection.saasOnline": "Conectado con SaaS",
     "connection.saasOffline": "Sin conexión con SaaS",
+    "connection.check": "Comprobar conexión con SaaS",
+    "connection.checking": "Comprobando conexión con SaaS",
     "connection.backendAddress": "Dirección del backend de la tienda",
     "salesReport.invoicedTicketTotal": "Tickets facturados",
     "salesReport.invoicedTicketCount": "Tickets facturados",

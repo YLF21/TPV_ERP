@@ -12,6 +12,7 @@ import type {
   UserSession
 } from "../../../packages/app-common/src";
 import "./safe-management.css";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 
 type SupplierManagementScreenProps = {
   locale: LocaleCode;
@@ -349,6 +350,10 @@ function SalesRepresentativeManagementPanel({ locale, session }: SupplierManagem
           options={["all", "active", "inactive"].map((value) => ({ value, label: t(`party.filter.status.${value}`) }))}
         />
       </div>
+      <ErpFilterChips translate={t} chips={[
+        { key: "search", label: t("party.searchLabel"), value: query, onRemove: () => setQuery("") },
+        { key: "active", label: t("party.status"), value: activeFilter === "all" ? "" : t(`party.filter.status.${activeFilter}`), onRemove: () => setActiveFilter("all") }
+      ]} onClear={() => { setQuery(""); setActiveFilter("all"); }} />
       {status && <p className="product-create-status safe-management-notice" role={loadError ? "alert" : "status"}>{status}</p>}
       <div className="representative-management-table" role="table" aria-label={t("safeManagement.representatives.title")}>
         <div className="representative-management-row header" role="row">

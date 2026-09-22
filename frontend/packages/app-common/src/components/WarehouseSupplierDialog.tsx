@@ -12,6 +12,8 @@ import {
 } from "./PartyDirectoryPanel";
 import { PartyFormFields } from "./PartyFormFields";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { ErpFilterChips } from "./ErpFilterChips";
+import "./WarehouseDocumentClassicTables.css";
 
 type Props = {
   open: boolean;
@@ -19,6 +21,7 @@ type Props = {
   session?: UserSession;
   suppliers: SupplierView[];
   selectedId?: string;
+  tableTheme?: "erp-blue-classic";
   onClose: () => void;
   onSelected: (supplier: SupplierView) => void;
   onChanged: (supplier: SupplierView) => void;
@@ -36,12 +39,14 @@ export function WarehouseSupplierDialog({
   session,
   suppliers,
   selectedId = "",
+  tableTheme,
   onClose,
   onSelected,
   onChanged
 }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState(selectedId);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -161,7 +166,7 @@ export function WarehouseSupplierDialog({
   if (!open) return null;
 
   return (
-    <div className="filter-overlay warehouse-supplier-overlay" role="dialog" aria-modal="true" aria-labelledby="warehouse-supplier-title">
+    <div className={`filter-overlay warehouse-supplier-overlay${tableTheme ? " erp-classic-tables warehouse-picker-classic" : ""}`} role="dialog" aria-modal="true" aria-labelledby="warehouse-supplier-title">
       <section
         ref={dialogRef}
         className="filter-dialog party-create-dialog warehouse-supplier-dialog"
@@ -198,8 +203,11 @@ export function WarehouseSupplierDialog({
             <div className="warehouse-supplier-toolbar">
               <label className="warehouse-supplier-search">
                 <span>{t("warehouseDocument.supplierSearch")}</span>
-                <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />
+                <input ref={searchRef} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />
               </label>
+              {tableTheme && <ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
+                key: "search", label: t("warehouseDocument.supplierSearch"), value: query.trim(), onRemove: () => setQuery("")
+              }] : []} onClear={() => setQuery("")} />}
             </div>
             <div className="warehouse-supplier-table" role="table" aria-label={t("warehouseDocument.supplierListTitle")}>
               <div className="warehouse-supplier-table-header" role="row">

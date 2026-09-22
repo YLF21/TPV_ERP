@@ -20,6 +20,8 @@ import com.tpverp.backend.document.DocumentAttributionResolver;
 import com.tpverp.backend.document.DocumentReportView;
 import com.tpverp.backend.document.DocumentReportService;
 import com.tpverp.backend.document.DocumentService;
+import com.tpverp.backend.document.TicketReportService;
+import com.tpverp.backend.document.TicketReportView;
 import com.tpverp.backend.document.DocumentStatus;
 import com.tpverp.backend.document.WarehouseInputReportService;
 import com.tpverp.backend.document.WarehouseInputReportView;
@@ -59,6 +61,8 @@ class SalesReportExcelExportServiceTest {
         var inputs = mock(WarehouseInputReportService.class);
         var outputs = mock(WarehouseOutputService.class);
         var warehouses = mock(WarehouseRepository.class);
+        var ticketReports = mock(TicketReportService.class);
+        when(ticketReports.list(any(), any(), any(), any())).thenReturn(new PagedResult<>(List.of(), null, false));
         when(documents.listTickets()).thenReturn(List.of());
         when(reports.allInvoices(true, false)).thenReturn(List.of());
         when(reports.allInvoices(false, true)).thenReturn(List.of());
@@ -76,7 +80,7 @@ class SalesReportExcelExportServiceTest {
                 warehouses,
                 currentOrganization(),
                 mock(DocumentAttributionResolver.class),
-                mock(AuditService.class));
+                mock(AuditService.class), ticketReports);
         var authentication = new UsernamePasswordAuthenticationToken(
                 "admin", "token", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         var columnsByReport = Map.ofEntries(
@@ -145,7 +149,7 @@ class SalesReportExcelExportServiceTest {
                 mock(WarehouseRepository.class),
                 currentOrganization(),
                 mock(DocumentAttributionResolver.class),
-                mock(AuditService.class));
+                mock(AuditService.class), mock(TicketReportService.class));
         var authentication = new UsernamePasswordAuthenticationToken(
                 "manager", "token", List.of(new SimpleGrantedAuthority("GESTION_VENTAS")));
         var request = new SalesReportExportRequest(
@@ -176,6 +180,7 @@ class SalesReportExcelExportServiceTest {
     @Test
     void exportsAllAuthoritativeRowsMatchingTheRequestedDateRange() throws Exception {
         var documents = mock(DocumentService.class);
+        var ticketReports = mock(TicketReportService.class);
         var organization = mock(CurrentOrganization.class);
         var attributions = mock(DocumentAttributionResolver.class);
         var authentication = new UsernamePasswordAuthenticationToken(
@@ -184,6 +189,18 @@ class SalesReportExcelExportServiceTest {
         var currentTicket = ticket(LocalDate.of(2026, 7, 18));
         var previousTicket = ticket(LocalDate.of(2026, 7, 17));
         var tickets = List.of(currentTicket, previousTicket);
+        var currentReport = mock(TicketReportView.class);
+        when(currentReport.fecha()).thenReturn(currentTicket.getFecha());
+        when(currentReport.estado()).thenReturn(DocumentStatus.CONFIRMADO);
+        when(currentReport.total()).thenReturn(currentTicket.getTotal());
+        when(currentReport.terminalOrigenNombre()).thenReturn("CAJA 02");
+        var previousReport = mock(TicketReportView.class);
+        when(previousReport.fecha()).thenReturn(previousTicket.getFecha());
+        when(previousReport.estado()).thenReturn(DocumentStatus.CONFIRMADO);
+        when(previousReport.total()).thenReturn(previousTicket.getTotal());
+        when(previousReport.terminalOrigenNombre()).thenReturn("CAJA 03");
+        when(ticketReports.list(any(), any(), any(), any()))
+                .thenReturn(new PagedResult<>(List.of(currentReport, previousReport), null, false));
         when(documents.listTickets()).thenReturn(tickets);
         when(attributions.resolve(tickets)).thenReturn(Map.of(
                 currentTicket.getId(), new DocumentAttributionResolver.Attribution(
@@ -198,7 +215,7 @@ class SalesReportExcelExportServiceTest {
                 mock(WarehouseRepository.class),
                 organization,
                 attributions,
-                mock(AuditService.class));
+                mock(AuditService.class), ticketReports);
         var request = new SalesReportExportRequest(
                 "salesReport.tickets",
                 new SalesReportExportRequest.Filters(
@@ -249,7 +266,7 @@ class SalesReportExcelExportServiceTest {
                 warehouses,
                 currentOrganization(),
                 mock(DocumentAttributionResolver.class),
-                mock(AuditService.class));
+                mock(AuditService.class), mock(TicketReportService.class));
         var authentication = new UsernamePasswordAuthenticationToken(
                 "warehouse", "token", List.of(new SimpleGrantedAuthority("GESTION_ALMACEN")));
 
@@ -268,7 +285,7 @@ class SalesReportExcelExportServiceTest {
         var documents = mock(DocumentService.class);
         var service = new SalesReportExcelExportService(documents, reports, inputs,
                 mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
-                mock(DocumentAttributionResolver.class), mock(AuditService.class));
+                mock(DocumentAttributionResolver.class), mock(AuditService.class), mock(TicketReportService.class));
         var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
                 List.of(new SimpleGrantedAuthority("GESTION_ALMACEN")));
         var from = LocalDate.of(2026, 8, 1);
@@ -315,7 +332,7 @@ class SalesReportExcelExportServiceTest {
         var audit = mock(AuditService.class);
         var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
                 inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
-                mock(DocumentAttributionResolver.class), audit);
+                mock(DocumentAttributionResolver.class), audit, mock(TicketReportService.class));
         var type = WarehouseInputDocumentType.FACTURA_ENTRADA;
         var row = inputReport(type, "FE-001", "PROVEEDOR");
         var call = new java.util.concurrent.atomic.AtomicInteger();
@@ -338,7 +355,7 @@ class SalesReportExcelExportServiceTest {
         var inputs = mock(WarehouseInputReportService.class);
         var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
                 inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
-                mock(DocumentAttributionResolver.class), mock(AuditService.class));
+                mock(DocumentAttributionResolver.class), mock(AuditService.class), mock(TicketReportService.class));
         var request = new SalesReportExportRequest("salesReport.inputDeliveryNotes", null, "",
                 List.of(new SalesReportExportRequest.Column("deliveryNote", "Albarán")));
         var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
@@ -363,7 +380,7 @@ class SalesReportExcelExportServiceTest {
                 .thenReturn(new PagedResult<>(List.of(draft, confirmed), null, false));
         var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
                 inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
-                mock(DocumentAttributionResolver.class), mock(AuditService.class));
+                mock(DocumentAttributionResolver.class), mock(AuditService.class), mock(TicketReportService.class));
         var request = new SalesReportExportRequest("salesReport.inputInvoices",
                 new SalesReportExportRequest.Filters("", "", "", "", "", "", "", filter, ""), "",
                 List.of(new SalesReportExportRequest.Column("invoice", "Factura"),

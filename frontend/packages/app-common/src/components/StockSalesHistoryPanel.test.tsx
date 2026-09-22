@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -156,6 +156,116 @@ describe("StockSalesHistoryPanel", () => {
     expect(lastHistoryQuery().get("sortDirection")).toBe("asc");
     fireEvent.click(container.querySelector('th[data-column-key="quantity"] .table-layout-sort-button')!);
     await waitFor(() => expect(lastHistoryQuery().get("sortDirection")).toBe("desc"));
+  });
+
+  it("removes status and store criteria independently while keeping the applied period and date draft", async () => {
+    const { container } = panel();
+    await screen.findByText("TICKET T-0001");
+    fireEvent.click(screen.getByRole("button", { name: "Estado" }));
+    fireEvent.click(screen.getByRole("option", { name: "ANULADO" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tienda" }));
+    fireEvent.click(screen.getByRole("option", { name: "S02 · Norte" }));
+    await waitFor(() => expect(lastHistoryQuery().get("storeIds")).toBe("store-2"));
+    const appliedFrom = lastHistoryQuery().get("from");
+    const appliedTo = lastHistoryQuery().get("to");
+    const chips = screen.getByRole("group", { name: "Filtros aplicados" });
+    const periodText = chips.querySelector('[title^="Período:"]')!.textContent;
+    const dates = container.querySelectorAll<HTMLInputElement>('input[type="date"]');
+    fireEvent.change(dates[0], { target: { value: "2026-01-02" } });
+    expect(chips.querySelector('[title^="Período:"]')!.textContent).toBe(periodText);
+
+    fireEvent.click(within(chips).getByRole("button", { name: "Quitar filtro Estado" }));
+    await waitFor(() => expect(lastHistoryQuery().has("status")).toBe(false));
+    expect(lastHistoryQuery().get("storeIds")).toBe("store-2");
+    expect(lastHistoryQuery().get("from")).toBe(appliedFrom);
+    expect(lastHistoryQuery().get("to")).toBe(appliedTo);
+    expect(dates[0].value).toBe("2026-01-02");
+    expect(screen.getByRole("button", { name: "Estado" }).textContent).toContain("Todos");
+    expect(within(chips).queryByRole("button", { name: "Quitar filtro Estado" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
+    fireEvent.click(within(chips).getByRole("button", { name: "Quitar filtro Tienda" }));
+    await waitFor(() => expect(lastHistoryQuery().has("storeIds")).toBe(false));
+    expect(lastHistoryQuery().get("from")).toBe(appliedFrom);
+    expect(lastHistoryQuery().get("to")).toBe(appliedTo);
+    expect(dates[0].value).toBe("2026-01-02");
+    expect(screen.getByRole("button", { name: "Tienda" }).textContent).toContain("Todas las tiendas");
+    expect(screen.getByRole("button", { name: "Comparación por tienda" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(chips).queryByRole("button", { name: "Quitar filtro Tienda" })).toBeNull();
+  });
+
+  it("removes the applied period with bounded requests, clears its draft and ignores an obsolete page response", async () => {
+    const oldPage = deferredResponse();
+    const { saveFile, fetchMock } = installExportMock();
+    apiRequestMock.mockImplementation((path) => path.includes("cursor=") ? oldPage.promise
+      : Promise.resolve(response({ hasMore: path.includes("from="), nextCursor: path.includes("from=") ? "next" : null })));
+    const { container } = panel();
+    await screen.findByText("TICKET T-0001");
+    fireEvent.click(screen.getByRole("button", { name: "Estado" }));
+    fireEvent.click(screen.getByRole("option", { name: "PAGADO" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tienda" }));
+    fireEvent.click(screen.getByRole("option", { name: "S02 · Norte" }));
+    await screen.findByText("TICKET T-0001");
+    scrollHistory(container);
+    await waitFor(() => expect(lastHistoryQuery().get("cursor")).toBe("next"));
+    const dates = container.querySelectorAll<HTMLInputElement>('input[type="date"]');
+    fireEvent.change(dates[1], { target: { value: "2026-01-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Período" }));
+
+    await waitFor(() => expect(lastHistoryQuery().has("from")).toBe(false));
+    expect(lastHistoryQuery().has("to")).toBe(false);
+    expect(lastHistoryQuery().has("cursor")).toBe(false);
+    expect(lastHistoryQuery().get("size")).toBe("200");
+    expect(lastHistoryQuery().get("status")).toBe("PAGADO");
+    expect(lastHistoryQuery().get("storeIds")).toBe("store-2");
+    expect(Array.from(dates, (input) => input.value)).toEqual(["", ""]);
+    expect(screen.queryByRole("button", { name: "Quitar filtro Período" })).toBeNull();
+    await act(async () => oldPage.resolve(response({ items: [{ ...item, documentNumber: "OBSOLETE" }] })));
+    expect(screen.queryByText("TICKET OBSOLETE")).toBeNull();
+    await screen.findByText("TICKET T-0001");
+    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Exportar a Excel" }));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      from: null, to: null, status: "PAGADO", storeIds: ["store-2"], view: "detail",
+    });
+  });
+
+  it("clears every history criterion and allows applying empty dates without restoring a hidden filter", async () => {
+    const { container } = panel();
+    await screen.findByText("TICKET T-0001");
+    fireEvent.click(screen.getByRole("button", { name: "Estado" }));
+    fireEvent.click(screen.getByRole("option", { name: "ANULADO" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tienda" }));
+    fireEvent.click(screen.getByRole("option", { name: "S02 · Norte" }));
+    fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    await waitFor(() => expect(lastHistoryQuery().has("from")).toBe(false));
+    for (const key of ["from", "to", "status", "storeIds", "cursor"]) expect(lastHistoryQuery().has(key)).toBe(false);
+    expect(lastHistoryQuery().get("size")).toBe("200");
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).toBeNull();
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('input[type="date"]'), (input) => input.value)).toEqual(["", ""]);
+    expect(screen.getByRole("button", { name: "Comparación por tienda" }).getAttribute("aria-pressed")).toBe("true");
+    const count = historyRequests().length;
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    await waitFor(() => expect(historyRequests()).toHaveLength(count + 1));
+    expect(lastHistoryQuery().has("from")).toBe(false);
+    expect(lastHistoryQuery().has("to")).toBe(false);
+  });
+
+  it("removes applied dates and retries without hidden criteria in APP GESTIÓN", async () => {
+    const { container } = panel({ app: "gestion" });
+    await screen.findByText("TICKET T-0001");
+    expect(screen.getByRole("group", { name: "Filtros aplicados" }).textContent).toContain("Período");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Período" }));
+    await waitFor(() => expect(lastHistoryQuery().has("from")).toBe(false));
+    expect(lastHistoryQuery().has("to")).toBe(false);
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('input[type="date"]'), input => input.value)).toEqual(["", ""]);
+    await screen.findByText("TICKET T-0001");
+    const count = historyRequests().length;
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    await waitFor(() => expect(historyRequests()).toHaveLength(count + 1));
+    expect(lastHistoryQuery().has("from")).toBe(false);
   });
 
   it("appends near the end without duplicate requests or lines, automatic loops or recalculated totals", async () => {

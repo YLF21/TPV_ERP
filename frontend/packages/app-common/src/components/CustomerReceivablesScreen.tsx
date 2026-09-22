@@ -12,6 +12,7 @@ import "./CustomerReceivablesScreen.css";
 import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./CustomerReceivablePaymentDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { TableSortButton } from "./TableSortButton";
+import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
@@ -66,6 +67,7 @@ type CustomerCreditAccount = {
   entries: CustomerCreditAccountEntry[];
 };
 type Props = {
+  tableTheme?: "erp-blue-classic";
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
@@ -88,7 +90,7 @@ export function effectiveReceivableStatus(row: Pick<CustomerReceivable, "status"
   return "PENDIENTE";
 }
 
-export function CustomerReceivablesScreen({ locale, session, terminalContext, initialCustomerId, request = apiRequest, printReceipt = printCustomerReceivablePaymentReceipt, onBack }: Props) {
+export function CustomerReceivablesScreen({ locale, session, terminalContext, initialCustomerId, tableTheme, request = apiRequest, printReceipt = printCustomerReceivablePaymentReceipt, onBack }: Props) {
   const t = createTranslator(locale);
   const [view, setView] = useState<ReceivablesView>("OPEN");
   const [rows, setRows] = useState<CustomerReceivable[]>([]);
@@ -99,6 +101,8 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const [overdue, setOverdue] = useState(false); const [dueFrom, setDueFrom] = useState(""); const [dueTo, setDueTo] = useState("");
   const [historySearch, setHistorySearch] = useState(""); const [paymentMethodId, setPaymentMethodId] = useState("");
   const [collectedFrom, setCollectedFrom] = useState(""); const [collectedTo, setCollectedTo] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const historySearchRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [selected, setSelected] = useState<CustomerReceivable | null>(null);
   const [selectedHistory, setSelectedHistory] = useState<CustomerReceivablePaymentHistory | null>(null);
   const [receipt, setReceipt] = useState<CustomerReceivablePaymentReceiptSnapshot | null>(null);
@@ -276,8 +280,28 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   }, locale), [account?.entries, accountSorting.sort, locale, t]);
   const customerContext = account?.customerName ?? rows[0]?.customerName ?? historyRows[0]?.customerName;
   const resultCount = view === "OPEN" ? rows.length : view === "HISTORY" ? historyRows.length : account?.entries.length ?? 0;
+  const filterChips: ErpFilterChip[] = (view === "OPEN" ? [
+    { key: "search", label: t("receivables.search"), value: search.trim(), onRemove: () => setSearch("") },
+    { key: "status", label: t("receivables.status"), value: status ? t(statusKey(status as CustomerReceivable["status"])) : "", onRemove: () => setStatus("") },
+    { key: "documentType", label: t("receivables.documentType"), value: documentType ? t(documentType === "ALBARAN_VENTA" ? "receivables.type.deliveryNote" : "receivables.type.invoice") : "", onRemove: () => setDocumentType("") },
+    { key: "overdue", label: t("receivables.overdueOnly"), value: overdue ? t("common.yes") : "", onRemove: () => setOverdue(false) },
+    { key: "dueFrom", label: t("receivables.dueFrom"), value: dueFrom, onRemove: () => setDueFrom("") },
+    { key: "dueTo", label: t("receivables.dueTo"), value: dueTo, onRemove: () => setDueTo("") }
+  ] : [
+    { key: "search", label: t("receivables.history.search"), value: historySearch.trim(), onRemove: () => setHistorySearch("") },
+    { key: "paymentMethodId", label: t("receivables.history.method"), value: paymentMethodId ? methods.find((method) => method.id === paymentMethodId)?.name ?? methods.find((method) => method.id === paymentMethodId)?.nombre ?? paymentMethodId : "", onRemove: () => setPaymentMethodId("") },
+    { key: "collectedFrom", label: t("receivables.history.collectedFrom"), value: collectedFrom, onRemove: () => setCollectedFrom("") },
+    { key: "collectedTo", label: t("receivables.history.collectedTo"), value: collectedTo, onRemove: () => setCollectedTo("") }
+  ]).filter((chip) => chip.value !== "");
+  function clearFilters() {
+    if (view === "OPEN") {
+      setSearch(""); setStatus(""); setDocumentType(""); setOverdue(false); setDueFrom(""); setDueTo("");
+    } else {
+      setHistorySearch(""); setPaymentMethodId(""); setCollectedFrom(""); setCollectedTo("");
+    }
+  }
 
-  return <div className="customer-receivables-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+  return <div className={`customer-receivables-overlay${tableTheme === "erp-blue-classic" ? " erp-classic-tables" : ""}`} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <section
       ref={dialogRef}
       className="customer-receivables-dialog"
@@ -304,7 +328,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
       <div className="customer-receivables-dialog-body">
       {view === "OPEN" ? <>
         <div className="customer-receivables-filters">
-          <label>{t("receivables.search")}<input value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+          <label>{t("receivables.search")}<input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} /></label>
           <label>{t("receivables.status")}<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{t("receivables.all")}</option><option value="PENDIENTE">{t("receivables.status.pending")}</option><option value="PARCIAL">{t("receivables.status.partial")}</option><option value="PAGADO">{t("receivables.status.paid")}</option></select></label>
           <label>{t("receivables.documentType")}<select value={documentType} onChange={(event) => setDocumentType(event.target.value)}><option value="">{t("receivables.all")}</option><option value="ALBARAN_VENTA">{t("receivables.type.deliveryNote")}</option><option value="FACTURA_VENTA">{t("receivables.type.invoice")}</option></select></label>
           <label className="receivables-checkbox"><input aria-label={t("receivables.overdueOnly")} type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} />{t("receivables.overdueOnly")}</label>
@@ -312,11 +336,13 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <label>{t("receivables.dueTo")}<input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
         </div>
       </> : view === "HISTORY" ? <div className="customer-receivables-filters receivables-history-filters">
-        <label>{t("receivables.history.search")}<input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} /></label>
+        <label>{t("receivables.history.search")}<input ref={historySearchRef} value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} /></label>
         <label>{t("receivables.history.method")}<select value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}><option value="">{t("receivables.all")}</option>{methods.map((method) => <option key={method.id} value={method.id}>{method.name ?? method.nombre ?? method.id}</option>)}</select></label>
         <label>{t("receivables.history.collectedFrom")}<input type="date" value={collectedFrom} onChange={(event) => setCollectedFrom(event.target.value)} /></label>
         <label>{t("receivables.history.collectedTo")}<input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
       </div> : null}
+      {tableTheme === "erp-blue-classic" && view !== "ACCOUNT" && <ErpFilterChips locale={locale} chips={filterChips}
+        focusRef={view === "OPEN" ? searchRef : historySearchRef} onClear={clearFilters} />}
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
       {retryPrint && <div className="receivables-error"><p role="alert">{t("receivables.print.pending")}</p><button type="button" disabled={printing} onClick={() => void retryFailedPrint()}>{printing ? t("receivables.history.printing") : t("payment.result.retryPrint")}</button></div>}
       {view === "OPEN" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>

@@ -11,7 +11,7 @@ vi.mock("../api/client", async () => {
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.resetAllMocks(); });
 
-function mockProductEditing() {
+function mockProductEditing(initialCursor: string | null = null) {
   let product: Record<string, unknown> = {
     id: "product-1", code: "CAFE-1", name: "Cafe de prueba", familyId: "family-1", taxId: "tax-1",
     salePrice: "4.50", purchasePrice: "2.00", productType: "UNIT", priceUseMode: "NORMAL",
@@ -23,8 +23,10 @@ function mockProductEditing() {
   const updates: Record<string, unknown>[] = [];
   vi.mocked(apiRequest).mockImplementation(async (path, options) => {
     if (path.startsWith("/stock/page")) {
+      if (new URL(path, "http://test").searchParams.has("cursor")) return { items: [], hasMore: false };
       if (stockRequests++ > 0) return new Promise((resolve) => refreshes.push(resolve));
-      return { items: [{ product, stock: [{ productId: product.id, warehouseId: "warehouse-1", quantity: 3 }] }], hasMore: false };
+      return { items: [{ product, stock: [{ productId: product.id, warehouseId: "warehouse-1", quantity: 3 }] }],
+        hasMore: initialCursor !== null, nextCursor: initialCursor };
     }
     if (path === "/products/management/product-1" && options?.method === "PUT") {
       const body = options.body as Record<string, unknown>;
@@ -43,6 +45,12 @@ function mockProductEditing() {
     updates,
     finishStockRefreshOutsideCurrentPage: () => {
       for (const resolve of refreshes.splice(0)) resolve({ items: [], hasMore: false });
+    },
+    finishStockRefreshWithCursor: (nextCursor: string) => {
+      for (const resolve of refreshes.splice(0)) resolve({
+        items: [{ product, stock: [{ productId: product.id, warehouseId: "warehouse-1", quantity: 3 }] }],
+        hasMore: true, nextCursor,
+      });
     },
   };
 }
@@ -70,6 +78,31 @@ async function saveEditor(editor: HTMLElement) {
 }
 
 describe("Stock product editing", () => {
+  it("waits for the refreshed first page before requesting its new pagination cursor after a save", async () => {
+    const backend = mockProductEditing("before-save");
+    const information = await openProduct("venta");
+    const editor = await openEditor(information);
+    fireEvent.change(within(editor).getByLabelText("Comentarios"), { target: { value: "Comentario guardado" } });
+    await saveEditor(editor);
+    fireEvent.keyDown(information, { key: "Escape" });
+    const pageQueries = () => vi.mocked(apiRequest).mock.calls
+      .map(([path]) => path)
+      .filter((path) => path.startsWith("/stock/page"))
+      .map((path) => new URL(path, "http://test").searchParams);
+    await waitFor(() => expect(pageQueries()).toHaveLength(2));
+    const table = document.querySelector(".stock-table")!;
+    fireEvent.scroll(table);
+    await act(async () => { await Promise.resolve(); });
+    expect(pageQueries().filter((query) => query.has("cursor"))).toEqual([]);
+
+    await act(async () => { backend.finishStockRefreshWithCursor("after-save"); });
+    fireEvent.scroll(table);
+    await waitFor(() => expect(pageQueries().filter((query) => query.has("cursor")))
+      .toHaveLength(1));
+    expect(pageQueries().filter((query) => query.has("cursor")).map((query) => query.get("cursor")))
+      .toEqual(["after-save"]);
+  });
+
   it.each(["venta", "gestion"] as const)("closes the calendar before the editor on Escape and retains F9 saving in %s", async (app) => {
     const backend = mockProductEditing();
     const information = await openProduct(app);

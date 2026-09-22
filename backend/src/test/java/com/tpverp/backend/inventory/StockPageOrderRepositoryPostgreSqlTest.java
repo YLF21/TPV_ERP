@@ -5,11 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.PriceUseMode;
+import com.tpverp.backend.excel.StockExcelExportService;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -82,6 +87,68 @@ class StockPageOrderRepositoryPostgreSqlTest {
                 null, null, null, context.warehouseId(),
                 "localStock", "desc", null, 3))
                 .containsExactly(context.cheapestId(), context.middleId(), context.expensiveId());
+    }
+
+    @Test
+    void naturalCodeOrderContinuesEveryPageInBothDirectionsIncludingTiesAndMissingCodes() throws Exception {
+        var context = insertContext();
+        var originalIds = List.of(context.cheapestId(), context.middleId(), context.expensiveId());
+        for (int index = 0; index < originalIds.size(); index++) {
+            jdbc.update("update producto_identificador set valor = ? where producto_id = ? and tipo = 'CODIGO'",
+                    List.of("1", "2", "10").get(index), originalIds.get(index));
+        }
+        var codes = List.of("P2", "P02", "P10", "999999999999999999999999999999999999",
+                "1000000000000000000000000000000000000", "MISSING");
+        var extraIds = new ArrayList<UUID>();
+        for (int index = 0; index < codes.size(); index++) {
+            var id = new UUID(0, index + 1);
+            extraIds.add(id);
+            insertProduct(context.storeId(), context.familyId(), context.taxId(), context.warehouseId(),
+                    id, codes.get(index), codes.get(index), "1.00", 1);
+        }
+        var missingId = extraIds.getLast();
+        jdbc.update("delete from producto_identificador where producto_id = ?", missingId);
+        var ascending = List.of(originalIds.get(0), originalIds.get(1), originalIds.get(2),
+                extraIds.get(3), extraIds.get(4), extraIds.get(0), extraIds.get(1), extraIds.get(2), missingId);
+        var descending = List.of(extraIds.get(2), extraIds.get(1), extraIds.get(0), extraIds.get(4),
+                extraIds.get(3), originalIds.get(2), originalIds.get(1), originalIds.get(0), missingId);
+
+        for (var direction : List.of("asc", "desc")) {
+            var loaded = new ArrayList<UUID>();
+            UUID cursor = null;
+            for (int page = 0; page < 6; page++) {
+                var rows = repository.findProductIds(context.storeId(), null, null, null, null, false,
+                        null, null, null, context.warehouseId(), "code", direction, cursor, 2);
+                if (rows.isEmpty()) break;
+                loaded.addAll(rows);
+                cursor = rows.getLast();
+            }
+            assertThat(loaded).as("natural code order %s", direction)
+                    .containsExactlyElementsOf("asc".equals(direction) ? ascending : descending);
+
+            var exports = new StockExcelExportService(jdbc, org.mockito.Mockito.mock(StockTopSalesService.class));
+            var request = new StockExcelExportService.ExportRequest(
+                    null, null, null, null, null, null, null, null, null, null,
+                    "code", direction, "es", null, null, null, null, null,
+                    List.of(new StockExcelExportService.ExportColumn("code", "Codigo")));
+            var job = exports.create(context.storeId(), "ADMIN", true, request);
+            exports.run(job.id());
+            var file = exports.file(job.id(), context.storeId(), "ADMIN");
+            try (var workbook = new XSSFWorkbook(Files.newInputStream(file.path()))) {
+                var exportedCodes = new ArrayList<String>();
+                var sheet = workbook.getSheetAt(0);
+                for (int row = 1; row <= sheet.getLastRowNum(); row++) {
+                    exportedCodes.add(sheet.getRow(row).getCell(0).getStringCellValue());
+                }
+                var expectedCodes = loaded.stream().map(id -> id.equals(missingId) ? "-"
+                        : jdbc.queryForObject("select valor from producto_identificador where producto_id = ? and tipo = 'CODIGO'",
+                                String.class, id)).toList();
+                assertThat(exportedCodes).as("export uses the same code order %s", direction)
+                        .containsExactlyElementsOf(expectedCodes);
+            } finally {
+                Files.deleteIfExists(file.path());
+            }
+        }
     }
 
     @Test
@@ -182,7 +249,7 @@ class StockPageOrderRepositoryPostgreSqlTest {
         insertProduct(storeId, familyId, taxId, warehouseId, cheapestId, "P002", "Barato", "10.00", 7);
         insertProduct(storeId, familyId, taxId, warehouseId, middleId, "P003", "Medio", "20.00", 4);
         insertProduct(storeId, familyId, taxId, warehouseId, expensiveId, "P001", "Caro", "30.00", 2);
-        return new Context(storeId, warehouseId, cheapestId, middleId, expensiveId);
+        return new Context(storeId, warehouseId, cheapestId, middleId, expensiveId, familyId, taxId);
     }
 
     private void insertProduct(
@@ -235,6 +302,8 @@ class StockPageOrderRepositoryPostgreSqlTest {
             UUID warehouseId,
             UUID cheapestId,
             UUID middleId,
-            UUID expensiveId) {
+            UUID expensiveId,
+            UUID familyId,
+            UUID taxId) {
     }
 }

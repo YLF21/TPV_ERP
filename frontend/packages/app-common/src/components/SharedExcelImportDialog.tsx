@@ -96,6 +96,7 @@ export type SharedExcelImportSupplier = {
 
 type SharedExcelImportDialogProps = {
   open: boolean;
+  filterChips?: boolean;
   file?: File | null;
   sheet?: ExcelSheet;
   locale: LocaleCode;
@@ -203,6 +204,7 @@ export function sharedExcelImportKeyAction(key: string) {
 
 export function SharedExcelImportDialog({
   open,
+  filterChips = false,
   file,
   sheet: providedSheet,
   locale,
@@ -1511,6 +1513,7 @@ export function SharedExcelImportDialog({
       {manualQueue[0] && <ProductCreateDialog
         key={manualQueue[0].rowNumber}
         open
+        filterChips={filterChips}
         locale={locale}
         token={token}
         initialForm={productFormFromExcelDraft(manualQueue[0].draft)}

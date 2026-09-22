@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -11,6 +11,9 @@ import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPrefe
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
+import { ErpFilterChips } from "./ErpFilterChips";
+import "./ErpClassicTables.css";
+import "./ErpSearchField.css";
 
 type PromotionListScreenProps = {
   app: AppKind;
@@ -71,6 +74,8 @@ export function PromotionListScreen({
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [pendingAction, setPendingAction] = useState("");
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const token = session.accessToken;
   const tableLayout = useTableLayoutPreference({
     app,
@@ -88,7 +93,13 @@ export function PromotionListScreen({
     defaultSort: null
   });
   const sortedPromotions = useMemo(() => sortTableRows(
-    promotions,
+    promotions.filter(promotion => {
+      const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase(locale).trim();
+      const criterion = normalized(query);
+      return !criterion || [promotion.name, t(`promotion.status.${promotion.status}`), t(`promotion.type.${promotion.type}`),
+        promotionDateRange(promotion), t(`promotion.segment.${promotion.customerSegment ?? "ALL"}`)]
+        .some(value => normalized(value).includes(criterion));
+    }),
     tableSort.sort,
     (promotion, column) => {
       if (column === "name") return promotion.name;
@@ -98,7 +109,7 @@ export function PromotionListScreen({
       return t(`promotion.segment.${promotion.customerSegment ?? "ALL"}`);
     },
     locale
-  ), [locale, promotions, tableSort.sort]);
+  ), [locale, promotions, query, tableSort.sort]);
   const gridStyle = {
     gridTemplateColumns: `${tableLayoutGridTemplate(tableLayout.layout)} minmax(330px, auto)`
   };
@@ -160,7 +171,7 @@ export function PromotionListScreen({
   }
 
   return (
-    <main className={embedded ? "promotion-screen work-screen gestion-embedded-module" : "promotion-screen work-screen"}>
+    <main className={`promotion-screen work-screen${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
       {!embedded && <SessionTopControls
         locale={locale}
         session={session}
@@ -194,6 +205,16 @@ export function PromotionListScreen({
               {t("promotion.action.refresh")}
             </button>
           </header>
+
+          {app !== "pda" && <div className="erp-filter-search-controls">
+            <label className="report-search erp-search-frame">
+              <span>{t("salesReport.search")}</span>
+              <input ref={searchRef} type="search" value={query} onChange={event => setQuery(event.target.value)} />
+            </label>
+            <ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
+              key: "search", label: t("salesReport.search"), value: query.trim(), onRemove: () => setQuery("")
+            }] : []} onClear={() => setQuery("")} />
+          </div>}
 
           <div className="promotion-table">
             <div className="promotion-row promotion-row-head" style={gridStyle}>
@@ -232,8 +253,8 @@ export function PromotionListScreen({
                 </span>
               </div>
             ))}
-            {!loading && promotions.length === 0 && (
-              <p className="promotion-empty">{t("promotion.list.empty")}</p>
+            {!loading && sortedPromotions.length === 0 && (
+              <p className="promotion-empty">{t(promotions.length ? "stock.status.noResults" : "promotion.list.empty")}</p>
             )}
           </div>
         </section>
@@ -261,7 +282,7 @@ export function PromotionListScreen({
           )}
         </section>
 
-        <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
+        {app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
     </main>
   );

@@ -67,9 +67,11 @@ export function saasSalesHistoryBasePath(productId: string) {
 
 export function saasSalesHistoryPath(productId: string, query: SaasSalesHistoryQuery, cursor?: string | null) {
   const params = new URLSearchParams({
-    from: query.from, to: query.to, sortBy: query.sortBy,
+    sortBy: query.sortBy,
     sortDirection: query.sortDirection, size: "200",
   });
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
   if (query.status) params.set("status", query.status);
   if (query.storeIds.length) params.set("storeIds", query.storeIds.join(","));
   if (cursor) params.set("cursor", cursor);

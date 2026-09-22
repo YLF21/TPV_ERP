@@ -19,6 +19,9 @@ import {
 } from "./WarehouseDocumentDialog";
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import { ErpSelect } from "./ErpSelect";
+import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
+import "./WarehouseClassicTables.css";
+import "./ErpSearchField.css";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent } from "./keyboardNavigation";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -402,6 +405,10 @@ export function WarehouseOperationsPanel({
     () => Array.from(new Set(documents.map((document) => document.status).filter(Boolean))).sort(),
     [documents]
   );
+  const filterChips: ErpFilterChip[] = [];
+  if (query.trim()) filterChips.push({ key: "query", label: labels.search, value: query.trim(), onRemove: () => setQuery("") });
+  if (statusFilter) filterChips.push({ key: "status", label: labels.status,
+    value: warehouseOperationsStatusLabel(statusFilter, t), onRemove: () => setStatusFilter("") });
   const selectedDocument = documents.find((document) => document.id === selectedId) ?? null;
   const selectedCanOpen = Boolean(
     selectedDocument
@@ -633,7 +640,7 @@ export function WarehouseOperationsPanel({
 
   return (
     <section
-      className="stock-sales-history-panel"
+      className={`stock-sales-history-panel${app !== "pda" ? " warehouse-operations-panel--classic" : ""}`}
       aria-label={labels.title}
       onKeyDown={(event) => {
         if (event.defaultPrevented || event.key !== "Escape" || dialogOpen) {
@@ -651,6 +658,7 @@ export function WarehouseOperationsPanel({
           <span>{labels.search}</span>
           <input
             ref={searchRef}
+            className={app !== "pda" ? "erp-search-input" : undefined}
             type="search"
             value={query}
             placeholder={labels.searchPlaceholder}
@@ -702,6 +710,9 @@ export function WarehouseOperationsPanel({
         </div>
       </div>
 
+      {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
+        onClear={() => { setQuery(""); setStatusFilter(""); }} />}
+
       <div className="stock-history-context">
         <strong>{labels.title}</strong>
         <span>{labels.resultCount.replace("{count}", String(visibleDocuments.length))}</span>
@@ -711,7 +722,7 @@ export function WarehouseOperationsPanel({
       {error && <p className="stock-operation-status error" role="alert">{error}</p>}
       {notice && <p className="stock-operation-status" aria-live="polite">{notice}</p>}
 
-      <div className="stock-history-table-scroll">
+      <div className={`stock-history-table-scroll${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
         <table className="report-table warehouse-document-table">
           <colgroup>
             {visibleColumns.map((column) => (

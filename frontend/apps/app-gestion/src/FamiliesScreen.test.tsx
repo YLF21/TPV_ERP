@@ -79,6 +79,27 @@ function renderScreen(request: typeof apiRequest) {
 }
 
 describe("FamiliesScreen", () => {
+  it.each(["family", "subfamily"])("removes the selected %s criterion without loading an unbounded product list", async kind => {
+    const request = vi.fn(async (path: string) => {
+      if (path === "/families") return families;
+      if (path === "/families/drinks/subfamilies") return subfamilies;
+      if (path.startsWith("/families/products?")) return { items: [{ id: "p1", code: "A", name: "Agua producto", salePrice: 1, active: true, version: 1 }], hasMore: false };
+      return [];
+    });
+    renderScreen(request as unknown as typeof apiRequest);
+    fireEvent.click(await screen.findByText("Bebidas"));
+    if (kind === "subfamily") fireEvent.click(await screen.findByRole("treeitem", { name: "001001 Agua" }));
+    fireEvent.click(await screen.findByLabelText("Seleccionar Agua producto"));
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent(kind === "subfamily" ? "Subfamilia: 001001 · Agua" : "Familia: 001 · Bebidas");
+    const loads = request.mock.calls.filter(([path]) => path.startsWith("/families/products?")).length;
+    fireEvent.click(screen.getByRole("button", { name: `Quitar filtro ${kind === "subfamily" ? "Subfamilia" : "Familia"}` }));
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mover" })).not.toBeInTheDocument();
+    expect(request.mock.calls.filter(([path]) => path.startsWith("/families/products?"))).toHaveLength(loads);
+    await waitFor(() => expect(screen.getByRole("treeitem", { name: /GENERAL/ })).toHaveFocus());
+  });
+
   it("renders the catalogue as a two-pane workspace using the shared ERP table", async () => {
     const longName =
       "CABLE DE DATOS S.BASIC FLUTE PARA IP6/7/8/X/XS, 1M, 3.4A, BLANCO";
@@ -1153,7 +1174,8 @@ describe("FamiliesScreen", () => {
     );
     expect(moveButton).toBeEnabled();
 
-    fireEvent.change(search, { target: { value: "" } });
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "Quitar filtro Buscar por código o nombre" }));
+    expect(search).toHaveValue("");
     expect(moveButton).toBeDisabled();
     fireEvent.click(moveButton);
     expect(

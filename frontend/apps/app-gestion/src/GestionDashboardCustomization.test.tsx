@@ -40,6 +40,29 @@ beforeEach(() => vi.setSystemTime(new Date("2026-09-16T12:00:00Z")));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("dashboard explicit configuration and isolated requests", () => {
+  it("removes applied period and warehouse tags independently without persisting widget configuration", async () => {
+    const dataSource = source({ loadWarehouses: vi.fn().mockResolvedValue([{ id: "reserve", name: "RESERVA", active: true }]) });
+    render(<GestionDashboard {...props(dataSource)} />);
+    await screen.findByText("Café");
+    expect(screen.queryByRole("group", { name: "filters.applied" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("gestion.dashboard.from"), { target: { value: "2026-09-03" } });
+    expect(screen.queryByRole("group", { name: "filters.applied" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.dashboard.apply" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "gestion.dashboard.warehouse" }), { target: { value: "reserve" } });
+    await waitFor(() => expect(dataSource.loadSalesOverview).toHaveBeenLastCalledWith("token",
+      { from: "2026-09-03", to: "2026-09-16", warehouseId: "reserve" }, expect.any(AbortSignal)));
+    expect(screen.getByRole("group", { name: "filters.applied" }).textContent).toContain("RESERVA");
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.dashboard.period" }));
+    await waitFor(() => expect(dataSource.loadSalesOverview).toHaveBeenLastCalledWith("token",
+      { from: "2026-09-01", to: "2026-09-16", warehouseId: "reserve" }, expect.any(AbortSignal)));
+    expect(screen.queryByRole("button", { name: "filters.remove gestion.dashboard.period" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.dashboard.warehouse" }));
+    await waitFor(() => expect(dataSource.loadSalesOverview).toHaveBeenLastCalledWith("token",
+      { from: "2026-09-01", to: "2026-09-16", warehouseId: undefined }, expect.any(AbortSignal)));
+    expect(screen.queryByRole("group", { name: "filters.applied" })).toBeNull();
+    expect(dataSource.savePreference).not.toHaveBeenCalled();
+  });
+
   it("renders stored order and dimensions in normal view without adding new widgets", async () => {
     const dataSource = source();
     const view = render(<GestionDashboard {...props(dataSource)} />);

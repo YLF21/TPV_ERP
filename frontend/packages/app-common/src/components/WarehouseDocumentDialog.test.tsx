@@ -79,6 +79,17 @@ describe("WarehouseDocumentDialog", () => {
     Reflect.deleteProperty(window, "tpvDesktop");
   });
 
+  it.each(["venta", "gestion", "pda"] as const)("scopes the warehouse supplier theme and chips correctly for %s", app => {
+    const { container } = render(<WarehouseDocumentDialog app={app} mode="input" open locale="es"
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers}
+      onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    fireEvent.click(container.querySelector<HTMLButtonElement>("[data-warehouse-partner-trigger]")!);
+    const picker = container.querySelector(".warehouse-supplier-overlay")!;
+    expect(picker.classList.contains("warehouse-picker-classic")).toBe(app !== "pda");
+    fireEvent.change(picker.querySelector(".warehouse-supplier-search input")!, { target: { value: "Proveedor" } });
+    expect(Boolean(picker.querySelector(".erp-filter-applied"))).toBe(app !== "pda");
+  });
+
   it("renders output mode with document workspace and file actions", () => {
     const html = renderToStaticMarkup(
       <WarehouseDocumentDialog

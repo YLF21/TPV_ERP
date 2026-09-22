@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.PriceUseMode;
 import com.tpverp.backend.catalog.ProductType;
+import com.tpverp.backend.catalog.ProductCodeOrder;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -184,7 +185,7 @@ public class StockPageOrderRepository {
 
     static String sortExpression(String sortBy) {
         return switch (sortBy) {
-            case "code" -> "lower(code.valor)";
+            case "code" -> ProductCodeOrder.sqlKey("code.valor");
             case "barcode" -> "lower(barcode.valor)";
             case "name" -> "lower(product.nombre)";
             case "type" -> "product.product_type";

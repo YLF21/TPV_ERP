@@ -11,6 +11,7 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   loadVoucherDetail,
   loadVoucherPrintDocument,
@@ -120,6 +121,12 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
     setPage(0);
   }
 
+  function removeFilter(field: keyof VoucherFilters) {
+    setDraft((current) => ({ ...current, [field]: "" }));
+    setFilters((current) => ({ ...current, [field]: "" }));
+    setPage(0);
+  }
+
   async function openDetail(code: string) {
     setMessage(null);
     try {
@@ -215,6 +222,13 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
         <label><span>{t("gestion.vouchers.to")}</span><input type="date" value={draft.to} min={draft.from || undefined} onChange={(event) => setDraft({ ...draft, to: event.target.value })} /></label>
         <div><button type="button" onClick={clearFilters}>{t("gestion.vouchers.clear")}</button><button className="primary" type="submit">{t("gestion.vouchers.apply")}</button></div>
       </form>
+
+      <ErpFilterChips locale={locale} translate={t} onClear={clearFilters} chips={[
+        { key: "query", label: t("gestion.vouchers.search"), value: filters.query, onRemove: () => removeFilter("query") },
+        { key: "status", label: t("gestion.vouchers.status"), value: filters.status ? t(`gestion.vouchers.status.${filters.status}`) : "", onRemove: () => removeFilter("status") },
+        { key: "from", label: t("gestion.vouchers.from"), value: filters.from, onRemove: () => removeFilter("from") },
+        { key: "to", label: t("gestion.vouchers.to"), value: filters.to, onRemove: () => removeFilter("to") }
+      ]} />
 
       <div className={`gestion-voucher-content ${selected ? "has-detail" : ""}`}>
         <section className="gestion-voucher-list" aria-label={t("gestion.vouchers.title")}>

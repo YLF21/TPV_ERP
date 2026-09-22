@@ -29,6 +29,10 @@ import {
   type SalesOperationSecurityConfiguration
 } from "../sale/operationAuthorization";
 import { ErpSelect } from "./ErpSelect";
+import { ErpMultiSelect } from "./ErpMultiSelect";
+import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
+import { reportMultiFilterExport, reportMultiFilterOptions, reportMultiFilterValueLabel, rowMatchesReportMultiFilters,
+  type ReportMultiFilterKey, type ReportMultiFilters } from "./salesReportMultiFilters";
 import { ModuleNavBackButton } from "./ModuleNavBackButton";
 import { ModuleNavItem } from "./ModuleNavItem";
 import { TopDateTime } from "./TopDateTime";
@@ -73,6 +77,9 @@ const GiftReceiptDialog = lazy(() => import("./GiftReceiptDialog")
 import searchIcon from "../assets/reports/search.png";
 import "../styles/report-command-toolbar.css";
 import "../styles/report-print.css";
+import "./SalesReportClassicTables.css";
+import "./ErpSearchField.css";
+import "./ErpFilterDialog.css";
 
 type SalesReportScreenProps = {
   app: AppKind;
@@ -824,7 +831,7 @@ const emptyFilters: ReportFilters = {
   warehouse: ""
 };
 
-type SelectFilterKey = "user" | "payment" | "terminal" | "status" | "warehouse";
+type SelectFilterKey = ReportMultiFilterKey;
 type FilterOption = { value: string; label: string };
 
 function createDefaultFilters(today = toIsoDate(new Date())): ReportFilters {
@@ -1565,6 +1572,7 @@ export function buildDocumentReports(
     customer: document.customerCode || document.clienteCodigo || document.customerId || document.clienteId || "",
     customerName: document.customerName || document.clienteNombre || "",
     payment: ticketPaymentText(document),
+    __filterPaymentMethods: JSON.stringify(ticketPaymentText(document).split(" + ")),
     comment: document.comentarioInterno || "",
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
@@ -1586,6 +1594,8 @@ export function buildDocumentReports(
     customer: document.clienteCodigo || document.clienteId || "",
     customerName: document.clienteNombre || "",
     payment: paymentText(document),
+    __filterPaymentMethods: JSON.stringify(document.paymentMethods?.length
+      ? document.paymentMethods.filter(Boolean) : (document.payments ?? []).map(payment => payment.methodName).filter(Boolean)),
     status: documentStatus(document),
     pending: formatAmount(pendingAmount(document)),
     comment: document.comentarioInterno || document.numeroExterno || "",
@@ -1965,8 +1975,11 @@ export function SalesReportScreen({
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
   const reportTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const reportSearchRef = useRef<HTMLInputElement | null>(null);
   const [filters, setFilters] = useState<ReportFilters>(() => createDefaultFilters());
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(() => createDefaultFilters());
+  const [multiFilters, setMultiFilters] = useState<ReportMultiFilters>({});
+  const [draftMultiFilters, setDraftMultiFilters] = useState<ReportMultiFilters>({});
   const [dateRangeText, setDateRangeText] = useState(() => formatDateRange(createDefaultFilters(), locale));
   const [dateRangeStart, setDateRangeStart] = useState<string | null>(null);
   const [reportSearch, setReportSearch] = useState("");
@@ -2034,7 +2047,8 @@ export function SalesReportScreen({
     ? []
     : visibleTableColumns(selectedReportTableLayout.layout);
   const reportTableWidth = visibleColumnLayout.reduce((width, column) => width + column.width, 0);
-  const matchingRows = sample.rows.filter((row) => rowMatchesFilters(row, filters) && rowMatchesSearch(row, reportSearch, t));
+  const matchingRows = sample.rows.filter((row) => rowMatchesFilters(row, filters)
+    && (app === "pda" || rowMatchesReportMultiFilters(row, multiFilters)) && rowMatchesSearch(row, reportSearch, t));
   const customerDisplayMode = customerDisplayModes[selectedReport] ?? "code";
   const displayedRows = supportsCustomerDisplayToggle(selectedReport) && customerDisplayMode === "name"
     ? matchingRows.map((row) => ({ ...row, customer: row.customerName || row.customer }))
@@ -2045,8 +2059,10 @@ export function SalesReportScreen({
   const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredTotals);
   const ticketCounters = buildTicketReportCounters(filteredRows);
   const warehouseReconciliation = (() => {
-    const inputs = (reports["salesReport.inputWarehouse"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
-    const outputs = (reports["salesReport.warehouseOutputs"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
+    const matches = (row: Record<string, string>) => rowMatchesFilters(row, filters)
+      && (app === "pda" || rowMatchesReportMultiFilters(row, multiFilters));
+    const inputs = (reports["salesReport.inputWarehouse"]?.rows ?? []).filter(matches);
+    const outputs = (reports["salesReport.warehouseOutputs"]?.rows ?? []).filter(matches);
     // An unloaded source (or a partial page) is not a zero stock movement.
     const inputsComplete = selectedReport === "salesReport.inputWarehouse" && !reportLoading
       && !reportLoadErrors[selectedReport] && Boolean(reportPages.warehouseInputs) && !reportPages.warehouseInputs?.hasMore;
@@ -2165,7 +2181,14 @@ export function SalesReportScreen({
   const terminalOptions = filterOptionsFromRows(sample.rows, "terminal", t);
   const statusOptions = filterOptionsFromRows(sample.rows, "status", t);
   const warehouseOptions = filterOptionsFromRows(sample.rows, "warehouse", t);
+  const multiFilterOptions = Object.fromEntries((["user", "customer", "supplier", "payment", "terminal", "status", "warehouse"] as const)
+    .map(field => [field, reportMultiFilterOptions(sample.rows, field, locale, t, draftMultiFilters[field])])) as Record<ReportMultiFilterKey, FilterOption[]>;
+  const availableMultiFields = ([
+    ["user", hasUserFilter], ["terminal", hasTerminalFilter], ["customer", hasCustomerFilter], ["supplier", hasSupplierFilter],
+    ["payment", hasPaymentFilter], ["warehouse", hasWarehouseFilter], ["status", hasStatusFilter]
+  ] as const).filter(([, available]) => available).map(([field]) => field);
   const activeFilterDetails = buildActiveFilterDetails();
+  const appliedFilterChips = app !== "pda" && !isSalesActivityReport ? buildAppliedFilterChips() : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -2759,7 +2782,7 @@ export function SalesReportScreen({
         },
         body: JSON.stringify({
           reportKey: selectedReport,
-          filters,
+          filters: app !== "pda" ? { ...filters, ...reportMultiFilterExport(multiFilters) } : filters,
           search: reportSearch,
           columns: exportColumns(true)
         })
@@ -2804,7 +2827,7 @@ export function SalesReportScreen({
         },
         body: JSON.stringify({
           reportKey: selectedReport,
-          filters,
+          filters: app !== "pda" ? { ...filters, ...reportMultiFilterExport(multiFilters) } : filters,
           search: reportSearch,
           columns: exportColumns()
         })
@@ -2858,6 +2881,8 @@ export function SalesReportScreen({
     setSelectedReport(reportKey);
     setFilters(defaultFilters);
     setDraftFilters(defaultFilters);
+    setMultiFilters({});
+    setDraftMultiFilters({});
     setDateRangeText(formatDateRange(defaultFilters, locale));
     setDateRangeStart(null);
     setOpenFilterControl(null);
@@ -2867,6 +2892,7 @@ export function SalesReportScreen({
   function openFilters() {
     setPrintMenuOpen(false);
     setDraftFilters(filters);
+    setDraftMultiFilters(multiFilters);
     setDateRangeText(formatDateRange(filters, locale));
     setDateRangeStart(null);
     setOpenFilterControl(null);
@@ -2979,6 +3005,8 @@ export function SalesReportScreen({
     reportLoading,
     reportLoadingMore,
     selectedReport,
+    // Applied filters can remove the scrollbar while later pages still contain matches.
+    filteredRows.length,
     // A range reload can retain the cursor flags without rendering a loading state.
     selectedReportPage
   ]);
@@ -2996,15 +3024,54 @@ export function SalesReportScreen({
     setQuickRange(null);
     setDraftFilters(defaultFilters);
     setFilters(defaultFilters);
+    setMultiFilters({});
+    setDraftMultiFilters({});
     setDateRangeText(formatDateRange(defaultFilters, locale));
     setDateRangeStart(null);
     setOpenFilterControl(null);
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
   }
 
+  function removeAppliedFilter(key: keyof ReportFilters) {
+    const nextFilters = { ...filters, [key]: "" };
+    if (key === "dateFrom") {
+      // Report queries always retain a bounded period; removing its override restores today.
+      const defaults = createDefaultFilters(dateOptions?.report === selectedReport ? dateOptions.currentDate : undefined);
+      nextFilters.dateFrom = defaults.dateFrom;
+      nextFilters.dateTo = defaults.dateTo;
+      if (filters.dateFrom !== nextFilters.dateFrom || filters.dateTo !== nextFilters.dateTo) {
+        reportQueryGeneration.current += 1;
+      }
+      setQuickRange(null);
+    }
+    setFilters(nextFilters);
+    setDraftFilters(nextFilters);
+    setDateRangeText(formatDateRange(nextFilters, locale));
+    setDateRangeStart(null);
+    setOpenFilterControl(null);
+    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
+  }
+
+  function removeAppliedMultiFilter(field: ReportMultiFilterKey, value: string) {
+    const next = { ...multiFilters, [field]: (multiFilters[field] ?? []).filter(item => item !== value) };
+    setMultiFilters(next);
+    setDraftMultiFilters(next);
+    setSelectedRowByReport(current => ({ ...current, [selectedReport]: -1 }));
+  }
+
+  function clearAppliedFilters() {
+    const defaults = createDefaultFilters(dateOptions?.report === selectedReport ? dateOptions.currentDate : undefined);
+    if (filters.dateFrom !== defaults.dateFrom || filters.dateTo !== defaults.dateTo) {
+      reportQueryGeneration.current += 1;
+    }
+    clearFilters();
+    setReportSearch("");
+  }
+
   function applyFilters() {
     const nextFilters = draftFilters;
     setFilters(nextFilters);
+    setMultiFilters(draftMultiFilters);
     setDateRangeText(formatDateRange(nextFilters, locale));
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
     setDateRangeStart(null);
@@ -3055,6 +3122,7 @@ export function SalesReportScreen({
     const nextFilters = range ? { ...draftFilters, ...range } : draftFilters;
     setDraftFilters(nextFilters);
     setFilters(nextFilters);
+    setMultiFilters(draftMultiFilters);
     setDateRangeText(formatDateRange(nextFilters, locale));
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
     setDateRangeStart(null);
@@ -3064,6 +3132,15 @@ export function SalesReportScreen({
 
   function selectedOptionLabel(options: FilterOption[], value: string) {
     return options.find((option) => option.value === value)?.label ?? t("salesReport.filter.all");
+  }
+
+  function multiFilterLabel(field: ReportMultiFilterKey) {
+    return t(`salesReport.filter.${field}`);
+  }
+
+  function multiFilterValueLabel(field: ReportMultiFilterKey, value: string) {
+    return multiFilterOptions[field].find(option => option.value === value)?.label
+      ?? reportMultiFilterValueLabel(field, value, t);
   }
 
   function buildActiveFilterDetails() {
@@ -3076,6 +3153,13 @@ export function SalesReportScreen({
 
     if (hasDateFilter && (filters.dateFrom || filters.dateTo)) {
       addFilter(t("salesReport.column.date"), formatDateRange(filters, locale));
+    }
+    if (app !== "pda") {
+      availableMultiFields.forEach(field => {
+        const values = multiFilters[field] ?? [];
+        if (values.length) addFilter(multiFilterLabel(field), values.map(value => multiFilterValueLabel(field, value)).join(" / "));
+      });
+      return items;
     }
     if (hasUserFilter) {
       addFilter(t("salesReport.filter.user"), filters.user);
@@ -3100,6 +3184,29 @@ export function SalesReportScreen({
     }
 
     return items;
+  }
+
+  function buildAppliedFilterChips(): ErpFilterChip[] {
+    const chips: ErpFilterChip[] = [];
+    const addFilter = (key: keyof ReportFilters, label: string, value: string) => {
+      if (value.trim()) chips.push({ key, label, value: value.trim(), onRemove: () => removeAppliedFilter(key) });
+    };
+    const defaults = createDefaultFilters(dateOptions?.report === selectedReport ? dateOptions.currentDate : undefined);
+    if (hasDateFilter && (filters.dateFrom !== defaults.dateFrom || filters.dateTo !== defaults.dateTo)) {
+      addFilter("dateFrom", t("salesReport.column.date"), formatDateRange(filters, locale));
+    }
+    if (reportSearch.trim()) {
+      chips.push({ key: "search", label: t("salesReport.search"), value: reportSearch.trim(),
+        onRemove: () => updateReportSearch("") });
+    }
+    availableMultiFields.forEach(field => (multiFilters[field] ?? []).forEach(value => {
+      const label = multiFilterLabel(field);
+      const valueLabel = multiFilterValueLabel(field, value);
+      chips.push({ key: `${field}:${value}`, label, value: valueLabel,
+        removeLabel: `${t("filters.remove")} ${label}: ${valueLabel}`,
+        onRemove: () => removeAppliedMultiFilter(field, value) });
+    }));
+    return chips;
   }
 
   function renderDateRangeFilter(label: string) {
@@ -3199,15 +3306,25 @@ export function SalesReportScreen({
   }
 
   function renderSelectFilter(field: SelectFilterKey, label: string, options: FilterOption[], wide = false) {
+    const values = draftMultiFilters[field] ?? [];
     return (
       <div className={`filter-field report-filter-select ${wide ? "filter-wide" : ""}`}>
         <span id={`report-filter-${field}-label`}>{label}</span>
-        <ErpSelect
+        {app !== "pda" ? <ErpMultiSelect
+          values={values}
+          options={[{ value: "", label: t("salesReport.filter.all") }, ...multiFilterOptions[field]]}
+          placeholder={t("salesReport.filter.all")}
+          searchPlaceholder={t("salesReport.search")}
+          customValueLabel={field === "customer" || field === "supplier"
+            ? value => `${t("party.column.code")}: ${value}` : undefined}
+          aria-labelledby={`report-filter-${field}-label`}
+          onChange={next => setDraftMultiFilters(current => ({ ...current, [field]: [...new Set(next)] }))}
+        /> : <ErpSelect
           value={draftFilters[field]}
           options={options}
           aria-labelledby={`report-filter-${field}-label`}
           onChange={(value) => updateDraftFilter(field, value)}
-        />
+        />}
       </div>
     );
   }
@@ -3235,6 +3352,10 @@ export function SalesReportScreen({
   }
 
   function togglePendingFilter() {
+    if (app !== "pda") {
+      const next: ReportMultiFilters = { ...multiFilters, status: multiFilters.status?.length ? [] : ["salesReport.status.pending"] };
+      setMultiFilters(next); setDraftMultiFilters(next); selectRow(-1); return;
+    }
     const next = { ...filters, status: filters.status ? "" : "salesReport.status.pending" };
     setFilters(next);
     setDraftFilters(next);
@@ -3648,9 +3769,10 @@ export function SalesReportScreen({
             )}
           </div>
         </div>
-        <label className="report-search" hidden={isDailySalesReport}>
+        <label className={`report-search${app !== "pda" ? " erp-search-frame" : ""}`} hidden={isDailySalesReport}>
           <img alt="" src={searchIcon} />
           <input
+            ref={reportSearchRef}
             type="search"
             value={reportSearch}
             aria-label={t("salesReport.search")}
@@ -3797,7 +3919,7 @@ export function SalesReportScreen({
             <div className="report-heading">
               <h1>{t(selectedReport)}</h1>
               {!isSalesActivityReport && activeFilterDetails.length > 0 && (
-                <div className="active-filter-summary" aria-label={t("salesReport.filter")}>
+                <div className={`active-filter-summary${app !== "pda" ? " report-print-filter-summary" : ""}`} aria-label={t("salesReport.filter")}>
                   {activeFilterDetails.map((filter) => (
                     <span key={`${filter.label}-${filter.value}`}>
                       <strong>{`${filter.label}:`}</strong>
@@ -3830,12 +3952,19 @@ export function SalesReportScreen({
           ) : (
             <div className="report-data">
               {renderReportToolbar()}
+              {app !== "pda" && <ErpFilterChips
+                chips={appliedFilterChips}
+                onClear={clearAppliedFilters}
+                focusRef={reportSearchRef}
+                locale={locale}
+                className="report-filter-chips"
+              />}
               <div className="report-table-region">
                 {isWarehouseDocumentReport(selectedReport) && (
                   <section className="warehouse-reconciliation" aria-label={t("salesReport.reconciliation")}>
                     <header>
                       <strong>{t("salesReport.reconciliation")}</strong>
-                      <span>{filters.warehouse || t("salesReport.filter.all")}</span>
+                      <span>{app !== "pda" ? multiFilters.warehouse?.join(" / ") || t("salesReport.filter.all") : filters.warehouse || t("salesReport.filter.all")}</span>
                     </header>
                     <div><span>{t("salesReport.reconciliation.inputs")}</span><strong>{warehouseReconciliation.inputUnits === null ? t("salesReport.value.unavailable") : formatQuantity(warehouseReconciliation.inputUnits)}</strong></div>
                     <div><span>{t("salesReport.reconciliation.outputs")}</span><strong>{warehouseReconciliation.outputUnits === null ? t("salesReport.value.unavailable") : formatQuantity(warehouseReconciliation.outputUnits)}</strong></div>
@@ -3845,7 +3974,7 @@ export function SalesReportScreen({
                   </section>
                 )}
                 <div
-                  className="report-table-scroll"
+                  className={`report-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}
                   ref={reportTableScrollRef}
                   onScroll={handleReportTableScroll}
                 >
@@ -4021,7 +4150,7 @@ export function SalesReportScreen({
           )}
         </section>
 
-        <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
+        {app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
 
       {activityDocumentId && (
@@ -4225,18 +4354,18 @@ export function SalesReportScreen({
 
       {filterOpen && (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="filter-title">
-          <section className="filter-dialog">
+          <section className={`filter-dialog${app !== "pda" ? " erp-filter-dialog" : ""}`}>
             <header className="filter-header">
               <h2 id="filter-title">{t("salesReport.filter")}</h2>
-              <button type="button" onClick={() => setFilterOpen(false)}>
-                {t("common.close")}
+              <button type="button" aria-label={app !== "pda" ? t("common.close") : undefined} onClick={() => setFilterOpen(false)}>
+                {app !== "pda" ? <span aria-hidden="true">×</span> : t("common.close")}
               </button>
             </header>
             <div className="filter-grid">
               {hasDateFilter && renderDateRangeFilter(t(isDailySalesReport ? "salesReport.filter.date" : "salesReport.filter.dateRange"))}
               {hasUserFilter && renderSelectFilter("user", t("salesReport.filter.user"), userOptions)}
               {hasTerminalFilter && renderSelectFilter("terminal", t("salesReport.filter.terminal"), terminalOptions)}
-              {hasCustomerFilter && (
+              {hasCustomerFilter && (app !== "pda" ? renderSelectFilter("customer", t("salesReport.filter.customer"), []) : (
                 <label>
                   <span>{t("salesReport.filter.customer")}</span>
                   <input
@@ -4246,8 +4375,8 @@ export function SalesReportScreen({
                     onChange={(event) => updateDraftFilter("customer", event.target.value)}
                   />
                 </label>
-              )}
-              {hasSupplierFilter && (
+              ))}
+              {hasSupplierFilter && (app !== "pda" ? renderSelectFilter("supplier", t("salesReport.filter.supplier"), []) : (
                 <label>
                   <span>{t("salesReport.filter.supplier")}</span>
                   <input
@@ -4257,7 +4386,7 @@ export function SalesReportScreen({
                     onChange={(event) => updateDraftFilter("supplier", event.target.value)}
                   />
                 </label>
-              )}
+              ))}
               {hasPaymentFilter && renderSelectFilter("payment", t("salesReport.filter.payment"), paymentOptions)}
               {hasWarehouseFilter && renderSelectFilter("warehouse", t("salesReport.filter.warehouse"), warehouseOptions)}
               {hasStatusFilter && renderSelectFilter("status", t("salesReport.filter.status"), statusOptions, true)}

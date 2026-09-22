@@ -1,0 +1,59 @@
+@import "./ErpClassicTables.css";
+
+/* Desktop warehouse views opt in at their table boundaries.
+   Document editors and PDA retain their own skin. */
+.warehouse-classic-table.erp-classic-tables {
+  border: 1px solid var(--erp-table-border) !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.warehouse-classic-table.erp-classic-tables .report-table {
+  font-weight: 400;
+}
+
+.warehouse-classic-table.erp-classic-tables .report-table tbody > tr > td {
+  font-weight: 400 !important;
+}
+
+/* Adding/removing filter tags must leave the remaining height to the table. */
+.stock-sales-history-panel.warehouse-operations-panel--classic {
+  display: flex;
+  flex-direction: column;
+}
+
+.warehouse-operations-panel--classic > * { flex-shrink: 0; }
+.warehouse-operations-panel--classic > .warehouse-classic-table {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto !important;
+}
+
+.goods-check-document-filter-chips,
+.goods-check-line-filter-chips { padding-inline: 14px; }
+
+/* Product descriptions must not run into adjacent quantities in the split view. */
+.warehouse-classic-table.goods-check-lines .report-table { min-width: 900px; }
+.warehouse-classic-table.goods-check-lines .report-table th { width: 11%; }
+.warehouse-classic-table.goods-check-lines .report-table th:first-child { width: 15%; }
+.warehouse-classic-table.goods-check-lines .report-table th:nth-child(2) { width: 30%; }
+.warehouse-classic-table.goods-check-lines .report-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Differences and scanner feedback carry operational meaning, independent of stripes. */
+.warehouse-classic-table.erp-classic-tables.goods-check-lines .report-table tbody > tr.goods-check-difference {
+  background: #fff8e8 !important;
+}
+
+.warehouse-classic-table.erp-classic-tables.goods-check-lines .report-table tbody > tr.goods-check-last-scan > td {
+  animation: erp-warehouse-scan-feedback 1.4s ease-out;
+}
+
+@keyframes erp-warehouse-scan-feedback {
+  0%, 35% { box-shadow: inset 4px 0 #23864a, inset 0 0 0 100vmax #c9f0d5; }
+  100% { box-shadow: none; }
+}

@@ -31,6 +31,7 @@ import { datetimeLocalToIso, isValidDatetimeLocal } from "./fiscalDateTime";
 import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
 import { FiscalExportJobsList, useFiscalExportJobs } from "./fiscalExportJobs";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 
 const emptyFilters: FiscalRecordCursorFilters = {
   dateFrom: "",
@@ -206,6 +207,13 @@ export function FiscalRecordsView({
     setFilters({ ...emptyFilters, cursor: null });
   }
 
+  function removeFilter(field: "dateFrom" | "dateTo" | "number" | "operation" | "documentType" | "fiscalMode") {
+    setFilterError(false);
+    setDraft((current) => ({ ...current, [field]: "" }));
+    setCursor(null);
+    setFilters((current) => ({ ...current, [field]: "", cursor: null }));
+  }
+
   const activeFilterCount = countActiveFilters(filters);
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
@@ -316,6 +324,14 @@ export function FiscalRecordsView({
             {canManage && <button type="button" className="primary" aria-haspopup="dialog" aria-expanded={exportOpen} onClick={() => { setExportMessage(null); setExportOpen(true); void exportJobs.refresh(); }}>{t("verifactu.ui.export")}</button>}
           </div>
         </header>
+        <ErpFilterChips locale={locale} translate={t} onClear={clear} chips={[
+          { key: "dateFrom", label: t("verifactu.records.dateFrom"), value: filters.dateFrom ? formatVerifactuDate(filters.dateFrom, locale) : "", onRemove: () => removeFilter("dateFrom") },
+          { key: "dateTo", label: t("verifactu.records.dateTo"), value: filters.dateTo ? formatVerifactuDate(filters.dateTo, locale) : "", onRemove: () => removeFilter("dateTo") },
+          { key: "number", label: t(filters.numberMatch === "EXACT" ? "verifactu.records.numberExact" : "verifactu.records.numberPrefix"), value: filters.number, onRemove: () => removeFilter("number") },
+          { key: "operation", label: t("verifactu.records.operation"), value: filters.operation ? operationLabel(filters.operation, t) : "", onRemove: () => removeFilter("operation") },
+          { key: "documentType", label: t("verifactu.records.documentType"), value: filters.documentType, onRemove: () => removeFilter("documentType") },
+          { key: "fiscalMode", label: t("verifactu.records.fiscalMode"), value: filters.fiscalMode ? modeLabel(filters.fiscalMode, t) : "", onRemove: () => removeFilter("fiscalMode") }
+        ]} />
         {selectionLimitReached && <div className="gestion-verifactu-message" role="alert">{t("verifactu.records.selectionLimit")}</div>}
         {initialLoading ? <div className="gestion-verifactu-message" role="status" aria-label={t("verifactu.records.loading")}>{t("verifactu.records.loading")}</div> : error ? <div className="gestion-verifactu-message error" role="alert"><span>{t("verifactu.records.loadError")}</span><button type="button" onClick={retry}>{t("verifactu.records.retry")}</button></div> : page.items.length === 0 ? <div className="gestion-verifactu-message">{t(activeFilterCount ? "verifactu.records.emptyFiltered" : "verifactu.records.empty")}</div> : (
           <div className="gestion-verifactu-table-scroll"><table className="gestion-verifactu-table"><colgroup>

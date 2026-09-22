@@ -20,6 +20,7 @@
 .customer-documents-dialog button[aria-selected="true"]:focus-visible { outline-color: #fff; }
 .customer-documents-navigation kbd { margin-left: 10px; font: inherit; font-size: 12px; }
 .customer-documents-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; padding: 10px 12px; background: #e8eef5; border-bottom: 1px solid #9bb2cb; }
+.customer-documents-dialog > .erp-filter-applied { flex: none; margin: 8px 12px; }
 .customer-documents-filters > label { display: flex; flex-direction: column; gap: 4px; flex: 0 1 155px; min-width: 135px; color: #0c2d54; font-size: 12px; font-weight: 700; }
 .customer-documents-filters > .customer-documents-search { flex: 1 1 220px; }
 .customer-documents-filters input { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; padding: 6px 8px; border: 1px solid #91abc8; border-radius: 0; background: #fff; color: #0c2d54; font: inherit; font-size: 14px; }

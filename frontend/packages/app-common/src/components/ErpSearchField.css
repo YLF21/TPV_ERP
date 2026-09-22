@@ -1,0 +1,43 @@
+/* APP VENTA search fields opt in locally; shared editors and other apps keep their skin. */
+.stock-screen.erp-classic-tables .stock-search-stack > .stock-top-sales-search,
+.report-screen .report-command-toolbar > .erp-search-frame,
+.stock-history-toolbar input.erp-search-input {
+  box-sizing: border-box;
+  padding: 0 8px !important;
+  border: 1px solid var(--tpv-v3-line, #aeb9c8) !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* The icon and clear control share one frame; warehouse inputs retain their 38px height. */
+.stock-screen.erp-classic-tables .stock-search-stack > .stock-top-sales-search,
+.report-screen .report-command-toolbar > .erp-search-frame {
+  height: 34px !important;
+  min-height: 34px !important;
+  gap: 8px;
+}
+
+.stock-screen.erp-classic-tables .stock-search-stack > .stock-top-sales-search:focus-within,
+.report-screen .report-command-toolbar > .erp-search-frame:focus-within,
+.stock-history-toolbar input.erp-search-input:focus {
+  border-color: var(--tpv-v3-blue, #2a72b6) !important;
+  box-shadow: 0 0 0 1px var(--tpv-v3-blue, #2a72b6) !important;
+}
+
+.stock-screen.erp-classic-tables .stock-search-stack > .stock-top-sales-search > input,
+.report-screen .report-command-toolbar > .erp-search-frame > input {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}

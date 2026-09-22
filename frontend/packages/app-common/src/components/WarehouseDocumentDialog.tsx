@@ -16,6 +16,7 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { SaleProductSearchDialog, type SaleProductSearchOption } from "./SaleProductSearchDialog";
 import { WarehouseSupplierDialog } from "./WarehouseSupplierDialog";
+import "./WarehouseDocumentClassicTables.css";
 import {
   type WarehouseDocumentLineDraft,
   type WarehouseImportProduct
@@ -1602,7 +1603,7 @@ export function WarehouseDocumentDialog({
   return (
     <div
       ref={dialogRef}
-      className="warehouse-document-overlay"
+      className={`warehouse-document-overlay${app !== "pda" ? " erp-classic-tables" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="warehouse-document-title"
@@ -2051,6 +2052,7 @@ export function WarehouseDocumentDialog({
       )}
       {productSearchOpen && (
         <SaleProductSearchDialog
+          tableTheme={app !== "pda" ? "erp-blue-classic" : undefined}
           initialQuery={productSearchQuery}
           interfaceMode="KEYBOARD"
           locale={locale}
@@ -2088,6 +2090,7 @@ export function WarehouseDocumentDialog({
       )}
       {mode === "input" && (
         <WarehouseSupplierDialog
+          tableTheme={app !== "pda" ? "erp-blue-classic" : undefined}
           open={supplierDialogOpen}
           locale={locale}
           session={session}
@@ -2131,6 +2134,7 @@ export function WarehouseDocumentDialog({
       )}
      <SharedExcelImportDialog
         open={excelImportOpen}
+        filterChips={app !== "pda"}
         locale={locale}
         products={products.map((product) => ({
           id: product.id,

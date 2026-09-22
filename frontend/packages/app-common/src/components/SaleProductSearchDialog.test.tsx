@@ -42,6 +42,25 @@ afterEach(() => {
 });
 
 describe("SaleProductSearchDialog", () => {
+  it("opts into warehouse filter chips without selecting or changing the search contract", () => {
+    const onSelect = vi.fn();
+    const onQueryChange = vi.fn();
+    const { container, rerender } = render(<SaleProductSearchDialog initialQuery="cafe" labels={labels} products={products}
+      interfaceMode="KEYBOARD" onSelect={onSelect} onClose={vi.fn()} onQueryChange={onQueryChange} />);
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    rerender(<SaleProductSearchDialog initialQuery="cafe" labels={labels} products={products} tableTheme="erp-blue-classic"
+      interfaceMode="KEYBOARD" onSelect={onSelect} onClose={vi.fn()} onQueryChange={onQueryChange} />);
+    expect(container.querySelector(".warehouse-picker-classic")).toBeInTheDocument();
+    expect(screen.getByRole("option")).toHaveAccessibleName(/Café molido/);
+    fireEvent.click(screen.getByRole("button", { name: `Quitar filtro ${labels.query}` }));
+    expect(screen.getByRole("combobox", { name: labels.query })).toHaveValue("");
+    expect(onQueryChange).toHaveBeenLastCalledWith("");
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("combobox", { name: labels.query }), { target: { value: "PAN" } });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: labels.query }), { key: "Insert" });
+    expect(onSelect).toHaveBeenCalledWith(products[1]);
+  });
   it("provides the alpha keyboard only for touch mode and preserves scanning and query notifications", () => {
     const onQueryChange = vi.fn();
     const props = { initialQuery: "OLD", labels, products, onQueryChange, onClose: vi.fn(), onSelect: vi.fn() };

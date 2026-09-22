@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import { ApiError, apiRequest, ErpSelect, type UserSession } from "@tpverp/app-common";
 import {
   activateDocumentTemplate,
@@ -94,9 +95,12 @@ function originLabel(scope: DocumentTemplateView["scope"] | undefined, t: Transl
 }
 
 export function DocumentTemplateSettingsScreen({ session, t, request = apiRequest }: Props) {
+  const [templateQuery, setTemplateQuery] = useState("");
   const [selectedType, setSelectedType] = useState<DocumentTemplateType>("FACTURA_VENTA");
   const [selectedFormat, setSelectedFormat] = useState<DocumentTemplateFormat>("A4");
   const [catalog, setCatalog] = useState<DocumentTemplateCatalog | null>(null);
+  const visibleTemplates = catalog?.storeTemplates.filter(template => matchesGestionTableSearch(templateQuery,
+    [template.version, template.name, template.code, t(`gestion.documentTemplates.status.${template.status}`)])) ?? [];
   const [definitions, setDefinitions] = useState<DocumentTemplateDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -618,6 +622,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
       </div>
 
       <section className="gestion-document-template-list" aria-label={t("gestion.documentTemplates.versions")}>
+        <GestionTableSearch value={templateQuery} onChange={setTemplateQuery} t={t} />
         <header>
           <span>{t("gestion.documentTemplates.version")}</span>
           <span>{t("gestion.documentTemplates.name")}</span>
@@ -625,10 +630,10 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
           <span>{t("gestion.documentTemplates.updated")}</span>
           <span>{t("gestion.documentTemplates.actions")}</span>
         </header>
-        {!loading && (catalog?.storeTemplates.length ?? 0) === 0 && (
-          <p className="gestion-document-template-empty">{t("gestion.documentTemplates.empty")}</p>
+        {!loading && visibleTemplates.length === 0 && (
+          <p className="gestion-document-template-empty">{t(templateQuery.trim() ? "stock.status.noResults" : "gestion.documentTemplates.empty")}</p>
         )}
-        {catalog?.storeTemplates.map((template) => (
+        {visibleTemplates.map((template) => (
           <article key={template.id}>
             <strong>v{template.version}</strong>
             <div><b>{template.name}</b><small>{template.code}</small></div>

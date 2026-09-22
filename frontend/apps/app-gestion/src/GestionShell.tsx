@@ -12,6 +12,7 @@ import type { UserSession } from "@tpverp/app-common";
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import type { GestionGroupLock } from "./gestionNavigation";
+import "./GestionClassicTables.css";
 
 type Translator = (key: string) => string;
 
@@ -169,7 +170,7 @@ export function GestionShell({
 
   return (
     <main
-      className={`gestion-screen${resizingNavigation ? " is-resizing-navigation" : ""}`}
+      className={`gestion-screen gestion-classic-tables erp-classic-tables${resizingNavigation ? " is-resizing-navigation" : ""}`}
       style={{ "--gestion-navigation-width": `${navigationWidth}px` } as CSSProperties}
     >
       <aside className="gestion-nav">
