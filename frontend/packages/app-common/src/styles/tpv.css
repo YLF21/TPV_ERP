@@ -25340,18 +25340,7 @@ textarea:focus,
   left: -4px;
 }
 
-.warehouse-screen .stock-nav::after {
-  content: "";
-  position: absolute;
-  z-index: 5;
-  top: 0;
-  right: -8px;
-  bottom: 0;
-  width: 1px;
-  background: #a8b7c8;
-  pointer-events: none;
-}
-
+/* Use the existing edge shadow; an offscreen divider adds overflow to the menu. */
 .warehouse-screen .stock-nav {
   z-index: 4;
   box-shadow: 1px 0 0 #a8b7c8, 0 16px 40px rgba(31, 55, 86, 0.1);

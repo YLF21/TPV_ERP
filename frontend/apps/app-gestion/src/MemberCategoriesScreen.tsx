@@ -10,6 +10,7 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import "./MemberCategoriesScreen.css";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 
 type Translate = (key: string) => string;
 type Request = typeof apiRequest;
@@ -179,8 +180,6 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
     finally { setBusy(false); }
   }
 
-  const filtersActive = Boolean(query || filter !== "all");
-
   return <section className="member-categories-screen">
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{t("gestion.memberCategories.title")}</h2><span>{t("gestion.memberCategories.subtitle")}</span></div>
@@ -190,13 +189,12 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
     <div className="party-directory-toolbar">
       <input aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} />
       <label className="party-directory-status-filter"><span>{t("party.status")}</span><ErpSelect className="erp-select--compact" value={filter} aria-label={t("party.status")} onChange={(value) => setFilter(value as StatusFilter)} options={["all", "active", "inactive"].map((value) => ({ value, label: t(value === "all" ? "gestion.memberCategories.filter.all" : `party.${value}`) }))} /></label>
-      {filtersActive && <button type="button" className="party-directory-clear-filters" onClick={() => { setQuery(""); setFilter("all"); }}>{t("party.filter.clear")}</button>}
       <span className="party-directory-result-count">{t("party.results").replace("{count}", String(visible.length))}</span>
-      {filtersActive && <div className="party-directory-active-filters" aria-label={t("party.filter.active")}>
-        {query && <button type="button" onClick={() => setQuery("")}>{t("party.searchLabel")}: {query}<span aria-hidden="true"> ×</span></button>}
-        {filter !== "all" && <button type="button" onClick={() => setFilter("all")}>{t("party.status")}: {t(`party.${filter}`)}<span aria-hidden="true"> ×</span></button>}
-      </div>}
     </div>
+    <ErpFilterChips translate={t} chips={[
+      { key: "search", label: t("party.searchLabel"), value: query, onRemove: () => setQuery("") },
+      { key: "active", label: t("party.status"), value: filter === "all" ? "" : t(`party.${filter}`), onRemove: () => setFilter("all") }
+    ]} onClear={() => { setQuery(""); setFilter("all"); }} />
 
     <div className="party-directory-table member-categories-table" role="table" aria-label={t("gestion.memberCategories.title")}>
       <div className="party-directory-row member-category-row header" role="row" style={gridStyle}>

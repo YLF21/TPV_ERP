@@ -553,6 +553,7 @@ export function App() {
 
   const customerReceivablesDialog = receivablesOpen && canOpenCustomerReceivables
     ? <CustomerReceivablesScreen
+        tableTheme={screen === "stock" ? "erp-blue-classic" : undefined}
         locale={locale}
         session={session}
         terminalContext={terminalContext}

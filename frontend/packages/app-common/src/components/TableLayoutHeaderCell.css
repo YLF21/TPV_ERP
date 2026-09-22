@@ -214,6 +214,12 @@
 .table-layout-column-resizer:hover::after,
 .table-layout-column-resizer:focus-visible::after { width: 2px; background: #ffffff; }
 
+/* The final handle must stay inside the table (native tables and CSS grids).
+   A negative offset creates horizontal overflow even when every column fits.
+   Keep the full hit area and the divider at the column edge. */
+.table-layout-header-cell:last-child > .table-layout-column-resizer { right: 0; }
+.table-layout-header-cell:last-child > .table-layout-column-resizer::after { left: auto; right: 0; }
+
 .table-layout-sort-button { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; min-width: 0; margin: -9px -10px; padding: 9px 18px 9px 10px; border: 0; border-radius: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .table-layout-sort-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-layout-sort-indicator { display: inline-grid; place-items: center; flex: 0 0 auto; width: 16px; height: 16px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 3px; color: #b9cde1; font-size: 11px; font-weight: 800; line-height: 1; }

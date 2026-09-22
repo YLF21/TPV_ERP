@@ -378,6 +378,29 @@ describe("VerifactuManagementScreen", () => {
     }), "fiscal-token"));
   });
 
+  it.each(["queue", "defective"] as const)("removes only the applied document filter and resets the %s page", async (view) => {
+    const request = view === "queue" ? api.loadVerifactuAdminSubmissions : api.loadVerifactuAdminDefectiveRecords;
+    if (view === "queue") vi.mocked(api.loadVerifactuAdminSubmissions).mockResolvedValue({ ...queuePage, totalPages: 2 });
+    else vi.mocked(api.loadVerifactuAdminDefectiveRecords).mockResolvedValue({ ...defectivePage, totalPages: 2 });
+    render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
+    fireEvent.click(screen.getByRole("tab", { name: `verifactu.management.${view}` }));
+    await screen.findByText("T-2026-0042");
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.ui.filters" }));
+    fireEvent.change(screen.getByLabelText("verifactu.management.dateFrom"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("verifactu.management.documentNumber"), { target: { value: "T-42" } });
+    fireEvent.click(screen.getByRole("button", { name: /^verifactu.management.status:/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Rechazado" }));
+    fireEvent.click(screen.getByRole("button", { name: /^verifactu.management.fiscalOperation:/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Alta" }));
+    expect(screen.queryByRole("group", { name: "filters.applied" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.applyFilters" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ documentNumber: "T-42", dateFrom: "2026-07-01", page: 0 }), "fiscal-token"));
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.next" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }), "fiscal-token"));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove verifactu.management.documentNumber" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ documentNumber: "", dateFrom: "2026-07-01", status: "RECHAZADO", operation: "ALTA", page: 0 }), "fiscal-token"));
+  });
+
   it("shows a safe error state when the summary cannot be loaded", async () => {
     vi.mocked(api.loadVerifactuAdminSummary).mockRejectedValueOnce(new Error("internal secret"));
 
@@ -411,7 +434,7 @@ describe("VerifactuManagementScreen", () => {
     expect(api.loadVerifactuAdminAttempts).toHaveBeenCalledWith(
       "record-1", 0, 10, "fiscal-token"
     );
-    expect(screen.getByText("verifactu.management.protected")).toBeInTheDocument();
+    expect(await screen.findByText("verifactu.management.protected")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("responsePayload");
     expect(document.body.textContent).not.toContain("requestXml");
     expect(document.body.textContent).not.toContain("<script>");

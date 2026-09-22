@@ -20,6 +20,16 @@ it("keeps print retry after two failures and clears only after success", async (
 });
 
 describe("CustomerReceivablesScreen", () => {
+  it("only enables the management table theme when the caller opts in", async () => {
+    const request = vi.fn().mockResolvedValue([]);
+    const props = { locale: "es" as const, session, terminalContext: { storeName: "Tienda", terminalCode: "01" }, request: request as any, onBack: vi.fn(), onLocaleChange: vi.fn() };
+    const { container, rerender } = render(<CustomerReceivablesScreen {...props} />);
+    await waitFor(() => expect(request).toHaveBeenCalledOnce());
+    expect(container.querySelector(".customer-receivables-overlay")).not.toHaveClass("erp-classic-tables");
+    rerender(<CustomerReceivablesScreen {...props} tableTheme="erp-blue-classic" />);
+    expect(container.querySelector(".customer-receivables-overlay")).toHaveClass("erp-classic-tables");
+  });
+
   it("renders as a compact modal and closes with Escape", async () => {
     const request = vi.fn().mockResolvedValue([]);
     const onBack = vi.fn();
@@ -147,6 +157,53 @@ describe("CustomerReceivablesScreen", () => {
     fireEvent.change(amount, { target: { value: "25" } });
     fireEvent.keyDown(amount, { key: "Enter" });
     await waitFor(() => expect(screen.getAllByText("50,00")).toHaveLength(2));
+  });
+
+  it("removes debt chips independently and keeps the fixed customer scope when clearing all", async () => {
+    const request = vi.fn().mockResolvedValue([]);
+    render(<CustomerReceivablesScreen locale="es" tableTheme="erp-blue-classic" session={session} initialCustomerId="customer-1"
+      terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    await waitFor(() => expect(request).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "PARCIAL" } });
+    fireEvent.change(screen.getByLabelText("Tipo de documento"), { target: { value: "FACTURA_VENTA" } });
+    fireEvent.click(screen.getByLabelText("Solo vencidos"));
+    fireEvent.change(screen.getByLabelText("Vencimiento desde"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("Vencimiento hasta"), { target: { value: "2026-07-31" } });
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Tipo de documento: Factura");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Estado" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables?customerId=customer-1&search=Ana&documentType=FACTURA_VENTA&overdue=true&dueFrom=2026-07-01&dueTo=2026-07-31", { token: "token" }));
+    expect(screen.getByLabelText("Buscar deuda")).toHaveValue("Ana");
+    expect(screen.getByLabelText("Estado")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Buscar deuda" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables?customerId=customer-1&documentType=FACTURA_VENTA&overdue=true&dueFrom=2026-07-01&dueTo=2026-07-31", { token: "token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables?customerId=customer-1", { token: "token" }));
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Solo vencidos")).not.toBeChecked();
+  });
+
+  it("removes history chips without losing dates or filters from the open-debts tab", async () => {
+    const request = vi.fn(async (path: string) => path === "/payment-methods" ? [{ id: "transfer", name: "Transferencia" }] : []);
+    render(<CustomerReceivablesScreen locale="es" tableTheme="erp-blue-classic" session={session}
+      terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    await waitFor(() => expect(request).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "Pendiente" } });
+    fireEvent.click(screen.getByRole("button", { name: "Histórico de cobros" }));
+    await screen.findByRole("option", { name: "Transferencia" });
+    fireEvent.change(screen.getByLabelText("Buscar cliente o documento"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Forma de pago"), { target: { value: "transfer" } });
+    fireEvent.change(screen.getByLabelText("Cobrado desde"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("Cobrado hasta"), { target: { value: "2026-07-31" } });
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Forma de pago: Transferencia");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Forma de pago" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables/payment-history?search=Ana&collectedFrom=2026-07-01&collectedTo=2026-07-31", { token: "token" }));
+    expect(screen.getByLabelText("Buscar cliente o documento")).toHaveValue("Ana");
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables/payment-history", { token: "token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deudas abiertas" }));
+    expect(screen.getByLabelText("Buscar deuda")).toHaveValue("Pendiente");
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Buscar deuda: Pendiente");
   });
 
   it("reloads the persisted receipt when retrying a partial payment after closing checkout", async () => {

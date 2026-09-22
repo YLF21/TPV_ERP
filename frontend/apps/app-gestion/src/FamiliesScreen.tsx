@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   ApiError,
@@ -16,6 +17,7 @@ import {
   TableSortButton,
   type UserSession,
 } from "@tpverp/app-common";
+import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   createFamily,
   createSubfamily,
@@ -284,6 +286,8 @@ function ProductTable({
   scrollResetKey,
   t,
   token,
+  filterChips,
+  filterFocusRef,
 }: {
   page: FamilyProductPage | null;
   loading: boolean;
@@ -297,6 +301,8 @@ function ProductTable({
   scrollResetKey: string;
   t: Translate;
   token: string;
+  filterChips: ErpFilterChip[];
+  filterFocusRef: RefObject<HTMLElement | null>;
 }) {
   const headerRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -358,6 +364,7 @@ function ProductTable({
                 )
               : t("gestion.families.selectNode")}
           </p>
+          <ErpFilterChips translate={t} chips={filterChips} focusRef={filterFocusRef} />
         </div>
       </header>
       {error && (
@@ -606,6 +613,8 @@ export function FamiliesScreen({
   productSortRef.current = productSort;
   const suffixRef = useRef(0);
   const moveSearchRequestRef = useRef(0);
+  const moveSearchRef = useRef<HTMLInputElement>(null);
+  const familyFocusRef = useRef<HTMLDivElement>(null);
   const canManage =
     hasPermission(session, "ADMIN") ||
     hasPermission(session, "GESTION_PRODUCTO") ||
@@ -1422,6 +1431,16 @@ export function FamiliesScreen({
     }
   }
   const moveTargetDetails = targetDetails(moveTarget);
+  const selectedFamily = parentFamilyForNode(selectedNode);
+  const selectedSubfamily = selectedNode?.kind === "subfamily" && selectedFamily
+    ? subfamilies[selectedFamily.id]?.find(item => item.id === selectedNode.id)
+    : undefined;
+  const classificationChips: ErpFilterChip[] = selectedFamily ? [{
+    key: "classification",
+    label: t(selectedSubfamily ? "stock.column.subfamily" : "stock.column.family"),
+    value: `${nodeCode(selectedFamily, selectedSubfamily)} · ${selectedSubfamily?.name ?? selectedFamily.name}`,
+    onRemove: () => selectNode(null),
+  }] : [];
   const moveQuery = normalizeSearch(moveSearch);
   const remoteMoveFamilyIds = useMemo(() => {
     if (!moveSearchResults) return new Set<string>();
@@ -1628,6 +1647,7 @@ export function FamiliesScreen({
                 <div key={family.id} className="gestion-family-tree-branch">
                   <div
                     id={`family-tree-family:${family.id}`}
+                    ref={family === families[0] ? familyFocusRef : undefined}
                     className={`gestion-family-tree-item ${nodeKey(selectedNode) === `family:${family.id}` ? "is-selected" : ""}`}
                     role="treeitem"
                     aria-level={1}
@@ -1799,6 +1819,8 @@ export function FamiliesScreen({
               scrollResetKey={`${nodeKey(selectedNode)}:${productSort.by}:${productSort.direction}`}
               t={t}
               token={session.accessToken ?? ""}
+              filterChips={classificationChips}
+              filterFocusRef={familyFocusRef}
             />
             {selectedProductIds.size > 0 && canManage && (
               <footer className="gestion-families-selection-bar">
@@ -2088,6 +2110,7 @@ export function FamiliesScreen({
               <span>{t("gestion.families.search")}</span>
               <input
                 type="search"
+                ref={moveSearchRef}
                 role="searchbox"
                 aria-label={t("gestion.families.search")}
                 value={moveSearch}
@@ -2124,6 +2147,9 @@ export function FamiliesScreen({
                 </>
               )}
             </label>
+            <ErpFilterChips translate={t} focusRef={moveSearchRef}
+              chips={moveSearch.trim() ? [{ key: "search", label: t("gestion.families.search"), value: moveSearch.trim(), onRemove: () => changeMoveSearch("") }] : []}
+              onClear={() => changeMoveSearch("")} />
             <div
               className="gestion-family-move-tree"
               id="families-move-tree"

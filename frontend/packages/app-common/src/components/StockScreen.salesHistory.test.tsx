@@ -41,6 +41,31 @@ async function openProductInformation(app: "venta" | "gestion", permissions: Use
 }
 
 describe("Stock's shared SaaS product history", () => {
+  it.each(["venta", "gestion"] as const)("keeps header keyboard actions separate from opening product information in %s", async (app) => {
+    mockStockAndHistory();
+    const { container } = render(<StockScreen app={app} locale="es"
+      session={{ username: "demo", displayName: "DEMO", permissions: ["STOCK_READ"], accessToken: "test-token" }}
+      terminalContext={{ storeName: "Tienda de prueba", terminalCode: "DEMO" }}
+      onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    await screen.findByText("Cafe de prueba");
+    const header = container.querySelector('.stock-header-cell[data-column-key="code"]') as HTMLElement;
+    expect(header.getAttribute("aria-sort")).toBe("ascending");
+    const menuButton = within(header).getByRole("button", { name: "Opciones de columna" });
+    expect(fireEvent.keyDown(menuButton, { key: "Enter" })).toBe(true);
+    expect(screen.queryByRole("dialog", { name: "Información del producto" })).toBeNull();
+    fireEvent.click(menuButton);
+    const menu = screen.getByRole("menu", { name: "Opciones de columna" });
+    const sort = within(menu).getByRole("menuitem", { name: "Cambiar orden" });
+    expect(fireEvent.keyDown(sort, { key: "Enter" })).toBe(true);
+    fireEvent.click(sort);
+    expect(header.getAttribute("aria-sort")).toBe("descending");
+    expect(screen.queryByRole("dialog", { name: "Información del producto" })).toBeNull();
+
+    await screen.findByText("Cafe de prueba");
+    fireEvent.keyDown(container.querySelector(".stock-table")!, { key: "Enter" });
+    expect(screen.getByRole("dialog", { name: "Información del producto" })).toBeTruthy();
+  });
+
   it.each(["venta", "gestion"] as const)("combines product information and warehouse stock in F5, and dedicates F6 to history in %s", async (app) => {
     mockStockAndHistory();
     const dialog = await openProductInformation(app);

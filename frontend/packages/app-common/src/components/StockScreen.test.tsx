@@ -1323,7 +1323,7 @@ describe("StockScreen", () => {
       />
     );
 
-    expect(html).toContain('class="stock-screen work-screen"');
+    expect(html).toContain('class="stock-screen work-screen erp-classic-tables"');
     expect(html).toContain('class="stock-nav"');
     expect(html).toContain('class="module-nav-back-icon"');
     expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(10);
@@ -1355,7 +1355,9 @@ describe("StockScreen", () => {
     expect(html).toContain("Familia");
     expect(html).toContain("Subfamilia");
     expect(html).toContain("Almacén");
-    expect(html).toContain("Sin datos de stock");
+    // Server rendering precedes the first warehouse-aware stock request.
+    expect(html).toContain("Cargando...");
+    expect(html).not.toContain("Sin datos de stock");
     expect(html).not.toContain("Movimientos");
     expect(html).not.toContain("Entrada stock");
     expect(html).not.toContain("Cafe molido");
@@ -1396,7 +1398,7 @@ describe("StockScreen", () => {
       />
     );
 
-    expect(html).toContain('class="stock-screen work-screen gestion-embedded-module"');
+    expect(html).toContain('class="stock-screen work-screen gestion-embedded-module erp-classic-tables"');
     expect(html).toContain("Top ventas");
     expect(html).not.toContain('class="stock-nav"');
     expect(html).not.toContain('class="report-brand-back"');

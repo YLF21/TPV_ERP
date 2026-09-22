@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest, type LocaleCode, type UserSession } from "@tpverp/app-common";
+import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import {
   linkSaasLicense,
   loadLicenseHistory,
@@ -41,6 +42,7 @@ export function LicenseSaasManagementScreen({
   request = apiRequest,
 }: Props) {
   const [history, setHistory] = useState<LicenseHistoryItem[]>([]);
+  const [query, setQuery] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"link" | "validate" | "refresh" | null>(null);
@@ -56,6 +58,12 @@ export function LicenseSaasManagementScreen({
       ? { dateStyle: "medium", timeStyle: "short" }
       : { dateStyle: "medium" }).format(parsed);
   }, [locale, t]);
+
+  const visibleHistory = history.filter((item) => matchesGestionTableSearch(query, [
+    item.reference, item.taxId, formatDate(item.validFrom, true), formatDate(item.validUntil, true),
+    `${item.maxWindows} ${t("gestion.licenses.windows")}`, `${item.maxPda} ${t("gestion.licenses.pda")}`,
+    t(item.active ? "gestion.licenses.active" : "gestion.licenses.inactive")
+  ]));
 
   const refresh = useCallback(async (showBusy = false) => {
     if (showBusy) setBusy("refresh");
@@ -214,8 +222,9 @@ export function LicenseSaasManagementScreen({
             <h3>{t("gestion.licenses.history")}</h3>
             <p>{t("gestion.licenses.historyDescription")}</p>
           </div>
-          <strong>{history.length}</strong>
+          <strong>{visibleHistory.length}</strong>
         </header>
+        <GestionTableSearch value={query} onChange={setQuery} t={t} />
         <div className="gestion-license-table" role="table" aria-label={t("gestion.licenses.history") }>
           <div className="head" role="row">
             <span role="columnheader">{t("gestion.licenses.reference")}</span>
@@ -223,9 +232,9 @@ export function LicenseSaasManagementScreen({
             <span role="columnheader">{t("gestion.licenses.capacity")}</span>
             <span role="columnheader">{t("gestion.licenses.state")}</span>
           </div>
-          {history.length === 0 ? (
-            <p>{loading ? t("common.loading") : t("gestion.licenses.noHistory")}</p>
-          ) : history.map((item) => (
+          {visibleHistory.length === 0 ? (
+            <p>{loading ? t("common.loading") : t(query.trim() ? "stock.status.noResults" : "gestion.licenses.noHistory")}</p>
+          ) : visibleHistory.map((item) => (
             <div role="row" key={item.reference}>
               <span role="cell"><strong>{item.reference}</strong><small>{item.taxId}</small></span>
               <span role="cell"><time>{formatDate(item.validFrom, true)}</time><small>{formatDate(item.validUntil, true)}</small></span>

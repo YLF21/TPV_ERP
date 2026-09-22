@@ -1,0 +1,8 @@
+/* Match the expandable field filters in frontend SaaS / Companies. */
+.party-directory-toolbar--field-filters .party-directory-filter-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; white-space: nowrap; }
+.party-directory-filter-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; min-width: 0; padding: 10px; border: 1px solid #c4d2df; background: #f5f8fc; }
+.party-directory-filter-fields label { display: grid; gap: 5px; min-width: 0; color: #173d64; font-size: 12px; font-weight: 700; }
+.party-directory-filter-fields input { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid #aebfd2; border-radius: 0; color: #172e4c; background: #fff; font: inherit; font-weight: 400; }
+.party-directory-filter-fields input:focus-visible { outline: 2px solid #1f5a94; outline-offset: 1px; }
+@media (max-width: 900px) { .party-directory-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .party-directory-filter-fields { grid-template-columns: minmax(0, 1fr); } }

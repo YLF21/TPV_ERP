@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import {
   ApiError,
   addInvoiceBankAccount,
@@ -34,6 +35,7 @@ export function PaymentMethodSettingsScreen({
   request = apiRequest,
 }: Props) {
   const [methods, setMethods] = useState<PaymentMethodView[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [returnPolicy, setReturnPolicy] = useState<"REFUND_ALLOWED" | "EXCHANGE_OR_VOUCHER_ONLY">("REFUND_ALLOWED");
@@ -46,6 +48,9 @@ export function PaymentMethodSettingsScreen({
   const managedMethods = useMemo(() => managedCheckoutPaymentMethodNames
     .map((name) => methods.find((method) => method.name.trim().toUpperCase() === name))
     .filter((method): method is PaymentMethodView => Boolean(method)), [methods]);
+  const visibleMethods = managedMethods.filter(method => matchesGestionTableSearch(query, [method.name,
+    t(`gestion.paymentMethods.method.${method.name.trim().toUpperCase()}`),
+    t(method.active ? "gestion.paymentMethods.enabled" : "gestion.paymentMethods.disabled")]));
 
   useEffect(() => {
     let active = true;
@@ -232,6 +237,7 @@ export function PaymentMethodSettingsScreen({
       </section>
 
       <section className="gestion-payment-methods-panel" aria-label={t("gestion.paymentMethods.title")}>
+        <GestionTableSearch value={query} onChange={setQuery} t={t} />
         <header className="gestion-payment-methods-row head">
           <span>{t("gestion.paymentMethods.method")}</span>
           <span>{t("gestion.paymentMethods.active")}</span>
@@ -243,11 +249,11 @@ export function PaymentMethodSettingsScreen({
           <p className="gestion-payment-methods-state" role="status">
             {t("gestion.paymentMethods.loading")}
           </p>
-        ) : managedMethods.length === 0 ? (
+        ) : visibleMethods.length === 0 ? (
           <p className="gestion-payment-methods-state">
-            {t("gestion.paymentMethods.empty")}
+            {t(query.trim() ? "stock.status.noResults" : "gestion.paymentMethods.empty")}
           </p>
-        ) : managedMethods.map((method) => {
+        ) : visibleMethods.map((method) => {
           const referenceConfigurable = isReferenceConfigurablePaymentMethod(method.name);
           const voucherReferenceLocked = method.name.trim().toUpperCase() === "VALE";
           const working = busyId === method.id;

@@ -91,7 +91,7 @@ export function StockBulkWorkspaceList({
     username,
     tableKey: "stock.bulkEdit.workspaces",
     columns: stockBulkWorkspaceColumns.map((column) => column.key),
-    defaultSort: null,
+    defaultSort: app === "venta" ? { column: "code", direction: "asc" } : null,
     persistent: Boolean(username)
   });
   const sortedDrafts = sortTableRows(drafts, tableSort.sort, (draft, column) => {

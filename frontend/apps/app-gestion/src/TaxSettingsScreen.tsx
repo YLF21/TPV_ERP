@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ApiError, apiRequest, type UserSession } from "@tpverp/app-common";
 import { canManageTaxes } from "./gestionAccess";
+import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 
 type Translator = (key: string) => string;
 type Request = typeof apiRequest;
@@ -33,12 +34,14 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
   request?: Request;
 }) {
   const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const canManage = canManageTaxes(session);
+  const visibleTaxes = taxes.filter(tax => matchesGestionTableSearch(query, [tax.percentage, t(tax.active ? "gestion.taxes.active" : "gestion.taxes.inactive")]));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -181,12 +184,13 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
       )}
 
       <section className="gestion-taxes-table" aria-label={t("gestion.taxes.title")}>
+        <GestionTableSearch value={query} onChange={setQuery} t={t} />
         <header>
           <span>{t("gestion.taxes.percentage")}</span>
           <span>{t("gestion.taxes.status")}</span>
           <span>{t("common.actions")}</span>
         </header>
-        {loading ? <p className="gestion-taxes-state">{t("common.loading")}</p> : taxes.length === 0 ? <p className="gestion-taxes-state">{t("gestion.taxes.empty")}</p> : taxes.map((tax) => (
+        {loading ? <p className="gestion-taxes-state">{t("common.loading")}</p> : visibleTaxes.length === 0 ? <p className="gestion-taxes-state">{t(query.trim() ? "stock.status.noResults" : "gestion.taxes.empty")}</p> : visibleTaxes.map((tax) => (
           <article key={tax.id}>
             <strong>{tax.percentage} %{tax.defaultTax && <small>{t("gestion.taxes.default")}</small>}</strong>
             <label className="gestion-taxes-switch">

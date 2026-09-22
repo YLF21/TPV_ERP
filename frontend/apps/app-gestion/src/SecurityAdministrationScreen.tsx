@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   TableLayoutHeaderCell,
   sortTableRows,
@@ -162,6 +163,9 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
         </label>
         <span>{t("gestion.security.results").replace("{count}", String(filteredUsers.length))}</span>
       </div>
+      <ErpFilterChips translate={t} chips={[
+        { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
+      ]} onClear={() => setQuery("")} />
 
       <div className="gestion-security-grid">
         <section className="gestion-security-list" aria-label={t("gestion.users.title")}>
@@ -433,6 +437,9 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
       <div className="gestion-role-layout">
         <aside className="gestion-role-list">
           <label><span>{t("gestion.security.search")}</span><input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+          <ErpFilterChips translate={t} chips={[
+            { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
+          ]} onClear={() => setQuery("")} />
           <div>
             {filteredRoles.map((role) => (
               <button type="button" className={selectedId === role.id ? "selected" : ""} key={role.id} onClick={() => setSelectedId(role.id)}>

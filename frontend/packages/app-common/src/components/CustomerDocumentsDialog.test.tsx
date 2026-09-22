@@ -272,8 +272,49 @@ describe("CustomerDocumentsDialog", () => {
     expect(screen.getByRole("button", { name: "Exportar a Excel" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
     await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(expect.stringContaining("search=FV-10%25_&status=PENDIENTE&dateFrom=2026-09-01&dateTo=2026-09-09"), expect.anything()));
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
     await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith("/customer-document-reports/saas/customer-1/tickets?size=50&sortBy=date&sortDirection=desc", expect.anything()));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+  });
+
+  it.each([["Tickets F1", "tickets"], ["Facturas F2", "invoices"], ["Albaranes F3", "delivery-notes"]])("removes an applied criterion from %s while retaining other applied filters and pending drafts", async (tabName, endpoint) => {
+    mount(); await screen.findByText("T-001");
+    fireEvent.click(screen.getByRole("tab", { name: tabName }));
+    await screen.findByText("T-001");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "T-" } });
+    fireEvent.change(screen.getByLabelText("Fecha desde"), { target: { value: "2026-09-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Estado" }));
+    fireEvent.click(screen.getByRole("option", { name: "Pendiente" }));
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    await screen.findByText("T-001");
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Búsqueda: T-");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "DRAFT" } });
+    fireEvent.change(screen.getByLabelText("Fecha hasta"), { target: { value: "2026-09-22" } });
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Estado" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(
+      `/customer-document-reports/saas/customer-1/${endpoint}?size=50&sortBy=date&sortDirection=desc&search=T-&dateFrom=2026-09-01`, expect.anything()));
+    expect(screen.getByRole("searchbox")).toHaveValue("DRAFT");
+    expect(screen.getByLabelText("Fecha hasta")).toHaveValue("2026-09-22");
+    expect(screen.getByRole("button", { name: "Estado" })).toHaveTextContent("Todos");
+    expect(screen.getByRole("button", { name: "Exportar a Excel" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(
+      `/customer-document-reports/saas/customer-1/${endpoint}?size=50&sortBy=date&sortDirection=desc`, expect.anything()));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByLabelText("Fecha hasta")).toHaveValue("");
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+  });
+
+  it("uses the same applied document chips in the management app", async () => {
+    mount({ app: "gestion" }); await screen.findByText("T-001");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "T-" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    await screen.findByText("T-001");
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Búsqueda: T-");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Búsqueda" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(
+      "/customer-document-reports/saas/customer-1/tickets?size=50&sortBy=date&sortDirection=desc", expect.anything()));
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 

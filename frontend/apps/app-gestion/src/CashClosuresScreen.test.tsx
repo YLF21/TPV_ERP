@@ -86,6 +86,19 @@ describe("CashClosuresScreen", () => {
       userId: "user-1",
       onlyDiscrepancies: true
     }), null, "token", null));
+
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.cashClosures.from / gestion.cashClosures.to" }));
+    await waitFor(() => expect(api.loadCashClosures).toHaveBeenLastCalledWith(expect.objectContaining({
+      from: options.businessDate, to: options.businessDate, terminalId: "terminal-1", userId: "user-1", onlyDiscrepancies: true
+    }), null, "token", null));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.cashClosures.terminal" }));
+    await waitFor(() => expect(api.loadCashClosures).toHaveBeenLastCalledWith(expect.objectContaining({
+      from: options.businessDate, to: options.businessDate, terminalId: "", userId: "user-1", onlyDiscrepancies: true
+    }), null, "token", null));
+    fireEvent.click(screen.getByRole("button", { name: "filters.clearAll" }));
+    await waitFor(() => expect(api.loadCashClosures).toHaveBeenLastCalledWith(expect.objectContaining({
+      from: options.businessDate, to: options.businessDate, terminalId: "", userId: "", onlyDiscrepancies: false
+    }), null, "token", null));
   });
 
   it("loads the next cursor when the table approaches the bottom", async () => {

@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 
 export const CONNECTION_REFRESH_MS = 30_000;
 export const CONNECTION_TIMEOUT_MS = 8_000;
 
-export function useScreenConnectionStatus() {
+export function useScreenConnectionStatus({ includeBackendAddress = true } = {}) {
   const [saasConnected, setSaasConnected] = useState(false);
   const [backendLabel, setBackendLabel] = useState<string | null>(null);
+  const [checkingSaas, setCheckingSaas] = useState(false);
+  const checkSaasRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshSaas = useCallback(() => { void checkSaasRef.current?.(); }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -17,6 +20,7 @@ export function useScreenConnectionStatus() {
       if (saasRequest) return;
       const controller = new AbortController();
       saasRequest = controller;
+      setCheckingSaas(true);
       const timeout = window.setTimeout(() => controller.abort(), CONNECTION_TIMEOUT_MS);
       try {
         const result = await apiRequest<{ saasConnected: boolean }>("/connectivity", {
@@ -29,7 +33,10 @@ export function useScreenConnectionStatus() {
         if (!disposed && saasRequest === controller) setSaasConnected(false);
       } finally {
         window.clearTimeout(timeout);
-        if (saasRequest === controller) saasRequest = null;
+        if (saasRequest === controller) {
+          saasRequest = null;
+          if (!disposed) setCheckingSaas(false);
+        }
       }
     }
 
@@ -56,17 +63,19 @@ export function useScreenConnectionStatus() {
 
     function refresh() {
       void checkSaas();
-      void checkAddress();
+      if (includeBackendAddress) void checkAddress();
     }
     function offline() {
       saasRequest?.abort();
       saasRequest = null;
       setSaasConnected(false);
+      setCheckingSaas(false);
     }
     function visible() {
       if (document.visibilityState === "visible") refresh();
     }
 
+    checkSaasRef.current = checkSaas;
     refresh();
     const interval = window.setInterval(refresh, CONNECTION_REFRESH_MS);
     window.addEventListener("online", refresh);
@@ -74,6 +83,7 @@ export function useScreenConnectionStatus() {
     document.addEventListener("visibilitychange", visible);
     return () => {
       disposed = true;
+      checkSaasRef.current = null;
       window.clearInterval(interval);
       saasRequest?.abort();
       addressRequest?.abort();
@@ -81,7 +91,7 @@ export function useScreenConnectionStatus() {
       window.removeEventListener("offline", offline);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, []);
+  }, [includeBackendAddress]);
 
-  return { saasConnected, backendLabel };
+  return { saasConnected, backendLabel, checkingSaas, refreshSaas };
 }

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, SlidersHorizontal, Tag, Trash, X } from "@phosphor-icons/react";
 import { classifyApiFailure, useTableLayoutPreference, TableLayoutHeaderCell, tableLayoutGridTemplate, visibleTableColumns, type LocaleCode, type TableColumnDefinition, type UserSession } from "@tpverp/app-common";
 import {
@@ -251,6 +252,7 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
       {groupsError && <div className="gestion-control-inline-state error" role="alert">{t("gestion.controlAlerts.indicatorsError")} <button type="button" onClick={() => setRefreshKey((value) => value + 1)}>{t("gestion.controlAlerts.retry")}</button></div>}
       <div className="gestion-control-period-note">{t("gestion.controlAlerts.periodTypes")} · {formatRangeLabel(range, locale)} · {storeTimezone}</div>
       {preferenceReady ? <AlertsTimelineView session={session} t={t} locale={locale} range={range} activeType={activeType} onTypeChange={setActiveType}
+        defaultRange={rangeForPeriod(view.defaultPeriod, storeTimezone)} onResetRange={() => changeRange(rangeForPeriod(view.defaultPeriod, storeTimezone))}
         refreshKey={refreshKey} view={view} timeZone={storeTimezone} onChanged={() => setRefreshKey((value) => value + 1)}
         onFiltersChange={changeMetricsFilters} onSortChange={(sortDirection) => void saveView({ ...view, sortDirection }, false)} preferenceSaving={preferenceSaving || !preferenceLoaded} /> : <div className="gestion-alert-list-state">{t("common.loading")}</div>}
       {rulesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-rules-manager" role="dialog" aria-modal="true" aria-labelledby="control-rules-manager-title">
@@ -423,8 +425,9 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
   );
 }
 
-function AlertsTimelineView({ session, t, locale, range, activeType, onTypeChange, refreshKey, view, onChanged, timeZone, onFiltersChange, onSortChange, preferenceSaving }: {
+function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRange, activeType, onTypeChange, refreshKey, view, onChanged, timeZone, onFiltersChange, onSortChange, preferenceSaving }: {
   session: UserSession; t: Translator; locale: LocaleCode; range: DateRange; activeType: "" | ControlAlertType;
+  defaultRange: DateRange; onResetRange: () => void;
   onTypeChange: (type: "" | ControlAlertType) => void; refreshKey: number;
   view: ControlAlertViewPreference; onChanged: () => void; timeZone: string;
   onFiltersChange: (filters: Pick<ControlAlertFilters, "search" | "status" | "priority" | "assigneeId" | "overdue">) => void;
@@ -626,6 +629,20 @@ function AlertsTimelineView({ session, t, locale, range, activeType, onTypeChang
         </div></details>
         <button type="submit" className="primary">{t("gestion.controlAlerts.apply")}</button>
       </form>
+      <ErpFilterChips locale={locale} translate={t} onClear={() => {
+        setQuery("");
+        setFilters((current) => ({ ...current, search: "", status: "", priority: "", assigneeId: "", overdue: false, page: 0 }));
+        onTypeChange("");
+        onResetRange();
+      }} chips={[
+        { key: "period", label: t("gestion.controlAlerts.dateFilter"), value: range.from !== defaultRange.from || range.to !== defaultRange.to ? formatRangeLabel(range, locale) : "", onRemove: onResetRange },
+        { key: "search", label: t("gestion.controlAlerts.search"), value: filters.search, onRemove: () => { setQuery(""); setFilters((current) => ({ ...current, search: "", page: 0 })); } },
+        { key: "status", label: t("gestion.controlAlerts.filterStatus"), value: filters.status ? t(`gestion.controlAlerts.status.${filters.status}`) : "", onRemove: () => setFilters((current) => ({ ...current, status: "", page: 0 })) },
+        { key: "type", label: t("gestion.controlAlerts.filterType"), value: activeType ? t(`gestion.controlAlerts.type.${activeType}`) : "", onRemove: () => onTypeChange("") },
+        { key: "priority", label: t("gestion.controlAlerts.filterPriority"), value: filters.priority ? t(`gestion.controlAlerts.priority.${filters.priority}`) : "", onRemove: () => setFilters((current) => ({ ...current, priority: "", page: 0 })) },
+        { key: "assignee", label: t("gestion.controlAlerts.filterAssignee"), value: filters.assigneeId ? assignees.find((assignee) => assignee.id === filters.assigneeId)?.name ?? filters.assigneeId : "", onRemove: () => setFilters((current) => ({ ...current, assigneeId: "", page: 0 })) },
+        { key: "overdue", label: t("gestion.controlAlerts.filterOverdue"), value: filters.overdue ? t("common.yes") : "", onRemove: () => setFilters((current) => ({ ...current, overdue: false, page: 0 })) }
+      ]} />
       {!detailOpen && assigneesErrorMessage}
       <div className="gestion-control-grid without-detail">
         <section className="gestion-alert-list" aria-label={t("gestion.controlAlerts.list")}>
@@ -725,7 +742,7 @@ function ControlAlertDialog({ id, title, closeLabel, children, onClose, inactive
       restore?.focus({ preventScroll: true });
     };
   }, []);
-  return createPortal(<div className="gestion-modal-backdrop gestion-control-dialog-backdrop" role="presentation" onMouseDown={(event) => {
+  return createPortal(<div className="gestion-modal-backdrop gestion-control-dialog-backdrop gestion-classic-tables erp-classic-tables" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget && !inactive && !closeDisabled) onClose();
   }}>
     <section ref={dialogRef} className={`gestion-control-dialog gestion-control-dialog-theme ${className}`} role="dialog" aria-modal={!inactive || undefined}

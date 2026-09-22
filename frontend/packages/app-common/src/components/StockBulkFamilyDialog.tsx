@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import type { KeyboardEvent } from "react";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockTopSalesFamilyNode } from "./StockScreen";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
+import { ErpFilterChips } from "./ErpFilterChips";
 
 type StockBulkFamilyDialogProps = {
   open: boolean;
   locale: LocaleCode;
+  app?: AppKind;
   families: StockTopSalesFamilyNode[];
   initialFamilyIds?: string[];
   initialSubfamilyIds?: string[];
@@ -29,6 +31,7 @@ function normalizedSearch(value: string) {
 export function StockBulkFamilyDialog({
   open,
   locale,
+  app = "venta",
   families,
   initialFamilyIds = [],
   initialSubfamilyIds = [],
@@ -43,6 +46,7 @@ export function StockBulkFamilyDialog({
   const [subfamilyIds, setSubfamilyIds] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const dialogRef = useRef<HTMLElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -112,10 +116,23 @@ export function StockBulkFamilyDialog({
           </div>
           <button type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
         </header>
-        <label className="bulk-editor-search report-search">
-          <span>{t("stock.bulkEdit.families.search")}</span>
-          <input autoFocus type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </label>
+        <div className="stock-bulk-family-filters erp-filter-search-controls" style={app !== "pda" ? undefined : { display: "contents" }}>
+          <label className="bulk-editor-search report-search">
+            <span>{t("stock.bulkEdit.families.search")}</span>
+            <input ref={searchRef} autoFocus type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>
+          {app !== "pda" && <ErpFilterChips
+            locale={locale}
+            focusRef={searchRef}
+            chips={query ? [{
+              key: "search",
+              label: t("stock.bulkEdit.families.search"),
+              value: search.trim(),
+              onRemove: () => setSearch("")
+            }] : []}
+            onClear={() => setSearch("")}
+          />}
+        </div>
         <div className="stock-bulk-family-tree" role="tree">
           {visibleFamilies.length === 0 && <p className="stock-empty-state">{t("stock.filter.noFamilies")}</p>}
           {visibleFamilies.map((family) => {

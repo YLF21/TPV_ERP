@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import {
   ApiError,
   apiRequest,
@@ -120,6 +121,7 @@ export function SalesOperationSecurityScreen({
   const canManage = session.permissions.includes("ADMIN");
   const [configuration, setConfiguration] = useState<SalesOperationSecurityConfiguration | null>(null);
   const [draft, setDraft] = useState<SalesOperationSecurityOperation[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(canManage);
   const [busy, setBusy] = useState<"save" | "reset" | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -166,7 +168,8 @@ export function SalesOperationSecurityScreen({
 
   const groups = useMemo(() => {
     const grouped = new Map<string, SalesOperationSecurityOperation[]>();
-    draft.forEach((operation) => {
+    draft.filter(operation => matchesGestionTableSearch(query, [operationLabel(t, operation.code),
+      categoryLabel(t, operation.category), ...operation.shortcuts.map(shortcut => shortcutLabel(t, shortcut))])).forEach((operation) => {
       const operations = grouped.get(operation.category) ?? [];
       operations.push(operation);
       grouped.set(operation.category, operations);
@@ -179,7 +182,7 @@ export function SalesOperationSecurityScreen({
       category,
       operations: grouped.get(category) ?? [],
     }));
-  }, [draft]);
+  }, [draft, query, t]);
 
   function updateOperation(
     code: string,
@@ -386,6 +389,7 @@ export function SalesOperationSecurityScreen({
           </p>
         ) : (
           <>
+            <GestionTableSearch value={query} onChange={setQuery} t={t} />
             <header className="gestion-operation-security-row head">
               <span>{t("gestion.salesOperationSecurity.column.function")}</span>
               <span>{t("gestion.salesOperationSecurity.column.shortcut")}</span>

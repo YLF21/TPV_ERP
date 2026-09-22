@@ -1,0 +1,254 @@
+/* Tabla ERP Azul Clásica: opt-in headers for APP VENTA management tables.
+   Keep the shared sort, column movement and resize controls and their focus
+   targets; only their presentation changes inside the marked screen. */
+.erp-classic-tables :is(thead th, [role="columnheader"], .table-layout-header-cell, :where(.stock-bulk-image-row.head) > *) {
+  box-sizing: border-box;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
+  border-radius: 0 !important;
+  background: #12385f !important;
+  color: #fff !important;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-align: left !important;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+
+.erp-classic-tables :is(.stock-row-head, .bulk-edit-head, .party-directory-row.header,
+  .stock-detail-row.header, .stock-bulk-rule-preview-row.head, .stock-bulk-image-row.head,
+  .customer-documents-table-header, .receivable-row.header, .receivable-history-row.header,
+  .receivable-account-row.header) {
+  background: #12385f !important;
+  color: #fff !important;
+  min-height: 36px !important;
+  box-shadow: none !important;
+  border-bottom: 0 !important;
+  text-transform: none !important;
+}
+
+.erp-classic-tables :is(thead th, [role="columnheader"]) {
+  border-right: 1px solid #d9e1e9 !important;
+}
+
+.erp-classic-tables thead:not(.shared-excel-body-labels) th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.erp-classic-tables .stock-history-table thead th {
+  height: 36px !important;
+}
+
+.erp-classic-tables .stock-detail-row.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.erp-classic-tables .table-layout-header-cell,
+.erp-classic-tables :is(thead th, [role="columnheader"]):has(> .table-layout-sort-button) {
+  padding: 0 6px !important;
+  margin: 0 !important;
+  overflow: visible;
+}
+
+.erp-classic-tables :is(thead th, [role="columnheader"], .table-layout-header-cell):is(:hover, :focus-within) {
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.erp-classic-tables .table-layout-drag-handle {
+  display: none !important;
+}
+
+.erp-classic-tables .table-layout-header-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+}
+
+.erp-classic-tables .table-layout-header-actions {
+  position: static !important;
+  flex: 0 0 auto;
+  top: auto;
+  right: auto;
+  transform: none !important;
+}
+
+.erp-classic-tables .table-layout-header-label {
+  flex: 1;
+  padding: 0 2px !important;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.erp-classic-tables .table-layout-sort-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between !important;
+  flex: 1 1 auto;
+  gap: 5px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 34px !important;
+  margin: 0 !important;
+  padding: 8px 2px !important;
+  box-sizing: border-box;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font: inherit;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 18px;
+  text-align: left !important;
+  text-transform: none !important;
+}
+
+.erp-classic-tables .table-layout-sort-label {
+  min-width: 0;
+  max-width: none !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-classic-tables .table-layout-sort-indicator {
+  position: static !important;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 16px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.erp-classic-tables .table-layout-column-menu-button {
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 27px;
+  min-height: 27px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 1px !important;
+  background: transparent;
+  color: #fff !important;
+}
+
+/* Opacity keeps the menu in the keyboard tab order. The previous stock rules
+   use visibility:hidden, which must not hide these accessible controls. */
+.erp-classic-tables :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
+  visibility: visible !important;
+  opacity: 0 !important;
+}
+
+.erp-classic-tables :is(thead th, [role="columnheader"], .table-layout-header-cell):is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open)) :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
+  opacity: 1 !important;
+}
+
+.erp-classic-tables .table-layout-column-menu-button:is(:hover, .is-open) {
+  background: #285787 !important;
+}
+
+.erp-classic-tables .table-layout-header-cell:focus-visible {
+  outline: 2px solid #91c9ff !important;
+  outline-offset: -2px !important;
+  box-shadow: none !important;
+}
+
+.erp-classic-tables :is(.table-layout-sort-button, .table-layout-column-menu-button):focus-visible {
+  outline: 2px solid #b9dcff !important;
+  outline-offset: -2px !important;
+  box-shadow: none !important;
+}
+
+.erp-classic-tables .table-layout-column-resizer {
+  z-index: 5;
+  top: 0;
+  right: -4px;
+  width: 9px;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.erp-classic-tables .table-layout-column-resizer::after {
+  top: 20%;
+  bottom: 20%;
+  left: 4px;
+  width: 1px;
+  background: #87a1bb;
+}
+
+.erp-classic-tables .table-layout-column-resizer:is(:hover, :focus-visible)::after {
+  width: 2px;
+  background: #fff;
+}
+
+/* Price-pair headings have two meaningful levels, so retain their full height
+   and keep both labels visible instead of forcing the single-row 36px height. */
+.erp-classic-tables .bulk-edit-head:has(.bulk-pair-header) [role="columnheader"],
+.erp-classic-tables .stock-bulk-rule-preview-row.head [role="columnheader"] {
+  height: 54px !important;
+  min-height: 54px !important;
+}
+
+.erp-classic-tables .bulk-edit-head > .bulk-pair-header {
+  padding: 0 !important;
+}
+
+.erp-classic-tables .bulk-pair-header > .table-layout-header-controls {
+  height: 100%;
+  align-items: stretch;
+}
+
+.erp-classic-tables .bulk-pair-header .table-layout-header-actions {
+  position: absolute !important;
+  top: 0;
+  right: 6px;
+  height: 28px;
+}
+
+.erp-classic-tables .bulk-pair-header-content > strong {
+  padding: 0 34px 0 8px !important;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.erp-classic-tables .bulk-pair-subheaders > small {
+  justify-items: start;
+  padding-inline: 8px;
+  font-weight: 700;
+}
+
+@media (hover: none), (any-pointer: coarse) {
+  .erp-classic-tables :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
+    opacity: 1 !important;
+  }
+}

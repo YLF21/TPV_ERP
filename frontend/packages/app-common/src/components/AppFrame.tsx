@@ -3,6 +3,8 @@ import { createTranslator } from "../i18n/LocalizedMessages";
 import { useRef, useState, type ReactNode } from "react";
 import languageIcon from "../assets/language.png";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
+import { SaasConnectionStatus } from "./SaasConnectionStatus";
+import { useScreenConnectionStatus } from "./useScreenConnectionStatus";
 
 type AppFrameProps = {
   titleKey: string;
@@ -25,6 +27,8 @@ export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, 
   const t = createTranslator(locale);
   const [languageOpen, setLanguageOpen] = useState(false);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
+  const { saasConnected, checkingSaas, refreshSaas } = useScreenConnectionStatus({ includeBackendAddress: false });
+  const connectionAction = t(checkingSaas ? "connection.checking" : "connection.check");
 
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
@@ -33,7 +37,20 @@ export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, 
       <header className="app-titlebar">
         <strong>{t(titleKey)}</strong>
         <span>{t("login.serverContext")}</span>
-        <span className="app-titlebar-status">{session.displayName} · {t("common.localStatus")}</span>
+        <div className="app-titlebar-status">
+          <span>{session.displayName}</span>
+          <button
+            type="button"
+            className="app-titlebar-connection"
+            onClick={refreshSaas}
+            disabled={checkingSaas}
+            aria-busy={checkingSaas}
+            aria-label={connectionAction}
+            title={connectionAction}
+          >
+            <SaasConnectionStatus locale={locale} connected={saasConnected} />
+          </button>
+        </div>
         <div className="app-titlebar-language" ref={languagePickerRef}>
           <button
             type="button"

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow, StockTopSalesFamilyNode } from "./StockScreen";
@@ -49,6 +49,7 @@ type RuleFamilyPickerTarget = {
 type StockBulkPriceRulesDialogProps = {
   open: boolean;
   locale: LocaleCode;
+  app?: AppKind;
   token: string;
   currentUsername: string;
   isAdmin: boolean;
@@ -83,6 +84,7 @@ export function priceRuleConflictFormIndexes(error: unknown) {
 export function StockBulkPriceRulesDialog({
   open,
   locale,
+  app = "venta",
   token,
   currentUsername,
   isAdmin,
@@ -744,6 +746,7 @@ export function StockBulkPriceRulesDialog({
     <StockBulkFamilyDialog
       open={Boolean(familyPickerTarget)}
       locale={locale}
+      app={app}
       families={families}
       initialFamilyIds={familyPickerTarget?.field === "FAMILY" ? familyPickerTarget.values : []}
       initialSubfamilyIds={familyPickerTarget?.field === "SUBFAMILY" ? familyPickerTarget.values : []}

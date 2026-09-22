@@ -141,7 +141,7 @@ export function LoginScreen({
   }
 
   return (
-    <main className={`login-screen login-screen-${presentation}`}>
+    <main className={`login-screen login-screen-${presentation}`} data-app={app}>
       {desktopChrome && (
         <>
           <header className="entry-topbar">
@@ -260,7 +260,7 @@ export function LoginScreen({
           </section>
         </div>
       )}
-      {desktopChrome && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
+      {desktopChrome && app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
     </main>
   );
 }

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type apiRequest, type UserSession } from "@tpverp/app-common";
 import { LicenseSaasManagementScreen } from "./LicenseSaasManagementScreen";
@@ -33,6 +33,22 @@ const activeLicense: LicenseHistoryItem = {
 afterEach(cleanup);
 
 describe("LicenseSaasManagementScreen", () => {
+  it("searches the complete history while retaining the active licence summary", async () => {
+    const request = vi.fn().mockResolvedValue([activeLicense, { ...activeLicense, reference: "LIC-2025-OLD", active: false }]);
+    const t = createTranslator("es");
+    render(<LicenseSaasManagementScreen locale="es" session={admin} storeName="Tienda" t={t} request={request as unknown as typeof apiRequest} />);
+    await screen.findByText("LIC-2025-OLD");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "LIC-2025" } });
+    const table = screen.getByRole("table");
+    expect(within(table).queryByText(activeLicense.reference)).not.toBeInTheDocument();
+    expect(within(table).getByText("LIC-2025-OLD")).toBeInTheDocument();
+    expect(screen.getByText(activeLicense.reference)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Validar ahora" })).toBeEnabled();
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Búsqueda" }));
+    expect(within(table).getByText(activeLicense.reference)).toBeInTheDocument();
+  });
+
   it("shows the effective licence and validates it against SaaS", async () => {
     const request = vi.fn(async (path: string, options?: { method?: string }) => {
       if (path === "/licenses/validate-saas") {

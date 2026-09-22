@@ -9,6 +9,7 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import {
   loadCashCurrentBalances,
   type CashCurrentBalance,
@@ -41,6 +42,7 @@ export function canReadCashCurrentBalances(session: UserSession) {
 export function CashCurrentBalancesScreen({ session, t }: Props) {
   const token = session.accessToken;
   const [snapshot, setSnapshot] = useState<CashCurrentBalances | null>(null);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reloadGeneration, setReloadGeneration] = useState(0);
@@ -141,6 +143,10 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
   ), [sourceRows, tableSort.sort]);
   const totalCash = rows.reduce((total, terminal) => total + Number(terminal.expectedCash || 0), 0);
   const openCount = rows.filter((terminal) => terminal.status === "ABIERTA").length;
+  const visibleRows = rows.filter((row) => matchesGestionTableSearch(query, [
+    ...visibleColumns.map((column) => plainCellTitle(row, column.key, t, moneyFormatter, dateTimeFormatter)),
+    visibleColumns.some((column) => column.key === "user") ? row.openingUsername : null
+  ]));
 
   function renderCell(row: CashCurrentBalance, column: ColumnKey) {
     if (column === "terminal") return <strong>{row.terminalName}</strong>;
@@ -197,6 +203,7 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
       )}
 
       <section className="gestion-cash-balances-list" aria-label={t("gestion.cashCurrentBalances.title")}>
+        <GestionTableSearch value={query} onChange={setQuery} t={t} />
         <div className="gestion-cash-balances-table" role="table">
           <div className="gestion-cash-balance-row head" role="row" style={tableStyle}>
             {visibleColumns.map((column) => (
@@ -217,7 +224,7 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
             ))}
           </div>
           <div className="gestion-cash-balances-body">
-            {rows.map((row) => (
+            {visibleRows.map((row) => (
               <div className="gestion-cash-balance-row" role="row" style={tableStyle} key={row.terminalId}>
                 {visibleColumns.map((column) => (
                   <span role="cell" data-column-key={column.key} key={column.key} title={plainCellTitle(row, column.key, t, moneyFormatter, dateTimeFormatter)}>
@@ -233,13 +240,13 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
                 <button type="button" onClick={() => setReloadGeneration((current) => current + 1)}>{t("gestion.cashCurrentBalances.retry")}</button>
               </div>
             )}
-            {!loading && !loadError && rows.length === 0 && (
-              <div className="gestion-cash-balances-state">{t("gestion.cashCurrentBalances.empty")}</div>
+            {!loading && !loadError && visibleRows.length === 0 && (
+              <div className="gestion-cash-balances-state">{t(query.trim() ? "stock.status.noResults" : "gestion.cashCurrentBalances.empty")}</div>
             )}
           </div>
         </div>
         <footer>
-          <span>{t("gestion.cashCurrentBalances.terminalCount").replace("{count}", String(rows.length))}</span>
+          <span>{t("gestion.cashCurrentBalances.terminalCount").replace("{count}", String(visibleRows.length))}</span>
           <span>{t("gestion.cashCurrentBalances.definition")}</span>
         </footer>
       </section>

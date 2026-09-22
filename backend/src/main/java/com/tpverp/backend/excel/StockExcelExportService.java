@@ -1,5 +1,6 @@
 package com.tpverp.backend.excel;
 
+import com.tpverp.backend.catalog.ProductCodeOrder;
 import com.tpverp.backend.inventory.StockTopSalesRow;
 import com.tpverp.backend.inventory.StockTopSalesService;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -164,13 +166,24 @@ public class StockExcelExportService {
 
     private void writeTopSalesRows(Sheet sheet, ExportJob job, Styles styles) {
         var request = job.request;
-        var rows = topSales.topSales(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId())
-                .stream()
+        var rankedRows = topSales.topSales(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId());
+        var rankByRow = new HashMap<StockTopSalesRow, Integer>();
+        for (int index = 0; index < rankedRows.size(); index++) {
+            rankByRow.put(rankedRows.get(index), index);
+        }
+        Comparator<StockTopSalesRow> comparator;
+        if ("ranking".equals(request.sortBy())) {
+            comparator = Comparator.comparingInt(rankByRow::get);
+            if ("desc".equals(request.sortDirection())) comparator = comparator.reversed();
+        } else {
+            comparator = topSalesComparator(request);
+        }
+        var rows = rankedRows.stream()
                 .filter(row -> topSalesMatches(row, request))
-                .sorted(topSalesComparator(request))
+                .sorted(comparator)
                 .toList();
         for (int index = 0; index < rows.size(); index++) {
-            writeTopSalesRow(sheet.createRow(index + 1), rows.get(index), index,
+            writeTopSalesRow(sheet.createRow(index + 1), rows.get(index), rankByRow.get(rows.get(index)),
                     request.columns(), styles);
             job.processedRows.incrementAndGet();
         }
@@ -202,6 +215,7 @@ public class StockExcelExportService {
 
     private static String exportSql(ExportRequest request) {
         String expression = sortExpression(request.sortBy());
+        String nullableExpression = "code".equals(request.sortBy()) ? "nullif(code.valor, '')" : expression;
         String direction = "desc".equalsIgnoreCase(request.sortDirection()) ? "desc" : "asc";
         return """
                 with export_filter as (
@@ -341,13 +355,13 @@ public class StockExcelExportService {
                     or (filter.stock_status = 'LOW' and product.activo and stock.local_stock > 0 and stock.local_stock <= 5)
                     or (filter.stock_status = 'OK' and product.activo and stock.local_stock > 5))
                   and (not filter.promotions_only or promotion.names is not null)
-                order by (""" + expression + " is null), " + expression + " " + direction
+                order by (""" + nullableExpression + " is null), " + expression + " " + direction
                 + ", product.id " + direction;
     }
 
     private static String sortExpression(String value) {
         return switch (value == null ? "name" : value) {
-            case "code" -> "lower(code.valor)";
+            case "code" -> ProductCodeOrder.sqlKey("code.valor");
             case "barcode" -> "lower(barcode.valor)";
             case "name" -> "lower(product.nombre)";
             case "type" -> "product.product_type";
@@ -483,7 +497,7 @@ public class StockExcelExportService {
 
     private static Comparator<StockTopSalesRow> topSalesComparator(ExportRequest request) {
         Comparator<StockTopSalesRow> comparator = switch (request.sortBy()) {
-            case "code" -> Comparator.comparing(StockTopSalesRow::code, String.CASE_INSENSITIVE_ORDER);
+            case "code" -> Comparator.comparing(StockTopSalesRow::code, ProductCodeOrder.comparator());
             case "barcode" -> Comparator.comparing(StockTopSalesRow::barcode, String.CASE_INSENSITIVE_ORDER);
             case "name" -> Comparator.comparing(StockTopSalesRow::name, String.CASE_INSENSITIVE_ORDER);
             case "family" -> Comparator.comparing(StockTopSalesRow::familyName, String.CASE_INSENSITIVE_ORDER);
@@ -500,6 +514,10 @@ public class StockExcelExportService {
         };
         if ("desc".equals(request.sortDirection())) {
             comparator = comparator.reversed();
+        }
+        if ("code".equals(request.sortBy())) {
+            return Comparator.comparing((StockTopSalesRow row) -> row.code() == null || row.code().isEmpty())
+                    .thenComparing(comparator);
         }
         return comparator.thenComparing(StockTopSalesRow::name, String.CASE_INSENSITIVE_ORDER);
     }

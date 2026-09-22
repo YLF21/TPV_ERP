@@ -83,6 +83,21 @@ describe("WarehouseOperationsScreen", () => {
     expect(api.createStockTransfer).not.toHaveBeenCalled();
   });
 
+  it("removes the count status tag while retaining the creation warehouse", async () => {
+    render(<WarehouseOperationsScreen session={session(["GESTION_ALMACEN"])} mode="count" t={t} />);
+    const status = await screen.findByRole("combobox", { name: "warehouse.count.status" });
+    const warehouse = screen.getByRole("combobox", { name: "warehouse.operations.warehouse" });
+    expect(warehouse).toHaveValue("general");
+    fireEvent.change(status, { target: { value: "DRAFT" } });
+    await waitFor(() => expect(api.loadStockCounts).toHaveBeenLastCalledWith("token", { warehouseId: "general", status: "DRAFT" }));
+    expect(screen.getByRole("group", { name: "filters.applied" })).toHaveTextContent("warehouse.count.status.DRAFT");
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove warehouse.count.status" }));
+    await waitFor(() => expect(api.loadStockCounts).toHaveBeenLastCalledWith("token", { warehouseId: "general", status: undefined }));
+    expect(warehouse).toHaveValue("general");
+    expect(api.createStockCount).not.toHaveBeenCalled();
+    await waitFor(() => expect(status).toHaveFocus());
+  });
+
   it("sends negative adjustments with an audit reason", async () => {
     render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
     await screen.findByRole("heading", { name: "warehouse.adjustment.title" });

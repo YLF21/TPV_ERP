@@ -50,13 +50,13 @@ type ApplyBody = {
 
 function mockBulkEditing(
   canonicalProducts: StockInventoryRow[],
-  scenario: { refreshedProductOnOpen?: StockInventoryRow; applyError?: ApiError } = {}
+  scenario: { refreshedProductOnOpen?: StockInventoryRow; applyError?: ApiError; content?: StockBulkEditRowData[] } = {}
 ) {
   const now = "2026-09-20T10:00:00Z";
   let currentProductVersion = scenario.refreshedProductOnOpen?.version ?? initialProduct.version!;
   let currentDraft: StockBulkDraftView = {
     id: "draft-v1", code: "EM-000001", seriesId: "series-1", versionNumber: 1,
-    name: "Lista de prueba", status: "PENDING", content: [rowFor(initialProduct)], version: 2,
+    name: "Lista de prueba", status: "PENDING", content: scenario.content ?? [rowFor(initialProduct)], version: 2,
     createdById: "user-1", createdBy: "DEMO", createdAt: now,
     updatedById: "user-1", updatedBy: "DEMO", updatedAt: now, comments: []
   };
@@ -128,13 +128,14 @@ function mockBulkEditing(
   return { saves, applies, applyAttempts, reads, delayedRefreshCount: () => delayedRefreshCount };
 }
 
-async function openWorkspace() {
-  render(<StockScreen app="venta" locale="es" initialView="stock.bulkEdit"
+async function openWorkspace(app: "venta" | "gestion" = "venta") {
+  const view = render(<StockScreen app={app} locale="es" initialView="stock.bulkEdit"
     session={{ username: "demo", displayName: "DEMO", permissions: ["ADMIN"], accessToken: "test-token" }}
     terminalContext={{ storeName: "Prueba", terminalCode: "DEMO" }} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
   fireEvent.doubleClick((await screen.findByText("Lista de prueba")).closest("tr")!);
   await screen.findByRole("button", { name: "Aplicar cambios" });
   await waitFor(() => expect(screen.getAllByRole("button", { name: "Impuesto" }).length).toBeGreaterThan(0));
+  return view;
 }
 
 async function selectTax(label: string) {
@@ -165,6 +166,55 @@ async function applyChanges() {
 }
 
 describe("Stock bulk editing save and apply", () => {
+  it.each([
+    { app: "venta" as const, expectedCodes: ["1", "2", "10"] },
+    { app: "gestion" as const, expectedCodes: ["10", "2", "1"] }
+  ])("uses the initial code order for $app without moving edited rows or losing product versions", async ({ app, expectedCodes }) => {
+    const content = ["10", "2", "1"].map((code, index) => ({
+      ...rowFor({ ...initialProduct, productId: `product-code-${code}`, code, version: 20 + index }),
+      id: `row-code-${code}`
+    }));
+    const backend = mockBulkEditing([], { content });
+    const { container } = await openWorkspace(app);
+    const rows = () => Array.from(container.querySelectorAll<HTMLElement>(".bulk-edit-row[data-bulk-row-id]"));
+    const codes = () => rows().map((row) => row.querySelector(".bulk-code-value")?.textContent ?? "");
+
+    expect(codes()).toEqual([...expectedCodes, ""]);
+    const initialRowIds = rows().map((row) => row.dataset.bulkRowId);
+    expect(initialRowIds.slice(0, 3)).toEqual(expectedCodes.map((code) => `row-code-${code}`));
+    expect(backend.saves).toHaveLength(0);
+
+    const firstPrice = within(rows()[0]).getByRole("textbox", { name: "Precio venta" }) as HTMLInputElement;
+    firstPrice.focus();
+    fireEvent.change(firstPrice, { target: { value: "9.75" } });
+    expect(document.activeElement).toBe(firstPrice);
+    expect(rows().map((row) => row.dataset.bulkRowId)).toEqual(initialRowIds);
+
+    // Product codes are read-only; entering a new code must keep the entry row at the end.
+    const codeEntry = within(rows()[3]).getByRole("textbox", { name: "Código" }) as HTMLInputElement;
+    codeEntry.focus();
+    fireEvent.change(codeEntry, { target: { value: "0" } });
+    expect(document.activeElement).toBe(codeEntry);
+    expect(rows().map((row) => row.dataset.bulkRowId)).toEqual(initialRowIds);
+    fireEvent.change(codeEntry, { target: { value: "" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(backend.saves).toHaveLength(1));
+    expect(backend.saves[0].version).toBe(2);
+    expect(backend.saves[0].content).toHaveLength(3);
+    expect(backend.saves[0].content.map((row) => ({
+      id: row.id,
+      productId: row.product?.productId,
+      code: row.product?.code,
+      version: row.product?.version
+    }))).toEqual(expectedCodes.map((code) => {
+      const source = content.find((row) => row.product?.code === code)!;
+      return { id: source.id, productId: source.product?.productId, code, version: source.product?.version };
+    }));
+    expect(backend.saves[0].content[0].draft.salePrice).toBe("9.75");
+    expect(codes()).toEqual([...expectedCodes, ""]);
+  });
+
   it("applies a tax and family change together using the product version and clearing the old subfamily", async () => {
     const canonical = { ...initialProduct, version: 5, taxId: "tax-2", taxName: "3%", familyId: "family-2", familyName: "Electrónica", subfamilyId: "-", subfamilyName: "-" };
     const backend = mockBulkEditing([canonical]);

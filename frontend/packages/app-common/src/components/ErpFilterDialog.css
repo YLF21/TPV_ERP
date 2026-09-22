@@ -1,0 +1,109 @@
+/* Opt in only actual filter windows; .filter-dialog also wraps unrelated editors. */
+.filter-overlay:has(> .filter-dialog.erp-filter-dialog) { z-index: var(--tpv-layer-overlay, 120); }
+
+.filter-overlay > .filter-dialog.erp-filter-dialog {
+  box-sizing: border-box;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--tpv-v3-navy, #07254f) !important;
+  border-radius: 4px !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgb(9 20 38 / 18%) !important;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-header {
+  gap: 16px;
+  margin: -14px -14px 0;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 3px 3px 0 0;
+  background: var(--tpv-v3-navy, #07254f);
+  color: #fff;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-header h2 {
+  margin: 0;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 800;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-header > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-header > button:is(:hover, :focus-visible) {
+  border-color: #fff;
+  background: rgb(255 255 255 / 12%);
+  outline: none;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 -14px -14px;
+  padding: 12px 14px;
+  border-top: 1px solid #d7e0ea;
+  border-radius: 0 0 3px 3px;
+  background: #f3f6fa;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-actions > button {
+  min-width: 112px;
+  padding: 6px 14px;
+  border: 1px solid #b8c6d6 !important;
+  border-radius: 2px !important;
+  background: #fff !important;
+  color: #17233b !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-actions > button:last-child {
+  border-color: var(--tpv-v3-navy, #07254f) !important;
+  background: var(--tpv-v3-navy, #07254f) !important;
+  color: #fff !important;
+}
+
+.filter-dialog.erp-filter-dialog > .filter-actions > button:hover:not(:disabled) { filter: brightness(.94); }
+.filter-dialog.erp-filter-dialog > .filter-actions > button:focus-visible { outline: 2px solid #2f70b3; outline-offset: 2px; }
+.filter-dialog.erp-filter-dialog > .filter-actions > button:disabled { opacity: .55; cursor: default; }
+
+.erp-filter-dialog .stock-family-row,
+.erp-filter-dialog .stock-subfamily-list > button {
+  min-height: 36px;
+  border-radius: 2px;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .filter-overlay > .filter-dialog.erp-filter-dialog { width: calc(100vw - 32px); }
+  .filter-dialog.erp-filter-dialog > .filter-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-height: 600px), (max-width: 600px) {
+  .filter-overlay > .filter-dialog.erp-filter-dialog { overflow: auto; }
+  .filter-dialog.erp-filter-dialog > .stock-family-list { min-height: 0; }
+  .erp-filter-dialog .filter-field:has(> .date-popover) { grid-column: 1 / -1; }
+  .erp-filter-dialog .date-popover.date-range-popover {
+    position: static;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100%;
+  }
+}

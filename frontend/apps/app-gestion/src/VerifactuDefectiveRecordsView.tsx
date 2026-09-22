@@ -25,6 +25,7 @@ import {
   type VerifactuTranslator
 } from "./verifactuPresentation";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 
 const defectiveStatuses = ["RECHAZADO", "DEFECTUOSO", "ACEPTADO_CON_ERRORES"] as const;
 const defectiveSortColumns = ["sequence", "document", "documentType", "fiscalOperation", "issueDate", "status", "updatedAt", "errorCode"] as const;
@@ -157,6 +158,12 @@ export function VerifactuDefectiveRecordsView({
     setFilters((current) => ({ ...current, sortBy: next.column, sortDirection: next.direction, page: 0 }));
   }
 
+  function removeFilter(field: "dateFrom" | "dateTo" | "status" | "documentType" | "operation" | "documentNumber") {
+    setFilterError(false);
+    setDraft((current) => ({ ...current, [field]: "" }));
+    setFilters((current) => ({ ...current, [field]: "", page: 0 }));
+  }
+
   return (
     <div className="gestion-verifactu-defective">
       {filtersOpen && <FiscalWorkspaceDialog
@@ -234,6 +241,14 @@ export function VerifactuDefectiveRecordsView({
             </button>
           </div>
         </header>
+        <ErpFilterChips locale={locale} translate={t} onClear={clear} chips={[
+          { key: "dateFrom", label: t("verifactu.management.dateFrom"), value: filters.dateFrom ? formatVerifactuDate(filters.dateFrom, locale) : "", onRemove: () => removeFilter("dateFrom") },
+          { key: "dateTo", label: t("verifactu.management.dateTo"), value: filters.dateTo ? formatVerifactuDate(filters.dateTo, locale) : "", onRemove: () => removeFilter("dateTo") },
+          { key: "status", label: t("verifactu.management.status"), value: filters.status ? verifactuStatusLabel(filters.status, t) : "", onRemove: () => removeFilter("status") },
+          { key: "documentType", label: t("verifactu.management.documentType"), value: filters.documentType, onRemove: () => removeFilter("documentType") },
+          { key: "operation", label: t("verifactu.management.fiscalOperation"), value: filters.operation ? verifactuOperationLabel(filters.operation, t) : "", onRemove: () => removeFilter("operation") },
+          { key: "documentNumber", label: t("verifactu.management.documentNumber"), value: filters.documentNumber, onRemove: () => removeFilter("documentNumber") }
+        ]} />
         {!loading && error ? (
           <div className="gestion-verifactu-message error" role="alert">{t("verifactu.management.defectiveError")}</div>
         ) : !loading && page.items.length === 0 ? (

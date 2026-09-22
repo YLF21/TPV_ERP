@@ -8,6 +8,9 @@ import com.tpverp.backend.document.DocumentReportView;
 import com.tpverp.backend.document.DocumentService;
 import com.tpverp.backend.document.DocumentAttributionResolver;
 import com.tpverp.backend.document.DocumentView;
+import com.tpverp.backend.document.CustomerDocumentReportFilter;
+import com.tpverp.backend.document.TicketReportService;
+import com.tpverp.backend.document.TicketReportView;
 import com.tpverp.backend.document.WarehouseInputReportService;
 import com.tpverp.backend.document.WarehouseInputReportView;
 import com.tpverp.backend.inventory.WarehouseInputDocumentType;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -55,6 +59,9 @@ public class SalesReportExcelExportService {
             "salesReport.inputInvoices",
             "salesReport.inputDeliveryNotes",
             "salesReport.inputWarehouse");
+    private static final Set<String> TICKET_PAYMENT_METHODS = Set.of(
+            "EFECTIVO", "TARJETA", "VALE", "PENDIENTE", "TRANSFERENCIA", "DESCUENTO",
+            "SALDO_MIEMBRO", "CREDITO_DEVOLUCION");
 
     private final DocumentService documents;
     private final DocumentReportService documentReports;
@@ -64,6 +71,7 @@ public class SalesReportExcelExportService {
     private final CurrentOrganization organization;
     private final DocumentAttributionResolver attributions;
     private final AuditService auditService;
+    private final TicketReportService ticketReports;
 
     public SalesReportExcelExportService(
             DocumentService documents,
@@ -73,7 +81,8 @@ public class SalesReportExcelExportService {
             WarehouseRepository warehouses,
             CurrentOrganization organization,
             DocumentAttributionResolver attributions,
-            AuditService auditService) {
+            AuditService auditService,
+            TicketReportService ticketReports) {
         this.documents = documents;
         this.documentReports = documentReports;
         this.warehouseInputs = warehouseInputs;
@@ -82,6 +91,7 @@ public class SalesReportExcelExportService {
         this.organization = organization;
         this.attributions = attributions;
         this.auditService = auditService;
+        this.ticketReports = ticketReports;
     }
 
     @Transactional
@@ -100,7 +110,7 @@ public class SalesReportExcelExportService {
 
     private List<Map<String, Object>> rows(SalesReportExportRequest request, Authentication authentication) {
         return switch (request.reportKey()) {
-            case "salesReport.tickets" -> ticketRows();
+            case "salesReport.tickets" -> ticketReportRows(request);
             case "salesReport.invoices" -> documentRows(
                     documentReports.allInvoices(true, false), true, false);
             case "salesReport.inputInvoices" -> inputRows(request, WarehouseInputDocumentType.FACTURA_ENTRADA, authentication);
@@ -139,6 +149,70 @@ public class SalesReportExcelExportService {
         }).toList();
     }
 
+    private List<Map<String, Object>> ticketReportRows(SalesReportExportRequest request) {
+        var filters = request.filters();
+        var dateFilter = new CustomerDocumentReportFilter(null, null,
+                filters == null ? null : date(filters.dateFrom()),
+                filters == null ? null : date(filters.dateTo()), null, null);
+        var result = new ArrayList<Map<String, Object>>();
+        String cursor = null;
+        do {
+            var page = ticketReports.list(500, cursor, null, dateFilter);
+            result.addAll(filteredRows(request, page.items().stream().map(this::ticketReportRow).toList()));
+            if (result.size() > MAX_ROWS) {
+                throw new IllegalArgumentException("El informe supera el limite de 50000 filas exportables");
+            }
+            if (!page.hasMore()) break;
+            if (page.nextCursor() == null || page.nextCursor().equals(cursor)) {
+                throw new IllegalStateException("No se pudo continuar la paginacion del informe de tickets");
+            }
+            cursor = page.nextCursor();
+        } while (true);
+        return result;
+    }
+
+    private Map<String, Object> ticketReportRow(TicketReportView value) {
+        var row = baseRow(value.fecha(), value.usuarioNombre(), value.terminalOrigenNombre(), value.ocurridoEn());
+        row.put("ticket", value.numero());
+        row.put("customer", text(value.customerCode(), id(value.customerId())));
+        row.put("customerName", value.customerName());
+        row.put("status", ticketStatus(value));
+        row.put("invoiced", value.invoiceNumber());
+        row.put("comment", value.comentarioInterno());
+        var methods = new ArrayList<String>();
+        if (amount(value.total()).signum() < 0) {
+            if (value.refundMethods() != null) value.refundMethods().forEach(method -> methods.add(method.name()));
+        } else if (value.paymentMethods() != null) {
+            methods.addAll(value.paymentMethods());
+        }
+        if (value.estado() == com.tpverp.backend.document.DocumentStatus.PENDIENTE
+                || value.estado() == com.tpverp.backend.document.DocumentStatus.PARCIAL) {
+            methods.add("PENDIENTE");
+        }
+        var displayedMethods = methods.stream().map(SalesReportExcelExportService::normalizePayment)
+                .filter(TICKET_PAYMENT_METHODS::contains).distinct().toList();
+        row.put("__payments", displayedMethods);
+        row.put("payment", displayedMethods.stream()
+                .reduce((first, second) -> first + ", " + second).orElse(""));
+        row.put("base", value.base());
+        row.put("tax", value.impuesto());
+        row.put("discount", value.descuentoGlobal());
+        row.put("memberBalance", value.memberBalance());
+        row.put("total", value.total());
+        return row;
+    }
+
+    private static String ticketStatus(TicketReportView value) {
+        if (value.estado() == com.tpverp.backend.document.DocumentStatus.ANULADO) return "CANCELLED";
+        if (value.lifecycleStatus() != null) {
+            return switch (value.lifecycleStatus()) {
+                case CANCELLED, INVOICED, PARTIALLY_RETURNED, RETURNED -> value.lifecycleStatus().name();
+                default -> value.estado().name();
+            };
+        }
+        return value.estado().name();
+    }
+
     private List<Map<String, Object>> documentRows(
             List<DocumentReportView> values,
             boolean invoice,
@@ -159,6 +233,8 @@ public class SalesReportExcelExportService {
             row.put("productCount", value.lineas());
             row.put("warehouse", text(value.almacenNombre(), id(value.almacenId())));
             row.put("payment", payments(value.payments()));
+            row.put("__payments", value.payments() == null ? List.of() : value.payments().stream()
+                    .map(DocumentView.PaymentView::methodName).filter(method -> !blank(method)).toList());
             row.put("total", value.total());
             if (purchase) {
                 row.put("supplier", text(value.proveedorCodigo(), id(value.proveedorId())));
@@ -288,13 +364,20 @@ public class SalesReportExcelExportService {
             LocalDate rowDate = (LocalDate) row.get("__date");
             return (from == null || !rowDate.isBefore(from))
                     && (to == null || !rowDate.isAfter(to))
-                    && exact(row, "user", filters.user())
-                    && contains(row, List.of("customer", "customerName", "supplier", "supplierName"), filters.customer())
-                    && contains(row, List.of("supplier", "supplierName"), filters.supplier())
-                    && exact(row, "payment", filters.payment())
-                    && exact(row, "terminal", filters.terminal())
-                    && (blank(filters.status()) || statusMatches(row.get("status"), filters.status()) || exact(row, "payment", filters.status()))
-                    && exact(row, "warehouse", filters.warehouse())
+                    && any(filters.users(), filters.user(), expected -> attributionMatches(row, "user", expected),
+                            expected -> exact(row, "user", expected))
+                    && partyMatches(row, "customer", "customerName", filters.customers(), filters.customer(),
+                            List.of("customer", "customerName", "supplier", "supplierName"))
+                    && partyMatches(row, "supplier", "supplierName", filters.suppliers(), filters.supplier(),
+                            List.of("supplier", "supplierName"))
+                    && any(filters.payments(), filters.payment(), expected -> paymentMatches(row, expected),
+                            expected -> exact(row, "payment", expected) || paymentMatches(row, expected))
+                    && any(filters.terminals(), filters.terminal(), expected -> attributionMatches(row, "terminal", expected),
+                            expected -> exact(row, "terminal", expected))
+                    && any(filters.statuses(), filters.status(), expected -> statusMatches(row.get("status"), expected),
+                            expected -> statusMatches(row.get("status"), expected)
+                                    || exact(row, "payment", expected) || paymentMatches(row, expected))
+                    && any(filters.warehouses(), filters.warehouse(), expected -> exact(row, "warehouse", expected))
                     && (search.isEmpty() || normalize(row.values().toString()).contains(search));
         }).toList();
     }
@@ -449,6 +532,52 @@ public class SalesReportExcelExportService {
         return blank(expected) || String.valueOf(row.getOrDefault(key, "")).equals(expected);
     }
 
+    private static boolean any(List<String> selected, String legacy, Predicate<String> matches) {
+        return any(selected, legacy, matches, matches);
+    }
+
+    private static boolean any(List<String> selected, String legacy, Predicate<String> matches, Predicate<String> legacyMatches) {
+        var values = selected == null ? List.<String>of() : selected.stream().filter(value -> !blank(value)).toList();
+        return values.isEmpty() ? blank(legacy) || legacyMatches.test(legacy) : values.stream().anyMatch(matches);
+    }
+
+    private static boolean attributionMatches(Map<String, Object> row, String key, String expected) {
+        String value = id(row.get(key));
+        return (blank(value) ? "salesReport.value.unavailable" : value).equals(expected);
+    }
+
+    private static boolean partyMatches(Map<String, Object> row, String codeKey, String nameKey,
+            List<String> selected, String legacy, List<String> legacyKeys) {
+        if (selected == null || selected.stream().allMatch(SalesReportExcelExportService::blank)) {
+            return contains(row, legacyKeys, legacy);
+        }
+        String code = id(row.get(codeKey));
+        String value = blank(code) ? id(row.get(nameKey)) : code;
+        return selected.stream().filter(expected -> !blank(expected)).anyMatch(value::equals);
+    }
+
+    private static boolean paymentMatches(Map<String, Object> row, String expected) {
+        if (blank(expected)) return true;
+        if (row.get("__payments") instanceof List<?> methods) {
+            return methods.stream().anyMatch(method -> normalizePayment(String.valueOf(method)).equals(normalizePayment(expected)));
+        }
+        return normalizePayment(id(row.get("payment"))).equals(normalizePayment(expected));
+    }
+
+    private static String normalizePayment(String value) {
+        return switch (normalize(value)) {
+            case "cash", "efectivo", "salesreport.payment.cash" -> "EFECTIVO";
+            case "card", "tarjeta", "salesreport.payment.card" -> "TARJETA";
+            case "transfer", "transferencia", "salesreport.payment.transfer" -> "TRANSFERENCIA";
+            case "voucher", "vale", "salesreport.payment.voucher" -> "VALE";
+            case "pending", "pendiente", "salesreport.payment.pending" -> "PENDIENTE";
+            case "discount", "descuento", "salesreport.payment.discount", "salesreport.column.discount" -> "DESCUENTO";
+            case "member_balance", "saldo_miembro", "salesreport.payment.memberbalance" -> "SALDO_MIEMBRO";
+            case "member_credit", "credito_devolucion", "salesreport.payment.returncredit" -> "CREDITO_DEVOLUCION";
+            default -> value == null ? "" : value.trim();
+        };
+    }
+
     private static boolean statusMatches(Object value, String expected) {
         return normalizeStatus(value == null ? "" : String.valueOf(value)).equals(normalizeStatus(expected));
     }
@@ -457,6 +586,13 @@ public class SalesReportExcelExportService {
         return switch (normalize(value)) {
             case "salesreport.status.draft", "draft", "borrador" -> "BORRADOR";
             case "salesreport.status.confirmed", "confirmed", "confirmado", "confirmada" -> "CONFIRMADA";
+            case "salesreport.status.cancelled", "salesreport.status.ticketcancelled", "cancelled", "anulado" -> "ANULADO";
+            case "salesreport.status.pending", "pending", "pendiente" -> "PENDIENTE";
+            case "salesreport.status.partial", "partial", "parcial" -> "PARCIAL";
+            case "salesreport.status.paid", "paid", "pagado" -> "PAGADO";
+            case "salesreport.status.invoiced", "invoiced", "facturado" -> "FACTURADO";
+            case "salesreport.status.partiallyreturned", "partially_returned" -> "PARTIALLY_RETURNED";
+            case "salesreport.status.returned", "returned" -> "RETURNED";
             default -> value;
         };
     }

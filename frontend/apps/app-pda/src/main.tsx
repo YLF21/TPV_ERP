@@ -373,6 +373,7 @@ function PdaWorkspace({
       <Suspense fallback={<PdaModuleLoading locale={locale} moduleTitle={moduleTitle} />}>
       {view === "check" && <div className="pda-module-view">
         <GoodsCheckPanel
+          app="pda"
           locale={locale}
           token={session.accessToken}
           t={t}

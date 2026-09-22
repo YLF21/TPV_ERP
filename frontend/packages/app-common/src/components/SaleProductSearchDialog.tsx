@@ -8,6 +8,8 @@ import { TableSortButton } from "./TableSortButton";
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import "./SaleProductSearchDialog.css";
+import { ErpFilterChips } from "./ErpFilterChips";
+import "./WarehouseDocumentClassicTables.css";
 
 export type SaleProductSearchOption = {
   id: string;
@@ -47,6 +49,7 @@ type SaleProductSearchDialogProps<T extends SaleProductSearchOption> = {
   initialSelectedId?: string;
   interfaceMode?: SaleInterfaceMode;
   locale?: LocaleCode;
+  tableTheme?: "erp-blue-classic";
   labels: SaleProductSearchLabels;
   products: T[];
   token?: string;
@@ -83,6 +86,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   initialSelectedId = "",
   interfaceMode,
   locale = "es",
+  tableTheme,
   labels,
   products,
   token,
@@ -210,7 +214,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
 
   return (
     <div
-      className="sale-action-overlay sale-product-search-overlay"
+      className={`sale-action-overlay sale-product-search-overlay${tableTheme ? " erp-classic-tables warehouse-picker-classic" : ""}`}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -264,6 +268,9 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               <span>{createProductLabel}</span>
             </button>
           )}
+          {tableTheme && <ErpFilterChips locale={locale} focusRef={inputRef} chips={query.trim() ? [{
+            key: "search", label: labels.query, value: query.trim(), onRemove: () => updateQuery("")
+          }] : []} onClear={() => updateQuery("")} />}
         </div>
 
         <div className="sale-product-search-table">

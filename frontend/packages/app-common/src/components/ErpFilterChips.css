@@ -1,0 +1,12 @@
+/* Companies / frontend SaaS: shared applied-filter presentation for APP VENTA. */
+.erp-filter-applied { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; margin: 8px 0; }
+.erp-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.erp-filter-chip { display: flex; align-items: center; gap: 6px; max-width: 100%; min-height: 28px; padding-left: 8px; border: 1px solid #adc3d9; background: #edf4fb; color: #173d64; font-size: 12px; }
+.erp-filter-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-filter-applied .erp-filter-chip > button { align-self: stretch; flex-shrink: 0; min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; border-left: 1px solid #c4d2df; border-radius: 0; color: #173d64; background: transparent; cursor: pointer; font-size: 19px; box-shadow: none; }
+.erp-filter-applied .erp-filter-chip > button:hover { background: #d6e6f5; }
+.erp-filter-applied .erp-filter-clear { flex-shrink: 0; min-height: 28px; padding: 3px 8px; border: 1px solid #adc3d9; border-radius: 0; color: #173d64; background: #fff; cursor: pointer; font-size: 12px; }
+.erp-filter-applied button:focus-visible { outline: 2px solid #1f5a94; outline-offset: 2px; }
+.erp-filter-search-controls { min-width: 0; }
+.stock-screen .bulk-compact-dialog .erp-filter-search-controls > .report-search { width: 100%; margin: 0; }
+@media (max-width: 700px) { .erp-filter-applied { flex-wrap: wrap; } }

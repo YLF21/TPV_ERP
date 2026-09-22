@@ -547,6 +547,7 @@ describe("SalesDocumentScreen", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Importar borrador" }));
     const dialog = await screen.findByRole("dialog", { name: "Importar borrador" });
+    await within(dialog).findByRole("option", { name: /Cliente Borrador SL/, selected: true });
     fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "Buscar borrador" }), {
       key: "Enter",
     });

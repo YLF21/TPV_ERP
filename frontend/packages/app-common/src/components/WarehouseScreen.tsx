@@ -193,6 +193,7 @@ export function WarehouseScreen({
             <div className="stock-empty-state">{t("warehouseScreen.noAccess")}</div>
           ) : section === "goodsCheck" ? (
             <GoodsCheckPanel
+              app={app}
               locale={locale}
               token={session.accessToken}
               t={t}
@@ -242,10 +243,10 @@ export function WarehouseScreen({
           )}
           {status && <p className="stock-operation-status error" role="alert">{status}</p>}
         </section>
-        {embedded && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
+        {app !== "gestion" && embedded && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
 
-      {!embedded && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
+      {app !== "gestion" && !embedded && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
     </main>
   );
 }

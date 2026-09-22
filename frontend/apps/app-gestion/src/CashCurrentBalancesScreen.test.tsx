@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "@tpverp/app-common";
 import { CashCurrentBalancesScreen, canReadCashCurrentBalances } from "./CashCurrentBalancesScreen";
@@ -61,6 +61,19 @@ describe("CashCurrentBalancesScreen", () => {
     expect(screen.getByText("gestion.cashCurrentBalances.status.open")).not.toBeNull();
     expect(screen.getByText("gestion.cashCurrentBalances.status.closed")).not.toBeNull();
     expect(screen.getByText(/160,00/)).not.toBeNull();
+  });
+
+  it("filters the full snapshot without changing store cash totals and clears its search chip", async () => {
+    render(<CashCurrentBalancesScreen session={session(["CASH_READ"])} t={(key) => key} />);
+    await screen.findByText("TPV 1");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "TPV 2" } });
+    expect(screen.queryByText("TPV 1")).toBeNull();
+    expect(screen.getAllByText("TPV 2").length).toBeGreaterThan(0);
+    expect(screen.getByText(/160,00/)).not.toBeNull();
+    expect(api.loadCashCurrentBalances).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove party.searchLabel" }));
+    expect(screen.getByText("TPV 1")).not.toBeNull();
+    expect(screen.queryByRole("group", { name: "filters.applied" })).toBeNull();
   });
 
   it("refreshes the balances every three seconds", async () => {

@@ -65,6 +65,26 @@ describe("FiscalRecordsView", () => {
     expect(await screen.findByText("Sin resultados para estos filtros")).toBeTruthy();
   });
 
+  it("muestra solo filtros aplicados y quita un criterio reiniciando el cursor", async () => {
+    render(<FiscalRecordsView locale="es" revision={0} t={t} />);
+    await screen.findByText("T-1");
+    fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: /^Número/ }), { target: { value: "T-" } });
+    fireEvent.change(screen.getByLabelText("verifactu.records.dateFrom"), { target: { value: "2026-08-01" } });
+    expect(screen.queryByRole("group", { name: "filters.applied" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ number: "T-", dateFrom: "2026-08-01", cursor: null }), undefined, expect.any(AbortSignal)));
+    const nextPage = screen.getByRole("button", { name: "Siguiente" });
+    await waitFor(() => expect(nextPage).toHaveProperty("disabled", false));
+    fireEvent.click(nextPage);
+    await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-2" }), undefined, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove Prefijo" }));
+    await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ number: "", dateFrom: "2026-08-01", cursor: null }), undefined, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
+    expect(screen.getByRole("textbox", { name: /^Número/ })).toHaveProperty("value", "");
+    expect(screen.getByLabelText("verifactu.records.dateFrom")).toHaveProperty("value", "2026-08-01");
+  });
+
   it("cancela la petición de lista al desmontar", () => {
     let signal: AbortSignal | undefined;
     vi.mocked(api.loadFiscalRecordsCursor).mockImplementation((_filters, _token, requestSignal) => {

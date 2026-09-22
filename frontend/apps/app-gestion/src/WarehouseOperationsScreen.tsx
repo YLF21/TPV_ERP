@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserSession } from "../../../packages/app-common/src/types";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
   activateModalFocusTrap,
   type ModalFocusRoot
@@ -73,6 +74,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
 
   const [counts, setCounts] = useState<StockCountSummary[]>([]);
   const [countStatus, setCountStatus] = useState<"" | StockCountStatus>("");
+  const countStatusRef = useRef<HTMLSelectElement>(null);
   const [countWarehouseId, setCountWarehouseId] = useState("");
   const [countNotes, setCountNotes] = useState("");
   const [countProductId, setCountProductId] = useState("");
@@ -410,9 +412,12 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
               <button type="submit" disabled={saving}>{t("warehouse.count.create")}</button>
             </form>
             <div className="gestion-stock-count-filters">
-              <label><span>{t("warehouse.count.status")}</span><select value={countStatus} onChange={(event) => setCountStatus(event.target.value as "" | StockCountStatus)}><option value="">{t("warehouse.count.all")}</option><option value="DRAFT">{t("warehouse.count.status.DRAFT")}</option><option value="CONFIRMED">{t("warehouse.count.status.CONFIRMED")}</option><option value="CANCELLED">{t("warehouse.count.status.CANCELLED")}</option></select></label>
+              <label><span>{t("warehouse.count.status")}</span><select ref={countStatusRef} value={countStatus} onChange={(event) => setCountStatus(event.target.value as "" | StockCountStatus)}><option value="">{t("warehouse.count.all")}</option><option value="DRAFT">{t("warehouse.count.status.DRAFT")}</option><option value="CONFIRMED">{t("warehouse.count.status.CONFIRMED")}</option><option value="CANCELLED">{t("warehouse.count.status.CANCELLED")}</option></select></label>
               <button type="button" onClick={() => void refreshCounts()}>{t("warehouse.operations.refresh")}</button>
             </div>
+            <ErpFilterChips translate={t} focusRef={countStatusRef}
+              chips={countStatus ? [{ key: "status", label: t("warehouse.count.status"), value: t(`warehouse.count.status.${countStatus}`), onRemove: () => setCountStatus("") }] : []}
+              onClear={() => setCountStatus("")} />
             <div className="gestion-stock-count-items">
               {counts.map((count) => <button type="button" key={count.id} className={selectedCount?.id === count.id ? "selected" : ""} onClick={() => void openCount(count.id)}><strong>{warehouses.find((warehouse) => warehouse.id === count.warehouseId)?.name ?? count.warehouseId}</strong><span className={`gestion-stock-count-status ${count.status.toLowerCase()}`}>{t(`warehouse.count.status.${count.status}`)}</span><small>{new Date(count.createdAt).toLocaleString()}</small></button>)}
               {counts.length === 0 && <p>{t("warehouse.count.empty")}</p>}

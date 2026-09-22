@@ -36,6 +36,7 @@ import {
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 import "./SaleTouchLayout.css";
+import "./SaleCartClassicTable.css";
 import {
   SaleCommandMenuBar,
   type SaleCommandMenu,
@@ -5659,7 +5660,7 @@ export function SaleScreen({
         <section className="sale-ticket work-panel" aria-label={t("sale.main.ticket")}>
           <div className="sale-ticket-lines sale-cart-table-scroll">
             <table
-              className="sale-cart-table"
+              className={`sale-cart-table${app === "venta" ? " sale-cart-table--classic" : ""}`}
               aria-label={t("sale.main.ticketLines")}
               style={{ width: Math.max(cartTableWidth, 720) }}
             >

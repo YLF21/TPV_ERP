@@ -9,11 +9,13 @@ import {
 import { formatEuroAmount, localeTag } from "../money";
 import type { AppKind, LocaleCode, TerminalContext } from "../types";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { ErpFilterChips } from "./ErpFilterChips";
 import { visibleTableColumns, type TableColumnDefinition } from "./tableLayoutPreferences";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { ReportDateRangeFilter, reportDateRangeLabel, type ReportDateRange as DateRange } from "./ReportDateRangeFilter";
 import "./SalesActivityPanel.css";
+import "./SalesReportClassicTables.css";
 
 type Request = <T>(path: string, options?: { token?: string }) => Promise<T>;
 
@@ -780,14 +782,23 @@ export function SalesActivityPanel({
   }
 
   function documentsContent() {
-    return <div className="sales-documents-layout">
-      <div className="sales-activity-toolbar">
+    const toolbar = <div className="sales-activity-toolbar">
         <div className="sales-documents-period"><span>{t("currentPeriod")}</span><strong>{rangeLabel(range)}</strong><small>{formatDate(range.from, locale)} — {formatDate(range.to, locale)}</small></div>
         {outputActions(true)}
-      </div>
+      </div>;
+    const customPeriod = filterOptionsReady && (range.from !== today || range.to !== today);
+    const resetPeriod = () => setRange(currentDayRange(t("today"), today));
+    return <div className="sales-documents-layout">
+      {app !== "pda" ? <div className="sales-documents-controls">
+        {toolbar}
+        <ErpFilterChips locale={locale} className="report-filter-chips"
+          chips={customPeriod ? [{ key: "period", label: t("currentPeriod"),
+            value: `${formatDate(range.from, locale)} — ${formatDate(range.to, locale)}`,
+            onRemove: resetPeriod }] : []} onClear={resetPeriod} />
+      </div> : toolbar}
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
-      {!loading && !error && !errorKey && <div className="sales-documents-table-scroll">
+      {!loading && !error && !errorKey && <div className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}>
         {viewMode === "DAY" && dailyRows.length === 0 && <p className="sales-activity-state">{t("noDocuments")}</p>}
         {viewMode === "DOCUMENT" && rows.length === 0 && <p className="sales-activity-state">{t("noDocuments")}</p>}
         {viewMode === "DAY" ? (dailyRows.length > 0 ? dailyDocumentTable() : null) : (rows.length > 0 ? <table className="sales-documents-table" style={documentTableStyle}>
