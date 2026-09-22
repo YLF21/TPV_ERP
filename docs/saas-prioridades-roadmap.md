@@ -1,5 +1,7 @@
 # Roadmap SaaS ERP
 
+Actualización 20/09/2026: consultar [la organización y los contratos implementados de tiendas, accesos, licencias y supervisión](saas-multitienda-supervision-2026-09-20.md). El frontend SaaS es exclusivamente interno; los administradores de tiendas no acceden. Facturación propia se sitúa en Mi empresa y Supervisión sigue cinco fases de trabajo diario. Se retiran de este portal la interfaz cliente, Maestros, Operaciones y Suscripciones. Las API cliente se conservan para la futura aplicación. El contenido siguiente es una referencia histórica y no sustituye estas decisiones.
+
 ## Estado actual implementado
 
 El modulo SaaS ya incluye:

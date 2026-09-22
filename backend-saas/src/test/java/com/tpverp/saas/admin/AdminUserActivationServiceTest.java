@@ -91,8 +91,9 @@ class AdminUserActivationServiceTest {
                 mock(IntegrationSecretCipher.class),
                 audit,
                 sessions,
-                mock(PlanLimitService.class),
+                mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class),
                 mock(JdbcTemplate.class),
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 }

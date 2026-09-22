@@ -2,6 +2,8 @@
 
 Backend central para licencias, vinculacion de instalaciones y eventos sincronizados desde tiendas.
 
+La organización del panel, los accesos multitienda, los códigos internos y la supervisión se describen en [SaaS multitienda y supervisión](../docs/saas-multitienda-supervision-2026-09-20.md).
+
 ## Arranque local
 
 ```powershell
@@ -62,11 +64,14 @@ caracteres.
 
 ## Endpoints base
 
-- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/admin/login` — acceso exclusivo al portal interno; nunca autentica cuentas de tiendas.
+- `POST /api/v1/auth/login` — contrato compatible para aplicaciones cliente; conserva los ámbitos admin/tenant.
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/logout-all`
 - `POST /api/v1/admin/companies`
+- `GET /api/v1/admin/companies`
+- `GET/PUT /api/v1/admin/companies/{companyId}/profile`
 - `PUT /api/v1/admin/companies/{companyId}`
 - `GET /api/v1/admin/fiscal-status`
 - `GET /api/v1/admin/fiscal-status/companies`
@@ -90,11 +95,58 @@ caracteres.
 - `POST /api/v1/license/validate`
 - `POST /api/v1/sync/events`
 
-El alta de empresa acepta `companyAddress` y `storeAddress` como objetos con
-`linea1`, `ciudad`, `codigoPostal`, `provincia` y `pais`. Se conservan en el
-SaaS para que una instalacion que parte sin datos locales pueda crear la
-empresa y la tienda fiscales al vincular el codigo; no se generan direcciones
-de relleno.
+El alta de empresa recibe nombre, NIF, tipo de obligado y
+`companyAddress` (con `linea1`, `ciudad`, `codigoPostal`, `provincia` y `pais`),
+más `owners` con al menos un propietario `{name,taxId,phone?,email?}`.
+`name` y `taxId` (DNI/NIE válido) son obligatorios para cada propietario.
+Puede incluir `contactName`, `contactEmail`, `contactPhone`, `supportStatus` y `notes`.
+El perfil mayorista/minorista se configura en la tienda; el campo societario anterior
+solo se conserva para compatibilidad histórica y puede ser nulo.
+No crea tiendas, licencias ni usuarios automáticamente. `GET /api/v1/admin/companies`
+incluye contactos/propietarios y permite consultar también sociedades sin tiendas ni licencias.
+`GET /profile` obtiene la ficha y `PUT /profile` guarda sociedad, contacto y propietarios
+en una sola transacción, con `EDIT_COMPANY_DATA`. Conserva NIF, tipo de obligado y
+datos comerciales históricos. Las sociedades históricas sin propietarios pueden consultarse,
+pero el guardado completo exige completarlos. V67 añade los campos sin inferir titulares.
+
+Después se crea la tienda mediante `POST /api/v1/admin/companies/{id}/stores`,
+con su domicilio, zona horaria, `taxRegime`, `commercialProfile` (`MAYORISTA` o `MINORISTA`), `servicePrice` en EUR,
+`billingPeriod` (`MONTHLY` o `ANNUAL`), `maxWindows`, `maxPda` y `validUntil`.
+`POST /api/v1/admin/license-workspace` recibe solo `{storeId}` y genera el código
+usando la configuración de esa tienda. Los nuevos códigos de esta ruta y de la
+regeneración administrativa caducan a los 30 minutos (`PairingCodePolicy.VALIDITY`).
+La respuesta de creación incluye `pairingExpiresAt` y `serverNow`; el contador no
+depende del reloj del equipo. Se conservan las caducidades de códigos ya emitidos.
+Los domicilios reales se conservan para
+aprovisionar una instalación local; no se generan direcciones de relleno.
+V68 conserva en cada tienda el perfil comercial de su sociedad histórica. Tanto vincular
+como validar una instalación usa el perfil de esa tienda. En actualizaciones antiguas que
+omiten `commercialProfile` se conserva el valor actual de la tienda.
+
+`GET /api/v1/admin/stores` admite `companyId`, `q`, `active`, `page`, `size`,
+`sortBy` y `sortDirection` (`ASC`/`DESC`). Las columnas permitidas son `internalCode`,
+`companyName`, `code`, `name`, `active`, `taxRegime`, `commercialProfile`, `servicePrice`,
+`billingPeriod`, `validUntil`, `maxWindows`, `maxPda`, `installations`,
+`activeInstallations`, `lastSyncAt` y `createdAt`. La ordenación se aplica antes de
+paginar, coloca los nulos al final y desempata por UUID; el orden predeterminado
+conserva empresa, código local y UUID. `GET /api/v1/admin/stores/{storeId}` obtiene
+la ficha actual para su consulta o gestión, con el permiso `VIEW_ADMIN_DATA`.
+No cambia los permisos de escritura ni requiere una migración.
+
+`GET /api/v1/admin/license-workspace/{licenseId}` obtiene la ficha vigente por UUID,
+con el mismo `LicenseRow` del listado y permiso `VIEW_ADMIN_DATA`. Incluye estado
+efectivo, caducidad, cupos, conexiones, tiendas y saldos separados por moneda.
+No aplica los filtros del listado: una licencia puede seguir abierta tras bloquearla
+o renovarla. El directorio conserva filtros y paginación en servidor; el frontend
+carga bloques de 25 al desplazarse y usa este detalle independiente para gestionar.
+
+`GET /api/v1/admin/license-workspace/activation-codes` recupera los códigos
+vigentes con `page`, `size` y filtro `companyId` opcional. Exige `ADD_COMPANY`, el
+mismo permiso que la pantalla Crear licencia; `VIEW_ADMIN_DATA` solo no permite
+leer los códigos. Devuelve `{items,page,size,total,totalPages,serverNow}` con empresa,
+tienda, referencia, código y `pairingExpiresAt`. Excluye códigos consumidos/caducados,
+licencias bloqueadas/vencidas y tiendas inactivas. La respuesta utiliza `no-store`;
+el frontend mantiene los secretos solo en memoria y vuelve a consultarlos al abrir.
 
 La licencia incorpora la fecha obligatoria VERI*FACTU y la version de la
 politica aplicable al tipo de obligado. La instalacion local aplica esa fecha
@@ -108,6 +160,11 @@ como hash en PostgreSQL. La renovación rota el token anterior y `logout-all`
 revoca todas las sesiones del usuario. Los endpoints protegidos comprueban en
 cada petición que el usuario siga activo. HTTP Basic solo debe habilitarse durante una migración
 controlada.
+
+El frontend SaaS publicado es exclusivamente interno y utiliza `auth/admin/login`.
+Las cuentas de tiendas no acceden al portal. Las API tenant y sus concesiones por
+empresa/tienda se conservan para la futura aplicación cliente, con autorización
+independiente de las API administrativas.
 
 ## Tests PostgreSQL reales
 

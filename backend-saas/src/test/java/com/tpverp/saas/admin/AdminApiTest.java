@@ -1,5 +1,8 @@
 package com.tpverp.saas.admin;
 
+import com.tpverp.saas.ProvisioningRequest;
+import com.tpverp.saas.ProvisionedCompany;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -7,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static com.tpverp.saas.SaasTestData.fiscalAddress;
+import static com.tpverp.saas.SaasTestData.companyOwners;
 import static com.tpverp.saas.SaasTestData.validCif;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,6 +53,7 @@ class AdminApiTest {
     @Autowired SaasAdminUserRepository adminUsers;
     @Autowired SaasCompanyRepository companies;
     @Autowired SaasLicenseRepository licenses;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @BeforeEach
     void restoreViewerFixture() {
@@ -59,27 +64,28 @@ class AdminApiTest {
     }
 
     @Test
-    void creaEmpresaLicenciaYCodigoDeEnlace() throws Exception {
+    void creaSoloSociedadSinTiendaLicenciaNiUsuario() throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(request("B12345678"))))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        CreateCompanyResponse response = mapper.readValue(
-                result.getResponse().getContentAsString(),
-                CreateCompanyResponse.class);
+                        .content(mapper.writeValueAsString(new CreateCompanyRequest("Empresa",
+                                validCif("B12345678"), TaxpayerType.SOCIEDAD,
+                                CommercialProfile.MAYORISTA, fiscalAddress(), companyOwners()))))
+                .andExpect(status().isOk()).andReturn();
+        CompanySummaryResponse response = mapper.readValue(result.getResponse().getContentAsString(), CompanySummaryResponse.class);
         assertThat(response.companyId()).isNotNull();
-        assertThat(response.storeId()).isNotNull();
-        assertThat(response.licenseReference()).isEqualTo("LIC-B12345674-001");
-        assertThat(response.pairingCode()).matches("TPV-[A-HJ-NP-Z2-9]{12}");
+        assertThat(response.taxId()).isEqualTo("B12345674");
+        for (String table : new String[]{"saas_store", "saas_license", "saas_tenant_user"}) {
+            assertThat(jdbc.queryForObject("select count(*) from " + table + " where company_id = ?",
+                    Integer.class, response.companyId())).isZero();
+        }
     }
 
     @Test
-    void rechazaAltaSinPerfilComercialExplicito() throws Exception {
+    void rechazaAltaSinPropietariosExplicitos() throws Exception {
         var payload = mapper.readTree(mapper.writeValueAsString(request("B24681357")));
         ((com.fasterxml.jackson.databind.node.ObjectNode) payload).putNull("commercialProfile");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) payload).putArray("owners");
 
         mvc.perform(post("/api/v1/admin/companies")
                         .header("Authorization", basic("admin", "admin"))
@@ -100,10 +106,11 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V60__commercial_document_line_projection");
+                .isEqualTo("V69__pairing_code_revocation_and_store_uniqueness");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
-                "operational-incidents");
+                "operational-incidents", "stores", "tenant-access", "supervision");
+        assertThat(response.modules()).doesNotContain("subscriptions");
     }
 
     @Test
@@ -111,7 +118,7 @@ class AdminApiTest {
         String taxId = validCif("B24681350");
         String decoratedTaxId = "  " + taxId.substring(0, 1).toLowerCase()
                 + "-" + taxId.substring(1, 8) + "-" + taxId.substring(8) + "  ";
-        var request = new CreateCompanyRequest(
+        var request = new ProvisioningRequest(
                 "  Empresa   Normalizada  ",
                 decoratedTaxId,
                 TaxpayerType.SOCIEDAD,
@@ -126,15 +133,7 @@ class AdminApiTest {
                 1,
                 0);
 
-        var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andReturn();
-        CreateCompanyResponse created = mapper.readValue(
-                result.getResponse().getContentAsString(), CreateCompanyResponse.class);
-
+        ProvisionedCompany created = com.tpverp.saas.SaasTestData.provisionCompany(mvc, mapper, request);
         assertThat(created.licenseReference())
                 .isEqualTo("LIC-" + taxId + "-001");
         var licensesResult = mvc.perform(get("/api/v1/admin/licenses")
@@ -153,57 +152,25 @@ class AdminApiTest {
     }
 
     @Test
-    void rechazaAltaConNifDireccionVigenciaOCuposInvalidos() throws Exception {
+    void rechazaSociedadConNifODireccionInvalidos() throws Exception {
         var incompleteAddress = new LinkedHashMap<>(fiscalAddress());
         incompleteAddress.remove("provincia");
-        var invalidTaxId = new CreateCompanyRequest(
-                "Empresa", "B12345678", TaxpayerType.SOCIEDAD, TaxRegime.IGIC,
-                com.tpverp.saas.license.CommercialProfile.MAYORISTA,
-                fiscalAddress(), "TIENDA-A", "Tienda A", fiscalAddress(), "Europe/Madrid",
-                Instant.parse("2099-01-01T00:00:00Z"), 1, 0);
-        var invalidAddress = new CreateCompanyRequest(
-                "Empresa", validCif("B13579130"), TaxpayerType.SOCIEDAD, TaxRegime.IGIC,
-                com.tpverp.saas.license.CommercialProfile.MAYORISTA,
-                incompleteAddress, "002", "Tienda B", fiscalAddress(), "Europe/Madrid",
-                Instant.parse("2099-01-01T00:00:00Z"), 1, 0);
-        var invalidTerms = new CreateCompanyRequest(
-                "Empresa", validCif("B13579140"), TaxpayerType.SOCIEDAD, TaxRegime.IGIC,
-                com.tpverp.saas.license.CommercialProfile.MAYORISTA,
-                fiscalAddress(), "003", "Tienda C", fiscalAddress(), "Europe/Madrid",
-                Instant.parse("2020-01-01T00:00:00Z"), 0, -1);
-        var invalidTimeZone = new CreateCompanyRequest(
-                "Empresa", validCif("B13579150"), TaxpayerType.SOCIEDAD, TaxRegime.IGIC,
-                com.tpverp.saas.license.CommercialProfile.MAYORISTA,
-                fiscalAddress(), "004", "Tienda D", fiscalAddress(), "Europe/NoExiste",
-                Instant.parse("2099-01-01T00:00:00Z"), 1, 0);
-
-        mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(invalidTaxId)))
-                .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(invalidAddress)))
-                .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(invalidTerms)))
-                .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(invalidTimeZone)))
-                .andExpect(status().isBadRequest());
+        var invalidTaxId = new CreateCompanyRequest("Empresa", "B12345678", TaxpayerType.SOCIEDAD,
+                CommercialProfile.MAYORISTA, fiscalAddress(), companyOwners());
+        var invalidAddress = new CreateCompanyRequest("Empresa", validCif("B13579130"), TaxpayerType.SOCIEDAD,
+                CommercialProfile.MAYORISTA, incompleteAddress, companyOwners());
+        for (var invalid : java.util.List.of(invalidTaxId, invalidAddress)) {
+            mvc.perform(post("/api/v1/admin/companies").header("Authorization", basic("admin", "admin"))
+                    .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(invalid)))
+                    .andExpect(status().isBadRequest());
+        }
     }
 
     @Test
     void rechazaEmpresaConNifDuplicadoTrasNormalizar() throws Exception {
         String taxId = validCif("B13579240");
         createCompany(taxId);
-        CreateCompanyRequest duplicate = request(
+        ProvisioningRequest duplicate = request(
                 taxId.substring(0, 1).toLowerCase() + "-"
                         + taxId.substring(1, 8) + "-" + taxId.substring(8));
 
@@ -216,7 +183,7 @@ class AdminApiTest {
 
     @Test
     void listadoExponeCaducadaSinMutarElEstadoPersistido() throws Exception {
-        CreateCompanyResponse company = createCompany("B14725830");
+        ProvisionedCompany company = createCompany("B14725830");
         var license = licenses.findByReference(company.licenseReference()).orElseThrow();
         license.renew(Instant.parse("2020-01-01T00:00:00Z"), 2, 1);
         licenses.saveAndFlush(license);
@@ -294,7 +261,7 @@ class AdminApiTest {
 
     @Test
     void auditaAccionesAdmin() throws Exception {
-        CreateCompanyResponse company = createCompany("B91919191");
+        ProvisionedCompany company = createCompany("B91919191");
 
         var result = mvc.perform(get("/api/v1/admin/audit")
                         .header("Authorization", basic("admin", "admin")))
@@ -483,7 +450,7 @@ class AdminApiTest {
 
     @Test
     void listaLicencias() throws Exception {
-        CreateCompanyResponse company = createCompany("B11223344");
+        ProvisionedCompany company = createCompany("B11223344");
 
         var result = mvc.perform(get("/api/v1/admin/licenses")
                         .header("Authorization", basic("admin", "admin")))
@@ -500,7 +467,7 @@ class AdminApiTest {
 
     @Test
     void editaDatosEmpresa() throws Exception {
-        CreateCompanyResponse company = createCompany("B66554433");
+        ProvisionedCompany company = createCompany("B66554433");
 
         mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -508,8 +475,7 @@ class AdminApiTest {
                         .content(mapper.writeValueAsString(new EditCompanyDataRequest(
                                 "Empresa Editada",
                                 TaxpayerType.SOCIEDAD,
-                                TaxRegime.IGIC,
-                                CommercialProfile.MAYORISTA))))
+                                CommercialProfile.MAYORISTA, fiscalAddress()))))
                 .andExpect(status().isOk());
 
         var result = mvc.perform(get("/api/v1/admin/licenses")
@@ -526,8 +492,8 @@ class AdminApiTest {
     }
 
     @Test
-    void nombresDeUsuarioSonUnicosEntreAdminClienteYBootstrapOwner() throws Exception {
-        CreateCompanyResponse company = createCompany("B77990144");
+    void nombresDeUsuarioSonUnicosYAltaDeEmpresaNoCreaCuentaImplicita() throws Exception {
+        ProvisionedCompany company = createCompany("B77990144");
 
         mvc.perform(post("/api/v1/admin/users")
                         .header("Authorization", basic("admin", "admin"))
@@ -563,14 +529,17 @@ class AdminApiTest {
                                 "VIEWER"))))
                 .andExpect(status().isOk());
 
-        CreateCompanyResponse bootstrapped = createCompany("B77990155");
-        assertThat(bootstrapped.tenantUsername())
-                .isEqualTo(bootstrapTaxId.toLowerCase(java.util.Locale.ROOT) + "-2");
+        var bareCompany = mvc.perform(post("/api/v1/admin/companies")
+                .header("Authorization", basic("admin", "admin")).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(request("B77990155"))))
+                .andExpect(status().isOk()).andReturn();
+        UUID createdId = mapper.readValue(bareCompany.getResponse().getContentAsString(), CompanySummaryResponse.class).companyId();
+        assertThat(jdbc.queryForObject("select count(*) from saas_tenant_user where company_id=?", Integer.class, createdId)).isZero();
     }
 
     @Test
     void resumenYEdicionConservanElPerfilComercialReal() throws Exception {
-        CreateCompanyResponse company = createCompany("B66554444", CommercialProfile.MINORISTA);
+        ProvisionedCompany company = createCompany("B66554444", CommercialProfile.MINORISTA);
 
         var listedResult = mvc.perform(get("/api/v1/admin/licenses")
                         .header("Authorization", basic("admin", "admin")))
@@ -594,12 +563,11 @@ class AdminApiTest {
                         .content(mapper.writeValueAsString(new EditCompanyDataRequest(
                                 "Empresa Minorista Editada",
                                 TaxpayerType.SOCIEDAD,
-                                TaxRegime.IGIC,
-                                CommercialProfile.MINORISTA))))
+                                CommercialProfile.MINORISTA, fiscalAddress()))))
                 .andExpect(status().isOk())
                 .andReturn();
-        LicenseSummaryResponse edited = mapper.readValue(
-                editedResult.getResponse().getContentAsString(), LicenseSummaryResponse.class);
+        CompanySummaryResponse edited = mapper.readValue(
+                editedResult.getResponse().getContentAsString(), CompanySummaryResponse.class);
 
         assertThat(edited.companyName()).isEqualTo("Empresa Minorista Editada");
         assertThat(edited.commercialProfile()).isEqualTo(CommercialProfile.MINORISTA);
@@ -608,8 +576,8 @@ class AdminApiTest {
     }
 
     @Test
-    void rechazaEdicionSinPerfilComercial() throws Exception {
-        CreateCompanyResponse company = createCompany("B66554455", CommercialProfile.MINORISTA);
+    void rechazaEdicionSinDomicilioYConservaPerfilHistorico() throws Exception {
+        ProvisionedCompany company = createCompany("B66554455", CommercialProfile.MINORISTA);
 
         mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -629,7 +597,7 @@ class AdminApiTest {
 
     @Test
     void noPermiteReclasificarLaIdentidadFiscalDespuesDeEmitirLicencia() throws Exception {
-        CreateCompanyResponse company = createCompany("B67554430");
+        ProvisionedCompany company = createCompany("B67554430");
 
         mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -637,18 +605,18 @@ class AdminApiTest {
                         .content(mapper.writeValueAsString(new EditCompanyDataRequest(
                                 "Empresa Reclasificada",
                                 TaxpayerType.AUTONOMO,
-                                TaxRegime.IVA,
-                                CommercialProfile.MAYORISTA))))
+                                CommercialProfile.MAYORISTA, fiscalAddress()))))
                 .andExpect(status().isConflict());
 
         SaasCompany persisted = companies.findById(company.companyId()).orElseThrow();
         assertThat(persisted.getTaxpayerType()).isEqualTo(TaxpayerType.SOCIEDAD);
-        assertThat(persisted.getTaxRegime()).isEqualTo(TaxRegime.IGIC);
+        assertThat(persisted.getTaxRegime()).isNull();
+        assertThat(jdbc.queryForObject("select tax_regime from saas_store where id=?", String.class, company.storeId())).isEqualTo("IGIC");
     }
 
     @Test
     void rechazaEditarEmpresaSinPermiso() throws Exception {
-        CreateCompanyResponse company = createCompany("B55443322");
+        ProvisionedCompany company = createCompany("B55443322");
 
         mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
                         .header("Authorization", basic("viewer", "admin"))
@@ -656,8 +624,7 @@ class AdminApiTest {
                         .content(mapper.writeValueAsString(new EditCompanyDataRequest(
                                 "Empresa Editada",
                                 TaxpayerType.AUTONOMO,
-                                TaxRegime.IVA,
-                                CommercialProfile.MAYORISTA))))
+                                CommercialProfile.MAYORISTA, fiscalAddress()))))
                 .andExpect(status().isForbidden());
     }
 
@@ -682,7 +649,7 @@ class AdminApiTest {
 
     @Test
     void actualizaAprovisionamientoFiscalCompletoYNoDejaCambiosParciales() throws Exception {
-        CreateCompanyResponse company = createCompany("B71234560");
+        ProvisionedCompany company = createCompany("B71234560");
         var initialResult = mvc.perform(get(
                         "/api/v1/admin/companies/{companyId}/fiscal-provisioning",
                         company.companyId())
@@ -764,7 +731,7 @@ class AdminApiTest {
 
     @Test
     void validaMotivoYPermisoAntesDeRevocarUnaInstalacion() throws Exception {
-        CreateCompanyResponse company = createCompany("B71234570");
+        ProvisionedCompany company = createCompany("B71234570");
         UUID installationId = UUID.randomUUID();
         link(company, installationId);
 
@@ -796,7 +763,7 @@ class AdminApiTest {
 
     @Test
     void listaInstalacionesVinculadas() throws Exception {
-        CreateCompanyResponse company = createCompany("B44556677");
+        ProvisionedCompany company = createCompany("B44556677");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse link = link(company, installationId);
 
@@ -832,7 +799,7 @@ class AdminApiTest {
 
     @Test
     void renuevaLicenciaYCambiaLimites() throws Exception {
-        CreateCompanyResponse company = createCompany("B22334455");
+        ProvisionedCompany company = createCompany("B22334455");
 
         var result = mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
                         .header("Authorization", basic("admin", "admin"))
@@ -855,7 +822,7 @@ class AdminApiTest {
 
     @Test
     void rechazaRenovacionCaducadaOCuposInvalidos() throws Exception {
-        CreateCompanyResponse company = createCompany("B22335566");
+        ProvisionedCompany company = createCompany("B22335566");
 
         mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
                         .header("Authorization", basic("admin", "admin"))
@@ -873,7 +840,7 @@ class AdminApiTest {
 
     @Test
     void rechazaRenovarSinPermiso() throws Exception {
-        CreateCompanyResponse company = createCompany("B55667788");
+        ProvisionedCompany company = createCompany("B55667788");
 
         mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
                         .header("Authorization", basic("viewer", "admin"))
@@ -887,7 +854,7 @@ class AdminApiTest {
 
     @Test
     void regeneraCodigoDeEnlaceEInvalidaElAnterior() throws Exception {
-        CreateCompanyResponse company = createCompany("B33445566");
+        ProvisionedCompany company = createCompany("B33445566");
 
         var result = mvc.perform(post("/api/v1/admin/licenses/{reference}/pairing-codes", company.licenseReference())
                         .header("Authorization", basic("admin", "admin")))
@@ -920,7 +887,7 @@ class AdminApiTest {
 
     @Test
     void calculaPulsoDeClienteConRiesgoPorFacturacionYSoporte() throws Exception {
-        CreateCompanyResponse company = createCompany("B33557799");
+        ProvisionedCompany company = createCompany("B33557799");
         mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -964,7 +931,7 @@ class AdminApiTest {
 
     @Test
     void calculaResumenDeFacturacionSaas() throws Exception {
-        CreateCompanyResponse company = createCompany("B33779911");
+        ProvisionedCompany company = createCompany("B33779911");
         mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -991,21 +958,21 @@ class AdminApiTest {
         assertThat(summary.pendingCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.renewalsNext30Days()).isGreaterThanOrEqualTo(1);
         assertThat(new BigDecimal(summary.monthlyRecurringRevenue()))
-                .isGreaterThanOrEqualTo(new BigDecimal("79.90"));
+                .isGreaterThanOrEqualTo(new BigDecimal("25.00"));
         assertThat(summary.companies())
                 .filteredOn(value -> value.companyId().equals(company.companyId()))
                 .singleElement()
                 .satisfies(value -> {
                     assertThat(value.planName()).isEqualTo("PREMIUM");
                     assertThat(value.billingStatus()).isEqualTo("IMPAGADO");
-                    assertThat(value.monthlyPrice()).isEqualTo("79.90");
+                    assertThat(value.monthlyPrice()).isEqualTo("25.00");
                     assertThat(value.renewalDueSoon()).isTrue();
                 });
     }
 
     @Test
     void portalClienteConsultaSusDatosYCreaTicket() throws Exception {
-        CreateCompanyResponse company = createCompany("B44112233");
+        ProvisionedCompany company = createCompany("B44112233");
         String tenantPassword = activateTenant(company);
         mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -1028,7 +995,7 @@ class AdminApiTest {
         var session = mapper.readTree(sessionResult.getResponse().getContentAsString());
         assertThat(session.get("companyId").asText()).isEqualTo(company.companyId().toString());
         assertThat(session.get("companyName").asText()).isEqualTo("Empresa");
-        assertThat(session.get("roleName").asText()).isEqualTo("OWNER");
+        assertThat(session.get("roleName").asText()).isEqualTo("MANAGER");
 
         var dashboardResult = mvc.perform(get("/api/v1/tenant/dashboard")
                         .header("Authorization", basic(company.tenantUsername(), tenantPassword)))
@@ -1038,7 +1005,7 @@ class AdminApiTest {
         assertThat(dashboard.get("licenses").asInt()).isEqualTo(1);
         assertThat(dashboard.get("stores").asInt()).isEqualTo(1);
         assertThat(dashboard.get("billingStatus").asText()).isEqualTo("PENDIENTE");
-        assertThat(dashboard.get("monthlyPrice").asText()).isEqualTo("49.90");
+        assertThat(dashboard.get("monthlyPrice").asText()).isEqualTo("25.00");
 
         mvc.perform(post("/api/v1/tenant/tickets")
                         .header("Authorization", basic(company.tenantUsername(), tenantPassword))
@@ -1064,7 +1031,7 @@ class AdminApiTest {
 
     @Test
     void fase8GestionaFacturasPagosYPortalClienteLasConsulta() throws Exception {
-        CreateCompanyResponse company = createCompany("B77889911");
+        ProvisionedCompany company = createCompany("B77889911");
         String tenantPassword = activateTenant(company);
         Instant issuedAt = Instant.now().minus(Duration.ofDays(1));
         Instant dueAt = issuedAt.plus(Duration.ofDays(30));
@@ -1117,7 +1084,7 @@ class AdminApiTest {
 
     @Test
     void fase8GestionaUsuariosClienteCompletos() throws Exception {
-        CreateCompanyResponse company = createCompany("B77990011");
+        ProvisionedCompany company = createCompany("B77990011");
 
         mvc.perform(post("/api/v1/admin/companies/{companyId}/tenant-users", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -1168,8 +1135,56 @@ class AdminApiTest {
     }
 
     @Test
+    void nuevaCuentaClienteNoHeredaTiendasNiPrivilegiosDeSuEmpresa() throws Exception {
+        ProvisionedCompany company = createCompany("B77004411");
+        String username = "tenant-explicit-grants";
+        String password = "explicit-access-pass";
+        createTenantUser(company.companyId(), username, password, "MANAGER")
+                .andExpect(status().isOk());
+
+        var accessResult = mvc.perform(get("/api/v1/tenant/access")
+                        .header("Authorization", basic(username, password)))
+                .andExpect(status().isOk()).andReturn();
+        var companyAccess = mapper.readTree(accessResult.getResponse().getContentAsString()).get("companies");
+        assertThat(companyAccess).hasSize(1);
+        assertThat(companyAccess.get(0).get("companyId").asText()).isEqualTo(company.companyId().toString());
+        assertThat(companyAccess.get(0).get("roleName").asText()).isEqualTo("MANAGER");
+        assertThat(companyAccess.get(0).get("stores")).isEmpty();
+        assertThat(companyAccess.get(0).get("companyPrivileges")).isEmpty();
+
+        var storesResult = mvc.perform(get("/api/v1/tenant/stores")
+                        .header("Authorization", basic(username, password)))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(mapper.readTree(storesResult.getResponse().getContentAsString())).isEmpty();
+        mvc.perform(get("/api/v1/tenant/erp/customers")
+                        .header("Authorization", basic(username, password)))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/tenant/invoices")
+                        .header("Authorization", basic(username, password)))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(put("/api/v1/admin/tenant-users/{username}/access/companies/{companyId}", username, company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(java.util.Map.of(
+                                "roleName", "MANAGER",
+                                "companyPrivileges", java.util.List.of(),
+                                "storeIds", java.util.List.of(company.storeId())))))
+                .andExpect(status().isOk());
+        var grantedStores = mvc.perform(get("/api/v1/tenant/stores")
+                        .header("Authorization", basic(username, password)))
+                .andExpect(status().isOk()).andReturn();
+        var stores = mapper.readTree(grantedStores.getResponse().getContentAsString());
+        assertThat(stores).hasSize(1);
+        assertThat(stores.get(0).get("storeId").asText()).isEqualTo(company.storeId().toString());
+        mvc.perform(get("/api/v1/tenant/erp/customers")
+                        .header("Authorization", basic(username, password)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void rolesClienteRestringenEscrituraErpSinBloquearTickets() throws Exception {
-        CreateCompanyResponse company = createCompany("B77990022");
+        ProvisionedCompany company = createCompany("B77990022");
 
         createTenantUser(company.companyId(), "tenant-viewer-role", "viewer-role-pass", "VIEWER")
                 .andExpect(status().isOk());
@@ -1181,6 +1196,10 @@ class AdminApiTest {
                 .andExpect(status().isBadRequest());
         createTenantUser(company.companyId(), "tenant-invalid-role", "invalid-role-pass", "SUPERUSER")
                 .andExpect(status().isBadRequest());
+
+        grantTenantPrivileges(company.companyId(), "tenant-viewer-role", "VIEWER", "READ_MASTERS", "SUPPORT");
+        grantTenantPrivileges(company.companyId(), "tenant-billing-role", "BILLING", "READ_BILLING", "SUPPORT");
+        grantTenantPrivileges(company.companyId(), "tenant-manager-role", "MANAGER", "READ_MASTERS", "WRITE_MASTERS");
 
         mvc.perform(get("/api/v1/tenant/erp/customers")
                         .header("Authorization", basic("tenant-viewer-role", "viewer-role-pass")))
@@ -1256,7 +1275,7 @@ class AdminApiTest {
                         .header("Authorization", "Bearer " + secondAdminToken))
                 .andExpect(status().isUnauthorized());
 
-        CreateCompanyResponse company = createCompany("B77990033");
+        ProvisionedCompany company = createCompany("B77990033");
         String currentTenantPassword = activateTenant(company);
         String firstTenantToken = loginToken(company.tenantUsername(), currentTenantPassword);
         mvc.perform(get("/api/v1/tenant/me")
@@ -1283,8 +1302,8 @@ class AdminApiTest {
 
     @Test
     void fase9GestionaMaestrosErpAisladosPorEmpresa() throws Exception {
-        CreateCompanyResponse companyA = createCompany("B90110011");
-        CreateCompanyResponse companyB = createCompany("B90110022");
+        ProvisionedCompany companyA = createCompany("B90110011");
+        ProvisionedCompany companyB = createCompany("B90110022");
 
         mvc.perform(post("/api/v1/admin/companies/{companyId}/erp/customers", companyA.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -1357,7 +1376,7 @@ class AdminApiTest {
 
     @Test
     void fase9PortalClienteGestionaSusMaestrosErp() throws Exception {
-        CreateCompanyResponse company = createCompany("B90110033");
+        ProvisionedCompany company = createCompany("B90110033");
         String tenantPassword = activateTenant(company);
 
         mvc.perform(post("/api/v1/tenant/erp/suppliers")
@@ -1405,8 +1424,8 @@ class AdminApiTest {
 
     @Test
     void rechazaDocumentoDeVentaConTiendaDeOtraEmpresa() throws Exception {
-        CreateCompanyResponse companyA = createCompany("B91000010");
-        CreateCompanyResponse companyB = createCompany("B91000020");
+        ProvisionedCompany companyA = createCompany("B91000010");
+        ProvisionedCompany companyB = createCompany("B91000020");
 
         mvc.perform(post("/api/v1/admin/companies/{companyId}/sales-documents", companyA.companyId())
                         .header("Authorization", basic("admin", "admin"))
@@ -1427,7 +1446,7 @@ class AdminApiTest {
 
     @Test
     void pagoEsIdempotenteYNoPermiteSuperarLaFactura() throws Exception {
-        CreateCompanyResponse company = createCompany("B92000010");
+        ProvisionedCompany company = createCompany("B92000010");
         var invoiceResult = mvc.perform(post("/api/v1/admin/companies/{companyId}/invoices", company.companyId())
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1491,7 +1510,7 @@ class AdminApiTest {
 
     @Test
     void integracionLocalConservaHistorialEIdempotencia() throws Exception {
-        CreateCompanyResponse company = createCompany("B93000010");
+        ProvisionedCompany company = createCompany("B93000010");
         var created = mvc.perform(post("/api/v1/admin/integrations")
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1529,7 +1548,7 @@ class AdminApiTest {
 
     @Test
     void notificacionLeidaPermaneceMarcadaYNoAceptaIdsInventados() throws Exception {
-        CreateCompanyResponse company = createCompany("B94000010");
+        ProvisionedCompany company = createCompany("B94000010");
         mvc.perform(post("/api/v1/admin/licenses/{reference}/block", company.licenseReference())
                         .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk());
@@ -1557,7 +1576,7 @@ class AdminApiTest {
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fiscalStatus":"NOT_APPLICABLE",
+                                {"fiscalStatus":"NOT_APPLICABLE", "taxRegime":"IGIC",
                                  "reason":"Operacion exenta documentada",
                                  "legalBasis":"Articulo 20 de la normativa aplicable",
                                  "evidenceReference":"EXPEDIENTE-FISCAL-2026-001"}
@@ -1565,12 +1584,12 @@ class AdminApiTest {
                 .andExpect(status().isOk());
     }
 
-    private CreateCompanyRequest request(String taxId) {
+    private ProvisioningRequest request(String taxId) {
         return request(taxId, CommercialProfile.MAYORISTA);
     }
 
-    private CreateCompanyRequest request(String taxId, CommercialProfile commercialProfile) {
-        return new CreateCompanyRequest(
+    private ProvisioningRequest request(String taxId, CommercialProfile commercialProfile) {
+        return new ProvisioningRequest(
                 "Empresa",
                 validCif(taxId),
                 TaxpayerType.SOCIEDAD,
@@ -1586,19 +1605,13 @@ class AdminApiTest {
                 1);
     }
 
-    private CreateCompanyResponse createCompany(String taxId) throws Exception {
+    private ProvisionedCompany createCompany(String taxId) throws Exception {
         return createCompany(taxId, CommercialProfile.MAYORISTA);
     }
 
-    private CreateCompanyResponse createCompany(
+    private ProvisionedCompany createCompany(
             String taxId, CommercialProfile commercialProfile) throws Exception {
-        var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(request(taxId, commercialProfile))))
-                .andExpect(status().isOk())
-                .andReturn();
-        return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+        return com.tpverp.saas.SaasTestData.provisionCompany(mvc, mapper, request(taxId, commercialProfile));
     }
 
     private LicenseSaasLinkRequest linkRequest(String pairingCode, UUID storeId) {
@@ -1616,7 +1629,7 @@ class AdminApiTest {
                 "Atlantic/Canary");
     }
 
-    private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
+    private LicenseSaasLinkResponse link(ProvisionedCompany company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .header("X-TPV-Link-Recovery-Token",
                                 "recovery-token-0123456789abcdef0123456789abcdef")
@@ -1655,7 +1668,18 @@ class AdminApiTest {
         return mapper.readValue(result.getResponse().getContentAsString(), SaasLoginResponse.class).accessToken();
     }
 
-    private String activateTenant(CreateCompanyResponse company) throws Exception {
+    private void grantTenantPrivileges(UUID companyId, String username, String roleName, String... privileges) throws Exception {
+        mvc.perform(put("/api/v1/admin/tenant-users/{username}/access/companies/{companyId}", username, companyId)
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(java.util.Map.of(
+                                "roleName", roleName,
+                                "companyPrivileges", java.util.List.of(privileges),
+                                "storeIds", java.util.List.of()))))
+                .andExpect(status().isOk());
+    }
+
+    private String activateTenant(ProvisionedCompany company) throws Exception {
         String activatedPassword = "activated-tenant-pass";
         String initialToken = loginToken(company.tenantUsername(), company.tenantInitialPassword());
         mvc.perform(post("/api/v1/auth/password/change")

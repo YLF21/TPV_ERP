@@ -1,0 +1,23 @@
+.saas-create-license-workspace { min-width: 0; }
+.saas-create-license-workspace > h2 { margin-bottom: 8px; }
+.saas-activation-hint { margin: 0 0 18px; color: #536b83; font-size: 13px; }
+.saas-create-license-workspace > .notice { margin-bottom: 14px; }
+.saas-activation-company { max-width: 720px; margin-bottom: 18px; }
+.saas-activation-stores, .saas-active-codes { min-width: 0; margin-top: 20px; }
+.saas-create-license-workspace h3 { margin: 0 0 12px; font-size: 15px; }
+.saas-activation-store-scroll { max-height: 300px; overflow: auto; overscroll-behavior: contain; }
+.saas-activation-store-scroll th, .saas-active-code-scroll th { position: sticky; top: 0; z-index: 1; background: #143e63; color: white; }
+.saas-activation-store-scroll td:last-child { width: 250px; }
+.saas-activation-store-scroll td:last-child button { white-space: nowrap; }
+.saas-activation-store-scroll + p, .saas-activation-stores > .notice { margin: 8px 0; }
+.saas-active-codes { padding-top: 18px; border-top: 1px solid #c4d2df; }
+.saas-active-codes-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.saas-active-codes-heading h3 { margin: 0; }
+.saas-active-code-scroll { max-height: 400px; overflow: auto; overscroll-behavior: contain; }
+.saas-active-code-scroll table { min-width: 920px; }
+.saas-active-code-scroll time, .saas-issued-code time { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.saas-activation-code { font-family: Consolas, monospace; letter-spacing: .04em; white-space: nowrap; user-select: all; }
+.saas-activation-code-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.saas-activation-code-actions > button { white-space: nowrap; }
+.saas-issued-code { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; border: 1px solid #9fbdab; background: #f2faf5; padding: 14px; margin-bottom: 12px; }
+@media (max-width: 660px) { .saas-active-codes-heading { align-items: flex-start; flex-direction: column; } }

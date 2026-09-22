@@ -11,7 +11,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Service
 public class AdminAuditService {
 
-    static final String USERNAME_ATTRIBUTE = "tpv.admin.username";
+    public static final String USERNAME_ATTRIBUTE = "tpv.admin.username";
 
     private final SaasAdminAuditLogRepository audit;
     private final Clock clock;

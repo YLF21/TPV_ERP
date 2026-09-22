@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSources } from "../test-support/source-helpers.mjs";
 
 test("global search offers company, store and tax ID criteria", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const app = await readSources("app/App.tsx", "shared/lib.tsx", "shared/types.tsx");
 
   assert.match(app, /type GlobalSearchCriterion = "company" \| "store" \| "taxId"/);
   assert.match(app, /<option value="company">/);
@@ -13,7 +14,7 @@ test("global search offers company, store and tax ID criteria", async () => {
 });
 
 test("global search renders selectable suggestions while typing", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const app = await readSources("app/App.tsx", "shared/lib.tsx", "shared/types.tsx");
 
   assert.match(app, /function buildGlobalSearchSuggestions\(/);
   assert.match(app, /className="global-search-suggestions" role="listbox"/);
@@ -23,7 +24,7 @@ test("global search renders selectable suggestions while typing", async () => {
 });
 
 test("store names come from the fiscal inventory without blocking dashboard refresh", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const app = await readSources("app/App.tsx", "shared/lib.tsx", "shared/types.tsx");
 
   assert.match(app, /api\.fiscalStatus\(activeCredentials\)\.catch\(\(\) => \[\] as FiscalStatusAdmin\[\]\)/);
   assert.match(app, /store\.storeName \|\| store\.storeId/);

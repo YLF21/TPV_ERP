@@ -9,6 +9,10 @@ spring:
     driver-class-name: ${TPV_TEST_DB_DRIVER:org.testcontainers.jdbc.ContainerDatabaseDriver}
     username: ${TPV_TEST_DB_USERNAME:test}
     password: ${TPV_TEST_DB_PASSWORD:test}
+    hikari:
+      # Many independent Spring contexts share one PostgreSQL in the full suite.
+      maximum-pool-size: 4
+      minimum-idle: 0
   jpa:
     hibernate:
       ddl-auto: validate

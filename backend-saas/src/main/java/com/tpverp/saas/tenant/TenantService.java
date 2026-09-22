@@ -23,6 +23,7 @@ import com.tpverp.saas.license.SaasLicenseRepository;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
 import com.tpverp.saas.customer.CustomerDocumentIdentity;
+import com.tpverp.saas.access.TenantCompanyPrivilege;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -69,32 +70,35 @@ public class TenantService {
     public TenantSessionResponse session() {
         TenantContext context = TenantContextHolder.current();
         SaasCompany company = company(context.companyId());
-        return new TenantSessionResponse(context.username(), company.getId(), company.getName(), context.roleName());
+        return new TenantSessionResponse(context.username(), company.getId(), company.getName(), context.roleName(), context.companyPrivileges());
     }
 
     @Transactional(readOnly = true)
     public TenantDashboardResponse dashboard() {
         TenantContext context = TenantContextHolder.current();
         SaasCompany company = company(context.companyId());
-        CompanyOperationsResponse operations = companyOperations(company.getId());
-        Long stores = jdbc.queryForObject(
-                "select count(*) from saas_store where company_id = ?",
-                Long.class,
-                company.getId());
-        Long openTickets = jdbc.queryForObject(
+        CompanyOperationsResponse operations = context.permits(TenantCompanyPrivilege.READ_BILLING)
+                ? companyOperations(company.getId()) : null;
+        Long openTickets = context.permits(TenantCompanyPrivilege.SUPPORT) ? jdbc.queryForObject(
                 "select count(*) from saas_support_ticket where company_id = ? and status <> 'CERRADO'",
                 Long.class,
-                company.getId());
+                company.getId()) : null;
+        Long installationCount = jdbc.queryForObject("""
+                select count(*) from saas_installation i
+                join saas_tenant_store_access a on a.company_id = i.company_id and a.store_id = i.store_id
+                join saas_tenant_user u on u.id = a.user_id
+                where i.company_id = ? and i.active = true and lower(u.username) = lower(?)
+                """, Long.class, context.companyId(), context.username());
         return new TenantDashboardResponse(
                 company.getId(),
                 company.getName(),
-                licenses.findByCompany_Id(company.getId()).size(),
-                stores == null ? 0 : stores,
-                installations.findByCompany_IdAndActiveTrue(company.getId()).size(),
-                openTickets == null ? 0 : openTickets,
-                operations.billingStatus(),
-                operations.renewalDate(),
-                operations.monthlyPrice());
+                context.permits(TenantCompanyPrivilege.READ_COMPANY) ? (long) licenses.findByCompany_Id(company.getId()).size() : null,
+                context.storeIds().size(),
+                installationCount == null ? 0 : installationCount,
+                openTickets,
+                operations == null ? null : operations.billingStatus(),
+                operations == null ? null : operations.renewalDate(),
+                operations == null ? null : operations.monthlyPrice());
     }
 
     @Transactional(readOnly = true)
@@ -108,17 +112,19 @@ public class TenantService {
 
     @Transactional(readOnly = true)
     public List<TenantStoreResponse> stores() {
-        UUID companyId = TenantContextHolder.current().companyId();
+        TenantContext context = TenantContextHolder.current();
         return jdbc.query("""
-                select id, code, name, created_at
-                from saas_store
-                where company_id = ?
-                order by code asc
+                select s.id, s.code, s.name, s.created_at, s.internal_code, s.active
+                from saas_store s join saas_tenant_store_access a on a.store_id = s.id and a.company_id = s.company_id
+                join saas_tenant_user u on u.id = a.user_id
+                where s.company_id = ? and lower(u.username) = lower(?)
+                order by s.code asc
                 """, (rs, rowNum) -> new TenantStoreResponse(
                 rs.getObject("id", UUID.class),
                 rs.getString("code"),
                 rs.getString("name"),
-                rs.getTimestamp("created_at").toInstant()), companyId);
+                rs.getTimestamp("created_at").toInstant(), rs.getString("internal_code"), rs.getBoolean("active")),
+                context.companyId(), context.username());
     }
 
     @Transactional(readOnly = true)
@@ -323,11 +329,14 @@ public class TenantService {
 
     private CompanyOperationsResponse companyOperations(UUID companyId) {
         return jdbc.query("""
-                select company_id, plan_name, billing_status, renewal_date, monthly_price,
-                       support_status, contact_name, contact_email, notes
-                from saas_company_operations
-                where company_id = ?
-                """, (rs, rowNum) -> new CompanyOperationsResponse(
+                select c.id company_id, o.plan_name, o.billing_status, o.renewal_date,
+                       prices.monthly_equivalent monthly_price,
+                       o.support_status, o.contact_name, o.contact_email, o.notes
+                from saas_company c
+                left join saas_company_operations o on o.company_id=c.id
+                left join (%s) prices on prices.company_id=c.id
+                where c.id = ?
+                """.formatted(com.tpverp.saas.admin.StorePricingSummary.SQL), (rs, rowNum) -> new CompanyOperationsResponse(
                 rs.getObject("company_id", UUID.class),
                 rs.getString("plan_name"),
                 rs.getString("billing_status"),
@@ -528,8 +537,8 @@ public class TenantService {
                 license.getCompany().getName(),
                 license.getCompany().getTaxId(),
                 license.getCompany().getTaxpayerType(),
-                license.getCompany().getTaxRegime(),
-                license.getCompany().getCommercialProfile(),
+                license.getStore() == null ? license.getCompany().getTaxRegime() : license.getStore().getTaxRegime(),
+                license.getStore() == null ? null : license.getStore().getCommercialProfile(),
                 license.getStatus(),
                 license.getValidUntil(),
                 license.getMaxWindows(),

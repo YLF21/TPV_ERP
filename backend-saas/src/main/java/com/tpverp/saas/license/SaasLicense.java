@@ -23,6 +23,10 @@ public class SaasLicense {
     @JoinColumn(name = "company_id", nullable = false)
     private SaasCompany company;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_id")
+    private SaasStore store;
+
     @Column(nullable = false, unique = true)
     private String reference;
 
@@ -77,6 +81,18 @@ public class SaasLicense {
 
     public String getReference() {
         return reference;
+    }
+
+    public SaasStore getStore() { return store; }
+
+    public void assignStore(SaasStore store) {
+        if (store == null || !company.getId().equals(store.getCompany().getId())) {
+            throw new IllegalArgumentException("La tienda debe pertenecer a la empresa de la licencia");
+        }
+        if (this.store != null && !this.store.getId().equals(store.getId())) {
+            throw new IllegalArgumentException("La tienda asignada a la licencia no puede cambiar");
+        }
+        this.store = store;
     }
 
     public Instant getValidUntil() {

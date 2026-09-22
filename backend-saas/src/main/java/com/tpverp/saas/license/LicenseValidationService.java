@@ -56,7 +56,7 @@ public class LicenseValidationService {
                 policy.activationDate(),
                 policy.version(),
                 policy.updatedAt(),
-                license.getCompany().getCommercialProfile(),
+                installation.getStore().getCommercialProfile(),
                 license.getMaxWindows(),
                 license.getMaxPda(),
                 license.getLicenseVersion(),

@@ -1,0 +1,63 @@
+.company-workspace { flex: 1; min-width: 0; min-height: 220px; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.company-list-section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.company-list-section > :not(.company-table-region) { flex-shrink: 0; }
+.company-list-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.company-list-heading > button { flex-shrink: 0; }
+.company-filters { margin-bottom: 8px; min-width: 0; }
+.company-filter-main { display: grid; grid-template-columns: minmax(190px, 1.6fr) minmax(150px, 1fr) minmax(120px, .7fr) minmax(180px, 1.2fr) auto; gap: 10px; align-items: end; }
+.company-filters label, .company-date-filter { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 600; }
+.company-filters .control-input { width: 100%; min-width: 0; min-height: 36px; }
+.company-date-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; cursor: pointer; font-weight: 400; }
+.company-date-toggle > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.company-more-filters { min-height: 36px; white-space: nowrap; }
+.company-filter-dates, .company-filter-extra { display: grid; gap: 10px; padding: 10px; margin-top: 10px; border: 1px solid #c4d2df; background: #f5f8fc; }
+.company-filter-dates { grid-template-columns: repeat(2, minmax(0, 220px)); }
+.company-filter-extra { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.company-filter-applied { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.company-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.company-filter-chip { display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 0 0 0 8px; min-height: 28px; border: 1px solid #adc3d9; background: #edf4fb; color: #173d64; font-size: 12px; }
+.company-filter-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.company-filters .company-filter-chip > button { align-self: stretch; flex-shrink: 0; min-width: 28px; padding: 0 6px; border: 0; border-left: 1px solid #c4d2df; color: #173d64; background: transparent; cursor: pointer; font-size: 19px; }
+.company-filters .company-filter-chip > button:hover { background: #d6e6f5; }
+.company-filter-clear { flex-shrink: 0; }
+.company-filter-count { margin: 8px 0 0; font-size: 12px; color: #536b83; }
+.company-filter-error { margin: 8px 0 0; color: #a11c2e; font-size: 13px; }
+@media (max-width: 1200px) { .company-filter-main { grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .company-filter-main, .company-filter-extra, .company-filter-dates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .company-filter-main > :first-child { grid-column: 1 / -1; }
+  .company-filter-applied { flex-wrap: wrap; }
+  .company-filter-dates .date-time-picker:last-child .date-time-popover { left: auto; right: 0; }
+}
+.company-table-region { display: grid; grid-template-rows: minmax(0, 1fr) auto; flex: 1; min-height: 180px; }
+.company-table-region > .saas-data-table-scroll { height: 100%; min-height: 0; max-height: none; }
+.company-table-region[aria-busy="true"] tbody { opacity: .55; }
+.saas-company-dialog .table-wrap { max-height: 30vh; }
+.saas-company-dialog { width: min(1180px, calc(100vw - 40px)); }
+.saas-company-dialog, .saas-company-dialog * { text-transform: uppercase; }
+.saas-company-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.saas-company-dialog .saas-workspace-dialog-header { flex-shrink: 0; }
+.saas-company-dialog .saas-workspace-dialog-body { overflow: auto; min-height: 0; padding: 14px 18px; }
+.saas-company-dialog .notice { position: sticky; top: 0; z-index: 2; }
+.company-profile-form { display: grid; gap: 12px; }
+.company-fieldset, .company-owner { min-width: 0; margin: 0; padding: 12px; border: 1px solid #c4d2df; background: #fff; }
+.company-fieldset > legend, .company-owner > legend { padding: 0 6px; color: #17324f; font-size: 13px; font-weight: 700; }
+.company-identity-grid { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
+.company-contact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.company-contact-source { max-width: 540px; margin-bottom: 10px; }
+.company-contact > .company-field-hint { margin: 0 0 10px; }
+.company-contact-missing { color: #a11c2e; font-size: 12px; margin: 8px 0 0; }
+.company-owner-grid { display: grid; grid-template-columns: minmax(160px, 1.4fr) minmax(105px, .8fr) minmax(105px, .8fr) minmax(150px, 1.2fr) auto; gap: 10px; align-items: end; }
+.company-profile-form label { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 600; }
+.company-profile-form .address-fields { margin-top: 12px; border-radius: 2px; }
+.company-field-hint { margin: 7px 0 0; color: #536b83; font-size: 12px; }
+.company-owners { display: grid; gap: 10px; }
+.company-owners > button { justify-self: start; }
+.company-owners > .company-field-hint { margin: 0; }
+.company-owner { padding: 8px 10px 10px; background: #f7f9fc; }
+.company-notes textarea { min-height: 65px; }
+.company-save-bar { position: sticky; bottom: -14px; display: flex; justify-content: flex-end; padding: 10px 0; background: #f5f8fc; border-top: 1px solid #c4d2df; z-index: 1; }
+.company-installations { margin-top: 18px; padding-top: 12px; border-top: 1px solid #c4d2df; }
+@media (max-width: 1000px) { .company-owner-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .company-owner-grid > button { justify-self: start; } }
+@media (max-width: 700px) { .company-list-heading { flex-wrap: wrap; } }
+@media (max-width: 700px) { .company-identity-grid, .company-contact-grid, .company-owner-grid { grid-template-columns: 1fr; } }

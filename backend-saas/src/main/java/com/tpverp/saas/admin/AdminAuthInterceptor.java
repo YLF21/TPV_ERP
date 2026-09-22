@@ -93,7 +93,14 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
 
     private AdminPermission requiredPermission(HttpServletRequest request) {
         String method = request.getMethod();
-        String path = request.getRequestURI();
+        Object matched = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        String path = matched == null ? request.getRequestURI() : matched.toString();
+        if ("GET".equals(method) && path.equals("/api/v1/admin/license-workspace/activation-codes")) {
+            return AdminPermission.ADD_COMPANY;
+        }
+        if ("DELETE".equals(method) && path.matches("/api/v1/admin/license-workspace/activation-codes/[^/]+")) {
+            return AdminPermission.REGENERATE_PAIRING_CODE;
+        }
         if (path.startsWith("/api/v1/admin/operational-incidents")
                 && "POST".equals(method)) {
             return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
@@ -104,6 +111,13 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if (path.startsWith("/api/v2/admin/")
                 && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
             return AdminPermission.MANAGE_OPERATIONS;
+        }
+        if (path.startsWith("/api/v1/admin/stores/") && !"GET".equals(method)) {
+            return AdminPermission.EDIT_COMPANY_DATA;
+        }
+        if ("POST".equals(method) && (path.equals("/api/v1/admin/license-workspace")
+                || path.matches("/api/v1/admin/companies/[^/]+/stores"))) {
+            return AdminPermission.ADD_COMPANY;
         }
         if ("POST".equals(method) && "/api/v1/admin/companies".equals(path)) {
             return AdminPermission.ADD_COMPANY;
@@ -123,9 +137,6 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         }
         if ((path.contains("/sales-documents") || path.contains("/inventory-")) && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
             return AdminPermission.MANAGE_OPERATIONS;
-        }
-        if (path.contains("/subscriptions") && "POST".equals(method)) {
-            return AdminPermission.MANAGE_SUBSCRIPTIONS;
         }
         if (path.contains("/integrations") && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
             return AdminPermission.MANAGE_INTEGRATIONS;

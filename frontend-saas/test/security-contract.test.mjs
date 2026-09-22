@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readFrontendSources } from "../test-support/source-helpers.mjs";
 
 test("credentials are never persisted in browser storage", async () => {
-  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const source = await readFrontendSources();
 
   assert.doesNotMatch(source, /tpv-saas-credentials/);
   assert.doesNotMatch(source, /sessionStorage\.(?:getItem|setItem)\([^)]*credential/i);
@@ -11,7 +12,7 @@ test("credentials are never persisted in browser storage", async () => {
 });
 
 test("language is the only intentionally persisted SaaS preference", async () => {
-  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const source = await readFrontendSources();
 
   assert.match(source, /localStorage\.setItem\("tpv-saas-language"/);
 });

@@ -1,5 +1,8 @@
 package com.tpverp.saas.license;
 
+import com.tpverp.saas.ProvisioningRequest;
+import com.tpverp.saas.ProvisionedCompany;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static com.tpverp.saas.SaasTestData.fiscalAddress;
@@ -9,8 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tpverp.saas.admin.CreateCompanyRequest;
-import com.tpverp.saas.admin.CreateCompanyResponse;
+
+
 import com.tpverp.saas.admin.PairingCodeResponse;
 import com.tpverp.saas.admin.RenewLicenseRequest;
 import java.nio.charset.StandardCharsets;
@@ -51,7 +54,7 @@ class LicenseApiTest {
 
     @Test
     void vinculaInstalacionYValidaLicencia() throws Exception {
-        CreateCompanyResponse company = createCompany("B11111111");
+        ProvisionedCompany company = createCompany("B11111111");
         UUID installationId = UUID.randomUUID();
 
         var linkResult = mvc.perform(post("/api/v1/license/link")
@@ -105,10 +108,8 @@ class LicenseApiTest {
                 "codigoPostal", "35200",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new CreateCompanyRequest(
+        ProvisionedCompany company = com.tpverp.saas.SaasTestData.provisionCompany(mvc, mapper,
+                new ProvisioningRequest(
                                 "Empresa sin tienda local",
                                 validCif("B88888888"),
                                 TaxpayerType.SOCIEDAD,
@@ -121,11 +122,7 @@ class LicenseApiTest {
                                 "Atlantic/Canary",
                                 Instant.parse("2099-07-01T00:00:00Z"),
                                 2,
-                                1))))
-                .andExpect(status().isOk())
-                .andReturn();
-        CreateCompanyResponse company = mapper.readValue(
-                result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+                                1));
 
         UUID installationId = UUID.randomUUID();
         var linkResult = mvc.perform(post("/api/v1/license/link")
@@ -146,7 +143,7 @@ class LicenseApiTest {
 
     @Test
     void validacionRechazaTokenIncorrecto() throws Exception {
-        CreateCompanyResponse company = createCompany("B22222222");
+        ProvisionedCompany company = createCompany("B22222222");
         UUID installationId = UUID.randomUUID();
         link(company, installationId);
 
@@ -164,7 +161,7 @@ class LicenseApiTest {
 
     @Test
     void primerEnlaceExigeSecretoDeRecuperacionSinConsumirElCodigo() throws Exception {
-        CreateCompanyResponse company = createCompany("B34343434");
+        ProvisionedCompany company = createCompany("B34343434");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkRequest request = localLinkRequest(
                 company.pairingCode(), installationId, "INST-RECOVERY",
@@ -184,7 +181,7 @@ class LicenseApiTest {
 
     @Test
     void congelaHashesDeRecuperacionEnInstalacionYEnIntentoDePairing() throws Exception {
-        CreateCompanyResponse company = createCompany("B51515151");
+        ProvisionedCompany company = createCompany("B51515151");
         UUID installationId = UUID.randomUUID();
         link(company, installationId);
         String differentHash = "0".repeat(64);
@@ -206,7 +203,7 @@ class LicenseApiTest {
 
     @Test
     void instalacionLegacySinHashDeRecuperacionPuedeReintentarConSuTokenPrevio() throws Exception {
-        CreateCompanyResponse created = createCompany("B35353535");
+        ProvisionedCompany created = createCompany("B35353535");
         var pairing = pairingCodes.findFirstByCode(created.pairingCode()).orElseThrow();
         String previousToken = "legacy-installation-token";
         UUID installationId = UUID.randomUUID();
@@ -235,7 +232,7 @@ class LicenseApiTest {
     @Test
     void pairingNuevoDeInstalacionLegacyRecuperaRespuestaPerdidaConContextoDelIntento()
             throws Exception {
-        CreateCompanyResponse created = createCompany("B36363636");
+        ProvisionedCompany created = createCompany("B36363636");
         var originalPairing = pairingCodes.findFirstByCode(created.pairingCode()).orElseThrow();
         String previousToken = "legacy-token-before-new-pairing";
         UUID installationId = UUID.randomUUID();
@@ -301,7 +298,7 @@ class LicenseApiTest {
 
     @Test
     void reintentoRecuperaRespuestaPerdidaSinConocerElPrimerInstallationToken() throws Exception {
-        CreateCompanyResponse company = createCompany("B44444444");
+        ProvisionedCompany company = createCompany("B44444444");
         UUID installationId = UUID.randomUUID();
         String recoveryToken = linkRecoveryToken(installationId);
 
@@ -352,7 +349,7 @@ class LicenseApiTest {
 
     @Test
     void tokenEmitidoNoPuedeCambiarElContextoCongeladoDelReintento() throws Exception {
-        CreateCompanyResponse company = createCompany("B57575757");
+        ProvisionedCompany company = createCompany("B57575757");
         UUID installationId = UUID.randomUUID();
         String recoveryToken = linkRecoveryToken(installationId);
         LicenseSaasLinkResponse first = link(company, installationId);
@@ -385,7 +382,7 @@ class LicenseApiTest {
     @Test
     void recoveryConsumidoDevuelveEstadoBloqueadoSinRepetirElPreflightDeAlta()
             throws Exception {
-        CreateCompanyResponse company = createCompany("B58585858");
+        ProvisionedCompany company = createCompany("B58585858");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse first = link(company, installationId);
         SaasLicense license = licenses.findByReference(company.licenseReference()).orElseThrow();
@@ -410,7 +407,7 @@ class LicenseApiTest {
     @Test
     void recoveryConsumidoEntregaElTokenOriginalAunqueLaInstalacionFueRevocada()
             throws Exception {
-        CreateCompanyResponse company = createCompany("B59595959");
+        ProvisionedCompany company = createCompany("B59595959");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse first = link(company, installationId);
         SaasInstallation installation = installations.findByInstallationId(installationId)
@@ -435,7 +432,7 @@ class LicenseApiTest {
 
     @Test
     void reintentosConcurrentesDevuelvenLaMismaCredencialRecuperada() throws Exception {
-        CreateCompanyResponse company = createCompany("B54545454");
+        ProvisionedCompany company = createCompany("B54545454");
         UUID installationId = UUID.randomUUID();
         String recoveryToken = linkRecoveryToken(installationId);
         LicenseSaasLinkRequest request = localLinkRequest(
@@ -461,7 +458,7 @@ class LicenseApiTest {
 
     @Test
     void pairingNuevoNoPuedeTomarUnaInstalacionExistenteSinTokenActual() throws Exception {
-        CreateCompanyResponse company = createCompany("B47474747");
+        ProvisionedCompany company = createCompany("B47474747");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse first = link(company, installationId);
         var pairingResult = mvc.perform(post(
@@ -494,7 +491,7 @@ class LicenseApiTest {
 
     @Test
     void rechazoDeIdentidadNoConsumeElCodigoDeEnlace() throws Exception {
-        CreateCompanyResponse company = createCompany("B45454545");
+        ProvisionedCompany company = createCompany("B45454545");
         UUID installationId = UUID.randomUUID();
 
         mvc.perform(post("/api/v1/license/link")
@@ -515,7 +512,7 @@ class LicenseApiTest {
 
     @Test
     void zonaHorariaIncorrectaNoConsumeElCodigoDeEnlace() throws Exception {
-        CreateCompanyResponse company = createCompany("B46464646");
+        ProvisionedCompany company = createCompany("B46464646");
         UUID installationId = UUID.randomUUID();
 
         mvc.perform(post("/api/v1/license/link")
@@ -578,7 +575,7 @@ class LicenseApiTest {
 
     @Test
     void mantieneUnBackendActivoPorTiendaSinConfundirloConElCupoWindows() throws Exception {
-        CreateCompanyResponse company = createCompany("B78787878", 1);
+        ProvisionedCompany company = createCompany("B78787878", 1);
         UUID firstInstallationId = UUID.randomUUID();
         LicenseSaasLinkResponse first = link(company, firstInstallationId);
 
@@ -673,14 +670,7 @@ class LicenseApiTest {
 
     @Test
     void concurrenciaPostgresqlNoCreaDosBackendsActivosParaLaTienda() throws Exception {
-        CreateCompanyResponse created = createCompany("B89898989", 1);
-        var company = companies.findById(created.companyId()).orElseThrow();
-        var store = stores.findById(created.storeId()).orElseThrow();
-        var license = licenses.findByReference(created.licenseReference()).orElseThrow();
-        String secondCode = "TPV-CONC-" + UUID.randomUUID().toString().substring(0, 8);
-        pairingCodes.saveAndFlush(new SaasPairingCode(
-                UUID.randomUUID(), company, store, license, secondCode,
-                Instant.now().plusSeconds(3600), Instant.now()));
+        ProvisionedCompany created = createCompany("B89898989", 1);
 
         var start = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
@@ -690,7 +680,9 @@ class LicenseApiTest {
             });
             var second = pool.submit(() -> {
                 start.await();
-                return linkStatus(secondCode, created.storeId(), UUID.randomUUID());
+                // The store now has one valid activation code; two different
+                // installations may still race to consume that same code.
+                return linkStatus(created.pairingCode(), created.storeId(), UUID.randomUUID());
             });
             start.countDown();
 
@@ -705,7 +697,7 @@ class LicenseApiTest {
 
     @Test
     void devuelveBloqueadaManualCuandoAdminBloquea() throws Exception {
-        CreateCompanyResponse company = createCompany("B33333333");
+        ProvisionedCompany company = createCompany("B33333333");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse link = link(company, installationId);
 
@@ -796,7 +788,7 @@ class LicenseApiTest {
                     .andExpect(status().isNotFound());
         }
 
-        CreateCompanyResponse company = createCompany("B69696969");
+        ProvisionedCompany company = createCompany("B69696969");
         UUID installationId = UUID.randomUUID();
         mvc.perform(post("/api/v1/license/link")
                         .with(mockRequest -> {
@@ -811,7 +803,7 @@ class LicenseApiTest {
                 .andExpect(status().isOk());
     }
 
-    private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
+    private LicenseSaasLinkResponse link(ProvisionedCompany company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .header("X-TPV-Link-Recovery-Token", linkRecoveryToken(installationId))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -823,15 +815,12 @@ class LicenseApiTest {
         return mapper.readValue(result.getResponse().getContentAsString(), LicenseSaasLinkResponse.class);
     }
 
-    private CreateCompanyResponse createCompany(String taxId) throws Exception {
+    private ProvisionedCompany createCompany(String taxId) throws Exception {
         return createCompany(taxId, 2);
     }
 
-    private CreateCompanyResponse createCompany(String taxId, int maxWindows) throws Exception {
-        var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new CreateCompanyRequest(
+    private ProvisionedCompany createCompany(String taxId, int maxWindows) throws Exception {
+        return com.tpverp.saas.SaasTestData.provisionCompany(mvc, mapper, new ProvisioningRequest(
                                 "Empresa",
                                 validCif(taxId),
                                 TaxpayerType.SOCIEDAD,
@@ -844,10 +833,7 @@ class LicenseApiTest {
                                 "Atlantic/Canary",
                                 Instant.parse("2099-07-01T00:00:00Z"),
                                 maxWindows,
-                                1))))
-                .andExpect(status().isOk())
-                .andReturn();
-        return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+                                1));
     }
 
     private LinkAttempt linkStatus(String pairingCode, UUID storeId, UUID installationId) throws Exception {

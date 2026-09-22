@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
 
 import jakarta.persistence.LockModeType;
 import java.time.Clock;
@@ -12,10 +13,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.web.server.ResponseStatusException;
 
 class LicenseLinkServiceLockOrderTest {
@@ -23,13 +27,14 @@ class LicenseLinkServiceLockOrderTest {
     private static final Instant NOW = Instant.parse("2026-08-25T10:00:00Z");
 
     @Test
-    void enlaceDescubreLaLicenciaSinLockYBloqueaLicenciaAntesQuePairing() {
+    void enlaceDescubreElAmbitoSinEntidadJpaYBloqueaEmpresaLicenciaPairing() {
         var pairingCodes = mock(SaasPairingCodeRepository.class);
         var licenses = mock(SaasLicenseRepository.class);
         var installations = mock(SaasInstallationRepository.class);
         var tokens = mock(TokenHasher.class);
         var authenticator = mock(InstallationAuthenticator.class);
         var policies = mock(VerifactuActivationPolicyResolver.class);
+        var jdbc = mock(JdbcTemplate.class);
         var service = new LicenseLinkService(
                 pairingCodes,
                 licenses,
@@ -37,7 +42,8 @@ class LicenseLinkServiceLockOrderTest {
                 tokens,
                 authenticator,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                policies);
+                policies,
+                jdbc);
         Map<String, String> address = Map.of(
                 "linea1", "Calle Uno",
                 "ciudad", "Las Palmas",
@@ -57,7 +63,8 @@ class LicenseLinkServiceLockOrderTest {
         var pairing = new SaasPairingCode(
                 UUID.randomUUID(), company, store, license, "TPV-LOCK01",
                 NOW.minusSeconds(1), NOW.minusSeconds(3600));
-        when(pairingCodes.findFirstByCode("TPV-LOCK01")).thenReturn(Optional.of(pairing));
+        when(jdbc.queryForList(anyString(), eq("TPV-LOCK01"))).thenReturn(List.of(Map.of(
+                "id", pairing.getId(), "company_id", company.getId(), "reference", license.getReference())));
         when(licenses.findByReferenceForUpdate("LIC-LOCK-LINK-1"))
                 .thenReturn(Optional.of(license));
         when(pairingCodes.findByCodeForUpdate("TPV-LOCK01")).thenReturn(Optional.of(pairing));
@@ -74,8 +81,9 @@ class LicenseLinkServiceLockOrderTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("caducado o usado");
 
-        var order = inOrder(pairingCodes, licenses);
-        order.verify(pairingCodes).findFirstByCode("TPV-LOCK01");
+        var order = inOrder(jdbc, pairingCodes, licenses);
+        order.verify(jdbc).queryForList(anyString(), eq("TPV-LOCK01"));
+        order.verify(jdbc).query(eq("select pg_advisory_xact_lock(hashtextextended(?::text, 0))"), any(RowCallbackHandler.class), eq(company.getId()));
         order.verify(licenses).findByReferenceForUpdate("LIC-LOCK-LINK-1");
         order.verify(pairingCodes).findByCodeForUpdate("TPV-LOCK01");
     }

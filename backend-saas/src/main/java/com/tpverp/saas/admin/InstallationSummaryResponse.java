@@ -11,6 +11,7 @@ public record InstallationSummaryResponse(
         String licenseReference,
         Instant linkedAt,
         Instant lastValidatedAt,
+        Instant lastSyncAt,
         String appVersion,
         String operatingSystem,
         String terminalName,

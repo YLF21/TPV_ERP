@@ -1,12 +1,14 @@
 package com.tpverp.saas.license;
 
+import com.tpverp.saas.ProvisioningRequest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.tpverp.saas.SaasTestData.fiscalAddress;
 import static com.tpverp.saas.SaasTestData.validCif;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tpverp.saas.admin.CreateCompanyRequest;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,9 +36,9 @@ class LicenseHttpE2ETest {
 
     @Test
     void localBackendLicenseFlowWorksAgainstRealSaasHttpApi() throws Exception {
-        JsonNode company = postJson(
-                "/api/v1/admin/companies",
-                new CreateCompanyRequest(
+        var provisioned = com.tpverp.saas.SaasTestData.provisionCompany(
+                (path, body) -> postJson(path, body, basic("admin", "admin"), null),
+                new ProvisioningRequest(
                         "Empresa E2E",
                         validCif("B80808080"),
                         TaxpayerType.SOCIEDAD,
@@ -49,9 +51,8 @@ class LicenseHttpE2ETest {
                         "Atlantic/Canary",
                         Instant.parse("2099-07-01T00:00:00Z"),
                         2,
-                        1),
-                basic("admin", "admin"),
-                null);
+                        1));
+        JsonNode company = mapper.valueToTree(provisioned);
 
         UUID installationId = UUID.randomUUID();
         JsonNode link = postJson(

@@ -57,7 +57,8 @@ class AdminServicePairingLockTest {
         var service = new AdminService(
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
-                audit, sessions, mock(PlanLimitService.class), jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+                audit, sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), Clock.fixed(NOW, ZoneOffset.UTC));
 
         var company = new SaasCompany(
                 UUID.randomUUID(), "Empresa", "B12345674",
@@ -69,21 +70,29 @@ class AdminServicePairingLockTest {
         var license = new SaasLicense(
                 UUID.randomUUID(), company, "LIC-LOCK-1",
                 NOW.plusSeconds(86_400), 1, 0, NOW);
+        license.assignStore(store);
+        when(jdbc.queryForList("select company_id, store_id from saas_license where reference = ?", "LIC-LOCK-1"))
+                .thenReturn(List.of(java.util.Map.of("company_id", company.getId(), "store_id", store.getId())));
         when(licenses.findByReferenceForUpdate("LIC-LOCK-1"))
                 .thenReturn(Optional.of(license));
-        when(pairingCodes.findByLicense_ReferenceAndConsumedAtIsNull("LIC-LOCK-1"))
+        when(pairingCodes.findByStore_IdAndConsumedAtIsNullAndRevokedAtIsNull(store.getId()))
                 .thenReturn(List.of());
         when(stores.findByCompany_IdOrderByCodeAsc(company.getId()))
                 .thenReturn(List.of(store));
-        when(pairingCodes.save(any(SaasPairingCode.class)))
+        when(pairingCodes.saveAndFlush(any(SaasPairingCode.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         PairingCodeResponse result = service.regeneratePairingCode("LIC-LOCK-1");
 
         assertThat(result.licenseReference()).isEqualTo("LIC-LOCK-1");
+        assertThat(result.expiresAt()).isEqualTo(NOW.plusSeconds(30 * 60));
         verify(licenses).findByReferenceForUpdate("LIC-LOCK-1");
         verify(licenses, never()).findByReference("LIC-LOCK-1");
-        verify(pairingCodes).save(any(SaasPairingCode.class));
+        var ordered = org.mockito.Mockito.inOrder(licenses, pairingCodes);
+        ordered.verify(licenses).findByReferenceForUpdate("LIC-LOCK-1");
+        ordered.verify(pairingCodes).findByStore_IdAndConsumedAtIsNullAndRevokedAtIsNull(store.getId());
+        ordered.verify(pairingCodes).flush();
+        ordered.verify(pairingCodes).saveAndFlush(any(SaasPairingCode.class));
     }
 
     @Test
@@ -113,7 +122,8 @@ class AdminServicePairingLockTest {
         var service = new AdminService(
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
-                audit, sessions, mock(PlanLimitService.class), jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+                audit, sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), Clock.fixed(NOW, ZoneOffset.UTC));
         when(adminUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(tenantUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(passwordHasher.hash("password-segura")).thenReturn("hash");

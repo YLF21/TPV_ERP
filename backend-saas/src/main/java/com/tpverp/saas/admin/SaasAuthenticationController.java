@@ -59,11 +59,20 @@ public class SaasAuthenticationController {
         return login(request, ACCOUNT_SCOPE);
     }
 
+    @PostMapping("/admin/login")
+    public SaasLoginResponse adminLogin(@Valid @RequestBody SaasLoginRequest request) {
+        return login(request, ACCOUNT_SCOPE, true);
+    }
+
     SaasLoginResponse login(SaasLoginRequest request) {
         return login(request, ACCOUNT_SCOPE);
     }
 
     private SaasLoginResponse login(SaasLoginRequest request, String attemptScope) {
+        return login(request, attemptScope, false);
+    }
+
+    private SaasLoginResponse login(SaasLoginRequest request, String attemptScope, boolean adminOnly) {
         String username = request.username().trim();
         if (attempts.blocked("login-account", username, attemptScope)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos de autenticacion");
@@ -74,7 +83,9 @@ public class SaasAuthenticationController {
         }
 
         var admin = admins.findByUsernameIgnoreCase(username).orElse(null);
-        var tenant = tenants.findByUsernameIgnoreCase(username).orElse(null);
+        // The internal portal never looks up or falls back to a customer account.
+        // The compatibility endpoint retains its existing dual-realm behavior.
+        var tenant = adminOnly ? null : tenants.findByUsernameIgnoreCase(username).orElse(null);
         if (admin != null && tenant != null) {
             attempts.failure("login-account", username, attemptScope);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");

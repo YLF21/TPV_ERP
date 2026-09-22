@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSources } from "../test-support/source-helpers.mjs";
 
 const sources = Promise.all([
-  readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+  readSources("features/outbox/OutboxRecoveryView.tsx", "features/billing/BillingView.tsx"),
   readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/types.ts", import.meta.url), "utf8")
 ]);

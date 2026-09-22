@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSources } from "../test-support/source-helpers.mjs";
 
 test("passwordChangeRequired gates dashboard loading and uses the dedicated endpoint", async () => {
   const [app, api] = await Promise.all([
-    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readSources("app/App.tsx", "features/auth/AuthScreens.tsx", "features/users/UsersView.tsx"),
     readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8")
   ]);
 
@@ -20,7 +21,7 @@ test("passwordChangeRequired gates dashboard loading and uses the dedicated endp
 
 test("recovery remains generic and never reads or renders a token from its request response", async () => {
   const [app, api] = await Promise.all([
-    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readSources("app/App.tsx", "features/auth/AuthScreens.tsx", "features/users/UsersView.tsx"),
     readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8")
   ]);
 
@@ -33,14 +34,14 @@ test("recovery remains generic and never reads or renders a token from its reque
 });
 
 test("new passwords enforce the four-character backend minimum in both flows", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const app = await readSources("app/App.tsx", "features/auth/AuthScreens.tsx", "features/users/UsersView.tsx");
   assert.ok((app.match(/newPassword\.length < 4/g) ?? []).length >= 2);
   assert.match(app, /minLength=\{4\}/);
 });
 
 test("admin passwords can be changed from the admin users screen", async () => {
   const [app, api] = await Promise.all([
-    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readSources("app/App.tsx", "features/auth/AuthScreens.tsx", "features/users/UsersView.tsx"),
     readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8")
   ]);
 
@@ -53,7 +54,7 @@ test("admin passwords can be changed from the admin users screen", async () => {
 
 test("inactive admin users require a new password before activation", async () => {
   const [app, api] = await Promise.all([
-    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readSources("app/App.tsx", "features/auth/AuthScreens.tsx", "features/users/UsersView.tsx"),
     readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8")
   ]);
 
