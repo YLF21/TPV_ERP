@@ -80,6 +80,15 @@ public class SyncOutboxEvent {
     @Column(name = "actualizado_en", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "first_failure_at")
+    private Instant firstFailureAt;
+
+    @Column(name = "last_failure_at")
+    private Instant lastFailureAt;
+
+    @Column(name = "failure_count", nullable = false)
+    private long failureCount;
+
     @Version
     private long version;
 
@@ -148,6 +157,7 @@ public class SyncOutboxEvent {
     public void markError(String error) {
         var now = Instant.now();
         this.lastError = normalizedError(error);
+        recordFailure(now);
         this.status = SyncOutboxStatus.ERROR;
         this.nextAttemptAt = now;
         this.claimedAt = null;
@@ -190,6 +200,7 @@ public class SyncOutboxEvent {
             return false;
         }
         this.lastError = normalizedError(error);
+        recordFailure(updatedAt);
         this.status = SyncOutboxStatus.ERROR;
         this.nextAttemptAt = Objects.requireNonNull(nextAttemptAt, "nextAttemptAt");
         this.claimedAt = null;
@@ -203,6 +214,7 @@ public class SyncOutboxEvent {
             return false;
         }
         this.lastError = normalizedError(error);
+        recordFailure(updatedAt);
         this.status = SyncOutboxStatus.DEAD_LETTER;
         this.nextAttemptAt = null;
         this.claimedAt = null;
@@ -298,6 +310,17 @@ public class SyncOutboxEvent {
 
     public long getVersion() {
         return version;
+    }
+
+    public Instant getFirstFailureAt() { return firstFailureAt; }
+    public Instant getLastFailureAt() { return lastFailureAt; }
+    public long getFailureCount() { return failureCount; }
+
+    private void recordFailure(Instant occurredAt) {
+        Objects.requireNonNull(occurredAt, "occurredAt");
+        if (firstFailureAt == null) firstFailureAt = occurredAt;
+        lastFailureAt = occurredAt;
+        failureCount++;
     }
 
     private boolean isOwnedBy(UUID token) {

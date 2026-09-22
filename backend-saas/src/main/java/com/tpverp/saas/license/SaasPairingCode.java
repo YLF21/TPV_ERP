@@ -35,6 +35,12 @@ public class SaasPairingCode {
     @Column(name = "consumed_at")
     private Instant consumedAt;
 
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Column(name = "revocation_reason", length = 32)
+    private String revocationReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "consumed_installation_id")
     private SaasInstallation consumedInstallation;
@@ -95,6 +101,14 @@ public class SaasPairingCode {
         return consumedAt;
     }
 
+    public Instant getRevokedAt() {
+        return revokedAt;
+    }
+
+    public String getRevocationReason() {
+        return revocationReason;
+    }
+
     public SaasInstallation getConsumedInstallation() {
         return consumedInstallation;
     }
@@ -120,7 +134,7 @@ public class SaasPairingCode {
     }
 
     public boolean usableAt(Instant now) {
-        return consumedAt == null && expiresAt.isAfter(now);
+        return consumedAt == null && revokedAt == null && expiresAt.isAfter(now);
     }
 
     public void consume(Instant now, SaasInstallation installation) {
@@ -135,7 +149,7 @@ public class SaasPairingCode {
         if (installation == null) {
             throw new IllegalArgumentException("La instalacion consumidora es obligatoria");
         }
-        if (consumedAt != null || consumedInstallation != null) {
+        if (consumedAt != null || consumedInstallation != null || revokedAt != null) {
             throw new IllegalStateException("El codigo de enlace ya esta consumido");
         }
         consumedAt = now;
@@ -156,6 +170,13 @@ public class SaasPairingCode {
 
     public void expire(Instant now) {
         expiresAt = now;
+    }
+
+    public void revoke(Instant now, String reason) {
+        if (consumedAt == null && revokedAt == null) {
+            revokedAt = java.util.Objects.requireNonNull(now);
+            revocationReason = java.util.Objects.requireNonNull(reason);
+        }
     }
 
     private static boolean constantTimeEquals(String expected, String actual) {

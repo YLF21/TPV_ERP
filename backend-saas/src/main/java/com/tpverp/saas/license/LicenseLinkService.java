@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -22,6 +23,7 @@ public class LicenseLinkService {
     private final InstallationAuthenticator authenticator;
     private final Clock clock;
     private final VerifactuActivationPolicyResolver verifactuPolicies;
+    private final JdbcTemplate jdbc;
 
     public LicenseLinkService(
             SaasPairingCodeRepository pairingCodes,
@@ -30,7 +32,8 @@ public class LicenseLinkService {
             TokenHasher tokens,
             InstallationAuthenticator authenticator,
             Clock clock,
-            VerifactuActivationPolicyResolver verifactuPolicies) {
+            VerifactuActivationPolicyResolver verifactuPolicies,
+            JdbcTemplate jdbc) {
         this.pairingCodes = pairingCodes;
         this.licenses = licenses;
         this.installations = installations;
@@ -38,6 +41,7 @@ public class LicenseLinkService {
         this.authenticator = authenticator;
         this.clock = clock;
         this.verifactuPolicies = verifactuPolicies;
+        this.jdbc = jdbc;
     }
 
     @Transactional
@@ -45,22 +49,26 @@ public class LicenseLinkService {
             LicenseSaasLinkRequest request,
             String previousToken,
             String recoveryToken) {
-        Instant now = clock.instant();
         ValidatedRequest validatedRequest = validateRequest(request);
-        // Lock order is global: license first, pairing second. The unlocked read
-        // only discovers the owning license; all decisions use the reloaded,
-        // pessimistically locked pairing after acquiring the license row.
-        SaasPairingCode pairingSnapshot = pairingCodes.findFirstByCode(
-                        validatedRequest.pairingCode())
+        // Store configuration and license administration serialize per company.
+        // Take that same advisory lock before license/pairing locks, because a
+        // new installation also needs foreign-key locks on its store. Discover
+        // scope without caching mutable JPA entities before a possible wait.
+        var pairingSnapshot = jdbc.queryForList("""
+                        select p.id,p.company_id,l.reference from saas_pairing_code p
+                        join saas_license l on l.id=p.license_id where p.code=?
+                        """, validatedRequest.pairingCode()).stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Codigo de enlace no existe"));
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", rs -> { }, pairingSnapshot.get("company_id"));
         SaasLicense lockedLicense = licenses.findByReferenceForUpdate(
-                        pairingSnapshot.getLicense().getReference())
+                        (String) pairingSnapshot.get("reference"))
                 .orElseThrow(() -> conflict("La licencia del codigo de enlace no existe"));
         SaasPairingCode pairing = pairingCodes.findByCodeForUpdate(
                         validatedRequest.pairingCode())
                 .orElseThrow(() -> conflict("El codigo de enlace cambio durante la vinculacion"));
-        if (!pairing.getId().equals(pairingSnapshot.getId())
+        Instant now = clock.instant();
+        if (!pairing.getId().equals(pairingSnapshot.get("id"))
                 || !pairing.getLicense().getReference().equals(lockedLicense.getReference())) {
             throw conflict("El codigo de enlace cambio durante la vinculacion");
         }
@@ -397,8 +405,8 @@ public class LicenseLinkService {
                 license.getLicenseVersion(),
                 validated.companyTaxId(),
                 company.getTaxpayerType(),
-                company.getTaxRegime(),
-                company.getCommercialProfile(),
+                store.getTaxRegime() != null ? store.getTaxRegime() : company.getTaxRegime(),
+                store.getCommercialProfile(),
                 policy.activationDate(),
                 policy.version(),
                 policy.updatedAt(),

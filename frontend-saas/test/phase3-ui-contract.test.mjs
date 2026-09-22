@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSources } from "../test-support/source-helpers.mjs";
 
 const sources = Promise.all([
-  readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8")
+  readSources("features/billing/BillingView.tsx", "features/tenant/TenantPortal.tsx"),
+  readSources("lib/api.ts", "lib/tenant-api.ts")
 ]);
 
 test("billing renders real plan usage and keeps optional endpoint errors retryable", async () => {
@@ -18,7 +19,10 @@ test("billing renders real plan usage and keeps optional endpoint errors retryab
 
 test("tenant master CSV UI validates input, scopes resource and never fabricates import totals", async () => {
   const [app, api] = await sources;
-  assert.match(app, /roleName === "OWNER" \|\| data\.session\.roleName === "MANAGER"/);
+  assert.match(app, /canWriteTenantMasters\(data\.session\.roleName, companyPrivileges\)/);
+  const access = await readSources("features/tenant/access-selection.mjs");
+  assert.match(access, /\["OWNER", "MANAGER"\]\.includes\(roleName\)/);
+  assert.match(access, /privileges\.includes\("READ_MASTERS"\) && privileges\.includes\("WRITE_MASTERS"\)/);
   assert.match(app, /accept="\.csv,text\/csv"/);
   assert.match(app, /file\.name\.toLowerCase\(\)\.endsWith\("\.csv"\)/);
   assert.match(app, /file\.size === 0/);

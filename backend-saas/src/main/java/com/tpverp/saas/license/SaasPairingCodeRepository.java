@@ -17,5 +17,11 @@ public interface SaasPairingCodeRepository extends JpaRepository<SaasPairingCode
     @Query("select pairing from SaasPairingCode pairing where pairing.code = :code")
     Optional<SaasPairingCode> findByCodeForUpdate(@Param("code") String code);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select pairing from SaasPairingCode pairing where pairing.id = :id")
+    Optional<SaasPairingCode> findByIdForUpdate(@Param("id") UUID id);
+
+    List<SaasPairingCode> findByStore_IdAndConsumedAtIsNullAndRevokedAtIsNull(UUID storeId);
+
     List<SaasPairingCode> findByLicense_ReferenceAndConsumedAtIsNull(String licenseReference);
 }

@@ -1,9 +1,9 @@
-package com.tpverp.saas.admin;
+package com.tpverp.saas;
 
 import java.time.Instant;
 import java.util.UUID;
 
-public record CreateCompanyResponse(
+public record ProvisionedCompany(
         UUID companyId,
         UUID storeId,
         String licenseReference,

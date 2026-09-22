@@ -1,5 +1,8 @@
 package com.tpverp.saas.fiscal;
 
+import com.tpverp.saas.ProvisioningRequest;
+import com.tpverp.saas.ProvisionedCompany;
+
 import static com.tpverp.saas.SaasTestData.fiscalAddress;
 import static com.tpverp.saas.SaasTestData.validCif;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -8,8 +11,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tpverp.saas.admin.CreateCompanyRequest;
-import com.tpverp.saas.admin.CreateCompanyResponse;
+
+
 import com.tpverp.saas.license.CommercialProfile;
 import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.SaasInstallation;
@@ -74,7 +77,7 @@ class FiscalStatusProjectionConcurrencyTest {
             assertThat(connection.getMetaData().getDatabaseProductName()).contains("PostgreSQL");
         }
 
-        CreateCompanyResponse company = createCompany();
+        ProvisionedCompany company = createCompany();
         UUID sourceInstallationId = UUID.randomUUID();
         link(company, sourceInstallationId);
         SaasInstallation installation = installations.findByInstallationId(sourceInstallationId).orElseThrow();
@@ -163,7 +166,7 @@ class FiscalStatusProjectionConcurrencyTest {
     }
 
     private Map<String, Object> payload(
-            CreateCompanyResponse company,
+            ProvisionedCompany company,
             UUID installationId,
             String mode,
             long version,
@@ -183,11 +186,8 @@ class FiscalStatusProjectionConcurrencyTest {
         return payload;
     }
 
-    private CreateCompanyResponse createCompany() throws Exception {
-        var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new CreateCompanyRequest(
+    private ProvisionedCompany createCompany() throws Exception {
+        return com.tpverp.saas.SaasTestData.provisionCompany(mvc, mapper, new ProvisioningRequest(
                                 "Empresa concurrencia fiscal",
                                 validCif("B92929292"),
                                 TaxpayerType.SOCIEDAD,
@@ -200,13 +200,10 @@ class FiscalStatusProjectionConcurrencyTest {
                                 "Atlantic/Canary",
                                 Instant.parse("2099-07-01T00:00:00Z"),
                                 2,
-                                1))))
-                .andExpect(status().isOk())
-                .andReturn();
-        return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+                                1));
     }
 
-    private void link(CreateCompanyResponse company, UUID installationId) throws Exception {
+    private void link(ProvisionedCompany company, UUID installationId) throws Exception {
         mvc.perform(post("/api/v1/license/link")
                         .header("X-TPV-Link-Recovery-Token",
                                 "recovery-token-0123456789abcdef0123456789abcdef")

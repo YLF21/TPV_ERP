@@ -33,12 +33,31 @@ public class AdminController {
     }
 
     @PostMapping("/companies")
-    public CreateCompanyResponse createCompany(@Valid @RequestBody CreateCompanyRequest request) {
+    public CompanySummaryResponse createCompany(@RequestBody CreateCompanyRequest request) {
+        // Service validation emits safe field/reason details without logging rejected owner/contact values.
         return service.createCompany(request);
     }
 
+    @GetMapping("/companies")
+    public List<CompanySummaryResponse> companies() {
+        return service.companies();
+    }
+
+    @GetMapping("/companies/{companyId}/profile")
+    public CompanySummaryResponse companyProfile(@PathVariable UUID companyId) {
+        return service.companyProfile(companyId);
+    }
+
+    @PutMapping("/companies/{companyId}/profile")
+    public CompanySummaryResponse updateCompanyProfile(
+            @PathVariable UUID companyId,
+            @RequestBody UpdateCompanyProfileRequest request) {
+        // Keep the same validation and transaction while avoiding MVC's rejected-value warning.
+        return service.updateCompanyProfile(companyId, request);
+    }
+
     @PutMapping("/companies/{companyId}")
-    public LicenseSummaryResponse editCompany(
+    public CompanySummaryResponse editCompany(
             @PathVariable UUID companyId,
             @Valid @RequestBody EditCompanyDataRequest request) {
         return service.editCompany(companyId, request);
@@ -223,23 +242,6 @@ public class AdminController {
     @GetMapping("/companies/{companyId}/inventory-stock")
     public List<InventoryStockResponse> inventoryStock(@PathVariable UUID companyId) {
         return service.inventoryStock(companyId);
-    }
-
-    @GetMapping("/subscriptions")
-    public List<SubscriptionResponse> subscriptions() {
-        return service.subscriptions();
-    }
-
-    @PostMapping("/companies/{companyId}/subscriptions")
-    public SubscriptionResponse createSubscription(
-            @PathVariable UUID companyId,
-            @Valid @RequestBody CreateSubscriptionRequest request) {
-        return service.createSubscription(companyId, request);
-    }
-
-    @PostMapping("/subscriptions/{subscriptionId}/cancel")
-    public SubscriptionResponse cancelSubscription(@PathVariable UUID subscriptionId) {
-        return service.cancelSubscription(subscriptionId);
     }
 
     @GetMapping("/integrations")

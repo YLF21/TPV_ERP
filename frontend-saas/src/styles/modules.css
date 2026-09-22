@@ -1,0 +1,36 @@
+.nav-group { display: grid; gap: 3px; margin-bottom: 12px; }
+.nav-group-title { color: #bacbe0; font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 8px 10px 3px; text-transform: uppercase; }
+.nav-phase-title { color: #c6d8ec; font-size: 11px; font-weight: 600; padding: 9px 10px 2px; }
+.module-help { max-width: 960px; margin: 7px 0 0; color: #42576e; font-size: 13px; line-height: 1.45; }
+.access-option { display: inline-flex; gap: 7px; align-items: center; margin: 7px 18px 7px 0; }
+.access-option input { width: auto; }
+.content-section > form > fieldset { border: 1px solid #ccd6e2; padding: 10px; margin: 12px 0; }
+.content-section > form > fieldset legend { font-weight: 600; }
+.content-section button:not([class]), .content-section .toolbar button:not([class]), .content-section td button:not([class]) {
+  min-height: 32px; border: 1px solid #aebfd2; border-radius: 3px; padding: 5px 10px; background: #f7f9fc; color: #172e4c; font: inherit; cursor: pointer;
+}
+.content-section button:not([class]):disabled { cursor: default; opacity: .55; }
+.content-section .toolbar label, .content-section .compact-form-grid label { display: grid; gap: 5px; min-width: 0; }
+.content-section select:not([class]) { min-height: 34px; padding: 5px 8px; border: 1px solid #aebfd2; border-radius: 3px; background: #fff; color: #172e4c; font: inherit; max-width: 100%; }
+.content-section td button + button { margin-left: 6px; }
+.content-section table { width: 100%; }
+.content-section th { white-space: nowrap; }
+.content-section button:focus-visible, .content-section select:focus-visible, .content-section input:focus-visible { outline: 2px solid #245ca5; outline-offset: 2px; }
+@media (max-width: 760px) {
+  .content-section .toolbar { flex-wrap: wrap; }
+  .content-section .toolbar > label { flex: 1 1 170px; }
+  .access-option { display: flex; }
+}
+
+.system-product { flex: 1; overflow: hidden; }
+.system-session { flex-shrink: 0; gap: 10px; }
+.system-session > strong { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.system-session .account-password { min-width: 0; flex: 0 0 auto; }
+.system-session .account-password[open] { border: 0; padding: 0; background: transparent; }
+.system-session .account-password form { position: fixed; top: 38px; right: 10px; width: min(420px, calc(100vw - 20px)); padding: 14px; background: white; color: #172e4c; border: 1px solid #aebfd2; box-shadow: 0 8px 22px #07254f29; grid-template-columns: 1fr; z-index: 60; }
+.system-session .session-logout { flex: 0 0 auto; }
+@media (max-width: 760px) {
+  .system-product span { display: none; }
+  .system-session > strong { max-width: 100px; }
+  .system-session { gap: 6px; }
+}

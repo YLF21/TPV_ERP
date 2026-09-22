@@ -67,7 +67,10 @@ public class PlanLimitService {
         }
         EnumMap<PlanResource, Long> used = new EnumMap<>(PlanResource.class);
         used.put(PlanResource.TENANT_USERS, count(
-                "select count(*) from saas_tenant_user where company_id = ? and active = true", companyId));
+                """
+                select count(*) from saas_tenant_company_access a join saas_tenant_user u on u.id = a.user_id
+                where a.company_id = ? and u.active = true
+                """, companyId));
         used.put(PlanResource.STORES, count("select count(*) from saas_store where company_id = ?", companyId));
         used.put(PlanResource.LICENSES, count("""
                 select count(*) from saas_license

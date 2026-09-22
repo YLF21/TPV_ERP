@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSources } from "../test-support/source-helpers.mjs";
 
-const appSourceUrl = new URL("../src/App.tsx", import.meta.url);
 const apiSourceUrl = new URL("../src/lib/api.ts", import.meta.url);
 const typesSourceUrl = new URL("../src/lib/types.ts", import.meta.url);
 const nginxConfigUrl = new URL("../nginx.conf", import.meta.url);
@@ -11,74 +11,81 @@ const startSaasDevUrl = new URL("../../tools/start-saas-dev.ps1", import.meta.ur
 
 test("license UI models and renders the effective expired status", async () => {
   const [source, types] = await Promise.all([
-    readFile(appSourceUrl, "utf8"),
+    readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx", "shared/ui.tsx", "shared/license-tables.tsx", "features/users/UsersView.tsx", "i18n/es.ts", "i18n/en.ts", "i18n/zh.ts"),
     readFile(typesSourceUrl, "utf8")
   ]);
 
   assert.match(types, /"VALIDA" \| "BLOQUEADA_MANUAL" \| "CADUCADA"/);
-  assert.match(source, /status === "CADUCADA"/);
+  assert.match(await readSources("shared/lib.tsx"), /status === "CADUCADA"/);
   assert.equal((source.match(/expiredStatus:/g) ?? []).length, 3);
 });
 
 test("license actions and company forms use their individual permissions", async () => {
-  const source = await readFile(appSourceUrl, "utf8");
+  const source = await readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx", "shared/ui.tsx", "shared/license-tables.tsx", "features/users/UsersView.tsx", "i18n/es.ts", "i18n/en.ts", "i18n/zh.ts");
 
   assert.match(source, /permissions\.has\("EDIT_COMPANY_DATA"\)/);
-  assert.match(source, /permissions\.has\("RENEW_LICENSE"\)/);
-  assert.match(source, /permissions\.has\("BLOCK_LICENSE"\)/);
-  assert.match(source, /permissions\.has\("UNBLOCK_LICENSE"\)/);
-  assert.match(source, /showBlockAction=\{canBlockLicense\}/);
-  assert.match(source, /showUnblockAction=\{canUnblockLicense\}/);
+  const workspace = await readSources("features/licenses/LicenseWorkspace.tsx", "features/licenses/LicenseConfiguration.tsx");
+  assert.match(workspace, /permissions\.has\("RENEW_LICENSE"\)/);
+  assert.match(workspace, /permissions\.has\("BLOCK_LICENSE"\)\s*&&\s*detail\.status !== "BLOQUEADA_MANUAL"/);
+  assert.match(workspace, /permissions\.has\("UNBLOCK_LICENSE"\)\s*&&\s*detail\.status === "BLOQUEADA_MANUAL"/);
+  assert.match(workspace, /action\("block"\)/);
+  assert.match(workspace, /action\("unblock"\)/);
   assert.match(source, /canEditCompany=\{canEditCompany\}/);
-  assert.match(source, /canRenewLicense=\{canRenewLicense\}/);
-  assert.match(source, /fiscalIdentityLocked/);
-  assert.match(source, /value=\{taxpayerType\}[\s\S]*?disabled \/>/);
-  assert.match(source, /value=\{taxRegime\}[\s\S]*?disabled \/>/);
+  assert.doesNotMatch(source, /canRenewLicense=\{canRenewLicense\}/);
+  assert.match(source, /identityLocked/);
+  assert.match(source, /value=\{company\.taxpayerType\}[\s\S]*?disabled \/>/);
+  assert.match(source, /value=\{company\.taxId\}[\s\S]*?disabled \/>/);
+  assert.doesNotMatch(source, /value=\{company\.commercialProfile\}/);
 });
 
-test("company editing preserves the fiscal classification returned by the license API", async () => {
+test("company editing uses the company registry and preserves corporate fiscal identity", async () => {
   const [source, apiSource, types] = await Promise.all([
-    readFile(appSourceUrl, "utf8"),
+    readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx", "shared/ui.tsx", "shared/license-tables.tsx", "features/users/UsersView.tsx", "i18n/es.ts", "i18n/en.ts", "i18n/zh.ts"),
     readFile(apiSourceUrl, "utf8"),
     readFile(typesSourceUrl, "utf8")
   ]);
 
   assert.match(types, /taxpayerType: TaxpayerType;/);
   assert.match(types, /taxRegime: TaxRegime;/);
-  assert.match(types, /commercialProfile: CommercialProfile;/);
-  assert.match(source, /setTaxpayerType\(license\.taxpayerType\)/);
-  assert.match(source, /setTaxRegime\(license\.taxRegime\)/);
-  assert.match(source, /setCommercialProfile\(license\.commercialProfile\)/);
-  assert.match(source, /license\?\.companyName,[\s\S]*?license\?\.commercialProfile,[\s\S]*?license\?\.validUntil,[\s\S]*?license\?\.maxPda,/);
-  assert.match(source, /commercialProfile,[\s\S]*?\}\);/);
-  assert.match(apiSource, /commercialProfile: CommercialProfile;/);
+  assert.match(types, /commercialProfile: CommercialProfile \| null;/);
+  assert.match(await readSources("lib/workspace-api.ts"), /commercialProfile: CommercialProfile;/);
+  const companySource = await readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx");
+  assert.match(companySource, /api\.companies\(credentials\)/);
+  assert.match(companySource, /api\.saveCompanyProfile\(credentials, companyId, form\)/);
+  assert.match(companySource, /api\.companyProfile\(credentials, company\.companyId\)/);
+  assert.doesNotMatch(companySource, /commercialProfile|api\.editCompany|api\.updateCompanyOperations/);
+  assert.doesNotMatch(companySource, /uniqueCompanies|setTaxRegime|license\.companyId|renewSelectedLicense|setPairingCode/);
+  assert.doesNotMatch(companySource, /companyForm\.(?:storeCode|storeName|storeAddress|validUntil|maxWindows|maxPda|impuestos)/);
+  assert.match(apiSource, /saveCompanyProfile[\s\S]*?\/profile/);
 });
 
-test("company detail discards stale operations and fiscal provisioning responses", async () => {
-  const source = await readFile(appSourceUrl, "utf8");
-
-  assert.match(source, /const companyDetailRequestId = useRef\(0\);/);
-  assert.match(source, /selectedCompanyIdRef\.current = license\?\.companyId \?\? null;/);
-  assert.match(source, /requestId === companyDetailRequestId\.current[\s\S]*?selectedCompanyIdRef\.current === companyId/);
-  assert.match(source, /loaded\.companyId !== companyId/);
-  assert.match(source, /fiscalProvisioning\.companyId !== companyId/);
-  assert.match(source, /operations\.companyId !== companyId/);
+test("company detail remounts per company and guards delayed mutations", async () => {
+  const companies = await readSources("features/companies/CompaniesView.tsx");
+  const source = await readSources("features/companies/CompanyDetail.tsx");
+  const remote = await readSources("app/RefreshContext.tsx");
+  assert.match(companies, /<CompanyDetail\s+key=\{selectedCompany\.companyId\}/);
+  assert.match(source, /mounted\.current = false;\s*mutation\.current\+\+/);
+  assert.match(source, /mounted\.current && id === mutation\.current/);
+  assert.match(source, /companyId === activeContext\.current\.companyId && token === activeContext\.current\.token/);
+  assert.match(source, /profile\.data\?\.companyId !== company\.companyId/);
   assert.match(source, /saved\.companyId !== companyId/);
+  assert.match(remote, /if \(current\) setResult\(/);
+  assert.match(remote, /current = false;/);
 });
 
-test("company operations failures are retryable and never create writable defaults", async () => {
-  const source = await readFile(appSourceUrl, "utf8");
-  const detail = source.slice(source.indexOf("function CompanyDetail("), source.indexOf("function AlertList("));
+test("company profile failures are retryable and never create writable defaults", async () => {
+  const source = await readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx", "shared/ui.tsx", "shared/license-tables.tsx", "features/users/UsersView.tsx", "i18n/es.ts", "i18n/en.ts", "i18n/zh.ts");
+  const detail = await readSources("features/companies/CompanyDetail.tsx");
 
-  assert.match(detail, /operationsLoadError && <RetryError/);
-  assert.match(detail, /retainCompanyOperationsAfterFailure/);
-  assert.match(detail, /operationsStale \|\| operationsLoadError/);
+  assert.match(detail, /<LoadState \{\.\.\.profile\} \/>/);
+  assert.match(detail, /profile\.loading \|\| profile\.error/);
+  assert.match(detail, /!dirty\.current && profile\.data\?\.companyId === company\.companyId/);
   assert.doesNotMatch(detail, /defaultCompanyOperations/);
 });
 
 test("tenant user management keeps responses and mutations scoped to the selected company", async () => {
-  const source = await readFile(appSourceUrl, "utf8");
-  const usersView = source.slice(source.indexOf("function UsersView("), source.indexOf("function AuditView("));
+  const source = await readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx", "shared/ui.tsx", "shared/license-tables.tsx", "features/users/UsersView.tsx", "i18n/es.ts", "i18n/en.ts", "i18n/zh.ts");
+  const usersView = await readSources("features/users/UsersView.tsx");
 
   assert.match(usersView, /const tenantUsersRequestId = useRef\(0\);/);
   assert.match(usersView, /const tenantUsersMutationId = useRef\(0\);/);

@@ -12,6 +12,7 @@ export type LicenseStatus = "VALIDA" | "BLOQUEADA_MANUAL" | "CADUCADA";
 export type SyncOperation = "CREAR" | "ACTUALIZAR" | "BORRAR" | "ANULAR" | "CONFIRMAR" | "CERRAR";
 
 export type Credentials = {
+  companyId?: string;
   username: string;
   accessToken: string;
   mode: "admin" | "tenant";
@@ -40,7 +41,7 @@ export type InvoiceFiscalDetail = {
   number: string;
   series: string;
   fiscalYear: number;
-  taxRegime: string;
+  taxRegime: TaxRegime | null;
   fiscalStatus: "PENDING_TAX_DATA" | "CALCULATED" | "NOT_APPLICABLE";
   taxBase: string | null;
   taxRate: string | null;
@@ -53,6 +54,7 @@ export type InvoiceFiscalDetail = {
 };
 
 export type UpdateInvoiceFiscalRequest = {
+  taxRegime?: TaxRegime | null;
   fiscalStatus: "CALCULATED" | "NOT_APPLICABLE";
   taxBase: string | null;
   taxRate: string | null;
@@ -101,31 +103,38 @@ export type AdminSession = {
   permissions: string[];
 };
 
-export type CreateCompanyRequest = {
-  name: string;
-  taxId: string;
-  taxpayerType: TaxpayerType;
-  impuestos: TaxRegime;
-  commercialProfile: CommercialProfile;
-  companyAddress: FiscalAddress;
-  storeCode: string;
-  storeName: string;
-  storeAddress: FiscalAddress;
-  timeZoneId: string;
-  validUntil: string;
-  maxWindows: number;
-  maxPda: number;
+export type CompanyOwner = { name: string; taxId: string; phone: string | null; email: string | null };
+
+export type CompanyContactData = {
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  supportStatus: string;
+  notes: string | null;
+  owners: CompanyOwner[];
 };
 
-export type CreateCompanyResponse = {
-  companyId: string;
-  storeId: string;
-  licenseReference: string;
-  pairingCode: string;
-  validUntil: string;
-  tenantUsername: string;
-  tenantInitialPassword: string;
+export type CompanyProfileRequest = CompanyContactData & {
+  name: string;
+  companyAddress: FiscalAddress;
 };
+
+export type CreateCompanyRequest = CompanyProfileRequest & {
+  taxId: string;
+  taxpayerType: TaxpayerType;
+};
+
+export type CompanySummary = CompanyContactData & {
+  companyId: string;
+  companyName: string;
+  taxId: string;
+  taxpayerType: TaxpayerType;
+  commercialProfile: CommercialProfile | null;
+  companyAddress: FiscalAddress | null;
+  createdAt: string;
+};
+
+export type CreateCompanyResponse = CompanySummary;
 
 export type LicenseSummary = {
   licenseReference: string;
@@ -134,7 +143,7 @@ export type LicenseSummary = {
   taxId: string;
   taxpayerType: TaxpayerType;
   taxRegime: TaxRegime;
-  commercialProfile: CommercialProfile;
+  commercialProfile: CommercialProfile | null;
   status: LicenseStatus;
   validUntil: string;
   maxWindows: number;
@@ -149,6 +158,7 @@ export type InstallationSummary = {
   licenseReference: string;
   linkedAt: string;
   lastValidatedAt: string | null;
+  lastSyncAt?: string | null;
   appVersion: string | null;
   operatingSystem: string | null;
   terminalName: string | null;
@@ -436,6 +446,7 @@ export type ErpWarehouse = {
 };
 
 export type TenantSession = {
+  companyPrivileges: string[];
   username: string;
   companyId: string;
   companyName: string;
@@ -445,11 +456,11 @@ export type TenantSession = {
 export type TenantDashboard = {
   companyId: string;
   companyName: string;
-  licenses: number;
+  licenses: number | null;
   stores: number;
   installations: number;
-  openTickets: number;
-  billingStatus: string;
+  openTickets: number | null;
+  billingStatus: string | null;
   renewalDate: string | null;
   monthlyPrice: string | null;
 };
@@ -458,6 +469,8 @@ export type TenantStore = {
   storeId: string;
   code: string;
   name: string;
+  internalCode: string | null;
+  active: boolean;
   createdAt: string;
 };
 
@@ -570,21 +583,6 @@ export type InventoryStock = {
   quantity: string;
 };
 
-export type Subscription = {
-  id: string;
-  companyId: string;
-  companyName: string;
-  planName: string;
-  status: string;
-  billingCycle: string;
-  amount: string;
-  currency: string;
-  startedAt: string;
-  nextBillingAt: string | null;
-  cancelledAt: string | null;
-  createdAt: string;
-};
-
 export type IntegrationEndpoint = {
   id: string;
   companyId: string | null;
@@ -600,8 +598,6 @@ export type IntegrationEndpoint = {
 
 export type AdvancedReport = {
   companies: number;
-  subscriptions: number;
-  subscriptionMrr: string;
   invoices: number;
   invoicedTotal: string;
   paidTotal: string;
@@ -618,9 +614,6 @@ export type DashboardData = {
   users: AdminUser[];
   audit: AuditLog[];
   salesSummary: SalesSummary;
-  stockCurrent: StockSnapshot[];
   events: SyncEventView[];
   advancedReport?: AdvancedReport | null;
-  subscriptions?: Subscription[];
-  integrations?: IntegrationEndpoint[];
 };

@@ -1,0 +1,18 @@
+.directory-filters { margin: 0 0 12px; min-width: 0; }
+.directory-filter-main { display: grid; grid-template-columns: minmax(220px, 2fr) minmax(160px, 1.3fr) minmax(150px, 1fr) auto; gap: 10px; align-items: end; }
+.directory-filters label { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 600; }
+.directory-filters .control-input { width: 100%; min-width: 0; min-height: 36px; }
+.directory-more-filters { min-height: 36px; white-space: nowrap; }
+.directory-filter-extra { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; padding: 10px; border: 1px solid #c4d2df; background: #f5f8fc; }
+.directory-filter-applied { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.directory-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.directory-filter-chip { display: flex; align-items: center; gap: 6px; max-width: 100%; min-height: 28px; padding-left: 8px; border: 1px solid #adc3d9; background: #edf4fb; color: #173d64; font-size: 12px; }
+.directory-filter-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.directory-filters .directory-filter-chip > button { align-self: stretch; flex-shrink: 0; min-width: 28px; padding: 0 6px; border: 0; border-left: 1px solid #c4d2df; color: #173d64; background: transparent; cursor: pointer; font-size: 19px; }
+.directory-filters .directory-filter-chip > button:hover { background: #d6e6f5; }
+.directory-filter-clear { flex-shrink: 0; }
+@media (max-width: 1200px) { .directory-filter-main { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .directory-filter-main, .directory-filter-extra { grid-template-columns: 1fr; }
+  .directory-filter-applied { flex-wrap: wrap; }
+}

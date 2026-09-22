@@ -1,0 +1,21 @@
+.saas-license-dialog .compact-form-grid { margin: 14px 0 20px; padding: 14px; border: 1px solid #c4d2df; background: #fff; }
+.saas-license-dialog .table-wrap { max-height: 30vh; }
+.saas-license-table-hint { margin: 6px 0 10px; color: #536b83; font-size: 12px; }
+.saas-license-table-region[aria-busy="true"] .saas-data-table tbody { opacity: .55; }
+.saas-license-workspace { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 280px; }
+.saas-license-workspace > :not(.saas-license-table-region) { flex-shrink: 0; }
+.saas-license-workspace > h2 { margin-bottom: 12px; }
+.saas-license-workspace .saas-license-filters { min-width: 0; margin-bottom: 8px; }
+.saas-license-table-region { display: flex; flex-direction: column; flex: 1; min-height: 180px; }
+.saas-license-table-region > .saas-data-table-scroll { flex: 1; min-height: 0; max-height: none; overscroll-behavior: contain; scroll-padding-top: 36px; }
+.saas-license-table-region > :not(.saas-data-table-scroll) { flex-shrink: 0; }
+.saas-license-table-region > p, .saas-license-table-region > .notice { margin: 8px 0 0; }
+.saas-license-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.saas-license-dialog .saas-workspace-dialog-header { flex-shrink: 0; }
+.saas-license-dialog .saas-workspace-dialog-body { min-height: 0; overflow: auto; }
+.saas-license-dialog .notice { margin-bottom: 12px; }
+.saas-license-detail-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.saas-license-detail-facts > div { padding: 10px; border: 1px solid #c4d2df; background: #fff; }
+.saas-license-detail-facts dt { color: #536b83; font-size: 12px; }
+.saas-license-detail-facts dd { margin: 4px 0 0; font-weight: 600; }
+@media (max-width: 660px) { .saas-license-detail-facts { grid-template-columns: 1fr; } }

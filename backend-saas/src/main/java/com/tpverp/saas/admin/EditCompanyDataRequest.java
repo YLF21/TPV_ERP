@@ -1,14 +1,14 @@
 package com.tpverp.saas.admin;
 
-import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
 import com.tpverp.saas.license.CommercialProfile;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.util.Map;
 
 public record EditCompanyDataRequest(
         @NotBlank String name,
         @NotNull TaxpayerType taxpayerType,
-        @NotNull TaxRegime impuestos,
-        @NotNull CommercialProfile commercialProfile) {
+        CommercialProfile commercialProfile,
+        @NotNull Map<String, String> companyAddress) {
 }

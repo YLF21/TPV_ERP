@@ -1,5 +1,8 @@
 package com.tpverp.saas.admin;
 
+import com.tpverp.saas.ProvisioningRequest;
+import com.tpverp.saas.ProvisionedCompany;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,7 +64,7 @@ class AdminApiPostgresIT {
         var result = mvc.perform(post("/api/v1/admin/companies")
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new CreateCompanyRequest(
+                        .content(mapper.writeValueAsString(new ProvisioningRequest(
                                 "Empresa Postgres",
                                 validCif("B70707070"),
                                 TaxpayerType.SOCIEDAD,
@@ -78,11 +81,11 @@ class AdminApiPostgresIT {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        CreateCompanyResponse response = mapper.readValue(
+        CompanySummaryResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(),
-                CreateCompanyResponse.class);
-        assertThat(response.licenseReference()).isEqualTo(
-                "LIC-" + validCif("B70707070") + "-001");
+                CompanySummaryResponse.class);
+        assertThat(response.taxId()).isEqualTo(validCif("B70707070"));
+        assertThat(jdbc.queryForObject("select count(*) from saas_store where company_id=?", Integer.class, response.companyId())).isZero();
     }
 
     @Test
@@ -90,7 +93,7 @@ class AdminApiPostgresIT {
         var companyResult = mvc.perform(post("/api/v1/admin/companies")
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new CreateCompanyRequest(
+                        .content(mapper.writeValueAsString(new ProvisioningRequest(
                                 "Empresa concurrencia usuarios",
                                 validCif("B70707180"),
                                 TaxpayerType.SOCIEDAD,
@@ -108,7 +111,7 @@ class AdminApiPostgresIT {
                 .andReturn();
         UUID companyId = mapper.readValue(
                 companyResult.getResponse().getContentAsString(),
-                CreateCompanyResponse.class).companyId();
+                CompanySummaryResponse.class).companyId();
         String username = "race-" + UUID.randomUUID();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);

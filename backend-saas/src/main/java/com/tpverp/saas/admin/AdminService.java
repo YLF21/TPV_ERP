@@ -1,5 +1,11 @@
 package com.tpverp.saas.admin;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tpverp.saas.license.CommercialProfile;
+import com.tpverp.saas.license.TaxpayerType;
+import jakarta.validation.Validator;
 import com.tpverp.saas.license.SaasCompany;
 import com.tpverp.saas.license.SaasCompanyRepository;
 import com.tpverp.saas.license.SaasLicense;
@@ -13,6 +19,8 @@ import com.tpverp.saas.license.SaasStoreRepository;
 import com.tpverp.saas.license.LicenseProvisioningData;
 import com.tpverp.saas.license.LicenseSaasStatus;
 import com.tpverp.saas.license.SpanishTaxId;
+import com.tpverp.saas.access.TenantAccessService;
+import com.tpverp.saas.stores.StoreAdministrationService;
 import com.tpverp.saas.tenant.SaasTenantUser;
 import com.tpverp.saas.tenant.SaasTenantUserRepository;
 import com.tpverp.saas.tenant.TenantRole;
@@ -68,7 +76,10 @@ public class AdminService {
     private final AdminAuditService audit;
     private final SaasSessionTokenStore sessions;
     private final PlanLimitService planLimits;
+    private final TenantAccessService tenantAccess;
     private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
+    private final Validator validator;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
@@ -85,7 +96,10 @@ public class AdminService {
             AdminAuditService audit,
             SaasSessionTokenStore sessions,
             PlanLimitService planLimits,
+            TenantAccessService tenantAccess,
             JdbcTemplate jdbc,
+            ObjectMapper mapper,
+            Validator validator,
             Clock clock) {
         this.companies = companies;
         this.stores = stores;
@@ -99,88 +113,132 @@ public class AdminService {
         this.audit = audit;
         this.sessions = sessions;
         this.planLimits = planLimits;
+        this.tenantAccess = tenantAccess;
         this.jdbc = jdbc;
+        this.mapper = mapper;
+        this.validator = validator;
         this.clock = clock;
     }
 
     @Transactional
-    public CreateCompanyResponse createCompany(CreateCompanyRequest request) {
-        if (request == null || request.commercialProfile() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "commercialProfile es obligatorio");
-        }
-        Instant now = clock.instant();
+    public CompanySummaryResponse createCompany(CreateCompanyRequest request) {
+        validateCompanyRequest(request);
         String companyName = provisioningValue(() -> LicenseProvisioningData.requiredName(
                 request.name(), "name", 200));
         String taxId = provisioningValue(() -> SpanishTaxId.validate(request.taxId()));
-        String storeCode = provisioningValue(() -> LicenseProvisioningData.storeCode(
-                request.storeCode()));
-        String storeName = request.storeName() == null || request.storeName().isBlank()
-                ? storeCode
-                : provisioningValue(() -> LicenseProvisioningData.requiredName(
-                        request.storeName(), "storeName", 200));
         var companyAddress = provisioningValue(() -> LicenseProvisioningData.fiscalAddress(
                 request.companyAddress(), "companyAddress"));
-        var storeAddress = provisioningValue(() -> LicenseProvisioningData.fiscalAddress(
-                request.storeAddress(), "storeAddress"));
-        String timeZoneId = provisioningValue(() -> LicenseProvisioningData.timeZoneId(
-                request.timeZoneId()));
-        validateLicenseTerms(request.validUntil(), request.maxWindows(), request.maxPda(), now);
         if (companies.existsByTaxId(taxId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Ya existe una empresa con el mismo NIF");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una empresa con el mismo NIF");
         }
         SaasCompany company;
         try {
-            company = companies.saveAndFlush(new SaasCompany(
-                    UUID.randomUUID(),
-                    companyName,
-                    taxId,
-                    request.taxpayerType(),
-                    request.impuestos(),
-                    request.commercialProfile(),
-                    companyAddress,
-                    now));
+            company = companies.saveAndFlush(new SaasCompany(UUID.randomUUID(), companyName,
+                    taxId, request.taxpayerType(), null, request.commercialProfile(), companyAddress,
+                    clock.instant()));
         } catch (DataIntegrityViolationException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Ya existe una empresa con el mismo NIF", exception);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe una empresa con el mismo NIF", exception);
         }
-        var store = stores.save(new SaasStore(
-                UUID.randomUUID(),
-                company,
-                storeCode,
-                storeName,
-                storeAddress,
-                timeZoneId,
-                now));
-        String licenseReference = "LIC-" + company.getTaxId() + "-" + store.getCode();
-        var license = licenses.save(new SaasLicense(
-                UUID.randomUUID(),
-                company,
-                licenseReference,
-                request.validUntil(),
-                Math.max(1, request.maxWindows()),
-                Math.max(0, request.maxPda()),
-                now));
-        String pairingCode = newPairingCode();
-        pairingCodes.save(new SaasPairingCode(
-                UUID.randomUUID(),
-                company,
-                store,
-                license,
-                pairingCode,
-                now.plus(Duration.ofDays(7)),
-                now));
-        TenantInitialAccess tenantAccess = createDefaultTenantUser(company, now);
+        writeCompanyProfileFields(company.getId(), request.contactName(), request.contactEmail(),
+                request.contactPhone(), request.supportStatus() == null ? "NORMAL" : request.supportStatus(),
+                request.notes(), request.owners());
         audit.log("ADD_COMPANY", "COMPANY", company.getId().toString());
-        return new CreateCompanyResponse(
-                company.getId(),
-                store.getId(),
-                licenseReference,
-                pairingCode,
-                license.getValidUntil(),
-                tenantAccess.username(),
-                tenantAccess.initialPassword());
+        return companyProfile(company.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CompanySummaryResponse> companies() {
+        return jdbc.query(companyProfileSql() + " order by c.name, c.id", (rs, row) -> companySummary(rs));
+    }
+
+    @Transactional(readOnly = true)
+    public CompanySummaryResponse companyProfile(UUID companyId) {
+        return jdbc.query(companyProfileSql() + " where c.id = ?", (rs, row) -> companySummary(rs), companyId)
+                .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
+    }
+
+    @Transactional
+    public CompanySummaryResponse updateCompanyProfile(UUID companyId, UpdateCompanyProfileRequest request) {
+        validateCompanyRequest(request);
+        lockCompanyProfile(companyId);
+        SaasCompany company = companies.findById(companyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
+        String name = provisioningValue(() -> LicenseProvisioningData.requiredName(request.name(), "name", 200));
+        var address = provisioningValue(() -> LicenseProvisioningData.fiscalAddress(request.companyAddress(), "companyAddress"));
+        company.updateData(name, company.getTaxpayerType(), company.getTaxRegime(), company.getCommercialProfile());
+        company.updateFiscalAddress(address);
+        companies.flush();
+        writeCompanyProfileFields(companyId, request.contactName(), request.contactEmail(), request.contactPhone(),
+                request.supportStatus(), request.notes(), request.owners());
+        audit.log("UPDATE_COMPANY_PROFILE", "COMPANY", companyId.toString());
+        return companyProfile(companyId);
+    }
+
+    private void lockCompanyProfile(UUID companyId) {
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", rs -> { }, companyId);
+        if (jdbc.query("select id from saas_company where id = ? for update", (rs, n) -> rs.getObject(1), companyId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe");
+        }
+    }
+
+    private void validateCompanyRequest(Object request) {
+        if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Datos de empresa obligatorios");
+        var violation = validator.validate(request).stream().findFirst();
+        if (violation.isPresent()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                violation.get().getPropertyPath() + ": " + violation.get().getMessage());
+    }
+
+    private void writeCompanyProfileFields(UUID companyId, String contactName, String contactEmail,
+            String contactPhone, String supportStatus, String notes, List<CompanyOwner> owners) {
+        List<CompanyOwner> normalizedOwners = owners.stream().map(owner -> new CompanyOwner(
+                provisioningValue(() -> LicenseProvisioningData.requiredName(owner.name(), "owners.name", 160)),
+                ownerTaxId(owner.taxId()),
+                blankToNull(owner.phone()), blankToNull(owner.email()))).toList();
+        String ownersJson;
+        try { ownersJson = mapper.writeValueAsString(normalizedOwners); }
+        catch (JsonProcessingException exception) { throw new IllegalStateException("No se pudieron preparar los propietarios"); }
+        jdbc.update("update saas_company set owners = cast(? as jsonb) where id = ?", ownersJson, companyId);
+        jdbc.update("""
+                insert into saas_company_operations(company_id,plan_name,billing_status,support_status,
+                    contact_name,contact_email,contact_phone,notes,updated_at)
+                values (?,'STANDARD','PENDIENTE',?,?,?,?,?,?)
+                on conflict (company_id) do update set support_status=excluded.support_status,
+                    contact_name=excluded.contact_name,contact_email=excluded.contact_email,
+                    contact_phone=excluded.contact_phone,notes=excluded.notes,updated_at=excluded.updated_at
+                """, companyId, supportStatus, blankToNull(contactName), blankToNull(contactEmail),
+                blankToNull(contactPhone), blankToNull(notes), sqlTimestamp(clock.instant()));
+    }
+
+    private static String companyProfileSql() {
+        return """
+                select c.id,c.name,c.tax_id,c.taxpayer_type,c.commercial_profile,c.company_address,c.created_at,c.owners,
+                       o.contact_name,o.contact_email,o.contact_phone,coalesce(o.support_status,'NORMAL') support_status,o.notes
+                from saas_company c left join saas_company_operations o on o.company_id=c.id
+                """;
+    }
+
+    private String ownerTaxId(String value) {
+        String normalized = provisioningValue(() -> SpanishTaxId.validate(value));
+        if (!normalized.matches("(?:[0-9]{8}|[XYZ][0-9]{7})[A-Z]")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El propietario requiere un DNI o NIE personal");
+        }
+        return normalized;
+    }
+
+    private CompanySummaryResponse companySummary(ResultSet rs) throws SQLException {
+        try {
+            String address = rs.getString("company_address");
+            String profile = rs.getString("commercial_profile");
+            return new CompanySummaryResponse(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("tax_id"),
+                    TaxpayerType.valueOf(rs.getString("taxpayer_type")), profile == null ? null : CommercialProfile.valueOf(profile),
+                    address == null ? null : mapper.readValue(address, new TypeReference<Map<String, String>>() { }),
+                    rs.getTimestamp("created_at").toInstant(), rs.getString("contact_name"), rs.getString("contact_email"),
+                    rs.getString("contact_phone"), rs.getString("support_status"), rs.getString("notes"),
+                    mapper.readValue(rs.getString("owners"), new TypeReference<List<CompanyOwner>>() { }));
+        } catch (JsonProcessingException exception) {
+            throw new SQLException("Datos de ficha de empresa no validos");
+        }
     }
 
     @Transactional
@@ -210,8 +268,11 @@ public class AdminService {
 
     @Transactional(readOnly = true)
     public List<InstallationSummaryResponse> installations() {
+        Map<UUID, Instant> syncTimes = new java.util.HashMap<>();
+        jdbc.query("select i.installation_id, max(e.received_at) as last_sync from saas_sync_event e join saas_installation i on i.id=e.installation_id group by i.installation_id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> syncTimes.put(rs.getObject("installation_id", UUID.class), rs.getTimestamp("last_sync").toInstant()));
         return installations.findAllByOrderByLinkedAtDesc().stream()
-                .map(AdminService::installationResponse)
+                .map(installation -> installationResponse(installation, syncTimes.get(installation.getInstallationId())))
                 .toList();
     }
 
@@ -255,6 +316,9 @@ public class AdminService {
                 currentMigration(),
                 List.of(
                         "licenses",
+                        "stores",
+                        "tenant-access",
+                        "supervision",
                         "installations",
                         "license-policies",
                         "fiscal-provisioning",
@@ -264,7 +328,6 @@ public class AdminService {
                         "support",
                         "health",
                         "billing",
-                        "subscriptions",
                         "tenant",
                         "erp-masters",
                         "erp-operations",
@@ -430,14 +493,15 @@ public class AdminService {
                        coalesce(o.plan_name, 'STANDARD') as plan_name,
                        coalesce(o.billing_status, 'PENDIENTE') as billing_status,
                        o.renewal_date,
-                       o.monthly_price,
+                       prices.monthly_equivalent as monthly_price,
                        l.reference as license_reference,
                        l.valid_until
                 from saas_company c
                 left join saas_company_operations o on o.company_id = c.id
                 left join saas_license l on l.company_id = c.id
+                left join (%s) prices on prices.company_id = c.id
                 order by c.name asc, l.valid_until desc
-                """, (rs, rowNum) -> billingCompany(rs, now));
+                """.formatted(StorePricingSummary.SQL), (rs, rowNum) -> billingCompany(rs, now));
         List<BillingCompanyResponse> uniqueRows = rows.stream()
                 .collect(java.util.stream.Collectors.toMap(
                         BillingCompanyResponse::companyId,
@@ -507,24 +571,23 @@ public class AdminService {
     }
 
     @Transactional
-    public LicenseSummaryResponse editCompany(UUID companyId, EditCompanyDataRequest request) {
+    public CompanySummaryResponse editCompany(UUID companyId, EditCompanyDataRequest request) {
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", rs -> { }, companyId);
         SaasCompany company = companies.findById(companyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
-        List<SaasLicense> companyLicenses = licenses.findByCompany_Id(companyId);
-        if (!companyLicenses.isEmpty()
-                && (company.getTaxpayerType() != request.taxpayerType()
-                    || company.getTaxRegime() != request.impuestos())) {
+        if (!licenses.findByCompany_Id(companyId).isEmpty()
+                && company.getTaxpayerType() != request.taxpayerType()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El tipo de obligado y el regimen fiscal no pueden cambiarse "
-                            + "despues de emitir una licencia; cree una nueva empresa fiscal");
+                    "El tipo de obligado no puede cambiarse despues de emitir una licencia");
         }
-        company.updateData(request.name(), request.taxpayerType(), request.impuestos(),
-                request.commercialProfile());
+        String name = provisioningValue(() -> LicenseProvisioningData.requiredName(request.name(), "name", 200));
+        var address = provisioningValue(() -> LicenseProvisioningData.fiscalAddress(request.companyAddress(), "companyAddress"));
+        company.updateData(name, request.taxpayerType(), company.getTaxRegime(),
+                request.commercialProfile() == null ? company.getCommercialProfile() : request.commercialProfile());
+        company.updateFiscalAddress(address);
+        companies.flush();
         audit.log("EDIT_COMPANY_DATA", "COMPANY", companyId.toString());
-        return companyLicenses.stream()
-                .findFirst()
-                .map(license -> licenseSummary(license, clock.instant()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Empresa sin licencia"));
+        return companyProfile(companyId);
     }
 
     @Transactional(readOnly = true)
@@ -538,6 +601,7 @@ public class AdminService {
     @Transactional
     public FiscalProvisioningResponse updateFiscalProvisioning(
             UUID companyId, UpdateFiscalProvisioningRequest request) {
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", rs -> { }, companyId);
         SaasCompany company = companies.findById(companyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
         List<SaasStore> companyStores = stores.findByCompany_IdOrderByCodeAsc(companyId);
@@ -586,7 +650,7 @@ public class AdminService {
         ensureCompanyExists(companyId);
         return jdbc.query("""
                 select company_id, plan_name, billing_status, renewal_date, monthly_price,
-                       support_status, contact_name, contact_email, notes
+                       support_status, contact_name, contact_email, notes, contact_phone
                 from saas_company_operations
                 where company_id = ?
                 """, (rs, rowNum) -> new CompanyOperationsResponse(
@@ -598,14 +662,27 @@ public class AdminService {
                 rs.getString("support_status"),
                 rs.getString("contact_name"),
                 rs.getString("contact_email"),
-                rs.getString("notes")), companyId).stream()
+                rs.getString("notes"), rs.getString("contact_phone")), companyId).stream()
                 .findFirst()
                 .orElseGet(() -> defaultOperations(companyId));
     }
 
     @Transactional
     public CompanyOperationsResponse updateCompanyOperations(UUID companyId, UpdateCompanyOperationsRequest request) {
-        ensureCompanyExists(companyId);
+        validateCompanyRequest(request);
+        // Serialize the read/modify/write operation even before its settings row exists.
+        lockCompanyProfile(companyId);
+        CompanyOperationsResponse existing = companyOperations(companyId);
+        request = new UpdateCompanyOperationsRequest(
+                request.planName() == null ? existing.planName() : request.planName(),
+                request.billingStatus() == null ? existing.billingStatus() : request.billingStatus(),
+                request.renewalDate() == null ? existing.renewalDate() : request.renewalDate(),
+                request.monthlyPrice() == null ? existing.monthlyPrice() : request.monthlyPrice(),
+                request.supportStatus() == null ? existing.supportStatus() : request.supportStatus(),
+                request.contactName() == null ? existing.contactName() : request.contactName(),
+                request.contactEmail() == null ? existing.contactEmail() : request.contactEmail(),
+                request.notes() == null ? existing.notes() : request.notes(),
+                request.contactPhone() == null ? existing.contactPhone() : request.contactPhone());
         Instant now = clock.instant();
         String planName = planLimits.requireKnownPlan(request.planName());
         String billingStatus = requireOneOf(request.billingStatus(), "PENDIENTE",
@@ -618,7 +695,7 @@ public class AdminService {
         int updated = jdbc.update("""
                 update saas_company_operations
                 set plan_name = ?, billing_status = ?, renewal_date = ?, monthly_price = ?,
-                    support_status = ?, contact_name = ?, contact_email = ?, notes = ?, updated_at = ?
+                    support_status = ?, contact_name = ?, contact_email = ?, notes = ?, contact_phone = ?, updated_at = ?
                 where company_id = ?
                 """,
                 planName,
@@ -629,14 +706,15 @@ public class AdminService {
                 blankToNull(request.contactName()),
                 blankToNull(request.contactEmail()),
                 blankToNull(request.notes()),
+                blankToNull(request.contactPhone()),
                 sqlTimestamp(now),
                 companyId);
         if (updated == 0) {
             jdbc.update("""
                     insert into saas_company_operations(
                         company_id, plan_name, billing_status, renewal_date, monthly_price,
-                        support_status, contact_name, contact_email, notes, updated_at)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        support_status, contact_name, contact_email, notes, contact_phone, updated_at)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     companyId,
                     planName,
@@ -647,6 +725,7 @@ public class AdminService {
                     blankToNull(request.contactName()),
                     blankToNull(request.contactEmail()),
                     blankToNull(request.notes()),
+                    blankToNull(request.contactPhone()),
                     sqlTimestamp(now));
         }
         audit.log("UPDATE_COMPANY_OPERATIONS", "COMPANY", companyId.toString());
@@ -802,9 +881,14 @@ public class AdminService {
     @Transactional(readOnly = true)
     public List<TenantUserResponse> tenantUsers(UUID companyId) {
         ensureCompanyExists(companyId);
-        return tenantUsers.findByCompany_IdOrderByUsernameAsc(companyId).stream()
-                .map(AdminService::tenantUserResponse)
-                .toList();
+        return jdbc.query("""
+                select u.id, a.company_id, u.username, a.role_name, u.active, u.created_at
+                from saas_tenant_user u join saas_tenant_company_access a on a.user_id = u.id
+                where a.company_id = ? order by lower(u.username)
+                """, (rs, row) -> new TenantUserResponse(rs.getObject("id", UUID.class),
+                        rs.getObject("company_id", UUID.class), rs.getString("username"),
+                        rs.getString("role_name"), rs.getBoolean("active"),
+                        rs.getTimestamp("created_at").toInstant()), companyId);
     }
 
     @Transactional
@@ -834,6 +918,9 @@ public class AdminService {
         } catch (DataIntegrityViolationException exception) {
             throw usernameConflict(exception);
         }
+        tenantAccess.replace(user.getUsername(), companyId, new com.tpverp.saas.access.UpdateTenantAccessRequest(
+                role.name(), request.companyPrivileges() == null ? Set.of() : request.companyPrivileges(),
+                request.storeIds() == null ? Set.of() : request.storeIds()));
         audit.log("CREATE_TENANT_USER", "TENANT_USER", user.getUsername());
         return tenantUserResponse(user);
     }
@@ -929,14 +1016,25 @@ public class AdminService {
     @Transactional
     public InvoiceFiscalDetailResponse updateInvoiceFiscal(UUID invoiceId, UpdateInvoiceFiscalRequest request) {
         InvoiceFiscalState current = jdbc.query(
-                "select amount, fiscal_status from saas_billing_invoice where id = ? for update",
+                "select amount, fiscal_status, tax_regime from saas_billing_invoice where id = ? for update",
                 rs -> rs.next() ? new InvoiceFiscalState(
-                        amount(rs.getString("amount")), rs.getString("fiscal_status")) : null, invoiceId);
+                        amount(rs.getString("amount")), rs.getString("fiscal_status"), rs.getString("tax_regime")) : null, invoiceId);
         if (current == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no existe");
         }
         String status = requireOneOf(request.fiscalStatus(), "CALCULATED",
                 Set.of("CALCULATED", "NOT_APPLICABLE"));
+        String taxRegime = current.taxRegime();
+        if (taxRegime == null) {
+            if (request.taxRegime() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "El regimen fiscal es obligatorio para completar la revision");
+            }
+            taxRegime = request.taxRegime().name();
+        } else if (request.taxRegime() != null && !taxRegime.equals(request.taxRegime().name())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El regimen fiscal registrado en la factura no se puede reemplazar");
+        }
         String taxBase = null;
         String taxRate = null;
         String taxAmount = null;
@@ -977,17 +1075,17 @@ public class AdminService {
         }
         jdbc.update("""
                 update saas_billing_invoice
-                   set fiscal_status = ?, tax_base = ?, tax_rate = ?, tax_amount = ?,
+                   set fiscal_status = ?, tax_regime = ?, tax_base = ?, tax_rate = ?, tax_amount = ?,
                        fiscal_reason = ?, fiscal_legal_basis = ?, fiscal_evidence_reference = ?
                  where id = ?
-                """, status, taxBase, taxRate, taxAmount, reason, legalBasis, evidenceReference, invoiceId);
+                """, status, taxRegime, taxBase, taxRate, taxAmount, reason, legalBasis, evidenceReference, invoiceId);
         jdbc.update("""
                 insert into saas_invoice_fiscal_decision_audit(
                     id, invoice_id, previous_status, new_status, reason, legal_basis,
-                    evidence_reference, changed_by, changed_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    evidence_reference, changed_by, changed_at, previous_tax_regime, new_tax_regime)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), invoiceId, current.status(), status, reason, legalBasis,
-                evidenceReference, audit.currentUsername(), sqlTimestamp(clock.instant()));
+                evidenceReference, audit.currentUsername(), sqlTimestamp(clock.instant()), current.taxRegime(), taxRegime);
         audit.log("UPDATE_INVOICE_FISCAL", "BILLING_INVOICE", invoiceId.toString());
         return invoiceFiscalDetail(invoiceId);
     }
@@ -1171,66 +1269,6 @@ public class AdminService {
     }
 
     @Transactional(readOnly = true)
-    public List<SubscriptionResponse> subscriptions() {
-        try {
-            return jdbc.query(subscriptionSql(""), (rs, rowNum) -> subscription(rs));
-        } catch (BadSqlGrammarException exception) {
-            if (missingPhase11Tables(exception)) {
-                return List.of();
-            }
-            throw exception;
-        }
-    }
-
-    @Transactional
-    public SubscriptionResponse createSubscription(UUID companyId, CreateSubscriptionRequest request) {
-        ensureCompanyExists(companyId);
-        requirePositiveMoney(request.amount(), "Importe de suscripcion no valido");
-        if (request.nextBillingAt() != null && request.nextBillingAt().isBefore(request.startedAt())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La proxima facturacion no puede ser anterior al inicio");
-        }
-        UUID id = UUID.randomUUID();
-        jdbc.update("""
-                insert into saas_subscription(
-                    id, company_id, plan_name, status, billing_cycle, amount, currency, started_at, next_billing_at, cancelled_at, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?)
-                """,
-                id,
-                companyId,
-                request.planName().trim(),
-                requireOneOf(request.status(), "ACTIVA", Set.of("ACTIVA", "SUSPENDIDA", "CANCELADA")),
-                requireOneOf(request.billingCycle(), "MENSUAL", Set.of("MENSUAL", "TRIMESTRAL", "ANUAL")),
-                money(request.amount()),
-                requireCurrency(request.currency()),
-                sqlTimestamp(request.startedAt()),
-                sqlTimestamp(request.nextBillingAt()),
-                sqlTimestamp(clock.instant()));
-        jdbc.update("""
-                insert into saas_company_operations(company_id, plan_name, billing_status, renewal_date, monthly_price, support_status, updated_at)
-                values (?, ?, 'PENDIENTE', ?, ?, 'NORMAL', ?)
-                on conflict (company_id) do update set
-                    plan_name = excluded.plan_name,
-                    renewal_date = excluded.renewal_date,
-                    monthly_price = excluded.monthly_price,
-                    updated_at = excluded.updated_at
-                """, companyId, request.planName().trim(), sqlTimestamp(request.nextBillingAt()),
-                money(request.amount()), sqlTimestamp(clock.instant()));
-        audit.log("CREATE_SUBSCRIPTION", "COMPANY", companyId.toString());
-        return subscription(id);
-    }
-
-    @Transactional
-    public SubscriptionResponse cancelSubscription(UUID subscriptionId) {
-        jdbc.update("""
-                update saas_subscription
-                set status = 'CANCELADA', cancelled_at = ?
-                where id = ?
-                """, sqlTimestamp(clock.instant()), subscriptionId);
-        audit.log("CANCEL_SUBSCRIPTION", "SUBSCRIPTION", subscriptionId.toString());
-        return subscription(subscriptionId);
-    }
-
-    @Transactional(readOnly = true)
     public List<IntegrationEndpointResponse> integrations() {
         try {
             return jdbc.query(integrationSql(""), (rs, rowNum) -> integration(rs));
@@ -1329,12 +1367,6 @@ public class AdminService {
     @Transactional(readOnly = true)
     public SaasAdvancedReportResponse advancedReports() {
         try {
-            long subscriptionCount = count("select count(*) from saas_subscription");
-            String subscriptionMrr = scalarMoney("""
-                    select coalesce(sum(cast(amount as decimal(19,2))), 0)
-                    from saas_subscription
-                    where status = 'ACTIVA' and billing_cycle = 'MENSUAL'
-                    """);
             String invoicedTotal = scalarMoney("select coalesce(sum(cast(amount as decimal(19,2))), 0) from saas_billing_invoice");
             String paidTotal = scalarMoney("select coalesce(sum(cast(amount as decimal(19,2))), 0) from saas_billing_payment");
             String salesTotal = scalarMoney("select coalesce(sum(cast(total as decimal(19,2))), 0) from saas_sales_document");
@@ -1342,8 +1374,6 @@ public class AdminService {
             long activeIntegrationCount = count("select count(*) from saas_integration_endpoint where status = 'ACTIVA'");
             return new SaasAdvancedReportResponse(
                     companies.count(),
-                    subscriptionCount,
-                    subscriptionMrr,
                     count("select count(*) from saas_billing_invoice"),
                     invoicedTotal,
                     paidTotal,
@@ -1354,7 +1384,7 @@ public class AdminService {
                     activeIntegrationCount);
         } catch (BadSqlGrammarException exception) {
             if (missingPhase11Tables(exception)) {
-                return new SaasAdvancedReportResponse(companies.count(), 0, "0.00", 0, "0.00", "0.00", 0, "0.00", 0, 0, 0);
+                return new SaasAdvancedReportResponse(companies.count(), 0, "0.00", "0.00", 0, "0.00", 0, 0, 0);
             }
             throw exception;
         }
@@ -1542,29 +1572,53 @@ public class AdminService {
                 request.validUntil(), request.maxWindows(), request.maxPda(), clock.instant());
         SaasLicense license = licenseForUpdate(reference);
         license.renew(request.validUntil(), request.maxWindows(), request.maxPda());
+        if (license.getStore() != null && StoreAdministrationService.isExclusiveStoreLicense(
+                jdbc, license.getId(), license.getStore().getId())) {
+            license.getStore().updateLicenseConfiguration(request.validUntil(), request.maxWindows(), request.maxPda());
+        }
         audit.log("RENEW_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
     @Transactional
     public PairingCodeResponse regeneratePairingCode(String reference) {
-        Instant now = clock.instant();
         SaasLicense license = licenseForUpdate(reference);
-        pairingCodes.findByLicense_ReferenceAndConsumedAtIsNull(reference)
-                .forEach(code -> code.expire(now));
-        SaasStore store = stores.findByCompany_IdOrderByCodeAsc(license.getCompany().getId()).stream()
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Licencia sin tienda"));
+        Instant now = clock.instant();
+        if (license.getStatus() != LicenseSaasStatus.VALIDA || license.getValidUntil() == null || !license.getValidUntil().isAfter(now)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La licencia debe estar vigente y desbloqueada para generar un codigo");
+        }
+        SaasStore store = license.getStore();
+        if (store == null) {
+            List<UUID> associated = jdbc.queryForList("""
+                    select store_id from saas_pairing_code where license_id = ?
+                    union select store_id from saas_installation where license_id = ?
+                    """, UUID.class, license.getId(), license.getId());
+            if (associated.size() != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La licencia debe tener una unica tienda vinculada para generar un codigo");
+            }
+            store = stores.findById(associated.getFirst()).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.CONFLICT, "Licencia sin tienda"));
+            ensureStoreBelongsToCompany(store.getId(), license.getCompany().getId());
+            license.assignStore(store);
+        }
+        if (!store.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Tienda inactiva");
+        pairingCodes.findByStore_IdAndConsumedAtIsNullAndRevokedAtIsNull(store.getId())
+                .forEach(code -> code.revoke(now, "REPLACED"));
+        pairingCodes.flush();
         String code = newPairingCode();
-        Instant expiresAt = now.plus(Duration.ofDays(7));
-        pairingCodes.save(new SaasPairingCode(
+        Instant expiresAt = now.plus(com.tpverp.saas.license.PairingCodePolicy.VALIDITY);
+        try { pairingCodes.saveAndFlush(new SaasPairingCode(
                 UUID.randomUUID(),
                 license.getCompany(),
                 store,
                 license,
                 code,
                 expiresAt,
-                now));
+                now)); }
+        catch (DataIntegrityViolationException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No se pudo generar un codigo de enlace unico; vuelve a intentarlo");
+        }
         audit.log("REGENERATE_PAIRING_CODE", "LICENSE", reference);
         return new PairingCodeResponse(reference, code, expiresAt);
     }
@@ -1575,6 +1629,12 @@ public class AdminService {
     }
 
     private SaasLicense licenseForUpdate(String reference) {
+        var scope = jdbc.queryForList("select company_id, store_id from saas_license where reference = ?", reference);
+        if (scope.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Licencia no existe");
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", rs -> { }, scope.getFirst().get("company_id"));
+        if (scope.getFirst().get("store_id") != null) {
+            jdbc.queryForObject("select id from saas_store where id = ? for update", UUID.class, scope.getFirst().get("store_id"));
+        }
         return licenses.findByReferenceForUpdate(reference)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Licencia no existe"));
     }
@@ -1741,37 +1801,6 @@ public class AdminService {
                 money(rs.getString("quantity")),
                 rs.getString("reason"),
                 rs.getTimestamp("moved_at").toInstant(),
-                rs.getTimestamp("created_at").toInstant());
-    }
-
-    private SubscriptionResponse subscription(UUID id) {
-        return jdbc.query(subscriptionSql("where s.id = ?"), (rs, rowNum) -> subscription(rs), id).stream()
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Suscripcion no existe"));
-    }
-
-    private static String subscriptionSql(String where) {
-        return """
-                select s.id, s.company_id, c.name as company_name, s.plan_name, s.status, s.billing_cycle,
-                       s.amount, s.currency, s.started_at, s.next_billing_at, s.cancelled_at, s.created_at
-                from saas_subscription s
-                join saas_company c on c.id = s.company_id
-                """ + where + " order by s.created_at desc";
-    }
-
-    private static SubscriptionResponse subscription(ResultSet rs) throws SQLException {
-        return new SubscriptionResponse(
-                rs.getObject("id", UUID.class),
-                rs.getObject("company_id", UUID.class),
-                rs.getString("company_name"),
-                rs.getString("plan_name"),
-                rs.getString("status"),
-                rs.getString("billing_cycle"),
-                money(rs.getString("amount")),
-                rs.getString("currency"),
-                rs.getTimestamp("started_at").toInstant(),
-                rs.getTimestamp("next_billing_at") == null ? null : rs.getTimestamp("next_billing_at").toInstant(),
-                rs.getTimestamp("cancelled_at") == null ? null : rs.getTimestamp("cancelled_at").toInstant(),
                 rs.getTimestamp("created_at").toInstant());
     }
 
@@ -1990,8 +2019,7 @@ public class AdminService {
 
     private static boolean missingPhase11Tables(BadSqlGrammarException exception) {
         String message = String.valueOf(exception.getMostSpecificCause().getMessage()).toLowerCase(Locale.ROOT);
-        boolean table = message.contains("saas_subscription")
-                || message.contains("saas_sales_document")
+        boolean table = message.contains("saas_sales_document")
                 || message.contains("saas_inventory_movement")
                 || message.contains("saas_integration_endpoint");
         boolean missingRelation = message.contains("does not exist")
@@ -2371,8 +2399,8 @@ public class AdminService {
                 license.getCompany().getName(),
                 license.getCompany().getTaxId(),
                 license.getCompany().getTaxpayerType(),
-                license.getCompany().getTaxRegime(),
-                license.getCompany().getCommercialProfile(),
+                license.getStore() == null ? license.getCompany().getTaxRegime() : license.getStore().getTaxRegime(),
+                license.getStore() == null ? null : license.getStore().getCommercialProfile(),
                 effectiveStatus(license, now),
                 license.getValidUntil(),
                 license.getMaxWindows(),
@@ -2388,6 +2416,10 @@ public class AdminService {
     }
 
     private static InstallationSummaryResponse installationResponse(SaasInstallation installation) {
+        return installationResponse(installation, null);
+    }
+
+    private static InstallationSummaryResponse installationResponse(SaasInstallation installation, Instant lastSyncAt) {
         return new InstallationSummaryResponse(
                 installation.getInstallationId(),
                 installation.getInstallationReference(),
@@ -2396,6 +2428,7 @@ public class AdminService {
                 installation.getLicense().getReference(),
                 installation.getLinkedAt(),
                 installation.getLastValidatedAt(),
+                lastSyncAt,
                 installation.getAppVersion(),
                 installation.getOperatingSystem(),
                 installation.getTerminalName(),
@@ -2421,32 +2454,6 @@ public class AdminService {
                 user.getCreatedAt());
     }
 
-    private TenantInitialAccess createDefaultTenantUser(SaasCompany company, Instant now) {
-        String baseUsername = company.getTaxId().toLowerCase(Locale.ROOT);
-        String username = baseUsername;
-        int suffix = 2;
-        while (usernameExistsInAnyRealm(username)) {
-            username = baseUsername + "-" + suffix;
-            suffix++;
-        }
-        String initialPassword = newInitialPassword();
-        try {
-            SaasTenantUser initialUser = new SaasTenantUser(
-                    UUID.randomUUID(),
-                    company,
-                    username,
-                    passwordHasher.hash(initialPassword),
-                    "OWNER",
-                    true,
-                    now);
-            initialUser.requirePasswordChange();
-            tenantUsers.saveAndFlush(initialUser);
-        } catch (DataIntegrityViolationException exception) {
-            throw usernameConflict(exception);
-        }
-        return new TenantInitialAccess(username, initialPassword);
-    }
-
     private boolean usernameExistsInAnyRealm(String username) {
         return adminUsers.existsByUsernameIgnoreCase(username)
                 || tenantUsers.existsByUsernameIgnoreCase(username);
@@ -2464,14 +2471,6 @@ public class AdminService {
                 exception);
     }
 
-    private String newInitialPassword() {
-        StringBuilder value = new StringBuilder();
-        for (int index = 0; index < 14; index++) {
-            value.append(CODE_CHARS.charAt(random.nextInt(CODE_CHARS.length())));
-        }
-        return value.toString();
-    }
-
     private String newPairingCode() {
         StringBuilder value = new StringBuilder("TPV-");
         for (int index = 0; index < 12; index++) {
@@ -2480,8 +2479,6 @@ public class AdminService {
         return value.toString();
     }
 
-    private record TenantInitialAccess(String username, String initialPassword) {
-    }
     private record InvoicePaymentState(
             BigDecimal amount,
             String fiscalStatus,
@@ -2490,7 +2487,7 @@ public class AdminService {
             String evidenceReference) {
     }
 
-    private record InvoiceFiscalState(BigDecimal amount, String status) {
+    private record InvoiceFiscalState(BigDecimal amount, String status, String taxRegime) {
     }
 
 }

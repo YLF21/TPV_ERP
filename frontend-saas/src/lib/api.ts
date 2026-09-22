@@ -10,6 +10,8 @@ import type {
   BillingSummary,
   CompanyOperations,
   CommercialProfile,
+  CompanySummary,
+  CompanyProfileRequest,
   CreateCompanyRequest,
   CreateCompanyResponse,
   Credentials,
@@ -34,13 +36,11 @@ import type {
   SalesDocument,
   SalesSummary,
   StockSnapshot,
-  Subscription,
   SupportTicket,
   SupportTicketComment,
   SyncEventView,
   SyncProjectionStatus,
   TenantDashboard,
-  TenantPortalData,
   TenantSession,
   TenantStore,
   TenantUser,
@@ -66,9 +66,10 @@ export function setUnauthorizedHandler(handler: ((credentials: Credentials) => v
   unauthorizedHandler = handler;
 }
 
-type RequestOptions = {
+export type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
+  headers?: Record<string, string>;
 };
 
 export class ApiError extends Error {
@@ -129,6 +130,7 @@ async function requestText(credentials: Credentials, path: string, options: { me
     method: options.method ?? "GET",
     headers: {
       Authorization: authHeader(credentials),
+      ...(credentials.companyId ? { "X-TPV-Company-Id": credentials.companyId } : {}),
       ...(options.body !== undefined ? { "Content-Type": "text/csv;charset=UTF-8" } : {})
     },
     body: options.body
@@ -141,12 +143,14 @@ async function requestText(credentials: Credentials, path: string, options: { me
   return response.text();
 }
 
-async function request<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
   const response = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: options.method ?? "GET",
     headers: {
       Authorization: authHeader(credentials),
-      ...(options.body ? { "Content-Type": "application/json" } : {})
+      ...(credentials.companyId ? { "X-TPV-Company-Id": credentials.companyId } : {}),
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...options.headers
     },
     body: options.body ? JSON.stringify(options.body) : undefined
   });
@@ -167,7 +171,7 @@ async function request<T>(credentials: Credentials, path: string, options: Reque
 
 export const api = {
   login(credentials: LoginCredentials) {
-    return publicPost<LoginResponse>("/api/v1/auth/login", credentials);
+    return publicPost<LoginResponse>("/api/v1/auth/admin/login", credentials);
   },
 
   changeOwnPassword(credentials: Credentials, payload: { currentPassword: string; newPassword: string }) {
@@ -197,22 +201,16 @@ export const api = {
       this.users(credentials),
       this.audit(credentials),
       this.salesSummary(credentials),
-      this.stockCurrent(credentials),
       this.events(credentials),
       this.advancedReports(credentials).catch(() => null),
-      this.subscriptions(credentials).catch(() => []),
-      this.integrations(credentials).catch(() => [])
-    ]).then(([licenses, installations, users, audit, salesSummary, stockCurrent, events, advancedReport, subscriptions, integrations]) => ({
+    ]).then(([licenses, installations, users, audit, salesSummary, events, advancedReport]) => ({
       licenses,
       installations,
       users,
       audit,
       salesSummary,
-      stockCurrent,
       events,
       advancedReport,
-      subscriptions,
-      integrations
     }));
   },
 
@@ -260,6 +258,20 @@ export const api = {
     return request<AdminSession>(credentials, "/api/v1/admin/me");
   },
 
+  companies(credentials: Credentials) {
+    return request<CompanySummary[]>(credentials, "/api/v1/admin/companies");
+  },
+
+  companyProfile(credentials: Credentials, companyId: string) {
+    return request<CompanySummary>(credentials, `/api/v1/admin/companies/${companyId}/profile`);
+  },
+
+  saveCompanyProfile(credentials: Credentials, companyId: string, payload: CompanyProfileRequest) {
+    return request<CompanySummary>(credentials, `/api/v1/admin/companies/${companyId}/profile`, {
+      method: "PUT", body: payload,
+    });
+  },
+
   createCompany(credentials: Credentials, payload: CreateCompanyRequest) {
     return request<CreateCompanyResponse>(credentials, "/api/v1/admin/companies", {
       method: "POST",
@@ -273,11 +285,11 @@ export const api = {
     payload: {
       name: string;
       taxpayerType: TaxpayerType;
-      impuestos: TaxRegime;
       commercialProfile: CommercialProfile;
+      companyAddress: import("./types").FiscalAddress;
     }
   ) {
-    return request<LicenseSummary>(credentials, `/api/v1/admin/companies/${companyId}`, {
+    return request<CompanySummary>(credentials, `/api/v1/admin/companies/${companyId}`, {
       method: "PUT",
       body: payload
     });
@@ -287,7 +299,7 @@ export const api = {
     return request<CompanyOperations>(credentials, `/api/v1/admin/companies/${companyId}/operations`);
   },
 
-  updateCompanyOperations(credentials: Credentials, companyId: string, payload: Omit<CompanyOperations, "companyId">) {
+  updateCompanyOperations(credentials: Credentials, companyId: string, payload: Partial<Omit<CompanyOperations, "companyId">>) {
     return request<CompanyOperations>(credentials, `/api/v1/admin/companies/${companyId}/operations`, {
       method: "PUT",
       body: payload
@@ -432,27 +444,6 @@ export const api = {
     return request<InventoryStock[]>(credentials, `/api/v1/admin/companies/${companyId}/inventory-stock`);
   },
 
-  subscriptions(credentials: Credentials) {
-    return request<Subscription[]>(credentials, "/api/v1/admin/subscriptions");
-  },
-
-  createSubscription(
-    credentials: Credentials,
-    companyId: string,
-    payload: { planName: string; status: string; billingCycle: string; amount: string; currency: string; startedAt: string; nextBillingAt: string | null }
-  ) {
-    return request<Subscription>(credentials, `/api/v1/admin/companies/${companyId}/subscriptions`, {
-      method: "POST",
-      body: payload
-    });
-  },
-
-  cancelSubscription(credentials: Credentials, subscriptionId: string) {
-    return request<Subscription>(credentials, `/api/v1/admin/subscriptions/${subscriptionId}/cancel`, {
-      method: "POST"
-    });
-  },
-
   integrations(credentials: Credentials) {
     return request<IntegrationEndpoint[]>(credentials, "/api/v1/admin/integrations");
   },
@@ -467,9 +458,9 @@ export const api = {
     });
   },
 
-  markIntegrationSynced(credentials: Credentials, integrationId: string) {
+  markIntegrationSynced(credentials: Credentials, integrationId: string, idempotencyKey: string) {
     return request<IntegrationEndpoint>(credentials, `/api/v1/admin/integrations/${integrationId}/sync`, {
-      method: "POST"
+      method: "POST", headers: { "Idempotency-Key": idempotencyKey }
     });
   },
 
@@ -508,7 +499,7 @@ export const api = {
   createErpCustomer(
     credentials: Credentials,
     companyId: string,
-    payload: { code: string; name: string; taxId: string; email: string; phone: string }
+    payload: { code: string; name: string; taxId: string; documentType?: string; email: string; phone: string }
   ) {
     return request<ErpCustomer>(credentials, `/api/v1/admin/companies/${companyId}/erp/customers`, {
       method: "POST",
@@ -550,7 +541,7 @@ export const api = {
   createErpSupplier(
     credentials: Credentials,
     companyId: string,
-    payload: { code: string; name: string; taxId: string; email: string; phone: string }
+    payload: { code: string; name: string; taxId: string; documentType?: string; email: string; phone: string }
   ) {
     return request<ErpSupplier>(credentials, `/api/v1/admin/companies/${companyId}/erp/suppliers`, {
       method: "POST",
@@ -754,27 +745,6 @@ export const api = {
     return request<FiscalCompanyStatusAdmin[]>(credentials, "/api/v1/admin/fiscal-status/companies");
   },
 
-  async tenantPortal(credentials: Credentials): Promise<TenantPortalData> {
-    const results = await Promise.allSettled([
-      this.tenantSession(credentials), this.tenantDashboard(credentials), this.tenantLicenses(credentials),
-      this.tenantStores(credentials), this.tenantTickets(credentials), this.tenantInvoices(credentials),
-      this.tenantErpCustomers(credentials), this.tenantErpProducts(credentials),
-      this.tenantErpSuppliers(credentials), this.tenantErpWarehouses(credentials)
-    ]);
-    const required = results.slice(0, 2);
-    const requiredFailure = required.find((result) => result.status === "rejected");
-    if (requiredFailure?.status === "rejected") throw requiredFailure.reason;
-    const value = <T>(index: number, fallback: T): T => results[index].status === "fulfilled"
-      ? (results[index] as PromiseFulfilledResult<T>).value : fallback;
-    const loadErrors = results.slice(2).flatMap((result, index) => result.status === "rejected"
-      ? [`${["licenses", "stores", "tickets", "invoices", "customers", "products", "suppliers", "warehouses"][index]}: ${result.reason instanceof Error ? result.reason.message : "Error de carga"}`]
-      : []);
-    return {
-      session: value<TenantSession>(0, undefined as never), dashboard: value<TenantDashboard>(1, undefined as never),
-      licenses: value(2, []), stores: value(3, []), tickets: value(4, []), invoices: value(5, []),
-      customers: value(6, []), products: value(7, []), suppliers: value(8, []), warehouses: value(9, []), loadErrors
-    };
-  },
   tenantSession(credentials: Credentials) {
     return request<TenantSession>(credentials, "/api/v1/tenant/me");
   },
@@ -819,7 +789,7 @@ export const api = {
     }
   },
 
-  createTenantErpCustomer(credentials: Credentials, payload: { code: string; name: string; taxId: string; email: string; phone: string }) {
+  createTenantErpCustomer(credentials: Credentials, payload: { code: string; name: string; taxId: string; documentType?: string; email: string; phone: string }) {
     return request<ErpCustomer>(credentials, "/api/v1/tenant/erp/customers", {
       method: "POST",
       body: payload
@@ -844,7 +814,7 @@ export const api = {
     return request<ErpSupplier[]>(credentials, "/api/v1/tenant/erp/suppliers");
   },
 
-  createTenantErpSupplier(credentials: Credentials, payload: { code: string; name: string; taxId: string; email: string; phone: string }) {
+  createTenantErpSupplier(credentials: Credentials, payload: { code: string; name: string; taxId: string; documentType?: string; email: string; phone: string }) {
     return request<ErpSupplier>(credentials, "/api/v1/tenant/erp/suppliers", {
       method: "POST",
       body: payload

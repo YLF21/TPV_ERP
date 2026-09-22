@@ -31,12 +31,12 @@ public class SaasCompany {
     private TaxpayerType taxpayerType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tax_regime", nullable = false)
+    @Column(name = "tax_regime")
     private TaxRegime taxRegime;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "commercial_profile", nullable = false)
-    private CommercialProfile commercialProfile = CommercialProfile.MAYORISTA;
+    @Column(name = "commercial_profile")
+    private CommercialProfile commercialProfile;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "company_address", columnDefinition = "jsonb")
@@ -65,8 +65,7 @@ public class SaasCompany {
         this.taxId = taxId;
         this.taxpayerType = taxpayerType;
         this.taxRegime = taxRegime;
-        this.commercialProfile = commercialProfile == null
-                ? CommercialProfile.MAYORISTA : commercialProfile;
+        this.commercialProfile = commercialProfile;
         this.companyAddress = copy(companyAddress);
         this.createdAt = createdAt;
     }
@@ -99,13 +98,16 @@ public class SaasCompany {
         return companyAddress == null ? null : Map.copyOf(companyAddress);
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public void updateData(String name, TaxpayerType taxpayerType, TaxRegime taxRegime,
             CommercialProfile commercialProfile) {
         this.name = name;
         this.taxpayerType = taxpayerType;
         this.taxRegime = taxRegime;
-        this.commercialProfile = java.util.Objects.requireNonNull(
-                commercialProfile, "commercialProfile");
+        this.commercialProfile = commercialProfile;
     }
 
     public void updateFiscalAddress(Map<String, String> companyAddress) {

@@ -1,0 +1,37 @@
+.app-shell.tenant-shell { grid-template-rows: minmax(0, 1fr); background: var(--bg); }
+.tenant-shell > .app-header, .tenant-shell > .tenant-main { grid-row: 1; }
+.tenant-shell > .tenant-main { padding-top: 20px; }
+.tenant-shell .app-header .app-actions { position: static; display: flex; gap: 8px; padding: 12px 18px; }
+.tenant-shell .tenant-top-nav { display: grid; }
+.tenant-shell .tenant-hero { justify-items: start; text-align: left; margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+.tenant-shell .tenant-hero h1 { font-size: 28px; }
+.tenant-shell .tenant-hero p { font-weight: 400; }
+.tenant-shell .tenant-hero .secondary-button { margin-top: 0; }
+.tenant-shell .tenant-view .content-section { background: #fff; border-color: var(--line); box-shadow: none; }
+.tenant-shell .tenant-store { border-radius: 2px; padding: 12px; background: #fff; }
+.tenant-shell .tenant-ticket-form input, .tenant-shell .tenant-ticket-form select, .tenant-shell .tenant-ticket-form textarea { border-radius: 2px; background: #fff; padding: 8px 10px; }
+.tenant-context-controls { display: flex; flex-wrap: wrap; align-items: start; gap: 16px; margin: 12px 0; }
+.tenant-context-controls > label { min-width: min(320px, 100%); display: grid; gap: 6px; }
+.tenant-context-controls .account-password { flex: 1; }
+.tenant-store-selector { display: flex; flex-wrap: wrap; gap: 10px 20px; border: 1px solid #ccd7e3; padding: 12px; margin: 0 0 16px; }
+.tenant-store-selector legend { font-weight: 600; padding: 0 5px; }
+.tenant-store-selector label { display: inline-flex; align-items: center; gap: 8px; }
+.tenant-store-selector input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+.tenant-document-filters { margin: 14px 0; }
+.tenant-supervision .table-wrap { overflow-x: auto; }
+.tenant-supervision table { width: 100%; border-collapse: collapse; }
+.tenant-supervision th, .tenant-supervision td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }
+.tenant-conversation { display: grid; gap: 12px; margin-top: 20px; }
+.tenant-conversation label, .tenant-conversation form { display: grid; gap: 8px; }
+.tenant-comments { display: grid; gap: 10px; max-height: 480px; overflow-y: auto; }
+.tenant-comments small { display: block; color: #526477; margin-top: 4px; }
+.tenant-comments p { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 820px) {
+  .app-shell.tenant-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .tenant-shell > .app-header { grid-column: 1; grid-row: 1; display: flex; flex-wrap: wrap; border-right: 0; }
+  .tenant-shell > .tenant-main { grid-column: 1; grid-row: 2; padding: 16px; }
+  .tenant-shell .app-header .brand { flex: 1; }
+  .tenant-shell .app-header .app-actions { order: 1; }
+  .tenant-shell .app-header .tenant-top-nav { order: 2; display: flex; flex-wrap: nowrap; overflow-x: auto; padding: 0; }
+  .tenant-shell .tenant-top-nav .nav-button { width: auto; flex: 0 0 auto; }
+}

@@ -19,6 +19,36 @@ class LicenseValidationServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-25T12:00:00Z");
 
     @Test
+    void aSharedLegacyLicenseUsesTheActualInstallationStoreProfile() {
+        var company = new SaasCompany(UUID.randomUUID(), "Empresa", "B12345674",
+                TaxpayerType.SOCIEDAD, TaxRegime.IGIC, NOW.minusSeconds(3600));
+        var license = new SaasLicense(UUID.randomUUID(), company, "LIC-SHARED", NOW.plusSeconds(86400), 3, 2,
+                NOW.minusSeconds(3600));
+        var installations = mock(SaasInstallationRepository.class);
+        var authenticator = mock(InstallationAuthenticator.class);
+        var policies = mock(VerifactuActivationPolicyResolver.class);
+        when(policies.required(TaxpayerType.SOCIEDAD)).thenReturn(new VerifactuPolicySnapshot(
+                LocalDate.of(2027, 1, 1), 4, NOW.minusSeconds(60)));
+        var service = new LicenseValidationService(installations, authenticator, Clock.fixed(NOW, ZoneOffset.UTC), policies);
+        assertThat(license.getStore()).isNull();
+        for (var profile : CommercialProfile.values()) {
+            var store = new SaasStore(UUID.randomUUID(), company,
+                    profile == CommercialProfile.MAYORISTA ? "001" : "002", profile.name(), "Atlantic/Canary", NOW);
+            store.setCommercialProfile(profile);
+            UUID installationId = UUID.randomUUID();
+            var installation = new SaasInstallation(UUID.randomUUID(), company, store, license, installationId,
+                    "INST-" + profile, "key", "token-hash", NOW);
+            when(installations.findByInstallationIdAndLicense_Reference(installationId, license.getReference()))
+                    .thenReturn(Optional.of(installation));
+            var response = service.validate(new LicenseSaasValidationRequest(installationId, installation.getInstallationReference(),
+                    store.getId(), license.getReference(), "hash"), "token");
+            assertThat(response.commercialProfile()).isEqualTo(profile);
+            assertThat(response.saasStoreId()).isEqualTo(store.getId());
+        }
+        assertThat(company.getCommercialProfile()).isEqualTo(CommercialProfile.MAYORISTA);
+    }
+
+    @Test
     void devuelveCaducadaAunqueElEstadoPersistidoSigaSiendoValida() {
         var company = new SaasCompany(
                 UUID.randomUUID(), "Empresa", "B12345674",

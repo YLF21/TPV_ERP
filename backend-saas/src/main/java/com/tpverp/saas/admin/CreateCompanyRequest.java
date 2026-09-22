@@ -1,32 +1,32 @@
 package com.tpverp.saas.admin;
 
-import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
 import com.tpverp.saas.license.CommercialProfile;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import java.time.Instant;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.Map;
 
 public record CreateCompanyRequest(
-        @NotBlank String name,
+        @NotBlank @Size(max = 200) String name,
         @NotBlank String taxId,
         @NotNull TaxpayerType taxpayerType,
-        @NotNull TaxRegime impuestos,
-        @NotNull CommercialProfile commercialProfile,
+        CommercialProfile commercialProfile,
         @NotNull Map<String, String> companyAddress,
-        @NotBlank String storeCode,
-        String storeName,
-        @NotNull Map<String, String> storeAddress,
-        @NotBlank String timeZoneId,
-        @NotNull Instant validUntil,
-        @Min(value = 1, message = "maxWindows debe ser al menos 1") int maxWindows,
-        @Min(value = 0, message = "maxPda no puede ser negativo") int maxPda) {
+        @Size(max = 160) String contactName,
+        @Email @Size(max = 160) String contactEmail,
+        @Size(max = 40) String contactPhone,
+        @Pattern(regexp = "NORMAL|ATENCION|BLOQUEADO") String supportStatus,
+        @Size(max = 4000) String notes,
+        @NotEmpty List<@NotNull @Valid CompanyOwner> owners) {
     public CreateCompanyRequest(String name, String taxId, TaxpayerType taxpayerType,
-            TaxRegime impuestos, String storeCode, String storeName, Instant validUntil,
-            int maxWindows, int maxPda) {
-        this(name, taxId, taxpayerType, impuestos, CommercialProfile.MAYORISTA,
-                null, storeCode, storeName, null, null, validUntil, maxWindows, maxPda);
+            CommercialProfile commercialProfile, Map<String, String> companyAddress, List<CompanyOwner> owners) {
+        this(name, taxId, taxpayerType, commercialProfile, companyAddress,
+                null, null, null, null, null, owners);
     }
 }

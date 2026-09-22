@@ -1,0 +1,35 @@
+.stores-workspace { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 220px; }
+.stores-workspace > :not(.stores-table-region) { flex-shrink: 0; }
+.stores-list-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.stores-list-heading h2 { margin-bottom: 4px; }
+.stores-list-heading > button { flex-shrink: 0; }
+.stores-table-hint { margin: 0 0 12px; color: #536b83; font-size: 13px; }
+.stores-workspace .directory-filter-main { grid-template-columns: minmax(200px, 2fr) minmax(180px, 1fr) auto; }
+.stores-table-region { display: flex; flex-direction: column; flex: 1; min-height: 180px; }
+@media (max-width: 700px) { .stores-workspace .directory-filter-main { grid-template-columns: 1fr; } .stores-list-heading { flex-wrap: wrap; } }
+.stores-table-scroll { flex: 1; min-height: 0; max-height: none; overflow: auto; overscroll-behavior: contain; scroll-padding-top: 36px; }
+.stores-table-region > :not(.stores-table-scroll) { flex-shrink: 0; }
+.stores-table-region > p { margin: 8px 0 0; }
+.stores-table-region > .notice { margin: 8px 0 0; }
+.saas-store-dialog { width: min(1180px, calc(100vw - 40px)); }
+.saas-store-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.saas-store-dialog .saas-workspace-dialog-header { flex-shrink: 0; }
+.saas-store-dialog .saas-workspace-dialog-body { min-height: 0; overflow: auto; }
+.saas-store-dialog .notice { position: sticky; top: 0; z-index: 2; }
+.store-detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 14px; }
+.store-detail-summary > div { padding: 10px; border: 1px solid #c4d2df; background: #fff; }
+.store-detail-summary dt { font-size: 12px; color: #536b83; }
+.store-detail-summary dd { margin: 4px 0 0; font-weight: 700; }
+.store-form { margin: 0; }
+.store-fields { min-width: 0; margin: 0; padding: 12px; border: 1px solid #c4d2df; background: #fff; align-items: start; }
+.store-fields > legend { padding: 0 6px; font-size: 13px; font-weight: 700; }
+.store-fields > label { display: grid; gap: 5px; min-width: 0; }
+.store-fields > label > select { width: 100%; min-height: 36px; border: 1px solid #aebfd2; background: #fff; color: #172e4c; }
+.store-fields > .address-fields, .store-fields > .store-form-wide { grid-column: 1 / -1; }
+.store-fields > .address-fields { border-radius: 2px; }
+.store-fields > .store-form-wide { margin: 0; }
+.saas-store-dialog .date-time-popover { left: auto; right: 0; }
+.store-form > .form-actions { position: sticky; bottom: -18px; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; padding: 10px 0; border-top: 1px solid #c4d2df; background: #f5f8fc; z-index: 1; }
+.store-activity-action { margin-left: auto; }
+@media (max-width: 820px) { .store-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .store-detail-summary { grid-template-columns: 1fr; } .saas-store-dialog .date-time-popover { left: 0; right: auto; } }

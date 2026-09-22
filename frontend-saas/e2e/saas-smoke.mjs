@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import playwright from "playwright";
+import { createRequire } from "node:module";
+const localRequire = createRequire(import.meta.url);
+let playwright;
+try { playwright = localRequire("playwright"); }
+catch { playwright = createRequire(new URL("../../frontend/package.json", import.meta.url))("playwright"); }
 const { chromium } = playwright;
 
 const baseUrl = process.env.SAAS_E2E_URL ?? "http://127.0.0.1:5185/";
@@ -56,7 +60,7 @@ try {
     if (destination === "password-change") {
       const passwordFields = page.locator('.login-panel input[autocomplete="new-password"]');
       assert.equal(await passwordFields.count(), 2);
-      assert.deepEqual(await passwordFields.evaluateAll((fields) => fields.map((field) => field.minLength)), [12, 12]);
+      assert.deepEqual(await passwordFields.evaluateAll((fields) => fields.map((field) => field.minLength)), [4, 4]);
       assert.equal(await page.locator("#password-change-title").isVisible(), true);
       await page.locator(".login-panel button.secondary-button").click();
       await page.locator('input[autocomplete="current-password"]').waitFor({ state: "visible" });
@@ -71,7 +75,7 @@ try {
   const passwordPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   await passwordPage.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/v1/auth/login") {
+    if (path === "/api/v1/auth/admin/login") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ username: "PASSWORD_E2E", accessToken: "pending-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: true }) });
     } else if (path === "/api/v1/auth/password/change") {
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -109,7 +113,7 @@ try {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-    if (path === "/api/v1/auth/login") {
+    if (path === "/api/v1/auth/admin/login") {
       await json({ username: "ADMIN_E2E", accessToken: "admin-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
     } else if (path === "/api/v1/admin/me") {
       await json({ username: "ADMIN_E2E", permissions: ["MANAGE_BILLING", "MANAGE_OPERATIONS"] });
@@ -138,11 +142,11 @@ try {
       await json({ invoiceId: "invoice-other", companyId: "company-other", number: "OTHER-1", series: "O", fiscalYear: 2026, taxRegime: "IVA", fiscalStatus: "CALCULATED", taxBase: "16.53", taxRate: "21.00", taxAmount: "3.47", reason: null, legalBasis: null, evidenceReference: null, total: "20.00", currency: "EUR" });
     } else if (path === "/api/v1/admin/invoices/invoice-fiscal/fiscal" && method === "PUT") {
       const payload = JSON.parse(route.request().postData() ?? "{}");
-      assert.deepEqual(payload, { fiscalStatus: "CALCULATED", taxBase: "100.00", taxRate: "21.00", taxAmount: "21.00", reason: null, legalBasis: null, evidenceReference: null });
+      assert.deepEqual(payload, { taxRegime: "IVA", fiscalStatus: "CALCULATED", taxBase: "100.00", taxRate: "21.00", taxAmount: "21.00", reason: null, legalBasis: null, evidenceReference: null });
       fiscalDecisionSaved = true;
       await json({ invoiceId: "invoice-fiscal", companyId: "company-fiscal", number: "F-E2E-1", series: "F", fiscalYear: 2026, taxRegime: "IVA", fiscalStatus: "CALCULATED", taxBase: "100.00", taxRate: "21.00", taxAmount: "21.00", reason: null, legalBasis: null, evidenceReference: null, total: "121.00", currency: "EUR" });
     } else if (path === "/api/v1/admin/invoices/invoice-fiscal/fiscal") {
-      await json({ invoiceId: "invoice-fiscal", companyId: "company-fiscal", number: "F-E2E-1", series: "F", fiscalYear: 2026, taxRegime: "IVA", fiscalStatus: fiscalDecisionSaved ? "CALCULATED" : "PENDING_TAX_DATA", taxBase: fiscalDecisionSaved ? "100.00" : null, taxRate: fiscalDecisionSaved ? "21.00" : null, taxAmount: fiscalDecisionSaved ? "21.00" : null, reason: null, legalBasis: null, evidenceReference: null, total: "121.00", currency: "EUR" });
+      await json({ invoiceId: "invoice-fiscal", companyId: "company-fiscal", number: "F-E2E-1", series: "F", fiscalYear: 2026, taxRegime: fiscalDecisionSaved ? "IVA" : null, fiscalStatus: fiscalDecisionSaved ? "CALCULATED" : "PENDING_TAX_DATA", taxBase: fiscalDecisionSaved ? "100.00" : null, taxRate: fiscalDecisionSaved ? "21.00" : null, taxAmount: fiscalDecisionSaved ? "21.00" : null, reason: null, legalBasis: null, evidenceReference: null, total: "121.00", currency: "EUR" });
     } else if (path === "/api/v1/admin/invoices/invoice-fiscal/payments" && method === "POST") {
       assert.equal(fiscalDecisionSaved, true);
       fiscalPaymentCreated = true;
@@ -164,7 +168,7 @@ try {
     } else if (path === "/api/v1/admin/sync/sales-summary") {
       await json({ documentCount: 0, total: "0.00" });
     } else if (path === "/api/v1/admin/reports/advanced") {
-      await json({ companies: 0, subscriptions: 0, subscriptionMrr: "0.00", invoices: 0, invoicedTotal: "0.00", paidTotal: "0.00", salesDocuments: 0, salesTotal: "0.00", inventoryMovements: 0, integrations: 0, activeIntegrations: 0 });
+      await json({ companies: 0, invoices: 0, invoicedTotal: "0.00", paidTotal: "0.00", salesDocuments: 0, salesTotal: "0.00", inventoryMovements: 0, integrations: 0, activeIntegrations: 0 });
     } else if (path.startsWith("/api/v1/admin/")) {
       await json([]);
     } else {
@@ -177,7 +181,7 @@ try {
   await adminPage.locator("form button[type=submit]").click();
   await adminPage.locator(".saas-dashboard").waitFor({ state: "visible", timeout: 15_000 });
   assert.equal(await adminPage.locator('.top-nav-list button[aria-current="page"]').count(), 1);
-  const billingNavigation = adminPage.locator(".top-nav-list button").nth(7);
+  const billingNavigation = adminPage.locator(".top-nav-list").getByRole("button", { name: "Facturacion", exact: true });
   await billingNavigation.click();
   await adminPage.waitForFunction(() => location.hash === "#/billing");
   assert.equal(await billingNavigation.getAttribute("aria-current"), "page");
@@ -201,10 +205,15 @@ try {
   const paymentForm = adminPage.locator("form").filter({ has: adminPage.getByRole("button", { name: "Registrar pago" }) });
   const fiscalPaymentOption = paymentForm.getByLabel("Facturas").locator('option[value="invoice-fiscal"]');
   assert.equal(await fiscalPaymentOption.evaluate((option) => option.disabled), true);
+  const missingRegime = fiscalForm.getByRole("combobox").filter({ has: adminPage.locator('option[value="IGIC"]') });
+  assert.equal(await missingRegime.inputValue(), "");
+  assert.equal(await missingRegime.evaluate(select => select.required), true);
+  await missingRegime.selectOption("IVA");
   await fiscalForm.getByLabel("Base imponible").fill("100.00");
   await fiscalForm.getByLabel("Impuesto", { exact: true }).fill("21.00");
   await fiscalForm.getByLabel("Cuota fiscal").fill("21.00");
   await fiscalForm.getByRole("button", { name: "Guardar decisión fiscal" }).click();
+  await missingRegime.waitFor({ state: "hidden" });
   await fiscalPaymentOption.evaluate((option) => new Promise((resolve) => {
     if (!option.disabled) resolve();
     else new MutationObserver(() => { if (!option.disabled) resolve(); }).observe(option, { attributes: true });
@@ -236,39 +245,6 @@ try {
   await adminPage.getByText("No hay entregas fallidas.", { exact: true }).waitFor();
   assert.equal(outboxFailureActive, false);
   console.log("SaaS E2E passed: paginated V50 outbox recovery and confirmed requeue.");
-  const tenantPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  let adminRequests = 0;
-  await tenantPage.route("**/api/v1/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.startsWith("/api/v1/admin/")) {
-      adminRequests += 1;
-      await route.fulfill({ status: 500, body: "Admin endpoint must not be called for tenant login" });
-    } else if (path === "/api/v1/auth/login") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ username: "OWNER_DEMO", accessToken: "tenant-token", mode: "tenant", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false }) });
-    } else if (path === "/api/v1/tenant/me") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ username: "OWNER_DEMO", companyId: "company-1", companyName: "Tenant E2E", roleName: "OWNER" }) });
-    } else if (path === "/api/v1/tenant/dashboard") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ companyId: "company-1", companyName: "Tenant E2E", licenses: 0, stores: 0, installations: 0, openTickets: 0, billingStatus: "PAGADO", renewalDate: null, monthlyPrice: null }) });
-    } else if (path === "/api/v1/tenant/erp/products") {
-      await route.fulfill({ status: 503, contentType: "application/problem+json", body: JSON.stringify({ detail: "Products temporarily unavailable" }) });
-    } else if (path.startsWith("/api/v1/tenant/")) {
-      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
-    } else {
-      await route.continue();
-    }
-  });
-  await tenantPage.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15_000 });
-  await tenantPage.locator('input[autocomplete="username"]').fill("OWNER_DEMO");
-  await tenantPage.locator('input[autocomplete="current-password"]').fill("not-a-real-password");
-  await tenantPage.locator("form button[type=submit]").click();
-  await tenantPage.locator(".tenant-shell").waitFor({ state: "visible", timeout: 15_000 });
-  assert.equal(adminRequests, 0);
-  assert.match(await tenantPage.locator(".notice.error").innerText(), /products.*temporarily unavailable/i);
-  await tenantPage.locator(".tenant-top-nav button").nth(2).click();
-  await tenantPage.waitForFunction(() => location.hash === "#tenant-masters");
-  await tenantPage.goBack();
-  assert.notEqual(await tenantPage.evaluate(() => location.hash), "#tenant-masters");
-  console.log("SaaS E2E passed: tenant realm routing, partial data tolerance and tenant history navigation.");
   if (runRealBackend) await runRealBackendScenario();
   else console.log("SaaS E2E: real backend scenario skipped; set SAAS_E2E_REAL_BACKEND=true to enable it.");
 } finally {

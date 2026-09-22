@@ -195,8 +195,8 @@ class OperationalIncidentApiTest {
                 """, companyId, "Empresa incidencias",
                 "T" + companyId.toString().replace("-", "").substring(0, 30), Timestamp.from(now));
         jdbc.update("""
-                insert into saas_store (id, company_id, code, name, created_at)
-                values (?, ?, '001', 'Tienda incidencias', ?)
+                insert into saas_store (id, company_id, code, name, tax_regime, commercial_profile, created_at)
+                values (?, ?, '001', 'Tienda incidencias', 'IVA', 'MAYORISTA', ?)
                 """, storeId, companyId, Timestamp.from(now));
         return new CompanyFixture(companyId, storeId);
     }

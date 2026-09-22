@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSources } from "../test-support/source-helpers.mjs";
 import { extractApiErrorMessage } from "../src/lib/problem-detail.mjs";
 
 test("frontend SaaS shows RFC 9457 detail for actionable API errors", async () => {
-  const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const appSource = await readSources("shared/lib.tsx");
 
   for (const [status, detail] of [
     [400, "El NIF de la empresa no es válido."],
@@ -19,7 +20,7 @@ test("frontend SaaS shows RFC 9457 detail for actionable API errors", async () =
 });
 
 test("server errors are sanitized before problem details can reach the UI", async () => {
-  const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const appSource = await readSources("shared/lib.tsx");
   const serverGuard = appSource.indexOf("if (error.status >= 500)", appSource.indexOf("function errorMessage"));
   const detailExtraction = appSource.indexOf("extractApiErrorMessage(error.message)", appSource.indexOf("function errorMessage"));
   assert.ok(serverGuard > 0 && serverGuard < detailExtraction);

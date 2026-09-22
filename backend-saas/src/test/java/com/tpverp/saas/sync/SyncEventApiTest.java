@@ -1,5 +1,8 @@
 package com.tpverp.saas.sync;
 
+import com.tpverp.saas.ProvisioningRequest;
+import com.tpverp.saas.ProvisionedCompany;
+
 import static com.tpverp.saas.SaasTestData.fiscalAddress;
 import static com.tpverp.saas.SaasTestData.validCif;
 
@@ -10,8 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.tpverp.saas.admin.CreateCompanyRequest;
-import com.tpverp.saas.admin.CreateCompanyResponse;
+
+
 import com.tpverp.saas.fiscal.SaasFiscalStatusRepository;
 import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.LicenseSaasLinkResponse;
@@ -42,7 +45,7 @@ class SyncEventApiTest {
 
     @Test
     void guardaEventoSyncConTokenValido() throws Exception {
-        CreateCompanyResponse company = createCompany("B44444543");
+        ProvisionedCompany company = createCompany("B44444543");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         UUID eventId = UUID.randomUUID();
 
@@ -80,7 +83,7 @@ class SyncEventApiTest {
 
     @Test
     void persisteComoProjectedUnInformeFiscalValido() throws Exception {
-        CreateCompanyResponse company = createCompany("B30303030");
+        ProvisionedCompany company = createCompany("B30303030");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse link = link(company, installationId);
         UUID eventId = UUID.randomUUID();
@@ -119,7 +122,7 @@ class SyncEventApiTest {
 
     @Test
     void eventoDuplicadoEsIdempotente() throws Exception {
-        CreateCompanyResponse company = createCompany("B55555555");
+        ProvisionedCompany company = createCompany("B55555555");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         UUID eventId = UUID.randomUUID();
         long before = events.count();
@@ -149,7 +152,7 @@ class SyncEventApiTest {
 
     @Test
     void rechazaEventoSinToken() throws Exception {
-        CreateCompanyResponse company = createCompany("B66666666");
+        ProvisionedCompany company = createCompany("B66666666");
 
         mvc.perform(post("/api/v1/sync/events")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -167,7 +170,7 @@ class SyncEventApiTest {
 
     @Test
     void conservaComoErrorElInformeFiscalInvalidoSinRomperLaTransaccion() throws Exception {
-        CreateCompanyResponse company = createCompany("B20202020");
+        ProvisionedCompany company = createCompany("B20202020");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse link = link(company, installationId);
         UUID eventId = UUID.randomUUID();
@@ -212,7 +215,7 @@ class SyncEventApiTest {
 
     @Test
     void reproyectaUnDuplicadoEnErrorSinDuplicarElEstadoFiscal() throws Exception {
-        CreateCompanyResponse company = createCompany("B21212121");
+        ProvisionedCompany company = createCompany("B21212121");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse link = link(company, installationId);
         UUID eventId = UUID.randomUUID();
@@ -268,7 +271,7 @@ class SyncEventApiTest {
 
     @Test
     void consultaEventosSyncPorTipoDesdeAdmin() throws Exception {
-        CreateCompanyResponse company = createCompany("B77777777");
+        ProvisionedCompany company = createCompany("B77777777");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         UUID saleEventId = UUID.randomUUID();
         UUID stockEventId = UUID.randomUUID();
@@ -327,7 +330,7 @@ class SyncEventApiTest {
 
     @Test
     void consultaStockActualCalculadoDesdeMovimientos() throws Exception {
-        CreateCompanyResponse company = createCompany("B77889900");
+        ProvisionedCompany company = createCompany("B77889900");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         String productId = UUID.randomUUID().toString();
         String warehouseId = UUID.randomUUID().toString();
@@ -374,8 +377,8 @@ class SyncEventApiTest {
 
     @Test
     void filtraEventosAdminPorEmpresa() throws Exception {
-        CreateCompanyResponse company = createCompany("B88990011");
-        CreateCompanyResponse otherCompany = createCompany("B99001122");
+        ProvisionedCompany company = createCompany("B88990011");
+        ProvisionedCompany otherCompany = createCompany("B99001122");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         LicenseSaasLinkResponse otherLink = link(otherCompany, UUID.randomUUID());
         UUID eventId = UUID.randomUUID();
@@ -417,7 +420,7 @@ class SyncEventApiTest {
 
     @Test
     void resumeVentasDesdeDocumentosSinCompras() throws Exception {
-        CreateCompanyResponse company = createCompany("B10101010");
+        ProvisionedCompany company = createCompany("B10101010");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
 
         sendEvent(link, documentEvent(company, "TICKET", "12.50", SyncOperation.CONFIRMAR));
@@ -440,7 +443,7 @@ class SyncEventApiTest {
 
     @Test
     void paginaEventosConCursorEstableYLimiteSeguro() throws Exception {
-        CreateCompanyResponse company = createCompany("B12121212");
+        ProvisionedCompany company = createCompany("B12121212");
         LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
         for (int index = 0; index < 205; index++) {
             sendEvent(link, documentEvent(company, "TICKET", "1.00", SyncOperation.CONFIRMAR));
@@ -469,7 +472,7 @@ class SyncEventApiTest {
 
     @Test
     void paginaEstadoFiscalIncluyeTiendaSinReporteYAplicaFiltro() throws Exception {
-        CreateCompanyResponse company = createCompany("B13131313");
+        ProvisionedCompany company = createCompany("B13131313");
         UUID installationId = UUID.randomUUID();
         LicenseSaasLinkResponse link = link(company, installationId);
         sendEvent(link, new SyncEventRequest(
@@ -489,7 +492,7 @@ class SyncEventApiTest {
                 .andExpect(status().isOk());
     }
 
-    private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
+    private LicenseSaasLinkResponse link(ProvisionedCompany company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .header("X-TPV-Link-Recovery-Token",
                                 "recovery-token-0123456789abcdef0123456789abcdef")
@@ -520,7 +523,7 @@ class SyncEventApiTest {
     }
 
     private SyncEventRequest documentEvent(
-            CreateCompanyResponse company,
+            ProvisionedCompany company,
             String type,
             String total,
             SyncOperation operation) {
@@ -543,11 +546,8 @@ class SyncEventApiTest {
         return mapper.readValue(result.getResponse().getContentAsString(), AdminSyncEventView[].class);
     }
 
-    private CreateCompanyResponse createCompany(String taxId) throws Exception {
-        var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("Authorization", basic("admin", "admin"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new CreateCompanyRequest(
+    private ProvisionedCompany createCompany(String taxId) throws Exception {
+        return com.tpverp.saas.SaasTestData.provisionCompany(mvc, mapper, new ProvisioningRequest(
                                 "Empresa",
                                 validCif(taxId),
                                 TaxpayerType.SOCIEDAD,
@@ -560,10 +560,7 @@ class SyncEventApiTest {
                                 "Atlantic/Canary",
                                 Instant.parse("2099-07-01T00:00:00Z"),
                                 2,
-                                1))))
-                .andExpect(status().isOk())
-                .andReturn();
-        return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+                                1));
     }
 
     private String basic(String user, String password) {

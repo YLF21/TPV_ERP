@@ -6,10 +6,10 @@ import java.util.UUID;
 public record TenantDashboardResponse(
         UUID companyId,
         String companyName,
-        long licenses,
+        Long licenses,
         long stores,
         long installations,
-        long openTickets,
+        Long openTickets,
         String billingStatus,
         Instant renewalDate,
         String monthlyPrice) {

@@ -35,6 +35,12 @@ public class SyncEventService {
     private CustomerIdentityService customerIdentityService;
     private CustomerAdoptionService customerAdoptionService;
     private CommercialDocumentSyncProjector commercialDocumentSyncProjector;
+    private com.tpverp.saas.supervision.StoreFailureProjector storeFailureProjector;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setStoreFailureProjector(com.tpverp.saas.supervision.StoreFailureProjector projector) {
+        this.storeFailureProjector = projector;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setCommercialDocumentSyncProjector(CommercialDocumentSyncProjector projector) {
@@ -148,6 +154,20 @@ public class SyncEventService {
     }
 
     private void project(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        try {
+            projectEvent(event, request, projectedAt);
+        } finally {
+            if (storeFailureProjector != null) storeFailureProjector.recordProjection(event, projectedAt);
+        }
+    }
+
+    private void projectEvent(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        if (storeFailureProjector != null && storeFailureProjector.supports(request.entityType(), request.operation())) {
+            events.flush();
+            storeFailureProjector.project(event, request.payload());
+            event.markProjected(projectedAt);
+            return;
+        }
         if (customerAdoptionService.supports(request.entityType(), request.operation())) {
             customerAdoptionService.finalizeAdoption(event, request.payload());
             event.markProjected(projectedAt);
