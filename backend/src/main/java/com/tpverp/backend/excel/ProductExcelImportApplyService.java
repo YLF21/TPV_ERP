@@ -94,7 +94,7 @@ public class ProductExcelImportApplyService {
         }
         ProductExcelImportPreviewService.PreviewRequest canonicalPreview = canonicalizeContext(request.preview());
         String applyContext = canonicalPreview.options() == null ? null : canonicalPreview.options().context();
-        if ("STOCK".equals(applyContext) || "WAREHOUSE_OUTPUT".equals(applyContext)) {
+        if ("STOCK".equals(applyContext) || "WAREHOUSE_OUTPUT".equals(applyContext) || "WAREHOUSE_TRANSFER".equals(applyContext)) {
             return fail(request, file, List.of(error("APPLY_CONTEXT_UNSUPPORTED", null,
                     "Este contexto debe continuar por su flujo atomico especifico y no puede escribir el maestro aqui",
                     "WAREHOUSE_INPUT", "Usa el flujo de edicion masiva de Stock o el documento de salida")));
@@ -234,6 +234,12 @@ public class ProductExcelImportApplyService {
         var original = forceDatabaseSnapshot(canonicalizeContext(request.preview()));
         requireContextPermission(original);
         boolean prepare = request.operation() == Operation.PREPARE_DESTINATION;
+        if ("WAREHOUSE_TRANSFER".equals(original.options().context())
+                && (!prepare || Boolean.TRUE.equals(request.updateSupplier()))) {
+            return fail(request, file, List.of(error("APPLY_CONTEXT_UNSUPPORTED", null,
+                    "Los traspasos solo pueden preparar productos existentes para el documento",
+                    "PREPARE_DESTINATION sin actualizar proveedor", "Importa los productos existentes al documento")));
+        }
         if (!prepare && !PermissionChecks.hasProductManagement(SecurityContextHolder.getContext().getAuthentication())) {
             deny("GESTION_PRODUCTO es necesario para crear o actualizar productos");
         }
@@ -412,7 +418,9 @@ public class ProductExcelImportApplyService {
         String context = request.options() == null ? null : request.options().context();
         boolean warehouse = "WAREHOUSE_INPUT".equals(context) || "WAREHOUSE_OUTPUT".equals(context);
         boolean allowed = "STOCK".equals(context) ? PermissionChecks.hasProductManagement(authentication)
-                : warehouse && PermissionChecks.hasWarehouseManagement(authentication);
+                : "WAREHOUSE_TRANSFER".equals(context)
+                    ? PermissionChecks.hasWarehouseManagement(authentication) || PermissionChecks.hasAuthority(authentication, "STOCK_TRANSFER")
+                    : warehouse && PermissionChecks.hasWarehouseManagement(authentication);
         if (!allowed) deny("Permiso insuficiente para aplicar la importacion");
     }
 
@@ -688,7 +696,7 @@ public class ProductExcelImportApplyService {
         String suppliedContext = request == null || request.preview() == null || request.preview().options() == null
                 ? null : request.preview().options().context();
         String context = ProductExcelImportPreviewService.canonicalContext(suppliedContext);
-        if (context == null || !Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT").contains(context)) context = "";
+        if (context == null || !Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT", "WAREHOUSE_TRANSFER").contains(context)) context = "";
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("fileName", fileName);
         details.put("sha256", expectedHash);
@@ -724,7 +732,7 @@ public class ProductExcelImportApplyService {
     private static String auditContext(ProductExcelImportPreviewService.PreviewRequest request) {
         String raw = request == null || request.options() == null ? null : request.options().context();
         String canonical = ProductExcelImportPreviewService.canonicalContext(raw);
-        return canonical != null && Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT").contains(canonical)
+        return canonical != null && Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT", "WAREHOUSE_TRANSFER").contains(canonical)
                 ? canonical : "";
     }
 

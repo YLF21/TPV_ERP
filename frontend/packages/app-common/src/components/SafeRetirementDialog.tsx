@@ -1,3 +1,4 @@
+import "./ErpClassicWindow.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiProblemCode, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -23,6 +24,7 @@ export type RetirementResult = {
 
 type SafeRetirementDialogProps = {
   open: boolean;
+  classicWindow?: boolean;
   entityPath: RetirementEntityPath;
   entityLabel: string;
   entityId: string;
@@ -96,7 +98,8 @@ export function SafeRetirementDialog({
   locale,
   token,
   onClose,
-  onRetired
+  onRetired,
+  classicWindow = false
 }: SafeRetirementDialogProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -201,8 +204,8 @@ export function SafeRetirementDialog({
   const titleId = `safe-retirement-title-${entityId}`;
   const descriptionId = `safe-retirement-description-${entityId}`;
   return (
-    <div className="filter-overlay safe-retirement-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
-      <section className="filter-dialog safe-retirement-dialog">
+    <div className={`filter-overlay safe-retirement-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
+      <section className={`filter-dialog safe-retirement-dialog${classicWindow ? " erp-classic-window" : ""}`}>
         <header className="filter-header">
           <div>
             <h2 id={titleId}>{t("safeManagement.retirement.title")}</h2>

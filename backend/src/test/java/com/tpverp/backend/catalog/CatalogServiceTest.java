@@ -87,6 +87,24 @@ class CatalogServiceTest {
     }
 
     @Test
+    void generalWarehouseUsesCurrentStoreAddressAndRejectsAddressEdits() {
+        var general = Warehouse.general(storeId);
+        when(warehouseRepository.findById(general.getId())).thenReturn(Optional.of(general));
+        when(store.getDireccion()).thenReturn(Map.of("linea1", "Calle Mayor 12", "codigoPostal", "35001",
+                "ciudad", "Las Palmas", "provincia", "Las Palmas", "pais", "ES"));
+
+        String storeAddress = "Calle Mayor 12, 35001 Las Palmas, Las Palmas, ES";
+        assertThat(service.currentStoreAddress()).isEqualTo(storeAddress);
+        assertThatThrownBy(() -> service.updateWarehouse(general.getId(), "GENERAL", "Otra dirección", "Nota"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("dirección");
+
+        service.updateWarehouse(general.getId(), "GENERAL", storeAddress, "Nota");
+        assertThat(general.getAddress()).isNull();
+        assertThat(general.getNotes()).isEqualTo("Nota");
+    }
+
+    @Test
     void validatesBulkExportCodesInBulkAndRejectsAFalseOrForeignCode() {
         Family family = Family.general(storeId);
         when(familyRepository.findByStoreIdAndIdIn(storeId, List.of(family.getId())))

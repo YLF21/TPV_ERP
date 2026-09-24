@@ -246,9 +246,9 @@ test.describe("APP GESTIÓN · recorridos esenciales", () => {
     expect((await warehousesResponse).ok()).toBeTruthy();
     const workspace = page.locator(".gestion-warehouse-workspace");
     await expect(workspace).toBeVisible();
-    await expect(workspace.locator(".gestion-warehouse-list")).toBeVisible();
+    await expect(workspace.locator(".gestion-warehouse-cards")).toBeVisible();
     await expect.poll(() => (
-      workspace.locator('.gestion-warehouse-row[role="row"]').count()
-    )).toBeGreaterThan(1);
+      workspace.locator('.gestion-warehouse-card').count()
+    )).toBeGreaterThan(0);
   });
 });

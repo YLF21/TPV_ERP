@@ -65,6 +65,30 @@ public class DocumentCounter {
         return counter;
     }
 
+    public static DocumentCounter traspasoAlmacen(UUID storeId, LocalDate date) {
+        return entradaAlmacen(storeId, date, "TRA");
+    }
+
+    public String siguienteTraspasoAlmacen(LocalDate date) {
+        var year = Integer.toString(Objects.requireNonNull(date).getYear());
+        if (!tipo.equals("TRA") || !periodo.equals(year)) {
+            throw new IllegalArgumentException("Periodo del traspaso inválido");
+        }
+        return "TRA-%d-%06d".formatted(date.getYear(), ++ultimoNumero);
+    }
+
+    public static DocumentCounter inventario(UUID storeId, LocalDate date) {
+        return entradaAlmacen(storeId, date, "INV");
+    }
+
+    public String siguienteInventario(LocalDate date) {
+        var year = Integer.toString(Objects.requireNonNull(date).getYear());
+        if (!tipo.equals("INV") || !periodo.equals(year)) {
+            throw new IllegalArgumentException("Periodo del inventario inválido");
+        }
+        return "INV-%d-%06d".formatted(date.getYear(), ++ultimoNumero);
+    }
+
     // Increments the counter and returns the formatted number.
     public String siguiente(CommercialDocumentType tipo, LocalDate fecha) {
         return siguiente(tipo, fecha, "001");

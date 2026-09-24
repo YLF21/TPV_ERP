@@ -6,6 +6,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_TRANSFER;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.TAXES_MANAGE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
@@ -41,8 +42,17 @@ class CatalogControllerContractTest {
         assertAllows(FamilyController.class, "nextSuffix", GetMapping.class, PRODUCTS_WRITE, java.util.UUID.class);
         assertAllows(TaxController.class, "selectable", GetMapping.class, VENTA);
         assertAllows(TaxController.class, "selectable", GetMapping.class, GESTION_ALMACEN);
+        assertAllows(TaxController.class, "selectable", GetMapping.class, STOCK_TRANSFER);
+        for (var method : TaxController.class.getDeclaredMethods()) {
+            if (method.isAnnotationPresent(PreAuthorize.class) && !method.getName().equals("selectable")) {
+                assertThat(method.getAnnotation(PreAuthorize.class).value()).doesNotContain(STOCK_TRANSFER);
+            }
+        }
         assertAllows(TaxController.class, "list", GetMapping.class, TAXES_MANAGE);
         assertAllows(ProductController.class, "warehouseOptions", GetMapping.class, GESTION_ALMACEN);
+        assertAllows(ProductController.class, "warehouseOptions", GetMapping.class, STOCK_TRANSFER);
+        assertThat(ProductController.class.getDeclaredMethod("create", CatalogService.ProductRequest.class)
+                .getAnnotation(PreAuthorize.class).value()).doesNotContain(STOCK_TRANSFER);
         assertAllows(ProductController.class, "create", PostMapping.class, GESTION_PRODUCTO, CatalogService.ProductRequest.class);
         assertAllows(ProductController.class, "uploadImage", PutMapping.class, GESTION_PRODUCTO,
                 java.util.UUID.class, org.springframework.web.multipart.MultipartFile.class,
@@ -95,6 +105,12 @@ class CatalogControllerContractTest {
 
     @Test
     void warehouseStructureCanBeManagedByWarehouseOperationsOrDedicatedManagement() throws Exception {
+        assertAllows(WarehouseController.class, "list", GetMapping.class, STOCK_TRANSFER);
+        for (var method : WarehouseController.class.getDeclaredMethods()) {
+            if (method.isAnnotationPresent(PreAuthorize.class) && !method.getName().equals("list")) {
+                assertThat(method.getAnnotation(PreAuthorize.class).value()).doesNotContain(STOCK_TRANSFER);
+            }
+        }
         assertAllows(WarehouseController.class, "create", PostMapping.class,
                 GESTION_ALMACEN, WarehouseController.NameRequest.class);
         assertAllows(WarehouseController.class, "create", PostMapping.class,

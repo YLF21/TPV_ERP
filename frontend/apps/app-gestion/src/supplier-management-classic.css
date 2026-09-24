@@ -1,0 +1,192 @@
+.representative-management {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 320px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #ccd8e3;
+  background: #ffffff;
+}
+
+.representative-management > * {
+  flex-shrink: 0;
+}
+
+.representative-management-table-wrap {
+  flex: 1 1 200px;
+  min-height: 200px;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid #aebfd0;
+  background: #ffffff;
+}
+
+.representative-management .representative-management-table {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.representative-management .representative-management-row {
+  min-height: 36px;
+  height: 36px;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid #d9e3ed;
+  background: #ffffff;
+  color: #1c344c;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.representative-management button.representative-management-row:nth-of-type(odd) {
+  background: #f2f6fa;
+}
+
+.representative-management button.representative-management-row:hover {
+  background: #e8f1fa;
+  outline: none;
+}
+
+.representative-management button.representative-management-row.selected,
+.representative-management button.representative-management-row.selected:hover {
+  background: #d8e9fb;
+}
+
+.representative-management button.representative-management-row:focus-visible {
+  background: #e8f1fa;
+  outline: 2px solid #1f5a94;
+  outline-offset: -2px;
+}
+
+.representative-management .representative-management-row.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 36px;
+  min-height: 36px;
+  background: #12385f;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.representative-management-row > [role="columnheader"],
+.representative-management-row > [role="cell"] {
+  display: flex;
+  min-width: 0;
+  height: 36px;
+  align-items: center;
+  overflow: hidden;
+  padding: 0 10px;
+  border-right: 1px solid #d9e3ed;
+  box-sizing: border-box;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.representative-management-row > [role="columnheader"] {
+  padding: 0;
+  border-right-color: #426180;
+}
+
+.representative-management-row > [role="cell"] > :is(strong, span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.representative-management-row > :last-child { border-right: 0; }
+
+.representative-management .table-layout-sort-button {
+  height: 36px;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  color: #ffffff;
+}
+
+.representative-management .table-layout-sort-indicator { opacity: 1; }
+
+.representative-management-dialog .representative-management-form {
+  gap: 12px;
+}
+
+.representative-management-dialog .representative-management-form input {
+  min-height: 32px;
+  padding: 5px 8px;
+}
+
+.representative-management-dialog .representative-supplier-links {
+  border-radius: 1px;
+}
+
+.representative-management-dialog .representative-link-editor input {
+  min-height: 32px;
+}
+
+.gestion-safe-management.erp-classic-tables { background:#fff; min-width:0; }
+.gestion-safe-management.erp-classic-tables > [role="tabpanel"] { min-width:0; }
+.gestion-safe-management > .supplier-directory-tab {
+  display: flex;
+  flex-direction: column;
+}
+.gestion-safe-management > .supplier-directory-tab > * {
+  flex-shrink: 0;
+}
+.gestion-safe-management > .supplier-directory-tab > .party-directory-table {
+  flex: 1 1 200px;
+  min-height: 200px;
+}
+.gestion-safe-management.erp-classic-tables .party-directory-heading { background:#fff; }
+.gestion-safe-management.erp-classic-tables .party-directory-row:not(.header) { background:#fff; }
+.gestion-safe-management.erp-classic-tables .party-directory-row:not(.header):nth-child(odd) { background:#f2f6fa; }
+.gestion-safe-management.erp-classic-tables .party-directory-row:not(.header):hover { background:#e8f1fa; }
+.gestion-safe-management.erp-classic-tables .party-directory-row.selected { background:#d8e9fb; }
+.gestion-safe-management.erp-classic-tables .table-layout-drag-handle { display:none; }
+.gestion-safe-management.erp-classic-tables .table-layout-sort-indicator { visibility:visible; opacity:1; }
+.gestion-safe-management.erp-classic-tables .party-directory-heading { min-width:0; gap:12px; }
+
+.gestion-safe-management .representative-management { padding:0; border:0; }
+.gestion-safe-management .representative-management .stock-panel-heading { padding:12px 18px; }
+.gestion-safe-management .representative-management .stock-panel-heading h2 { margin:0 0 4px; font-size:22px; }
+.gestion-safe-management .representative-management-row { font-size:13px; }
+.gestion-safe-management .representative-management-row.header { font-size:12px; }
+
+.filter-dialog.erp-classic-window.representative-management-dialog { width:min(980px,100%) !important; }
+
+/* Reveal sorting without reserving empty space in idle directory headers. */
+.gestion-safe-management :is(.representative-management.erp-classic-tables, .supplier-directory-tab) .table-layout-sort-button { position:relative; }
+.gestion-safe-management :is(.representative-management.erp-classic-tables, .supplier-directory-tab) .table-layout-sort-indicator {
+  position:absolute !important;
+  right:4px;
+  opacity:0 !important;
+}
+.gestion-safe-management :is(.representative-management.erp-classic-tables, .supplier-directory-tab) .table-layout-sort-label { flex:1; }
+.gestion-safe-management :is(.representative-management.erp-classic-tables, .supplier-directory-tab) .table-layout-header-cell:is(:hover,:focus-within) .table-layout-sort-indicator { opacity:1 !important; }
+.gestion-safe-management :is(.representative-management.erp-classic-tables, .supplier-directory-tab) .table-layout-header-cell:is(:hover,:focus-within) .table-layout-sort-button { padding-right:22px !important; }
+.gestion-safe-management .representative-management .representative-status,
+.gestion-safe-management .supplier-directory-tab .supplier-status {
+  display:inline-flex;
+  align-items:center;
+  flex:0 0 auto;
+  width:auto;
+  height:22px;
+  min-height:0;
+  padding:0 8px;
+  border:1px solid transparent;
+  border-radius:2px;
+  font-size:12px;
+  font-weight:600;
+  line-height:20px;
+  white-space:nowrap;
+}
+.gestion-safe-management .representative-management .representative-status--active,
+.gestion-safe-management .supplier-directory-tab .supplier-status--active { color:#21633d; background:#eaf5ed; border-color:#c6dfcd; }
+.gestion-safe-management .representative-management .representative-status--inactive,
+.gestion-safe-management .supplier-directory-tab .supplier-status--inactive { color:#5a6673; background:#eef1f4; border-color:#d5dce3; }

@@ -12,6 +12,10 @@ vi.mock("./warehouseOperationsApi", async (importOriginal) => {
   return {
     ...original,
     loadWarehouseOperationResources: vi.fn(),
+    loadWarehouseOptions: vi.fn(),
+    loadStockAdjustmentHistory: vi.fn(),
+    searchWarehouseProducts: vi.fn(),
+    loadStockBalance: vi.fn(),
     createStockTransfer: vi.fn(),
     createStockAdjustment: vi.fn(),
     loadStockCounts: vi.fn(),
@@ -34,6 +38,7 @@ const resources = {
 
 const draftCount: api.StockCountDetail = {
   id: "count-1",
+  number: "INV-2026-000001",
   storeId: "store",
   warehouseId: "general",
   status: "DRAFT",
@@ -62,6 +67,10 @@ describe("WarehouseOperationsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.loadWarehouseOperationResources).mockResolvedValue(resources);
+    vi.mocked(api.loadWarehouseOptions).mockResolvedValue(resources.warehouses);
+    vi.mocked(api.loadStockAdjustmentHistory).mockResolvedValue({ items: [], nextCursor: null, hasMore: false });
+    vi.mocked(api.searchWarehouseProducts).mockResolvedValue({ items: [{ product: resources.products[0] }] });
+    vi.mocked(api.loadStockBalance).mockResolvedValue(resources.stock);
     vi.mocked(api.loadStockCounts).mockResolvedValue([]);
     vi.mocked(api.createStockTransfer).mockResolvedValue({
       transferId: "transfer", productId: "coffee", sourceWarehouseId: "general",
@@ -101,6 +110,9 @@ describe("WarehouseOperationsScreen", () => {
   it("sends negative adjustments with an audit reason", async () => {
     render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
     await screen.findByRole("heading", { name: "warehouse.adjustment.title" });
+    fireEvent.click(screen.getByRole("button", { name: "warehouse.adjustment.perform" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "warehouse.operations.product" }), { target: { value: "CAF" } });
+    fireEvent.click(await screen.findByRole("option", { name: /CAF.*Café/ }));
     fireEvent.click(screen.getByRole("radio", { name: /warehouse.adjustment.negative/ }));
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Rotura inventariada" } });
@@ -109,6 +121,40 @@ describe("WarehouseOperationsScreen", () => {
       productId: "coffee", warehouseId: "general", quantity: -2, reason: "Rotura inventariada"
     }, "token"));
     expect(await screen.findByRole("status")).toHaveTextContent("warehouse.adjustment.completed");
+  });
+
+  it("filters the full history by local date range and removes one tag independently", async () => {
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    const search = await screen.findByRole("searchbox", { name: "warehouse.management.search" });
+    fireEvent.change(search, { target: { value: "CAF" } });
+    fireEvent.change(screen.getByLabelText("warehouse.report.from"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("warehouse.report.to"), { target: { value: "2026-09-23" } });
+    await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
+      search: "CAF", from: new Date("2026-09-01T00:00:00").toISOString(), to: new Date("2026-09-24T00:00:00").toISOString()
+    })));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove warehouse.report.from" }));
+    await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
+      search: "CAF", from: undefined, to: new Date("2026-09-24T00:00:00").toISOString()
+    })));
+  });
+
+  it("shows the adjustment author and leaves unknown legacy authors blank", async () => {
+    const row = { movementId: "m1", warehouseId: "general", productId: "coffee", code: "CAF", name: "Café",
+      previousQuantity: 10, adjustmentQuantity: 2, nextQuantity: 12, reason: "Revisión", createdAt: "2026-09-23T10:00:00Z" };
+    vi.mocked(api.loadStockAdjustmentHistory).mockResolvedValue({ items: [
+      { ...row, userName: "Operador almacén" }, { ...row, movementId: "m2", userName: null }
+    ], nextCursor: null, hasMore: false });
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    expect(await screen.findByRole("cell", { name: "Operador almacén" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /warehouse.adjustment.user/ })).toBeInTheDocument();
+    const rows = screen.getAllByRole("row");
+    expect(rows[2].lastElementChild).toHaveTextContent("—");
+    fireEvent.click(rows[1]);
+    expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(rows[1], { key: "ArrowDown" });
+    expect(rows[2]).toHaveFocus();
+    expect(rows[2]).toHaveAttribute("aria-selected", "true");
+    expect(rows[1]).toHaveAttribute("aria-selected", "false");
   });
 
   it("restricts physical counts to warehouse managers", () => {
@@ -130,7 +176,9 @@ describe("WarehouseOperationsScreen", () => {
       lineCount: 1,
       totalDifference: 0
     }]);
-    vi.mocked(api.loadStockCount).mockResolvedValue(draftCount);
+    vi.mocked(api.loadStockCount).mockResolvedValueOnce(draftCount).mockResolvedValue({
+      ...draftCount, lines: [{ ...draftCount.lines[0], countedQuantity: 9, difference: -1 }]
+    });
     vi.mocked(api.updateStockCountLine).mockResolvedValue({
       ...draftCount,
       lines: [{ ...draftCount.lines[0], countedQuantity: 9, difference: -1 }]
@@ -154,15 +202,17 @@ describe("WarehouseOperationsScreen", () => {
     const confirmButton = screen.getByRole("button", { name: "warehouse.count.confirm" });
     confirmButton.focus();
     fireEvent.click(confirmButton);
-    expect(screen.getByRole("dialog", { name: "warehouse.count.confirmTitle" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "warehouse.count.confirmTitle" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "warehouse.count.keepEditing" })).toHaveFocus();
     expect(api.confirmStockCount).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "warehouse.count.confirmTitle" })).not.toBeInTheDocument();
     expect(confirmButton).toHaveFocus();
     fireEvent.click(confirmButton);
-    fireEvent.click(screen.getByRole("button", { name: "warehouse.count.applyDifferences" }));
-    await waitFor(() => expect(api.confirmStockCount).toHaveBeenCalledWith("count-1", "token"));
+    fireEvent.click(await screen.findByRole("button", { name: "warehouse.count.applyDifferences" }));
+    await waitFor(() => expect(api.confirmStockCount).toHaveBeenCalledWith("count-1", "token", [
+      expect.objectContaining({ productId: "coffee", countedQuantity: 9, expectedQuantity: 10 })
+    ]));
   });
 
   it("adds the first product to an empty physical count", async () => {

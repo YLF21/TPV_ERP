@@ -1,6 +1,7 @@
 package com.tpverp.backend.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -14,7 +15,9 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -86,8 +89,71 @@ class StockCountPostgreSqlTest {
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "token");
         when(organization.currentUser(authentication)).thenReturn(user);
 
+        var resources = service.resources();
+        assertThat(resources.warehouses()).singleElement().satisfies(value -> assertThat(value.id()).isEqualTo(context.warehouseId()));
+        assertThat(resources.products()).singleElement().satisfies(value -> assertThat(value.id()).isEqualTo(context.productId()));
+        assertThat(resources.families()).singleElement().satisfies(value -> assertThat(value.id()).isEqualTo(context.familyId()));
+        assertThat(service.balances(context.warehouseId())).singleElement().satisfies(value ->
+                assertThat(value.quantity()).isEqualByComparingTo("10"));
+
         var draft = service.create(context.warehouseId(), "Cierre mensual", authentication);
+        assertThat(draft.createdByName()).isEqualTo("ADMIN");
+        assertThat(service.list(StockCountStatus.DRAFT, context.warehouseId())).singleElement()
+                .satisfies(value -> assertThat(value.createdByName()).isEqualTo("ADMIN"));
+        var pending = service.saveDraft(draft.id(), draft.version(), LocalDate.of(2026, 8, 1), "Pendiente",
+                List.of(new StockCountController.DraftLineRequest(context.productId(), null, null)));
+        assertThat(pending.version()).isGreaterThan(draft.version());
+        assertThat(pending.documentDate()).isEqualTo(LocalDate.of(2026, 8, 1));
+        assertThat(pending.lines()).singleElement().satisfies(line -> {
+            assertThat(line.countedQuantity()).isNull();
+            assertThat(line.difference()).isNull();
+        });
+        assertThatThrownBy(() -> service.confirm(draft.id(), authentication))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("pendientes");
+        assertThatThrownBy(() -> service.saveDraft(draft.id(), draft.version(), pending.documentDate(), null, List.of()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Recarga");
+
+        var editsStart = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<Boolean> save = () -> {
+                editsStart.await();
+                try {
+                    service.saveDraft(draft.id(), pending.version(), pending.documentDate(), "Revisado",
+                            List.of(new StockCountController.DraftLineRequest(context.productId(), BigDecimal.ZERO, null)));
+                    return true;
+                } catch (IllegalStateException exception) {
+                    assertThat(exception).hasMessageContaining("Recarga");
+                    return false;
+                }
+            };
+            var firstEdit = executor.submit(save);
+            var secondEdit = executor.submit(save);
+            editsStart.countDown();
+            assertThat(List.of(firstEdit.get(20, TimeUnit.SECONDS), secondEdit.get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        var zero = service.get(draft.id());
+        assertThat(zero.version()).isGreaterThan(pending.version());
+        assertThat(zero.lines()).singleElement().satisfies(line ->
+                assertThat(line.countedQuantity()).isEqualByComparingTo("0"));
+        assertThatThrownBy(() -> service.saveDraft(draft.id(), zero.version(), zero.documentDate(), "Invalid replacement",
+                List.of(new StockCountController.DraftLineRequest(context.productId(), BigDecimal.ONE, null),
+                        new StockCountController.DraftLineRequest(UUID.randomUUID(), BigDecimal.ZERO, null))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Producto no encontrado");
+        var unchanged = service.get(draft.id());
+        assertThat(unchanged.version()).isEqualTo(zero.version());
+        assertThat(unchanged.notes()).isEqualTo(zero.notes());
+        assertThat(unchanged.lines()).singleElement().satisfies(line ->
+                assertThat(line.countedQuantity()).isEqualByComparingTo("0"));
+        var empty = service.saveDraft(draft.id(), zero.version(), zero.documentDate(), zero.notes(), List.of());
+        assertThat(empty.lines()).isEmpty();
+        assertThat(jdbc.queryForObject("select cantidad from " + SCHEMA
+                + ".existencia where producto_id=? and almacen_id=?", BigDecimal.class,
+                context.productId(), context.warehouseId())).isEqualByComparingTo("10.000");
+        assertThat(jdbc.queryForObject("select count(*) from " + SCHEMA
+                + ".movimiento_stock where recuento_stock_id=?", Integer.class, draft.id())).isZero();
         var counted = service.upsertLine(draft.id(), context.productId(), new BigDecimal("12"));
+        assertThat(counted.version()).isGreaterThan(empty.version());
         assertThat(counted.lines()).singleElement().satisfies(line -> {
             assertThat(line.expectedQuantity()).isEqualByComparingTo("10.000");
             assertThat(line.difference()).isEqualByComparingTo("2.000");

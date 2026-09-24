@@ -52,6 +52,7 @@ type WarehouseScreenProps = {
   onLocaleChange: (locale: LocaleCode) => void;
   embedded?: boolean;
   initialSection?: WarehouseSection;
+  createOnMount?: boolean;
 };
 
 type ProductOptionView = WarehouseImportProduct & {
@@ -72,7 +73,8 @@ export function WarehouseScreen({
   onLogout,
   onLocaleChange,
   embedded = false,
-  initialSection = "input"
+  initialSection = "input",
+  createOnMount = false
 }: WarehouseScreenProps) {
   const t = createTranslator(locale);
   const [section, setSection] = useState<WarehouseSection>(initialSection);
@@ -138,7 +140,7 @@ export function WarehouseScreen({
           : "warehouseScreen.goodsCheckSubtitle";
 
   return (
-    <main className={embedded
+    <main data-warehouse-heading={app === "gestion" && embedded && (section === "input" || section === "output") ? "unified" : undefined} className={embedded
       ? "stock-screen work-screen warehouse-screen gestion-embedded-module"
       : "stock-screen work-screen warehouse-screen"}
     >
@@ -217,6 +219,7 @@ export function WarehouseScreen({
               locale={locale}
               terminalContext={terminalContext}
               defaultWarehouseId={defaultWarehouseId}
+              createOnMount={createOnMount}
               permissions={{ read: true, create: true, edit: true, delete: true, canConfirm: true }}
               onError={(error) => setStatus(error instanceof Error ? error.message : t("warehouseScreen.operationError"))}
             />
@@ -237,6 +240,7 @@ export function WarehouseScreen({
               locale={locale}
               terminalContext={terminalContext}
               defaultWarehouseId={defaultWarehouseId}
+              createOnMount={createOnMount}
               permissions={{ read: true, create: true, edit: true, delete: true, canConfirm: true }}
               onError={(error) => setStatus(error instanceof Error ? error.message : t("warehouseScreen.operationError"))}
             />

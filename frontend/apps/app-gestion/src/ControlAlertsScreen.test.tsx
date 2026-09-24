@@ -294,8 +294,15 @@ describe("control alert timeline", () => {
   it("refreshes group counts for the latest date range while a previous request is pending", async () => {
     renderScreen();
     await loaded();
+    const strip = screen.getByRole("region", { name: "gestion.controlAlerts.periodTypes" });
+    await waitFor(() => expect(strip.getAttribute("aria-busy")).toBe("false"));
     const older = deferred<api.ControlRuleAlertGroup[]>();
-    vi.mocked(api.loadControlAlertGroups).mockImplementationOnce(() => older.promise).mockResolvedValueOnce([{ ...group, total: 7 }]);
+    // Match the requested range, not incidental calls during preference/filter initialization.
+    vi.mocked(api.loadControlAlertGroups).mockImplementation(async (from) => {
+      if (from === "2026-07-31T23:00:00.000Z") return older.promise;
+      if (from === "2026-08-09T23:00:00.000Z") return [{ ...group, total: 7 }];
+      return [group];
+    });
     const from = screen.getByLabelText("gestion.controlAlerts.from");
     const to = screen.getByLabelText("gestion.controlAlerts.to");
     fireEvent.change(from, { target: { value: "2026-08-01" } });
@@ -305,10 +312,10 @@ describe("control alert timeline", () => {
     fireEvent.change(from, { target: { value: "2026-08-10" } });
     fireEvent.change(to, { target: { value: "2026-08-15" } });
     fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.applyDates" }));
-    const strip = screen.getByRole("region", { name: "gestion.controlAlerts.periodTypes" });
     await waitFor(() => expect(within(strip).getAllByText("7")).toHaveLength(2));
     await act(async () => older.resolve([{ ...group, total: 99 } ]));
     expect(within(strip).queryByText("99")).toBeNull();
+    expect(within(strip).getAllByText("7")).toHaveLength(2);
   });
 
   it("preserves selection and reloads the detail when its server version changes", async () => {

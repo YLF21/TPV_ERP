@@ -34,7 +34,7 @@ public class ProductExcelImportController {
 
     @PostMapping(value = "/read", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN','STOCK_TRANSFER')")
     public ProductExcelImportReadService.ReadResult read(@RequestPart("file") MultipartFile file) {
         rejectOversized(file);
         return reader.read(file);
@@ -42,7 +42,7 @@ public class ProductExcelImportController {
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN','STOCK_TRANSFER')")
     public ResponseEntity<ProductExcelImportPreviewService.PreviewResult> preview(
             @RequestPart("file") MultipartFile file,
             @RequestPart("config") ProductExcelImportPreviewService.PreviewRequest config) {
@@ -55,7 +55,7 @@ public class ProductExcelImportController {
 
     @PostMapping(value = "/apply", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN','STOCK_TRANSFER')")
     public ResponseEntity<ProductExcelImportApplyService.ApplyResult> apply(
             @RequestPart("file") MultipartFile file,
             @RequestPart("config") ProductExcelImportApplyService.ApplyRequest config) {
@@ -71,7 +71,7 @@ public class ProductExcelImportController {
 
     @PostMapping(value = "/summary.xlsx", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_ALMACEN','STOCK_TRANSFER')")
     public ResponseEntity<?> summary(
             @RequestPart("file") MultipartFile file,
             @RequestPart("config") ProductExcelImportSummaryService.SummaryRequest config,

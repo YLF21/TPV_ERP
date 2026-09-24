@@ -16,8 +16,11 @@ public class StockCountLine {
     @Column(name = "recuento_id", nullable = false) private UUID countId;
     @Column(name = "producto_id", nullable = false) private UUID productId;
     @Column(name = "cantidad_esperada", nullable = false, precision = 19, scale = 3) private BigDecimal expectedQuantity;
-    @Column(name = "cantidad_contada", nullable = false, precision = 19, scale = 3) private BigDecimal countedQuantity;
+    @Column(name = "cantidad_contada", precision = 19, scale = 3) private BigDecimal countedQuantity;
     @Column(name = "diferencia_aplicada", precision = 19, scale = 3) private BigDecimal appliedDifference;
+    @Column(name = "codigo_producto") private String productCode;
+    @Column(name = "codigo_barras") private String productBarcode;
+    @Column(name = "nombre_producto") private String productName;
     @Version private long version;
 
     protected StockCountLine() {}
@@ -30,17 +33,25 @@ public class StockCountLine {
     public void update(BigDecimal expected, BigDecimal counted) {
         if (appliedDifference != null) throw new IllegalStateException("La linea de recuento ya fue aplicada");
         expectedQuantity = quantity(expected);
-        countedQuantity = quantity(counted);
-        if (countedQuantity.signum() < 0) throw new IllegalArgumentException("La cantidad contada no puede ser negativa");
+        countedQuantity = counted == null ? null : quantity(counted);
+        if (countedQuantity != null && countedQuantity.signum() < 0) throw new IllegalArgumentException("La cantidad contada no puede ser negativa");
     }
     public void markApplied(BigDecimal difference) { appliedDifference = quantity(difference); }
-    public BigDecimal difference() { return countedQuantity.subtract(expectedQuantity).setScale(3); }
+    public void snapshot(String code, String barcode, String name) {
+        productCode = code;
+        productBarcode = barcode;
+        productName = name;
+    }
+    public BigDecimal difference() { return countedQuantity == null ? null : countedQuantity.subtract(expectedQuantity).setScale(3); }
     public UUID getId() { return id; }
     public UUID getCountId() { return countId; }
     public UUID getProductId() { return productId; }
     public BigDecimal getExpectedQuantity() { return expectedQuantity; }
     public BigDecimal getCountedQuantity() { return countedQuantity; }
     public BigDecimal getAppliedDifference() { return appliedDifference; }
+    public String getProductCode() { return productCode; }
+    public String getProductBarcode() { return productBarcode; }
+    public String getProductName() { return productName; }
     private static BigDecimal quantity(BigDecimal value) {
         Objects.requireNonNull(value, "cantidad");
         if (value.stripTrailingZeros().scale() > 3) throw new IllegalArgumentException("message.inventory.quantity_scale");

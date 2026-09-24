@@ -1,6 +1,9 @@
 import type { LocaleCode } from "../types";
 
 const es: Record<string, string> = {
+  "safeManagement.shortcut.modify": "F7",
+  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "Solo un administrador puede abrir estas ventanas de gestión.",
   "safeManagement.retirement.title": "Retirar registro de forma segura",
   "safeManagement.retirement.explanation": "El servidor comprobará de nuevo todas las referencias al confirmar. Si el registro nunca se ha utilizado se eliminará; si tiene historial se conservará desactivado.",
@@ -57,6 +60,7 @@ const es: Record<string, string> = {
   "safeManagement.representatives.empty": "No hay comerciales que coincidan con la búsqueda.",
   "safeManagement.representatives.loadError": "No se pudo cargar el listado de comerciales.",
   "safeManagement.representatives.detail": "Ficha del comercial",
+  "safeManagement.representatives.edit": "Modificar comercial",
   "safeManagement.representatives.column.code": "Código",
   "safeManagement.representatives.column.name": "Nombre",
   "safeManagement.representatives.column.phone": "Teléfono",
@@ -90,6 +94,9 @@ const es: Record<string, string> = {
 };
 
 const en: Record<string, string> = {
+  "safeManagement.shortcut.modify": "F7",
+  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "Only an administrator can open these management screens.",
   "safeManagement.retirement.title": "Safely retire record",
   "safeManagement.retirement.explanation": "The server will check every reference again on confirmation. An unused record will be deleted; a record with history will be preserved as inactive.",
@@ -146,6 +153,7 @@ const en: Record<string, string> = {
   "safeManagement.representatives.empty": "No representatives match the search.",
   "safeManagement.representatives.loadError": "The representative list could not be loaded.",
   "safeManagement.representatives.detail": "Representative record",
+  "safeManagement.representatives.edit": "Edit representative",
   "safeManagement.representatives.column.code": "Code",
   "safeManagement.representatives.column.name": "Name",
   "safeManagement.representatives.column.phone": "Phone",
@@ -179,6 +187,9 @@ const en: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "safeManagement.shortcut.modify": "F7",
+  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "只有管理员可以打开这些管理页面。",
   "safeManagement.retirement.title": "安全停用记录",
   "safeManagement.retirement.explanation": "确认时服务器会再次检查所有引用。未使用过的记录将被删除；有历史记录的项目将停用并保留。",
@@ -235,6 +246,7 @@ const zh: Record<string, string> = {
   "safeManagement.representatives.empty": "没有符合搜索条件的业务员。",
   "safeManagement.representatives.loadError": "无法加载业务员列表。",
   "safeManagement.representatives.detail": "业务员资料",
+  "safeManagement.representatives.edit": "修改业务员",
   "safeManagement.representatives.column.code": "代码",
   "safeManagement.representatives.column.name": "姓名",
   "safeManagement.representatives.column.phone": "电话",

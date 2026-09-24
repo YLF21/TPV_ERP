@@ -653,6 +653,7 @@ export class MessagesZh {
     "party.section": "客户与供应商",
     "party.customers.title": "客户", "party.customers.subtitle": "客户和税务信息", "party.customers.new": "新建客户", "party.customers.edit": "编辑客户",
     "party.members.title": "会员", "party.members.subtitle": "具有会员关系的客户", "party.members.new": "新建会员",
+    "party.suppliers.edit": "修改供应商",
     "party.suppliers.title": "供应商", "party.suppliers.subtitle": "供应商和联系信息", "party.suppliers.new": "新建供应商",
     "party.search": "按编码、名称、证件、电话或邮箱搜索", "party.results": "{count} 条记录", "party.loadError": "无法加载列表", "party.retry": "重试", "party.saveSuccess": "记录已成功保存",
     "party.saveError": "无法保存", "party.saving": "正在保存...", "party.empty": "无记录", "party.active": "启用", "party.inactive": "停用",

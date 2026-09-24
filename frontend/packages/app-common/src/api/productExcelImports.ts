@@ -25,7 +25,7 @@ export type ProductExcelImportReadResult = {
   nonEmptyCells: number;
 };
 
-export type ProductExcelImportContext = "STOCK" | "WAREHOUSE_INPUT" | "WAREHOUSE_OUTPUT";
+export type ProductExcelImportContext = "STOCK" | "WAREHOUSE_INPUT" | "WAREHOUSE_OUTPUT" | "WAREHOUSE_TRANSFER";
 
 export type ProductExcelImportCellEdit = {
   row: number;

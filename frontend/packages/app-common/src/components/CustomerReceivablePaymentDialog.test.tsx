@@ -299,7 +299,10 @@ describe("CustomerReceivablePaymentDialog", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Efectivo" })).toBeEnabled());
     const amount = screen.getByLabelText("IMPORTE / RECIBIDO");
     fireEvent.change(amount, { target: { value: "20" } });
-    fireEvent.keyDown(amount, { key: "Enter" });
+    // Flush checkout completion and the result notice's interaction listener.
+    await act(async () => {
+      fireEvent.keyDown(amount, { key: "Enter" });
+    });
 
     expect(await screen.findByRole("region", { name: "Pago completado" })).toBeVisible();
     expect(onPaid).not.toHaveBeenCalled();

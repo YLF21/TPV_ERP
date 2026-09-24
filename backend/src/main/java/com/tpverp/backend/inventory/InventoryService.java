@@ -43,6 +43,8 @@ public class InventoryService {
     private final WarehouseRepository warehouseRepository;
     private final StockLevelRepository stockRepository;
     private final StockSettingsRepository settingsRepository;
+    private StockSettingsService warehouseSettings;
+    private StockAdjustmentHistoryRepository adjustmentHistory;
     private final StockMovementRepository movementRepository;
     private final StockMovementSyncPublisher syncPublisher;
     private final Clock clock;
@@ -66,6 +68,19 @@ public class InventoryService {
         this.movementRepository = movementRepository;
         this.syncPublisher = syncPublisher;
         this.clock = clock;
+    }
+
+    public record AdjustmentProduct(UUID id, String code, String barcode, String name,
+                                    boolean active, ProductType productType) {}
+
+    @Transactional(readOnly = true)
+    public List<AdjustmentProduct> searchAdjustmentProducts(String search) {
+        String term = search == null ? "" : search.trim().toLowerCase(java.util.Locale.ROOT);
+        String pattern = "%" + term.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+        return productRepository.searchAdjustmentProducts(currentStore().getId(), term, pattern,
+                PageRequest.of(0, 50)).stream().map(product -> new AdjustmentProduct(
+                    product.getId(), product.getCode(), product.getBarcode(), product.getName(),
+                    product.isActive(), product.getProductType())).toList();
     }
 
     @Transactional(readOnly = true)
@@ -121,16 +136,20 @@ public class InventoryService {
         }
         UUID storeId = currentStore().getId();
         var delta = scale(quantity);
-        validateStockQuantity(product(productId, storeId), delta);
+        var adjustmentProduct = product(productId, storeId);
+        validateStockQuantity(adjustmentProduct, delta);
         warehouse(warehouseId, storeId);
         UserAccount user = organization.currentUser(authentication);
-        boolean allowNegativeStock = allowsNegativeStock(storeId);
+        boolean allowNegativeStock = allowsNegativeStock(storeId, warehouseId);
         StockLevel stock = stockLevel(productId, warehouseId, !allowNegativeStock);
         requireAllowedBalance(stock, delta, allowNegativeStock);
+        var previousQuantity = stock.getQuantity();
         stock.apply(delta);
         stockRepository.save(stock);
         var movement = movementRepository.save(StockMovement.adjustment(
                 productId, warehouseId, user.getId(), quantity, reason, Instant.now(clock)));
+        if (adjustmentHistory != null) adjustmentHistory.save(new StockAdjustmentHistory(
+                storeId, movement, adjustmentProduct, previousQuantity, stock.getQuantity()));
         enqueueStockMovement(movement);
         return StockItem.from(stock);
     }
@@ -161,7 +180,7 @@ public class InventoryService {
         warehouse(sourceWarehouseId, storeId);
         warehouse(targetWarehouseId, storeId);
         UserAccount user = organization.currentUser(authentication);
-        boolean allowNegativeStock = allowsNegativeStock(storeId);
+        boolean allowNegativeStock = allowsNegativeStock(storeId, sourceWarehouseId);
         StockLevel source = stockLevel(productId, sourceWarehouseId, !allowNegativeStock);
         requireAllowedBalance(source, transferQuantity.negate(), allowNegativeStock);
         StockLevel target = stockLevel(productId, targetWarehouseId);
@@ -185,15 +204,23 @@ public class InventoryService {
     public BatchTransferResult transferBatch(
             List<TransferCommand> commands,
             Authentication authentication) {
+        return transferBatch(commands, authentication, null);
+    }
+
+    @Transactional
+    public BatchTransferResult transferBatch(
+            List<TransferCommand> commands,
+            Authentication authentication,
+            UUID transferDocumentId) {
         if (commands == null || commands.isEmpty()) {
             throw new IllegalArgumentException("El lote de transferencias no puede estar vacio");
         }
-        if (commands.size() > 100) {
-            throw new IllegalArgumentException("El lote no puede superar 100 transferencias");
+        int maxTransfers = transferDocumentId == null ? 100 : WarehouseTransferDocumentService.MAX_DOCUMENT_LINES;
+        if (commands.size() > maxTransfers) {
+            throw new IllegalArgumentException("El lote no puede superar " + maxTransfers + " transferencias");
         }
 
         UUID storeId = currentStore().getId();
-        boolean allowNegativeStock = allowsNegativeStock(storeId);
         Map<UUID, Product> products = new HashMap<>();
         Map<UUID, Warehouse> warehouses = new HashMap<>();
         List<PreparedTransfer> prepared = new ArrayList<>(commands.size());
@@ -222,9 +249,8 @@ public class InventoryService {
                 .sorted(Comparator.comparing((StockKey key) -> key.productId().toString())
                         .thenComparing(key -> key.warehouseId().toString()))
                 .forEach(key -> stocks.put(key, stockLevel(key.productId(), key.warehouseId(), true)));
-        if (!allowNegativeStock) {
-            deltas.forEach((key, delta) -> requireAllowedBalance(stocks.get(key), delta, false));
-        }
+        deltas.forEach((key, delta) -> requireAllowedBalance(stocks.get(key), delta,
+                allowsNegativeStock(storeId, key.warehouseId())));
 
         prepared.forEach(item -> {
             TransferCommand command = item.command();
@@ -242,10 +268,16 @@ public class InventoryService {
         for (PreparedTransfer item : prepared) {
             TransferCommand command = item.command();
             UUID transferId = UUID.randomUUID();
-            enqueueStockMovement(movementRepository.save(StockMovement.transferOut(
-                    command.productId(), command.sourceWarehouseId(), user.getId(), item.quantity(), transferId, now)));
-            enqueueStockMovement(movementRepository.save(StockMovement.transferIn(
-                    command.productId(), command.targetWarehouseId(), user.getId(), item.quantity(), transferId, now)));
+            var outgoing = StockMovement.transferOut(
+                    command.productId(), command.sourceWarehouseId(), user.getId(), item.quantity(), transferId, now);
+            var incoming = StockMovement.transferIn(
+                    command.productId(), command.targetWarehouseId(), user.getId(), item.quantity(), transferId, now);
+            if (transferDocumentId != null) {
+                outgoing.attachTransferDocument(transferDocumentId);
+                incoming.attachTransferDocument(transferDocumentId);
+            }
+            enqueueStockMovement(movementRepository.save(outgoing));
+            enqueueStockMovement(movementRepository.save(incoming));
             results.add(new TransferResult(
                     transferId,
                     command.productId(),
@@ -415,7 +447,44 @@ public class InventoryService {
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
     }
 
-    private boolean allowsNegativeStock(UUID storeId) {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWarehouseSettings(StockSettingsService warehouseSettings) {
+        this.warehouseSettings = warehouseSettings;
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<StockAdjustmentHistory> adjustmentHistory(
+            Integer requestedLimit, Integer requestedPage, UUID warehouseId, String search,
+            java.time.Instant from, java.time.Instant to) {
+        if (adjustmentHistory == null) throw new IllegalStateException("Historial de ajustes no disponible");
+        var storeId = currentStore().getId();
+        if (warehouseId != null) warehouse(warehouseId, storeId);
+        int limit = requestedLimit == null ? 50 : Math.max(1, Math.min(requestedLimit, 100));
+        int page = requestedPage == null ? 0 : Math.max(0, requestedPage);
+        var query = search == null || search.isBlank() ? null
+                : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        var result = adjustmentHistory.page(storeId, warehouseId, query,
+                from == null ? java.time.Instant.EPOCH : from,
+                to == null ? java.time.Instant.parse("9999-12-31T00:00:00Z") : to,
+                org.springframework.data.domain.PageRequest.of(page, limit));
+        if (!result.isEmpty()) {
+            var authors = new HashMap<UUID, String>();
+            adjustmentHistory.authors(storeId, result.getContent().stream()
+                    .map(StockAdjustmentHistory::getMovementId).toList())
+                    .forEach(author -> authors.put(author.getMovementId(), author.getUserName()));
+            result.forEach(row -> row.setUserName(authors.get(row.getMovementId())));
+        }
+        return new PagedResult<>(result.getContent(), result.hasNext() ? String.valueOf(page + 1) : null,
+                result.hasNext());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setAdjustmentHistory(StockAdjustmentHistoryRepository adjustmentHistory) {
+        this.adjustmentHistory = adjustmentHistory;
+    }
+
+    private boolean allowsNegativeStock(UUID storeId, UUID warehouseId) {
+        if (warehouseSettings != null) return warehouseSettings.allowsNegativeStock(warehouseId, storeId);
         return settingsRepository.findById(storeId)
                 .map(StockSettings::isAllowNegativeStock)
                 .orElse(true);

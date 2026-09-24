@@ -252,3 +252,26 @@
     opacity: 1 !important;
   }
 }
+
+/* Product headers: invisible actions must not reduce the title's usable width.
+   Keep menu buttons focusable and reveal their space on hover/keyboard focus. */
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-header-actions {
+  position:absolute !important;
+  top:50%;
+  right:0;
+  transform:translateY(-50%) !important;
+}
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-sort-indicator {
+  position:absolute !important;
+  right:2px;
+}
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:has(.table-layout-header-actions) .table-layout-sort-indicator { right:28px; }
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-sort-label { flex:1; width:100%; }
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:not(:hover):not(:focus-within):not(:has(.table-layout-column-menu-button.is-open)) :is(.table-layout-sort-indicator,.table-layout-column-menu-button) { opacity:0 !important; }
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:is(:hover,:focus-within,:has(.table-layout-column-menu-button.is-open)) .table-layout-sort-button { padding-right:19px !important; }
+.stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:has(.table-layout-header-actions):is(:hover,:focus-within,:has(.table-layout-column-menu-button.is-open)) .table-layout-sort-button { padding-right:46px !important; }
+@media (hover:none), (any-pointer:coarse) {
+  .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell .table-layout-sort-button { padding-right:19px !important; }
+  .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:has(.table-layout-header-actions) .table-layout-sort-button { padding-right:46px !important; }
+  .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:not(:hover):not(:focus-within):not(:has(.table-layout-column-menu-button.is-open)) :is(.table-layout-sort-indicator,.table-layout-column-menu-button) { opacity:1 !important; }
+}

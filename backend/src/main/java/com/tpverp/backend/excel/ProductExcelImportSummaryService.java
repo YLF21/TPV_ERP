@@ -110,7 +110,7 @@ public class ProductExcelImportSummaryService {
 
     private ExportedSummary exportErrorSnapshot(MultipartFile file, SummaryRequest request, String locale) {
         String context = request.preview() == null || request.preview().options() == null ? null : request.preview().options().context();
-        if (!Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT").contains(context == null ? "" : context.toUpperCase(Locale.ROOT)))
+        if (!Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT", "WAREHOUSE_TRANSFER").contains(context == null ? "" : context.toUpperCase(Locale.ROOT)))
             throw columnError("CONTEXT_INVALID", context);
         ViewSpec spec = validateView(request, false);
         if (!"ERRORS".equals(spec.view())) throw columnError("VIEW_INVALID", spec.view());
