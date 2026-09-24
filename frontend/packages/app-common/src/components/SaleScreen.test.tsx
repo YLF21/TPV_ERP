@@ -3671,7 +3671,10 @@ describe("SaleScreen", () => {
     expect(confirmClearLines).toHaveFocus();
     fireEvent.keyDown(confirmClearLines, { key: "ArrowLeft" });
     expect(cancelClearLines).toHaveFocus();
-    fireEvent.click(confirmClearLines);
+    // Flush the asynchronous deletion and restore the sale shortcuts before Ctrl+P.
+    await act(async () => {
+      fireEvent.click(confirmClearLines);
+    });
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(checkoutProps.current?.sale?.internalComment).toBe(
       "Entregar en almacén interior",
