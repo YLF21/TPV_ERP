@@ -1,0 +1,80 @@
+/* Ventana ERP Azul Clasica: opt-in, preserving other applications. */
+.filter-overlay.erp-classic-overlay { padding:24px; background:#0b223a66; box-sizing:border-box; }
+.filter-dialog.erp-classic-window { display:flex; flex-direction:column; box-sizing:border-box; max-height:calc(100dvh - 48px); min-height:0; padding:0 !important; border:1px solid #12385f !important; border-radius:2px !important; background:#fff !important; color:#12385f; overflow:hidden; box-shadow:0 14px 40px #10233833; }
+.filter-dialog.erp-classic-window > :is(.filter-header,header) { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:16px; margin:0 !important; padding:12px 18px !important; min-height:54px; background:#0a2a52 !important; border:0 !important; }
+.filter-dialog.erp-classic-window > :is(.filter-header,header) :is(h2,h3) { margin:0 !important; color:#fff !important; font-size:19px !important; line-height:24px !important; font-weight:700 !important; }
+.filter-dialog.erp-classic-window > :is(.filter-header,header) :is(p,span) { margin:3px 0 0; color:#e4edf7 !important; font-size:12px; }
+.filter-dialog.erp-classic-window > :is(.filter-header,header) > button { flex:0 0 auto; min-width:72px; min-height:32px; padding:0 12px; border:1px solid #8ba3bf !important; border-radius:1px !important; color:#fff !important; background:transparent !important; }
+.filter-dialog.erp-classic-window > form { min-height:0; overflow:auto; padding:18px; margin:0; }
+.filter-dialog.erp-classic-window :is(.filter-actions,.customer-documents-footer) { flex:0 0 auto; display:flex; justify-content:flex-end; gap:8px; padding:14px 18px !important; margin:0; border-top:1px solid #d9e1e9; background:#fff; }
+.filter-dialog.erp-classic-window form > .filter-actions { position:sticky; bottom:-18px; z-index:2; margin:12px -18px -18px; }
+.filter-dialog.erp-classic-window button { border-radius:1px !important; }
+.filter-dialog.erp-classic-window :is(input:not([type=checkbox]):not([type=radio]),textarea) { border-radius:0 !important; border:1px solid #aebfd2; }
+.filter-dialog.erp-classic-window > .safe-retirement-content { min-height:0; overflow:auto; padding:20px; }
+.filter-dialog.erp-classic-window.safe-retirement-dialog { width:min(640px,100%); }
+.filter-dialog.erp-classic-window.erp-confirm-dialog { width:min(520px,100%); }
+.erp-confirm-message { padding:20px; margin:0; line-height:1.5; }
+.erp-confirm-overlay { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:24px; background:#0b223a66; }
+.erp-classic-window :is(button,input,textarea):focus-visible { outline:2px solid #1f5a94; outline-offset:2px; }
+.erp-classic-window .erp-filter-applied { padding-inline:12px; }
+.erp-classic-window .table-layout-sort-indicator { opacity:1 !important; }
+@media(max-width:700px) { .filter-overlay.erp-classic-overlay { padding:12px; }.filter-dialog.erp-classic-window { max-height:calc(100dvh - 24px); }.filter-dialog.erp-classic-window .party-address-grid { grid-template-columns:1fr; } }
+
+.party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns:minmax(240px,420px) 220px 1fr; grid-template-rows:auto auto; gap:4px 12px; background:#fff; }
+.party-directory-toolbar--classic .party-directory-search-label { grid-column:1; grid-row:1; font-size:12px; font-weight:700; color:#52667c; }
+.party-directory-toolbar--classic > input { grid-column:1; grid-row:2; border-radius:0; }
+.party-directory-toolbar--classic .party-directory-status-filter { grid-column:2; grid-row:1 / 3; }
+.party-directory-toolbar--classic .party-directory-result-count { grid-column:3; grid-row:2; }
+.erp-classic-window.party-create-dialog { width:min(1060px,100%); }
+.erp-classic-window .safe-retirement-outcome { border-radius:1px; }
+.erp-classic-window .customer-documents-navigation, .erp-classic-window .customer-documents-toolbar, .erp-classic-window .customer-documents-footer { background:#fff; }
+.erp-confirm-dialog .filter-actions > button { min-height:34px; padding:0 16px; border:1px solid #aebfd2; background:#f5f8fb; color:#0a2a52; font-size:13px; font-weight:700; }
+.erp-confirm-dialog .filter-actions > button:last-child { background:#12385f; color:#fff; }
+@media(max-width:700px) { .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns:minmax(0,1fr) 160px; }.party-directory-toolbar--classic .party-directory-result-count { grid-column:1 / -1; grid-row:3; } }
+
+.filter-dialog.erp-classic-window.party-create-dialog { width:min(1060px,100%) !important; max-height:calc(100dvh - 48px) !important; }
+.erp-classic-window > header > button[aria-label] { min-width:34px; width:34px; height:34px; padding:0; display:grid; place-items:center; }
+.erp-classic-window .customer-documents-filters { background:#fff; }
+.erp-classic-window .customer-documents-row { min-height:36px; }
+.erp-classic-window .customer-documents-table-header { height:36px; background:#12385f; }
+.erp-classic-window .customer-documents-table-header > span { padding:0 8px; }
+.erp-classic-window .customer-documents-table-header .table-layout-sort-button { font-size:12px !important; }
+.erp-classic-window .customer-documents-table-header .table-layout-sort-indicator { visibility:visible; opacity:1; }
+.erp-classic-window .customer-documents-table-header .table-layout-sort-label { max-width:calc(100% - 58px); }
+.erp-classic-window .customer-documents-table-body .customer-documents-row { height:36px; }
+.erp-classic-window .customer-documents-table-body [role="cell"] { padding:8px 9px; font-size:13px; }
+.erp-classic-window .customer-documents-table-body .customer-documents-row.even { background:#f2f6fa; }
+.erp-classic-window .customer-documents-table-body .customer-documents-row:hover { background:#e8f1fa; }
+.erp-classic-window .customer-documents-table-body .customer-documents-row.selected { background:#d8e9fb; outline-color:#1f5a94; }
+
+.filter-dialog.erp-classic-window .product-create-body { background:#fff; }
+.filter-dialog.erp-classic-window.customer-documents-dialog .table-layout-drag-handle { display:none !important; }
+.filter-dialog.erp-classic-window.customer-documents-dialog .customer-documents-table-header > [role="columnheader"] { display:flex; align-items:center; height:36px; min-height:36px; }
+.filter-dialog.erp-classic-window.customer-documents-dialog .table-layout-header-controls { display:flex; align-items:center; height:100%; }
+.filter-dialog.erp-classic-window.customer-documents-dialog .table-layout-sort-button { display:flex; align-items:center; height:100%; min-height:0; }
+
+.erp-management-screen .table-layout-sort-indicator, .gestion-safe-management.erp-classic-tables .table-layout-sort-indicator { opacity:1 !important; visibility:visible !important; }
+.erp-management-screen { background:#fff; }
+
+.filter-dialog.erp-classic-window:is(.erp-confirm-dialog,.safe-retirement-dialog) > .filter-actions > button:first-child { background:#f5f8fb !important; color:#0a2a52 !important; border:1px solid #aebfd2 !important; }
+
+.management-record-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+.management-record-actions > button { min-height:34px; padding:6px 12px; border:1px solid #aebfd2; border-radius:0; background:#f5f8fb; color:#0a2a52; font-size:13px; font-weight:700; cursor:pointer; }
+.management-record-actions > button:first-child { background:#2878b9; border-color:#24699e; color:#fff; }
+.management-record-actions > button.safe-retirement-open { color:#a12626; border-color:#b94747; background:#fff; }
+.management-record-actions > button:disabled { color:#8290a1; border-color:#ccd6e2; background:#f5f7fa; cursor:default; }
+.management-record-actions > button:focus-visible { outline:2px solid #1f5a94; outline-offset:2px; }
+
+.stock-panel-heading > .management-record-actions {
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:nowrap !important;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  overflow-x:auto;
+}
+.stock-panel-heading > .management-record-actions > button { flex:0 0 auto; white-space:nowrap; }
+.erp-classic-window.stock-detail-dialog .stock-detail-toolbar { flex-wrap:nowrap; overflow-x:auto; }
+.erp-classic-window.stock-detail-dialog .stock-detail-toolbar > button,
+.erp-classic-window.stock-detail-dialog .stock-detail-tabs { flex-shrink:0; white-space:nowrap; }

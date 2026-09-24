@@ -149,6 +149,7 @@ export class MessagesEn {
     "party.section": "Customers and suppliers",
     "party.customers.title": "Customers", "party.customers.subtitle": "Customer directory and fiscal information", "party.customers.new": "New customer", "party.customers.edit": "Edit customer",
     "party.members.title": "Members", "party.members.subtitle": "Customers with a loyalty relationship", "party.members.new": "New member",
+    "party.suppliers.edit": "Edit supplier",
     "party.suppliers.title": "Suppliers", "party.suppliers.subtitle": "Supplier directory and contact information", "party.suppliers.new": "New supplier",
     "party.search": "Search by code, name, document, phone or email", "party.results": "{count} records", "party.loadError": "The directory could not be loaded", "party.retry": "Retry", "party.saveSuccess": "Record saved successfully",
     "party.saveError": "The record could not be saved", "party.saving": "Saving...", "party.empty": "No records to display", "party.active": "Active", "party.inactive": "Inactive",

@@ -1,3 +1,4 @@
+import "./ErpClassicWindow.css";
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
@@ -2112,6 +2113,15 @@ export function filterStockTopSalesRows(rows: StockTopSalesRow[], filters: Stock
   }).sort((left, right) => right.soldQuantity - left.soldQuantity || left.name.localeCompare(right.name, "es"));
 }
 
+export function sortProductWarehouseRows<T extends { warehouseName: string; quantity: number }>(
+  rows: readonly T[], sort: TableSort | null, locale: LocaleCode
+): T[] {
+  const ordered = sortTableRows(rows, sort ?? { column: "warehouse", direction: "asc" },
+    (row, column) => column === "warehouse" ? row.warehouseName : row.quantity, locale);
+  const isGeneral = (row: T) => row.warehouseName.trim().toUpperCase() === "GENERAL";
+  return [...ordered.filter(isGeneral), ...ordered.filter(row => !isGeneral(row))];
+}
+
 export function StockScreen({
   app,
   locale,
@@ -2704,6 +2714,7 @@ export function StockScreen({
     gridTemplateColumns: visibleWarehouseDetailColumns.map((column, index) => index === visibleWarehouseDetailColumns.length - 1
       ? `minmax(${column.width}px, 1fr)` : `${column.width}px`).join(" ")
   };
+  const managementProductActions = app === "gestion" && allowSafeRetirement && selectedView === "stock.current";
   const selectedStockRow = visibleRows[selectedStockIndex] ?? visibleRows[0] ?? null;
   const detailStockRows = detailRow ? allStockRows.filter((row) => row.productId === detailRow.productId) : [];
   const topSalesRanks = useMemo(() => new Map(topSalesRows.map((row, index) => [row, index + 1])), [topSalesRows]);
@@ -2724,9 +2735,11 @@ export function StockScreen({
     if (column === "currentStock") return row.currentStock;
     return row.warehouseName;
   }, locale), [filteredTopSalesRows, locale, topSalesRanks, topSalesSorting.sort]);
-  const sortedDetailStockRows = useMemo(() => sortTableRows(detailStockRows, warehouseDetailSorting.sort, (row, column) => (
-    column === "warehouse" ? row.warehouseName : row.quantity
-  ), locale), [detailStockRows, locale, warehouseDetailSorting.sort]);
+  const sortedDetailStockRows = useMemo(() => app === "gestion"
+    ? sortProductWarehouseRows(detailStockRows, warehouseDetailSorting.sort, locale)
+    : sortTableRows(detailStockRows, warehouseDetailSorting.sort, (row, column) => (
+      column === "warehouse" ? row.warehouseName : row.quantity
+    ), locale), [app, detailStockRows, locale, warehouseDetailSorting.sort]);
 
   useEffect(() => {
     if (selectedView === "stock.bulkEdit" && !canManageProducts) {
@@ -2922,6 +2935,13 @@ export function StockScreen({
           && (event.target as HTMLElement | null)?.closest("input, textarea, select, button, [role='combobox']")) {
         return;
       }
+      if (app === "gestion" && allowSafeRetirement && ["F8", "F9"].includes(event.key)) {
+        if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+        event.preventDefault();
+        if (event.key === "F8" && canManageProducts) { setEditingProduct(null); setProductCreateOpen(true); }
+        if (event.key === "F9") openProductRetirement(row);
+        return;
+      }
       const action = stockDetailKeyAction(event.key);
       if (!action) {
         return;
@@ -2943,7 +2963,7 @@ export function StockScreen({
     }
     window.addEventListener("keydown", handleDetailKey);
     return () => window.removeEventListener("keydown", handleDetailKey);
-  }, [canManageProducts, detailRow, detailTab, productCreateOpen]);
+  }, [app, allowSafeRetirement, session.permissions, canManageProducts, detailRow, detailTab, productCreateOpen]);
 
   stockExportShortcutRef.current = () => { void exportStockExcel(); };
 
@@ -2962,7 +2982,21 @@ export function StockScreen({
     }
     window.addEventListener("keydown", handleStockExportShortcut, true);
     return () => window.removeEventListener("keydown", handleStockExportShortcut, true);
-  }, [detailRow, selectedView, session.accessToken, stockExportBusy]);
+  }, [detailRow, selectedView, session.accessToken, stockExportBusy, managementProductActions]);
+
+  useEffect(() => {
+    if (!managementProductActions) return;
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F8", "F9", "F7"].includes(event.key)) return;
+      if (document.querySelector('[aria-modal="true"]') || productCreateOpen || retirementRow || detailRow) return;
+      event.preventDefault();
+      if (event.key === "F8" && canManageProducts) { setEditingProduct(null); setProductCreateOpen(true); }
+      if (event.key === "F9") openProductRetirement(selectedStockRow);
+      if (event.key === "F7") openStockDetail(selectedStockRow, "edit");
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
 
   function updateDraftTopSalesFilter(key: keyof StockTopSalesFilters, value: string) {
     setDraftTopSalesFilters((current) => ({ ...current, [key]: value }));
@@ -3135,10 +3169,10 @@ export function StockScreen({
     }
   }
 
-  function openProductRetirement() {
-    if (!detailRow || !allowSafeRetirement || !session.permissions.includes("ADMIN") || detailRow.code === "0") return;
+  function openProductRetirement(row = detailRow) {
+    if (!row || !allowSafeRetirement || !session.permissions.includes("ADMIN") || row.code === "0") return;
     setRetirementNotice("");
-    setRetirementRow(detailRow);
+    setRetirementRow(row);
     setDetailRow(null);
   }
 
@@ -7319,7 +7353,7 @@ export function StockScreen({
   }
 
   return (
-    <main className={`stock-screen work-screen${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
+    <main className={`stock-screen work-screen${app === "gestion" && allowSafeRetirement ? " erp-management-screen" : ""}${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
       {!embedded && <SessionTopControls
         locale={locale}
         session={session}
@@ -7399,7 +7433,11 @@ export function StockScreen({
                 <h2>{selectedViewLabel}</h2>
                 <span>{selectedViewSubtitle}</span>
               </div>
-              {canManageProducts && (
+              {managementProductActions ? <div className="management-record-actions">
+                {canManageProducts && <button type="button" aria-keyshortcuts="F7" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}>F7 {t("product.edit.title")}</button>}
+                {canManageProducts && <button type="button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}>F8 {t("product.create.button")}</button>}
+                {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}>F9 {t("safeManagement.action.retire")}</button>}
+              </div> : canManageProducts && (
                 <button
                   type="button"
                   className="stock-add-product-button"
@@ -7916,8 +7954,8 @@ export function StockScreen({
       )}
 
       {detailRow && (
-        <div className="filter-overlay stock-detail-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-detail-title">
-          <section className="filter-dialog stock-detail-dialog">
+        <div className={`filter-overlay stock-detail-overlay${app === "gestion" && allowSafeRetirement ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="stock-detail-title">
+          <section className={`filter-dialog stock-detail-dialog${app === "gestion" && allowSafeRetirement ? " erp-classic-window" : ""}`}>
             <header className="stock-detail-header">
               <h2 id="stock-detail-title">{t("stock.detail.informationTitle")}</h2>
               <button type="button" aria-label={t("common.close")} onClick={() => setDetailRow(null)}><X size={20} weight="bold" aria-hidden="true" /></button>
@@ -7942,23 +7980,26 @@ export function StockScreen({
                 <button
                   type="button"
                   className="stock-detail-edit-button"
+                  aria-keyshortcuts="F7"
                   onClick={() => {
                     setEditingProduct(stockRowToProductEdit(detailRow));
                     setProductCreateOpen(true);
                   }}
                 >
-                  {t("stock.detail.editTab")}
+                  {app === "gestion" && allowSafeRetirement ? `F7 ${t("product.edit.title")}` : t("stock.detail.editTab")}
                 </button>
               )}
+              {app === "gestion" && allowSafeRetirement && canManageProducts && <button type="button" className="stock-detail-edit-button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}>F8 {t("product.create.button")}</button>}
               {allowSafeRetirement && session.permissions.includes("ADMIN") && (
                 <button
                   type="button"
                   className="safe-retirement-open"
-                  onClick={openProductRetirement}
+                  aria-keyshortcuts={app === "gestion" ? "F9" : undefined}
+                  onClick={() => openProductRetirement()}
                   disabled={detailRow.code === "0"}
                   title={detailRow.code === "0" ? t("safeManagement.retirement.reason.PROTECTED_SYSTEM_PRODUCT") : undefined}
                 >
-                  {t("safeManagement.action.retire")}
+                  {app === "gestion" ? "F9 " : ""}{t("safeManagement.action.retire")}
                 </button>
               )}
             </div>
@@ -8041,6 +8082,7 @@ export function StockScreen({
       )}
 
       {retirementRow && <SafeRetirementDialog
+        classicWindow={app === "gestion" && allowSafeRetirement}
         open
         entityPath="products"
         entityId={retirementRow.productId}
@@ -8055,6 +8097,7 @@ export function StockScreen({
       />}
 
       <ProductCreateDialog
+        classicWindow={app === "gestion" && allowSafeRetirement}
         open={productCreateOpen}
         filterChips={app !== "pda"}
         locale={locale}

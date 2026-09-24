@@ -1,3 +1,4 @@
+import { ErpConfirmDialog } from "./ErpConfirmDialog";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
@@ -364,6 +365,8 @@ export function PartyDirectoryPanel({
   const isSupplier = kind === "suppliers";
   const isMember = kind === "members";
   const managementMode = allowSafeRetirement && !isMember;
+  const classicWindow = app === "gestion" && managementMode;
+  const [confirmation, setConfirmation] = useState<"discard" | "active" | null>(null);
   // Paged management endpoints only support the server-side query and status.
   const supportsFieldFilters = app !== "pda" && !managementMode;
   const title = t(`party.${kind}.title`);
@@ -429,6 +432,13 @@ export function PartyDirectoryPanel({
       const locatedEntry = entry as CustomerView | SupplierView;
       const location = [locatedEntry.address?.city, locatedEntry.address?.province].filter(Boolean).join(", ") || "-";
       return <span className={cellClassName} data-column-key={column} key={column} title={location}>{location}</span>;
+    }
+    if (classicWindow && isSupplier) {
+      return <span data-column-key={column} key={column} className={cellClassName}>
+        <span className={`supplier-status ${entry.active ? "supplier-status--active" : "supplier-status--inactive"}`}>
+          {t(entry.active ? "party.active" : "party.inactive")}
+        </span>
+      </span>;
     }
     return <span data-column-key={column} key={column} className={`${cellClassName} ${entry.active ? "party-status active" : "party-status"}`}>
       {t(entry.active ? "party.active" : "party.inactive")}
@@ -538,9 +548,31 @@ export function PartyDirectoryPanel({
     }
     setStatus(""); setDialogOpen(true);
   }
-  function closeDialog() {
+  const toolbarEntry = rows.find(entry => entry.id === selectedRowId) ?? null;
+  function retireToolbarEntry() {
+    if (!toolbarEntry || !classicWindow || !session.permissions.includes("ADMIN")) return;
+    setSelectedId(toolbarEntry.id); setRetirementOpen(true);
+  }
+  useEffect(() => {
+    if (!classicWindow) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F8", "F9", "F7"].includes(event.key)) return;
+      if (document.querySelector('[aria-modal="true"]') || dialogOpen || retirementOpen || historyCustomer) return;
+      event.preventDefault();
+      if (event.key === "F8" && canWrite) openNew();
+      if (event.key === "F9") retireToolbarEntry();
+      if (event.key === "F7" && canWrite && toolbarEntry) openEntry(toolbarEntry);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+
+  function closeDialog(confirmed = false) {
     if (!saving && !centralBusy) {
-      if (!isMember && JSON.stringify(form) !== JSON.stringify(initialForm) && !window.confirm(t("party.confirm.discard"))) return;
+      if (!confirmed && !isMember && JSON.stringify(form) !== JSON.stringify(initialForm)) {
+        if (classicWindow) { setConfirmation("discard"); return; }
+        if (!window.confirm(t("party.confirm.discard"))) return;
+      }
       setDialogOpen(false); setSelectedId(null); setMemberCandidateId(null); setMemberCandidateQuery("");
     }
   }
@@ -569,14 +601,17 @@ export function PartyDirectoryPanel({
     finally { setSaving(false); }
   }
 
-  async function toggleActive() {
+  async function toggleActive(confirmed = false) {
     if (!selected || !canWrite || saving) return;
     const action = selected.active ? "deactivate" : "activate";
     if (isMember && !(selected as MemberDirectoryView).customerActive && action === "activate") {
       setStatus(t("party.members.customerInactiveHint"));
       return;
     }
-    if (!window.confirm(t(`party.confirm.${action}`))) return;
+    if (!confirmed) {
+      if (classicWindow) { setConfirmation("active"); return; }
+      if (!window.confirm(t(`party.confirm.${action}`))) return;
+    }
     setSaving(true); setStatus("");
     try {
       const path = isMember
@@ -649,7 +684,7 @@ export function PartyDirectoryPanel({
     {status && <p className="product-create-status" role="status">{status}</p>}
     <footer className="filter-actions">
       {canWrite && (selectedMember.active || selectedMember.customerActive) && <button type="button" className={selectedMember.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selectedMember.active ? "party.action.deactivate" : "party.action.activate")}</button>}
-      <button type="button" onClick={closeDialog}>{t("common.cancel")}</button>
+      <button type="button" onClick={() => closeDialog()}>{t("common.cancel")}</button>
     </footer>
   </> : <>
     <div className="party-member-customer-picker" style={app !== "pda" ? { alignContent: "start" } : undefined}>
@@ -676,18 +711,30 @@ export function PartyDirectoryPanel({
     </div>
     {status && <p className="product-create-status" role="status">{status}</p>}
     <footer className="filter-actions">
-      <button type="button" onClick={closeDialog}>{t("common.cancel")}</button>
+      <button type="button" onClick={() => closeDialog()}>{t("common.cancel")}</button>
       {canWrite && <button type="button" onClick={() => void activateSelectedCustomer()} disabled={!memberCandidate || saving}>{saving ? t("party.saving") : t(memberCandidate?.memberUuid ? "party.members.reactivate" : "party.members.convert")}</button>}
     </footer>
   </>;
 
   return <>
+    {confirmation && <ErpConfirmDialog
+      title={confirmation === "discard" ? t("common.close") : t(selected?.active ? "party.action.deactivate" : "party.action.activate")}
+      message={t(confirmation === "discard" ? "party.confirm.discard" : selected?.active ? "party.confirm.deactivate" : "party.confirm.activate")}
+      confirmLabel={t("common.confirm")} cancelLabel={t("common.cancel")}
+      onCancel={() => setConfirmation(null)}
+      onConfirm={() => { const action = confirmation; setConfirmation(null); if (action === "discard") closeDialog(true); else void toggleActive(true); }}
+    />}
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
-      {canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
+      {classicWindow ? <div className="management-record-actions">
+        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}>F7 {t(`party.${kind}.edit`)}</button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}>F8 {t(`party.${kind}.new`)}</button>}
+        {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>F9 {t("safeManagement.action.retire")}</button>}
+      </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
-    <div className={`party-directory-toolbar${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}`}>
-      <input ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />
+    <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}`}>
+      {classicWindow && <label className="party-directory-search-label" htmlFor="party-management-search">{t("party.searchLabel")}</label>}
+      <input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />
       <label className="party-directory-status-filter">
         <span>{t("party.column.status")}</span>
         <ErpSelect
@@ -769,15 +816,16 @@ export function PartyDirectoryPanel({
       {loading && <div className="stock-empty-state">{t("common.loading")}</div>}
       {!loading && loadError && <div className="party-directory-state error" role="alert"><span>{status || t("party.loadError")}</span><button type="button" onClick={() => void load()}>{t("party.retry")}</button></div>}
       {!loading && !loadError && rows.map((entry) => {
-        return <button type="button" className={`party-directory-row party-directory-selectable-row${kind === "customers" && selectedRowId === entry.id ? " selected" : ""}`} role="row" style={gridStyle} key={entry.id}
+        return <button type="button" className={`party-directory-row party-directory-selectable-row${selectedRowId === entry.id ? " selected" : ""}`} role="row" style={gridStyle} key={entry.id}
           ref={selectedRowId === entry.id ? selectedRowRef : undefined}
           onClick={(event) => {
+            if (classicWindow && kind === "suppliers") { setSelectedRowId(entry.id); if (event.detail === 0) openEntry(entry); return; }
             if (kind !== "customers") { openEntry(entry); return; }
             setSelectedRowId(entry.id);
             // Keyboard activation (Enter/Space) has no pointer click count.
             if (event.detail === 0) setHistoryCustomer(entry as CustomerView);
           }}
-          onDoubleClick={() => { if (kind === "customers") { setSelectedRowId(entry.id); setHistoryCustomer(entry as CustomerView); } }}>
+          onDoubleClick={() => { if (classicWindow && kind === "suppliers") openEntry(entry); if (kind === "customers") { setSelectedRowId(entry.id); setHistoryCustomer(entry as CustomerView); } }}>
           {visibleColumns.map((column) => renderCell(column.key, entry))}
         </button>;
       })}
@@ -797,9 +845,9 @@ export function PartyDirectoryPanel({
       onClose={() => { setHistoryCustomer(null); selectedRowRef.current?.focus({ preventScroll: true }); }}
       onEdit={() => { if (canWrite) openEntry(customers.find((customer) => customer.id === historyCustomer.id) ?? historyCustomer); }}
     />}
-    {dialogOpen && <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="party-form-title">
-      <section className="filter-dialog product-create-dialog party-create-dialog">
-        <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={closeDialog}>{t("common.close")}</button></header>
+    {dialogOpen && <div className={`filter-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="party-form-title">
+      <section className={`filter-dialog product-create-dialog party-create-dialog${classicWindow ? " erp-classic-window" : ""}`} inert={confirmation !== null || undefined}>
+        <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={() => closeDialog()}>{t("common.close")}</button></header>
         {isMember ? memberDialogContent : <form className="product-create-form party-create-form" onSubmit={submit}>
           <fieldset disabled={!canWrite || saving || centralBusy}>
             <PartyFormFields
@@ -826,11 +874,12 @@ export function PartyDirectoryPanel({
           {isMember && selected && (selected as CustomerView).memberUuid && (
             <MemberLoyaltyPanel app={app} memberId={(selected as CustomerView).memberUuid!} session={session} t={t} />
           )}
-          <footer className="filter-actions">{selected && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" disabled={saving || centralBusy} onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+          <footer className="filter-actions">{selected && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" disabled={saving || centralBusy} onClick={() => closeDialog()}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
         </form>}
       </section>
     </div>}
     {retirementOpen && selected && !isMember && <SafeRetirementDialog
+      classicWindow={classicWindow}
       open
       entityPath={isSupplier ? "suppliers" : "customers"}
       entityId={selected.id}

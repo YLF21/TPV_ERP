@@ -180,3 +180,29 @@
   .stock-product-information-notes .stock-product-information-fields { grid-template-columns: minmax(0, 1fr); }
   .stock-product-information-notes .stock-product-information-fields > div + div { padding: 0; border: 0; }
 }
+
+/* Keep the retirement action aligned with the product toolbar controls. */
+.erp-classic-window.stock-detail-dialog .stock-detail-toolbar > .safe-retirement-open {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:36px;
+  padding:6px 14px;
+  border:1px solid #b94747;
+  border-radius:0;
+  background:#fff;
+  color:#a12626;
+  font:inherit;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+}
+.erp-classic-window.stock-detail-dialog .stock-detail-toolbar > .safe-retirement-open:hover:not(:disabled) { background:#fff1f1; }
+.erp-classic-window.stock-detail-dialog .stock-detail-toolbar > .safe-retirement-open:disabled { border-color:#cbd5e1; color:#8290a1; background:#f5f7fa; cursor:default; }
+
+/* The history panel needs a bounded remaining-height grid track. The shared
+   window's flex layout otherwise collapses its nested scrolling table. */
+.filter-dialog.erp-classic-window.stock-detail-dialog {
+  display:grid;
+  grid-template-rows:auto auto minmax(0,1fr) auto !important;
+}
