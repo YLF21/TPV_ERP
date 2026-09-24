@@ -1,12 +1,14 @@
 package com.tpverp.backend.excel;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -109,6 +111,68 @@ class ProductExcelImportOperationsTest {
         assertThat(result.errors()).extracting(ProductExcelImportApplyService.ApplyError::code).contains("VERSION_STALE");
         verifyNoInteractions(writer);
         assertAuditHasNoMutations();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STOCK_TRANSFER", "GESTION_ALMACEN", "ROLE_ADMIN"})
+    void transferPreparesExistingRowsWithoutAnyMasterMutation(String authority) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("user", "",
+                List.of(() -> authority)));
+        var request = transferCommand(ProductExcelImportApplyService.Operation.PREPARE_DESTINATION, false);
+        var result = service.apply(new MockMultipartFile("file", "test.xlsx", null, new byte[]{1}), request);
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.appliedCount()).isZero();
+        assertThat(result.rows()).singleElement().satisfies(row -> assertThat(row.productId()).isEqualTo(id));
+        assertThat(captured).singleElement().satisfies(item -> {
+            assertThat(item.request()).isNull();
+            assertThat(item.row().changes()).isEmpty();
+        });
+        assertAuditHasNoMutations();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ProductExcelImportApplyService.Operation.class, names = "PREPARE_DESTINATION", mode = EnumSource.Mode.EXCLUDE)
+    void transferRejectsMasterActionsEvenForAdmin(ProductExcelImportApplyService.Operation operation) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("admin", "",
+                List.of(() -> "ROLE_ADMIN")));
+        var result = service.apply(new MockMultipartFile("file", "test.xlsx", null, new byte[]{1}), transferCommand(operation, false));
+        assertThat(result.errors()).extracting(ProductExcelImportApplyService.ApplyError::code).containsExactly("APPLY_CONTEXT_UNSUPPORTED");
+        verifyNoInteractions(writer);
+    }
+
+    @Test void transferRejectsSupplierUpdatesAndLegacyApply() {
+        var file = new MockMultipartFile("file", "test.xlsx", null, new byte[]{1});
+        for (var request : List.of(transferCommand(ProductExcelImportApplyService.Operation.PREPARE_DESTINATION, true),
+                transferCommand(null, false))) {
+            assertThat(service.apply(file, request).errors()).extracting(ProductExcelImportApplyService.ApplyError::code)
+                    .containsExactly("APPLY_CONTEXT_UNSUPPORTED");
+        }
+        verifyNoInteractions(writer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT"})
+    void transferPermissionDoesNotAllowOtherContexts(String context) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("user", "",
+                List.of(() -> "STOCK_TRANSFER")));
+        var base = config();
+        var scoped = new ProductExcelImportPreviewService.PreviewRequest(base.mapping(), base.edits(),
+                new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false, context,
+                        null, null, true, false), null, null, hash, 2, null, base.updateFields());
+        var request = new ProductExcelImportApplyService.ApplyRequest(scoped, Map.of(), false, false,
+                null, null, null, false, ProductExcelImportApplyService.Operation.PREPARE_DESTINATION, hash);
+        assertThatThrownBy(() -> service.apply(new MockMultipartFile("file", "test.xlsx", null, new byte[]{1}), request))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verifyNoInteractions(writer, preview);
+    }
+
+    ProductExcelImportApplyService.ApplyRequest transferCommand(ProductExcelImportApplyService.Operation operation, boolean updateSupplier) {
+        var base = config();
+        var transfer = new ProductExcelImportPreviewService.PreviewRequest(base.mapping(), base.edits(),
+                new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false, "WAREHOUSE_TRANSFER",
+                        null, null, true, true, "salePrice"), null, null, hash, 2, null, base.updateFields());
+        return new ProductExcelImportApplyService.ApplyRequest(transfer, Map.of(), true, true,
+                UUID.randomUUID(), java.time.LocalDate.of(2026, 9, 23), null, updateSupplier, operation, hash);
     }
 
     @Test void transactionFailureDoesNotAuditPlannedChangesAsSaved() {

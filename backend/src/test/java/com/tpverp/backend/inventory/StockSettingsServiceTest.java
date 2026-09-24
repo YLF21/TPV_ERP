@@ -16,6 +16,7 @@ import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,6 +34,7 @@ class StockSettingsServiceTest {
     @Mock private StockMinimumRepository minimums;
     @Mock private ProductRepository products;
     @Mock private WarehouseRepository warehouses;
+    @Mock private WarehouseStockSettingsRepository warehouseSettings;
 
     private StockSettingsService service;
     private Store store;
@@ -117,6 +119,95 @@ class StockSettingsServiceTest {
                 general.getId(), false, new BigDecimal("3.000"), false));
 
         assertThat(view.allowInactiveProductSales()).isTrue();
+    }
+
+    @Test
+    void warehousePoliciesAreIndependent() {
+        service.setWarehouseSettings(warehouseSettings);
+        var secondary = new Warehouse(store.getId(), "SECUNDARIO");
+        var generalPolicy = new WarehouseStockSettings(general.getId(), store.getId(), false,
+                new BigDecimal("2.000"), false);
+        var secondaryPolicy = new WarehouseStockSettings(secondary.getId(), store.getId(), true,
+                new BigDecimal("7.000"), true);
+        when(warehouseSettings.findByWarehouseIdAndStoreId(general.getId(), store.getId()))
+                .thenReturn(Optional.of(generalPolicy));
+        when(warehouseSettings.findByWarehouseIdAndStoreId(secondary.getId(), store.getId()))
+                .thenReturn(Optional.of(secondaryPolicy));
+
+        assertThat(service.allowsNegativeStock(general.getId(), store.getId())).isFalse();
+        assertThat(service.allowsNegativeStock(secondary.getId(), store.getId())).isTrue();
+    }
+
+    @Test
+    void globalUpdateChangesOnlyWarehousesStillInheriting() {
+        service.setWarehouseSettings(warehouseSettings);
+        var inherited = new WarehouseStockSettings(general.getId(), store.getId(), true,
+                new BigDecimal("5.000"), true);
+        var customized = new WarehouseStockSettings(UUID.randomUUID(), store.getId(), true,
+                new BigDecimal("5.000"), true);
+        customized.update(false, new BigDecimal("1.000"), false);
+        var current = new StockSettings(store.getId(), general.getId());
+        when(warehouses.findById(general.getId())).thenReturn(Optional.of(general));
+        when(settings.findById(store.getId())).thenReturn(Optional.of(current));
+        when(warehouseSettings.findByStoreIdAndInheritsStoreSettingsTrue(store.getId()))
+                .thenReturn(List.of(inherited));
+
+        service.updateSettings(new StockSettingsCommand(general.getId(), false,
+                new BigDecimal("3.000"), false));
+
+        assertThat(inherited.isAllowNegativeStock()).isFalse();
+        assertThat(inherited.getDefaultMinimumStock()).isEqualByComparingTo("3.000");
+        assertThat(inherited.isInheritsStoreSettings()).isTrue();
+        assertThat(customized.getDefaultMinimumStock()).isEqualByComparingTo("1.000");
+        assertThat(customized.isInheritsStoreSettings()).isFalse();
+    }
+
+    @Test
+    void bulkWarehouseUpdateIncludesCustomOverridesAndPreservesStoreOnlyPolicy() {
+        service.setWarehouseSettings(warehouseSettings);
+        var secondary = new Warehouse(store.getId(), "SECUNDARIO");
+        var inherited = new WarehouseStockSettings(general.getId(), store.getId(), true,
+                new BigDecimal("5.000"), true);
+        var customized = new WarehouseStockSettings(secondary.getId(), store.getId(), false,
+                new BigDecimal("1.000"), false);
+        customized.update(false, new BigDecimal("1.000"), false);
+        var current = new StockSettings(store.getId(), general.getId());
+        current.setAllowInactiveProductSales(true);
+        when(settings.findById(store.getId())).thenReturn(Optional.of(current));
+        when(warehouseSettings.findByStoreId(store.getId())).thenReturn(List.of(inherited, customized));
+        when(warehouses.findByStoreIdOrderByNombre(store.getId())).thenReturn(List.of(general, secondary));
+
+        var result = service.applyWarehouseSettingsToAll(new WarehouseStockSettingsCommand(
+                false, new BigDecimal("3.500"), true));
+
+        assertThat(result.defaultWarehouseId()).isEqualTo(general.getId());
+        assertThat(result.allowInactiveProductSales()).isTrue();
+        assertThat(result.defaultMinimumStock()).isEqualByComparingTo("3.500");
+        for (var policy : List.of(inherited, customized)) {
+            assertThat(policy.isAllowNegativeStock()).isFalse();
+            assertThat(policy.getDefaultMinimumStock()).isEqualByComparingTo("3.500");
+            assertThat(policy.isAlertsEnabled()).isTrue();
+            assertThat(policy.isInheritsStoreSettings()).isTrue();
+        }
+        verify(warehouseSettings).saveAll(any());
+    }
+
+    @Test
+    void changingDefaultWarehouseKeepsExistingGlobalSettings() {
+        var secondary = new Warehouse(store.getId(), "SECUNDARIO");
+        var current = new StockSettings(store.getId(), general.getId());
+        current.update(general.getId(), false, new BigDecimal("3.500"), false);
+        current.setAllowInactiveProductSales(true);
+        when(warehouses.findById(secondary.getId())).thenReturn(Optional.of(secondary));
+        when(settings.findById(store.getId())).thenReturn(Optional.of(current));
+
+        var result = service.updateDefaultWarehouse(secondary.getId());
+
+        assertThat(result.defaultWarehouseId()).isEqualTo(secondary.getId());
+        assertThat(result.allowNegativeStock()).isFalse();
+        assertThat(result.defaultMinimumStock()).isEqualByComparingTo("3.500");
+        assertThat(result.alertsEnabled()).isFalse();
+        assertThat(result.allowInactiveProductSales()).isTrue();
     }
 
     @Test

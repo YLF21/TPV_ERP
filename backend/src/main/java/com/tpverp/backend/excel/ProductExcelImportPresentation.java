@@ -55,7 +55,7 @@ final class ProductExcelImportPresentation {
                 case "FILE_READ_FAILED", "PREVIEW_READ_FAILED", "WORKBOOK_ENCRYPTED", "WORKBOOK_CORRUPT", "WORKBOOK_UNREADABLE", "WORKBOOK_MACRO_UNSUPPORTED" -> new ErrorCopy("The workbook cannot be opened safely", "A complete macro-free workbook", "Open and save a compatible workbook, then retry");
                 case "MAPPING_REQUIRED", "IDENTITY_MAPPING_REQUIRED", "MAPPING_FIELD_UNKNOWN", "COLUMN_INVALID", "COLUMN_NOT_FOUND", "COLUMN_LIMIT", "SHEET_MISSING" -> new ErrorCopy("The import mapping is invalid", "A valid A-IV column and identity mapping", "Correct the mapping and preview again");
                 case "CONTRACT_LIMIT" -> new ErrorCopy("The configuration contains too many keys", "Maps within the contract limits", "Remove unused configuration keys");
-                case "CONTEXT_REQUIRED", "CONTEXT_INVALID", "STORE_CONTEXT_MISMATCH", "COMPANY_CONTEXT_MISMATCH" -> new ErrorCopy("The operational context is invalid", "STOCK, WAREHOUSE_INPUT, or WAREHOUSE_OUTPUT", "Select the active context");
+                case "CONTEXT_REQUIRED", "CONTEXT_INVALID", "STORE_CONTEXT_MISMATCH", "COMPANY_CONTEXT_MISMATCH" -> new ErrorCopy("The operational context is invalid", "STOCK, WAREHOUSE_INPUT, WAREHOUSE_OUTPUT, or WAREHOUSE_TRANSFER", "Select the active context");
                 case "START_ROW_INVALID", "NO_ROWS_DETECTED", "ROW_LIMIT", "ROW_INVALID", "GRID_ROW_LIMIT", "GRID_CELL_LIMIT", "CELL_LIMIT", "TEXT_LIMIT", "FORMULA_LIMIT", "WORKBOOK_LIMIT" -> new ErrorCopy("The detected rows or workbook limits are invalid", "Rows and cells within the configured limits", "Correct the workbook or split the import");
                 case "EDIT_LIMIT" -> new ErrorCopy("There are too many edits", "Up to 250,000 edits", "Reduce the edits");
                 case "ERROR_LIMIT" -> new ErrorCopy("Some row error details were omitted", "Up to 5,000 row details with ERROR classification preserved", "Correct the indicated rows and preview again");
@@ -97,7 +97,7 @@ final class ProductExcelImportPresentation {
             case "FILE_READ_FAILED", "PREVIEW_READ_FAILED", "WORKBOOK_ENCRYPTED", "WORKBOOK_CORRUPT", "WORKBOOK_UNREADABLE", "WORKBOOK_MACRO_UNSUPPORTED" -> new ErrorCopy("无法安全打开工作簿", "完整且不含宏的工作簿", "打开并保存兼容工作簿后重试");
             case "MAPPING_REQUIRED", "IDENTITY_MAPPING_REQUIRED", "MAPPING_FIELD_UNKNOWN", "COLUMN_INVALID", "COLUMN_NOT_FOUND", "COLUMN_LIMIT", "SHEET_MISSING" -> new ErrorCopy("导入映射无效", "有效的 A-IV 列和标识映射", "更正映射后重新预览");
             case "CONTRACT_LIMIT" -> new ErrorCopy("配置包含过多键", "符合契约限制的映射", "删除未使用的配置键");
-            case "CONTEXT_REQUIRED", "CONTEXT_INVALID", "STORE_CONTEXT_MISMATCH", "COMPANY_CONTEXT_MISMATCH" -> new ErrorCopy("操作上下文无效", "STOCK、WAREHOUSE_INPUT 或 WAREHOUSE_OUTPUT", "选择当前上下文");
+            case "CONTEXT_REQUIRED", "CONTEXT_INVALID", "STORE_CONTEXT_MISMATCH", "COMPANY_CONTEXT_MISMATCH" -> new ErrorCopy("操作上下文无效", "STOCK、WAREHOUSE_INPUT、WAREHOUSE_OUTPUT 或 WAREHOUSE_TRANSFER", "选择当前上下文");
             case "START_ROW_INVALID", "NO_ROWS_DETECTED", "ROW_LIMIT", "ROW_INVALID", "GRID_ROW_LIMIT", "GRID_CELL_LIMIT", "CELL_LIMIT", "TEXT_LIMIT", "FORMULA_LIMIT", "WORKBOOK_LIMIT" -> new ErrorCopy("检测到的行或工作簿超出限制", "限制范围内的行和单元格", "更正工作簿或拆分导入");
             case "EDIT_LIMIT" -> new ErrorCopy("编辑过多", "最多 250,000 次编辑", "减少编辑");
             case "ERROR_LIMIT" -> new ErrorCopy("部分行错误详情已省略", "最多 5,000 条行详情且保留 ERROR 分类", "更正指出的行后重新预览");

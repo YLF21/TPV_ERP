@@ -50,6 +50,14 @@ describe("WarehouseScreen", () => {
     expect(html).not.toContain("session-top-controls");
   });
 
+  it("opens the requested stock document editor when launched from Almacenes", () => {
+    const html = renderToStaticMarkup(<WarehouseScreen app="gestion" locale="es"
+      session={warehouseSession(["GESTION_ALMACEN"])} terminalContext={terminalContext}
+      onBack={vi.fn()} onLocaleChange={vi.fn()} embedded initialSection="input" createOnMount />);
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain("Entrada almacén");
+  });
+
   it("renders warehouse movements and independent purchase document queries", () => {
     const html = renderToStaticMarkup(
       <WarehouseScreen
