@@ -279,6 +279,7 @@ public class SalesReportExcelExportService {
         row.put("productCount", value.lines().stream().mapToInt(line -> line.quantity()).sum());
         row.put("comment", value.concept());
         row.put("reason", text(value.destination(), value.status().name()));
+        row.put("status", value.status().name());
         row.put("total", value.lines().stream()
                 .map(line -> amount(line.saleTotal()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add));

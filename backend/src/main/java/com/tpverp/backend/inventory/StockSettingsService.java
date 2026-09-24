@@ -17,6 +17,7 @@ public class StockSettingsService {
     private final StockMinimumRepository minimums;
     private final ProductRepository products;
     private final WarehouseRepository warehouses;
+    private WarehouseStockSettingsRepository warehouseSettings;
 
     public StockSettingsService(
             CurrentOrganization organization,
@@ -29,6 +30,74 @@ public class StockSettingsService {
         this.minimums = minimums;
         this.products = products;
         this.warehouses = warehouses;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWarehouseSettings(WarehouseStockSettingsRepository warehouseSettings) {
+        this.warehouseSettings = warehouseSettings;
+    }
+
+    @Transactional
+    public WarehouseStockSettings warehouseSettings(UUID warehouseId) {
+        var storeId = organization.currentStore().getId();
+        warehouse(warehouseId, storeId);
+        if (warehouseSettings == null) throw new IllegalStateException("Configuración de almacén no disponible");
+        return warehouseSettings.findByWarehouseIdAndStoreId(warehouseId, storeId)
+                .orElseGet(() -> {
+                    var inherited = settingsFor(storeId);
+                    return warehouseSettings.save(new WarehouseStockSettings(warehouseId, storeId,
+                            inherited.isAllowNegativeStock(), inherited.getDefaultMinimumStock(),
+                            inherited.isAlertsEnabled()));
+                });
+    }
+
+    @Transactional
+    public WarehouseStockSettings updateWarehouseSettings(UUID warehouseId, WarehouseStockSettingsCommand command) {
+        Objects.requireNonNull(command);
+        var current = warehouseSettings(warehouseId);
+        if (!warehouse(warehouseId, current.getStoreId()).isActive()) {
+            throw new IllegalStateException("El almacén no está activo");
+        }
+        current.update(command.allowNegativeStock(), command.defaultMinimumStock(), command.alertsEnabled());
+        return warehouseSettings.save(current);
+    }
+
+    @Transactional
+    public WarehouseStockSettings resetWarehouseSettings(UUID warehouseId) {
+        var current = warehouseSettings(warehouseId);
+        var defaults = settingsFor(current.getStoreId());
+        current.inherit(defaults.isAllowNegativeStock(), defaults.getDefaultMinimumStock(), defaults.isAlertsEnabled());
+        return warehouseSettings.save(current);
+    }
+
+    @Transactional
+    public StockSettingsView applyWarehouseSettingsToAll(WarehouseStockSettingsCommand command) {
+        Objects.requireNonNull(command, "command");
+        var storeId = organization.currentStore().getId();
+        var defaults = settingsFor(storeId);
+        defaults.update(defaults.getDefaultWarehouseId(), command.allowNegativeStock(),
+                command.defaultMinimumStock(), command.alertsEnabled());
+        settings.save(defaults);
+        var configured = warehouseSettings.findByStoreId(storeId).stream()
+                .collect(java.util.stream.Collectors.toMap(WarehouseStockSettings::getWarehouseId, value -> value));
+        var all = warehouses.findByStoreIdOrderByNombre(storeId).stream().map(warehouse -> {
+            var value = configured.getOrDefault(warehouse.getId(), new WarehouseStockSettings(
+                    warehouse.getId(), storeId, command.allowNegativeStock(),
+                    command.defaultMinimumStock(), command.alertsEnabled()));
+            value.inherit(command.allowNegativeStock(), command.defaultMinimumStock(), command.alertsEnabled());
+            return value;
+        }).toList();
+        warehouseSettings.saveAll(all);
+        return view(defaults);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean allowsNegativeStock(UUID warehouseId, UUID storeId) {
+        if (warehouseSettings != null) {
+            var configured = warehouseSettings.findByWarehouseIdAndStoreId(warehouseId, storeId);
+            if (configured.isPresent()) return configured.get().isAllowNegativeStock();
+        }
+        return settings.findById(storeId).map(StockSettings::isAllowNegativeStock).orElse(true);
     }
 
     @Transactional
@@ -52,6 +121,24 @@ public class StockSettingsService {
                 Objects.requireNonNull(command.allowNegativeStock(), "allowNegativeStock"),
                 command.defaultMinimumStock(),
                 Objects.requireNonNull(command.alertsEnabled(), "alertsEnabled"));
+        var saved = settings.save(current);
+        if (warehouseSettings != null) {
+            var inherited = warehouseSettings.findByStoreIdAndInheritsStoreSettingsTrue(storeId);
+            inherited.forEach(value -> value.inherit(saved.isAllowNegativeStock(),
+                    saved.getDefaultMinimumStock(), saved.isAlertsEnabled()));
+            warehouseSettings.saveAll(inherited);
+        }
+        return view(saved);
+    }
+
+    @Transactional
+    public StockSettingsView updateDefaultWarehouse(UUID warehouseId) {
+        var storeId = organization.currentStore().getId();
+        var selected = warehouse(warehouseId, storeId);
+        if (!selected.isActive()) throw new IllegalArgumentException("message.warehouse.not_available_for_store");
+        var current = settingsFor(storeId);
+        current.update(selected.getId(), current.isAllowNegativeStock(),
+                current.getDefaultMinimumStock(), current.isAlertsEnabled());
         return view(settings.save(current));
     }
 
@@ -81,7 +168,9 @@ public class StockSettingsService {
                 .orElseGet(() -> new StockMinimumView(
                         productId,
                         warehouseId,
-                        settingsFor(storeId).getDefaultMinimumStock(),
+                        warehouseSettings == null
+                                ? settingsFor(storeId).getDefaultMinimumStock()
+                                : warehouseSettings(warehouseId).getDefaultMinimumStock(),
                         false));
     }
 

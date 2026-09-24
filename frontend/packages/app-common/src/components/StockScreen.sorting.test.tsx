@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import type { AppKind, UserSession } from "../types";
-import { StockScreen, type StockTopSalesRow } from "./StockScreen";
+import { StockScreen, sortProductWarehouseRows, type StockTopSalesRow } from "./StockScreen";
 import { StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
 import { StockPromotionGroups } from "./StockPromotionGroups";
 import type { StockBulkDraftView } from "./stockBulkEdit";
@@ -238,5 +238,23 @@ describe("Gestión in APP VENTA defaults to ascending code", () => {
       promotions={[promotion]} productRows={topRows} t={(key) => key} defaultExpandedPromotionIds={["promo"]} />);
     expect(Array.from(container.querySelectorAll('tbody [data-column-key="code"]'), (cell) => cell.textContent))
       .toEqual(app === "venta" ? ["1", "2", "10"] : ["10", "2", "1"]);
+  });
+});
+
+describe("Product warehouse order", () => {
+  const rows = [
+    { warehouseName: "ALMACEN 10", quantity: 5 },
+    { warehouseName: "GENERAL", quantity: 24 },
+    { warehouseName: "ALMACEN 2", quantity: 0 },
+    { warehouseName: "ALMACEN 1", quantity: -2 }
+  ];
+  it("pins GENERAL first and uses natural warehouse name order by default", () => {
+    expect(sortProductWarehouseRows(rows, null, "es").map(row => row.warehouseName))
+      .toEqual(["GENERAL", "ALMACEN 1", "ALMACEN 2", "ALMACEN 10"]);
+    expect(rows[0].warehouseName).toBe("ALMACEN 10");
+  });
+  it("keeps GENERAL first even when the user sorts by stock", () => {
+    expect(sortProductWarehouseRows(rows, {column:"quantity",direction:"asc"}, "es").map(row => row.quantity))
+      .toEqual([24, -2, 0, 5]);
   });
 });

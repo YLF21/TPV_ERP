@@ -1,3 +1,5 @@
+import { ErpConfirmDialog } from "./ErpConfirmDialog";
+import "./ErpClassicWindow.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { X } from "@phosphor-icons/react";
@@ -24,6 +26,7 @@ import {
 } from "../catalog/familyCatalogApi";
 
 export type ProductCreateDialogProps = {
+  classicWindow?: boolean;
   open: boolean;
   locale: LocaleCode;
   filterChips?: boolean;
@@ -796,6 +799,7 @@ export function ProductCreateDialog({
   open,
   locale,
   filterChips = false,
+  classicWindow = false,
   token,
   operationalAuthorizationId,
   editProduct,
@@ -807,6 +811,7 @@ export function ProductCreateDialog({
   onCreated
 }: ProductCreateDialogProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
+  const [confirmImageRemoval, setConfirmImageRemoval] = useState(false);
   const requestHeaders = operationalAuthorizationId
     ? { "X-Operational-Authorization": operationalAuthorizationId }
     : undefined;
@@ -2036,13 +2041,13 @@ export function ProductCreateDialog({
     }
   }
 
-  async function removeSelectedImage() {
+  async function removeSelectedImage(confirmed = false) {
     if ((!imageFile && !existingImagePreview) || deletingImage) {
       return;
     }
-    const confirmed = window.confirm(t("product.image.removeConfirm"));
     if (!confirmed) {
-      return;
+      if (classicWindow) { setConfirmImageRemoval(true); return; }
+      if (!window.confirm(t("product.image.removeConfirm"))) return;
     }
     if (imageFile) {
       changeImage(null);
@@ -2127,8 +2132,12 @@ export function ProductCreateDialog({
   }
 
   return (
-    <div className="filter-overlay product-create-overlay" role="dialog" aria-modal="true" aria-labelledby="product-create-title">
-      <section className="filter-dialog product-create-dialog">
+    <div className={`filter-overlay product-create-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="product-create-title">
+      {confirmImageRemoval && <ErpConfirmDialog title={t("common.confirm")} message={t("product.image.removeConfirm")}
+        confirmLabel={t("common.confirm")} cancelLabel={t("common.cancel")}
+        onCancel={() => setConfirmImageRemoval(false)}
+        onConfirm={() => { setConfirmImageRemoval(false); void removeSelectedImage(true); }} />}
+      <section inert={confirmImageRemoval || undefined} className={`filter-dialog product-create-dialog${classicWindow ? " erp-classic-window" : ""}`}>
         <header className="product-editor-header">
           <div>
             <h2 id="product-create-title">{t(editingProduct ? "product.edit.title" : "product.create.title")}</h2>
@@ -2562,8 +2571,8 @@ export function ProductCreateDialog({
         </footer>
       </section>
       {familyPickerOpen && (
-        <div className="filter-overlay stock-family-overlay" role="dialog" aria-modal="true" aria-labelledby="product-family-title">
-          <section className="filter-dialog stock-family-dialog">
+        <div className={`filter-overlay stock-family-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="product-family-title">
+          <section className={`filter-dialog stock-family-dialog${classicWindow ? " erp-classic-window" : ""}`}>
             <header className="filter-header">
               <h2 id="product-family-title">{t("stock.column.family")}</h2>
               <button type="button" onClick={() => {
@@ -2742,7 +2751,7 @@ export function ProductCreateDialog({
       )}
       {supplierPickerOpen && (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="product-principal-supplier-title">
-          <section className="filter-dialog bulk-supplier-dialog">
+          <section className={`filter-dialog bulk-supplier-dialog${classicWindow ? " erp-classic-window" : ""}`}>
             <header className="filter-header">
               <div>
                 <h2 id="product-principal-supplier-title">{t("product.supplier.selectPrincipal")}</h2>

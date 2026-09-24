@@ -226,7 +226,8 @@ export function SharedExcelImportDialog({
   documentDate
 }: SharedExcelImportDialogProps) {
   const t = createTranslator(locale);
-  const showDocumentPriceSource = context === "WAREHOUSE_INPUT" && requestedDocumentPriceSource;
+  const transferContext = context === "WAREHOUSE_TRANSFER";
+  const showDocumentPriceSource = (context === "WAREHOUSE_INPUT" || transferContext) && requestedDocumentPriceSource;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragScrollRef = useRef<DragScrollState | null>(null);
   const dragScrollMovedRef = useRef(false);
@@ -808,6 +809,7 @@ export function SharedExcelImportDialog({
   }
 
   async function runOperation(operation: ProductExcelImportOperation, confirmed = false) {
+    if (transferContext && operation !== "PREPARE_DESTINATION") return;
     const config = currentPreviewConfig();
     if (!selectedFile || !config || !serverPreviewIsCurrent || !serverPreview?.previewFingerprint) {
       setStatus(t("sharedExcel.status.previewRequired"));
@@ -1345,7 +1347,7 @@ export function SharedExcelImportDialog({
                 })}</span>
               </div>
               <div className="shared-excel-options">
-                {<label><input type="checkbox" disabled={isApplying} checked={autoAddMissing} onChange={(event) => setAutoAddMissing(event.target.checked)} /> {t("sharedExcel.option.autoAdd")}</label>}
+                {!transferContext && <label><input type="checkbox" disabled={isApplying} checked={autoAddMissing} onChange={(event) => setAutoAddMissing(event.target.checked)} /> {t("sharedExcel.option.autoAdd")}</label>}
                 <label><input type="checkbox" disabled={isApplying} checked={generateSummaryDocument} onChange={(event) => setGenerateSummaryDocument(event.target.checked)} /> {t("sharedExcel.option.summaryDocument")}</label>
                 <label>
                   <input
@@ -1471,12 +1473,12 @@ export function SharedExcelImportDialog({
                     changed: t("sharedExcel.review.changed"), hint: t("sharedExcel.review.changeHint")
                   } } : {}),
                   resize: (column) => interpolateMessage(t("sharedExcel.resizeColumn"), { column }) }}
-                actions={activePanel === "missing"
+                actions={activePanel === "missing" && !transferContext
                   ? <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !missingRows.length} onClick={addProducts}>{t("sharedExcel.addProducts")}</button>
-                  : activePanel === "priceChanged"
+                  : activePanel === "priceChanged" && !transferContext
                     ? <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !updateFields.purchasePrice || !priceChangedRows.length} onClick={() => void runOperation("UPDATE_PURCHASE_PRICE")}>{t("sharedExcel.updatePurchase")}</button>
                     : activePanel === "accepted" ? <>
-                      <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length || !Object.values(updateFields).some(Boolean)} onClick={() => void runOperation("UPDATE_SELECTED_FIELDS")}>{t("sharedExcel.updateProducts")}</button>
+                      {!transferContext && <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length || !Object.values(updateFields).some(Boolean)} onClick={() => void runOperation("UPDATE_SELECTED_FIELDS")}>{t("sharedExcel.updateProducts")}</button>}
                       <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length} onClick={() => void runOperation("PREPARE_DESTINATION")}>{operationLabel("PREPARE_DESTINATION")}</button>
                     </> : null}
               />
@@ -2366,7 +2368,7 @@ function importErrorCopy(code: string): ImportErrorCatalog {
     case "COLUMN_INVALID":
     case "COLUMN_NOT_FOUND": return copies("La columna indicada no es válida", "The selected column is invalid", "指定列无效", "Una columna A-IV existente", "An existing A-IV column", "存在的 A-IV 列", "Corrige la letra de columna", "Correct the column letter", "更正列字母");
     case "CONTEXT_REQUIRED":
-    case "CONTEXT_INVALID": return copies("El contexto operativo no es válido", "The operational context is invalid", "操作上下文无效", "STOCK, WAREHOUSE_INPUT o WAREHOUSE_OUTPUT", "STOCK, WAREHOUSE_INPUT, or WAREHOUSE_OUTPUT", "STOCK、WAREHOUSE_INPUT 或 WAREHOUSE_OUTPUT", "Selecciona un contexto permitido", "Select an allowed context", "选择允许的上下文");
+    case "CONTEXT_INVALID": return copies("El contexto operativo no es válido", "The operational context is invalid", "操作上下文无效", "STOCK, WAREHOUSE_INPUT, WAREHOUSE_OUTPUT o WAREHOUSE_TRANSFER", "STOCK, WAREHOUSE_INPUT, WAREHOUSE_OUTPUT, or WAREHOUSE_TRANSFER", "STOCK、WAREHOUSE_INPUT、WAREHOUSE_OUTPUT 或 WAREHOUSE_TRANSFER", "Selecciona un contexto permitido", "Select an allowed context", "选择允许的上下文");
     case "STORE_CONTEXT_MISMATCH":
     case "COMPANY_CONTEXT_MISMATCH": return copies("La organización no coincide con la sesión", "The organization does not match the session", "组织与会话不匹配", "La tienda y empresa activas", "The active store and company", "当前门店和企业", "Usa la organización activa", "Use the active organization", "使用当前组织");
     case "START_ROW_INVALID": return copies("La fila inicial no está dentro del contenido", "The start row is outside the content", "起始行不在内容范围内", "Una fila desde 2 dentro de la hoja", "A row from 2 within the sheet", "工作表中从第 2 行开始的行", "Corrige la fila inicial", "Correct the start row", "更正起始行");

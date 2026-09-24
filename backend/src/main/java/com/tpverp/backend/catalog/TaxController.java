@@ -7,6 +7,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_TRANSFER;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.TAXES_MANAGE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
@@ -45,7 +46,7 @@ public class TaxController {
     }
 
     @GetMapping("/selectable")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_WRITE','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_WRITE','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + VENTA + "')")
     public List<StoreTax> selectable() {
         return service.selectableTaxes();
     }

@@ -1,3 +1,4 @@
+import "./ErpClassicWindow.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiProblemCode, apiRequest, classifyApiFailure } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -89,7 +90,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   const hasFilters = Object.values(filters).some(Boolean);
   const filtersDirty = Object.keys(filters).some((key) => filters[key as keyof typeof filters] !== draftFilters[key as keyof typeof filters]);
   const rows = allowed ? page?.items ?? [] : [];
-  const rowHeight = 44;
+  const rowHeight = app === "gestion" ? 36 : 44;
   const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
   const end = Math.min(rows.length, start + Math.ceil(viewportHeight / rowHeight) + 12);
 
@@ -311,9 +312,9 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   }
 
   if (!active) return null;
-  return <><div className="filter-overlay customer-documents-overlay" role="dialog" aria-modal="true" aria-labelledby="customer-documents-title"
+  return <><div className={`filter-overlay customer-documents-overlay${app === "gestion" ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="customer-documents-title"
     aria-hidden={model347Open || undefined}>
-    <section className="filter-dialog customer-documents-dialog" ref={dialogRef} inert={model347Open || undefined}>
+    <section className={`filter-dialog customer-documents-dialog${app === "gestion" ? " erp-classic-window" : ""}`} ref={dialogRef} inert={model347Open || undefined}>
       <header className="filter-header">
         <div><h2 id="customer-documents-title">{t("customerDocuments.title")}</h2><span>{customer.clientId} · {customer.fiscalName}</span></div>
         <button type="button" onClick={onClose}>{t("common.close")}</button>
