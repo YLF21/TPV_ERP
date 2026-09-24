@@ -947,7 +947,10 @@ describe("SaleScreen", () => {
     const dialog = await screen.findByRole("dialog", { name: /cliente/i });
     await waitFor(() => expect(within(dialog).getByText(member.fiscalName!)).toBeInTheDocument());
     fireEvent.click(within(dialog).getByText(member.fiscalName!));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+    // Flush wallet loading and the F10 handler effect after selecting the customer.
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Seleccionar cliente" }));
+    });
     await waitFor(() => expect(checkoutProps.current?.memberWallet?.lots?.[0]).toMatchObject({
       id: "lot-f10-claim",
       documentNumber: "001-260829-00003",
