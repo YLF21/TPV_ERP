@@ -74,7 +74,10 @@ async function openEditor(information: HTMLElement) {
 }
 
 async function saveEditor(editor: HTMLElement) {
-  fireEvent.click(within(editor).getByRole("button", { name: "Guardar F9" }));
+  // Flush the asynchronous save and the detail keyboard effect before another F7.
+  await act(async () => {
+    fireEvent.click(within(editor).getByRole("button", { name: "Guardar F9" }));
+  });
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Modificar producto" })).toBeNull());
 }
 
