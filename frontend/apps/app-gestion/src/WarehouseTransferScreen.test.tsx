@@ -161,7 +161,7 @@ it("exports the complete filtered list as PDF and Excel independently of loaded 
   fireEvent.click(screen.getByRole("button", { name: "warehouse.transfer.source" }));
   fireEvent.click(await screen.findByRole("option", { name: "ORIGEN" }));
   fireEvent.change(screen.getByLabelText("warehouse.report.from"), { target: { value: "2026-09-01" } });
-  for (const [label, format] of [["PDF", "pdf"], ["Excel", "xlsx"]]) {
+  for (const [label, format] of [["warehouse.count.exportPdf", "pdf"], ["warehouse.count.exportExcel", "xlsx"]]) {
     const button = screen.getByRole("button", { name: label });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
