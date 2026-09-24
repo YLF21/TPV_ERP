@@ -54,8 +54,11 @@ it("opens a new transfer document from the warehouse screen", async () => {
   expect(dialog).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "Archivo" })).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "Guardar (F9)" })).toBeDisabled();
-  expect(within(dialog).getByRole("button", { name: "Almacén de origen" })).toHaveTextContent("ORIGEN");
-  expect(within(dialog).getByRole("button", { name: "Almacén de destino" })).toHaveTextContent("DESTINO");
+  // The request can start before the catalog and warehouse state finish rendering.
+  await waitFor(() => {
+    expect(within(dialog).getByRole("button", { name: "Almacén de origen" })).toHaveTextContent("ORIGEN");
+    expect(within(dialog).getByRole("button", { name: "Almacén de destino" })).toHaveTextContent("DESTINO");
+  });
   expect(within(dialog).getByLabelText("Buscar producto")).toBeInTheDocument();
   expect(within(dialog).getByRole("table")).toBeInTheDocument();
 });
