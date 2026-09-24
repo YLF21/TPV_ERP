@@ -253,8 +253,8 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           {t(selectedDocument?.status === "DRAFT" ? "warehouse.transfer.edit" : "warehouseDocument.view")}</button>
         <button type="button" disabled={selectedDocument?.status !== "DRAFT" || cancelling || listLoading}
           onClick={() => void cancelSelectedDocument()}>{t("warehouse.transfer.cancelDocument")}</button>
-        <button type="button" disabled={!token || exporting} onClick={() => void exportList("pdf")}>PDF</button>
-        <button type="button" disabled={!token || exporting} onClick={() => void exportList("xlsx")}>Excel</button>
+        <button type="button" disabled={!token || exporting} onClick={() => void exportList("pdf")}>{t("warehouse.count.exportPdf")}</button>
+        <button type="button" disabled={!token || exporting} onClick={() => void exportList("xlsx")}>{t("warehouse.count.exportExcel")}</button>
       </div>
     </div>
     <ErpFilterChips translate={t} focusRef={searchRef} className="gestion-warehouse-transfer-chips"

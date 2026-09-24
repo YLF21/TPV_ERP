@@ -163,8 +163,8 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
         </div>}
         <div className="inventory-export-actions">
           {!readOnly && <button disabled={busy || !lines.length} onClick={() => void run(async () => { await reviewStock(); })}>{c("refreshStock")}</button>}
-          <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("pdf"))}>PDF</button>
-          <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("xlsx"))}>Excel</button>
+          <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("pdf"))}>{t("warehouse.count.exportPdf")}</button>
+          <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("xlsx"))}>{t("warehouse.count.exportExcel")}</button>
         </div>
         <StockCountTable rows={lines} columns={columns} session={session} tableKey="warehouse.inventory.lines" empty={c("empty")}
           cell={(line, key) => {

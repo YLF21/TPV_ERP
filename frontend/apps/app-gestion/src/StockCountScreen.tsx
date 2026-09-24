@@ -62,7 +62,7 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
     ].filter((chip) => chip.value)} onClear={() => { setSearch(""); setWarehouse(""); setStatus(""); setFrom(""); setTo(""); }} />
     <div className="inventory-list-actions"><button disabled={busy || loading || !warehouses.some((item) => item.active !== false)} onClick={() => setEditor({ document: null })}>{c("create")}</button>
       <button disabled={busy || !selection} onClick={() => open(selected)}>{c("consult")}</button><button disabled={busy || selection?.status !== "DRAFT"} onClick={() => setCancelPrompt(true)}>{c("cancelDocument")}</button>
-      <button disabled={busy || !selection} onClick={() => void run(() => exportFile("pdf"))}>PDF</button><button disabled={busy || !selection} onClick={() => void run(() => exportFile("xlsx"))}>Excel</button>
+      <button disabled={busy || !selection} onClick={() => void run(() => exportFile("pdf"))}>{t("warehouse.count.exportPdf")}</button><button disabled={busy || !selection} onClick={() => void run(() => exportFile("xlsx"))}>{t("warehouse.count.exportExcel")}</button>
     </div>
     {loading && <p role="status">{t("common.loading")}</p>}
     <div className="inventory-list-scroll" onScroll={(event) => { const node = event.currentTarget; if (node.scrollHeight - node.scrollTop - node.clientHeight < 200) setLimit((value) => value + 50); }}>
