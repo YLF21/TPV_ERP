@@ -149,6 +149,7 @@ export class MessagesEs {
     "party.section": "Clientes y proveedores",
     "party.customers.title": "Clientes", "party.customers.subtitle": "Directorio de clientes y datos fiscales", "party.customers.new": "Nuevo cliente", "party.customers.edit": "Modificar cliente",
     "party.members.title": "Miembros", "party.members.subtitle": "Clientes con relación de fidelización", "party.members.new": "Nuevo miembro",
+    "party.suppliers.edit": "Modificar proveedor",
     "party.suppliers.title": "Proveedores", "party.suppliers.subtitle": "Directorio de proveedores y datos de contacto", "party.suppliers.new": "Nuevo proveedor",
     "party.search": "Buscar por código, nombre, documento, teléfono o email", "party.results": "{count} registros",
     "party.loadError": "No se pudo cargar el listado", "party.retry": "Reintentar", "party.saveError": "No se pudo guardar el registro", "party.saveSuccess": "Registro guardado correctamente", "party.saving": "Guardando...", "party.empty": "No hay registros para mostrar",

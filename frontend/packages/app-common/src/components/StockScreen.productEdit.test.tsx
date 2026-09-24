@@ -38,6 +38,7 @@ function mockProductEditing(initialCursor: string | null = null) {
     if (path === "/warehouses") return [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true, active: true }];
     if (path === "/families") return [{ id: "family-1", familyCode: "001", name: "Bebidas", defaultFamily: true }];
     if (path === "/taxes/selectable") return [{ id: "tax-1", percentage: "7", defaultTax: true }];
+    if (path.endsWith("/retirement-impact")) return {id:product.id,version:1,currentState:"ACTIVE",outcomeIfConfirmed:"DEACTIVATED",reasonCodes:["HAS_STOCK"],executable:true};
     if (path === "/products") return [product];
     return [];
   });
@@ -55,8 +56,8 @@ function mockProductEditing(initialCursor: string | null = null) {
   };
 }
 
-async function openProduct(app: "venta" | "gestion") {
-  const { container } = render(<StockScreen app={app} locale="es"
+async function openProduct(app: "venta" | "gestion", management = false) {
+  const { container } = render(<StockScreen app={app} locale="es" allowSafeRetirement={management}
     session={{ username: "demo", displayName: "DEMO", permissions: ["ADMIN"], accessToken: "test-token" }}
     terminalContext={{ storeName: "Tienda de prueba", terminalCode: "DEMO" }}
     onBack={vi.fn()} onLocaleChange={vi.fn()} />);
@@ -163,4 +164,33 @@ describe("Stock product editing", () => {
     const reopened = await openEditor(information);
     expect((within(reopened).getByLabelText("Comentarios") as HTMLTextAreaElement).value).toBe("");
   });
+});
+
+it("uses F9 for safe retirement in product management instead of exporting Excel", async () => {
+  mockProductEditing();
+  render(<StockScreen app="gestion" locale="es" allowSafeRetirement
+    session={{ username:"demo", displayName:"DEMO", permissions:["ADMIN"], accessToken:"test-token" }}
+    terminalContext={{storeName:"Test",terminalCode:"TEST"}} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+  await screen.findByText("Cafe de prueba");
+  expect(screen.getByRole("button",{name:"F8 Añadir producto"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"F7 Modificar producto"})).toBeTruthy();
+  fireEvent.keyDown(window,{key:"F9"});
+  await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/products/management/product-1/retirement-impact",expect.anything()));
+  expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.includes("exports") || path.endsWith("/retire"))).toBe(false);
+});
+
+it("opens a new product with F8 from product information", async () => {
+  mockProductEditing();
+  const information = await openProduct("gestion", true);
+  expect(within(information).getByRole("button", {name:"F7 Modificar producto"})).toBeTruthy();
+  expect(within(information).getByRole("button", {name:"F8 Añadir producto"})).toBeTruthy();
+  fireEvent.keyDown(information, {key:"F8"});
+  expect(await screen.findByRole("dialog", {name:"Añadir producto"})).toBeTruthy();
+});
+it("opens retirement review with F9 from product information", async () => {
+  mockProductEditing();
+  const information = await openProduct("gestion", true);
+  fireEvent.keyDown(information, {key:"F9"});
+  await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/products/management/product-1/retirement-impact",expect.anything()));
+  expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.endsWith("/retire"))).toBe(false);
 });
