@@ -7434,9 +7434,9 @@ export function StockScreen({
                 <span>{selectedViewSubtitle}</span>
               </div>
               {managementProductActions ? <div className="management-record-actions">
-                {canManageProducts && <button type="button" aria-keyshortcuts="F7" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}>F7 {t("product.edit.title")}</button>}
-                {canManageProducts && <button type="button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}>F8 {t("product.create.button")}</button>}
-                {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}>F9 {t("safeManagement.action.retire")}</button>}
+                {canManageProducts && <button type="button" aria-keyshortcuts="F7" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}>{t("safeManagement.shortcut.modify")} {t("product.edit.title")}</button>}
+                {canManageProducts && <button type="button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}>{t("safeManagement.shortcut.add")} {t("product.create.button")}</button>}
+                {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>}
               </div> : canManageProducts && (
                 <button
                   type="button"
@@ -7986,10 +7986,10 @@ export function StockScreen({
                     setProductCreateOpen(true);
                   }}
                 >
-                  {app === "gestion" && allowSafeRetirement ? `F7 ${t("product.edit.title")}` : t("stock.detail.editTab")}
+                  {app === "gestion" && allowSafeRetirement ? `${t("safeManagement.shortcut.modify")} ${t("product.edit.title")}` : t("stock.detail.editTab")}
                 </button>
               )}
-              {app === "gestion" && allowSafeRetirement && canManageProducts && <button type="button" className="stock-detail-edit-button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}>F8 {t("product.create.button")}</button>}
+              {app === "gestion" && allowSafeRetirement && canManageProducts && <button type="button" className="stock-detail-edit-button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}>{t("safeManagement.shortcut.add")} {t("product.create.button")}</button>}
               {allowSafeRetirement && session.permissions.includes("ADMIN") && (
                 <button
                   type="button"
@@ -7999,7 +7999,7 @@ export function StockScreen({
                   disabled={detailRow.code === "0"}
                   title={detailRow.code === "0" ? t("safeManagement.retirement.reason.PROTECTED_SYSTEM_PRODUCT") : undefined}
                 >
-                  {app === "gestion" ? "F9 " : ""}{t("safeManagement.action.retire")}
+                  {app === "gestion" ? `${t("safeManagement.shortcut.retire")} ` : ""}{t("safeManagement.action.retire")}
                 </button>
               )}
             </div>

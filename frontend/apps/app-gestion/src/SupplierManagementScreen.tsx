@@ -422,9 +422,9 @@ function SalesRepresentativeManagementPanel({ locale, session }: SupplierManagem
           <span>{t("safeManagement.representatives.subtitle")}</span>
         </div>
         <div className="management-record-actions">
-          <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}>F7 {t("safeManagement.representatives.edit")}</button>
-          <button type="button" aria-keyshortcuts="F8" onClick={openNew}>F8 {t("safeManagement.representatives.new")}</button>
-          <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}>F9 {t("safeManagement.action.retire")}</button>
+          <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}>{t("safeManagement.shortcut.modify")} {t("safeManagement.representatives.edit")}</button>
+          <button type="button" aria-keyshortcuts="F8" onClick={openNew}>{t("safeManagement.shortcut.add")} {t("safeManagement.representatives.new")}</button>
+          <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>
         </div>
       </header>
       <div className="party-directory-toolbar party-directory-toolbar--classic">

@@ -1,6 +1,9 @@
 import type { LocaleCode } from "../types";
 
 const es: Record<string, string> = {
+  "safeManagement.shortcut.modify": "F7",
+  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "Solo un administrador puede abrir estas ventanas de gestión.",
   "safeManagement.retirement.title": "Retirar registro de forma segura",
   "safeManagement.retirement.explanation": "El servidor comprobará de nuevo todas las referencias al confirmar. Si el registro nunca se ha utilizado se eliminará; si tiene historial se conservará desactivado.",
@@ -91,6 +94,9 @@ const es: Record<string, string> = {
 };
 
 const en: Record<string, string> = {
+  "safeManagement.shortcut.modify": "F7",
+  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "Only an administrator can open these management screens.",
   "safeManagement.retirement.title": "Safely retire record",
   "safeManagement.retirement.explanation": "The server will check every reference again on confirmation. An unused record will be deleted; a record with history will be preserved as inactive.",
@@ -181,6 +187,9 @@ const en: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "safeManagement.shortcut.modify": "F7",
+  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "只有管理员可以打开这些管理页面。",
   "safeManagement.retirement.title": "安全停用记录",
   "safeManagement.retirement.explanation": "确认时服务器会再次检查所有引用。未使用过的记录将被删除；有历史记录的项目将停用并保留。",

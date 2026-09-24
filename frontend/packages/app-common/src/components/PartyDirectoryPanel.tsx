@@ -727,9 +727,9 @@ export function PartyDirectoryPanel({
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
       {classicWindow ? <div className="management-record-actions">
-        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}>F7 {t(`party.${kind}.edit`)}</button>}
-        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}>F8 {t(`party.${kind}.new`)}</button>}
-        {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>F9 {t("safeManagement.action.retire")}</button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}>{t("safeManagement.shortcut.modify")} {t(`party.${kind}.edit`)}</button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}>{t("safeManagement.shortcut.add")} {t(`party.${kind}.new`)}</button>}
+        {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
     <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}`}>
