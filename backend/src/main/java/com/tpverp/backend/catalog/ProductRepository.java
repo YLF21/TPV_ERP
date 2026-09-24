@@ -14,6 +14,26 @@ import jakarta.persistence.LockModeType;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
+    @Query("""
+            select product from Product product
+            where product.storeId = :storeId and product.activo = true
+              and product.productType <> com.tpverp.backend.catalog.ProductType.SERVICE
+              and (lower(product.nombre) like :pattern escape '!'
+                or exists (select identifier.id from ProductIdentifier identifier
+                  where identifier.productId = product.id and identifier.storeId = :storeId
+                    and identifier.tipo in (com.tpverp.backend.catalog.IdentifierType.CODIGO,
+                      com.tpverp.backend.catalog.IdentifierType.CODIGO_BARRAS)
+                    and lower(identifier.valor) like :pattern escape '!'))
+            order by case when exists (select exact.id from ProductIdentifier exact
+                where exact.productId = product.id and exact.storeId = :storeId
+                  and exact.tipo in (com.tpverp.backend.catalog.IdentifierType.CODIGO,
+                    com.tpverp.backend.catalog.IdentifierType.CODIGO_BARRAS)
+                  and lower(exact.valor) = :term) then 0 else 1 end,
+              lower(product.nombre), product.id
+            """)
+    List<Product> searchAdjustmentProducts(@Param("storeId") UUID storeId,
+            @Param("term") String term, @Param("pattern") String pattern, Pageable pageable);
+
     @Override
     Optional<Product> findById(UUID id);
 

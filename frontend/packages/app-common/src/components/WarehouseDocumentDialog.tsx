@@ -28,7 +28,7 @@ import {
   printWarehouseA4Document
 } from "../warehouse/warehouseDocumentPrinting";
 
-export type WarehouseDocumentMode = "input" | "output";
+export type WarehouseDocumentMode = "input" | "output" | "transfer";
 export type WarehouseInputDocumentType = "ENTRADA_ALMACEN" | "ALBARAN_ENTRADA" | "FACTURA_ENTRADA";
 export type WarehouseInputPriceSource = "PURCHASE" | "SALE" | "MEMBER" | "WHOLESALE" | "OFFER";
 
@@ -65,6 +65,8 @@ export type WarehouseDocumentView = {
   id: string;
   number?: string | null;
   warehouseId: string;
+  targetWarehouseId?: string;
+  version?: number;
   supplierId?: string | null;
   documentType?: WarehouseInputDocumentType;
   date: string;
@@ -111,6 +113,10 @@ type WarehouseDocumentDialogProps = {
   document?: WarehouseDocumentView | null;
   defaultWarehouseId?: string;
   terminalContext?: TerminalContext;
+  persistence?: {
+    save: (draft: WarehouseDocumentDraft, id?: string, version?: number) => Promise<WarehouseDocumentView>;
+    confirm: (document: WarehouseDocumentView) => Promise<WarehouseDocumentView>;
+  };
   onClose: () => void;
   onSaved?: (document: WarehouseDocumentView) => void;
   onConfirmed: (document?: WarehouseDocumentView) => void;
@@ -118,6 +124,7 @@ type WarehouseDocumentDialogProps = {
 
 export type WarehouseDocumentDraft = {
   warehouseId: string;
+  targetWarehouseId?: string;
   partnerId: string;
   partnerText: string;
   date: string;
@@ -148,6 +155,7 @@ type WarehouseDocumentColumnKey = typeof warehouseDocumentColumns[number]["key"]
 const printStartupGuardMs = 350;
 
 export function warehouseDocumentPath(mode: WarehouseDocumentMode) {
+  if (mode === "transfer") return "/warehouse-transfers";
   return mode === "input" ? "/warehouse-inputs" : "/warehouse-outputs";
 }
 
@@ -208,6 +216,18 @@ export function buildWarehouseDocumentCommand(mode: WarehouseDocumentMode, draft
     skipZeroPriceUpdate: Boolean(draft.excelImport.skipZeroPriceUpdate),
     lines: draft.excelImport.lines ?? []
   } : undefined;
+  if (mode === "transfer") {
+    return {
+      sourceWarehouseId: draft.warehouseId,
+      targetWarehouseId: draft.targetWarehouseId,
+      date: draft.date,
+      externalNumber: draft.externalNumber?.trim() || undefined,
+      notes: draft.concept,
+      priceSource: draft.priceSource ?? "PURCHASE",
+      globalDiscount: parseDocumentDiscountPercent(draft.globalDiscount),
+      lines: inputLines
+    };
+  }
   if (mode === "input") {
     return {
       warehouseId: draft.warehouseId,
@@ -364,6 +384,7 @@ export function WarehouseDocumentDialog({
   document,
   defaultWarehouseId,
   terminalContext,
+  persistence,
   onClose,
   onSaved,
   onConfirmed
@@ -377,6 +398,8 @@ export function WarehouseDocumentDialog({
   const [documentNumber, setDocumentNumber] = useState("");
   const [documentStatus, setDocumentStatus] = useState("BORRADOR");
   const [warehouseId, setWarehouseId] = useState("");
+  const [targetWarehouseId, setTargetWarehouseId] = useState("");
+  const [documentVersion, setDocumentVersion] = useState<number | undefined>();
   const [partnerId, setPartnerId] = useState("");
   const [partnerText, setPartnerText] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -413,6 +436,7 @@ export function WarehouseDocumentDialog({
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [excelCreatedProducts, setExcelCreatedProducts] = useState<WarehouseImportProduct[]>([]);
   const [excelImportMetadata, setExcelImportMetadata] = useState<SharedExcelImportMetadata | null>(null);
@@ -446,7 +470,7 @@ export function WarehouseDocumentDialog({
     app,
     username,
     accessToken,
-    tableKey: mode === "input" ? "warehouse.inputs.lines" : "warehouse.outputs.lines",
+    tableKey: mode === "transfer" ? "warehouse.transfers.lines" : mode === "input" ? "warehouse.inputs.lines" : "warehouse.outputs.lines",
     definitions: warehouseDocumentColumns
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
@@ -492,6 +516,9 @@ export function WarehouseDocumentDialog({
     setDocumentNumber(document?.number ?? "");
     setDocumentStatus(document?.status ?? "BORRADOR");
     setWarehouseId(initialWarehouse);
+    setTargetWarehouseId(document?.targetWarehouseId
+      ?? warehouses.find((warehouse) => warehouse.active !== false && warehouse.id !== initialWarehouse)?.id ?? "");
+    setDocumentVersion(document?.version);
     setPartnerId(document?.supplierId ?? "");
     setPartnerText(mode === "input" ? document?.origin ?? "" : document?.destination ?? "");
     setDate(document?.date ?? new Date().toISOString().slice(0, 10));
@@ -660,18 +687,20 @@ export function WarehouseDocumentDialog({
     return null;
   }
 
-  const title = titleOverride ?? t(mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse");
-  const partnerLabel = t(mode === "input" ? "warehouseDocument.supplier" : "warehouseDocument.customer");
+  const title = titleOverride ?? t(mode === "transfer" ? "warehouse.transfer.create" : mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse");
+  const partnerLabel = t(mode === "transfer" ? "warehouse.transfer.target" : mode === "input" ? "warehouseDocument.supplier" : "warehouseDocument.customer");
   const partnerOptions = mode === "input" ? localSuppliers : customers;
   const draft = {
-    warehouseId, partnerId, partnerText, date, externalNumber, concept, lines,
+    warehouseId, targetWarehouseId, partnerId, partnerText, date, externalNumber, concept, lines,
     documentType, priceSource: documentPriceMode, globalDiscount: documentDiscountPercent,
     sourceDeliveryNoteIds, excelImport: excelImportMetadata,
     excelImportProvenanceToken,
     excelImportSnapshotToken
   };
   const readOnly = documentStatus !== "BORRADOR";
-  const canSaveDraft = canConfirmWarehouseDocument(draft) && !submitting && Boolean(token) && !readOnly;
+  const validWarehouses = mode !== "transfer" || Boolean(targetWarehouseId && warehouseId !== targetWarehouseId);
+  const canSaveDraft = canConfirmWarehouseDocument(draft) && validWarehouses && !submitting && Boolean(token)
+    && !readOnly && (mode !== "transfer" || Boolean(persistence));
   const canSubmitConfirmation = canConfirm && canSaveDraft;
   const isEditing = Boolean(documentId);
   const linkedLinesLocked = documentType === "FACTURA_ENTRADA" && sourceDeliveryNoteIds.length > 0;
@@ -730,7 +759,7 @@ export function WarehouseDocumentDialog({
       sourceKey,
       selectedPriceMode
     ));
-    if (mode === "input") setDocumentPriceMode(selectedPriceMode);
+    if (mode !== "output") setDocumentPriceMode(selectedPriceMode);
     setLines(nextLines);
     importedDraftFingerprintRef.current = null;
     setExcelImportProvenanceToken(metadata.provenanceToken ?? null);
@@ -798,6 +827,7 @@ export function WarehouseDocumentDialog({
   }
 
   function selectDocumentPriceSource(source: WarehouseInputPriceSource) {
+    if (readOnly) return;
     setDocumentPriceMode(source);
     setLines((current) => current.map((line) => {
       if (line.priceOverridden) return line;
@@ -834,6 +864,12 @@ export function WarehouseDocumentDialog({
 
   function openPartnerList() {
     setFileMenuOpen(false);
+    if (mode === "transfer") {
+      const trigger = dialogRef.current?.querySelector<HTMLButtonElement>("#warehouse-document-target .erp-select__trigger");
+      trigger?.focus();
+      trigger?.click();
+      return;
+    }
     if (mode === "input") {
       setSupplierDialogOpen(true);
       return;
@@ -906,7 +942,7 @@ export function WarehouseDocumentDialog({
         && decimalDocumentNumber(line.unitPrice ?? 0) > 0
         && parseDocumentDiscountPercent(line.discountPercent) === 0)
       : undefined;
-    if (mode === "input" && sourcePrice === 0 && !reusableLine) {
+    if (mode !== "output" && sourcePrice === 0 && !reusableLine) {
       setPendingZeroPriceProduct({ product, quantity });
       setQuickLineEditIndex(null);
       setQuickLineEditValue("");
@@ -1032,7 +1068,7 @@ export function WarehouseDocumentDialog({
   }
 
   function openQuickLineEditor(modeToOpen: "name" | "price") {
-    if (readOnly || mode !== "input") return;
+    if (readOnly || mode === "output") return;
     const line = selectedLineOrStatus();
     if (!line || selectedLineIndex === null) return;
     const product = importProducts.find((candidate) => candidate.id === line.productId);
@@ -1109,7 +1145,7 @@ export function WarehouseDocumentDialog({
       setStatus(t("warehouseDocument.error.invalidQuantity"));
       return;
     }
-    if (mode === "input" && !productName) {
+    if (mode !== "output" && !productName) {
       setStatus(t("warehouseDocument.error.invalidName"));
       return;
     }
@@ -1126,7 +1162,7 @@ export function WarehouseDocumentDialog({
         ? {
           ...line,
           quantity,
-          productName: mode === "input" ? productName : line.productName,
+          productName: mode !== "output" ? productName : line.productName,
           unitPrice: price,
           priceOverridden: true,
           discountPercent: String(discount)
@@ -1183,7 +1219,9 @@ export function WarehouseDocumentDialog({
       issuedAt: date,
       warehouse: warehouseLabel,
       partnerLabel,
-      partner: selectedPartner ? partnerName(selectedPartner) : partnerText,
+      partner: mode === "transfer"
+        ? warehouses.find((option) => option.id === targetWarehouseId)?.name ?? targetWarehouseId
+        : selectedPartner ? partnerName(selectedPartner) : partnerText,
       discountPercent: discount,
       lines: printLines,
       subtotal: documentSubtotal,
@@ -1191,7 +1229,7 @@ export function WarehouseDocumentDialog({
       notes: concept.trim() ? [concept.trim()] : [],
       labels: {
         documentNumber: t("warehouseDocument.print.documentNumber"),
-        warehouse: t("warehouseDocument.print.warehouse"),
+        warehouse: t(mode === "transfer" ? "warehouse.transfer.source" : "warehouseDocument.print.warehouse"),
         discount: t("warehouseDocument.print.discount"),
         partner: t("warehouseDocument.print.partner"),
         terminal: t("warehouseDocument.print.terminal"),
@@ -1318,8 +1356,29 @@ export function WarehouseDocumentDialog({
     }
   }
 
-  function exportDocumentExcel() {
+  async function exportDocumentExcel() {
+    if (exporting) return;
     setFileMenuOpen(false);
+    if (mode === "transfer") {
+      setExporting(true);
+      try {
+        const blob = await apiRequest<Blob>("/warehouse-transfers/export.xlsx", {
+          token, method: "POST", responseType: "blob",
+          body: { ...buildWarehouseDocumentCommand("transfer", draft), number: documentNumber,
+            status: documentStatus === "BORRADOR" ? "DRAFT" : documentStatus === "CONFIRMADA" ? "CONFIRMED" : "CANCELLED",
+            locale }
+        });
+        const link = globalThis.document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${documentNumber || "traspaso"}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        setStatus(t("warehouseDocument.status.exported"));
+      } catch {
+        setStatus(t("warehouse.report.exportError"));
+      } finally { setExporting(false); }
+      return;
+    }
     const csv = [
       [
         t("sharedExcel.column.row"),
@@ -1527,7 +1586,8 @@ export function WarehouseDocumentDialog({
       throw new Error("EXCEL_IMPORT_REVIEW_REQUIRED");
     }
     const basePath = warehouseDocumentPath(mode);
-    const saved = await apiRequest<WarehouseDocumentView>(documentId ? `${basePath}/${documentId}` : basePath, {
+    const saved = persistence ? await persistence.save(draft, documentId || undefined, documentVersion)
+      : await apiRequest<WarehouseDocumentView>(documentId ? `${basePath}/${documentId}` : basePath, {
       token,
       method: documentId ? "PUT" : "POST",
       body: buildWarehouseDocumentCommand(mode, draft)
@@ -1535,6 +1595,7 @@ export function WarehouseDocumentDialog({
     setDocumentId(saved.id);
     setDocumentNumber(saved.number ?? documentNumber);
     setDocumentStatus(saved.status ?? "BORRADOR");
+    setDocumentVersion(saved.version);
     importedDraftFingerprintRef.current = null;
     setExcelImportSnapshotToken(saved.excelImportSnapshotToken ?? null);
     setExcelImportMetadata(null);
@@ -1577,7 +1638,8 @@ export function WarehouseDocumentDialog({
         return;
       }
       confirmationRequested = true;
-      const confirmed = await apiRequest<WarehouseDocumentView>(`${warehouseDocumentPath(mode)}/${id}/confirm`, { token, method: "POST" });
+      const confirmed = persistence && saved ? await persistence.confirm(saved)
+        : await apiRequest<WarehouseDocumentView>(`${warehouseDocumentPath(mode)}/${id}/confirm`, { token, method: "POST" });
       setDocumentNumber(confirmed.number ?? saved?.number ?? documentNumber);
       setDocumentStatus(confirmed.status ?? "CONFIRMADA");
       setStatus(t("warehouseDocument.confirmed"));
@@ -1603,7 +1665,7 @@ export function WarehouseDocumentDialog({
   return (
     <div
       ref={dialogRef}
-      className={`warehouse-document-overlay${app !== "pda" ? " erp-classic-tables" : ""}`}
+      className={`warehouse-document-overlay${mode === "transfer" ? " warehouse-document-transfer" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="warehouse-document-title"
@@ -1614,21 +1676,24 @@ export function WarehouseDocumentDialog({
         if (event.key === "Escape") {
           event.preventDefault();
           onClose();
-        } else if (event.key === "End" && mode === "input" && !readOnly) {
+        } else if (event.ctrlKey && event.key.toLocaleLowerCase() === "p") {
+          event.preventDefault();
+          previewDocument();
+        } else if (event.key === "End" && mode !== "output" && !readOnly) {
           event.preventDefault();
           event.stopPropagation();
           openPartnerList();
         } else if (event.key === "Delete" && !readOnly && !isTextControl) {
           event.preventDefault();
           setProductSearchOpen(true);
-        } else if (!readOnly && mode === "input" && (isProductSearch || !isTextControl) && event.key === "Home") {
+        } else if (!readOnly && mode !== "output" && (isProductSearch || !isTextControl) && event.key === "Home") {
           event.preventDefault();
           openQuickLineEditor("name");
-        } else if (!readOnly && mode === "input" && (isProductSearch || !isTextControl)
+        } else if (!readOnly && mode !== "output" && (isProductSearch || !isTextControl)
             && event.ctrlKey && event.key === "PageUp") {
           event.preventDefault();
           openQuickLineEditor("price");
-        } else if (!readOnly && mode === "input" && (isProductSearch || !isTextControl)
+        } else if (!readOnly && mode !== "output" && (isProductSearch || !isTextControl)
             && !event.ctrlKey && event.key === "PageUp") {
           event.preventDefault();
           applyDesiredLinePriceShortcut();
@@ -1714,9 +1779,9 @@ export function WarehouseDocumentDialog({
                 <button type="button" disabled={readOnly} onClick={clearAllLines}>{t("warehouseDocument.menu.clearLines")}</button>
                 <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>{t("warehouseDocument.menu.clearDiscounts")}</button>
                 <button type="button" disabled={readOnly} onClick={() => { setFileMenuOpen(false); setExcelImportOpen(true); }}>{t("warehouseDocument.importExcel")}</button>
-                <button type="button" onClick={exportDocumentExcel}>{t("warehouseDocument.menu.exportExcel")}</button>
+                <button type="button" disabled={exporting} onClick={() => void exportDocumentExcel()}>{t("warehouseDocument.menu.exportExcel")}</button>
                 <div className="warehouse-document-submenu">
-                  <button type="button" aria-expanded={priceMenuOpen} onClick={() => setPriceMenuOpen((current) => !current)}>{t("warehouseDocument.menu.usePrice")}</button>
+                  <button type="button" disabled={readOnly} aria-expanded={priceMenuOpen} onClick={() => setPriceMenuOpen((current) => !current)}>{t("warehouseDocument.menu.usePrice")}</button>
                   {priceMenuOpen && (
                     <div className="warehouse-document-submenu-panel" role="menu">
                       <button type="button" onClick={() => selectDocumentPriceSource("PURCHASE")}>{t("sharedExcel.price.purchase")}</button>
@@ -1740,23 +1805,25 @@ export function WarehouseDocumentDialog({
         <div className="warehouse-document-workspace">
           <aside className="warehouse-document-sidebar">
             <div className="warehouse-document-total">
-              <span>{documentTypeLabel}{documentNumber ? ` / ${documentNumber}` : ""}</span>
+              <span id="warehouse-document-title">{documentTypeLabel}{documentNumber ? ` / ${documentNumber}` : ""}</span>
               <strong>{formatDocumentAmount(documentTotal)}</strong>
-              <em>{interpolateMessage(t("warehouseDocument.totalUnits"), { quantity: totalUnits.toLocaleString("es-ES") })}</em>
+              <em>{mode === "transfer" ? `${t("warehouse.transfer.units")}: ${totalUnits.toLocaleString(locale)}`
+                : interpolateMessage(t("warehouseDocument.totalUnits"), { quantity: totalUnits.toLocaleString("es-ES") })}</em>
+              {mode === "transfer" && <small>{t("warehouse.transfer.lines")}: {lines.length}</small>}
               <small>{t("warehouseDocument.subtotal")}: {formatDocumentAmount(documentSubtotal)}</small>
               <small>{t("warehouseDocument.documentDiscount")}: {formatDocumentDiscount(documentDiscountPercent)}</small>
             </div>
 
             <div className="warehouse-document-field">
-              <span>{t("stock.column.warehouse")}</span>
+              <span>{t(mode === "transfer" ? "warehouse.transfer.source" : "stock.column.warehouse")}</span>
               <ErpSelect
-                aria-label={t("stock.column.warehouse")}
+                aria-label={t(mode === "transfer" ? "warehouse.transfer.source" : "stock.column.warehouse")}
                 value={warehouseId}
-                disabled={readOnly || isEditing || linkedLinesLocked}
+                disabled={readOnly || (isEditing && mode !== "transfer") || linkedLinesLocked}
                 options={[
                   { value: "", label: t("common.select") },
                   ...warehouses
-                    .filter((warehouse) => warehouse.active !== false)
+                    .filter((warehouse) => warehouse.active !== false || (mode === "transfer" && warehouse.id === warehouseId))
                     .map((warehouse) => ({
                       value: warehouse.id,
                       label: warehouse.name ?? warehouse.nombre ?? warehouse.id
@@ -1768,13 +1835,24 @@ export function WarehouseDocumentDialog({
               />
             </div>
 
-            {mode === "input" && (
+            {mode === "transfer" && <div className="warehouse-document-field" id="warehouse-document-target">
+              <span>{t("warehouse.transfer.target")}</span>
+              <ErpSelect aria-label={t("warehouse.transfer.target")} value={targetWarehouseId} disabled={readOnly}
+                options={[{ value: "", label: t("common.select") }, ...warehouses
+                  .filter((warehouse) => warehouse.active !== false || warehouse.id === targetWarehouseId)
+                  .map((warehouse) => ({ value: warehouse.id, label: warehouse.name ?? warehouse.nombre ?? warehouse.id }))]}
+                onChange={setTargetWarehouseId} onCommit={() => moveFromActiveControl("next")}
+                onNavigatePrevious={() => moveFromActiveControl("previous")} />
+              {!validWarehouses && <small role="status">{t("warehouse.transfer.sameWarehouse")}</small>}
+            </div>}
+
+            {mode !== "output" && (
               <label className="warehouse-document-field">
                 <span>{t("purchaseDocument.externalNumber")}</span>
                 <input
                   value={externalNumber}
                   disabled={readOnly}
-                  maxLength={128}
+                  maxLength={mode === "transfer" ? 120 : 128}
                   onChange={(event) => setExternalNumber(event.target.value)}
                 />
               </label>
@@ -1800,7 +1878,7 @@ export function WarehouseDocumentDialog({
               </label>
             )}
 
-            <div className={`warehouse-document-partner-panel${mode === "input" ? " warehouse-document-supplier-panel" : ""}`}>
+            {mode !== "transfer" && <div className={`warehouse-document-partner-panel${mode === "input" ? " warehouse-document-supplier-panel" : ""}`}>
               {mode === "input" ? (
                 <button
                   type="button"
@@ -1842,7 +1920,7 @@ export function WarehouseDocumentDialog({
                   <p>{selectedPartner ? partnerName(selectedPartner) : partnerText || t("warehouseDocument.noPartner")}</p>
                 </>
               )}
-            </div>
+            </div>}
 
             <label className="warehouse-document-discount">
               <span>{t("warehouseDocument.totalDiscount")}</span>
@@ -1859,7 +1937,8 @@ export function WarehouseDocumentDialog({
 
             <label className="warehouse-document-comments">
               <span>{t("warehouseDocument.comments")}</span>
-              <textarea value={concept} disabled={readOnly} onChange={(event) => setConcept(event.target.value)} />
+              <textarea value={concept} disabled={readOnly} maxLength={mode === "transfer" ? 4000 : undefined}
+                onChange={(event) => setConcept(event.target.value)} />
             </label>
 
             {status && <p className="warehouse-document-status" aria-live="polite">{status}</p>}
@@ -1898,7 +1977,7 @@ export function WarehouseDocumentDialog({
               <div className="warehouse-document-meta">
                 <label>
                   <span>{t("salesReport.filter.date")}</span>
-                  <input type="date" value={date} disabled={readOnly || isEditing} onChange={(event) => setDate(event.target.value)} />
+                  <input type="date" value={date} disabled={readOnly || (isEditing && mode !== "transfer")} onChange={(event) => setDate(event.target.value)} />
                 </label>
                 <div className="warehouse-document-state">
                   <span>{t("salesReport.column.status")}</span>
@@ -2040,7 +2119,7 @@ export function WarehouseDocumentDialog({
               <button type="button" onClick={() => setLineEditorIndex(null)}>{t("common.close")}</button>
             </header>
             <label><span>{t("warehouseDocument.quantity")}</span><input autoFocus={lineEditorInitialField === "quantity"} disabled={linkedLinesLocked} type="number" min="0.001" step="0.001" value={lineEditQuantity} onChange={(event) => setLineEditQuantity(event.target.value)} /></label>
-            {mode === "input" && <label><span>{t("warehouseDocument.column.name")}</span><input ref={lineEditNameRef} maxLength={255} value={lineEditName} onChange={(event) => setLineEditName(event.target.value)} /></label>}
+            {mode !== "output" && <label><span>{t("warehouseDocument.column.name")}</span><input ref={lineEditNameRef} maxLength={255} value={lineEditName} onChange={(event) => setLineEditName(event.target.value)} /></label>}
             <label><span>{t("warehouseDocument.column.price")}</span><input ref={lineEditPriceRef} type="number" min="0" step="0.001" value={lineEditPrice} onChange={(event) => setLineEditPrice(event.target.value)} /></label>
             <label><span>{t("warehouseDocument.column.discount")}</span><input type="number" min="0" max="100" step="0.01" value={lineEditDiscount} onChange={(event) => setLineEditDiscount(event.target.value)} /></label>
             <footer className="filter-actions">
@@ -2153,10 +2232,10 @@ export function WarehouseDocumentDialog({
         requireQuantity
         terminalContext={terminalContext}
         token={token}
-        context={mode === "input" ? "WAREHOUSE_INPUT" : "WAREHOUSE_OUTPUT"}
+        context={mode === "transfer" ? "WAREHOUSE_TRANSFER" : mode === "input" ? "WAREHOUSE_INPUT" : "WAREHOUSE_OUTPUT"}
         warehouseId={warehouseId}
         documentDate={date}
-        showDocumentPriceSource={mode === "input"}
+        showDocumentPriceSource={mode !== "output"}
         supplier={mode === "input" && partnerId ? (() => {
           const selectedSupplier = localSuppliers.find((candidate) => candidate.id === partnerId);
           return selectedSupplier ? {

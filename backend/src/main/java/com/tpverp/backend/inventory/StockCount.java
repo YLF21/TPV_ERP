@@ -8,6 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -15,11 +17,14 @@ import java.util.UUID;
 @Table(name = "recuento_stock")
 public class StockCount {
     @Id private UUID id;
+    @Column(name = "numero", nullable = false, length = 40) private String number;
     @Column(name = "tienda_id", nullable = false) private UUID storeId;
     @Column(name = "almacen_id", nullable = false) private UUID warehouseId;
     @Enumerated(EnumType.STRING) @Column(name = "estado", nullable = false, length = 16)
     private StockCountStatus status;
     @Column(name = "notas", columnDefinition = "text") private String notes;
+    @Column(name = "fecha", nullable = false) private LocalDate documentDate;
+    @Column(name = "revision_edicion", nullable = false) private long editRevision;
     @Column(name = "creado_por", nullable = false) private UUID createdBy;
     @Column(name = "creado_en", nullable = false) private Instant createdAt;
     @Column(name = "confirmado_por") private UUID confirmedBy;
@@ -37,8 +42,21 @@ public class StockCount {
         this.notes = optional(notes);
         this.createdBy = Objects.requireNonNull(createdBy);
         this.createdAt = Objects.requireNonNull(createdAt);
+        documentDate = createdAt.atZone(ZoneOffset.UTC).toLocalDate();
         status = StockCountStatus.DRAFT;
     }
+
+    public void number(String value) { number = Objects.requireNonNull(value); }
+    public String getNumber() { return number; }
+
+    public void editDraft(LocalDate date, String notes) {
+        requireDraft();
+        this.documentDate = Objects.requireNonNull(date, "fecha");
+        this.notes = optional(notes);
+        editRevision++;
+    }
+    public LocalDate getDocumentDate() { return documentDate; }
+    public long getVersion() { return version; }
 
     public void confirm(UUID userId, Instant when) {
         if (status == StockCountStatus.CONFIRMED) return;

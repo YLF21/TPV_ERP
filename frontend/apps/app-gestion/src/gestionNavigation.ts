@@ -40,7 +40,6 @@ import {
   SealPercent,
   ShieldCheck,
   ShieldChevron,
-  SlidersHorizontal,
   Sparkle,
   Stack,
   Storefront,
@@ -156,15 +155,12 @@ export const gestionNavigationGroups: GestionNavigationGroup[] = [
     labelKey: "gestion.navigation.group.warehouse",
     icon: Warehouse,
     destinations: [
-      destination("stock.settings.configuration", "gestion.navigation.destination.stockSettings", SlidersHorizontal),
       destination("stock.warehouse.management", "gestion.navigation.destination.warehouses", Warehouse),
       destination("stock.warehouse.transfer", "gestion.navigation.destination.transfers", ArrowsLeftRight),
       destination("stock.warehouse.adjustment", "gestion.navigation.destination.stockAdjustments", PlusMinus),
       destination("stock.warehouse.count", "gestion.navigation.destination.physicalCounts", ClipboardText),
       destination("stock.warehouse.input", "gestion.navigation.destination.warehouseInputOperation", ArrowCircleDown),
       destination("stock.warehouse.output", "gestion.navigation.destination.warehouseOutputOperation", ArrowCircleUp),
-      destination("salesReport.inputWarehouse", "gestion.navigation.destination.warehouseInputReport", FileArrowDown),
-      destination("salesReport.warehouseOutputs", "gestion.navigation.destination.warehouseOutputReport", FileArrowUp),
     ],
   },
   {

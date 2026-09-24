@@ -160,6 +160,31 @@ public class StockController {
         return settingsService.settings();
     }
 
+    @GetMapping("/settings/warehouses/{warehouseId}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_ALMACEN + "','" + WAREHOUSES_MANAGE + "')")
+    public WarehouseStockSettings warehouseSettings(@PathVariable UUID warehouseId) {
+        return settingsService.warehouseSettings(warehouseId);
+    }
+
+    @PutMapping("/settings/warehouses/{warehouseId}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
+    public WarehouseStockSettings updateWarehouseSettings(
+            @PathVariable UUID warehouseId, @Valid @RequestBody WarehouseStockSettingsCommand command) {
+        return settingsService.updateWarehouseSettings(warehouseId, command);
+    }
+
+    @PutMapping("/settings/warehouses/all")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
+    public StockSettingsView applyWarehouseSettingsToAll(@Valid @RequestBody WarehouseStockSettingsCommand command) {
+        return settingsService.applyWarehouseSettingsToAll(command);
+    }
+
+    @DeleteMapping("/settings/warehouses/{warehouseId}/override")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
+    public WarehouseStockSettings resetWarehouseSettings(@PathVariable UUID warehouseId) {
+        return settingsService.resetWarehouseSettings(warehouseId);
+    }
+
     @PutMapping("/settings")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
     public StockSettingsView updateSettings(
@@ -211,6 +236,33 @@ public class StockController {
         return service.adjust(
                 request.productId(), request.warehouseId(), request.quantity(),
                 request.reason(), authentication);
+    }
+
+    @PatchMapping("/settings/default-warehouse")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
+    public StockSettingsView updateDefaultWarehouse(@Valid @RequestBody DefaultWarehouseCommand command) {
+        return settingsService.updateDefaultWarehouse(command.warehouseId());
+    }
+
+    public record DefaultWarehouseCommand(@jakarta.validation.constraints.NotNull UUID warehouseId) {}
+
+    @GetMapping("/adjustment-products")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_ADJUST + "','" + GESTION_ALMACEN + "')")
+    public java.util.List<InventoryService.AdjustmentProduct> adjustmentProducts(
+            @RequestParam(defaultValue = "") String search) {
+        return service.searchAdjustmentProducts(search);
+    }
+
+    @GetMapping("/adjustments")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_ADJUST + "','" + GESTION_ALMACEN + "')")
+    public PagedResult<StockAdjustmentHistory> adjustments(
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) java.time.Instant from,
+            @RequestParam(required = false) java.time.Instant to) {
+        return service.adjustmentHistory(limit, page, warehouseId, search, from, to);
     }
 
     @PostMapping("/transfers")

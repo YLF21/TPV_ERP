@@ -75,6 +75,50 @@ class InventoryServiceTest {
     }
 
     @Test
+    void adjustmentHistoryLoadsActualAuthorsInOneStoreScopedBatch() {
+        var history = org.mockito.Mockito.mock(StockAdjustmentHistoryRepository.class);
+        service.setAdjustmentHistory(history);
+        var store = org.mockito.Mockito.mock(Store.class);
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(organization.currentStore()).thenReturn(store);
+        var first = org.mockito.Mockito.mock(StockAdjustmentHistory.class);
+        var second = org.mockito.Mockito.mock(StockAdjustmentHistory.class);
+        var firstId = UUID.randomUUID();
+        var secondId = UUID.randomUUID();
+        when(first.getMovementId()).thenReturn(firstId);
+        when(second.getMovementId()).thenReturn(secondId);
+        when(history.page(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(first, second)));
+        var author = org.mockito.Mockito.mock(StockAdjustmentHistoryRepository.AdjustmentAuthor.class);
+        when(author.getMovementId()).thenReturn(firstId);
+        when(author.getUserName()).thenReturn("Operador almacén");
+        when(history.authors(storeId, List.of(firstId, secondId))).thenReturn(List.of(author));
+        service.adjustmentHistory(50, 0, null, null, null, null);
+        verify(first).setUserName("Operador almacén");
+        verify(second).setUserName(null);
+        verify(history).authors(storeId, List.of(firstId, secondId));
+    }
+
+    @Test
+    void adjustmentHistoryPassesDateBoundsAndAuthenticatedStoreToRepository() {
+        var history = org.mockito.Mockito.mock(StockAdjustmentHistoryRepository.class);
+        service.setAdjustmentHistory(history);
+        var store = org.mockito.Mockito.mock(Store.class);
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(organization.currentStore()).thenReturn(store);
+        var from = Instant.parse("2026-09-01T00:00:00Z");
+        var to = Instant.parse("2026-09-24T00:00:00Z");
+        when(history.page(storeId, null, "%caf%", from, to,
+                org.springframework.data.domain.PageRequest.of(0, 50)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+        service.adjustmentHistory(50, 0, null, " CAF ", from, to);
+        verify(history).page(storeId, null, "%caf%", from, to,
+                org.springframework.data.domain.PageRequest.of(0, 50));
+    }
+
+    @Test
     void listsStockOnlyForAuthenticatedStoreWhenTwoStoresExist() {
         var authenticatedStore = org.mockito.Mockito.mock(Store.class);
         var firstStoreId = UUID.randomUUID();
@@ -316,6 +360,33 @@ class InventoryServiceTest {
         verify(stockRepository, never()).saveAll(any());
         verify(movementRepository, never()).save(any());
         verify(syncOutbox, never()).enqueue(any());
+    }
+
+    @Test
+    void largeDocumentTransferIsAllowedWhileDirectBatchRetainsItsLimit() {
+        var product = product();
+        var source = new Warehouse(storeId, "ORIGEN");
+        var target = new Warehouse(storeId, "DESTINO");
+        var commands = java.util.Collections.nCopies(101,
+                new InventoryService.TransferCommand(product.getId(), source.getId(), target.getId(), BigDecimal.ONE));
+        assertThatThrownBy(() -> service.transferBatch(commands, authentication))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("100 transferencias");
+        verify(stockRepository, never()).saveAll(any());
+
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouseRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(warehouseRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(product.getId(), source.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(product.getId(), source.getId(), new BigDecimal("200"))));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(product.getId(), target.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(product.getId(), target.getId(), BigDecimal.ZERO)));
+        var documentId = UUID.randomUUID();
+        var result = service.transferBatch(commands, authentication, documentId);
+        assertThat(result.transfers()).hasSize(101);
+        assertThat(result.transfers().get(0).sourceQuantity()).isEqualByComparingTo("99");
+        verify(movementRepository, times(202)).save(any(StockMovement.class));
+        assertThatThrownBy(() -> service.transferBatch(java.util.Collections.nCopies(5001, commands.get(0)),
+                authentication, documentId)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("5000");
     }
 
     @Test
