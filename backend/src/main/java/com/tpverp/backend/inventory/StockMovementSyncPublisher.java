@@ -42,6 +42,7 @@ public class StockMovementSyncPublisher {
         payload.put("compensacionDeId", nullableUuid(movement.getCompensationOfId()));
         payload.put("transferenciaId", nullableUuid(movement.getTransferId()));
         payload.put("recuentoStockId", nullableUuid(movement.getStockCountId()));
+        payload.put("traspasoAlmacenId", nullableUuid(movement.getTransferDocumentId()));
         payload.put("creadoEn", movement.getCreatedAt().toString());
         return payload;
     }

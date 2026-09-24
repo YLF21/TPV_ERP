@@ -6,6 +6,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_TRANSFER;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import com.tpverp.backend.security.application.PermissionChecks;
@@ -60,7 +61,7 @@ public class ProductController {
     }
 
     @GetMapping("/warehouse-options")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_ALMACEN + "','" + STOCK_TRANSFER + "')")
     public List<ProductView> warehouseOptions() {
         return service.products().stream().map(ProductView::warehouseView).toList();
     }

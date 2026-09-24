@@ -20,6 +20,7 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
     List<StockSnapshotQuantity> sumQuantitiesByProductAndWarehouse();
 
     boolean existsByProductId(UUID productId);
+    boolean existsByWarehouseId(UUID warehouseId);
 
     boolean existsByDocumentId(UUID documentId);
 

@@ -391,25 +391,48 @@ public class CatalogService {
         return warehouseRepository.findByStoreIdOrderByNombre(currentStore().getId());
     }
 
+    @Transactional(readOnly = true)
+    public String currentStoreAddress() {
+        Map<String, String> address = currentStore().getDireccion();
+        return String.join(", ", address.get("linea1"),
+                address.get("codigoPostal") + " " + address.get("ciudad"),
+                address.get("provincia"), address.get("pais"));
+    }
+
     @Transactional
     public Warehouse createWarehouse(String name) {
+        return createWarehouse(name, null, null);
+    }
+
+    @Transactional
+    public Warehouse createWarehouse(String name, String address, String notes) {
         UUID storeId = currentStore().getId();
         String normalized = CatalogText.normalized(name, "nombre");
         if (warehouseRepository.existsByStoreIdAndNombreIgnoreCase(storeId, normalized)) {
             throw new IllegalArgumentException("Ya existe un almacen con ese nombre");
         }
-        return warehouseRepository.save(new Warehouse(storeId, normalized));
+        return warehouseRepository.save(new Warehouse(storeId, normalized, address, notes));
     }
 
     @Transactional
     public Warehouse renameWarehouse(UUID warehouseId, String name) {
+        return updateWarehouse(warehouseId, name, null, null);
+    }
+
+    @Transactional
+    public Warehouse updateWarehouse(UUID warehouseId, String name, String address, String notes) {
         Warehouse warehouse = warehouse(warehouseId);
+        if (warehouse.isDefaultWarehouse() && address != null && !address.equals(currentStoreAddress())) {
+            throw new IllegalArgumentException("La dirección del almacén GENERAL es la dirección de la tienda");
+        }
         String normalized = CatalogText.normalized(name, "nombre");
         if (!warehouse.getName().equals(normalized)
                 && warehouseRepository.existsByStoreIdAndNombreIgnoreCase(warehouse.getStoreId(), normalized)) {
             throw new IllegalArgumentException("Ya existe un almacen con ese nombre");
         }
-        warehouse.rename(normalized);
+        warehouse.updateDetails(normalized,
+                address == null ? warehouse.getAddress() : address,
+                notes == null ? warehouse.getNotes() : notes);
         return warehouse;
     }
 
@@ -419,6 +442,9 @@ public class CatalogService {
         if (active) {
             warehouse.activate();
         } else {
+            if (stockRepository.existsByWarehouseIdAndCantidadNot(warehouseId, BigDecimal.ZERO)) {
+                throw new IllegalStateException("No se puede desactivar un almacén con existencias");
+            }
             warehouse.deactivate(stockRepository.sumQuantityByWarehouseId(warehouseId));
         }
         return warehouse;
@@ -427,8 +453,16 @@ public class CatalogService {
     @Transactional
     public void deleteWarehouse(UUID warehouseId) {
         Warehouse warehouse = warehouse(warehouseId);
+        if (stockRepository.existsByWarehouseId(warehouseId) || movementRepository.existsByWarehouseId(warehouseId)) {
+            throw new IllegalStateException("El almacén tiene historial; desactívalo en lugar de eliminarlo");
+        }
         warehouse.deactivate(stockRepository.sumQuantityByWarehouseId(warehouseId));
-        warehouseRepository.delete(warehouse);
+        try {
+            warehouseRepository.delete(warehouse);
+            warehouseRepository.flush();
+        } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+            throw new IllegalStateException("El almacén tiene documentos; desactívalo en lugar de eliminarlo", exception);
+        }
     }
 
     @Transactional(readOnly = true)

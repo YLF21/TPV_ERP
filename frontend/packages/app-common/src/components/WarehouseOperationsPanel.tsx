@@ -81,6 +81,7 @@ export type WarehouseOperationsPanelProps = {
   locale?: LocaleCode;
   terminalContext?: TerminalContext;
   defaultWarehouseId?: string;
+  createOnMount?: boolean;
   permissions?: WarehouseOperationsPanelPermissions;
   confirmDelete?: (document: WarehouseOperationView) => boolean | Promise<boolean>;
   onCreateDocument?: () => void | Promise<void>;
@@ -323,6 +324,7 @@ export function WarehouseOperationsPanel({
   locale = "es",
   terminalContext,
   defaultWarehouseId,
+  createOnMount = false,
   permissions,
   confirmDelete,
   onCreateDocument,
@@ -340,8 +342,11 @@ export function WarehouseOperationsPanel({
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [exportBusy, setExportBusy] = useState(false);
   const [selectedId, setSelectedId] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(createOnMount);
   const [dialogDocument, setDialogDocument] = useState<WarehouseOperationView | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [deleting, setDeleting] = useState(false);
@@ -388,6 +393,9 @@ export function WarehouseOperationsPanel({
       warehouses,
       customers,
       suppliers
+    }).filter((document) => {
+      const date = document.date?.slice(0, 10) ?? "";
+      return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
     }),
     tableSort.sort,
     (document, column) => {
@@ -400,7 +408,7 @@ export function WarehouseOperationsPanel({
       return warehouseOperationsTotalUnits(document);
     },
     locale
-  ), [customers, documents, locale, mode, query, statusFilter, suppliers, tableSort.sort, warehouses]);
+  ), [customers, dateFrom, dateTo, documents, locale, mode, query, statusFilter, suppliers, tableSort.sort, warehouses]);
   const statuses = useMemo(
     () => Array.from(new Set(documents.map((document) => document.status).filter(Boolean))).sort(),
     [documents]
@@ -409,6 +417,35 @@ export function WarehouseOperationsPanel({
   if (query.trim()) filterChips.push({ key: "query", label: labels.search, value: query.trim(), onRemove: () => setQuery("") });
   if (statusFilter) filterChips.push({ key: "status", label: labels.status,
     value: warehouseOperationsStatusLabel(statusFilter, t), onRemove: () => setStatusFilter("") });
+  if (dateFrom) filterChips.push({ key: "dateFrom", label: t("warehouse.report.from"), value: dateFrom, onRemove: () => setDateFrom("") });
+  if (dateTo) filterChips.push({ key: "dateTo", label: t("warehouse.report.to"), value: dateTo, onRemove: () => setDateTo("") });
+
+  async function exportReport(format: "pdf" | "xlsx") {
+    if (!token || exportBusy || (mode === "input" && documentType && documentType !== "ENTRADA_ALMACEN")) return;
+    setExportBusy(true);
+    setError("");
+    try {
+      const reportKey = mode === "input" ? "salesReport.inputWarehouse" : "salesReport.warehouseOutputs";
+      const keys = mode === "input"
+        ? ["input", "date", "warehouse", "productCount", "origin", "total"]
+        : ["output", "date", "warehouse", "productCount", "reason", "total"];
+      const file = await apiRequest<Blob>(`/sales-reports/${format === "pdf" ? "export-pdf" : "export"}`, {
+        token, method: "POST", responseType: "blob", body: {
+          reportKey,
+          filters: { dateFrom: dateFrom || null, dateTo: dateTo || null, status: statusFilter || null },
+          search: query.trim(),
+          columns: keys.map((key) => ({ key, label: t(`salesReport.column.${key}`) }))
+        }
+      });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${mode === "input" ? "entradas" : "salidas"}-almacen.${format}`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) { setError(warehouseOperationsErrorMessage(cause, t("warehouse.report.exportError"))); }
+    finally { setExportBusy(false); }
+  }
   const selectedDocument = documents.find((document) => document.id === selectedId) ?? null;
   const selectedCanOpen = Boolean(
     selectedDocument
@@ -435,6 +472,8 @@ export function WarehouseOperationsPanel({
   useEffect(() => {
     setQuery("");
     setStatusFilter("");
+    setDateFrom("");
+    setDateTo("");
     setSelectedId("");
     setDialogOpen(false);
     setDialogDocument(null);
@@ -685,6 +724,12 @@ export function WarehouseOperationsPanel({
             onNavigatePrevious={() => searchRef.current?.focus()}
           />
         </div>
+        {app !== "pda" && <>
+          <label><span>{t("warehouse.report.from")}</span><input type="date" value={dateFrom} max={dateTo || undefined}
+            onChange={(event) => setDateFrom(event.target.value)} /></label>
+          <label><span>{t("warehouse.report.to")}</span><input type="date" value={dateTo} min={dateFrom || undefined}
+            onChange={(event) => setDateTo(event.target.value)} /></label>
+        </>}
         <div className="filter-actions filter-wide warehouse-document-actions">
           {resolvedPermissions.create && (
             <button type="button" disabled={!token || deleting} onClick={openCreateDialog}>
@@ -707,11 +752,17 @@ export function WarehouseOperationsPanel({
               {deleting ? labels.deleting : labels.delete}
             </button>
           )}
+          {app === "gestion" && session?.permissions.some((value) =>
+            ["ADMIN", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"].includes(value))
+            && (mode === "output" || !documentType || documentType === "ENTRADA_ALMACEN") && <>
+            <button type="button" disabled={exportBusy || !token} onClick={() => void exportReport("pdf")}>PDF</button>
+            <button type="button" disabled={exportBusy || !token} onClick={() => void exportReport("xlsx")}>Excel</button>
+          </>}
         </div>
       </div>
 
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
-        onClear={() => { setQuery(""); setStatusFilter(""); }} />}
+        onClear={() => { setQuery(""); setStatusFilter(""); setDateFrom(""); setDateTo(""); }} />}
 
       <div className="stock-history-context">
         <strong>{labels.title}</strong>

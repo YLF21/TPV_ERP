@@ -1,379 +1,295 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, userCanManageWarehouses, type UserSession } from "@tpverp/app-common";
-import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ArrowDown, ArrowUp, ArrowsLeftRight, Cube, Gear, MapPin, Note, Package, WarningCircle } from "@phosphor-icons/react";
+import { activateModalFocusTrap, type ModalFocusRoot } from "../../../packages/app-common/src/components/modalFocusTrap";
 import {
-  createManagedWarehouse,
-  loadManagedWarehouses,
-  renameManagedWarehouse,
-  setManagedWarehouseActive,
-  type WarehouseManagementRecord
+  applyWarehouseStockConfigurationToAll, createManagedWarehouse, deleteManagedWarehouse,
+  loadGeneralStockConfiguration, loadManagedWarehouses, loadWarehouseOverview,
+  loadWarehouseStockConfiguration, renameManagedWarehouse, resetWarehouseStockConfiguration,
+  saveGeneralStockConfiguration, saveInactiveProductSales, saveWarehouseStockConfiguration,
+  setManagedWarehouseActive, type GeneralStockConfiguration, type WarehouseDetailsInput,
+  type WarehouseManagementRecord, type WarehouseOverview, type WarehouseStockConfiguration
 } from "./warehouseManagementApi";
 
-type WarehouseManagementScreenProps = {
-  session: UserSession;
-  t: (key: string) => string;
-};
+type Props = { session: UserSession; t: (key: string) => string;
+  locale?: "es" | "en" | "zh";
+  onCreateDocument?: (kind: "input" | "output" | "transfer") => void };
+type Dialog = "create" | "general" | "warehouse" | null;
+const blank: WarehouseDetailsInput = { name: "", address: "", notes: "" };
+const sortWarehouses = (items: WarehouseManagementRecord[]) => [...items].sort((a, b) =>
+  Number(b.defaultWarehouse) - Number(a.defaultWarehouse) || a.name.localeCompare(b.name, "es"));
 
-type WarehouseForm = {
-  mode: "create" | "rename";
-  warehouse?: WarehouseManagementRecord;
-};
-
-function sortedWarehouses(warehouses: WarehouseManagementRecord[]) {
-  return [...warehouses].sort((left, right) => (
-    Number(right.defaultWarehouse) - Number(left.defaultWarehouse)
-      || left.name.localeCompare(right.name, "es")
-  ));
-}
-
-function operationErrorMessage(error: unknown, fallback: string, conflict?: string) {
-  if (conflict && error instanceof ApiError && error.status === 409) {
-    return conflict;
-  }
-  return fallback;
-}
-
-export function WarehouseManagementScreen({ session, t }: WarehouseManagementScreenProps) {
-  const canManage = userCanManageWarehouses(session);
+export function WarehouseManagementScreen({ session, t, locale = "es", onCreateDocument }: Props) {
+  const quantity = (value: number) => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
+    { maximumFractionDigits: 3 }).format(value);
   const token = session.accessToken ?? "";
-  const loadErrorFallback = t("warehouse.management.loadError");
+  const canManage = userCanManageWarehouses(session);
+  const canCreateDocuments = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_ALMACEN");
+  const canTransfer = canCreateDocuments || session.permissions.includes("STOCK_TRANSFER");
+  const canDelete = session.permissions.includes("ADMIN") || session.permissions.includes("WAREHOUSES_MANAGE");
+  const canManageInactive = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_PRODUCTO");
   const [warehouses, setWarehouses] = useState<WarehouseManagementRecord[]>([]);
+  const [overview, setOverview] = useState<Map<string, WarehouseOverview>>(new Map());
+  const [general, setGeneral] = useState<GeneralStockConfiguration | null>(null);
+  const [bulk, setBulk] = useState({ allowNegativeStock: false, defaultMinimumStock: 0, alertsEnabled: false });
+  const [details, setDetails] = useState<WarehouseDetailsInput>(blank);
+  const [configuration, setConfiguration] = useState<WarehouseStockConfiguration | null>(null);
   const [selectedId, setSelectedId] = useState("");
-  const [search, setSearch] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [pending, setPending] = useState<{ warehouse: WarehouseManagementRecord; action: "delete" | "activate" | "deactivate" } | null>(null);
   const [loading, setLoading] = useState(canManage);
   const [loadError, setLoadError] = useState("");
-  const [operationStatus, setOperationStatus] = useState("");
-  const [reloadCounter, setReloadCounter] = useState(0);
-  const [form, setForm] = useState<WarehouseForm | null>(null);
-  const [name, setName] = useState("");
-  const [formError, setFormError] = useState("");
-  const [pendingActiveChange, setPendingActiveChange] = useState<WarehouseManagementRecord | null>(null);
-  const [confirmationError, setConfirmationError] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const dialogRef = useRef<HTMLElement>(null);
+  const selected = warehouses.find((warehouse) => warehouse.id === selectedId) ?? null;
 
   useEffect(() => {
     if (!canManage) return;
     let cancelled = false;
-    setLoading(true);
-    setLoadError("");
-    void loadManagedWarehouses(token)
-      .then((loaded) => {
+    setLoading(true); setLoadError("");
+    void Promise.all([loadManagedWarehouses(token), loadWarehouseOverview(token), loadGeneralStockConfiguration(token)])
+      .then(([items, totals, settings]) => {
         if (cancelled) return;
-        const next = sortedWarehouses(loaded);
-        setWarehouses(next);
-        setSelectedId((current) => next.some((warehouse) => warehouse.id === current)
-          ? current
-          : next[0]?.id ?? "");
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setLoadError(operationErrorMessage(error, loadErrorFallback));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        setWarehouses(sortWarehouses(items));
+        setOverview(new Map(totals.map((item) => [item.warehouseId, item])));
+        setGeneral(settings);
+      }).catch(() => { if (!cancelled) setLoadError(t("warehouse.management.loadError")); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [canManage, loadErrorFallback, reloadCounter, token]);
+  }, [canManage, reloadKey, t, token]);
 
-  const visibleWarehouses = useMemo(() => {
-    const normalizedSearch = search.trim().toLocaleLowerCase("es");
-    return normalizedSearch
-      ? warehouses.filter((warehouse) => warehouse.name.toLocaleLowerCase("es").includes(normalizedSearch))
-      : warehouses;
-  }, [search, warehouses]);
+  useEffect(() => {
+    if (!dialog && !pending) return;
+    if (dialogRef.current) return activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document);
+  }, [dialog, pending]);
 
-  const selected = warehouses.find((warehouse) => warehouse.id === selectedId) ?? null;
+  const refresh = () => setReloadKey((value) => value + 1);
+  const close = () => { setDialog(null); setError(""); };
 
-  function openCreate() {
-    setName("");
-    setFormError("");
-    setOperationStatus("");
-    setForm({ mode: "create" });
+  function openCreate() { setDetails(blank); setStatus(""); setError(""); setDialog("create"); }
+  function openGeneral() {
+    if (!general) return;
+    setBulk({ allowNegativeStock: general.allowNegativeStock,
+      defaultMinimumStock: general.defaultMinimumStock, alertsEnabled: general.alertsEnabled });
+    setError(""); setStatus(""); setDialog("general");
+  }
+  async function openWarehouse(warehouse: WarehouseManagementRecord) {
+    setSelectedId(warehouse.id);
+    setDetails({ name: warehouse.name, address: warehouse.address ?? "", notes: warehouse.notes ?? "" });
+    setConfiguration(null); setError(""); setStatus(""); setDialog("warehouse");
+    try { setConfiguration(await loadWarehouseStockConfiguration(warehouse.id, token)); }
+    catch { setError(t("warehouse.management.settingsLoadError")); }
   }
 
-  function openRename(warehouse: WarehouseManagementRecord) {
-    setName(warehouse.name);
-    setFormError("");
-    setOperationStatus("");
-    setForm({ mode: "rename", warehouse });
-  }
-
-  function replaceWarehouse(updated: WarehouseManagementRecord) {
-    setWarehouses((current) => sortedWarehouses(current.map((warehouse) => (
-      warehouse.id === updated.id ? updated : warehouse
-    ))));
-    setSelectedId(updated.id);
-  }
-
-  async function submitForm(event: FormEvent<HTMLFormElement>) {
+  async function saveDetails(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form || saving) return;
-    const normalizedName = name.trim();
-    if (!normalizedName) {
-      setFormError(t("warehouse.management.nameRequired"));
-      return;
-    }
-    setSaving(true);
-    setFormError("");
+    if (saving || !details.name.trim()) return;
+    const input = { name: details.name.trim(), address: details.address?.trim() ?? "", notes: details.notes.trim() };
+    setSaving(true); setError("");
     try {
-      if (form.mode === "create") {
-        const created = await createManagedWarehouse(normalizedName, token);
-        setWarehouses((current) => sortedWarehouses([...current, created]));
-        setSelectedId(created.id);
-        setOperationStatus(t("warehouse.management.created"));
-      } else if (form.warehouse) {
-        const updated = await renameManagedWarehouse(form.warehouse.id, normalizedName, token);
-        replaceWarehouse(updated);
-        setOperationStatus(t("warehouse.management.renamed"));
+      if (dialog === "create") {
+        const created = await createManagedWarehouse(input, token);
+        setWarehouses((current) => sortWarehouses([...current, created]));
+        setStatus(t("warehouse.management.created"));
+      } else if (selected) {
+        const updated = await renameManagedWarehouse(selected.id,
+          selected.defaultWarehouse ? { ...input, address: null } : input, token);
+        setWarehouses((current) => sortWarehouses(current.map((item) => item.id === updated.id ? updated : item)));
+        setStatus(t("warehouse.management.renamed"));
       }
-      setForm(null);
-    } catch (error) {
-      setFormError(operationErrorMessage(error, t("warehouse.management.saveError")));
-    } finally {
-      setSaving(false);
-    }
+      if (dialog === "create") close();
+      refresh();
+    } catch { setError(t("warehouse.management.saveError")); }
+    finally { setSaving(false); }
   }
-
-  async function confirmActiveChange() {
-    if (!pendingActiveChange || saving) return;
-    setSaving(true);
-    setConfirmationError("");
+  async function saveConfiguration(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !configuration || saving) return;
+    setSaving(true); setError("");
+    try { setConfiguration(await saveWarehouseStockConfiguration(selected.id, configuration, token));
+      setStatus(t("warehouse.management.settingsSaved")); refresh(); }
+    catch { setError(t("warehouse.management.settingsSaveError")); }
+    finally { setSaving(false); }
+  }
+  async function resetConfiguration() {
+    if (!selected || saving) return;
+    setSaving(true); setError("");
+    try { setConfiguration(await resetWarehouseStockConfiguration(selected.id, token));
+      setStatus(t("warehouse.management.settingsSaved")); refresh(); }
+    catch { setError(t("warehouse.management.settingsSaveError")); }
+    finally { setSaving(false); }
+  }
+  async function applyGeneral(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true); setError("");
+    try { setGeneral(await applyWarehouseStockConfigurationToAll(bulk, token));
+      setStatus(t("warehouse.management.bulkSaved")); close(); refresh(); }
+    catch { setError(t("warehouse.management.settingsSaveError")); }
+    finally { setSaving(false); }
+  }
+  async function saveDefaultWarehouse() {
+    if (!general || saving) return;
+    setSaving(true); setError("");
+    try { setGeneral(await saveGeneralStockConfiguration(general.defaultWarehouseId, token));
+      setStatus(t("warehouse.management.settingsSaved")); }
+    catch { setError(t("warehouse.management.settingsSaveError")); }
+    finally { setSaving(false); }
+  }
+  async function toggleInactive(value: boolean) {
+    if (!general || saving) return;
+    setSaving(true); setError("");
+    try { setGeneral(await saveInactiveProductSales(value, token)); }
+    catch { setError(t("warehouse.management.settingsSaveError")); }
+    finally { setSaving(false); }
+  }
+  async function confirmAction() {
+    if (!pending || saving) return;
+    setSaving(true); setError("");
+    const { warehouse, action } = pending;
     try {
-      const updated = await setManagedWarehouseActive(
-        pendingActiveChange.id,
-        !pendingActiveChange.active,
-        token
-      );
-      replaceWarehouse(updated);
-      setOperationStatus(updated.active
-        ? t("warehouse.management.activated")
-        : t("warehouse.management.deactivated"));
-      setPendingActiveChange(null);
-    } catch (error) {
-      setConfirmationError(operationErrorMessage(
-        error,
-        t("warehouse.management.statusError"),
-        pendingActiveChange.active ? t("warehouse.management.zeroStockWarning") : undefined
-      ));
-    } finally {
-      setSaving(false);
-    }
+      if (action === "delete") { await deleteManagedWarehouse(warehouse.id, token);
+        setStatus(t("warehouse.management.deleted")); }
+      else { await setManagedWarehouseActive(warehouse.id, action === "activate", token);
+        setStatus(t(action === "activate" ? "warehouse.management.activated" : "warehouse.management.deactivated")); }
+      setPending(null); refresh();
+    } catch (cause) {
+      setError(action === "deactivate" && cause instanceof ApiError && cause.status === 409
+        ? t("warehouse.management.zeroStockWarning")
+        : t(action === "delete" ? "warehouse.management.deleteError" : "warehouse.management.statusError"));
+    } finally { setSaving(false); }
   }
 
-  if (!canManage) {
-    return <div className="gestion-security-state error" role="alert">{t("warehouse.management.noAccess")}</div>;
-  }
+  if (!canManage) return <div className="gestion-security-state error" role="alert">{t("warehouse.management.noAccess")}</div>;
+  return <section className="gestion-warehouse-workspace" aria-labelledby="warehouse-management-title">
+    <header className="gestion-warehouse-header"><div><h2 id="warehouse-management-title">{t("warehouse.management.title")}</h2>
+      <p>{t("warehouse.management.subtitle")}</p></div><div className="gestion-warehouse-header-actions">
+      <button type="button" onClick={openCreate}>{t("warehouse.management.create")}</button>
+      <button type="button" disabled={!general} onClick={openGeneral}>{t("warehouse.management.generalSettings")}</button></div></header>
+    <div className="gestion-warehouse-document-actions">
+      {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("input")}><ArrowDown size={18} aria-hidden="true" />{t("warehouse.management.createInput")}</button>}
+      {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("output")}><ArrowUp size={18} aria-hidden="true" />{t("warehouse.management.createOutput")}</button>}
+      {canTransfer && <button type="button" onClick={() => onCreateDocument?.("transfer")}><ArrowsLeftRight size={18} aria-hidden="true" />{t("warehouse.management.createTransfer")}</button>}
+    </div>
+    {status && <p className="gestion-warehouse-operation-status" role="status">{status}</p>}
+    {loading ? <div className="gestion-security-state">{t("common.loading")}</div> : loadError ?
+      <div className="gestion-security-state error" role="alert">{loadError}
+        <button type="button" onClick={refresh}>{t("warehouse.management.retry")}</button></div> :
+      <section className="gestion-warehouse-cards" aria-label={t("warehouse.management.list")}>
+        {warehouses.map((warehouse) => { const data = overview.get(warehouse.id); return <article className="gestion-warehouse-card" key={warehouse.id}>
+          <div className="gestion-warehouse-card-identity"><div className="gestion-warehouse-card-heading">
+            <strong>{warehouse.name}</strong>
+            {general?.defaultWarehouseId === warehouse.id && <span className="default">{t("warehouse.management.column.default")}</span>}
+            <span className={warehouse.active ? "active" : "inactive"}>{t(warehouse.active
+              ? "warehouse.management.active" : "warehouse.management.inactive")}</span></div>
+            <p><MapPin size={17} aria-hidden="true" /><span><b>{t("warehouse.management.address")}:</b> {warehouse.address || "—"}</span></p>
+            <p><Note size={17} aria-hidden="true" /><span><b>{t("warehouse.management.notes")}:</b> {warehouse.defaultWarehouse
+              ? <>{t("warehouse.management.generalSalesNote")}{warehouse.notes ? ` ${warehouse.notes}` : ""}</>
+              : warehouse.notes || "—"}</span></p></div>
+          <div className="gestion-warehouse-card-settings">
+            <span className="gestion-warehouse-card-settings-heading"><Gear size={18} aria-hidden="true" />
+              <span>{t("warehouse.management.settingsMode")}: <b>{data ? t(data.inheritsStoreSettings
+                ? "warehouse.management.settingsModeGeneral" : "warehouse.management.settingsModeOwn") : "—"}</b></span></span>
+            <span>{t("warehouse.management.allowNegative")}: <b>{data ? t(data.allowNegativeStock ? "common.yes" : "common.no") : "—"}</b></span>
+            <span>{t("warehouse.management.minimum")}: <b>{data ? quantity(data.defaultMinimumStock) : "—"}</b></span>
+            <span>{t("warehouse.management.alerts")}: <b>{data ? t(data.alertsEnabled ? "common.yes" : "common.no") : "—"}</b></span></div>
+          <div className="gestion-warehouse-card-metrics">
+            <div><span><Cube size={19} aria-hidden="true" />{t("warehouse.management.productsDistinct")}</span><strong>{data ? quantity(data.productCount) : "—"}</strong></div>
+            <div><span><Package size={19} aria-hidden="true" />{t("warehouse.management.unitsTotal")}</span><strong>{data ? quantity(data.totalQuantity) : "—"}</strong></div></div>
+          <button type="button" onClick={() => void openWarehouse(warehouse)}>{t("warehouse.management.configure")}</button>
+        </article>; })}
+        {warehouses.length === 0 && <p className="gestion-security-state">{t("warehouse.management.empty")}</p>}
+      </section>}
 
-  return (
-    <section className="gestion-warehouse-workspace" aria-labelledby="warehouse-management-title">
-      <header className="gestion-warehouse-header">
-        <div>
-          <span>{t("warehouse.management.section")}</span>
-          <h2 id="warehouse-management-title">{t("warehouse.management.title")}</h2>
-          <p>{t("warehouse.management.subtitle")}</p>
-        </div>
-        <button type="button" onClick={openCreate}>{t("warehouse.management.create")}</button>
-      </header>
-
-      <div className="gestion-warehouse-toolbar">
-        <label>
-          <span>{t("warehouse.management.search")}</span>
-          <input
-            ref={searchRef}
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            placeholder={t("warehouse.management.searchPlaceholder")}
-          />
-        </label>
-        <span>{t("warehouse.management.results").replace("{count}", String(visibleWarehouses.length))}</span>
-      </div>
-
-      <ErpFilterChips translate={t} focusRef={searchRef}
-        chips={search.trim() ? [{ key: "search", label: t("warehouse.management.search"), value: search.trim(), onRemove: () => setSearch("") }] : []}
-        onClear={() => setSearch("")} />
-
-      {operationStatus && <p className="gestion-warehouse-operation-status" role="status">{operationStatus}</p>}
-
-      {loading ? (
-        <div className="gestion-security-state">{t("common.loading")}</div>
-      ) : loadError ? (
-        <div className="gestion-security-state error" role="alert">
-          <span>{loadError}</span>
-          <button type="button" onClick={() => setReloadCounter((current) => current + 1)}>
-            {t("warehouse.management.retry")}
-          </button>
-        </div>
-      ) : (
-        <div className="gestion-warehouse-grid">
-          <section className="gestion-warehouse-list" aria-label={t("warehouse.management.list")}>
-            <div className="gestion-warehouse-row head" role="row">
-              <span role="columnheader">{t("warehouse.management.column.name")}</span>
-              <span role="columnheader">{t("warehouse.management.column.default")}</span>
-              <span role="columnheader">{t("warehouse.management.column.status")}</span>
-            </div>
-            {visibleWarehouses.map((warehouse) => (
-              <button
-                type="button"
-                role="row"
-                className={`gestion-warehouse-row${selectedId === warehouse.id ? " selected" : ""}`}
-                key={warehouse.id}
-                aria-label={`${warehouse.name} ${warehouse.active ? t("warehouse.management.active") : t("warehouse.management.inactive")}`}
-                aria-selected={selectedId === warehouse.id}
-                onClick={() => setSelectedId(warehouse.id)}
-              >
-                <span role="cell"><strong>{warehouse.name}</strong></span>
-                <span role="cell">{warehouse.defaultWarehouse ? t("common.yes") : t("common.no")}</span>
-                <span role="cell">
-                  <b className={`gestion-security-status ${warehouse.active ? "active" : "inactive"}`}>
-                    {warehouse.active ? t("warehouse.management.active") : t("warehouse.management.inactive")}
-                  </b>
-                </span>
-              </button>
-            ))}
-            {visibleWarehouses.length === 0 && (
-              <div className="gestion-security-state">{t("warehouse.management.empty")}</div>
-            )}
-          </section>
-
-          <aside className="gestion-warehouse-detail">
-            {selected ? (
-              <>
-                <header>
-                  <div>
-                    <span>{t("warehouse.management.detail")}</span>
-                    <h3>{selected.name}</h3>
-                  </div>
-                  <b className={`gestion-security-status ${selected.active ? "active" : "inactive"}`}>
-                    {selected.active ? t("warehouse.management.active") : t("warehouse.management.inactive")}
-                  </b>
-                </header>
-                <dl>
-                  <div>
-                    <dt>{t("warehouse.management.column.default")}</dt>
-                    <dd>{selected.defaultWarehouse ? t("common.yes") : t("common.no")}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("warehouse.management.identifier")}</dt>
-                    <dd>{selected.id}</dd>
-                  </div>
-                </dl>
-                {selected.defaultWarehouse ? (
-                  <div className="gestion-security-notice">
-                    <strong>{t("warehouse.management.generalProtected")}</strong>
-                    <p>{t("warehouse.management.generalProtectedDetail")}</p>
-                  </div>
-                ) : (
-                  <div className="gestion-security-actions">
-                    <button type="button" onClick={() => openRename(selected)}>
-                      {t("warehouse.management.rename")}
-                    </button>
-                    <button
-                      type="button"
-                      className={selected.active ? "danger" : undefined}
-                      onClick={() => {
-                        setConfirmationError("");
-                        setOperationStatus("");
-                        setPendingActiveChange(selected);
-                      }}
-                    >
-                      {selected.active
-                        ? t("warehouse.management.deactivate")
-                        : t("warehouse.management.activate")}
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="gestion-security-state">{t("warehouse.management.select")}</div>
-            )}
-          </aside>
-        </div>
-      )}
-
-      {form && (
-        <div className="gestion-modal-backdrop">
-          <section
-            className="gestion-security-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="warehouse-form-title"
-          >
-            <header>
-              <h2 id="warehouse-form-title">
-                {form.mode === "create"
-                  ? t("warehouse.management.dialog.create")
-                  : t("warehouse.management.dialog.rename")}
-              </h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setForm(null)}>×</button>
-            </header>
-            <form className="gestion-security-form" onSubmit={(event) => void submitForm(event)}>
-              <label>
-                {t("warehouse.management.name")}
-                <input
-                  autoFocus
-                  required
-                  maxLength={128}
-                  value={name}
-                  onChange={(event) => setName(event.currentTarget.value)}
-                />
-              </label>
-              {formError && <p className="gestion-inline-error" role="alert">{formError}</p>}
-              <footer>
-                <button type="button" disabled={saving} onClick={() => setForm(null)}>{t("common.cancel")}</button>
-                <button type="submit" disabled={saving}>{saving ? t("warehouse.management.saving") : t("common.save")}</button>
-              </footer>
-            </form>
-          </section>
-        </div>
-      )}
-
-      {pendingActiveChange && (
-        <div className="gestion-modal-backdrop">
-          <section
-            className="gestion-security-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="warehouse-confirm-title"
-          >
-            <header>
-              <h2 id="warehouse-confirm-title">
-                {pendingActiveChange.active
-                  ? t("warehouse.management.dialog.deactivate")
-                  : t("warehouse.management.dialog.activate")}
-              </h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setPendingActiveChange(null)}>×</button>
-            </header>
-            <div className="gestion-confirm-content">
-              <p>{(pendingActiveChange.active
-                ? t("warehouse.management.confirmDeactivate")
-                : t("warehouse.management.confirmActivate"))
-                .replace("{name}", pendingActiveChange.name)}</p>
-              {pendingActiveChange.active && (
-                <p className="gestion-confirm-warning">{t("warehouse.management.zeroStockWarning")}</p>
-              )}
-              {confirmationError && <p className="gestion-inline-error" role="alert">{confirmationError}</p>}
-              <footer>
-                <button type="button" disabled={saving} onClick={() => setPendingActiveChange(null)}>{t("common.cancel")}</button>
-                <button
-                  type="button"
-                  className={pendingActiveChange.active ? "danger" : undefined}
-                  disabled={saving}
-                  onClick={() => void confirmActiveChange()}
-                >
-                  {saving
-                    ? t("warehouse.management.saving")
-                    : pendingActiveChange.active
-                      ? t("warehouse.management.deactivate")
-                      : t("warehouse.management.activate")}
-                </button>
-              </footer>
-            </div>
-          </section>
-        </div>
-      )}
-    </section>
-  );
+    {dialog && <div className="gestion-modal-backdrop"><section ref={dialogRef} className={`gestion-security-dialog gestion-warehouse-dialog is-${dialog}`}
+      role="dialog" aria-modal="true" aria-labelledby="warehouse-dialog-title"><header>
+      <h2 id="warehouse-dialog-title">{t(dialog === "create" ? "warehouse.management.dialog.create"
+        : dialog === "general" ? "warehouse.management.generalSettings" : "warehouse.management.settingsTitle")}</h2>
+      <button type="button" aria-label={t("common.close")} onClick={close}>×</button></header>
+      {dialog === "general" ? <div className="gestion-warehouse-dialog-content">
+        <form className="gestion-security-form gestion-warehouse-bulk-form" onSubmit={(event) => void applyGeneral(event)}>
+          <h3>{t("warehouse.management.bulkSection")}</h3>
+          <p className="gestion-warehouse-dialog-hint">{t("warehouse.management.bulkWarning").replace("{count}", String(warehouses.length))}</p>
+          <label><input type="checkbox" checked={bulk.allowNegativeStock} onChange={(event) => setBulk({ ...bulk,
+            allowNegativeStock: event.target.checked })} />{t("warehouse.management.allowNegative")}</label>
+          <label>{t("warehouse.management.minimum")}<input type="number" min="0" step="0.001" required
+            value={bulk.defaultMinimumStock} onChange={(event) => setBulk({ ...bulk, defaultMinimumStock: Number(event.target.value) })} /></label>
+          <label><input type="checkbox" checked={bulk.alertsEnabled} onChange={(event) => setBulk({ ...bulk,
+            alertsEnabled: event.target.checked })} />{t("warehouse.management.alerts")}</label>
+          <footer><button type="button" onClick={close}>{t("common.cancel")}</button>
+            <button type="submit" disabled={saving}>{t("warehouse.management.applyAll")}</button></footer></form>
+        {general && <div className="gestion-warehouse-store-settings"><h3>{t("warehouse.management.storeSection")}</h3>
+          <div className="gestion-warehouse-default-row"><label>{t("warehouse.management.defaultStockWarehouse")}
+            <select value={general.defaultWarehouseId} onChange={(event) => setGeneral({ ...general,
+              defaultWarehouseId: event.target.value })}>{warehouses.filter((item) => item.active).map((item) =>
+              <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <button type="button" disabled={saving} onClick={() => void saveDefaultWarehouse()}>{t("warehouse.management.saveSettings")}</button></div>
+          {canManageInactive && <label><input type="checkbox" checked={general.allowInactiveProductSales}
+            onChange={(event) => void toggleInactive(event.target.checked)} />{t("warehouse.management.inactiveSales")}</label>}</div>}
+      </div> : <div className="gestion-warehouse-dialog-content">
+        <form className="gestion-security-form gestion-warehouse-details-form" onSubmit={(event) => void saveDetails(event)}>
+          {dialog === "warehouse" && <h3>{t("warehouse.management.detailsSection")}</h3>}
+          <label>{t("warehouse.management.name")}<input autoFocus required maxLength={128}
+            disabled={dialog === "warehouse" && selected?.defaultWarehouse} value={details.name}
+            onChange={(event) => setDetails({ ...details, name: event.target.value })} /></label>
+          <label>{t("warehouse.management.address")}<input maxLength={512} value={details.address ?? ""}
+            readOnly={dialog === "warehouse" && !!selected?.defaultWarehouse}
+            onChange={(event) => setDetails({ ...details, address: event.target.value })} /></label>
+          {dialog === "warehouse" && selected?.defaultWarehouse &&
+            <p className="gestion-warehouse-dialog-hint">{t("warehouse.management.storeAddressHint")}</p>}
+          <label>{t("warehouse.management.notes")}<textarea maxLength={4000} rows={3} value={details.notes}
+            onChange={(event) => setDetails({ ...details, notes: event.target.value })} /></label>
+          {dialog === "warehouse" && selected?.defaultWarehouse &&
+            <p className="gestion-warehouse-dialog-hint">{t("warehouse.management.generalSalesNote")}</p>}
+          <footer><button type="button" onClick={close}>{t("common.cancel")}</button>
+            <button type="submit" disabled={saving}>{t("common.save")}</button></footer></form>
+        {dialog === "warehouse" && selected && <>
+          {configuration && <form className="gestion-security-form gestion-warehouse-config-form"
+            onSubmit={(event) => void saveConfiguration(event)}><h3>{t("warehouse.management.stockSection")}</h3>
+            <label><input type="checkbox" checked={configuration.allowNegativeStock} onChange={(event) =>
+              setConfiguration({ ...configuration, allowNegativeStock: event.target.checked })} />{t("warehouse.management.allowNegative")}</label>
+            <label>{t("warehouse.management.minimum")}<input type="number" min="0" step="0.001" required
+              value={configuration.defaultMinimumStock} onChange={(event) =>
+                setConfiguration({ ...configuration, defaultMinimumStock: Number(event.target.value) })} /></label>
+            <label><input type="checkbox" checked={configuration.alertsEnabled} onChange={(event) =>
+              setConfiguration({ ...configuration, alertsEnabled: event.target.checked })} />{t("warehouse.management.alerts")}</label>
+            <footer>{!configuration.inheritsStoreSettings && <button type="button" disabled={saving}
+                onClick={() => void resetConfiguration()}>{t("warehouse.management.resetSettings")}</button>}
+              <button type="submit" disabled={saving || !selected.active}>{t("warehouse.management.saveSettings")}</button></footer></form>}
+          {!selected.defaultWarehouse && <div className="gestion-warehouse-danger-actions">
+            <button type="button" onClick={() => { close(); setPending({ warehouse: selected,
+              action: selected.active ? "deactivate" : "activate" }); }}>{t(selected.active
+                ? "warehouse.management.deactivate" : "warehouse.management.activate")}</button>
+            {canDelete && <button type="button" className="danger" onClick={() => { close();
+              setPending({ warehouse: selected, action: "delete" }); }}>{t("warehouse.management.delete")}</button>}</div>}
+        </>}
+      </div>}
+      {error && <p className="gestion-inline-error" role="alert">{error}</p>}
+      {status && <p className="gestion-warehouse-dialog-status" role="status">{status}</p>}
+    </section></div>}
+    {pending && <div className="gestion-modal-backdrop"><section ref={dialogRef}
+      className={`gestion-security-dialog gestion-warehouse-confirm-dialog is-${pending.action}`}
+      role="dialog" aria-modal="true" aria-labelledby="warehouse-action-title"><header>
+      <h2 id="warehouse-action-title">{t(pending.action === "delete" ? "warehouse.management.delete"
+        : pending.action === "activate" ? "warehouse.management.dialog.activate" : "warehouse.management.dialog.deactivate")}</h2>
+      <button type="button" aria-label={t("common.close")} onClick={() => setPending(null)}>×</button></header>
+      <div className="gestion-confirm-content"><div className="gestion-warehouse-confirm-message">
+        {pending.action === "delete" && <WarningCircle size={24} weight="regular" aria-hidden="true" />}
+        <p>{t(pending.action === "delete" ? "warehouse.management.confirmDelete"
+        : pending.action === "activate" ? "warehouse.management.confirmActivate" : "warehouse.management.confirmDeactivate")
+        .replace("{name}", pending.warehouse.name)}</p></div>
+        {pending.action === "deactivate" && <p>{t("warehouse.management.zeroStockWarning")}</p>}
+        {error && <p className="gestion-inline-error" role="alert">{error}</p>}
+        <footer><button type="button" onClick={() => setPending(null)}>{t("common.cancel")}</button>
+          <button type="button" className={pending.action === "delete" ? "danger" : undefined}
+            disabled={saving} onClick={() => void confirmAction()}>{t(pending.action === "delete"
+            ? "warehouse.management.delete" : pending.action === "activate"
+              ? "warehouse.management.activate" : "warehouse.management.deactivate")}</button></footer></div>
+    </section></div>}
+  </section>;
 }
 
 export default WarehouseManagementScreen;

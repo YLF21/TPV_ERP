@@ -28,6 +28,17 @@ public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
 
     List<StockLevel> findByWarehouseId(UUID warehouseId);
 
+    @Query("""
+            select value.warehouseId as warehouseId, count(distinct value.productId) as productCount,
+                   sum(case when value.cantidad > 0 then value.cantidad else 0 end) as totalQuantity
+            from StockLevel value
+            where value.warehouseId in :warehouseIds and value.cantidad <> 0
+            group by value.warehouseId
+            """)
+    List<WarehouseStockTotal> totalsByWarehouseIds(@Param("warehouseIds") Collection<UUID> warehouseIds);
+    boolean existsByWarehouseId(UUID warehouseId);
+    boolean existsByWarehouseIdAndCantidadNot(UUID warehouseId, BigDecimal quantity);
+
     List<StockLevel> findByProductId(UUID productId);
 
     List<StockLevel> findByProductIdIn(Collection<UUID> productIds);
@@ -51,6 +62,12 @@ public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
     interface ProductStockTotal {
         UUID getProductId();
 
+        BigDecimal getTotalQuantity();
+    }
+
+    interface WarehouseStockTotal {
+        UUID getWarehouseId();
+        long getProductCount();
         BigDecimal getTotalQuantity();
     }
 }

@@ -369,6 +369,9 @@ public class ProductExcelImportPreviewService {
             case "STOCK" -> com.tpverp.backend.security.application.PermissionChecks.hasProductManagement(authentication);
             case "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT" ->
                     com.tpverp.backend.security.application.PermissionChecks.hasWarehouseManagement(authentication);
+            case "WAREHOUSE_TRANSFER" ->
+                    com.tpverp.backend.security.application.PermissionChecks.hasWarehouseManagement(authentication)
+                    || com.tpverp.backend.security.application.PermissionChecks.hasAuthority(authentication, "STOCK_TRANSFER");
             default -> true;
         };
         if (!allowed) throw new AccessDeniedException("Permiso insuficiente para previsualizar la importacion");
@@ -1325,10 +1328,10 @@ public class ProductExcelImportPreviewService {
         }
         PreviewOptions options = request.options();
         if (options == null || blank(options.context())) {
-            errors.add(error("CONTEXT_REQUIRED", null, null, "context", null, "El contexto es obligatorio", "STOCK, WAREHOUSE_INPUT o WAREHOUSE_OUTPUT", "Indica el consumidor de la importación"));
-        } else if (!Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT").contains(options.context())
+            errors.add(error("CONTEXT_REQUIRED", null, null, "context", null, "El contexto es obligatorio", "STOCK, WAREHOUSE_INPUT, WAREHOUSE_OUTPUT o WAREHOUSE_TRANSFER", "Indica el consumidor de la importación"));
+        } else if (!Set.of("STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT", "WAREHOUSE_TRANSFER").contains(options.context())
                 || options.context().length() > 32) {
-            errors.add(error("CONTEXT_INVALID", null, null, "context", truncate(options.context()), "El contexto no está soportado", "STOCK, WAREHOUSE_INPUT o WAREHOUSE_OUTPUT", "Selecciona un consumidor válido"));
+            errors.add(error("CONTEXT_INVALID", null, null, "context", truncate(options.context()), "El contexto no está soportado", "STOCK, WAREHOUSE_INPUT, WAREHOUSE_OUTPUT o WAREHOUSE_TRANSFER", "Selecciona un consumidor válido"));
         }
         if (options != null && options.context() != null) contractCharacters += options.context().length();
         if (options != null && options.documentPriceSource() != null) {
@@ -1338,10 +1341,10 @@ public class ProductExcelImportPreviewService {
                 errors.add(error("VALUE_SOURCE_INVALID", null, null, "documentPriceSource", truncate(source),
                         "La tarifa elegida para el documento no está soportada",
                         DOCUMENT_PRICE_FIELDS.toString(), "Selecciona una tarifa válida del documento"));
-            } else if (!"WAREHOUSE_INPUT".equals(options.context())) {
+            } else if (!supportsDocumentPriceSource(options)) {
                 errors.add(error("VALUE_SOURCE_INVALID", null, null, "documentPriceSource", truncate(source),
-                        "La tarifa del documento solo se admite en entradas de almacén",
-                        "context=WAREHOUSE_INPUT", "Quita la tarifa documental de este contexto"));
+                        "La tarifa del documento solo se admite en entradas o traspasos de almacén",
+                        "context=WAREHOUSE_INPUT o WAREHOUSE_TRANSFER", "Quita la tarifa documental de este contexto"));
             }
         }
         if (options != null && options.storeId() != null && request.storeId() != null && !options.storeId().equals(request.storeId())) {
@@ -1434,6 +1437,7 @@ public class ProductExcelImportPreviewService {
             case "STOCK" -> "STOCK";
             case "WAREHOUSE_INPUT" -> "WAREHOUSE_INPUT";
             case "WAREHOUSE_OUTPUT" -> "WAREHOUSE_OUTPUT";
+            case "WAREHOUSE_TRANSFER" -> "WAREHOUSE_TRANSFER";
             default -> value.trim().toUpperCase(Locale.ROOT);
         };
     }
@@ -1653,11 +1657,15 @@ public class ProductExcelImportPreviewService {
         return updateFields == null || Boolean.TRUE.equals(updateFields.get(field));
     }
     private static boolean requiresWarehouseLineValidation(PreviewOptions options, String field) {
-        if (options == null || !"WAREHOUSE_INPUT".equals(options.context())) return false;
+        if (!supportsDocumentPriceSource(options)) return false;
         String documentPriceSource = blank(options.documentPriceSource())
                 ? "purchasePrice" : options.documentPriceSource().trim();
+        if ("WAREHOUSE_TRANSFER".equals(options.context())) return documentPriceSource.equals(field);
         return "purchasePrice".equals(field) || "purchaseDiscountPercent".equals(field) || "supplierReference".equals(field)
                 || documentPriceSource.equals(field);
+    }
+    private static boolean supportsDocumentPriceSource(PreviewOptions options) {
+        return options != null && ("WAREHOUSE_INPUT".equals(options.context()) || "WAREHOUSE_TRANSFER".equals(options.context()));
     }
     private static boolean validatesField(Product product, PreviewOptions options, Map<String, Boolean> updateFields, String field) {
         return product == null || Set.of("code", "barcode", "quantity").contains(field)

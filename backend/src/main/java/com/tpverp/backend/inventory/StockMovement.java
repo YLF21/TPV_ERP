@@ -59,6 +59,9 @@ public class StockMovement {
     @Column(name = "recuento_stock_id")
     private UUID stockCountId;
 
+    @Column(name = "traspaso_almacen_id")
+    private UUID transferDocumentId;
+
     @Version
     private long version;
 
@@ -305,6 +308,11 @@ public class StockMovement {
     }
 
     public UUID getStockCountId() { return stockCountId; }
+    public UUID getTransferDocumentId() { return transferDocumentId; }
+    public void attachTransferDocument(UUID documentId) {
+        if (transferId == null) throw new IllegalStateException("El movimiento no es un traspaso");
+        transferDocumentId = Objects.requireNonNull(documentId);
+    }
 
     private static BigDecimal positive(BigDecimal quantity) {
         var value = quantity(quantity);

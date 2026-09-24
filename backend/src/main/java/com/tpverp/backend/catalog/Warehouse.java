@@ -22,6 +22,12 @@ public class Warehouse {
     @Column(nullable = false, length = 128)
     private String nombre;
 
+    @Column(name = "direccion", length = 512)
+    private String address;
+
+    @Column(name = "notas", columnDefinition = "text")
+    private String notes;
+
     @Column(nullable = false)
     private boolean predeterminado;
 
@@ -36,6 +42,11 @@ public class Warehouse {
 
     public Warehouse(UUID storeId, String name) {
         this(storeId, name, false);
+    }
+
+    public Warehouse(UUID storeId, String name, String address, String notes) {
+        this(storeId, name, false);
+        updateDetails(name, address, notes);
     }
 
     private Warehouse(UUID storeId, String name, boolean defaultWarehouse) {
@@ -61,6 +72,10 @@ public class Warehouse {
         return nombre;
     }
 
+    public String getAddress() { return address; }
+
+    public String getNotes() { return notes; }
+
     public boolean isDefaultWarehouse() {
         return predeterminado;
     }
@@ -72,6 +87,21 @@ public class Warehouse {
     public void rename(String name) {
         requireEditable();
         nombre = CatalogText.normalized(name, "nombre");
+    }
+
+    public void updateDetails(String name, String address, String notes) {
+        if (predeterminado) {
+            if (!nombre.equals(CatalogText.normalized(name, "nombre"))) requireEditable();
+        } else rename(name);
+        if (!predeterminado) this.address = normalizedOptional(address, 512, "direccion");
+        this.notes = normalizedOptional(notes, 4000, "notas");
+    }
+
+    private static String normalizedOptional(String value, int maxLength, String field) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim();
+        if (normalized.length() > maxLength) throw new IllegalArgumentException(field + " demasiado largo");
+        return normalized;
     }
 
     public void deactivate(long totalStock) {

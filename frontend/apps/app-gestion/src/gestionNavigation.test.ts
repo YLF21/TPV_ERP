@@ -7,9 +7,9 @@ import {
 } from "./gestionNavigation";
 
 describe("APP GESTIÓN navigation registry", () => {
-  it("keeps the approved 11 groups and 53 destinations in order", () => {
+  it("keeps the approved 11 groups and 50 destinations in order", () => {
     expect(gestionNavigationGroupCount).toBe(11);
-    expect(gestionNavigationDestinationCount).toBe(53);
+    expect(gestionNavigationDestinationCount).toBe(50);
     expect(gestionNavigationGroups.map((group) => group.key)).toEqual([
       "overview", "control-alerts", "cash", "customer-documents", "supplier-documents",
       "products", "warehouse", "third-parties", "fiscal", "security", "configuration",
@@ -25,7 +25,7 @@ describe("APP GESTIÓN navigation registry", () => {
       "salesReport.inputDeliveryNotes", "salesReport.inputInvoices", "stock.warehouse.goodsCheck",
     ]);
     expect(gestionNavigationGroups[6].destinations.slice(-2).map((item) => item.key)).toEqual([
-      "salesReport.inputWarehouse", "salesReport.warehouseOutputs",
+      "stock.warehouse.input", "stock.warehouse.output",
     ]);
     expect(gestionNavigationGroups[10].destinations.map((item) => item.key)).toEqual([
       "paymentMethods", "taxes", "memberLoyaltySettings", "internalEan", "documentPrintSettings",
@@ -62,10 +62,10 @@ describe("APP GESTIÓN navigation registry", () => {
       "Comprobación de pedido",
     ]);
     expect(gestionNavigationGroups[6].destinations.map((item) => t(item.labelKey)).slice(-4)).toEqual([
-      "Entrada de almacén — operativa",
-      "Salida de almacén — operativa",
-      "Informe de entradas de almacén",
-      "Informe de salidas de almacén",
+      "Ajustes de stock",
+      "Hacer inventario",
+      "Entrada de almac\u00e9n",
+      "Salida de almac\u00e9n",
     ]);
   });
 });

@@ -28,6 +28,8 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ProductExcelImportPreviewServiceTest {
 
@@ -1519,6 +1521,48 @@ class ProductExcelImportPreviewServiceTest {
                 assertThat(result.errors()).extracting(ProductExcelImportApplyService.ApplyError::code).contains("FORMULA_RESULT_ERROR");
                 org.mockito.Mockito.verifyNoInteractions(writer);
             }
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice"})
+    void transferValidatesSelectedDocumentTariffWithoutMasterUpdateFlags(String tariff) {
+        existingProduct("A1");
+        var options = new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false,
+                "WAREHOUSE_TRANSFER", storeId, companyId, false, true, tariff);
+        var config = new ProductExcelImportPreviewService.PreviewRequest(Map.of("code", "A", tariff, "B", "quantity", "C"),
+                List.of(), options, storeId, companyId, null, 2, "C", Map.of());
+        when(reader.read(any())).thenReturn(read(List.of(c("Codigo"), c("Precio"), c("Cantidad")),
+                List.of(c("A1"), c("12.34"), c("2"))));
+        var valid = service.preview(null, config);
+        assertThat(valid.errors()).isEmpty();
+        assertThat(valid.rows()).singleElement().satisfies(row -> {
+            assertThat(row.errors()).isEmpty();
+            assertThat(row.excelData()).containsEntry(tariff, "12.34").containsEntry("quantity", "2");
+            assertThat(row.changes()).isEmpty();
+        });
+        when(reader.read(any())).thenReturn(read(List.of(c("Codigo"), c("Precio"), c("Cantidad")),
+                List.of(c("A1"), c("invalid"), c("2"))));
+        assertThat(service.preview(null, config).rows().getFirst().errors())
+                .anySatisfy(error -> assertThat(error.attribute()).isEqualTo(tariff));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STOCK", "WAREHOUSE_INPUT", "WAREHOUSE_OUTPUT", "WAREHOUSE_TRANSFER"})
+    void transferOnlyPermissionIsScopedToTransferPreview(String context) {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("transfer", "",
+                        List.of(() -> "STOCK_TRANSFER")));
+        try {
+            when(reader.read(any())).thenReturn(read(List.of(c("Codigo")), List.of(c("A1"))));
+            var config = new ProductExcelImportPreviewService.PreviewRequest(Map.of("code", "A"), List.of(),
+                    new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false,
+                            context, storeId, companyId, false, false), storeId, companyId, null, 2, null, Map.of());
+            if ("WAREHOUSE_TRANSFER".equals(context)) assertThat(service.preview(null, config).errors()).isEmpty();
+            else org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.preview(null, config))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
         } finally {
             org.springframework.security.core.context.SecurityContextHolder.clearContext();
         }

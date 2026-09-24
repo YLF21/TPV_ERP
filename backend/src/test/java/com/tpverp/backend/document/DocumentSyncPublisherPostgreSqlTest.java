@@ -121,7 +121,7 @@ class DocumentSyncPublisherPostgreSqlTest {
         assertThat(jdbc.queryForObject("""
                 select max(version::integer) from flyway_schema_history
                  where success = true and version ~ '^[0-9]+$'
-                """, Integer.class)).isEqualTo(251);
+                """, Integer.class)).isEqualTo(261);
         UUID documentId = Objects.requireNonNull(transaction().execute(status -> {
             var document = documents.save(newDocument(CommercialDocumentType.FACTURA_VENTA));
             publisher.schedule(fixture.companyId(), document, null, SyncOperation.CONFIRMAR);

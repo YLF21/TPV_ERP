@@ -113,6 +113,14 @@ const WarehouseOperationsScreen = lazy(() =>
   }))
 );
 
+const StockCountScreen = lazy(() => import("./StockCountScreen").then(({ StockCountScreen }) => ({ default: StockCountScreen })));
+
+const WarehouseTransferScreen = lazy(() =>
+  import("./WarehouseTransferScreen").then(({ WarehouseTransferScreen }) => ({
+    default: WarehouseTransferScreen
+  }))
+);
+
 const VerifactuManagementScreen = lazy(() =>
   import("./VerifactuManagementScreen").then(({ VerifactuManagementScreen }) => ({
     default: VerifactuManagementScreen
@@ -169,6 +177,7 @@ type StockSelection = {
   settingsMode?: "configuration";
   warehouseSection?: WarehouseSection;
   warehouseManagement?: boolean;
+  createWarehouseDocument?: boolean;
   warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
 };
 
@@ -410,11 +419,6 @@ function GestionScreen({
       label: t(view),
       onOpen: () => onOpenStock({ key: view, view })
     })),
-    ...(userCanManageWarehouses(session) ? [{
-      key: "stock.settings.configuration",
-      label: t("stock.settings.configuration"),
-            onOpen: () => onOpenStock({ key: "stock.settings.configuration", settingsMode: "configuration" as const })
-    }] : [])
   ];
   const warehouseChildren: GestionNavigationItem[] = [
     ...(userCanManageWarehouses(session) ? [{
@@ -743,7 +747,13 @@ function GestionScreen({
       />
     );
   } else if (effectiveModule === "stock" && stockContentItems.some((item) => item.key === stockSelection.key)) {
-    content = stockSelection.warehouseOperation ? (
+    content = stockSelection.warehouseOperation === "transfer" ? (
+      <WarehouseTransferScreen key={stockSelection.key} session={session} t={t}
+        locale={locale} terminalContext={terminalContext}
+        createOnMount={stockSelection.createWarehouseDocument} />
+    ) : stockSelection.warehouseOperation === "count" ? (
+      <StockCountScreen session={session} locale={locale} t={t} />
+    ) : stockSelection.warehouseOperation ? (
       <WarehouseOperationsScreen
         key={stockSelection.key}
         session={session}
@@ -751,7 +761,13 @@ function GestionScreen({
         t={t}
       />
     ) : stockSelection.warehouseManagement ? (
-      <WarehouseManagementScreen session={session} t={t} />
+      <WarehouseManagementScreen session={session} t={t} locale={locale} onCreateDocument={(kind) => {
+        if (kind === "transfer") {
+          onOpenStock({ key: "stock.warehouse.transfer", warehouseOperation: "transfer", createWarehouseDocument: true });
+        } else {
+          onOpenStock({ key: `stock.warehouse.${kind}`, warehouseSection: kind, createWarehouseDocument: true });
+        }
+      }} />
     ) : stockSelection.warehouseSection ? (
       <WarehouseScreen
         key={stockSelection.key}
@@ -764,6 +780,7 @@ function GestionScreen({
         onLocaleChange={onLocaleChange}
         embedded
         initialSection={stockSelection.warehouseSection}
+        createOnMount={stockSelection.createWarehouseDocument}
       />
     ) : (
       <StockScreen

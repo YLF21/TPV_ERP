@@ -1282,7 +1282,7 @@ describe("SharedExcelImportDialog", () => {
     expect(screen.queryByRole("button", { name: "Usar precio en documento" })).not.toBeInTheDocument();
   });
 
-  it.each(["STOCK", "WAREHOUSE_OUTPUT"] as const)("imports existing rows in %s while missing products remain", async (context) => {
+  it.each(["STOCK", "WAREHOUSE_OUTPUT", "WAREHOUSE_TRANSFER"] as const)("imports existing rows in %s while missing products remain", async (context) => {
     const flow = await operationFlow(context);
     fireEvent.click(screen.getByRole("button", { name: "Productos importables (1)" }));
     fireEvent.click(screen.getByRole("button", { name: context === "STOCK" ? "Importar a edición masiva" : "Importar Excel al documento" }));
@@ -1292,6 +1292,30 @@ describe("SharedExcelImportDialog", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].product.id).toBe("product-1");
     if (context === "STOCK") expect(rows[0]).not.toHaveProperty("quantity");
+  });
+
+  it("offers all document tariffs for transfers and no master or supplier mutation actions", async () => {
+    const flow = await operationFlow("WAREHOUSE_TRANSFER", true, { quantity: "5", salePrice: "15" });
+    expect(screen.queryByRole("button", { name: "Añadir productos" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Precio de compra distinto (1)" }));
+    expect(screen.queryByRole("button", { name: "Actualizar precio de compra" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Productos importables (1)" }));
+    expect(screen.queryByRole("button", { name: "Actualizar atributos marcados" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Configuración del archivo" }));
+    expect(screen.queryByLabelText("Añadir automáticamente los productos no existentes")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Actualizar proveedor/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Usar precio en documento" }));
+    expect(screen.getAllByRole("option")).toHaveLength(5);
+    fireEvent.click(screen.getByRole("option", { name: "Precio de venta" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Aplicar$/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Productos importables (1)" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Productos importables (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Importar Excel al documento" }));
+    await waitFor(() => expect(flow.onImportAccepted).toHaveBeenCalledOnce());
+    expect(flow.operations).toEqual([expect.objectContaining({ operation: "PREPARE_DESTINATION", updateSupplier: false,
+      preview: expect.objectContaining({ options: expect.objectContaining({ context: "WAREHOUSE_TRANSFER", documentPriceSource: "salePrice" }) }) })]);
+    expect(flow.onImportAccepted.mock.calls[0][0][0].quantity).toBe(5);
+    expect(flow.onImportAccepted.mock.calls[0][1].documentPriceSource).toBe("salePrice");
   });
 
   it("does not create missing products or transfer quantities during Stock Apply", async () => {
@@ -1633,17 +1657,17 @@ function jsonResponse(value: unknown): { ok: boolean; status: number; headers: {
   };
 }
 
-async function openAndApply(container: HTMLElement, summary = false) {
+async function openAndApply(container: HTMLElement, summary = false, transfer = false) {
   fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement,
     { target: { files: [new File(["xls"], "productos.xlsx")] } });
   await waitFor(() => expect(screen.getByLabelText("Código Columna Excel")).toHaveValue("A"));
   if (summary && !(screen.getByLabelText("Generar documento resumen") as HTMLInputElement).checked)
     fireEvent.click(screen.getByLabelText("Generar documento resumen"));
   fireEvent.click(screen.getByRole("button", { name: /^Aplicar$/ }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Añadir productos" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("button", { name: transfer ? "Productos importables (1)" : "Añadir productos" })).toBeInTheDocument());
 }
 
-async function operationFlow(context: "STOCK" | "WAREHOUSE_INPUT" | "WAREHOUSE_OUTPUT", differentPurchase = false, excelValues: Record<string, string> = {}) {
+async function operationFlow(context: "STOCK" | "WAREHOUSE_INPUT" | "WAREHOUSE_OUTPUT" | "WAREHOUSE_TRANSFER", differentPurchase = false, excelValues: Record<string, string> = {}) {
   let created = false;
   const operations: Array<Record<string, unknown>> = [];
   const snapshot = () => ({ ...previewExistingFixture(), detectedRows: 2, existingRows: created ? 2 : 1, missingRows: created ? 0 : 1,
@@ -1674,7 +1698,7 @@ async function operationFlow(context: "STOCK" | "WAREHOUSE_INPUT" | "WAREHOUSE_O
   const onClose = vi.fn();
   const { container } = render(<SharedExcelImportDialog open locale="es" token="token" context={context}
     products={[]} onClose={onClose} onImportAccepted={onImportAccepted} />);
-  await openAndApply(container);
+  await openAndApply(container, false, context === "WAREHOUSE_TRANSFER");
   return { fetchMock, operations, onImportAccepted, onClose };
 }
 

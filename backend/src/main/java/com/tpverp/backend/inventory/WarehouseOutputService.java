@@ -37,6 +37,7 @@ public class WarehouseOutputService {
     private final DocumentCounterRepository counters;
     private final StockLevelRepository stockLevels;
     private final StockSettingsRepository settings;
+    private StockSettingsService warehouseSettings;
     private final StockMovementRepository movements;
     private final CurrentOrganization organization;
     private final ProductRepository products;
@@ -65,6 +66,11 @@ public class WarehouseOutputService {
         this.warehouses = warehouses;
         this.syncPublisher = syncPublisher;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWarehouseSettings(StockSettingsService warehouseSettings) {
+        this.warehouseSettings = warehouseSettings;
     }
 
     @Transactional(readOnly = true)
@@ -230,9 +236,9 @@ public class WarehouseOutputService {
         var deltas = new LinkedHashMap<UUID, BigDecimal>();
         output.getLines().forEach(line -> deltas.merge(
                 line.getProductId(), BigDecimal.valueOf(-line.getQuantity()), BigDecimal::add));
-        boolean allowNegativeStock = settings.findById(output.getStoreId())
-                .map(StockSettings::isAllowNegativeStock)
-                .orElse(true);
+        boolean allowNegativeStock = warehouseSettings == null
+                ? settings.findById(output.getStoreId()).map(StockSettings::isAllowNegativeStock).orElse(true)
+                : warehouseSettings.allowsNegativeStock(output.getWarehouseId(), output.getStoreId());
         var result = new LinkedHashMap<UUID, StockLevel>();
         deltas.forEach((productId, delta) -> {
             var found = allowNegativeStock

@@ -50,6 +50,8 @@ class StockPageOrderRepositoryPostgreSqlTest {
 
     @Autowired StockPageOrderRepository repository;
     @Autowired JdbcTemplate jdbc;
+    @Autowired StockLevelRepository stockLevels;
+    @Autowired com.tpverp.backend.catalog.ProductRepository products;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -65,6 +67,45 @@ class StockPageOrderRepositoryPostgreSqlTest {
     @AfterAll
     static void dropSchema() {
         execute("drop schema if exists " + SCHEMA + " cascade");
+    }
+
+    @Test
+    void warehouseUnitsSumOnlyPositiveStockWithoutChangingRealBalances() {
+        var context = insertContext();
+        jdbc.update("update existencia set cantidad=7.5 where producto_id=?", context.cheapestId());
+        jdbc.update("update existencia set cantidad=-4 where producto_id=?", context.middleId());
+        jdbc.update("update existencia set cantidad=0 where producto_id=?", context.expensiveId());
+        var totals = stockLevels.totalsByWarehouseIds(List.of(context.warehouseId()));
+        assertThat(totals).hasSize(1);
+        assertThat(totals.getFirst().getTotalQuantity()).isEqualByComparingTo("7.5");
+        assertThat(totals.getFirst().getProductCount()).isEqualTo(2);
+        assertThat(stockLevels.sumQuantityByProductId(context.middleId())).isEqualByComparingTo("-4");
+        jdbc.update("update existencia set cantidad=-2 where producto_id=?", context.cheapestId());
+        assertThat(stockLevels.totalsByWarehouseIds(List.of(context.warehouseId())).getFirst().getTotalQuantity())
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void adjustmentSearchKeepsExactZeroAndBarcodeAheadOfFiftyPartialMatches() {
+        var context = insertContext();
+        for (int i = 0; i < 60; i++) {
+            insertProduct(context.storeId(), context.familyId(), context.taxId(), context.warehouseId(),
+                    UUID.randomUUID(), "MATCH0-" + i, "A 0 123 partial " + i, "1.00", 1);
+        }
+        var exactId = UUID.randomUUID();
+        insertProduct(context.storeId(), context.familyId(), context.taxId(), context.warehouseId(),
+                exactId, "0", "Z exact", "1.00", 1);
+        jdbc.update("insert into producto_identificador (id,tienda_id,producto_id,tipo,valor) values (?,?,?,'CODIGO_BARRAS','123')",
+                UUID.randomUUID(), context.storeId(), exactId);
+        var page = org.springframework.data.domain.PageRequest.of(0, 50);
+        var zero = products.searchAdjustmentProducts(context.storeId(), "0", "%0%", page);
+        assertThat(zero).hasSize(50);
+        assertThat(zero.getFirst().getId()).isEqualTo(exactId);
+        assertThat(products.searchAdjustmentProducts(context.storeId(), "123", "%123%", page).getFirst().getId()).isEqualTo(exactId);
+        assertThat(products.searchAdjustmentProducts(UUID.randomUUID(), "0", "%0%", page)).isEmpty();
+        jdbc.update("update producto set activo=false where id=?", exactId);
+        assertThat(products.searchAdjustmentProducts(context.storeId(), "0", "%0%", page))
+                .extracting(com.tpverp.backend.catalog.Product::getId).doesNotContain(exactId);
     }
 
     @Test
