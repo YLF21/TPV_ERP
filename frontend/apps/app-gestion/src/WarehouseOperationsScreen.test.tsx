@@ -203,7 +203,7 @@ describe("WarehouseOperationsScreen", () => {
     confirmButton.focus();
     fireEvent.click(confirmButton);
     expect(await screen.findByRole("dialog", { name: "warehouse.count.confirmTitle" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "warehouse.count.keepEditing" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("button", { name: "warehouse.count.keepEditing" })).toHaveFocus());
     expect(api.confirmStockCount).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "warehouse.count.confirmTitle" })).not.toBeInTheDocument();
