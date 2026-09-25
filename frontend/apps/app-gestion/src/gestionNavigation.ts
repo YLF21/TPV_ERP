@@ -127,10 +127,8 @@ export const gestionNavigationGroups: GestionNavigationGroup[] = [
     labelKey: "gestion.navigation.group.supplierDocuments",
     icon: FileArrowDown,
     destinations: [
-      destination("stock.warehouse.purchaseDeliveryNotes", "gestion.navigation.destination.managePurchaseDeliveryNotes", FilePlus),
-      destination("stock.warehouse.purchaseInvoices", "gestion.navigation.destination.managePurchaseInvoices", Invoice),
-      destination("salesReport.inputDeliveryNotes", "gestion.navigation.destination.purchaseDeliveryNoteReport", ClipboardText),
-      destination("salesReport.inputInvoices", "gestion.navigation.destination.purchaseInvoiceReport", FileText),
+      destination("stock.warehouse.purchaseDeliveryNotes", "warehouseScreen.purchaseDeliveryNotes", FilePlus),
+      destination("stock.warehouse.purchaseInvoices", "warehouseScreen.purchaseInvoices", Invoice),
       destination("stock.warehouse.goodsCheck", "gestion.navigation.destination.orderCheck", ListChecks),
     ],
   },

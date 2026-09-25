@@ -1,5 +1,5 @@
 import "../../../packages/app-common/src/components/ErpClassicTables.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ErpSelect,
   PartyDirectoryPanel,
@@ -119,32 +119,31 @@ export function SupplierManagementScreen({ locale, session }: SupplierManagement
     return <div className="gestion-security-state error" role="alert">{t("safeManagement.noAccess")}</div>;
   }
 
-  return (
-    <section className="gestion-safe-management erp-classic-tables" aria-labelledby="supplier-management-title">
-      <header className="gestion-safe-management-heading">
-        <div>
-          <h2 id="supplier-management-title">{t("safeManagement.suppliers.title")}</h2>
-          <p>{t("safeManagement.suppliers.subtitle")}</p>
-        </div>
-      </header>
-      <div className="gestion-safe-management-tabs" role="tablist" aria-label={t("safeManagement.suppliers.title")}>
+  const tabs = (<div className="gestion-safe-management-tabs" role="tablist" aria-label={t("safeManagement.suppliers.title")}>
         <button type="button" role="tab" aria-selected={tab === "suppliers"} className={tab === "suppliers" ? "selected" : ""} onClick={() => setTab("suppliers")}>
           {t("safeManagement.suppliers.tab.suppliers")}
         </button>
         <button type="button" role="tab" aria-selected={tab === "representatives"} className={tab === "representatives" ? "selected" : ""} onClick={() => setTab("representatives")}>
           {t("safeManagement.suppliers.tab.representatives")}
         </button>
-      </div>
+      </div>);
+
+  return (
+    <section className="gestion-safe-management erp-classic-tables" aria-labelledby="supplier-management-title">
+      <header className="gestion-safe-management-heading">
+        <h1 id="supplier-management-title">{t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale)}</h1>
+      </header>
+
       <div role="tabpanel" className={tab === "suppliers" ? "supplier-directory-tab" : undefined}>
         {tab === "suppliers"
-          ? <PartyDirectoryPanel app="gestion" kind="suppliers" locale={locale} session={session} allowSafeRetirement />
-          : <SalesRepresentativeManagementPanel locale={locale} session={session} />}
+          ? <PartyDirectoryPanel app="gestion" kind="suppliers" locale={locale} session={session} allowSafeRetirement headerExtra={tabs} />
+          : <SalesRepresentativeManagementPanel locale={locale} session={session} headerExtra={tabs} />}
       </div>
     </section>
   );
 }
 
-function SalesRepresentativeManagementPanel({ locale, session }: SupplierManagementScreenProps) {
+function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: SupplierManagementScreenProps & { headerExtra?: ReactNode }) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [rows, setRows] = useState<SalesRepresentativeView[]>([]);
   const [query, setQuery] = useState("");
@@ -427,6 +426,7 @@ function SalesRepresentativeManagementPanel({ locale, session }: SupplierManagem
           <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>
         </div>
       </header>
+      {headerExtra}
       <div className="party-directory-toolbar party-directory-toolbar--classic">
         <label className="party-directory-search-label" htmlFor="representative-search">{t("party.searchLabel")}</label>
         <input id="representative-search" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} />

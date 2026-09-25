@@ -140,7 +140,7 @@ export function WarehouseScreen({
           : "warehouseScreen.goodsCheckSubtitle";
 
   return (
-    <main data-warehouse-heading={app === "gestion" && embedded && (section === "input" || section === "output") ? "unified" : undefined} className={embedded
+    <main data-warehouse-heading={app === "gestion" && embedded && section !== "goodsCheck" ? "unified" : undefined} className={embedded
       ? "stock-screen work-screen warehouse-screen gestion-embedded-module"
       : "stock-screen work-screen warehouse-screen"}
     >

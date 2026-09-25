@@ -20,6 +20,7 @@ import {
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
+import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -344,6 +345,26 @@ export function WarehouseOperationsPanel({
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const purchasePeriodFilter = app === "gestion" && mode === "input"
+    && (documentType === "FACTURA_ENTRADA" || documentType === "ALBARAN_ENTRADA");
+  const [quickRange, setQuickRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
+  const [dateOptions, setDateOptions] = useState<{ currentDate: string; earliestDate: string } | null>(null);
+  const [dateOptionsFailed, setDateOptionsFailed] = useState(false);
+  const [dateOptionsReload, setDateOptionsReload] = useState(0);
+  useEffect(() => {
+    setDateOptions(null);
+    setDateOptionsFailed(false);
+    if (!purchasePeriodFilter || !token || !resolvedPermissions.read) return;
+    let cancelled = false;
+    const report = documentType === "FACTURA_ENTRADA" ? "inputInvoices" : "inputDeliveryNotes";
+    void apiRequest<{ currentDate: string; earliestDate: string }>(
+      `/document-reports/date-options?report=${report}`, { token }
+    ).then((value) => {
+      if (!isValidReportDate(value.currentDate) || !isValidReportDate(value.earliestDate)) throw new Error("Invalid date options");
+      if (!cancelled) setDateOptions(value);
+    }).catch(() => { if (!cancelled) setDateOptionsFailed(true); });
+    return () => { cancelled = true; };
+  }, [purchasePeriodFilter, documentType, token, resolvedPermissions.read, dateOptionsReload]);
   const [exportBusy, setExportBusy] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [dialogOpen, setDialogOpen] = useState(createOnMount);
@@ -421,12 +442,16 @@ export function WarehouseOperationsPanel({
   if (dateTo) filterChips.push({ key: "dateTo", label: t("warehouse.report.to"), value: dateTo, onRemove: () => setDateTo("") });
 
   async function exportReport(format: "pdf" | "xlsx") {
-    if (!token || exportBusy || (mode === "input" && documentType && documentType !== "ENTRADA_ALMACEN")) return;
+    if (!token || exportBusy) return;
     setExportBusy(true);
     setError("");
     try {
-      const reportKey = mode === "input" ? "salesReport.inputWarehouse" : "salesReport.warehouseOutputs";
-      const keys = mode === "input"
+      const reportKey = purchasePeriodFilter
+        ? documentType === "FACTURA_ENTRADA" ? "salesReport.inputInvoices" : "salesReport.inputDeliveryNotes"
+        : mode === "input" ? "salesReport.inputWarehouse" : "salesReport.warehouseOutputs";
+      const keys = purchasePeriodFilter
+        ? [documentType === "FACTURA_ENTRADA" ? "invoice" : "deliveryNote", "supplier", "supplierName", "date", "status", "total"]
+        : mode === "input"
         ? ["input", "date", "warehouse", "productCount", "origin", "total"]
         : ["output", "date", "warehouse", "productCount", "reason", "total"];
       const file = await apiRequest<Blob>(`/sales-reports/${format === "pdf" ? "export-pdf" : "export"}`, {
@@ -440,7 +465,9 @@ export function WarehouseOperationsPanel({
       const url = URL.createObjectURL(file);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${mode === "input" ? "entradas" : "salidas"}-almacen.${format}`;
+      link.download = purchasePeriodFilter
+        ? `${reportKey.replace("salesReport.", "")}.${format}`
+        : `${mode === "input" ? "entradas" : "salidas"}-almacen.${format}`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (cause) { setError(warehouseOperationsErrorMessage(cause, t("warehouse.report.exportError"))); }
@@ -692,7 +719,7 @@ export function WarehouseOperationsPanel({
         notify(onClose);
       }}
     >
-      <div className="stock-history-toolbar" ref={toolbarRef}>
+      <div className={`stock-history-toolbar${purchasePeriodFilter ? " warehouse-purchase-toolbar" : ""}`} ref={toolbarRef}>
         <label>
           <span>{labels.search}</span>
           <input
@@ -724,7 +751,7 @@ export function WarehouseOperationsPanel({
             onNavigatePrevious={() => searchRef.current?.focus()}
           />
         </div>
-        {app !== "pda" && <>
+        {app !== "pda" && !purchasePeriodFilter && <>
           <label><span>{t("warehouse.report.from")}</span><input type="date" value={dateFrom} max={dateTo || undefined}
             onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{t("warehouse.report.to")}</span><input type="date" value={dateTo} min={dateFrom || undefined}
@@ -754,7 +781,7 @@ export function WarehouseOperationsPanel({
           )}
           {app === "gestion" && session?.permissions.some((value) =>
             ["ADMIN", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"].includes(value))
-            && (mode === "output" || !documentType || documentType === "ENTRADA_ALMACEN") && <>
+            && (purchasePeriodFilter || mode === "output" || !documentType || documentType === "ENTRADA_ALMACEN") && <>
             <button type="button" disabled={exportBusy || !token} onClick={() => void exportReport("pdf")}>PDF</button>
             <button type="button" disabled={exportBusy || !token} onClick={() => void exportReport("xlsx")}>Excel</button>
           </>}
@@ -855,6 +882,17 @@ export function WarehouseOperationsPanel({
           </tbody>
         </table>
       </div>
+
+      {purchasePeriodFilter && <>
+        {dateOptionsFailed && <div className="report-date-options-error" role="alert">
+          <span>{t("salesReport.loadError")}</span>
+          <button type="button" onClick={() => setDateOptionsReload((value) => value + 1)}>{t("salesReport.retry")}</button>
+        </div>}
+        <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""}
+          earliestDate={dateOptions?.earliestDate ?? ""}
+          value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
+          onChange={(range) => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />
+      </>}
 
       <WarehouseDocumentDialog
         mode={mode}

@@ -13,3 +13,32 @@
 .member-category-manual-check span, .member-category-manual-check small { display: block; }
 .member-category-manual-check small { margin-top: 3px; color: #64748b; font-weight: 400; }
 @media (max-width: 760px) { .member-category-form fieldset { grid-template-columns: 1fr; } .member-category-manual-check { grid-column: auto; } }
+
+/* Directory layout shared with customer management. */
+.member-categories-screen {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px 18px 10px;
+  overflow: auto;
+}
+.member-categories-screen > header,
+.member-categories-screen > .party-directory-toolbar { flex-shrink: 0; }
+.member-categories-screen .party-directory-toolbar { background: #fff; }
+.member-categories-screen .member-categories-table { min-height: 200px; margin-top: 12px; }
+.member-categories-screen .member-category-row { min-width: 0; width: 100%; }
+.member-categories-screen .member-category-row.header { position: sticky; top: 0; z-index: 1; }
+.member-categories-screen .member-category-row > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.member-categories-screen .member-category-row-actions button {
+  min-height: 26px; padding: 3px 8px; border: 1px solid #aebfd2;
+  border-radius: 0; background: #f5f8fb; color: #0a2a52;
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.member-categories-screen .member-category-row-actions button:disabled { opacity: .5; cursor: default; }
+.member-categories-screen .member-category-row-actions button:focus-visible { outline: 2px solid #1f5a94; outline-offset: 1px; }
+.member-category-status {
+  display: inline-flex; align-items: center; flex-shrink: 0;
+  height: 22px; padding: 0 8px; border: 1px solid #d5dce3;
+  border-radius: 2px; color: #5a6673; background: #eef1f4;
+  font-size: 12px; font-weight: 600; line-height: 20px;
+}
+.member-category-status.is-active { color: #21633d; background: #eaf5ed; border-color: #c6dfcd; }

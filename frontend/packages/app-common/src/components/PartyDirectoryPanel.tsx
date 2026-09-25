@@ -1,5 +1,5 @@
 import { ErpConfirmDialog } from "./ErpConfirmDialog";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -42,6 +42,7 @@ export type PartyDirectoryPanelProps = {
   session: UserSession;
   onOpenCustomerReceivables?: (customerId: string) => void;
   allowSafeRetirement?: boolean;
+  headerExtra?: ReactNode;
 };
 
 const sharedPartyColumnDefinitions = [
@@ -323,7 +324,8 @@ export function PartyDirectoryPanel({
   locale,
   session,
   onOpenCustomerReceivables,
-  allowSafeRetirement = false
+  allowSafeRetirement = false,
+  headerExtra
 }: PartyDirectoryPanelProps) {
   const t = createTranslator(locale);
   const initialPreferences = readPartyDirectoryPreferences(app, session.username, kind);
@@ -732,6 +734,7 @@ export function PartyDirectoryPanel({
         {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
+    {headerExtra}
     <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}`}>
       {classicWindow && <label className="party-directory-search-label" htmlFor="party-management-search">{t("party.searchLabel")}</label>}
       <input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />

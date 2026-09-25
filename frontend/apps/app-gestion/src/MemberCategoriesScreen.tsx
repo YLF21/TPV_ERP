@@ -4,12 +4,13 @@ import {
   ErpSelect,
   TableLayoutHeaderCell,
   apiRequest,
-  tableLayoutGridTemplate,
   useTableLayoutPreference,
   visibleTableColumns,
   type UserSession
 } from "@tpverp/app-common";
 import "./MemberCategoriesScreen.css";
+import "../../../packages/app-common/src/components/ErpClassicTables.css";
+import "../../../packages/app-common/src/components/ErpClassicWindow.css";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 
 type Translate = (key: string) => string;
@@ -68,7 +69,8 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
   const gridStyle = {
-    gridTemplateColumns: `${tableLayoutGridTemplate(tableLayout.layout)} 190px`
+    minWidth: visibleColumns.reduce((width, column) => width + column.width, 190),
+    gridTemplateColumns: `${visibleColumns.map((column) => `minmax(${column.width}px, ${column.width}fr)`).join(" ")} 190px`
   };
 
   const message = useCallback((cause: unknown, fallback: string) => {
@@ -125,7 +127,7 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
     if (key === "type") return <span className={className} data-column-key={key} key={key}>{t(category.manualOnly ? "gestion.memberCategories.type.manual" : "gestion.memberCategories.type.automatic")}</span>;
     if (key === "minPoints") return <span className={className} data-column-key={key} key={key}>{category.manualOnly ? t("gestion.memberCategories.notApplicable") : category.minPoints}</span>;
     if (key === "discount") return <span className={className} data-column-key={key} key={key}>{category.discountEnabled ? `${category.discountPercent} %` : t("gestion.memberCategories.discountDisabled")}</span>;
-    return <span className={`${className} party-status ${category.active ? "active" : ""}`} data-column-key={key} key={key}>{t(category.active ? "party.active" : "party.inactive")}</span>;
+    return <span className={className} data-column-key={key} key={key}><span className={`member-category-status ${category.active ? "is-active" : "is-inactive"}`}>{t(category.active ? "party.active" : "party.inactive")}</span></span>;
   }
 
   function openNew() {
@@ -180,14 +182,16 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
     finally { setBusy(false); }
   }
 
-  return <section className="member-categories-screen">
+  return <section className="member-categories-screen erp-classic-tables">
+    <header className="member-categories-module-heading"><h1>{t("home.product").toLocaleUpperCase()}</h1></header>
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{t("gestion.memberCategories.title")}</h2><span>{t("gestion.memberCategories.subtitle")}</span></div>
       {canManage && <button type="button" className="stock-add-product-button" disabled={busy} onClick={openNew}>{t("gestion.memberCategories.new")}</button>}
     </header>
 
-    <div className="party-directory-toolbar">
-      <input aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} />
+    <div className="party-directory-toolbar party-directory-toolbar--classic">
+      <label className="party-directory-search-label" htmlFor="member-category-search">{t("party.searchLabel")}</label>
+      <input id="member-category-search" aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} />
       <label className="party-directory-status-filter"><span>{t("party.status")}</span><ErpSelect className="erp-select--compact" value={filter} aria-label={t("party.status")} onChange={(value) => setFilter(value as StatusFilter)} options={["all", "active", "inactive"].map((value) => ({ value, label: t(value === "all" ? "gestion.memberCategories.filter.all" : `party.${value}`) }))} /></label>
       <span className="party-directory-result-count">{t("party.results").replace("{count}", String(visible.length))}</span>
     </div>
@@ -211,8 +215,8 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
     </div>
     {feedback && !dialogOpen && <p className="product-create-status party-directory-toast" role="status">{feedback}</p>}
 
-    {dialogOpen && <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="member-category-dialog-title">
-      <section className="filter-dialog product-create-dialog party-create-dialog member-category-dialog">
+    {dialogOpen && <div className="filter-overlay erp-classic-overlay" role="dialog" aria-modal="true" aria-labelledby="member-category-dialog-title">
+      <section className="filter-dialog product-create-dialog party-create-dialog member-category-dialog erp-classic-window">
         <header className="filter-header"><div><h2 id="member-category-dialog-title">{t(draft.id ? "gestion.memberCategories.editTitle" : "gestion.memberCategories.newTitle")}</h2><span>{t("gestion.memberCategories.formHint")}</span></div><button type="button" disabled={busy} onClick={() => setDialogOpen(false)}>{t("common.close")}</button></header>
         <form className="product-create-form party-create-form member-category-form" onSubmit={(event) => void save(event)}>
           <fieldset disabled={busy || !canManage}>

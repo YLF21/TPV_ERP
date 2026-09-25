@@ -29,7 +29,12 @@ function filterStatus(value: string) {
   fireEvent.click(screen.getByRole("button", { name: "Estado" }));
   fireEvent.click(screen.getByRole("option", { name: value }));
 }
-beforeEach(() => { request.mockReset(); request.mockResolvedValue({ items: rows, hasMore: false }); });
+beforeEach(() => {
+  request.mockReset();
+  request.mockImplementation(async (path) => String(path).startsWith("/document-reports/date-options")
+    ? { currentDate: "2026-09-25", earliestDate: "2026-09-22" }
+    : { items: rows, hasMore: false });
+});
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 describe("Classic warehouse lists and filter tags", () => {
@@ -57,7 +62,13 @@ describe("Classic warehouse lists and filter tags", () => {
     expect(container.querySelectorAll("tbody tr[data-operation-id]")).toHaveLength(3);
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
     await waitFor(() => expect(search).toHaveFocus());
-    expect(request).toHaveBeenCalledTimes(1);
+    const purchaseDates = app === "gestion" && (documentType === "ALBARAN_ENTRADA" || documentType === "FACTURA_ENTRADA");
+    expect(request.mock.calls.filter(([path]) => String(path).startsWith("/warehouse-"))).toHaveLength(1);
+    expect(request).toHaveBeenCalledTimes(purchaseDates ? 2 : 1);
+    if (purchaseDates) {
+      expect(request).toHaveBeenCalledWith(`/document-reports/date-options?report=${documentType === "FACTURA_ENTRADA" ? "inputInvoices" : "inputDeliveryNotes"}`, { token: "fixture" });
+      expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled();
+    }
   });
 
   it("clears tags while preserving sorting and isolates the opened document editor", async () => {
