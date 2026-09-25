@@ -56,7 +56,7 @@ class DocumentReportDateOptionsServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"tickets,TICKETS_READ", "invoices,INVOICES_READ", "deliveryNotes,DELIVERY_NOTES_READ",
+    @CsvSource({"topSales,STOCK_READ", "topSales,GESTION_PRODUCTO", "topSales,GESTION_VENTAS", "topSales,VENTA", "tickets,TICKETS_READ", "invoices,INVOICES_READ", "deliveryNotes,DELIVERY_NOTES_READ",
             "warehouseOutputs,GESTION_ALMACEN", "inputWarehouse,GESTION_ALMACEN",
             "inputInvoices,GESTION_CUENTAS", "inputDeliveryNotes,GESTION_PRODUCTO"})
     void emptyReportsUseTodayAndKeepSpecificReadPermissions(String report, String permission) {
@@ -65,7 +65,7 @@ class DocumentReportDateOptionsServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"tickets,GESTION_ALMACEN", "invoices,TICKETS_READ", "deliveryNotes,INVOICES_READ",
+    @CsvSource({"topSales,GESTION_ALMACEN", "topSales,TICKETS_READ", "tickets,GESTION_ALMACEN", "invoices,TICKETS_READ", "deliveryNotes,INVOICES_READ",
             "warehouseOutputs,VENTA", "inputWarehouse,VENTA",
             "inputInvoices,INVOICES_READ", "inputDeliveryNotes,DELIVERY_NOTES_READ"})
     void rejectsForeignReportPermissionsBeforeAccessingAnyData(String report, String permission) {
@@ -90,6 +90,17 @@ class DocumentReportDateOptionsServiceTest {
         assertThat(service.options(report, auth("GESTION_ALMACEN")).earliestDate()).isEqualTo(earliest);
         verify(inputs).findFirstReportDate(storeId, type);
         verifyNoInteractions(documents, outputs);
+    }
+
+    @Test
+    void topSalesDatesCoverAllRankingDocumentTypes() {
+        var types = EnumSet.of(CommercialDocumentType.TICKET, CommercialDocumentType.ALBARAN_VENTA,
+                CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA);
+        var earliest = LocalDate.of(2021, 3, 4);
+        when(documents.findFirstReportDate(storeId, types)).thenReturn(earliest);
+        assertThat(service.options("topSales", auth("STOCK_READ")).earliestDate()).isEqualTo(earliest);
+        verify(documents).findFirstReportDate(storeId, types);
+        verifyNoInteractions(inputs, outputs);
     }
 
     @Test

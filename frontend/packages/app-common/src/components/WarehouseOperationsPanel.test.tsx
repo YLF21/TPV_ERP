@@ -86,6 +86,25 @@ describe("WarehouseOperationsPanel", () => {
     localStorage.clear();
   });
 
+  it.each(["FACTURA_ENTRADA", "ALBARAN_ENTRADA"] as const)("filters %s with the report period selector", async (documentType) => {
+    apiRequestMock.mockImplementation(async (path) => {
+      if (String(path).includes("date-options")) return { currentDate: "2026-07-12", earliestDate: "2025-01-01" };
+      if (String(path).startsWith("/warehouse-inputs")) return [draft, { ...confirmed, date: "2026-07-12" }];
+      return [];
+    });
+    const view = render(<WarehouseOperationsPanel mode="input" app="gestion" documentType={documentType}
+      token="token" products={products} warehouses={warehouses} customers={customers} suppliers={suppliers} t={t} />);
+    await waitFor(() => expect((view.getByRole("button", { name: "Hoy" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(view.container.querySelectorAll("tbody tr[data-operation-id]")).toHaveLength(2);
+    fireEvent.click(view.getByRole("button", { name: "Hoy" }));
+    expect(view.container.querySelector('[data-operation-id="input-1"]')).toBeNull();
+    expect(view.container.querySelector('[data-operation-id="input-2"]')).not.toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Ayer" }));
+    expect(view.container.querySelector('[data-operation-id="input-1"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-operation-id="input-2"]')).toBeNull();
+    expect(apiRequestMock).toHaveBeenCalledWith(`/document-reports/date-options?report=${documentType === "FACTURA_ENTRADA" ? "inputInvoices" : "inputDeliveryNotes"}`, { token: "token" });
+  });
+
   it("loads paged input and output collections from their existing GET endpoints", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({ items: [draft], nextCursor: "2026-07-15|input-1", hasMore: true })

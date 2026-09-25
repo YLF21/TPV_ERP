@@ -6171,3 +6171,87 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 }
 /* Keep sorting discoverable on all five warehouse list headers. */
 [data-warehouse-heading="unified"] .erp-classic-tables .table-layout-sort-indicator { opacity: 1 !important; }
+
+/* Shared heading geometry for product, customer and supplier management. */
+.gestion-safe-management {
+  padding: 14px 18px 10px;
+  box-sizing: border-box;
+  grid-template-rows: 42px minmax(0, 1fr);
+}
+.erp-management-screen.gestion-embedded-module > .work-shell {
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.erp-management-screen.gestion-embedded-module .work-topbar,
+.gestion-safe-management > .gestion-safe-management-heading,
+.member-categories-screen > .member-categories-module-heading {
+  display: flex !important;
+  align-items: center !important;
+  height: 42px;
+  min-height: 42px !important;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 2px 8px !important;
+  border: 0;
+  border-bottom: 1px solid var(--gestion-border-dark) !important;
+  background: #fff;
+}
+.erp-management-screen.gestion-embedded-module .work-topbar .report-title,
+.gestion-safe-management > .gestion-safe-management-heading h1,
+.member-categories-module-heading h1 {
+  margin: 0 !important;
+  color: var(--gestion-navy) !important;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 23px !important;
+  line-height: 28px !important;
+  font-weight: 900 !important;
+  letter-spacing: normal;
+}
+.gestion-safe-management > [role="tabpanel"] {
+  padding: 0;
+}
+.erp-management-screen .stock-list > .stock-panel-heading,
+.gestion-safe-management .stock-panel-heading,
+.member-categories-screen > .stock-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  min-height: 68px !important;
+  margin: 0;
+  padding: 10px 18px !important;
+  border-bottom: 1px solid #c7d4e3 !important;
+}
+.erp-management-screen .stock-list > .stock-panel-heading > div:first-child,
+.gestion-safe-management .stock-panel-heading > div:first-child,
+.member-categories-screen > .stock-panel-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.erp-management-screen .stock-list > .stock-panel-heading h2,
+.gestion-safe-management .stock-panel-heading h2,
+.member-categories-screen > .stock-panel-heading h2 {
+  margin: 0 !important;
+  color: var(--gestion-navy);
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 24px !important;
+  line-height: 28px !important;
+  font-weight: 700;
+}
+.erp-management-screen .stock-list > .stock-panel-heading > div > span,
+.gestion-safe-management .stock-panel-heading > div > span,
+.member-categories-screen > .stock-panel-heading > div > span {
+  color: var(--gestion-muted);
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 17px;
+  font-weight: 700;
+}
+.gestion-safe-management .gestion-safe-management-tabs {
+  flex-shrink: 0;
+  padding: 8px 18px 0;
+}

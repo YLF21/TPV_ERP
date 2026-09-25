@@ -30,6 +30,39 @@
   height: auto !important;
 }
 
+/* Purchase filters and document actions share one compact desktop row. */
+.warehouse-operations-panel--classic .warehouse-purchase-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.warehouse-purchase-toolbar > label {
+  flex: 1 1 220px;
+  transform: none !important;
+}
+.warehouse-purchase-toolbar > .stock-history-filter-field {
+  flex: 0 0 180px;
+}
+.warehouse-purchase-toolbar > .warehouse-document-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.warehouse-operations-panel--classic .warehouse-purchase-toolbar input,
+.warehouse-operations-panel--classic .warehouse-purchase-toolbar .erp-select > .erp-select__trigger,
+.warehouse-operations-panel--classic .warehouse-purchase-toolbar .warehouse-document-actions > button {
+  box-sizing: border-box;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px;
+}
+.warehouse-purchase-toolbar .stock-history-filter-field .erp-select {
+  border: 0 !important;
+  height: 40px;
+  min-height: 40px !important;
+}
+
 .goods-check-document-filter-chips,
 .goods-check-line-filter-chips { padding-inline: 14px; }
 

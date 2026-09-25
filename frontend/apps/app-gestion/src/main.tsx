@@ -646,11 +646,17 @@ function GestionScreen({
     "memberCategories.configuration": "memberCategories",
     "families.configuration": "families",
   };
+  // Keep existing report-only permissions when management is unavailable.
+  const purchaseReportFallbacks: Record<string, string> = {
+    "stock.warehouse.purchaseDeliveryNotes": "salesReport.inputDeliveryNotes",
+    "stock.warehouse.purchaseInvoices": "salesReport.inputInvoices",
+  };
   const navigation: GestionNavigationItem[] = gestionNavigationGroups.flatMap((group) => {
     const destinations = group.destinations
       .map((registered) => {
         const source = legacyDestinations.get(registered.key)
-          ?? legacyDestinations.get(destinationAliases[registered.key] ?? "");
+          ?? legacyDestinations.get(destinationAliases[registered.key] ?? "")
+          ?? legacyDestinations.get(purchaseReportFallbacks[registered.key] ?? "");
         if (!source?.onOpen) return null;
         return {
           key: registered.key,
@@ -674,7 +680,7 @@ function GestionScreen({
   });
 
   const activeKey = effectiveModule === "sales"
-    ? salesReport
+    ? Object.entries(purchaseReportFallbacks).find(([, report]) => report === salesReport)?.[0] ?? salesReport
     : effectiveModule === "stock"
       ? stockSelection.key
       : effectiveModule;

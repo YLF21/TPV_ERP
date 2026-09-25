@@ -7,9 +7,9 @@ import {
 } from "./gestionNavigation";
 
 describe("APP GESTIÓN navigation registry", () => {
-  it("keeps the approved 11 groups and 50 destinations in order", () => {
+  it("keeps the approved 11 groups and 48 destinations in order", () => {
     expect(gestionNavigationGroupCount).toBe(11);
-    expect(gestionNavigationDestinationCount).toBe(50);
+    expect(gestionNavigationDestinationCount).toBe(48);
     expect(gestionNavigationGroups.map((group) => group.key)).toEqual([
       "overview", "control-alerts", "cash", "customer-documents", "supplier-documents",
       "products", "warehouse", "third-parties", "fiscal", "security", "configuration",
@@ -22,7 +22,7 @@ describe("APP GESTIÓN navigation registry", () => {
     expect(gestionNavigationGroups[9].destinations).toHaveLength(4);
     expect(gestionNavigationGroups[4].destinations.map((item) => item.key)).toEqual([
       "stock.warehouse.purchaseDeliveryNotes", "stock.warehouse.purchaseInvoices",
-      "salesReport.inputDeliveryNotes", "salesReport.inputInvoices", "stock.warehouse.goodsCheck",
+      "stock.warehouse.goodsCheck",
     ]);
     expect(gestionNavigationGroups[6].destinations.slice(-2).map((item) => item.key)).toEqual([
       "stock.warehouse.input", "stock.warehouse.output",
@@ -55,10 +55,8 @@ describe("APP GESTIÓN navigation registry", () => {
       "Ventas diarias", "Efectivo en caja", "Cierres de caja",
     ]);
     expect(gestionNavigationGroups[4].destinations.map((item) => t(item.labelKey))).toEqual([
-      "Gestión de albaranes de entrada",
-      "Gestión de facturas de entrada",
-      "Informe de albaranes de entrada",
-      "Informe de facturas de entrada",
+      "Albaranes de entrada",
+      "Facturas de entrada",
       "Comprobación de pedido",
     ]);
     expect(gestionNavigationGroups[6].destinations.map((item) => t(item.labelKey)).slice(-4)).toEqual([

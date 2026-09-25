@@ -36,6 +36,8 @@ public class DocumentReportDateOptionsService {
     @Transactional(readOnly = true)
     public DateOptions options(String report, Authentication authentication) {
         var allowed = switch (report) {
+            case "topSales" -> PermissionChecks.hasRole(authentication, "ADMIN")
+                    || PermissionChecks.hasAnyAuthority(authentication, "STOCK_READ", "GESTION_PRODUCTO", "GESTION_VENTAS", "VENTA");
             case "tickets" -> PermissionChecks.hasSalesDocumentRead(authentication, "TICKETS_READ");
             case "invoices" -> PermissionChecks.hasSalesDocumentRead(authentication, "INVOICES_READ");
             case "deliveryNotes" -> PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ");
@@ -47,6 +49,9 @@ public class DocumentReportDateOptionsService {
         var store = organization.currentStore();
         var current = LocalDate.now(clock.withZone(ZoneId.of(store.getTimezone())));
         LocalDate earliest = switch (report) {
+            case "topSales" -> documents.findFirstReportDate(store.getId(), EnumSet.of(
+                    CommercialDocumentType.TICKET, CommercialDocumentType.ALBARAN_VENTA,
+                    CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA));
             case "tickets" -> documents.findFirstReportDate(store.getId(), EnumSet.of(CommercialDocumentType.TICKET));
             case "invoices" -> documents.findFirstReportDate(store.getId(), EnumSet.of(
                     CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA));

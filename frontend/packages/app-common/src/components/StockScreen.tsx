@@ -1,3 +1,4 @@
+import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./ErpClassicWindow.css";
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
@@ -2170,6 +2171,23 @@ export function StockScreen({
   const [topSalesPeriod, setTopSalesPeriod] = useState<StockTopSalesPeriod>("week");
   const [topSalesDateFrom, setTopSalesDateFrom] = useState(() => stockTopSalesPeriodRange("week").dateFrom);
   const [topSalesDateTo, setTopSalesDateTo] = useState(() => stockTopSalesPeriodRange("week").dateTo);
+  const [topSalesQuickRange, setTopSalesQuickRange] = useState<ReportDateRange | null>(null);
+  const [topSalesDateOptions, setTopSalesDateOptions] = useState<{ currentDate: string; earliestDate: string } | null>(null);
+  const [topSalesDateOptionsFailed, setTopSalesDateOptionsFailed] = useState(false);
+  const [topSalesDateOptionsReload, setTopSalesDateOptionsReload] = useState(0);
+  useEffect(() => {
+    if (app !== "gestion" || selectedView !== "stock.topSales" || !session.accessToken) return;
+    let cancelled = false;
+    setTopSalesDateOptions(null);
+    setTopSalesDateOptionsFailed(false);
+    void apiRequest<{ currentDate: string; earliestDate: string }>(
+      "/document-reports/date-options?report=topSales", { token: session.accessToken }
+    ).then((value) => {
+      if (!isValidReportDate(value.currentDate) || !isValidReportDate(value.earliestDate)) throw new Error("Invalid date options");
+      if (!cancelled) setTopSalesDateOptions(value);
+    }).catch(() => { if (!cancelled) setTopSalesDateOptionsFailed(true); });
+    return () => { cancelled = true; };
+  }, [app, selectedView, session.accessToken, topSalesDateOptionsReload]);
   const [topSalesFilters, setTopSalesFilters] = useState<StockTopSalesFilters>({
     family: "",
     subfamily: "",
@@ -7502,6 +7520,21 @@ export function StockScreen({
                   </article>
                 ))}
               </div>
+              {app === "gestion" && <>
+                {topSalesDateOptionsFailed && <div className="report-date-options-error" role="alert">
+                  <span>{t("salesReport.loadError")}</span>
+                  <button type="button" onClick={() => setTopSalesDateOptionsReload((value) => value + 1)}>{t("salesReport.retry")}</button>
+                </div>}
+                <ReportDateRangeFilter locale={locale} today={topSalesDateOptions?.currentDate ?? ""}
+                  earliestDate={topSalesDateOptions?.earliestDate ?? ""}
+                  value={{ from: topSalesDateFrom, to: topSalesDateTo, label: "",
+                    preset: topSalesPeriod === "custom" && topSalesQuickRange?.from === topSalesDateFrom
+                      && topSalesQuickRange.to === topSalesDateTo ? topSalesQuickRange.preset : undefined }}
+                  onChange={(range) => {
+                    setTopSalesQuickRange(range);
+                    applyTopSalesFilters(topSalesFilters, "custom", range.from, range.to);
+                  }} />
+              </>}
             </>
           ) : selectedView === "stock.bulkEdit" ? (
             bulkWorkspaceView === "editor" ? renderBulkEditScreen() : renderBulkWorkspaceManager()
