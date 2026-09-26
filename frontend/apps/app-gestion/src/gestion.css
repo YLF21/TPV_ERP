@@ -381,10 +381,6 @@ body,
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
-.promotion-screen.gestion-embedded-module .work-shell {
-  grid-template-columns: minmax(0, 1fr) 390px !important;
-}
-
 .gestion-embedded-module .report-topbar,
 .gestion-embedded-module .work-topbar {
   position: static !important;
@@ -417,16 +413,6 @@ body,
   min-height: 0 !important;
   padding-left: 0 !important;
   overflow: hidden !important;
-}
-
-.promotion-screen.gestion-embedded-module .promotion-list-panel {
-  grid-column: 1 !important;
-  grid-row: 2 !important;
-}
-
-.promotion-screen.gestion-embedded-module .promotion-detail-panel {
-  grid-column: 2 !important;
-  grid-row: 2 !important;
 }
 
 .gestion-dashboard-toolbar {

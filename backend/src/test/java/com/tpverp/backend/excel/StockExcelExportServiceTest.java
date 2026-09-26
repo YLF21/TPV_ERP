@@ -5,12 +5,17 @@ import com.tpverp.backend.inventory.StockTopSalesRow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -21,6 +26,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.ResultSetExtractor;
+import org.springframework.jdbc.core.RowMapper;
 
 class StockExcelExportServiceTest {
 
@@ -175,5 +181,237 @@ class StockExcelExportServiceTest {
         } finally {
             Files.deleteIfExists(file.path());
         }
+    }
+
+    @Test
+    void selectedPromotionIsStoreScopedAndKeepsItsNameWhenTheJobCompletes() throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var storeId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<String>>any(),
+                eq(storeId), eq(promotionId))).thenReturn(List.of("Café / Verano 25%"));
+        var connection = mock(Connection.class);
+        var statement = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString(), eq(ResultSet.TYPE_FORWARD_ONLY),
+                eq(ResultSet.CONCUR_READ_ONLY))).thenReturn(statement);
+        when(jdbc.query(any(PreparedStatementCreator.class),
+                org.mockito.ArgumentMatchers.<ResultSetExtractor<Object>>any()))
+                .thenAnswer(invocation -> {
+                    PreparedStatementCreator creator = invocation.getArgument(0);
+                    creator.createPreparedStatement(connection);
+                    return null;
+                });
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var job = service.create(storeId, "ADMIN", false,
+                promotionRequest("SELECTED", promotionId));
+        verify(jdbc).query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<String>>any(),
+                eq(storeId), eq(promotionId));
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        try {
+            assertThat(file.fileName()).isEqualTo("productos-promocion-cafe-verano-25-" + LocalDate.now() + ".xlsx");
+            verify(statement).setObject(15, promotionId);
+            verify(connection).prepareStatement(org.mockito.ArgumentMatchers.contains(
+                    "selected_promotion.id = filter.promotion_id"),
+                    eq(ResultSet.TYPE_FORWARD_ONLY), eq(ResultSet.CONCUR_READ_ONLY));
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
+    }
+
+    @Test
+    void activePromotionExportUsesDateBoundsAndOneProductRow() throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var connection = mock(Connection.class);
+        var statement = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString(), eq(ResultSet.TYPE_FORWARD_ONLY),
+                eq(ResultSet.CONCUR_READ_ONLY))).thenReturn(statement);
+        when(jdbc.query(any(PreparedStatementCreator.class),
+                org.mockito.ArgumentMatchers.<ResultSetExtractor<Object>>any()))
+                .thenAnswer(invocation -> {
+                    PreparedStatementCreator creator = invocation.getArgument(0);
+                    creator.createPreparedStatement(connection);
+                    return null;
+                });
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var storeId = UUID.randomUUID();
+        var job = service.create(storeId, "ADMIN", false, promotionRequest(null, null));
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        try {
+            assertThat(file.fileName()).isEqualTo("productos-promociones-activas-" + LocalDate.now() + ".xlsx");
+            verify(statement).setObject(14, "ACTIVE");
+            verify(statement).setObject(16, LocalDate.now());
+            verify(connection).prepareStatement(org.mockito.ArgumentMatchers.argThat(sql ->
+                    sql.contains("selected_promotion.fecha_inicio <= filter.export_date")
+                    && sql.contains("selected_promotion.fecha_fin >= filter.export_date")
+                    && sql.contains("selected_promotion.estado = 'ACTIVE'")
+                    && sql.contains("string_agg(distinct selected_promotion.nombre")
+                    && sql.contains("where product.tienda_id = filter.store_id")),
+                    eq(ResultSet.TYPE_FORWARD_ONLY), eq(ResultSet.CONCUR_READ_ONLY));
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
+    }
+
+    @Test
+    void rejectsPromotionOutsideStoreCompanyAndInvalidScopeCombinations() {
+        var jdbc = mock(JdbcTemplate.class);
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var storeId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<String>>any(),
+                eq(storeId), eq(promotionId))).thenReturn(List.of());
+        assertThatThrownBy(() -> service.create(storeId, "ADMIN", false,
+                promotionRequest("SELECTED", promotionId)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("stock_excel_export_promotion_not_found");
+        assertThatThrownBy(() -> service.create(storeId, "ADMIN", false,
+                promotionRequest("SELECTED", null)))
+                .hasMessage("stock_excel_export_promotion_scope_invalid");
+        assertThatThrownBy(() -> service.create(storeId, "ADMIN", false,
+                promotionRequest("ACTIVE", promotionId)))
+                .hasMessage("stock_excel_export_promotion_scope_invalid");
+        assertThatThrownBy(() -> service.create(storeId, "ADMIN", false,
+                promotionRequest("OTHER", null)))
+                .hasMessage("stock_excel_export_promotion_scope_invalid");
+    }
+
+    @Test
+    void doesNotReturnAnUnrelatedQueuedJob() {
+        var jdbc = mock(JdbcTemplate.class);
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var storeId = UUID.randomUUID();
+        var active = promotionRequest("ACTIVE", null);
+        var queued = service.create(storeId, "ADMIN", false, active);
+        assertThat(service.create(storeId, "ADMIN", false, promotionRequest(null, null)).id())
+                .isEqualTo(queued.id());
+        assertThatThrownBy(() -> service.create(storeId, "ADMIN", false,
+                promotionRequest("SELECTED", UUID.randomUUID())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("stock_excel_export_busy");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "CURRENT,es,stock",
+            "OFFERS,es,productos-con-oferta",
+            "MEMBER_PRICE,es,productos-precio-miembro",
+            "NO_DISCOUNT,es,productos-sin-descuento",
+            "TOP_SALES,es,top-ventas",
+            "CURRENT,en,stock",
+            "OFFERS,en,products-on-offer",
+            "MEMBER_PRICE,en,member-price-products",
+            "NO_DISCOUNT,en,non-discountable-products",
+            "TOP_SALES,en,top-sales",
+            "CURRENT,zh,库存",
+            "OFFERS,zh,优惠商品",
+            "MEMBER_PRICE,zh,会员价商品",
+            "NO_DISCOUNT,zh,不可折扣商品",
+            "TOP_SALES,zh,热销商品"
+    })
+    void namesEachStockViewFromTheJobRequest(String view, String language, String prefix) throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var storeId = UUID.randomUUID();
+        var request = new StockExcelExportService.ExportRequest(view, null, null, null,
+                null, null, null, null, null, null,
+                "TOP_SALES".equals(view) ? "ranking" : "name", "asc", language,
+                LocalDate.now().minusDays(1), LocalDate.now(), null, null, null,
+                List.of(new StockExcelExportService.ExportColumn("name", "Nombre")));
+        var job = service.create(storeId, "ADMIN", false, request);
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        try {
+            assertThat(file.fileName()).isEqualTo(prefix + "-" + LocalDate.now() + ".xlsx");
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "es,productos-promocion-cafe-夏-2026",
+            "en,promotion-products-cafe-夏-2026",
+            "zh,促销商品-cafe-夏-2026"
+    })
+    void selectedPromotionNamePreservesUnicodeAndUsesRequestLanguage(String language, String prefix)
+            throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var storeId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<String>>any(),
+                eq(storeId), eq(promotionId))).thenReturn(List.of("Café / 夏 2026"));
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var job = service.create(storeId, "ADMIN", false,
+                promotionRequest("SELECTED", promotionId, language));
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        try {
+            assertThat(file.fileName()).isEqualTo(prefix + "-" + LocalDate.now() + ".xlsx");
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "es,productos-promociones-activas",
+            "en,active-promotions-products",
+            "zh,有效促销商品"
+    })
+    void activePromotionNameUsesRequestLanguage(String language, String prefix) throws Exception {
+        var service = new StockExcelExportService(mock(JdbcTemplate.class), mock(StockTopSalesService.class));
+        var storeId = UUID.randomUUID();
+        var job = service.create(storeId, "ADMIN", false,
+                promotionRequest("ACTIVE", null, language));
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        try {
+            assertThat(file.fileName()).isEqualTo(prefix + "-" + LocalDate.now() + ".xlsx");
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "es,seleccionada",
+            "en,selected",
+            "zh,已选促销"
+    })
+    void selectedPromotionWithUnsafeNameUsesLocalizedFallback(String language, String fallback)
+            throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var storeId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<String>>any(),
+                eq(storeId), eq(promotionId))).thenReturn(List.of(" / ✨ "));
+        var service = new StockExcelExportService(jdbc, mock(StockTopSalesService.class));
+        var job = service.create(storeId, "ADMIN", false,
+                promotionRequest("SELECTED", promotionId, language));
+        service.run(job.id());
+        var file = service.file(job.id(), storeId, "ADMIN");
+        try {
+            String prefix = "es".equals(language) ? "productos-promocion"
+                    : "en".equals(language) ? "promotion-products" : "促销商品";
+            assertThat(file.fileName()).isEqualTo(prefix + "-" + fallback + "-" + LocalDate.now() + ".xlsx");
+        } finally {
+            Files.deleteIfExists(file.path());
+        }
+    }
+
+    private static StockExcelExportService.ExportRequest promotionRequest(String scope, UUID promotionId) {
+        return promotionRequest(scope, promotionId, "es");
+    }
+
+    private static StockExcelExportService.ExportRequest promotionRequest(
+            String scope, UUID promotionId, String language) {
+        return new StockExcelExportService.ExportRequest("PROMOTIONS", null, null, null,
+                null, null, null, null, null, null, "name", "asc", language,
+                null, null, null, null, null,
+                List.of(new StockExcelExportService.ExportColumn("name", "Nombre"),
+                        new StockExcelExportService.ExportColumn("salePrice", "Precio")),
+                scope, promotionId);
     }
 }

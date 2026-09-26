@@ -1,24 +1,16 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-  type ReactNode
-} from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AppKind, LocaleCode } from "../types";
-import type { PromotionTargetType, PromotionView } from "./PromotionForm";
+import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, MagnifyingGlass, Tag } from "@phosphor-icons/react";
+import type { PromotionView } from "./PromotionForm";
+import { formatPromotionDateRange, promotionConditionSentences, promotionTypeLabel } from "./promotionPresentation";
+import { ErpSelect } from "./ErpSelect";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
-import {
-  tableLayoutGridTemplate,
-  visibleTableColumns
-} from "./tableLayoutPreferences";
+import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
-import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSorting";
+import { useTableSortPreference, type TableSort } from "./tableSorting";
 import { sortProductTableRows } from "./productCodeSorting";
+import "./StockPromotionGroups.css";
 
 export const stockPromotionGroupsMessageKeys = {
   tableLabel: "stock.promotions",
@@ -78,6 +70,7 @@ export type StockPromotionProductRow = {
   subfamilyName?: string | null;
   quantity?: number | string | null;
   totalQuantity?: number | string | null;
+  salePrice?: number | string | null;
 };
 
 export type StockPromotionProduct = {
@@ -90,11 +83,19 @@ export type StockPromotionProduct = {
   subfamilyId: string;
   subfamilyName: string;
   stock: number | null;
+  salePrice: number | null;
 };
 
 export type StockPromotionGroup = {
   promotion: PromotionView;
   products: StockPromotionProduct[];
+};
+
+export type StockPromotionExportContext = {
+  promotionId: string | null;
+  promotionName: string;
+  columns: { key: string; label: string }[];
+  sort: TableSort | null;
 };
 
 export type StockPromotionGroupsProps = {
@@ -108,6 +109,10 @@ export type StockPromotionGroupsProps = {
   className?: string;
   defaultExpandedPromotionIds?: readonly string[];
   hideEmptyGroups?: boolean;
+  loading?: boolean;
+  statusMessage?: string;
+  onRefresh?: () => void;
+  onExportContextChange?: (context: StockPromotionExportContext) => void;
 };
 
 type ProductAccumulator = Omit<StockPromotionProduct, "stock"> & {
@@ -116,34 +121,15 @@ type ProductAccumulator = Omit<StockPromotionProduct, "stock"> & {
   hasQuantityStock: boolean;
 };
 
-type PromotionDetailItem = {
-  label: string;
-  value: string;
-};
-
 export type StockPromotionNavigationKey = "ArrowDown" | "ArrowUp" | "Home" | "End";
 
-const stockPromotionGroupColumns = [
-  { key: "promotion", labelKey: stockPromotionGroupsMessageKeys.columns.promotion, defaultWidth: 228 },
-  { key: "type", labelKey: stockPromotionGroupsMessageKeys.columns.type, defaultWidth: 164 },
-  { key: "validity", labelKey: stockPromotionGroupsMessageKeys.columns.validity, defaultWidth: 164 },
-  { key: "scope", labelKey: stockPromotionGroupsMessageKeys.columns.scope, defaultWidth: 132 },
-  { key: "products", labelKey: stockPromotionGroupsMessageKeys.columns.products, defaultWidth: 90 },
-  { key: "status", labelKey: stockPromotionGroupsMessageKeys.columns.status, defaultWidth: 90 }
-] as const;
-
-type StockPromotionGroupColumnKey = typeof stockPromotionGroupColumns[number]["key"];
-
-const stockPromotionGroupColumnByKey = new Map(
-  stockPromotionGroupColumns.map((column) => [column.key, column] as const)
-);
-
 const stockPromotionProductColumns = [
-  { key: "code", labelKey: stockPromotionGroupsMessageKeys.columns.code, defaultWidth: 112 },
+  { key: "code", labelKey: stockPromotionGroupsMessageKeys.columns.code, defaultWidth: 90 },
   { key: "name", labelKey: stockPromotionGroupsMessageKeys.columns.name, defaultWidth: 210 },
+  { key: "price", labelKey: "promotion.detail.price", defaultWidth: 80 },
+  { key: "stock", labelKey: stockPromotionGroupsMessageKeys.columns.stock, defaultWidth: 76 },
   { key: "family", labelKey: stockPromotionGroupsMessageKeys.columns.family, defaultWidth: 130 },
-  { key: "subfamily", labelKey: stockPromotionGroupsMessageKeys.columns.subfamily, defaultWidth: 130 },
-  { key: "stock", labelKey: stockPromotionGroupsMessageKeys.columns.stock, defaultWidth: 86 }
+  { key: "subfamily", labelKey: stockPromotionGroupsMessageKeys.columns.subfamily, defaultWidth: 130 }
 ] as const;
 
 type StockPromotionProductColumnKey = typeof stockPromotionProductColumns[number]["key"];
@@ -151,26 +137,6 @@ type StockPromotionProductColumnKey = typeof stockPromotionProductColumns[number
 const stockPromotionProductColumnByKey = new Map(
   stockPromotionProductColumns.map((column) => [column.key, column] as const)
 );
-
-const groupListStyle: CSSProperties = {
-  display: "grid",
-  gap: 8
-};
-
-const groupStyle: CSSProperties = {
-  display: "grid",
-  gap: 8
-};
-
-const detailSectionsStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12
-};
-
-const detailSectionStyle: CSSProperties = {
-  minWidth: 0
-};
 
 /**
  * StockScreen integration contract:
@@ -190,29 +156,18 @@ export function StockPromotionGroups({
   accessToken,
   className = "",
   defaultExpandedPromotionIds = [],
-  hideEmptyGroups = false
+  hideEmptyGroups = false,
+  loading = false,
+  statusMessage = "",
+  onRefresh,
+  onExportContextChange
 }: StockPromotionGroupsProps) {
-  const groupTableLayout = useTableLayoutPreference({
-    app,
-    username,
-    accessToken,
-    tableKey: "stock.promotions.groups",
-    definitions: stockPromotionGroupColumns
-  });
   const productTableLayout = useTableLayoutPreference({
     app,
     username,
     accessToken,
     tableKey: "stock.promotions.products",
     definitions: stockPromotionProductColumns
-  });
-  const groupTableSort = useTableSortPreference({
-    app,
-    username,
-    tableKey: "stock.promotions.groups",
-    columns: stockPromotionGroupColumns.map((column) => column.key),
-    defaultSort: null,
-    persistent: Boolean(username)
   });
   const productTableSort = useTableSortPreference({
     app,
@@ -222,238 +177,239 @@ export function StockPromotionGroups({
     defaultSort: app === "venta" ? { column: "code", direction: "asc" } : null,
     persistent: Boolean(username)
   });
-  const visibleGroupColumns = visibleTableColumns(groupTableLayout.layout);
-  const promotionGridStyle: CSSProperties = {
-    gridTemplateColumns: `38px ${tableLayoutGridTemplate(visibleGroupColumns)}`
-  };
-  const groups = useMemo(() => sortTableRows(
-    buildStockPromotionGroups(promotions, productRows, !hideEmptyGroups),
-    groupTableSort.sort,
-    (group, column) => {
-      if (column === "promotion") return group.promotion.name;
-      if (column === "type") return translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.type, group.promotion.type, t);
-      if (column === "validity") return new Date(group.promotion.startDate);
-      if (column === "scope") return translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.scope, group.promotion.scope, t);
-      if (column === "products") return group.products.length;
-      return t(`promotion.status.${group.promotion.status}`);
-    },
-    locale
-  ), [groupTableSort.sort, hideEmptyGroups, locale, productRows, promotions, t]);
-  const groupIdsKey = groups.map((group) => group.promotion.id).join("\u0000");
-  const [expandedPromotionIds, setExpandedPromotionIds] = useState<Set<string>>(() => {
-    const activeIds = new Set(groups.map((group) => group.promotion.id));
-    return new Set(defaultExpandedPromotionIds.filter((id) => activeIds.has(id)));
-  });
-  const [activePromotionId, setActivePromotionId] = useState(groups[0]?.promotion.id ?? "");
-  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const groups = useMemo(
+    () => buildStockPromotionGroups(promotions, productRows, loading || Boolean(statusMessage) || !hideEmptyGroups),
+    [promotions, productRows, loading, statusMessage, hideEmptyGroups]
+  );
+  const filteredGroups = useMemo(() => {
+    const search = query.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase(locale).trim();
+    const matches = groups.filter(({ promotion }) => {
+      const isExpired = isStockPromotionExpired(promotion);
+      if (statusFilter === "EXPIRED" ? !isExpired
+        : statusFilter !== "ALL" && (isExpired || promotion.status !== statusFilter)) return false;
+      if (!search) return true;
+      return [promotion.name, t("promotion.status." + promotion.status),
+        t("promotion.type." + promotion.type)]
+        .some((value) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase(locale).includes(search));
+    });
+    return [
+      ...matches.filter(({ promotion }) => !isStockPromotionExpired(promotion)),
+      ...matches.filter(({ promotion }) => isStockPromotionExpired(promotion))
+    ];
+  }, [groups, locale, query, statusFilter, t]);
+  const groupIdsKey = filteredGroups.map((group) => group.promotion.id).join("\u0000");
+  const [activePromotionId, setActivePromotionId] = useState(() =>
+    defaultExpandedPromotionIds.find((id) => filteredGroups.some((group) => group.promotion.id === id))
+      ?? filteredGroups[0]?.promotion.id ?? ""
+  );
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const componentId = useId();
+  const selectedGroup = filteredGroups.find((group) => group.promotion.id === activePromotionId)
+    ?? filteredGroups[0];
+  const selectedPromotion = selectedGroup?.promotion;
+  const expired = selectedPromotion ? isStockPromotionExpired(selectedPromotion) : false;
+  const number = new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 0 });
+  const conditions = selectedPromotion ? stockPromotionConditionSentences(selectedPromotion, t, locale) : [];
+  const exportColumns = visibleTableColumns(productTableLayout.layout).map(column => ({
+    key: column.key === "price" ? "salePrice" : column.key,
+    label: t(stockPromotionProductColumnByKey.get(column.key)?.labelKey ?? column.key)
+  }));
+  const exportColumnsKey = JSON.stringify(exportColumns);
 
   useEffect(() => {
-    const activeIds = new Set(groups.map((group) => group.promotion.id));
-    setExpandedPromotionIds((current) => {
-      const next = new Set(Array.from(current).filter((id) => activeIds.has(id)));
-      return next.size === current.size ? current : next;
+    onExportContextChange?.({
+      promotionId: selectedPromotion?.id ?? null,
+      promotionName: selectedPromotion?.name ?? "",
+      columns: exportColumns,
+      sort: productTableSort.sort ? {
+        ...productTableSort.sort,
+        column: productTableSort.sort.column === "price" ? "salePrice" : productTableSort.sort.column
+      } : null
     });
-    setActivePromotionId((current) => activeIds.has(current) ? current : groups[0]?.promotion.id ?? "");
+  }, [selectedPromotion?.id, selectedPromotion?.name, exportColumnsKey,
+    productTableSort.sort?.column, productTableSort.sort?.direction, onExportContextChange]);
+
+  useEffect(() => {
+    const activeIds = new Set(filteredGroups.map((group) => group.promotion.id));
+    setActivePromotionId((current) =>
+      activeIds.has(current) ? current : filteredGroups[0]?.promotion.id ?? "");
   }, [groupIdsKey]);
 
-  function setExpanded(promotionId: string, expanded?: boolean) {
-    setExpandedPromotionIds((current) => {
-      const next = new Set(current);
-      const shouldExpand = expanded ?? !next.has(promotionId);
-      if (shouldExpand) {
-        next.add(promotionId);
-      } else {
-        next.delete(promotionId);
-      }
-      return next;
-    });
-  }
-
   function focusGroup(index: number) {
-    const group = groups[index];
-    if (!group) {
-      return;
-    }
+    const group = filteredGroups[index];
+    if (!group) return;
     setActivePromotionId(group.promotion.id);
     rowRefs.current.get(group.promotion.id)?.focus();
   }
 
-  function handleRowKeyDown(
-    event: KeyboardEvent<HTMLDivElement>,
-    groupIndex: number,
-    promotionId: string
-  ) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setExpanded(promotionId);
-      return;
-    }
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      setExpanded(promotionId, true);
-      return;
-    }
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      setExpanded(promotionId, false);
-      return;
-    }
-    if (!isStockPromotionNavigationKey(event.key)) {
-      return;
-    }
+  function handleRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, groupIndex: number) {
+    if (!isStockPromotionNavigationKey(event.key)) return;
     event.preventDefault();
-    focusGroup(stockPromotionNavigationIndex(groupIndex, event.key, groups.length));
+    focusGroup(stockPromotionNavigationIndex(groupIndex, event.key, filteredGroups.length));
   }
 
-  const rootClassName = ["stock-table", "stock-promotion-groups", className].filter(Boolean).join(" ");
+  const rootClassName = ["stock-promotion-groups", className].filter(Boolean).join(" ");
 
   return (
     <section className={rootClassName} aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
-      <div className="stock-row stock-row-head" style={promotionGridStyle} role="row">
-        <span aria-hidden="true" />
-        {visibleGroupColumns.map((column) => {
-          const definition = stockPromotionGroupColumnByKey.get(column.key);
-          const label = t(definition?.labelKey ?? column.key);
-          return (
-            <TableLayoutHeaderCell
-              as="span"
-              className="stock-header-cell"
-              column={column}
-              key={column.key}
-              sortDirection={groupTableSort.sort?.column === column.key ? groupTableSort.sort.direction : null}
-              sortLabel={`${t("party.sortBy")} ${label}`}
-              onSort={groupTableSort.toggleSort}
-              resizeLabel={`${t("stock.columns.resize")} ${label}`}
-              onReorder={groupTableLayout.reorderColumns}
-              onMove={groupTableLayout.moveColumn}
-              onResize={groupTableLayout.resizeColumn}
-            >
-              {label}
-            </TableLayoutHeaderCell>
-          );
-        })}
-      </div>
-
-      {groups.length === 0 ? (
-        <p className="stock-empty-state" role="status">
-          {t(stockPromotionGroupsMessageKeys.empty)}
-        </p>
-      ) : (
-        <div role="list" style={groupListStyle}>
-          {groups.map((group, groupIndex) => {
-            const { promotion, products } = group;
-            const expanded = expandedPromotionIds.has(promotion.id);
-            const selected = activePromotionId === promotion.id;
-            const nameId = `${componentId}-promotion-${groupIndex}`;
-            const detailId = `${componentId}-detail-${groupIndex}`;
-            const conditions = promotionConditionItems(promotion, locale, t);
-            const benefits = promotionBenefitItems(promotion, locale, t);
-            const rules = promotionRuleItems(promotion, products, locale, t);
-            const cellsByKey: Record<StockPromotionGroupColumnKey, ReactNode> = {
-              promotion: (
-                <span key="promotion" data-column-key="promotion" className="stock-cell">
-                  <strong id={nameId}>{promotion.name}</strong>
-                </span>
-              ),
-              type: (
-                <span key="type" data-column-key="type" className="stock-cell">
-                  {translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.type, promotion.type, t)}
-                </span>
-              ),
-              validity: (
-                <span key="validity" data-column-key="validity" className="stock-cell">
-                  {promotionValidity(promotion, locale, t)}
-                </span>
-              ),
-              scope: (
-                <span key="scope" data-column-key="scope" className="stock-cell">
-                  {translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.scope, promotion.scope, t)}
-                </span>
-              ),
-              products: (
-                <span key="products" data-column-key="products" className="stock-cell"><b>{products.length}</b></span>
-              ),
-              status: (
-                <span key="status" data-column-key="status" className="stock-cell">
-                  {t(`promotion.status.${promotion.status}`)}
-                </span>
-              )
-            };
-
-            return (
-              <article key={promotion.id} role="listitem" style={groupStyle}>
-                <div
-                  ref={(node) => {
-                    if (node) {
-                      rowRefs.current.set(promotion.id, node);
-                    } else {
-                      rowRefs.current.delete(promotion.id);
-                    }
-                  }}
-                  className={`stock-row ${selected ? "selected" : ""}`}
-                  style={{ ...promotionGridStyle, cursor: "pointer" }}
-                  role="button"
-                  tabIndex={selected ? 0 : -1}
-                  aria-expanded={expanded}
-                  aria-controls={detailId}
-                  onFocus={() => setActivePromotionId(promotion.id)}
-                  onClick={(event) => {
-                    event.currentTarget.focus();
-                    if (event.detail <= 1) {
-                      setExpanded(promotion.id);
-                    }
-                  }}
-                  onDoubleClick={(event) => {
-                    event.preventDefault();
-                    event.currentTarget.focus();
-                    setExpanded(promotion.id, true);
-                  }}
-                  onKeyDown={(event) => handleRowKeyDown(event, groupIndex, promotion.id)}
-                >
-                  <span className="stock-cell" aria-hidden="true"><strong>{expanded ? "-" : "+"}</strong></span>
-                  {visibleGroupColumns.map((column) => cellsByKey[column.key])}
-                </div>
-
-                {expanded && (
-                  <div id={detailId} role="region" aria-labelledby={nameId} className="promotion-preview-panel">
-                    <div className="promotion-preview-heading">
-                      <h3>{t(stockPromotionGroupsMessageKeys.sections.products)}</h3>
-                      <span>{products.length}</span>
-                    </div>
-                    <PromotionProductsTable
-                      products={products}
-                      locale={locale}
-                      t={t}
-                      tableLayout={productTableLayout}
-                      sort={productTableSort.sort}
-                      onSort={productTableSort.toggleSort}
-                    />
-                    <div style={detailSectionsStyle}>
-                      <PromotionDetailSection
-                        title={t(stockPromotionGroupsMessageKeys.sections.conditions)}
-                        items={conditions}
-                      />
-                      <PromotionDetailSection
-                        title={t(stockPromotionGroupsMessageKeys.sections.benefit)}
-                        items={benefits}
-                      />
-                      <PromotionDetailSection
-                        title={t(stockPromotionGroupsMessageKeys.rules)}
-                        items={rules}
-                      />
-                    </div>
-                  </div>
-                )}
-              </article>
-            );
-          })}
+      <section className="stock-promotion-list-panel" aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
+        <div className="stock-promotion-list-filters">
+          <label className="stock-promotion-search">
+            <input type="search" aria-label={t("promotion.list.search")}
+              placeholder={t("promotion.list.search")} value={query}
+              onChange={(event) => setQuery(event.target.value)} />
+            <MagnifyingGlass size={16} aria-hidden="true" />
+          </label>
+          <div className="stock-promotion-status-filter">
+            <ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
+              options={[
+                { value: "ALL", label: t("promotion.filter.all") },
+                ...(["ACTIVE", "DRAFT", "INACTIVE"] as const)
+                  .map((value) => ({ value, label: t("promotion.status." + value) })),
+                { value: "EXPIRED", label: t("promotion.list.expired") }
+              ]}
+              onChange={setStatusFilter}
+            />
+            <CaretDown size={13} aria-hidden="true" />
+          </div>
         </div>
-      )}
+        {filteredGroups.length === 0 ? (
+          <p className="stock-promotion-empty" role={statusMessage ? "alert" : "status"}>
+            {statusMessage || (loading ? t("common.loading") : t("promotion.list.empty"))}
+          </p>
+        ) : (
+          <div className="stock-promotion-list-scroll" role="list">
+            {filteredGroups.map((group, groupIndex) => {
+              const promotion = group.promotion;
+              const isExpired = isStockPromotionExpired(promotion);
+              const selected = selectedGroup?.promotion.id === promotion.id;
+              return (
+                <div key={promotion.id} role="listitem">
+                  <button type="button"
+                    ref={(node) => {
+                      if (node) rowRefs.current.set(promotion.id, node);
+                      else rowRefs.current.delete(promotion.id);
+                    }}
+                    className={"stock-promotion-list-row " + promotion.status.toLowerCase()
+                      + (isExpired ? " expired" : "") + (selected ? " selected" : "")}
+                    aria-pressed={selected} aria-controls={componentId + "-detail"}
+                    tabIndex={selected ? 0 : -1}
+                    onFocus={() => setActivePromotionId(promotion.id)}
+                    onClick={() => setActivePromotionId(promotion.id)}
+                    onKeyDown={(event) => handleRowKeyDown(event, groupIndex)}
+                  >
+                    <Circle size={10} weight="fill" className="stock-promotion-indicator" aria-hidden="true" />
+                    <span className="stock-promotion-list-copy">
+                      <strong>{promotion.name}</strong>
+                      <small>{promotionValidity(promotion, locale, t)}</small>
+                    </span>
+                    <span className="stock-promotion-list-status">
+                      {isExpired ? t("promotion.list.expired") : t("promotion.status." + promotion.status)}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="stock-promotion-list-footer">
+          <span>{t("promotion.list.heading")}: {filteredGroups.length}</span>
+          {onRefresh && <button type="button" onClick={onRefresh} disabled={loading}
+            aria-label={t("promotion.action.refresh")} title={t("promotion.action.refresh")}>
+            <ArrowClockwise size={17} aria-hidden="true" />
+          </button>}
+        </div>
+      </section>
+
+      <section id={componentId + "-detail"} className="stock-promotion-detail-panel"
+        aria-label={selectedPromotion?.name ?? t(stockPromotionGroupsMessageKeys.tableLabel)}>
+        {selectedGroup && selectedPromotion ? (
+          <>
+            <section className="stock-promotion-overview">
+              <header className="stock-promotion-detail-heading">
+                <h2>{selectedPromotion.name}</h2>
+                <span className={"stock-promotion-state " + selectedPromotion.status.toLowerCase()
+                  + (expired ? " expired" : "")}>
+                  <Circle size={10} weight="fill" aria-hidden="true" />
+                  {expired ? t("promotion.list.expired") : t("promotion.status." + selectedPromotion.status)}
+                </span>
+              </header>
+              <dl className="stock-promotion-facts">
+                <div>
+                  <dt><CalendarBlank size={16} aria-hidden="true" />{t("stock.column.promotionValidity")}</dt>
+                  <dd>{promotionValidity(selectedPromotion, locale, t)}</dd>
+                </div>
+                <div>
+                  <dt><Tag size={16} aria-hidden="true" />{t("promotion.field.type")}</dt>
+                  <dd>{promotionTypeLabel(selectedPromotion, t, locale)}</dd>
+                </div>
+                <div>
+                  <dt><ChartBar size={16} aria-hidden="true" />{t("promotion.detail.usageCount")}</dt>
+                  <dd>{number.format(selectedPromotion.usageCount ?? 0)}</dd>
+                </div>
+              </dl>
+              <section className="stock-promotion-conditions">
+                <h3>{t("promotion.detail.conditions")}</h3>
+                <ol>
+                  {conditions.map((text, index) => (
+                    <li key={index}><span aria-hidden="true">{index + 1}</span><p>{text}</p></li>
+                  ))}
+                </ol>
+              </section>
+            </section>
+            <section className="stock-promotion-products">
+              <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>
+              {loading ? <p className="stock-promotion-empty" role="status">{t("common.loading")}</p>
+                : statusMessage ? <p className="stock-promotion-empty" role="alert">{statusMessage}</p>
+                  : <PromotionProductsTable products={selectedGroup.products} locale={locale} t={t}
+                    tableLayout={productTableLayout} sort={productTableSort.sort}
+                    onSort={productTableSort.toggleSort} />}
+            </section>
+          </>
+        ) : null}
+      </section>
     </section>
   );
 }
 
+function isStockPromotionExpired(promotion: PromotionView) {
+  if (!promotion.endDate) return false;
+  const now = new Date();
+  const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")].join("-");
+  return promotion.endDate < today;
+}
+
+function stockPromotionConditionSentences(
+  promotion: PromotionView, t: (key: string) => string, locale: LocaleCode
+) {
+  const sentences = promotionConditionSentences(promotion, t, locale);
+  if (promotion.type === "BUY_X_PAY_Y" || promotion.type === "SECOND_UNIT_PERCENT"
+    || promotion.type === "FIXED_PACK_PRICE") {
+    const minimums: string[] = [];
+    if (hasValue(promotion.minimumAmount)) {
+      minimums.push(t("promotion.rule.minimumAmount").replace(
+        "{value}", new Intl.NumberFormat(localeTag(locale), { style: "currency", currency: "EUR" })
+          .format(Number(promotion.minimumAmount))
+      ));
+    }
+    if (hasValue(promotion.minimumQuantity)
+        && Number(promotion.minimumQuantity) !== Number(promotion.buyQuantity)) {
+      minimums.push(t("promotion.rule.minimumQuantity").replace(
+        "{value}", formatNumber(promotion.minimumQuantity, locale)
+      ));
+    }
+    sentences.unshift(...minimums);
+  }
+  if (promotion.memberCategoryId) {
+    sentences.splice(Math.max(0, sentences.length - 2), 0,
+      t("promotion.field.memberCategoryId") + ": " + promotion.memberCategoryId);
+  }
+  return sentences;
+}
 export function buildStockPromotionGroups(
   promotions: readonly PromotionView[],
   productRows: readonly StockPromotionProductRow[],
@@ -463,7 +419,7 @@ export function buildStockPromotionGroups(
   const seenPromotionIds = new Set<string>();
 
   return promotions.flatMap((promotion) => {
-    if (promotion.status !== "ACTIVE" || seenPromotionIds.has(promotion.id)) {
+    if (seenPromotionIds.has(promotion.id)) {
       return [];
     }
     seenPromotionIds.add(promotion.id);
@@ -519,6 +475,7 @@ function normalizeStockPromotionProducts(rows: readonly StockPromotionProductRow
         familyName: displayText(row.familyName),
         subfamilyId: textValue(row.subfamilyId),
         subfamilyName: displayText(row.subfamilyName),
+        salePrice: numericValue(row.salePrice),
         totalStock: totalQuantity,
         quantityStock: quantity ?? 0,
         hasQuantityStock: quantity !== null
@@ -533,6 +490,7 @@ function normalizeStockPromotionProducts(rows: readonly StockPromotionProductRow
     current.familyName = current.familyName || displayText(row.familyName);
     current.subfamilyId = current.subfamilyId || textValue(row.subfamilyId);
     current.subfamilyName = current.subfamilyName || displayText(row.subfamilyName);
+    current.salePrice = current.salePrice ?? numericValue(row.salePrice);
     if (totalQuantity !== null) {
       current.totalStock = current.totalStock === null ? totalQuantity : Math.max(current.totalStock, totalQuantity);
     }
@@ -551,6 +509,7 @@ function normalizeStockPromotionProducts(rows: readonly StockPromotionProductRow
     familyName: product.familyName,
     subfamilyId: product.subfamilyId,
     subfamilyName: product.subfamilyName,
+    salePrice: product.salePrice,
     stock: product.totalStock ?? (product.hasQuantityStock ? product.quantityStock : null)
   }));
 }
@@ -595,6 +554,7 @@ function PromotionProductsTable({
     if (column === "name") return product.name;
     if (column === "family") return product.familyName || product.familyId;
     if (column === "subfamily") return product.subfamilyName || product.subfamilyId;
+    if (column === "price") return product.salePrice;
     return product.stock;
   }, locale);
 
@@ -650,6 +610,13 @@ function PromotionProductsTable({
                   {product.subfamilyName || product.subfamilyId || "-"}
                 </td>
               ),
+              price: (
+                <td key="price" data-column-key="price" style={{ textAlign: "right" }}>
+                  {product.salePrice === null ? "-" : new Intl.NumberFormat(localeTag(locale), {
+                    style: "currency", currency: "EUR"
+                  }).format(product.salePrice)}
+                </td>
+              ),
               stock: (
                 <td key="stock" data-column-key="stock" style={{ textAlign: "right" }}>
                   {formatNumber(product.stock, locale)}
@@ -668,188 +635,8 @@ function PromotionProductsTable({
   );
 }
 
-function PromotionDetailSection({ title, items }: { title: string; items: readonly PromotionDetailItem[] }) {
-  return (
-    <section style={detailSectionStyle}>
-      <div className="promotion-preview-heading"><h3>{title}</h3></div>
-      {items.length === 0 ? (
-        <p className="promotion-empty">-</p>
-      ) : (
-        <dl className="promotion-summary">
-          {items.map((item, index) => (
-            <div key={`${item.label}-${index}`}>
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </section>
-  );
-}
-
-function promotionConditionItems(
-  promotion: PromotionView,
-  locale: LocaleCode,
-  t: (key: string) => string
-): PromotionDetailItem[] {
-  const items: PromotionDetailItem[] = [
-    {
-      label: t(stockPromotionGroupsMessageKeys.fields.startDate),
-      value: formatDate(promotion.startDate, locale)
-    },
-    {
-      label: t(stockPromotionGroupsMessageKeys.fields.endDate),
-      value: promotion.endDate
-        ? formatDate(promotion.endDate, locale)
-        : t(stockPromotionGroupsMessageKeys.fields.noEndDate)
-    }
-  ];
-
-  if (promotion.customerSegment) {
-    items.push({
-      label: t(stockPromotionGroupsMessageKeys.fields.customerSegment),
-      value: translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.segment, promotion.customerSegment, t)
-    });
-  }
-  pushDetailValue(items, t(stockPromotionGroupsMessageKeys.fields.memberCategory), promotion.memberCategoryId, locale);
-  if (hasValue(promotion.minimumAmount)) {
-    items.push({
-      label: t(stockPromotionGroupsMessageKeys.fields.minimumAmount),
-      value: formatNumber(promotion.minimumAmount, locale)
-    });
-  }
-  pushDetailValue(items, t(stockPromotionGroupsMessageKeys.fields.minimumQuantity), promotion.minimumQuantity, locale);
-  pushDetailValue(items, t(stockPromotionGroupsMessageKeys.fields.buyQuantity), promotion.buyQuantity, locale);
-  return items;
-}
-
-function promotionBenefitItems(
-  promotion: PromotionView,
-  locale: LocaleCode,
-  t: (key: string) => string
-): PromotionDetailItem[] {
-  const items: PromotionDetailItem[] = [];
-  pushDetailValue(items, t(stockPromotionGroupsMessageKeys.fields.discountAmount), promotion.discountAmount, locale);
-  if (hasValue(promotion.discountPercent)) {
-    items.push({
-      label: t(stockPromotionGroupsMessageKeys.fields.discountPercent),
-      value: `${formatNumber(promotion.discountPercent, locale)}%`
-    });
-  }
-  pushDetailValue(items, t(stockPromotionGroupsMessageKeys.fields.payQuantity), promotion.payQuantity, locale);
-  pushDetailValue(items, t(stockPromotionGroupsMessageKeys.fields.packPrice), promotion.packPrice, locale);
-  return items;
-}
-
-function promotionRuleItems(
-  promotion: PromotionView,
-  products: readonly StockPromotionProduct[],
-  locale: LocaleCode,
-  t: (key: string) => string
-): PromotionDetailItem[] {
-  const items: PromotionDetailItem[] = [];
-  if (promotion.scope) {
-    items.push({
-      label: t(stockPromotionGroupsMessageKeys.columns.scope),
-      value: translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.scope, promotion.scope, t)
-    });
-  }
-
-  (["PRODUCT", "FAMILY", "SUBFAMILY"] as const).forEach((targetType) => {
-    const labels = promotionTargetLabels(promotion, targetType, products);
-    if (labels.length > 0) {
-      items.push({
-        label: t(targetLabelKey(targetType)),
-        value: labels.join(", ")
-      });
-    }
-  });
-
-  if (promotion.buyXPayYMode) {
-    items.push({
-      label: t(stockPromotionGroupsMessageKeys.fields.buyXPayYMode),
-      value: t(promotion.buyXPayYMode === "SAME_PRODUCT"
-        ? "warehouseDocument.product"
-        : "salesReport.column.products")
-    });
-  }
-  if (hasValue(promotion.maximumDiscount)) {
-    items.push({
-      label: t(stockPromotionGroupsMessageKeys.fields.maximumDiscount),
-      value: formatNumber(promotion.maximumDiscount, locale)
-    });
-  }
-  return items;
-}
-
-function promotionTargetLabels(
-  promotion: PromotionView,
-  targetType: PromotionTargetType,
-  products: readonly StockPromotionProduct[]
-) {
-  const labels = promotion.targets
-    .filter((target) => target.type === targetType)
-    .map((target) => {
-      if (targetType === "PRODUCT") {
-        const product = products.find((candidate) => candidate.productId === target.targetId);
-        return product ? productDisplayName(product) : target.targetId;
-      }
-      if (targetType === "FAMILY") {
-        return products.find((product) => product.familyId === target.targetId)?.familyName || target.targetId;
-      }
-      return products.find((product) => product.subfamilyId === target.targetId)?.subfamilyName || target.targetId;
-    });
-  return Array.from(new Set(labels));
-}
-
-function targetLabelKey(targetType: PromotionTargetType) {
-  if (targetType === "PRODUCT") {
-    return "salesReport.column.product";
-  }
-  return targetType === "FAMILY"
-    ? stockPromotionGroupsMessageKeys.columns.family
-    : stockPromotionGroupsMessageKeys.columns.subfamily;
-}
-
-function productDisplayName(product: StockPromotionProduct) {
-  return [product.code, product.name].filter(Boolean).join(" - ") || product.productId;
-}
-
 function promotionValidity(promotion: PromotionView, locale: LocaleCode, t: (key: string) => string) {
-  const start = formatDate(promotion.startDate, locale);
-  const end = promotion.endDate
-    ? formatDate(promotion.endDate, locale)
-    : t(stockPromotionGroupsMessageKeys.fields.noEndDate);
-  return `${start} - ${end}`;
-}
-
-function pushDetailValue(
-  items: PromotionDetailItem[],
-  label: string,
-  value: string | number | null | undefined,
-  locale: LocaleCode
-) {
-  if (hasValue(value)) {
-    items.push({ label, value: formatNumber(value, locale) });
-  }
-}
-
-function translatedValue(
-  prefix: string,
-  value: string | null | undefined,
-  t: (key: string) => string
-) {
-  return value ? t(`${prefix}${value}`) : "-";
-}
-
-function formatDate(value: string, locale: LocaleCode) {
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!parts) {
-    return value;
-  }
-  const date = new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
-  return new Intl.DateTimeFormat(localeTag(locale)).format(date);
+  return formatPromotionDateRange(promotion, locale, t(stockPromotionGroupsMessageKeys.fields.noEndDate));
 }
 
 function formatNumber(value: string | number | null | undefined, locale: LocaleCode) {

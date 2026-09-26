@@ -101,3 +101,105 @@ CUA revisó la aplicación real en 5184, PostgreSQL temporal 15434, a 1280 × 72
 La última columna visible se estira desde el mínimo guardado por usuario. Todas las filas comparten un mínimo calculado con las columnas visibles: los comentarios largos se ajustan sin ensanchar una fila respecto a la cabecera. El E2E real a 1920 × 1080 verifica cinco columnas, margen final menor de 2 px y diferencia de anchura entre cabecera/fila menor de 2 px, también con comentario superior a 400 caracteres. Esta aserción reprodujo el defecto de ancho intrínseco y pasó tras la corrección.
 
 CUA a 1280 × 720 verificó tabla y detalle con «Reabrir alerta» como primera acción para una alerta Revisada. El historial y el comentario siguen accesibles con desplazamiento propio. E2E verifica además reapertura de Revisada/Cerrada/Descartada, conservación del historial y persistencia tras otra sesión. El guard de enfoque inicial evita que un frame pendiente desplace el foco al abrir rápidamente el documento hijo. Nuevos textos en ES/EN/ZH; pruebas UI/API 62/62 y compilación aprobadas. Sin cambios de preferencias ni viewport durante esta comprobación visual.
+
+
+## Promociones · corrección visual del 26/09/2026
+
+### Referencia y evidencia
+
+- Referencia aprobada adjunta a la conversación: codex-clipboard-68ea768f-7824-44bf-b2d4-645ad6261e52.png.
+- Implementación: http://127.0.0.1:5187/, componentes reales PromotionListScreen y PromotionWizard dentro de AppFrame, GestionShell y gestion-module-stage. Todos los datos y las mutaciones del fixture son locales en memoria.
+- Capturas: frontend/output/promotions-review/listado.png y crear.png.
+- Comparaciones simultáneas: frontend/output/promotions-review/comparacion-listado.png, comparacion-crear.png y detalle-comparacion.png.
+- Presentación conjunta del resultado: frontend/output/promotions-review/promociones-corregidas.png.
+- Las capturas citadas son evidencia local y no se versionan. El fixture incluido se abre ejecutando `npx vite e2e/promotions-review --config e2e/promotions-review/vite.config.ts` desde `frontend`.
+- Fuente: 2103 × 748 píxeles, dos ventanas. Capturas: 1090 × 756 píxeles, escala 1. Se compararon áreas de contenido de 845 × 717 y 846 × 716, sin escalado; se excluyó el menú lateral y la barra superior, cuya versión actual difiere de la ilustración.
+- Estados: listado con 7 promociones, cuatro vigentes y tres caducadas, yogures seleccionados y 327 usos; creación de 3×2, vigencia 01/10/2026–31/10/2026, sin productos aún seleccionados.
+
+### Comparaciones y correcciones
+
+1. P1 inicial: encabezado duplicado, campos técnicos en dos columnas y formulario sin resumen lateral. Corregido con listado estrecho, franja de vigencia/tipo/usos, condiciones numeradas y formulario de seis secciones.
+2. P1 en primera captura: el fixture sustituía las nuevas hojas CSS por tpv.css. Se retiraron los alias; la revisión utiliza exactamente los estilos de los componentes.
+3. P2: las reglas globales imponían tabla azul oscura y disparadores de selectores grandes. Se aplicaron reglas exclusivas de Promociones y selectores compactos con iconos Phosphor.
+4. P2: espaciado duplicado, parte inferior del formulario recortada y resumen corto. Se ajustaron márgenes, alturas y columna lateral; las seis secciones del ejemplo quedan visibles en la captura final.
+5. P2: tipografía de condiciones y resumen demasiado pequeña. Se ajustaron tamaños, interlineado y altura de la franja de datos. La comparación final de detalle muestra títulos, condiciones y datos legibles.
+6. Se corrigió la distribución de columnas de Promociones por debajo de 950 px. El ERP conserva su ancho mínimo global de 1024 px: no se declara compatibilidad móvil. A 1024 × 768, el módulo mide 780 px y no hay desbordamiento horizontal del documento ni del módulo. Evidencia: crear-1024.png.
+
+### Superficies de fidelidad
+
+- Tipografía: Segoe UI/Arial del entorno de escritorio, jerarquía de títulos 22/16/12 px y texto operativo 11–12 px.
+- Espaciado: listado/detalle 35/65, formulario/resumen 1.8/1, bordes finos, controles de 30–32 px y separaciones compactas.
+- Colores: azul marino, superficies blancas, fondo azul gris claro, selección azul clara y caducadas en gris.
+- Iconos: biblioteca Phosphor y controles existentes. La referencia no contiene fotografías u otros recursos raster que deban incorporarse al producto.
+- Contenido: condiciones derivadas de los campos reales, fechas e importes localizados y contador de usos proporcionado por la API.
+
+### Diferencias funcionales conservadas
+
+La imagen incluía Editar, canal, todas las tiendas, acumulación configurable y precio promocional unitario. Esas capacidades no están expuestas por el contrato actual del formulario/listado. No se añadieron controles sin función ni se inventó un precio unitario para promociones dependientes de cantidades. Los campos de condición y beneficio representan las opciones reales de cada tipo; la navegación exterior actual se conserva.
+
+### Validación
+
+- 33 pruebas focalizadas aprobadas: modelo del formulario, validación/envío, listado, búsqueda por acentos, selección, filtro de estado, acciones, caducadas, productos y guard de traducciones de Gestión.
+- APP GESTIÓN y APP VENTA compilan; compilación Vite de Gestión repetida después de los ajustes visuales.
+- Browser: búsqueda y limpieza, apertura, fechas mediante teclado, selección/aplicación de un producto, guardado de un borrador 3×2 y regreso a su detalle con fecha correcta y un producto.
+- Consola de una sesión limpia: sin errores ni advertencias. Se corrigió la reutilización de createRoot del fixture para las recargas en desarrollo.
+- git diff --check correcto. La validación visual no conecta con la base de datos de tienda.
+- Sin diferencias visuales P0/P1/P2 pendientes dentro del alcance de escritorio y de los contratos existentes. Pulido P3: singular/plural de algunos contadores.
+
+final result: passed
+
+## Productos con promociones · pantalla compartida · 26/09/2026
+
+### Alcance corregido
+
+La ruta stock.promotions renderiza StockPromotionGroups desde StockScreen tanto en APP VENTA como en APP GESTIÓN. La entrega anterior había modificado únicamente el listado de administración y el formulario. Esta corrección alcanza la pantalla compartida pendiente.
+
+- Lista sin tabla de promociones, con búsqueda y estado, selección estable y navegación con flechas/Home/End.
+- Promociones de todos los estados; las caducadas se ordenan al final y se muestran en gris claro.
+- Detalle con vigencia, tipo y veces utilizada; condiciones numeradas antes de la tabla de productos.
+- PVP y stock junto al nombre; familia y subfamilia conservadas, con desplazamiento horizontal, ordenación y preferencias de columnas.
+- Se conservan los filtros de artículos y las acciones existentes de Stock. El informe Excel existente conserva su contrato anterior.
+- StockScreen completa la paginación de productos en esta ruta y evita el filtro cliente de etiquetas ACTIVE, que ocultaba los productos vinculados solo a promociones inactivas. Las peticiones de páginas se cancelan al cambiar de consulta; un fallo evita mostrar un detalle incompleto.
+- Los textos de presentación comunes se extraen a promotionPresentation.ts, conservando los exports previos de PromotionListScreen.
+
+### Comparación visual
+
+Referencia: codex-clipboard-68ea768f-7824-44bf-b2d4-645ad6261e52.png, opción aprobada. Lista estrecha con selección azul, fichas blancas sobre fondo azul gris, fechas/tipo/usos, condiciones ordenadas y tabla de cabecera clara. Se conserva la navegación real de cada app y los controles de stock, ausentes de la ilustración.
+
+El primer render mostró el encabezado GESTIÓN duplicado y estilos globales que reservaban una fila vacía tras recargar. Se corrigieron con selectores limitados a stock-promotions-screen y se repitió la captura tras recarga completa. PVP y stock se adelantaron en el orden inicial para quedar visibles antes de familia/subfamilia. Las preferencias existentes del usuario se conservan.
+
+Evidencia del componente y contenedores reales, usando datos simulados sin conexión al backend de tienda:
+
+- frontend/output/promotions-review/compartida-gestion.png (1280 × 800).
+- frontend/output/promotions-review/compartida-venta.png (1280 × 800).
+- frontend/output/promotions-review/compartida-caducada.png: promoción INACTIVE caducada con un producto de la segunda página.
+- Preview: http://127.0.0.1:5187/?view=stock&app=gestion y app=venta.
+
+### Comprobaciones
+
+- 122 pruebas pasan en 8 archivos: StockPromotionGroups, StockScreen.promotions, StockScreen, filtros y ordenación de StockScreen, listado de promociones y sus filtros, y guard de traducciones de Gestión.
+- TypeScript y compilación de APP GESTIÓN/APP VENTA correctos. Vite de ambas apps repetido con las últimas hojas CSS.
+- Navegador: selección de una promoción caducada muestra el helado de la segunda página; Home devuelve a la primera promoción.
+- Ancho de 1024 px: documento sin desbordamiento horizontal en ambas apps; panel de Gestión 742 px y Venta 820 px. La tabla tiene su propio desplazamiento para las columnas adicionales.
+- Consola de ambas vistas sin errores ni advertencias tras recarga. El fixture inicial requirió reiniciar Vite después de añadir una hoja CSS nueva.
+- Validación con datos simulados; no se realizó una prueba de volumen ni una consulta contra la base de datos real.
+
+final result: passed
+
+## Exportación de productos con promoción · 26/09/2026
+
+- En la pantalla compartida, Exportar promoción (F6) envía SELECTED y el identificador de la promoción elegida. Incluye todos sus productos, incluso si la promoción está caducada o inactiva.
+- Exportar todas las activas envía ACTIVE y obtiene productos de promociones ACTIVE cuya vigencia incluye la fecha de creación del informe. El agregado de promociones conserva una fila por producto.
+- Ambas exportaciones omiten los filtros de artículos de la pantalla y conservan el almacén para los valores de stock. Las columnas y la ordenación proceden de la tabla de productos; ACTIVE añade promoción, tipo y vigencia.
+- El servidor valida la promoción seleccionada dentro de la empresa de la tienda y conserva el nombre del archivo al crear el trabajo. Una petición distinta no reutiliza el Excel de otro trabajo en curso.
+- Nombres por vista, promoción e idioma ES/EN/ZH, con fecha local y caracteres válidos en Windows. El cliente utiliza Content-Disposition UTF-8 tanto al guardar en escritorio como al descargar en navegador, con un nombre equivalente de respaldo.
+- Ejemplos ES: productos-promocion-3x2-2026-09-26.xlsx y productos-promociones-activas-2026-09-26.xlsx. Las vistas de stock, ofertas, precio de miembro, sin descuento y top ventas tienen nombres propios.
+
+### Evidencia y validación
+
+- Capturas reales del componente con datos simulados: frontend/output/promotions-review/exportaciones-gestion.png y exportaciones-venta.png.
+- A 1024 px los botones pasan a una segunda línea y permanecen visibles: exportaciones-gestion-1024.png.
+- 110 pruebas existentes de Stock y traducciones, 25 de nombres Excel y 4 de integración frontend pasan. Se cubren selección caducada, filtros, almacén, columnas, orden, F6, sondeo del trabajo y nombre UTF-8.
+- 38 pruebas backend pasan, incluidas las comprobaciones de ámbito, parámetros SQL, vigencia, trabajos en curso y nombres localizados.
+- TypeScript y compilación de APP VENTA y APP GESTIÓN correctos con todos los cambios de exportación.
+- El filtrado SQL se comprueba mediante mocks de JDBC; no se ejecutó contra PostgreSQL real. Las capturas utilizan el fixture aislado de promociones.

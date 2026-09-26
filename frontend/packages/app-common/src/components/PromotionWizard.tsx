@@ -1,8 +1,10 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CaretDown, Info } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import "./PromotionWizard.css";
 import {
   assertValidPromotionDraft,
   buildPromotionRequest,
@@ -143,12 +145,12 @@ type PromotionWizardProps = {
   locale: LocaleCode;
   session: UserSession;
   initialDraft?: PromotionDraft;
+  onClose?: () => void;
   onCreated?: (promotion: PromotionView) => void;
 };
 
-export function PromotionWizard({ locale, session, initialDraft, onCreated }: PromotionWizardProps) {
+export function PromotionWizard({ locale, session, initialDraft, onClose, onCreated }: PromotionWizardProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
-  const [step, setStep] = useState<PromotionWizardStep>("basic");
   const [draft, setDraft] = useState<PromotionDraft>(() => initialDraft ?? createDefaultPromotionDraft());
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
@@ -173,8 +175,6 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
   const memberCategoriesLoaded = useRef(false);
   const subfamiliesLoaded = useRef(new Set<string>());
   const token = session.accessToken;
-  const currentStepIndex = promotionWizardSteps.indexOf(step);
-  const isSummary = step === "summary";
 
   useEffect(() => {
     productsLoaded.current = false;
@@ -293,59 +293,58 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
   const dayLabel = t("stock.period.day");
 
   const summaryRows = useMemo(() => {
-    const rows: Array<[string, string]> = [
-      [t("promotion.field.name"), draft.name || "-"],
+    const conditionParts: string[] = [];
+    const benefitParts: string[] = [];
+    const money = (value: string) => formatPromotionMoney(value, locale);
+    const number = (value: string) => formatPromotionNumber(value, locale);
+    const amountOrPercent = (amount: string, percent: string) =>
+      amount ? money(amount) : percent ? `${number(percent)} %` : "—";
+
+    if (draft.type === "PURCHASE_THRESHOLD_COUPON" || draft.type === "PURCHASE_THRESHOLD_DISCOUNT") {
+      conditionParts.push(`${minimumAmountLabel}: ${draft.minimumAmount ? money(draft.minimumAmount) : "—"}`);
+    }
+    if (draft.type === "QUANTITY_DISCOUNT") {
+      conditionParts.push(`${t("stock.minimum.quantity")}: ${draft.minimumQuantity ? number(draft.minimumQuantity) : "—"}`);
+    }
+    if (draft.type === "BUY_X_PAY_Y" || draft.type === "FIXED_PACK_PRICE") {
+      conditionParts.push(`${t("promotion.field.buyQuantity")}: ${draft.buyQuantity ? number(draft.buyQuantity) : "—"}`);
+    }
+    if (draft.type === "PURCHASE_THRESHOLD_COUPON") {
+      benefitParts.push(`${t("promotion.step.coupon")}: ${amountOrPercent(draft.couponAmount, draft.couponPercent)}`);
+      if (draft.couponMaximumDiscount) benefitParts.push(`${maximumAmountLabel}: ${money(draft.couponMaximumDiscount)}`);
+      if (draft.couponMinimumAmount) benefitParts.push(`${minimumAmountLabel}: ${money(draft.couponMinimumAmount)}`);
+      benefitParts.push(`${t("stock.column.promotionValidity")}: ${couponValiditySummary(draft, dayLabel, t("promotion.noEndDate"), locale)}`);
+    } else if (draft.type === "PURCHASE_THRESHOLD_DISCOUNT" || draft.type === "QUANTITY_DISCOUNT") {
+      benefitParts.push(amountOrPercent(draft.discountAmount, draft.discountPercent));
+      if (draft.maximumDiscount) benefitParts.push(`${maximumAmountLabel}: ${money(draft.maximumDiscount)}`);
+    } else if (draft.type === "BUY_X_PAY_Y") {
+      benefitParts.push(`${t("promotion.field.payQuantity")}: ${draft.payQuantity ? number(draft.payQuantity) : "—"}`);
+      benefitParts.push(buyXPayYModeLabel(draft.buyXPayYMode, t));
+    } else if (draft.type === "SECOND_UNIT_PERCENT") {
+      benefitParts.push(amountOrPercent("", draft.discountPercent));
+    } else if (draft.type === "FIXED_PACK_PRICE") {
+      benefitParts.push(`${t("venta.column.price")}: ${draft.packPrice ? money(draft.packPrice) : "—"}`);
+    }
+
+    const customer = draft.customerSegment === "MEMBER_CATEGORY"
+      ? `${t(`promotion.segment.${draft.customerSegment}`)}: ${selectedCategory?.name || draft.memberCategoryId || "—"}`
+      : t(`promotion.segment.${draft.customerSegment}`);
+    const targets = draft.scope === "SALE"
+      ? t("promotion.create.saleScope")
+      : `${number(String(draft.targetIds.length))} ${t("promotion.create.selectedTargets")}`;
+    return [
+      [t("promotion.field.name"), draft.name.trim() || "—"],
       [t("promotion.field.type"), t(`promotion.type.${draft.type}`)],
-      [t("promotion.field.startDate"), draft.startDate || "-"],
-      [t("promotion.field.endDate"), draft.endDate || t("promotion.noEndDate")],
+      [t("promotion.create.validity"), `${formatPromotionDate(draft.startDate, locale)} – ${draft.endDate ? formatPromotionDate(draft.endDate, locale) : t("promotion.noEndDate")}`],
       [t("promotion.field.scope"), t(`promotion.scope.${draft.scope}`)],
-      [t("promotion.field.customerSegment"), t(`promotion.segment.${draft.customerSegment}`)]
+      [t("promotion.field.customerSegment"), customer],
+      [t("promotion.create.conditions"), conditionParts.join(" · ") || t("promotion.create.noExtraConditions")],
+      [t("promotion.create.benefit"), benefitParts.join(" · ")],
+      [t("promotion.create.products"), targets]
     ];
-    if (selectedTargetLabels.length > 0) {
-      rows.push([t("common.select"), selectedTargetLabels.join(", ")]);
-    }
-    if (draft.customerSegment === "MEMBER_CATEGORY") {
-      rows.push([t("promotion.field.memberCategoryId"), selectedCategory?.name || draft.memberCategoryId || "-"]);
-    }
-    switch (draft.type) {
-      case "PURCHASE_THRESHOLD_COUPON":
-        rows.push(
-          [minimumAmountLabel, draft.minimumAmount || "-"],
-          [t("promotion.step.coupon"), draft.couponAmount || draft.couponPercent || "-"],
-          [t("stock.column.promotionValidity"), couponValiditySummary(draft, dayLabel, t("promotion.noEndDate"))]
-        );
-        break;
-      case "PURCHASE_THRESHOLD_DISCOUNT":
-        rows.push(
-          [minimumAmountLabel, draft.minimumAmount || "-"],
-          [t("promotion.field.discountPercent"), draft.discountAmount || draft.discountPercent || "-"]
-        );
-        break;
-      case "BUY_X_PAY_Y":
-        rows.push(
-          [t("promotion.field.buyQuantity"), draft.buyQuantity || "-"],
-          [t("promotion.field.payQuantity"), draft.payQuantity || "-"],
-          [t("promotion.field.type"), buyXPayYModeLabel(draft.buyXPayYMode, t)]
-        );
-        break;
-      case "SECOND_UNIT_PERCENT":
-        rows.push([t("promotion.field.discountPercent"), draft.discountPercent || "-"]);
-        break;
-      case "FIXED_PACK_PRICE":
-        rows.push(
-          [t("promotion.field.buyQuantity"), draft.buyQuantity || "-"],
-          [t("venta.column.price"), draft.packPrice || "-"]
-        );
-        break;
-      case "QUANTITY_DISCOUNT":
-        rows.push(
-          [t("stock.minimum.quantity"), draft.minimumQuantity || "-"],
-          [t("promotion.field.discountPercent"), draft.discountAmount || draft.discountPercent || "-"]
-        );
-        break;
-    }
-    return rows;
-  }, [dayLabel, draft, minimumAmountLabel, selectedCategory?.name, selectedTargetLabels, t]);
+  }, [dayLabel, draft, locale, maximumAmountLabel, minimumAmountLabel, selectedCategory?.name, t]);
+
+  const previewSentence = useMemo(() => promotionPreviewSentence(draft, locale, t), [draft, locale, t]);
 
   function updateDraft<K extends keyof PromotionDraft>(key: K, value: PromotionDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -418,7 +417,7 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
   ) {
     return (
       <label key={field}>
-        {label}
+        <span>{label}{options.required && <b className="promotion-required"> *</b>}</span>
         <input
           type="number"
           min={options.min ?? "0"}
@@ -434,15 +433,10 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!isSummary) {
-      setStep(advancePromotionWizardStep(step));
-      return;
-    }
     const errors = validatePromotionDraft(draft);
     if (errors.length > 0) {
       setValidationErrors(errors);
       setStatus(t("promotion.status.required"));
-      setStep(promotionValidationStep(errors[0]));
       return;
     }
     try {
@@ -454,7 +448,6 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
       setCouponValidFromMode("NONE");
       setCouponValidUntilMode("NONE");
       setValidationErrors([]);
-      setStep("basic");
     } catch {
       setStatus(t("promotion.status.createError"));
     } finally {
@@ -463,291 +456,249 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
   }
 
   return (
-    <form className="promotion-wizard" onSubmit={handleSubmit}>
-      <header className="work-panel-heading">
-        <h2>{t("promotion.wizard.title")}</h2>
-        <span>{t(`promotion.step.${step}`)} ({currentStepIndex + 1}/{promotionWizardSteps.length})</span>
+    <form className="promotion-wizard promotion-wizard-page" onSubmit={handleSubmit}>
+      <header className="promotion-create-heading">
+        <div className="promotion-create-heading__copy">
+          <span className="promotion-create-heading__eyebrow">{t("promotion.list.title")}</span>
+          <h2 id="promotion-create-title">{t("promotion.create.title")}</h2>
+          <p>{t("promotion.create.subtitle")}</p>
+        </div>
+        <div className="promotion-create-heading__actions">
+          <button type="button" className="promotion-create-cancel" onClick={onClose}>{t("common.cancel")}</button>
+          <button type="submit" className="promotion-create-save" disabled={saving}>
+            {t(saving ? "promotion.action.saving" : "promotion.action.save")}
+          </button>
+        </div>
       </header>
 
-      <nav className="promotion-steps" aria-label={t("promotion.wizard.steps")}>
-        {promotionWizardSteps.map((wizardStep, index) => (
-          <button
-            type="button"
-            className={wizardStep === step ? "selected" : ""}
-            key={wizardStep}
-            onClick={() => setStep(wizardStep)}
-          >
-            {index + 1}. {t(`promotion.step.${wizardStep}`)}
-          </button>
-        ))}
-      </nav>
-
-      <section className="promotion-form-grid">
-        {step === "basic" && (
-          <>
-            <label>
-              {t("promotion.field.name")}
-              <input
-                required
-                maxLength={160}
-                value={draft.name}
-                onChange={(event) => updateDraft("name", event.target.value)}
-              />
-            </label>
-            <label>
-              {t("promotion.field.startDate")}
-              <input
-                required
-                type="date"
-                value={draft.startDate}
-                onChange={(event) => updateDraft("startDate", event.target.value)}
-              />
-            </label>
-            <label>
-              {t("promotion.field.endDate")}
-              <input
-                type="date"
-                min={draft.startDate || undefined}
-                value={draft.endDate}
-                onChange={(event) => updateDraft("endDate", event.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        {step === "type" && (
-          <label>
-            {t("promotion.field.type")}
-            <ErpSelect
-              aria-label={t("promotion.field.type")}
-              value={draft.type}
-              options={promotionTypes.map((type) => ({
-                value: type,
-                label: t(`promotion.type.${type}`)
-              }))}
-              onChange={(value) => updateDraft("type", value as PromotionType)}
-            />
-          </label>
-        )}
-
-        {step === "scope" && (
-          <>
-            <label>
-              {t("promotion.field.scope")}
-              <ErpSelect
-                aria-label={t("promotion.field.scope")}
-                value={draft.scope}
-                options={promotionScopes.map((scope) => ({
-                  value: scope,
-                  label: t(`promotion.scope.${scope}`)
-                }))}
-                onChange={(value) => updateScope(value as PromotionScope)}
-              />
-            </label>
-            {draft.scope !== "SALE" && (
-              <>
-                <button
-                  type="button"
-                  className="filter-select-button"
-                  aria-haspopup="dialog"
-                  onClick={openTargetPicker}
-                >
-                  <span>{t("common.select")}</span>
-                  <strong>{draft.targetIds.length}</strong>
-                </button>
-                {selectedTargetLabels.length > 0 && (
-                  <dl className="promotion-summary">
-                    {selectedTargetLabels.map((label, index) => (
-                      <div key={`${draft.targetIds[index]}-${index}`}>
-                        <dt>{t(`promotion.scope.${draft.scope}`)}</dt>
-                        <dd>{label}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {step === "conditions" && (
-          <>
-            <label>
-              {t("promotion.field.customerSegment")}
-              <ErpSelect
-                aria-label={t("promotion.field.customerSegment")}
-                value={draft.customerSegment}
-                options={promotionCustomerSegments.map((segment) => ({
-                  value: segment,
-                  label: t(`promotion.segment.${segment}`)
-                }))}
-                onChange={(value) => updateCustomerSegment(value as PromotionCustomerSegment)}
-              />
-            </label>
-            {draft.customerSegment === "MEMBER_CATEGORY" && (
+      <div className="promotion-create-layout">
+        <div className="promotion-create-sections">
+          <section className="promotion-create-card">
+            <h3>1. {t("promotion.create.basic")}</h3>
+            <div className="promotion-create-fields">
               <label>
-                {t("promotion.field.memberCategoryId")}
-                <ErpSelect
-                  aria-label={t("promotion.field.memberCategoryId")}
-                  value={draft.memberCategoryId}
-                  options={[
-                    { value: "", label: t("common.select") },
-                    ...memberCategories.map((category) => ({
-                      value: category.id,
-                      label: categoryLabel(category)
-                    }))
-                  ]}
-                  onChange={(value) => updateDraft("memberCategoryId", value)}
-                />
+                <span>{t("promotion.field.name")}<b className="promotion-required"> *</b></span>
+                <input required maxLength={160} value={draft.name}
+                  onChange={(event) => updateDraft("name", event.target.value)} />
               </label>
-            )}
-          </>
-        )}
+              <label>
+                <span>{t("promotion.field.type")}<b className="promotion-required"> *</b></span>
+                <PromotionFieldSelect aria-label={t("promotion.field.type")} value={draft.type}
+                  options={promotionTypes.map((type) => ({ value: type, label: t("promotion.type." + type) }))}
+                  onChange={(value) => updateDraft("type", value as PromotionType)} />
+              </label>
+            </div>
+          </section>
 
-        {step === "benefit" && (
-          <>
-            {(draft.type === "PURCHASE_THRESHOLD_COUPON" || draft.type === "PURCHASE_THRESHOLD_DISCOUNT")
-              && numberField("minimumAmount", minimumAmountLabel, { required: true })}
-            {draft.type === "BUY_X_PAY_Y" && (
-              <>
-                {numberField("buyQuantity", t("promotion.field.buyQuantity"), { min: "1", step: "1", required: true })}
-                {numberField("payQuantity", t("promotion.field.payQuantity"), { min: "0", step: "1", required: true })}
+          <section className="promotion-create-card">
+            <h3>2. {t("promotion.create.validity")}</h3>
+            <div className="promotion-create-fields">
+              <label>
+                <span>{t("promotion.field.startDate")}<b className="promotion-required"> *</b></span>
+                <input required type="date" value={draft.startDate}
+                  onChange={(event) => updateDraft("startDate", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("promotion.field.endDate")}</span>
+                <input type="date" min={draft.startDate || undefined} value={draft.endDate}
+                  onChange={(event) => updateDraft("endDate", event.target.value)} />
+              </label>
+            </div>
+          </section>
+
+          <section className="promotion-create-card">
+            <h3>3. {t("promotion.create.application")}</h3>
+            <div className="promotion-create-fields">
+              <label>
+                <span>{t("promotion.field.scope")}<b className="promotion-required"> *</b></span>
+                <PromotionFieldSelect aria-label={t("promotion.field.scope")} value={draft.scope}
+                  options={promotionScopes.map((scope) => ({ value: scope, label: t("promotion.scope." + scope) }))}
+                  onChange={(value) => updateScope(value as PromotionScope)} />
+              </label>
+              <label>
+                <span>{t("promotion.field.customerSegment")}<b className="promotion-required"> *</b></span>
+                <PromotionFieldSelect aria-label={t("promotion.field.customerSegment")} value={draft.customerSegment}
+                  options={promotionCustomerSegments.map((segment) => ({
+                    value: segment, label: t("promotion.segment." + segment)
+                  }))}
+                  onChange={(value) => updateCustomerSegment(value as PromotionCustomerSegment)} />
+              </label>
+              {draft.customerSegment === "MEMBER_CATEGORY" && (
                 <label>
-                  {t("promotion.field.type")}
-                  <ErpSelect
-                    aria-label={t("promotion.field.type")}
-                    value={draft.buyXPayYMode}
-                    options={buyXPayYModes.map((mode) => ({
-                      value: mode,
-                      label: buyXPayYModeLabel(mode, t)
-                    }))}
-                    onChange={(value) => updateDraft("buyXPayYMode", value as BuyXPayYMode)}
-                  />
+                  <span>{t("promotion.field.memberCategoryId")}<b className="promotion-required"> *</b></span>
+                  <PromotionFieldSelect aria-label={t("promotion.field.memberCategoryId")} value={draft.memberCategoryId}
+                    options={[
+                      { value: "", label: t("common.select") },
+                      ...memberCategories.map((category) => ({ value: category.id, label: categoryLabel(category) }))
+                    ]}
+                    onChange={(value) => updateDraft("memberCategoryId", value)} />
                 </label>
-              </>
-            )}
-            {draft.type === "SECOND_UNIT_PERCENT"
-              && numberField("discountPercent", t("promotion.field.discountPercent"), {
-                min: "0.01", max: "100", step: "0.01", required: true
-              })}
-            {draft.type === "FIXED_PACK_PRICE" && (
-              <>
-                {numberField("buyQuantity", t("promotion.field.buyQuantity"), { min: "1", step: "1", required: true })}
-                {numberField("packPrice", t("venta.column.price"), { min: "0.01", required: true })}
-              </>
-            )}
-            {draft.type === "QUANTITY_DISCOUNT"
-              && numberField("minimumQuantity", t("stock.minimum.quantity"), {
-                min: "0.001", step: "0.001", required: true
-              })}
-            {(draft.type === "PURCHASE_THRESHOLD_DISCOUNT" || draft.type === "QUANTITY_DISCOUNT") && (
-              <>
-                {numberField("discountAmount", t("stock.column.amount"), { min: "0.01" })}
-                {numberField("discountPercent", t("promotion.field.discountPercent"), {
-                  min: "0.01", max: "100", step: "0.01"
+              )}
+            </div>
+          </section>
+
+          <section className="promotion-create-card">
+            <h3>4. {t("promotion.create.conditions")}</h3>
+            <div className="promotion-create-fields">
+              {(draft.type === "PURCHASE_THRESHOLD_COUPON" || draft.type === "PURCHASE_THRESHOLD_DISCOUNT")
+                && numberField("minimumAmount", minimumAmountLabel, { required: true })}
+              {draft.type === "QUANTITY_DISCOUNT"
+                && numberField("minimumQuantity", t("stock.minimum.quantity"), {
+                  min: "0.001", step: "0.001", required: true
                 })}
-                {numberField("maximumDiscount", maximumAmountLabel, { min: "0.01" })}
-              </>
-            )}
-          </>
-        )}
+              {(draft.type === "BUY_X_PAY_Y" || draft.type === "FIXED_PACK_PRICE")
+                && numberField("buyQuantity", t("promotion.field.buyQuantity"), {
+                  min: "1", step: "1", required: true
+                })}
+              {draft.type === "SECOND_UNIT_PERCENT" && (
+                <p className="promotion-create-empty-condition">{t("promotion.create.noExtraConditions")}</p>
+              )}
+            </div>
+          </section>
 
-        {step === "coupon" && draft.type === "PURCHASE_THRESHOLD_COUPON" && (
-          <>
-            {numberField("couponAmount", t("stock.column.amount"), { min: "0.01" })}
-            {numberField("couponPercent", t("promotion.field.discountPercent"), {
-              min: "0.01", max: "100", step: "0.01"
-            })}
-            {numberField("couponMaximumDiscount", maximumAmountLabel, { min: "0.01" })}
-            {numberField("couponMinimumAmount", minimumAmountLabel, { min: "0" })}
-            <label>
-              {t("salesReport.filter.dateFrom")}
-              <ErpSelect
-                aria-label={t("salesReport.filter.dateFrom")}
-                value={couponValidFromMode}
-                options={[
-                  { value: "NONE", label: t("common.select") },
-                  { value: "DATE", label: t("salesReport.filter.pickDateFrom") },
-                  { value: "DAYS", label: dayLabel }
-                ]}
-                onChange={(value) => updateCouponFromMode(value as CouponValidityMode)}
-              />
-            </label>
-            {couponValidFromMode === "DATE" && (
-              <label>
-                {t("salesReport.filter.dateFrom")}
-                <input
-                  type="date"
-                  value={draft.couponValidFromDate}
-                  onChange={(event) => updateDraft("couponValidFromDate", event.target.value)}
-                />
-              </label>
-            )}
-            {couponValidFromMode === "DAYS"
-              && numberField("couponValidFromDays", `${t("salesReport.filter.dateFrom")} (${dayLabel})`, {
-                min: "0", step: "1"
-              })}
-            <label>
-              {t("salesReport.filter.dateTo")}
-              <ErpSelect
-                aria-label={t("salesReport.filter.dateTo")}
-                value={couponValidUntilMode}
-                options={[
-                  { value: "NONE", label: t("common.select") },
-                  { value: "DATE", label: t("salesReport.filter.pickDateTo") },
-                  { value: "DAYS", label: dayLabel }
-                ]}
-                onChange={(value) => updateCouponUntilMode(value as CouponValidityMode)}
-              />
-            </label>
-            {couponValidUntilMode === "DATE" && (
-              <label>
-                {t("salesReport.filter.dateTo")}
-                <input
-                  required
-                  type="date"
-                  min={draft.couponValidFromDate || undefined}
-                  value={draft.couponValidUntilDate}
-                  onChange={(event) => updateDraft("couponValidUntilDate", event.target.value)}
-                />
-              </label>
-            )}
-            {couponValidUntilMode === "DAYS"
-              && numberField("couponValidDays", `${t("salesReport.filter.dateTo")} (${dayLabel})`, {
-                min: "1", step: "1", required: true
-              })}
-          </>
-        )}
+          <section className="promotion-create-card">
+            <h3>5. {t("promotion.create.benefit")}</h3>
+            <div className="promotion-create-fields">
+              {draft.type === "BUY_X_PAY_Y" && (
+                <>
+                  {numberField("payQuantity", t("promotion.field.payQuantity"), {
+                    min: "0", step: "1", required: true
+                  })}
+                  <label>
+                    <span>{t("promotion.field.buyXPayYMode")}</span>
+                    <PromotionFieldSelect aria-label={t("promotion.field.buyXPayYMode")} value={draft.buyXPayYMode}
+                      options={buyXPayYModes.map((mode) => ({ value: mode, label: buyXPayYModeLabel(mode, t) }))}
+                      onChange={(value) => updateDraft("buyXPayYMode", value as BuyXPayYMode)} />
+                  </label>
+                </>
+              )}
+              {draft.type === "SECOND_UNIT_PERCENT"
+                && numberField("discountPercent", t("promotion.field.discountPercent"), {
+                  min: "0.01", max: "100", step: "0.01", required: true
+                })}
+              {draft.type === "FIXED_PACK_PRICE"
+                && numberField("packPrice", t("venta.column.price"), { min: "0.01", required: true })}
+              {(draft.type === "PURCHASE_THRESHOLD_DISCOUNT" || draft.type === "QUANTITY_DISCOUNT") && (
+                <>
+                  {numberField("discountAmount", t("stock.column.amount"), { min: "0.01" })}
+                  {numberField("discountPercent", t("promotion.field.discountPercent"), {
+                    min: "0.01", max: "100", step: "0.01"
+                  })}
+                  {numberField("maximumDiscount", maximumAmountLabel, { min: "0.01" })}
+                </>
+              )}
+              {draft.type === "PURCHASE_THRESHOLD_COUPON" && (
+                <>
+                  {numberField("couponAmount", t("stock.column.amount"), { min: "0.01" })}
+                  {numberField("couponPercent", t("promotion.field.discountPercent"), {
+                    min: "0.01", max: "100", step: "0.01"
+                  })}
+                  {numberField("couponMaximumDiscount", maximumAmountLabel, { min: "0.01" })}
+                  {numberField("couponMinimumAmount", minimumAmountLabel, { min: "0" })}
+                  <label>
+                    {t("salesReport.filter.dateFrom")}
+                    <PromotionFieldSelect
+                      aria-label={t("salesReport.filter.dateFrom")}
+                      value={couponValidFromMode}
+                      options={[
+                        { value: "NONE", label: t("common.select") },
+                        { value: "DATE", label: t("salesReport.filter.pickDateFrom") },
+                        { value: "DAYS", label: dayLabel }
+                      ]}
+                      onChange={(value) => updateCouponFromMode(value as CouponValidityMode)}
+                    />
+                  </label>
+                  {couponValidFromMode === "DATE" && (
+                    <label>
+                      {t("salesReport.filter.dateFrom")}
+                      <input
+                        type="date"
+                        value={draft.couponValidFromDate}
+                        onChange={(event) => updateDraft("couponValidFromDate", event.target.value)}
+                      />
+                    </label>
+                  )}
+                  {couponValidFromMode === "DAYS"
+                    && numberField("couponValidFromDays", `${t("salesReport.filter.dateFrom")} (${dayLabel})`, {
+                      min: "0", step: "1"
+                    })}
+                  <label>
+                    {t("salesReport.filter.dateTo")}
+                    <PromotionFieldSelect
+                      aria-label={t("salesReport.filter.dateTo")}
+                      value={couponValidUntilMode}
+                      options={[
+                        { value: "NONE", label: t("common.select") },
+                        { value: "DATE", label: t("salesReport.filter.pickDateTo") },
+                        { value: "DAYS", label: dayLabel }
+                      ]}
+                      onChange={(value) => updateCouponUntilMode(value as CouponValidityMode)}
+                    />
+                  </label>
+                  {couponValidUntilMode === "DATE" && (
+                    <label>
+                      {t("salesReport.filter.dateTo")}
+                      <input
+                        required
+                        type="date"
+                        min={draft.couponValidFromDate || undefined}
+                        value={draft.couponValidUntilDate}
+                        onChange={(event) => updateDraft("couponValidUntilDate", event.target.value)}
+                      />
+                    </label>
+                  )}
+                  {couponValidUntilMode === "DAYS"
+                    && numberField("couponValidDays", `${t("salesReport.filter.dateTo")} (${dayLabel})`, {
+                      min: "1", step: "1", required: true
+                    })}
+                </>
+              )}
+            </div>
+          </section>
 
-        {step === "coupon" && draft.type !== "PURCHASE_THRESHOLD_COUPON" && (
-          <p className="promotion-help">{t(`promotion.type.${draft.type}`)}</p>
-        )}
-
-        {step === "summary" && (
-          <dl className="promotion-summary">
-            {summaryRows.map(([label, value], index) => (
-              <div key={`${label}-${index}`}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
+          <section className="promotion-create-card">
+            <h3>6. {t("promotion.create.products")}</h3>
+            <div className="promotion-create-products">
+              <p>{draft.scope === "SALE" ? t("promotion.create.saleScope") : t("promotion.create.selectTargets")}</p>
+              {draft.scope !== "SALE" && (
+                <button type="button" className="promotion-create-pick" aria-haspopup="dialog" onClick={openTargetPicker}>
+                  {t("common.select")} ({draft.targetIds.length})
+                </button>
+              )}
+            </div>
+            {draft.scope !== "SALE" && (
+              <div className="promotion-create-target-list">
+                {selectedTargetLabels.length === 0
+                  ? t("promotion.create.noTargets")
+                  : selectedTargetLabels.map((label, index) => (
+                    <div key={draft.targetIds[index] + "-" + index}>{label}</div>
+                  ))}
               </div>
-            ))}
-          </dl>
-        )}
-      </section>
+            )}
+          </section>
+        </div>
+
+        <aside className="promotion-create-aside" aria-label={t("promotion.create.summary")}>
+          <section className="promotion-create-summary-card">
+            <h3>{t("promotion.create.summary")}</h3>
+            <dl className="promotion-create-summary">
+              {summaryRows.map(([label, value], index) => (
+                <div key={label + "-" + index}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="promotion-create-preview">
+              <strong><Info size={17} weight="regular" aria-hidden="true" />{t("promotion.create.preview")}</strong>
+              <p>{previewSentence}</p>
+            </div>
+          </section>
+        </aside>
+      </div>
 
       {status && <p className="promotion-status" role="status">{status}</p>}
-      {validationErrors.length > 0 && (
-        <span hidden>{validationErrors.join(",")}</span>
-      )}
-
-      <footer className="filter-actions promotion-actions">
-        <button type="button" disabled={step === "basic"} onClick={() => setStep(retreatPromotionWizardStep(step))}>
-          {t("promotion.action.previous")}
-        </button>
-        <button type="submit" disabled={saving}>
-          {isSummary ? t(saving ? "promotion.action.saving" : "promotion.action.createDraft") : t("promotion.action.next")}
-        </button>
-      </footer>
+      {validationErrors.length > 0 && <span hidden>{validationErrors.join(",")}</span>}
 
       {targetPickerOpen && draft.scope !== "SALE" && (
         <div className="filter-overlay stock-family-overlay" role="dialog" aria-modal="true" aria-labelledby="promotion-target-title">
@@ -763,7 +714,7 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
               {draft.scope === "SUBFAMILY" && (
                 <label>
                   {t("stock.column.family")}
-                  <ErpSelect
+                  <PromotionFieldSelect
                     aria-label={t("stock.column.family")}
                     value={subfamilyFamilyId}
                     options={families.map((family) => ({
@@ -827,23 +778,6 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
   );
 }
 
-function promotionValidationStep(error: PromotionValidationError): PromotionWizardStep {
-  if (error === "NAME_REQUIRED" || error === "NAME_TOO_LONG"
-      || error === "START_DATE_REQUIRED" || error === "DATE_RANGE_INVALID") {
-    return "basic";
-  }
-  if (error === "TARGETS_NOT_ALLOWED" || error === "TARGETS_REQUIRED" || error === "TARGETS_INVALID") {
-    return "scope";
-  }
-  if (error === "MEMBER_CATEGORY_REQUIRED") {
-    return "conditions";
-  }
-  if (error.startsWith("COUPON_")) {
-    return "coupon";
-  }
-  return "benefit";
-}
-
 function initialCouponMode(dateValue?: string, daysValue?: string): CouponValidityMode {
   if (dateValue) {
     return "DATE";
@@ -870,8 +804,104 @@ function buyXPayYModeLabel(mode: BuyXPayYMode, t: (key: string) => string) {
   return mode === "SAME_PRODUCT" ? t("warehouseDocument.product") : t("salesReport.column.products");
 }
 
-function couponValiditySummary(draft: PromotionDraft, dayLabel: string, noEndLabel: string) {
-  const from = draft.couponValidFromDate || (draft.couponValidFromDays ? `${draft.couponValidFromDays} ${dayLabel}` : "-");
-  const until = draft.couponValidUntilDate || (draft.couponValidDays ? `${draft.couponValidDays} ${dayLabel}` : noEndLabel);
+function promotionLocale(locale: LocaleCode) {
+  return locale === "es" ? "es-ES" : locale === "en" ? "en-GB" : "zh-CN";
+}
+
+function formatPromotionNumber(value: string, locale: LocaleCode) {
+  const trimmed = value.trim();
+  if (!/^(?:\d+|\d*\.\d+)$/.test(trimmed)) return trimmed || "—";
+  return new Intl.NumberFormat(promotionLocale(locale), { maximumFractionDigits: 20 }).format(Number(trimmed));
+}
+
+function formatPromotionMoney(value: string, locale: LocaleCode) {
+  const trimmed = value.trim();
+  if (!/^(?:\d+|\d*\.\d+)$/.test(trimmed)) return trimmed || "—";
+  return new Intl.NumberFormat(promotionLocale(locale), {
+    style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 20
+  }).format(Number(trimmed));
+}
+
+function formatPromotionDate(value: string, locale: LocaleCode) {
+  if (!value) return "—";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (date.getUTCFullYear() !== Number(match[1])
+      || date.getUTCMonth() + 1 !== Number(match[2])
+      || date.getUTCDate() !== Number(match[3])) return value;
+  return new Intl.DateTimeFormat(promotionLocale(locale), {
+    timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric"
+  }).format(date);
+}
+
+function promotionPreviewSentence(draft: PromotionDraft, locale: LocaleCode, t: (key: string) => string) {
+  const number = (value: string) => formatPromotionNumber(value, locale);
+  const money = (value: string) => formatPromotionMoney(value, locale);
+  const discount = (amount: string, percent: string) =>
+    Boolean(amount) === Boolean(percent) ? null : amount ? money(amount) : `${number(percent)} %`;
+  let key = "promotion.create.previewIncomplete";
+  let values: Record<string, string> = {};
+
+  switch (draft.type) {
+    case "BUY_X_PAY_Y":
+      if (draft.buyQuantity && draft.payQuantity) {
+        key = draft.buyXPayYMode === "SAME_PRODUCT"
+          ? "promotion.create.previewBuySame" : "promotion.create.previewBuyMixed";
+        values = { buy: number(draft.buyQuantity), pay: number(draft.payQuantity) };
+      }
+      break;
+    case "SECOND_UNIT_PERCENT":
+      if (draft.discountPercent) {
+        key = "promotion.create.previewSecondUnit";
+        values = { discount: `${number(draft.discountPercent)} %` };
+      }
+      break;
+    case "FIXED_PACK_PRICE":
+      if (draft.buyQuantity && draft.packPrice) {
+        key = "promotion.create.previewPack";
+        values = { buy: number(draft.buyQuantity), price: money(draft.packPrice) };
+      }
+      break;
+    case "QUANTITY_DISCOUNT": {
+      const value = discount(draft.discountAmount, draft.discountPercent);
+      if (draft.minimumQuantity && value) {
+        key = "promotion.create.previewQuantityDiscount";
+        values = { minimum: number(draft.minimumQuantity), discount: value };
+      }
+      break;
+    }
+    case "PURCHASE_THRESHOLD_DISCOUNT": {
+      const value = discount(draft.discountAmount, draft.discountPercent);
+      if (draft.minimumAmount && value) {
+        key = "promotion.create.previewThresholdDiscount";
+        values = { minimum: money(draft.minimumAmount), discount: value };
+      }
+      break;
+    }
+    case "PURCHASE_THRESHOLD_COUPON": {
+      const value = discount(draft.couponAmount, draft.couponPercent);
+      if (draft.minimumAmount && value) {
+        key = "promotion.create.previewCoupon";
+        values = { minimum: money(draft.minimumAmount), benefit: value };
+      }
+      break;
+    }
+  }
+
+  return t(key).replace(/\{(\w+)\}/g, (placeholder, name: string) => values[name] ?? placeholder);
+}
+
+function couponValiditySummary(draft: PromotionDraft, dayLabel: string, noEndLabel: string, locale: LocaleCode) {
+  const from = draft.couponValidFromDate
+    ? formatPromotionDate(draft.couponValidFromDate, locale)
+    : draft.couponValidFromDays ? `${formatPromotionNumber(draft.couponValidFromDays, locale)} ${dayLabel}` : "—";
+  const until = draft.couponValidUntilDate
+    ? formatPromotionDate(draft.couponValidUntilDate, locale)
+    : draft.couponValidDays ? `${formatPromotionNumber(draft.couponValidDays, locale)} ${dayLabel}` : noEndLabel;
   return `${from} - ${until}`;
+}
+
+function PromotionFieldSelect(props: ComponentProps<typeof ErpSelect>) {
+  return <span className="promotion-field-select"><ErpSelect {...props} /><CaretDown size={13} aria-hidden="true" /></span>;
 }

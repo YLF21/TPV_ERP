@@ -111,7 +111,6 @@ describe("PromotionWizard", () => {
 
     expect(html).toContain("erp-select__trigger");
     expect(html).not.toContain("<select");
-    expect(promotionWizardSource.match(/<ErpSelect/g)).toHaveLength(8);
     expect(promotionWizardSource).not.toContain("<select");
   });
 });

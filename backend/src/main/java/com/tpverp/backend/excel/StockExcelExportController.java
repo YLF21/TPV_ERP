@@ -9,9 +9,11 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.VE
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.PermissionChecks;
 import com.tpverp.backend.security.domain.UserAccount;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -77,7 +79,9 @@ public class StockExcelExportController {
                 .contentType(XLSX)
                 .contentLength(file.size())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + file.fileName() + "\"")
+                        ContentDisposition.attachment()
+                                .filename(file.fileName(), StandardCharsets.UTF_8)
+                                .build().toString())
                 .body(new FileSystemResource(file.path()));
     }
 

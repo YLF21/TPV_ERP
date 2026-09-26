@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.Normalizer;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -57,7 +58,7 @@ public class StockExcelExportService {
             "soldUnits", "amount", "currentStock", "warehouse");
     private static final Set<String> PROMOTION_COLUMNS = Set.of(
             "code", "barcode", "name", "family", "subfamily", "promotion",
-            "promotionType", "promotionStatus", "promotionValidity", "warehouse", "stock");
+            "promotionType", "promotionStatus", "promotionValidity", "warehouse", "stock", "salePrice");
 
     private final JdbcTemplate jdbc;
     private final StockTopSalesService topSales;
@@ -71,7 +72,7 @@ public class StockExcelExportService {
                 "tpv-erp", "stock-exports").toAbsolutePath().normalize();
     }
 
-    public JobView create(
+    public synchronized JobView create(
             UUID storeId,
             String owner,
             boolean includePurchaseFields,
@@ -84,9 +85,28 @@ public class StockExcelExportService {
                         && job.owner.equals(normalizedOwner)
                         && (job.status == JobStatus.QUEUED || job.status == JobStatus.RUNNING))
                 .findFirst();
-        if (existing.isPresent()) return existing.orElseThrow().view();
+        if (existing.isPresent()) {
+            var inProgress = existing.orElseThrow();
+            if (inProgress.request.equals(normalized)
+                    && inProgress.includePurchaseFields == includePurchaseFields) return inProgress.view();
+            throw new IllegalStateException("stock_excel_export_busy");
+        }
+        String promotionName = null;
+        if ("SELECTED".equals(normalized.promotionScope())) {
+            var names = jdbc.query("""
+                    select promotion.nombre
+                    from promocion promotion
+                    join tienda store on store.empresa_id = promotion.empresa_id
+                    where store.id = ? and promotion.id = ?
+                    """, (result, row) -> result.getString(1), storeId, normalized.promotionId());
+            if (names.isEmpty()) throw new IllegalArgumentException("stock_excel_export_promotion_not_found");
+            promotionName = names.get(0);
+        }
+        Instant createdAt = Instant.now();
+        LocalDate exportDate = LocalDate.now();
         var job = new ExportJob(UUID.randomUUID(), storeId, normalizedOwner,
-                includePurchaseFields, normalized, Instant.now());
+                includePurchaseFields, normalized, createdAt, exportDate,
+                fileName(normalized, promotionName, exportDate));
         jobs.put(job.id, job);
         return job.view();
     }
@@ -118,8 +138,7 @@ public class StockExcelExportService {
                 || !Files.isRegularFile(job.file)) {
             throw new IllegalStateException("stock_excel_export_not_ready");
         }
-        return new ExportFile(job.file, job.fileSize,
-                "stock-" + LocalDate.now() + ".xlsx");
+        return new ExportFile(job.file, job.fileSize, job.fileName);
     }
 
     private void writeWorkbook(ExportJob job, Path output) throws IOException {
@@ -204,6 +223,9 @@ public class StockExcelExportService {
         bind(statement, 11, normalizedStockStatus(request.stockStatus()), Types.VARCHAR);
         bind(statement, 12, request.supplierId(), Types.OTHER);
         statement.setBoolean(13, "PROMOTIONS".equals(optionalUpper(request.view())));
+        bind(statement, 14, request.promotionScope(), Types.VARCHAR);
+        bind(statement, 15, request.promotionId(), Types.OTHER);
+        statement.setObject(16, job.exportDate);
     }
 
     private static void bind(
@@ -231,7 +253,10 @@ public class StockExcelExportService {
                            cast(? as boolean) offer_active,
                            cast(? as varchar) stock_status,
                            cast(? as uuid) supplier_id,
-                           cast(? as boolean) promotions_only
+                           cast(? as boolean) promotions_only,
+                           cast(? as varchar) promotion_scope,
+                           cast(? as uuid) promotion_id,
+                           cast(? as date) export_date
                 )
                 select product.id,
                        code.valor as code,
@@ -311,7 +336,15 @@ public class StockExcelExportService {
                                coalesce(selected_promotion.fecha_fin::text, '-')), '; ') as validity
                     from promocion selected_promotion
                     where selected_promotion.empresa_id = store.empresa_id
-                      and selected_promotion.estado = 'ACTIVE'
+                      and (not filter.promotions_only
+                        or (filter.promotion_scope = 'SELECTED'
+                          and selected_promotion.id = filter.promotion_id)
+                        or (filter.promotion_scope = 'ACTIVE'
+                          and selected_promotion.estado = 'ACTIVE'
+                          and selected_promotion.fecha_inicio <= filter.export_date
+                          and (selected_promotion.fecha_fin is null
+                            or selected_promotion.fecha_fin >= filter.export_date)))
+                      and (filter.promotions_only or selected_promotion.estado = 'ACTIVE')
                       and (
                         selected_promotion.ambito = 'SALE'
                         or exists (
@@ -608,6 +641,16 @@ public class StockExcelExportService {
     private ExportRequest normalize(ExportRequest request, boolean includePurchaseFields) {
         if (request == null) throw new IllegalArgumentException("stock_excel_export_request_required");
         String view = optionalUpper(request.view());
+        String promotionScope = optionalUpper(request.promotionScope());
+        if ("PROMOTIONS".equals(view)) {
+            if (promotionScope == null) promotionScope = "ACTIVE";
+            if (!Set.of("SELECTED", "ACTIVE").contains(promotionScope)
+                    || ("SELECTED".equals(promotionScope) != (request.promotionId() != null))) {
+                throw new IllegalArgumentException("stock_excel_export_promotion_scope_invalid");
+            }
+        } else if (promotionScope != null || request.promotionId() != null) {
+            throw new IllegalArgumentException("stock_excel_export_promotion_scope_invalid");
+        }
         Set<String> allowedColumns = "TOP_SALES".equals(view) ? TOP_SALES_COLUMNS
                 : "PROMOTIONS".equals(view) ? PROMOTION_COLUMNS : ALLOWED_COLUMNS;
         var keys = new LinkedHashSet<String>();
@@ -645,7 +688,8 @@ public class StockExcelExportService {
                         ? request.language() : "es",
                 request.dateFrom(), request.dateTo(),
                 trim(request.topSalesFamily(), 160), trim(request.topSalesSubfamily(), 160),
-                trim(request.topSalesSupplier(), 160), List.copyOf(columns));
+                trim(request.topSalesSupplier(), 160), List.copyOf(columns),
+                promotionScope, request.promotionId());
     }
 
     private static boolean isTopSales(ExportRequest request) {
@@ -659,6 +703,40 @@ public class StockExcelExportService {
 
     private static String discountType(ExportRequest request) {
         return "NO_DISCOUNT".equals(optionalUpper(request.view())) ? "NONE" : null;
+    }
+
+    private static String fileName(ExportRequest request, String promotionName, LocalDate date) {
+        String language = request.language();
+        String prefix = switch (request.view() == null ? "STOCK" : request.view()) {
+            case "PROMOTIONS" -> "SELECTED".equals(request.promotionScope())
+                    ? translatedPrefix(language, "productos-promocion", "promotion-products", "促销商品")
+                            + "-" + safeName(promotionName, language)
+                    : translatedPrefix(language, "productos-promociones-activas",
+                            "active-promotions-products", "有效促销商品");
+            case "OFFERS" -> translatedPrefix(language, "productos-con-oferta", "products-on-offer", "优惠商品");
+            case "MEMBER_PRICE" -> translatedPrefix(language, "productos-precio-miembro",
+                    "member-price-products", "会员价商品");
+            case "NO_DISCOUNT" -> translatedPrefix(language, "productos-sin-descuento",
+                    "non-discountable-products", "不可折扣商品");
+            case "TOP_SALES" -> translatedPrefix(language, "top-ventas", "top-sales", "热销商品");
+            default -> translatedPrefix(language, "stock", "stock", "库存");
+        };
+        return prefix + "-" + date + ".xlsx";
+    }
+
+    private static String translatedPrefix(String language, String es, String en, String zh) {
+        return "en".equals(language) ? en : "zh".equals(language) ? zh : es;
+    }
+
+    private static String safeName(String value, String language) {
+        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]+", "-")
+                .replaceAll("^-+|-+$", "");
+        if (normalized.isEmpty()) return translatedPrefix(language, "seleccionada", "selected", "已选促销");
+        int length = normalized.offsetByCodePoints(0, Math.min(60, normalized.codePointCount(0, normalized.length())));
+        return normalized.substring(0, length).replaceAll("-+$", "");
     }
 
     private static String normalizedStockStatus(String value) {
@@ -743,7 +821,18 @@ public class StockExcelExportService {
             String topSalesFamily,
             String topSalesSubfamily,
             String topSalesSupplier,
-            List<ExportColumn> columns) {
+            List<ExportColumn> columns,
+            String promotionScope,
+            UUID promotionId) {
+        public ExportRequest(String view, String search, String productType, String priceUseMode,
+                UUID familyId, UUID taxId, Boolean offerActive, String stockStatus, UUID supplierId,
+                UUID warehouseId, String sortBy, String sortDirection, String language,
+                LocalDate dateFrom, LocalDate dateTo, String topSalesFamily, String topSalesSubfamily,
+                String topSalesSupplier, List<ExportColumn> columns) {
+            this(view, search, productType, priceUseMode, familyId, taxId, offerActive, stockStatus,
+                    supplierId, warehouseId, sortBy, sortDirection, language, dateFrom, dateTo,
+                    topSalesFamily, topSalesSubfamily, topSalesSupplier, columns, null, null);
+        }
     }
 
     public record ExportColumn(String key, String label) {
@@ -769,6 +858,8 @@ public class StockExcelExportService {
         private final boolean includePurchaseFields;
         private final ExportRequest request;
         private final Instant createdAt;
+        private final LocalDate exportDate;
+        private final String fileName;
         private final AtomicLong processedRows = new AtomicLong();
         private volatile JobStatus status = JobStatus.QUEUED;
         private volatile Path file;
@@ -777,13 +868,15 @@ public class StockExcelExportService {
 
         private ExportJob(
                 UUID id, UUID storeId, String owner, boolean includePurchaseFields,
-                ExportRequest request, Instant createdAt) {
+                ExportRequest request, Instant createdAt, LocalDate exportDate, String fileName) {
             this.id = id;
             this.storeId = storeId;
             this.owner = owner;
             this.includePurchaseFields = includePurchaseFields;
             this.request = request;
             this.createdAt = createdAt;
+            this.exportDate = exportDate;
+            this.fileName = fileName;
         }
 
         private synchronized boolean start() {
