@@ -1205,6 +1205,67 @@ class DocumentServiceTest {
     }
 
     @Test
+    void pendingTicketSnapshotRegistersFiscalAltaWithoutChangingOutstandingDebt() {
+        assertPendingTicketFiscalRegistration(BigDecimal.ZERO, DocumentStatus.PENDIENTE);
+    }
+
+    @Test
+    void partiallyPaidTicketSnapshotRegistersFiscalAltaWithoutChangingOutstandingDebt() {
+        assertPendingTicketFiscalRegistration(new BigDecimal("5.00"), DocumentStatus.PARCIAL);
+    }
+
+    private void assertPendingTicketFiscalRegistration(
+            BigDecimal paid, DocumentStatus expectedState) {
+        var customer = completeCustomer();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(true);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var payments = paid.signum() == 0 ? List.<PaymentCommand>of()
+                : List.of(new PaymentCommand(cash.getId(), paid, true, paid, BigDecimal.ZERO));
+        if (!payments.isEmpty()) {
+            when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        }
+        var fiscalPolicy = new com.tpverp.backend.verifactu.FiscalDocumentPolicy();
+        doAnswer(invocation -> {
+            CommercialDocument document = invocation.getArgument(0);
+            fiscalPolicy.validate(document,
+                    com.tpverp.backend.verifactu.FiscalRecordOperation.ALTA,
+                    com.tpverp.backend.verifactu.FiscalDocumentType.F2);
+            assertThat(document.getEstado()).isEqualTo(expectedState);
+            assertThat(document.getPendingTotal())
+                    .isEqualByComparingTo(new BigDecimal("12.60").subtract(paid));
+            return null;
+        }).when(fiscalIntegration).registerAlta(any(), eq(false));
+        var snapshot = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), customer.getId(),
+                cash.getId(), BigDecimal.ZERO, new BigDecimal("12.60"), BigDecimal.ZERO,
+                new BigDecimal("12.60"), List.of(new DocumentLineCommand(
+                        UUID.randomUUID(), BigDecimal.ONE, "P", "Precio autorizado", "MEMBER",
+                        new BigDecimal("12.60"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO)
+                        .withRequiresSerialNumber(false)));
+
+        var ticket = service.createPendingTicketFromSnapshot(snapshot, payments, authentication());
+
+        assertThat(ticket.getEstado()).isEqualTo(expectedState);
+        assertThat(ticket.isCuentaCobrar()).isTrue();
+        assertThat(ticket.getClienteId()).isEqualTo(customer.getId());
+        assertThat(ticket.getNumero()).isNotBlank();
+        assertThat(ticket.getConfirmadoEn()).isEqualTo(NOW);
+        assertThat(ticket.getConfirmadoPor()).isEqualTo(user.getId());
+        assertThat(ticket.getTotal()).isEqualByComparingTo("12.60");
+        assertThat(ticket.getPaidTotal()).isEqualByComparingTo(paid);
+        assertThat(ticket.getPendingTotal()).isEqualByComparingTo(new BigDecimal("12.60").subtract(paid));
+        assertThat(ticket.getPagos()).hasSize(payments.size());
+        verify(fiscalIntegration).registerAlta(same(ticket), eq(false));
+        verify(stockGateway).confirm(same(ticket));
+        verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
+    }
+
+    @Test
     void approvedCardSnapshotKeepsAuthorizedFiscalLinesWithoutRepricingLoyaltyOrPromotions() {
         var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
         when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
