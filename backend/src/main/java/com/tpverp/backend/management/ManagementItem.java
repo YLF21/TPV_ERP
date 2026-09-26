@@ -39,6 +39,7 @@ public record ManagementItem(
         Integer paymentTermDays,
         boolean creditBlocked,
         boolean blockOnOverdue,
+        BigDecimal outstandingDebt,
         List<RepresentativeLink> representatives,
         List<SupplierLink> suppliers) {
 
@@ -54,7 +55,7 @@ public record ManagementItem(
                 phone, email, notes, otherContact, active, isMember, numMember,
                 discount, memberUuid, memberSince, birthday, gender, commercialConsent,
                 preferredCommercialChannelId, creditEnabled, creditLimit, paymentTermDays,
-                creditBlocked, blockOnOverdue,
+                creditBlocked, blockOnOverdue, outstandingDebt,
                 representatives, links);
     }
 }

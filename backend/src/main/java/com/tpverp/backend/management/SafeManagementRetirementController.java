@@ -47,9 +47,10 @@ public class SafeManagementRetirementController {
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Size(max = 120) String search,
             @RequestParam(required = false) Boolean active,
-            @RequestParam(defaultValue = "name") @Size(max = 16) String sort,
-            @RequestParam(defaultValue = "asc") @Size(max = 4) String direction) {
-        return retirement.page(EntityType.CUSTOMER, size, cursor, search, active, sort, direction);
+            @RequestParam(defaultValue = "name") @Size(max = 32) String sort,
+            @RequestParam(defaultValue = "asc") @Size(max = 4) String direction,
+            @RequestParam java.util.Map<String, String> filters) {
+        return retirement.page(EntityType.CUSTOMER, size, cursor, search, active, sort, direction, filters);
     }
 
     @GetMapping("/suppliers/management/page")
@@ -59,8 +60,9 @@ public class SafeManagementRetirementController {
             @RequestParam(required = false) @Size(max = 120) String search,
             @RequestParam(required = false) Boolean active,
             @RequestParam(defaultValue = "name") @Size(max = 16) String sort,
-            @RequestParam(defaultValue = "asc") @Size(max = 4) String direction) {
-        return retirement.page(EntityType.SUPPLIER, size, cursor, search, active, sort, direction);
+            @RequestParam(defaultValue = "asc") @Size(max = 4) String direction,
+            @RequestParam java.util.Map<String, String> filters) {
+        return retirement.page(EntityType.SUPPLIER, size, cursor, search, active, sort, direction, filters);
     }
 
     @GetMapping("/sales-representatives/management/page")

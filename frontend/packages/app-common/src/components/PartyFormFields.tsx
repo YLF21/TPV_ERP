@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { ErpSelect } from "./ErpSelect";
+import { PartyAddressPicker } from "./PartyAddressPicker";
 import type { PartyForm } from "./PartyDirectoryPanel";
+import type { LocaleCode } from "../types";
 import { customerDocumentType } from "./customerDocumentIdentity";
 
 export type CommercialChannelOption = {
@@ -17,6 +19,8 @@ type Props = {
   identityAction?: ReactNode;
   channels: CommercialChannelOption[];
   supplier?: boolean;
+  grouped?: boolean;
+  locale?: LocaleCode;
   autoFocusName?: boolean;
   t: (key: string) => string;
   onChange: <K extends keyof PartyForm>(field: K, value: PartyForm[K]) => void;
@@ -29,6 +33,8 @@ export function PartyFormFields({
   identityAction,
   channels,
   supplier = false,
+  grouped = false,
+  locale = "es",
   autoFocusName = false,
   t,
   onChange,
@@ -43,7 +49,9 @@ export function PartyFormFields({
     return errors.includes(field) ? "party-field-invalid" : undefined;
   }
 
-  return <>
+  const Container = grouped ? "div" : Fragment;
+  return <Container {...(grouped ? { className: `party-form-sections${supplier ? " party-form-sections--supplier" : ""}` } : {})}>
+    <PartyFormSection enabled={grouped} sectionKey="identity" title={t("party.gestion.section.identity")}>
     <div className="product-create-row product-create-row-two">
       <label className={invalidClass("name")}>
         <span>{t(supplier ? "party.field.legalName" : "party.field.fiscalName")}</span>
@@ -96,31 +104,41 @@ export function PartyFormFields({
       </label>
     </div>
     {identityAction}
+    </PartyFormSection>
+    <PartyFormSection enabled={grouped} sectionKey="contact" title={t("party.gestion.section.contact")}>
     <div className="product-create-row product-create-row-two">
       <label><span>{t("party.field.phone")}</span><input value={form.phone} onChange={(event) => onChange("phone", event.target.value)} /></label>
       <label><span>{t("party.field.email")}</span><input type="email" value={form.email} onChange={(event) => onChange("email", event.target.value)} /></label>
     </div>
     <label><span>{t("party.field.address")}</span><input value={form.address} onChange={(event) => onChange("address", event.target.value)} /></label>
-    <div className="product-create-row product-create-row-three">
-      <label><span>{t("party.field.postalCode")}</span><input value={form.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} /></label>
-      <label><span>{t("party.field.city")}</span><input value={form.city} onChange={(event) => onChange("city", event.target.value)} /></label>
-      <label><span>{t("party.field.province")}</span><input value={form.province} onChange={(event) => onChange("province", event.target.value)} /></label>
-    </div>
-    <div className="product-create-row product-create-row-two">
-      <label className={invalidClass("country")}>
-        <span>{t("party.field.country")}</span>
-        <input
-          required
-          maxLength={2}
-          aria-invalid={errors.includes("country")}
-          value={form.country}
-          onChange={(event) => onChange("country", event.target.value.toUpperCase())}
-        />
-        {error("country")}
-      </label>
-      <label><span>{t("party.field.notes")}</span><input value={form.notes} onChange={(event) => onChange("notes", event.target.value)} /></label>
-    </div>
+    {grouped ? <>
+      <div className="product-create-row product-create-row-two party-address-postal-row">
+        <label><span>{t("party.field.postalCode")}</span><input value={form.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} /></label>
+        <label><span>{t("party.field.city")}</span><input value={form.city} onChange={(event) => onChange("city", event.target.value)} /></label>
+      </div>
+      <div className="product-create-row product-create-row-two party-address-location-row">
+        <label><span>{t("party.field.province")}</span><PartyAddressPicker kind="province" country={form.country} value={form.province} label={t("party.field.province")} locale={locale} onChange={(value) => onChange("province", value)} /></label>
+        <label className={invalidClass("country")}><span>{t("party.field.country")}</span><PartyAddressPicker kind="country" value={form.country} label={t("party.field.country")} locale={locale} invalid={errors.includes("country")} onChange={(value) => onChange("country", value)} />{error("country")}</label>
+      </div>
+      <label><span>{t("party.field.notes")}</span><textarea rows={2} value={form.notes} onChange={(event) => onChange("notes", event.target.value)} /></label>
+    </> : <>
+      <div className="product-create-row product-create-row-three">
+        <label><span>{t("party.field.postalCode")}</span><input value={form.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} /></label>
+        <label><span>{t("party.field.city")}</span><input value={form.city} onChange={(event) => onChange("city", event.target.value)} /></label>
+        <label><span>{t("party.field.province")}</span><input value={form.province} onChange={(event) => onChange("province", event.target.value)} /></label>
+      </div>
+      <div className="product-create-row product-create-row-two">
+        <label className={invalidClass("country")}>
+          <span>{t("party.field.country")}</span>
+          <input required maxLength={2} aria-invalid={errors.includes("country")} value={form.country} onChange={(event) => onChange("country", event.target.value.toUpperCase())} />
+          {error("country")}
+        </label>
+        <label><span>{t("party.field.notes")}</span><input value={form.notes} onChange={(event) => onChange("notes", event.target.value)} /></label>
+      </div>
+    </>}
+    </PartyFormSection>
     {!supplier && <>
+      <PartyFormSection enabled={grouped} sectionKey="personal" title={t("party.gestion.section.personal")}>
       <div className="product-create-row product-create-row-two">
         <label><span>{t("party.field.birthday")}</span><input type="date" value={form.birthday} onChange={(event) => onChange("birthday", event.target.value)} /></label>
         <label>
@@ -135,6 +153,7 @@ export function PartyFormFields({
           />
         </label>
       </div>
+      </PartyFormSection>
       <section className="party-credit-settings" aria-label={t("party.credit.title")}>
         <h3>{t("party.credit.title")}</h3>
         <label className="party-commercial-consent">
@@ -158,6 +177,7 @@ export function PartyFormFields({
           <label><input type="checkbox" checked={form.blockOnOverdue} onChange={(event) => onChange("blockOnOverdue", event.target.checked)} /><span>{t("party.field.blockOnOverdue")}</span></label>
         </div>
       </section>
+      <PartyFormSection enabled={grouped} sectionKey="communications" title={t("party.gestion.section.communications")}>
       <label className="party-commercial-consent">
         <input type="checkbox" checked={form.commercialConsent} onChange={(event) => onChange("commercialConsent", event.target.checked)} />
         <span>{t("party.field.commercialConsent")}</span>
@@ -171,6 +191,11 @@ export function PartyFormFields({
         />
         {error("preferredCommercialChannelId")}
       </label>}
+      </PartyFormSection>
     </>}
-  </>;
+  </Container>;
+}
+
+function PartyFormSection({ enabled, sectionKey, title, children }: { enabled: boolean; sectionKey: string; title: string; children: ReactNode }) {
+  return enabled ? <section className={`party-form-section party-form-section--${sectionKey}`}><h3>{title}</h3>{children}</section> : <>{children}</>;
 }

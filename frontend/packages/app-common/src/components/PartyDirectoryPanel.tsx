@@ -17,15 +17,18 @@ import { CentralCustomerReuse } from "./CentralCustomerReuse";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import stockFilterIcon from "../assets/stock/filter.png";
 import "./PartyDirectoryFilters.css";
+import "./PartyDirectoryDesktop.css";
 
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
 export type PartyStatusFilter = "all" | "active" | "inactive";
-export type PartyDirectoryColumnKey = "code" | "name" | "document" | "phone" | "email" | "location" | "balance" | "status";
+export type PartyDirectoryColumnKey = "code" | "name" | "document" | "phone" | "email" | "location" | "balance" | "status" | "debt" | "creditEnabled" | "creditLimit" | "creditBlocked" | "paymentTermDays" | "discount" | "isMember" | "category" | "points" | "memberSince" | "tradeName" | "address" | "postalCode" | "country" | "notes" | "commercialConsent";
 export type PartyDirectorySort = { column: PartyDirectoryColumnKey; direction: "asc" | "desc" };
-export type PartyDirectoryFieldFilters = Partial<Record<"code" | "name" | "document" | "phone" | "email" | "location" | "category", string>>;
+export type PartyDirectoryFieldFilters = Partial<Record<"code" | "name" | "document" | "phone" | "email" | "location" | "category" | "postalCode" | "country" | "creditEnabled" | "creditBlocked" | "isMember" | "commercialConsent" | "debt", string>>;
 
-function partyDirectoryFilterFields(kind: PartyDirectoryKind): Array<keyof PartyDirectoryFieldFilters> {
-  return ["code", "name", "document", "phone", "email", kind === "members" ? "category" : "location"];
+function partyDirectoryFilterFields(kind: PartyDirectoryKind, extended = false): Array<keyof PartyDirectoryFieldFilters> {
+  const fields: Array<keyof PartyDirectoryFieldFilters> = ["code", "name", "document", "phone", "email", kind === "members" ? "category" : "location"];
+  if (extended) fields.push("postalCode", "country", ...(kind === "suppliers" ? [] : ["debt", "creditEnabled", "creditBlocked"] as const), ...(kind === "customers" ? ["isMember", "commercialConsent"] as const : []));
+  return fields;
 }
 
 type PartyDirectoryPreferences = {
@@ -54,12 +57,29 @@ const sharedPartyColumnDefinitions = [
 ] as const satisfies readonly TableColumnDefinition<PartyDirectoryColumnKey>[];
 
 export function partyDirectoryColumnDefinitions(
-  kind: PartyDirectoryKind
+  kind: PartyDirectoryKind, extended = false
 ): readonly TableColumnDefinition<PartyDirectoryColumnKey>[] {
   return [
     ...sharedPartyColumnDefinitions,
     { key: kind === "members" ? "balance" : "location", defaultWidth: kind === "members" ? 150 : 260 },
-    { key: "status", defaultWidth: 88 }
+    ...(extended ? [
+      ...(kind === "suppliers" ? [{ key: "tradeName", defaultWidth: 180, defaultVisible: false }] : [
+        { key: "debt", defaultWidth: 135 }, { key: "creditEnabled", defaultWidth: 155 },
+        { key: "creditLimit", defaultWidth: 135, defaultVisible: false },
+        { key: "creditBlocked", defaultWidth: 135, defaultVisible: false },
+        { key: "paymentTermDays", defaultWidth: 115, defaultVisible: false },
+        { key: "discount", defaultWidth: 110, defaultVisible: false },
+        ...(kind === "customers" ? [{ key: "commercialConsent", defaultWidth: 210 }, { key: "isMember", defaultWidth: 100 }] : [
+          { key: "category", defaultWidth: 150 }, { key: "points", defaultWidth: 100 },
+          { key: "memberSince", defaultWidth: 125, defaultVisible: false }
+        ])
+      ]),
+      { key: "address", defaultWidth: 260, defaultVisible: kind !== "members" },
+      { key: "postalCode", defaultWidth: 110, defaultVisible: kind === "customers" },
+      { key: "country", defaultWidth: 85, defaultVisible: false },
+      { key: "notes", defaultWidth: 230, defaultVisible: false }
+    ] as TableColumnDefinition<PartyDirectoryColumnKey>[] : []),
+    { key: "status", defaultWidth: extended ? 110 : 88 }
   ];
 }
 
@@ -86,7 +106,7 @@ export type CustomerView = {
   balance?: number | string | null; birthday?: string | null; gender?: string | null; commercialConsent?: boolean;
   preferredCommercialChannelId?: string | null; active: boolean; fiscalDataComplete?: boolean;
   creditEnabled?: boolean; creditLimit?: number | string | null; paymentTermDays?: number | null;
-  creditBlocked?: boolean; blockOnOverdue?: boolean;
+  creditBlocked?: boolean; blockOnOverdue?: boolean; outstandingDebt?: number | string | null;
 };
 
 export type SupplierView = {
@@ -96,7 +116,7 @@ export type SupplierView = {
   notes?: string | null; active: boolean;
 };
 
-export type MemberDirectoryView = {
+export type MemberDirectoryView = Partial<Pick<CustomerView, "address" | "notes" | "outstandingDebt" | "creditEnabled" | "creditLimit" | "creditBlocked" | "paymentTermDays" | "discount">> & {
   id: string; customerId: string; memberId: string; numMember?: string | null; memberSince: string;
   balance: number | string; points: number; categoryId?: string | null; categoryName?: string | null;
   active: boolean; customerActive: boolean; clientId: string; fiscalName: string; documentType: string;
@@ -219,16 +239,20 @@ export function filterPartyDirectoryEntries(
   query: string,
   statusFilter: PartyStatusFilter,
   locale: LocaleCode,
-  fieldFilters: PartyDirectoryFieldFilters = {}
+  fieldFilters: PartyDirectoryFieldFilters = {},
+  extended = false
 ): PartyDirectoryEntry[] {
   const normalized = normalizedText(query.trim(), locale);
   return entries.filter((entry) => {
     const matchesQuery = !normalized || partyDirectorySearchValues(entry, kind)
       .some((value) => normalizedText(value, locale).includes(normalized));
     const matchesStatus = statusFilter === "all" || entry.active === (statusFilter === "active");
-    const matchesFields = partyDirectoryFilterFields(kind).every((field) => {
+    const matchesFields = partyDirectoryFilterFields(kind, extended).every((field) => {
       const criterion = normalizedText(fieldFilters[field]?.trim(), locale);
       if (!criterion) return true;
+      const customer = entry as CustomerView;
+      if (field === "debt") return customer.outstandingDebt != null && (Number(customer.outstandingDebt) > 0) === (criterion === "with");
+      if (field === "creditEnabled" || field === "creditBlocked" || field === "isMember" || field === "commercialConsent") return customer[field] != null && customer[field] === (criterion === "true");
       let values: Array<string | null | undefined>;
       if (field === "category") values = [(entry as MemberDirectoryView).categoryName];
       else if (field === "name" && kind === "suppliers") {
@@ -250,11 +274,11 @@ function readPartyDirectoryPreferences(app: AppKind, username: string, kind: Par
   if (typeof localStorage === "undefined") return fallback;
   try {
     const saved = JSON.parse(localStorage.getItem(partyDirectoryPreferenceStorageKey(app, username, kind)) ?? "null") as Partial<PartyDirectoryPreferences> | null;
-    const validColumns = new Set(partyDirectoryColumnDefinitions(kind).map((column) => column.key));
+    const validColumns = new Set(partyDirectoryColumnDefinitions(kind, app !== "pda").map((column) => column.key));
     return {
       query: typeof saved?.query === "string" ? saved.query : "",
       statusFilter: saved?.statusFilter === "active" || saved?.statusFilter === "inactive" ? saved.statusFilter : "all",
-      fieldFilters: app !== "pda" ? Object.fromEntries(partyDirectoryFilterFields(kind).flatMap(field => {
+      fieldFilters: app !== "pda" ? Object.fromEntries(partyDirectoryFilterFields(kind, true).flatMap(field => {
         const value = saved?.fieldFilters?.[field];
         return typeof value === "string" ? [[field, value]] : [];
       })) : {},
@@ -271,6 +295,15 @@ function partyDirectorySortValue(entry: PartyDirectoryEntry, kind: PartyDirector
   const customer = entry as CustomerView;
   const supplier = entry as SupplierView;
   const member = entry as MemberDirectoryView;
+  if (column === "debt") return Number(customer.outstandingDebt ?? 0);
+  if (column === "category") return member.categoryName ?? "";
+  if (column === "points") return member.points ?? 0;
+  if (column === "memberSince") return member.memberSince ?? "";
+  if (column === "tradeName") return supplier.tradeName ?? "";
+  if (column === "address" || column === "postalCode" || column === "country") return customer.address?.[column] ?? "";
+  if (column === "notes") return customer.notes ?? "";
+  if (column === "creditEnabled" || column === "creditBlocked" || column === "isMember" || column === "commercialConsent") return customer[column] ? 1 : 0;
+  if (column === "creditLimit" || column === "discount" || column === "paymentTermDays") return Number(customer[column] ?? 0);
   if (column === "code") return kind === "suppliers" ? supplier.supplierId : kind === "members" ? member.numMember || member.memberId : customer.clientId;
   if (column === "name") return kind === "suppliers" ? supplier.legalName : kind === "members" ? member.fiscalName : customer.fiscalName;
   if (column === "document") return entry.documentNumber;
@@ -307,7 +340,8 @@ export function partyManagementPagePath(
   query: string,
   statusFilter: PartyStatusFilter,
   cursor: string | null = null,
-  sort: PartyDirectorySort = { column: "name", direction: "asc" }
+  sort: PartyDirectorySort = { column: "name", direction: "asc" },
+  fieldFilters: PartyDirectoryFieldFilters = {}
 ): string {
   const parameters = new URLSearchParams({ size: "50" });
   if (cursor) parameters.set("cursor", cursor);
@@ -315,6 +349,7 @@ export function partyManagementPagePath(
   if (statusFilter !== "all") parameters.set("active", String(statusFilter === "active"));
   parameters.set("sort", sort.column);
   parameters.set("direction", sort.direction);
+  for (const [key, value] of Object.entries(fieldFilters)) if (value?.trim()) parameters.set(`field.${key}`, value.trim());
   return `/${entityPath}/management/page?${parameters.toString()}`;
 }
 
@@ -343,11 +378,14 @@ export function PartyDirectoryPanel({
   const [memberCandidateQuery, setMemberCandidateQuery] = useState("");
   const [memberCandidateId, setMemberCandidateId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const loadRequestRef = useRef(0);
   const memberSearchRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [status, setStatus] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [memberTab, setMemberTab] = useState<"customer" | "loyalty">("customer");
+  const memberTabId = useId();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<CustomerView | null>(null);
@@ -367,19 +405,26 @@ export function PartyDirectoryPanel({
   const isSupplier = kind === "suppliers";
   const isMember = kind === "members";
   const managementMode = allowSafeRetirement && !isMember;
-  const classicWindow = app === "gestion" && managementMode;
+  const classicWindow = app !== "pda";
   const [confirmation, setConfirmation] = useState<"discard" | "active" | null>(null);
-  // Paged management endpoints only support the server-side query and status.
-  const supportsFieldFilters = app !== "pda" && !managementMode;
+  const supportsFieldFilters = app !== "pda";
+  const directoryFilterFields = partyDirectoryFilterFields(kind, app !== "pda");
   const title = t(`party.${kind}.title`);
   const canWrite = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
     || session.permissions.includes(isSupplier ? "SUPPLIERS_WRITE" : "CUSTOMERS_WRITE")
     || (isSupplier && session.permissions.includes("GESTION_ALMACEN"));
-  const entries: PartyDirectoryEntry[] = isSupplier ? suppliers : isMember ? members : customers;
+  const enrichedMembers = useMemo(() => {
+    const byId = new Map(customers.map(customer => [customer.id, customer]));
+    return members.map(member => {
+      const customer = byId.get(member.customerId);
+      return { ...customer, ...member, id: member.id };
+    });
+  }, [customers, members]);
+  const entries: PartyDirectoryEntry[] = isSupplier ? suppliers : isMember && app !== "pda" ? enrichedMembers : isMember ? members : customers;
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
   const memberCandidate = customers.find((customer) => customer.id === memberCandidateId) ?? null;
-  const columnDefinitions = useMemo(() => partyDirectoryColumnDefinitions(kind), [kind]);
+  const columnDefinitions = useMemo(() => partyDirectoryColumnDefinitions(kind, app !== "pda"), [kind, app]);
   const tableLayout = useTableLayoutPreference({
     app,
     username: session.username,
@@ -387,8 +432,36 @@ export function PartyDirectoryPanel({
     tableKey: `party.${kind}`,
     definitions: columnDefinitions
   });
+  const migratedLayouts = useRef(new Set<string>());
+  useEffect(() => {
+    if (app === "pda" || isMember || !tableLayout.ready) return;
+    const migrations: Array<{ key: string; columns: PartyDirectoryColumnKey[] }> = [
+      { key: "contact-consent.v1", columns: isSupplier
+        ? ["address"] : ["address", "postalCode", "commercialConsent", "creditEnabled"] },
+      ...(!isSupplier ? [{ key: "member.v1", columns: ["isMember"] as PartyDirectoryColumnKey[] }] : [])
+    ];
+    const pendingMigrations = migrations.filter(migration => {
+      const key = `tpv.party.columns.${app === "venta" ? "venta." : ""}${migration.key}.${session.username}.${kind}`;
+      if (migratedLayouts.current.has(key)) return false;
+      migratedLayouts.current.add(key);
+      try { return !localStorage.getItem(key); }
+      catch { return true; } // Apply once in this session when storage is unavailable.
+    });
+    if (!pendingMigrations.length) return;
+    // Expose only newly requested fields, retaining previous choices, widths and order.
+    const requestedColumns = new Set(pendingMigrations.flatMap(migration => migration.columns));
+    const nextLayout = tableLayout.layout.map(column => requestedColumns.has(column.key)
+      ? { ...column, visible: true } : column);
+    if (nextLayout.some((column, index) => column.visible !== tableLayout.layout[index].visible)) {
+      tableLayout.replaceLayout(nextLayout);
+    }
+    for (const migration of pendingMigrations) {
+      try { localStorage.setItem(`tpv.party.columns.${app === "venta" ? "venta." : ""}${migration.key}.${session.username}.${kind}`, "1"); }
+      catch { /* Optional local marker. */ }
+    }
+  }, [app, isMember, isSupplier, kind, session.username, tableLayout.ready, tableLayout.layout, tableLayout.replaceLayout]);
   const visibleColumns = visibleTableColumns(tableLayout.layout);
-  const gridStyle = { gridTemplateColumns: partyDirectoryGridTemplate(tableLayout.layout) };
+  const gridStyle = { gridTemplateColumns: partyDirectoryGridTemplate(tableLayout.layout), ...(app !== "pda" ? { minWidth: visibleColumns.reduce((width, column) => width + clampTableColumnWidth(column.width), 0) } : {}) };
 
   function columnLabel(column: PartyDirectoryColumnKey): string {
     if (column === "code") return t("party.column.code");
@@ -398,7 +471,8 @@ export function PartyDirectoryPanel({
     if (column === "email") return t("party.column.email");
     if (column === "balance") return t("party.column.balance");
     if (column === "location") return t("party.column.location");
-    return t("party.column.status");
+    if (column === "status") return t("party.column.status");
+    return t(`party.gestion.column.${column}`);
   }
 
   function renderCell(column: PartyDirectoryColumnKey, entry: PartyDirectoryEntry) {
@@ -435,11 +509,19 @@ export function PartyDirectoryPanel({
       const location = [locatedEntry.address?.city, locatedEntry.address?.province].filter(Boolean).join(", ") || "-";
       return <span className={cellClassName} data-column-key={column} key={column} title={location}>{location}</span>;
     }
-    if (classicWindow && isSupplier) {
+    if (column !== "status") {
+      const value = partyDirectorySortValue(entry, kind, column);
+      let text = String(value || "—");
+      if (column === "debt" || column === "creditLimit") text = column === "creditLimit" && customer.creditLimit == null ? t("party.credit.unlimited") : customer[column === "debt" ? "outstandingDebt" : "creditLimit"] == null ? "—" : Number(value).toLocaleString(locale, { style: "currency", currency: "EUR" });
+      if (["creditEnabled", "creditBlocked", "isMember", "commercialConsent"].includes(column)) text = customer[column as "creditEnabled"] == null ? "—" : t(value ? "common.yes" : "common.no");
+      if (["points", "discount", "paymentTermDays"].includes(column)) text = Number(value).toLocaleString(locale) + (column === "discount" ? " %" : "");
+      if (column === "memberSince" && value) text = new Date(`${value}T12:00:00`).toLocaleDateString(locale);
+      return <span data-column-key={column} key={column} className={`${cellClassName}${column === "debt" && Number(value) > 0 ? " has-debt" : ""}`} title={text}>{text}</span>;
+    }
+    if (app !== "pda") {
       return <span data-column-key={column} key={column} className={cellClassName}>
-        <span className={`supplier-status ${entry.active ? "supplier-status--active" : "supplier-status--inactive"}`}>
-          {t(entry.active ? "party.active" : "party.inactive")}
-        </span>
+        <span className={`party-desktop-status ${entry.active ? "is-active" : "is-inactive"}`}>{t(entry.active ? "party.active" : "party.inactive")}</span>
+        {isMember && !member.customerActive && <small>{t("party.members.customerInactive")}</small>}
       </span>;
     }
     return <span data-column-key={column} key={column} className={`${cellClassName} ${entry.active ? "party-status active" : "party-status"}`}>
@@ -449,16 +531,18 @@ export function PartyDirectoryPanel({
   }
 
   function managementPagePath(cursor: string | null = null) {
-    return partyManagementPagePath(isSupplier ? "suppliers" : "customers", query, statusFilter, cursor, sort);
+    return partyManagementPagePath(isSupplier ? "suppliers" : "customers", query, statusFilter, cursor, sort, fieldFilters);
   }
 
   async function load(clearStatus = true, append = false, propagateError = false) {
+    const requestId = ++loadRequestRef.current;
     if (append) setLoadingMore(true);
     else setLoading(true);
     setLoadError(false); if (clearStatus) setStatus("");
     try {
       if (managementMode && isSupplier) {
         const page = await apiRequest<PartyManagementPage<SupplierView>>(managementPagePath(append ? nextCursor : null), { token: session.accessToken });
+        if (requestId !== loadRequestRef.current) return;
         setSuppliers((current) => append ? [...current, ...page.items] : page.items);
         setNextCursor(page.nextCursor ?? null);
         setHasMore(Boolean(page.hasMore));
@@ -468,48 +552,63 @@ export function PartyDirectoryPanel({
           apiRequest<PartyManagementPage<CustomerView>>(managementPagePath(append ? nextCursor : null), { token: session.accessToken }),
           apiRequest<CommercialChannelOption[]>("/commercial-contact-channels", { token: session.accessToken })
         ]);
+        if (requestId !== loadRequestRef.current) return;
         setCustomers((current) => append ? [...current, ...page.items] : page.items);
         setChannels(channelRows.filter((channel) => channel.active));
         setNextCursor(page.nextCursor ?? null);
         setHasMore(Boolean(page.hasMore));
       }
-      else if (isSupplier) setSuppliers(await apiRequest<SupplierView[]>(endpoint, { token: session.accessToken }));
+      else if (isSupplier) {
+        const rows = await apiRequest<SupplierView[]>(endpoint, { token: session.accessToken });
+        if (requestId !== loadRequestRef.current) return;
+        setSuppliers(rows);
+      }
       else if (isMember) {
-        const [memberRows, customerRows] = await Promise.all([
+        const [memberRows, customerRows, channelRows] = await Promise.all([
           apiRequest<MemberDirectoryView[]>(endpoint, { token: session.accessToken }),
-          apiRequest<CustomerView[]>("/customers", { token: session.accessToken })
+          apiRequest<CustomerView[]>("/customers", { token: session.accessToken }),
+          app !== "pda" ? apiRequest<CommercialChannelOption[]>("/commercial-contact-channels", { token: session.accessToken }) : Promise.resolve([])
         ]);
+        if (requestId !== loadRequestRef.current) return;
         setMembers(memberRows);
         setCustomers(customerRows);
+        setChannels(channelRows.filter(channel => channel.active));
       }
       else {
         const [customerRows, channelRows] = await Promise.all([
           apiRequest<CustomerView[]>(endpoint, { token: session.accessToken }),
           apiRequest<CommercialChannelOption[]>("/commercial-contact-channels", { token: session.accessToken })
         ]);
+        if (requestId !== loadRequestRef.current) return;
         setCustomers(customerRows); setChannels(channelRows.filter((channel) => channel.active));
       }
     } catch (error) {
+      if (requestId !== loadRequestRef.current) return;
       setLoadError(true);
       setStatus(error instanceof Error ? error.message : t("party.loadError"));
       if (propagateError) throw error;
     }
     finally {
-      if (append) setLoadingMore(false);
-      else setLoading(false);
+      if (requestId === loadRequestRef.current) {
+        setLoadingMore(false);
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     if (managementMode) return;
     void load();
+    return () => { loadRequestRef.current++; };
   }, [kind, managementMode, session.accessToken]);
 
   useEffect(() => {
     if (!managementMode) return;
+    setNextCursor(null);
+    setHasMore(false);
     const timeoutId = window.setTimeout(() => void load(), 250);
-    return () => window.clearTimeout(timeoutId);
-  }, [kind, managementMode, query, session.accessToken, sort.column, sort.direction, statusFilter]);
+    return () => { window.clearTimeout(timeoutId); loadRequestRef.current++; };
+  }, [kind, managementMode, query, session.accessToken, sort.column, sort.direction, statusFilter, fieldFilters]);
 
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
@@ -524,9 +623,10 @@ export function PartyDirectoryPanel({
   }, [app, kind, query, session.username, sort, statusFilter, supportsFieldFilters, fieldFilters]);
 
   const rows = useMemo(() => {
-    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale, supportsFieldFilters ? fieldFilters : {});
+    if (managementMode) return entries;
+    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale, supportsFieldFilters ? fieldFilters : {}, app !== "pda");
     return managementMode ? filtered : sortPartyDirectoryEntries(filtered, kind, sort, locale);
-  }, [customers, members, suppliers, query, statusFilter, kind, locale, managementMode, sort, supportsFieldFilters, fieldFilters]);
+  }, [customers, members, suppliers, enrichedMembers, app, query, statusFilter, kind, locale, managementMode, sort, supportsFieldFilters, fieldFilters]);
   const memberCandidates = useMemo(
     () => availableMemberCustomers(customers, memberCandidateQuery, locale),
     [customers, memberCandidateQuery, locale]
@@ -544,15 +644,17 @@ export function PartyDirectoryPanel({
   }
   function openEntry(entry: PartyDirectoryEntry) {
     setSelectedId(entry.id);
-    if (!isMember) {
-      const nextForm = partyFormFromView(entry as CustomerView | SupplierView, isSupplier);
+    setMemberTab("customer");
+    const editableEntry = isMember ? customers.find(customer => customer.id === (entry as MemberDirectoryView).customerId) : entry;
+    if (editableEntry && (!isMember || app !== "pda")) {
+      const nextForm = partyFormFromView(editableEntry as CustomerView | SupplierView, isSupplier);
       setForm(nextForm); setInitialForm(nextForm); setFormErrors([]); setDocumentError("");
     }
     setStatus(""); setDialogOpen(true);
   }
   const toolbarEntry = rows.find(entry => entry.id === selectedRowId) ?? null;
   function retireToolbarEntry() {
-    if (!toolbarEntry || !classicWindow || !session.permissions.includes("ADMIN")) return;
+    if (!toolbarEntry || !classicWindow || !allowSafeRetirement || isMember || !session.permissions.includes("ADMIN")) return;
     setSelectedId(toolbarEntry.id); setRetirementOpen(true);
   }
   useEffect(() => {
@@ -560,6 +662,7 @@ export function PartyDirectoryPanel({
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F8", "F9", "F7"].includes(event.key)) return;
       if (document.querySelector('[aria-modal="true"]') || dialogOpen || retirementOpen || historyCustomer) return;
+      if (event.key === "F9" && (!allowSafeRetirement || isMember || !session.permissions.includes("ADMIN"))) return;
       event.preventDefault();
       if (event.key === "F8" && canWrite) openNew();
       if (event.key === "F9") retireToolbarEntry();
@@ -571,7 +674,7 @@ export function PartyDirectoryPanel({
 
   function closeDialog(confirmed = false) {
     if (!saving && !centralBusy) {
-      if (!confirmed && !isMember && JSON.stringify(form) !== JSON.stringify(initialForm)) {
+      if (!confirmed && (!isMember || (app !== "pda" && selectedId)) && JSON.stringify(form) !== JSON.stringify(initialForm)) {
         if (classicWindow) { setConfirmation("discard"); return; }
         if (!window.confirm(t("party.confirm.discard"))) return;
       }
@@ -581,15 +684,18 @@ export function PartyDirectoryPanel({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (isMember || saving || centralBusy || !canWrite) return;
+    if ((isMember && (app === "pda" || !selectedMemberCustomer)) || saving || centralBusy || !canWrite) return;
     setDocumentError("");
     const nextErrors = validatePartyForm(form, isSupplier);
     if (nextErrors.length) { setFormErrors(nextErrors); setStatus(t("party.form.invalid")); return; }
     setSaving(true); setStatus(""); setFormErrors([]);
     try {
-      await apiRequest(selectedId ? `${endpoint}/${selectedId}` : endpoint, {
-        method: selectedId ? "PUT" : "POST", token: session.accessToken,
-        body: buildPartyRequest(form, isSupplier, !isSupplier && Boolean((selected as CustomerView | null)?.isMember))
+      const editId = isMember ? selectedMemberCustomer?.id : selectedId;
+      const editEndpoint = isMember ? "/customers" : endpoint;
+      const customer = isMember ? selectedMemberCustomer : selected as CustomerView | null;
+      await apiRequest(editId ? `${editEndpoint}/${editId}` : editEndpoint, {
+        method: editId ? "PUT" : "POST", token: session.accessToken,
+        body: buildPartyRequest(form, isSupplier, !isSupplier && Boolean(customer?.isMember))
       });
       setDialogOpen(false); await load(false); setStatus(t("party.saveSuccess"));
     } catch (error) {
@@ -653,34 +759,93 @@ export function PartyDirectoryPanel({
   }
 
   const selectedMember = isMember ? selected as MemberDirectoryView | null : null;
+  const selectedMemberCustomer = selectedMember ? customers.find(customer => customer.id === selectedMember.customerId) : undefined;
   const selectedCode = selected
     ? isSupplier ? (selected as SupplierView).supplierId
       : isMember ? selectedMember?.memberId
         : (selected as CustomerView).clientId
     : null;
   function fieldFilterLabel(field: keyof PartyDirectoryFieldFilters) {
-    return t(field === "category" ? "party.members.category" : `party.column.${field}`);
+    return field === "category" ? t("party.members.category") : columnLabel(field);
+  }
+  function filterOptions(field: keyof PartyDirectoryFieldFilters) {
+    if (["creditEnabled", "creditBlocked", "isMember", "commercialConsent"].includes(field)) return [
+      { value: "", label: t("party.filter.status.all") }, { value: "true", label: t("common.yes") }, { value: "false", label: t("common.no") }
+    ];
+    if (field === "debt") return [
+      { value: "", label: t("party.filter.status.all") }, { value: "with", label: t("party.gestion.debt.with") }, { value: "without", label: t("party.gestion.debt.without") }
+    ];
+    return null;
+  }
+  function filterValueLabel(field: keyof PartyDirectoryFieldFilters, value: string) {
+    return value ? filterOptions(field)?.find(option => option.value === value)?.label ?? value : "";
   }
   function clearDirectoryFilters() {
     setQuery(""); setStatusFilter("all"); setFieldFilters({});
   }
-  const activeFieldFilterCount = partyDirectoryFilterFields(kind).filter(field => fieldFilters[field]?.trim()).length;
+  const activeFieldFilterCount = directoryFilterFields.filter(field => fieldFilters[field]?.trim()).length;
   const filterChips: ErpFilterChip[] = [
     { key: "query", label: t("party.searchLabel"), value: query.trim(), onRemove: () => setQuery("") },
     { key: "status", label: t("party.column.status"), value: statusFilter === "all" ? "" : t(`party.filter.status.${statusFilter}`), onRemove: () => setStatusFilter("all") },
-    ...(supportsFieldFilters ? partyDirectoryFilterFields(kind).map(field => ({
-      key: field, label: fieldFilterLabel(field), value: fieldFilters[field]?.trim() ?? "",
+    ...(supportsFieldFilters ? directoryFilterFields.map(field => ({
+      key: field, label: fieldFilterLabel(field), value: filterValueLabel(field, fieldFilters[field]?.trim() ?? ""),
       onRemove: () => setFieldFilters(current => ({ ...current, [field]: "" }))
     })) : [])
   ].filter((chip) => chip.value !== "");
-  const memberDialogContent = selectedMember ? <>
+  function creditOverview(customer: CustomerView | MemberDirectoryView) {
+    return <section className="party-desktop-credit-overview" aria-label={t("party.gestion.section.account")}>
+      <h3>{t("party.gestion.section.account")}</h3>
+      <dl>
+        <div><dt>{t("party.gestion.column.debt")}</dt><dd className={Number(customer.outstandingDebt) > 0 ? "has-debt" : ""}>{customer.outstandingDebt == null ? "—" : Number(customer.outstandingDebt).toLocaleString(locale, { style: "currency", currency: "EUR" })}</dd></div>
+        <div><dt>{t("party.gestion.column.creditEnabled")}</dt><dd>{customer.creditEnabled == null ? "—" : t(customer.creditEnabled ? "common.yes" : "common.no")}</dd></div>
+        <div><dt>{t("party.gestion.column.creditLimit")}</dt><dd>{customer.creditLimit == null ? t("party.credit.unlimited") : Number(customer.creditLimit).toLocaleString(locale, { style: "currency", currency: "EUR" })}</dd></div>
+        <div><dt>{t("party.gestion.column.creditBlocked")}</dt><dd>{customer.creditBlocked == null ? "—" : t(customer.creditBlocked ? "common.yes" : "common.no")}</dd></div>
+      </dl>
+    </section>;
+  }
+  const partyEditForm = <form className="product-create-form party-create-form" onSubmit={submit}>
+          {app !== "pda" && !isSupplier && selected && creditOverview(isMember && selectedMemberCustomer ? selectedMemberCustomer : selected as CustomerView)}
+          <fieldset disabled={!canWrite || saving || centralBusy}>
+            <PartyFormFields
+              form={form}
+              errors={formErrors}
+              documentError={documentError}
+              identityAction={kind === "customers" && !selectedId && canWrite && <CentralCustomerReuse
+                documentType={form.documentType} documentNumber={form.documentNumber}
+                session={session} locale={locale} disabled={saving}
+                onBusyChange={setCentralBusy}
+                onAdopted={(customer) => {
+                  setDialogOpen(false); setSelectedRowId(customer.id);
+                  void load(false); setStatus(t("party.saveSuccess"));
+                }}
+              />}
+              channels={channels}
+              supplier={isSupplier}
+              autoFocusName
+              grouped={app !== "pda"}
+              locale={locale}
+              t={t}
+              onChange={update}
+            />
+          </fieldset>
+          {status && <p className="product-create-status" role="status">{status}</p>}
+          <footer className="filter-actions">{selected && !isMember && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(isMember ? (selected as MemberDirectoryView).customerId : selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && (!isMember || selected.active || selectedMember?.customerActive) && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" disabled={saving || centralBusy} onClick={() => closeDialog()}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+        </form>;
+  const memberLoyaltyContent = selectedMember ? <>
     <div className="party-member-directory-detail">
       <section className="party-member-customer-summary" aria-label={t("party.members.customerIdentity")}>
         <strong>{selectedMember.fiscalName}</strong>
         <span>{selectedMember.clientId} · {selectedMember.documentType} {selectedMember.documentNumber}</span>
-        <span>{selectedMember.phone || "-"} · {selectedMember.email || "-"}</span>
+        {app !== "pda" ? <dl className="party-member-profile">
+          <div><dt>{t("party.column.phone")}</dt><dd>{selectedMember.phone || "—"}</dd></div>
+          <div><dt>{t("party.column.email")}</dt><dd>{selectedMember.email || "—"}</dd></div>
+          <div><dt>{t("party.gestion.column.category")}</dt><dd>{selectedMember.categoryName || "—"}</dd></div>
+          <div><dt>{t("party.gestion.column.memberSince")}</dt><dd>{new Date(`${selectedMember.memberSince}T12:00:00`).toLocaleDateString(locale)}</dd></div>
+          <div><dt>{t("party.gestion.column.address")}</dt><dd>{[selectedMemberCustomer?.address?.address, selectedMemberCustomer?.address?.postalCode, selectedMemberCustomer?.address?.city].filter(Boolean).join(", ") || "—"}</dd></div>
+        </dl> : <span>{selectedMember.phone || "-"} · {selectedMember.email || "-"}</span>}
         {!selectedMember.customerActive && <span className="party-member-customer-warning">{t("party.members.customerInactiveHint")}</span>}
       </section>
+      {app !== "pda" && selectedMemberCustomer && creditOverview(selectedMemberCustomer)}
       <MemberLoyaltyPanel app={app} memberId={selectedMember.id} session={session} t={t} />
     </div>
     {status && <p className="product-create-status" role="status">{status}</p>}
@@ -688,7 +853,26 @@ export function PartyDirectoryPanel({
       {canWrite && (selectedMember.active || selectedMember.customerActive) && <button type="button" className={selectedMember.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selectedMember.active ? "party.action.deactivate" : "party.action.activate")}</button>}
       <button type="button" onClick={() => closeDialog()}>{t("common.cancel")}</button>
     </footer>
-  </> : <>
+  </> : null;
+  const memberDialogContent = selectedMember ? app !== "pda" && selectedMemberCustomer ? <>
+    <div className="party-member-tabs" role="tablist" aria-label={t("party.members.customerIdentity")}>
+      {(["customer", "loyalty"] as const).map(tab => <button key={tab} type="button" role="tab"
+        id={`${memberTabId}-${tab}-tab`} aria-controls={`${memberTabId}-${tab}-panel`}
+        aria-selected={memberTab === tab} tabIndex={memberTab === tab ? 0 : -1}
+        onClick={() => setMemberTab(tab)}
+        onKeyDown={event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? "customer" : event.key === "End" ? "loyalty" : tab === "customer" ? "loyalty" : "customer";
+          setMemberTab(next);
+          document.getElementById(`${memberTabId}-${next}-tab`)?.focus();
+        }}>{t(`party.gestion.tab.${tab}`)}</button>)}
+    </div>
+    <div className="party-member-tab-panel" role="tabpanel" id={`${memberTabId}-customer-panel`}
+      aria-labelledby={`${memberTabId}-customer-tab`} hidden={memberTab !== "customer"}>{partyEditForm}</div>
+    <div className="party-member-tab-panel" role="tabpanel" id={`${memberTabId}-loyalty-panel`}
+      aria-labelledby={`${memberTabId}-loyalty-tab`} hidden={memberTab !== "loyalty"}>{memberLoyaltyContent}</div>
+  </> : memberLoyaltyContent : <>
     <div className="party-member-customer-picker" style={app !== "pda" ? { alignContent: "start" } : undefined}>
       <input ref={memberSearchRef} autoFocus aria-label={t("party.members.customerSearch")} type="search" value={memberCandidateQuery} onChange={(event) => { setMemberCandidateQuery(event.target.value); setMemberCandidateId(null); }} placeholder={t("party.members.customerSearch")} />
       {app !== "pda" && <ErpFilterChips locale={locale} focusRef={memberSearchRef} chips={memberCandidateQuery.trim() ? [{
@@ -729,9 +913,9 @@ export function PartyDirectoryPanel({
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
       {classicWindow ? <div className="management-record-actions">
-        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}>{t("safeManagement.shortcut.modify")} {t(`party.${kind}.edit`)}</button>}
-        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}>{t("safeManagement.shortcut.add")} {t(`party.${kind}.new`)}</button>}
-        {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}>F7 {t(`party.${kind}.edit`)}</button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}>F8 {t(`party.${kind}.new`)}</button>}
+        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
     {headerExtra}
@@ -779,12 +963,12 @@ export function PartyDirectoryPanel({
             event.preventDefault(); event.stopPropagation(); setFieldFiltersOpen(false); filterButtonRef.current?.focus();
           }
         }}>
-        {partyDirectoryFilterFields(kind).map(field => <label key={field}>
+        {directoryFilterFields.map(field => <label key={field}>
           <span>{fieldFilterLabel(field)}</span>
-          <input type="text" value={fieldFilters[field] ?? ""} onChange={event => {
+          {filterOptions(field) ? <ErpSelect aria-label={fieldFilterLabel(field)} value={fieldFilters[field] ?? ""} options={filterOptions(field)!} onChange={value => setFieldFilters(current => ({ ...current, [field]: value }))} /> : <input type="text" maxLength={120} value={fieldFilters[field] ?? ""} onChange={event => {
             const value = event.target.value;
             setFieldFilters(current => ({ ...current, [field]: value }));
-          }} />
+          }} />}
         </label>)}
       </div>}
       {app === "pda" && (query || statusFilter !== "all") && <div className="party-directory-active-filters" aria-label={t("party.filter.active")}>
@@ -794,7 +978,7 @@ export function PartyDirectoryPanel({
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
         className="party-directory-active-filters" onClear={clearDirectoryFilters} />}
     </div>
-    <div className="party-directory-table" role="table" aria-label={title}>
+    <div className={`party-directory-table${app !== "pda" ? " party-desktop-table" : ""}`} role="table" aria-label={title}>
       <div className="party-directory-row header" role="row" style={gridStyle}>
         {visibleColumns.map((column) => (
           <TableLayoutHeaderCell
@@ -803,7 +987,7 @@ export function PartyDirectoryPanel({
             key={column.key}
             sortDirection={sort.column === column.key ? sort.direction : null}
             sortLabel={`${t("party.sortBy")} ${columnLabel(column.key)}`}
-            onSort={(columnKey) => setSort((current) => ({
+            onSort={managementMode && column.key === "notes" ? undefined : (columnKey) => setSort((current) => ({
               column: columnKey,
               direction: current.column === columnKey && current.direction === "asc" ? "desc" : "asc"
             }))}
@@ -811,6 +995,8 @@ export function PartyDirectoryPanel({
             onReorder={tableLayout.reorderColumns}
             onMove={tableLayout.moveColumn}
             onResize={tableLayout.resizeColumn}
+            onToggleVisibility={app !== "pda" ? tableLayout.toggleColumnVisibility : undefined}
+            columnVisibilityOptions={tableLayout.layout.map(candidate => ({ key: candidate.key, label: columnLabel(candidate.key), visible: candidate.visible, disabled: candidate.visible && visibleColumns.length <= 1 }))}
           >
             {columnLabel(column.key)}
           </TableLayoutHeaderCell>
@@ -822,13 +1008,14 @@ export function PartyDirectoryPanel({
         return <button type="button" className={`party-directory-row party-directory-selectable-row${selectedRowId === entry.id ? " selected" : ""}`} role="row" style={gridStyle} key={entry.id}
           ref={selectedRowId === entry.id ? selectedRowRef : undefined}
           onClick={(event) => {
-            if (classicWindow && kind === "suppliers") { setSelectedRowId(entry.id); if (event.detail === 0) openEntry(entry); return; }
+            if (classicWindow) setSelectedRowId(entry.id);
+            if (app === "gestion" && classicWindow && kind === "suppliers") { setSelectedRowId(entry.id); if (event.detail === 0) openEntry(entry); return; }
             if (kind !== "customers") { openEntry(entry); return; }
             setSelectedRowId(entry.id);
             // Keyboard activation (Enter/Space) has no pointer click count.
             if (event.detail === 0) setHistoryCustomer(entry as CustomerView);
           }}
-          onDoubleClick={() => { if (classicWindow && kind === "suppliers") openEntry(entry); if (kind === "customers") { setSelectedRowId(entry.id); setHistoryCustomer(entry as CustomerView); } }}>
+          onDoubleClick={() => { if (app === "gestion" && classicWindow && kind === "suppliers") openEntry(entry); if (kind === "customers") { setSelectedRowId(entry.id); setHistoryCustomer(entry as CustomerView); } }}>
           {visibleColumns.map((column) => renderCell(column.key, entry))}
         </button>;
       })}
@@ -849,36 +1036,9 @@ export function PartyDirectoryPanel({
       onEdit={() => { if (canWrite) openEntry(customers.find((customer) => customer.id === historyCustomer.id) ?? historyCustomer); }}
     />}
     {dialogOpen && <div className={`filter-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="party-form-title">
-      <section className={`filter-dialog product-create-dialog party-create-dialog${classicWindow ? " erp-classic-window" : ""}`} inert={confirmation !== null || undefined}>
-        <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={() => closeDialog()}>{t("common.close")}</button></header>
-        {isMember ? memberDialogContent : <form className="product-create-form party-create-form" onSubmit={submit}>
-          <fieldset disabled={!canWrite || saving || centralBusy}>
-            <PartyFormFields
-              form={form}
-              errors={formErrors}
-              documentError={documentError}
-              identityAction={kind === "customers" && !selectedId && canWrite && <CentralCustomerReuse
-                documentType={form.documentType} documentNumber={form.documentNumber}
-                session={session} locale={locale} disabled={saving}
-                onBusyChange={setCentralBusy}
-                onAdopted={(customer) => {
-                  setDialogOpen(false); setSelectedRowId(customer.id);
-                  void load(false); setStatus(t("party.saveSuccess"));
-                }}
-              />}
-              channels={channels}
-              supplier={isSupplier}
-              autoFocusName
-              t={t}
-              onChange={update}
-            />
-          </fieldset>
-          {status && <p className="product-create-status" role="status">{status}</p>}
-          {isMember && selected && (selected as CustomerView).memberUuid && (
-            <MemberLoyaltyPanel app={app} memberId={(selected as CustomerView).memberUuid!} session={session} t={t} />
-          )}
-          <footer className="filter-actions">{selected && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" disabled={saving || centralBusy} onClick={() => closeDialog()}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
-        </form>}
+      <section className={`filter-dialog party-create-dialog${app !== "pda" ? ` party-desktop-dialog party-desktop-dialog--${kind}` : " product-create-dialog"}${classicWindow ? " erp-classic-window" : ""}`} inert={confirmation !== null || undefined}>
+        <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected && app !== "pda" ? <>{selectedCode} <span className={`party-desktop-status ${selected.active ? "is-active" : "is-inactive"}`}>{t(selected.active ? "party.active" : "party.inactive")}</span></> : selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={() => closeDialog()}>{t("common.close")}</button></header>
+        {isMember ? memberDialogContent : partyEditForm}
       </section>
     </div>}
     {retirementOpen && selected && !isMember && <SafeRetirementDialog

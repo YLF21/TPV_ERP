@@ -34,7 +34,7 @@ describe("Party directory default sorting", () => {
     const view = render(<PartyDirectoryPanel {...props} />);
     await screen.findByText("Zoe");
     expect(namesInOrder()).toEqual(["Zoe", "Ana"]);
-    expect(screen.getByRole("columnheader", { name: /Código/ })).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByRole("columnheader", { name: "Código" })).toHaveAttribute("aria-sort", "ascending");
 
     fireEvent.click(screen.getByRole("button", { name: /Ordenar por Nombre/ }));
     expect(namesInOrder()).toEqual(["Ana", "Zoe"]);

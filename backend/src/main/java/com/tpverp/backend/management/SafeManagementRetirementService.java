@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SafeManagementRetirementService {
 
     private static final int MAX_PAGE_SIZE = 100;
-    private static final int MAX_CURSOR_LENGTH = 512;
+    private static final int MAX_CURSOR_LENGTH = 2048;
 
     private final EntityManager entityManager;
     private final JdbcTemplate jdbc;
@@ -62,6 +62,12 @@ public class SafeManagementRetirementService {
     @Transactional(readOnly = true)
     public ManagementPage<ManagementItem> page(EntityType type, int size, String cursor, String search,
             Boolean activeFilter, String sort, String direction) {
+        return page(type, size, cursor, search, activeFilter, sort, direction, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public ManagementPage<ManagementItem> page(EntityType type, int size, String cursor, String search,
+            Boolean activeFilter, String sort, String direction, Map<String, String> filters) {
         int requestedSize = validateSize(size);
         if (search != null && search.length() > 120) {
             throw new IllegalArgumentException("El texto de busqueda no puede superar 120 caracteres");
@@ -82,7 +88,7 @@ public class SafeManagementRetirementService {
                     + "null as discount, null as member_uuid, null as member_since, null as birthday, "
                     + "null as gender, false as commercial_consent, null as preferred_channel_id, "
                     + "false as credit_enabled, null as credit_limit, null as payment_term_days, "
-                    + "false as credit_blocked, false as block_on_overdue "
+                    + "false as credit_blocked, false as block_on_overdue, null as outstanding_debt "
                     + "from producto p where p.tienda_id = ?");
         } else if (type == EntityType.CUSTOMER) {
             sql.append("c.id, c.version, c.client_id as code, c.nombre_fiscal as name, "
@@ -96,7 +102,8 @@ public class SafeManagementRetirementService {
                     + "(select m.member_since from miembro m where m.cliente_id = c.id limit 1) as member_since, "
                     + "c.birthday, c.gender, c.commercial_consent, "
                     + "c.preferred_commercial_channel_id as preferred_channel_id, c.credit_enabled, "
-                    + "c.credit_limit, c.payment_term_days, c.credit_blocked, c.block_on_overdue "
+                    + "c.credit_limit, c.payment_term_days, c.credit_blocked, c.block_on_overdue, "
+                    + customerDebtExpression() + " as outstanding_debt "
                     + "from cliente c where c.empresa_id = ?");
         } else if (type == EntityType.SUPPLIER) {
             sql.append("s.id, s.version, s.supplier_id as code, s.razon_social as name, null as client_id, "
@@ -107,7 +114,7 @@ public class SafeManagementRetirementService {
                     + "null as discount, null as member_uuid, null as member_since, null as birthday, "
                     + "null as gender, false as commercial_consent, null as preferred_channel_id, "
                     + "false as credit_enabled, null as credit_limit, null as payment_term_days, "
-                    + "false as credit_blocked, false as block_on_overdue "
+                    + "false as credit_blocked, false as block_on_overdue, null as outstanding_debt "
                     + "from proveedor s where s.empresa_id = ?");
         } else {
             sql.append("r.id, r.version, r.commercial_id as code, r.nombre as name, null as client_id, "
@@ -118,7 +125,7 @@ public class SafeManagementRetirementService {
                     + ", null as discount, null as member_uuid, null as member_since, null as birthday, "
                     + "null as gender, false as commercial_consent, null as preferred_channel_id, "
                     + "false as credit_enabled, null as credit_limit, null as payment_term_days, "
-                    + "false as credit_blocked, false as block_on_overdue "
+                    + "false as credit_blocked, false as block_on_overdue, null as outstanding_debt "
                     + "from comercial r where r.empresa_id = ?");
         }
         List<Object> args = new ArrayList<>();
@@ -131,14 +138,16 @@ public class SafeManagementRetirementService {
             sql.append(" and activo = ?");
             args.add(activeFilter);
         }
+        appendPartyFilters(sql, args, type, filters);
         String idExpression = idExpression(type);
         String comparison = pageOrder.descending() ? " < " : " > ";
         if (anchor != null) {
             sql.append(" and (").append(pageOrder.expression()).append(comparison).append("? ")
                     .append("or (").append(pageOrder.expression()).append(" = ? and ")
                     .append(idExpression).append(comparison).append("?))");
-            args.add(anchor.value());
-            args.add(anchor.value());
+            Object anchorValue = pageOrder.numeric() ? new java.math.BigDecimal(anchor.value()) : anchor.value();
+            args.add(anchorValue);
+            args.add(anchorValue);
             args.add(anchor.id());
         }
         String orderDirection = pageOrder.descending() ? " desc" : " asc";
@@ -161,7 +170,7 @@ public class SafeManagementRetirementService {
                     rs.getBoolean("commercial_consent"), uuid(rs.getString("preferred_channel_id")),
                     rs.getBoolean("credit_enabled"), rs.getBigDecimal("credit_limit"),
                     (Integer) rs.getObject("payment_term_days"), rs.getBoolean("credit_blocked"),
-                    rs.getBoolean("block_on_overdue"),
+                    rs.getBoolean("block_on_overdue"), rs.getBigDecimal("outstanding_debt"),
                     List.of(), List.of());
         });
         if (type == EntityType.SALES_REPRESENTATIVE && !rows.isEmpty()) {
@@ -192,7 +201,7 @@ public class SafeManagementRetirementService {
                 representative.getPhone(), representative.getEmail(), null,
                 representative.getOtherContact(), representative.isActive(), false, null,
                 null, null, null, null, null, false, null,
-                false, null, null, false, false,
+                false, null, null, false, false, null,
                 List.of(), suppliers);
     }
 
@@ -502,6 +511,61 @@ public class SafeManagementRetirementService {
         }
     }
 
+    // Matches CustomerRepository.outstandingDebt: invoiced delivery notes must not count twice.
+    private static String customerDebtExpression() {
+        return """
+                (select coalesce(sum(d.total - coalesce((select sum(dp.importe)
+                    from documento_pago dp where dp.documento_id = d.id), 0)), 0)
+                 from documento d where d.cliente_id = c.id
+                   and (d.tipo in ('ALBARAN_VENTA','FACTURA_VENTA')
+                        or (d.tipo = 'TICKET' and d.cuenta_cobrar = true))
+                   and d.estado in ('PENDIENTE','PARCIAL')
+                   and not exists (select 1 from documento_relacion rel
+                       join documento invoice on invoice.id = rel.documento_id
+                       where rel.origen_id = d.id and rel.tipo = 'FACTURA_DE'
+                         and invoice.estado not in ('BORRADOR','ANULADO')))
+                """;
+    }
+
+    private static void appendPartyFilters(StringBuilder sql, List<Object> args,
+            EntityType type, Map<String, String> filters) {
+        if (type != EntityType.CUSTOMER && type != EntityType.SUPPLIER) return;
+        String alias = type == EntityType.CUSTOMER ? "c" : "s";
+        Map<String, String> fields = Map.ofEntries(
+                Map.entry("code", alias + (type == EntityType.CUSTOMER ? ".client_id" : ".supplier_id")),
+                Map.entry("name", type == EntityType.CUSTOMER ? "c.nombre_fiscal" : "concat_ws(' ', s.razon_social, s.nombre_comercial)"),
+                Map.entry("document", alias + ".numero_documento"),
+                Map.entry("phone", alias + ".telefono"), Map.entry("email", alias + ".email"),
+                Map.entry("location", "concat_ws(' ', " + alias + ".poblacion, " + alias + ".provincia)"),
+                Map.entry("postalCode", alias + ".codigo_postal"), Map.entry("country", alias + ".pais"));
+        fields.forEach((key, expression) -> {
+            String value = filters.get("field." + key);
+            if (value == null || value.isBlank()) return;
+            if (value.length() > 120) throw new IllegalArgumentException("Filtro demasiado largo");
+            sql.append(" and lower(").append(expression).append(") like ?");
+            args.add(likePattern(value));
+        });
+        if (type != EntityType.CUSTOMER) return;
+        for (String key : List.of("creditEnabled", "creditBlocked", "isMember", "commercialConsent")) {
+            String value = filters.get("field." + key);
+            if (value == null || value.isBlank()) continue;
+            if (!value.equals("true") && !value.equals("false")) throw new IllegalArgumentException("Filtro no valido");
+            String expression = switch (key) {
+                case "creditEnabled" -> "c.credit_enabled";
+                case "creditBlocked" -> "c.credit_blocked";
+                case "commercialConsent" -> "c.commercial_consent";
+                default -> "exists(select 1 from miembro m where m.cliente_id = c.id and m.active = true)";
+            };
+            sql.append(" and (").append(expression).append(") = ?");
+            args.add(Boolean.valueOf(value));
+        }
+        String debt = filters.get("field.debt");
+        if (debt != null && !debt.isBlank()) {
+            if (!debt.equals("with") && !debt.equals("without")) throw new IllegalArgumentException("Filtro de deuda no valido");
+            sql.append(" and ").append(customerDebtExpression()).append(debt.equals("with") ? " > 0" : " <= 0");
+        }
+    }
+
     private static String idExpression(EntityType type) {
         return switch (type) {
             case PRODUCT -> "p.id";
@@ -564,6 +628,33 @@ public class SafeManagementRetirementService {
                 case SUPPLIER -> "lower(concat_ws(' ', s.poblacion, s.provincia))";
                 default -> throw new IllegalArgumentException("Orden por ubicacion no disponible");
             };
+            case DEBT, CREDITLIMIT, DISCOUNT, PAYMENTTERMDAYS, CREDITENABLED, CREDITBLOCKED, ISMEMBER, COMMERCIALCONSENT -> {
+                if (type != EntityType.CUSTOMER) throw new IllegalArgumentException("Orden de cliente no disponible");
+                yield switch (field) {
+                    case DEBT -> customerDebtExpression();
+                    case CREDITLIMIT -> "coalesce(c.credit_limit, -1)";
+                    case DISCOUNT -> "coalesce(c.descuento, 0)";
+                    case PAYMENTTERMDAYS -> "coalesce(c.payment_term_days, 0)";
+                    case CREDITENABLED -> "case when c.credit_enabled then '1' else '0' end";
+                    case CREDITBLOCKED -> "case when c.credit_blocked then '1' else '0' end";
+                    case COMMERCIALCONSENT -> "case when c.commercial_consent then '1' else '0' end";
+                    default -> "case when exists(select 1 from miembro m where m.cliente_id = c.id and m.active = true) then '1' else '0' end";
+                };
+            }
+            case TRADENAME -> {
+                if (type != EntityType.SUPPLIER) throw new IllegalArgumentException("Orden de proveedor no disponible");
+                yield "lower(coalesce(s.nombre_comercial, ''))";
+            }
+            case ADDRESS, POSTALCODE, COUNTRY -> {
+                if (type != EntityType.CUSTOMER && type != EntityType.SUPPLIER) throw new IllegalArgumentException("Orden de tercero no disponible");
+                String alias = type == EntityType.CUSTOMER ? "c" : "s";
+                String column = switch (field) {
+                    case ADDRESS -> "direccion";
+                    case POSTALCODE -> "codigo_postal";
+                    default -> "pais";
+                };
+                yield "lower(coalesce(" + alias + "." + column + ", ''))";
+            }
             case STATUS -> switch (type) {
                 case PRODUCT -> "case when p.activo then '1' else '0' end";
                 case CUSTOMER -> "case when c.activo then '1' else '0' end";
@@ -641,10 +732,17 @@ public class SafeManagementRetirementService {
         PHONE,
         EMAIL,
         LOCATION,
+        DEBT, CREDITLIMIT, DISCOUNT, PAYMENTTERMDAYS, CREDITENABLED, CREDITBLOCKED, ISMEMBER, COMMERCIALCONSENT,
+        TRADENAME, ADDRESS, POSTALCODE, COUNTRY,
         STATUS
     }
 
     private record PageOrder(SortField field, String expression, boolean descending) {
+
+        private boolean numeric() {
+            return field == SortField.DEBT || field == SortField.CREDITLIMIT
+                    || field == SortField.DISCOUNT || field == SortField.PAYMENTTERMDAYS;
+        }
 
         private String cursorKey() {
             return field.name() + ":" + (descending ? "DESC" : "ASC");
@@ -658,6 +756,18 @@ public class SafeManagementRetirementService {
                 case PHONE -> item.phone();
                 case EMAIL -> item.email();
                 case LOCATION -> location(item.address());
+                case DEBT -> item.outstandingDebt() == null ? "0" : item.outstandingDebt().toPlainString();
+                case CREDITLIMIT -> item.creditLimit() == null ? "-1" : item.creditLimit().toPlainString();
+                case DISCOUNT -> item.discount() == null ? "0" : item.discount().toPlainString();
+                case PAYMENTTERMDAYS -> item.paymentTermDays() == null ? "0" : item.paymentTermDays().toString();
+                case CREDITENABLED -> item.creditEnabled() ? "1" : "0";
+                case CREDITBLOCKED -> item.creditBlocked() ? "1" : "0";
+                case ISMEMBER -> item.isMember() ? "1" : "0";
+                case COMMERCIALCONSENT -> item.commercialConsent() ? "1" : "0";
+                case TRADENAME -> item.tradeName();
+                case ADDRESS -> item.address() instanceof FiscalAddress address ? address.getAddress() : "";
+                case POSTALCODE -> item.address() instanceof FiscalAddress address ? address.getPostalCode() : "";
+                case COUNTRY -> item.address() instanceof FiscalAddress address ? address.getCountry() : "";
                 case STATUS -> item.active() ? "1" : "0";
             };
             return value == null ? "" : value.toLowerCase(Locale.ROOT);

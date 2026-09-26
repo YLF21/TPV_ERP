@@ -1,0 +1,14 @@
+.party-address-picker { display: grid; grid-template-columns: minmax(0, 1fr) 28px; width: 100%; min-width: 0; }
+.party-address-picker > input { min-width: 0; width: 100%; border: 1px solid #9aabba; border-right: 0; border-radius: 0; background: #fff; color: #17233b; box-sizing: border-box; }
+.party-address-picker > input[aria-invalid="true"] { border-color: #b42318; }
+.party-address-picker > input:focus-visible { outline: 2px solid #1d6faf; outline-offset: 1px; }
+.party-address-picker__trigger { display: grid; place-items: center; min-width: 28px; padding: 0; border: 1px solid #07254f; border-radius: 0; background: #07254f; color: #fff; cursor: pointer; }
+.party-address-picker__trigger > span { width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.party-address-picker__trigger:hover, .party-address-picker__trigger:focus-visible { background: #2a72b6; }
+.party-address-picker__list { position: fixed; z-index: 10000; overflow-y: auto; border: 1px solid #b8c8dc; border-radius: 0; background: #fff; padding: 4px; box-shadow: 0 12px 25px rgba(31,55,86,.2); box-sizing: border-box; }
+.party-address-picker__list > button { display: block; width: 100%; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 0; background: #fff; color: #17233b; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.party-address-picker__list > button:hover, .party-address-picker__list > button[data-active="true"] { background: #eaf2fb; color: #173f73; }
+.party-address-picker__list > button[aria-selected="true"] { font-weight: 750; }
+.party-address-picker__empty { padding: 6px 8px; color: #5a6673; font-size: 12px; }
+.party-form-sections .party-address-postal-row { grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); }
+.party-form-sections .party-form-section--contact > label > textarea { width: 100%; min-height: 58px; padding: 7px 9px; border: 1px solid #9aabba; border-radius: 0; background: #fff; color: #17233b; font: inherit; font-size: 12px; box-sizing: border-box; resize: vertical; }
