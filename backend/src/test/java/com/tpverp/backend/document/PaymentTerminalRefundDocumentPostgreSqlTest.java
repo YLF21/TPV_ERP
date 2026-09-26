@@ -96,6 +96,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
     @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private com.tpverp.backend.supervision.PrintFailureReporter printFailures;
     @MockitoBean private DocumentFiscalQrService fiscalQr;
     @MockitoBean private FiscalQrImageService fiscalQrImages;
     @MockitoBean private com.tpverp.backend.audit.AuditService audit;
