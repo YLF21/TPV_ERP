@@ -1,14 +1,19 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRemote } from "../../app/RefreshContext";
 import { useWorkspaceLabels } from "../../i18n/workspace";
-import { request } from "../../lib/api";
+import { api, request } from "../../lib/api";
 import type { Credentials, LicenseSummary } from "../../lib/types";
 import { workspaceApi, type FailureRow } from "../../lib/workspace-api";
 import { formatDate, uniqueCompanies } from "../../shared/lib";
 import type { Notice } from "../../shared/types";
-import { EmptyState, Input, SectionHeader, StatusPill } from "../../shared/ui";
+import { Input, SectionHeader, StatusPill } from "../../shared/ui";
+import { SaasDataTable, type DataColumn } from "../../shared/table/SaasDataTable";
+import "./failures.css";
 import { LoadState } from "../../shared/workspace-ui";
 import { failureDateRange, validInstallationId } from "./failure-filters.mjs";
+import { repairSession } from "./repair-session";
+import { FailureRepairsPanel } from "./FailureRepairsPanel";
+import { FailureOverview, FailureTechnicalDetails } from "./FailureDetailContent";
 import { FAILURE_SOURCES, FAILURE_STATUSES, useFailureLabels } from "./failure-labels";
 
 const initialFilters = { companyId: "", storeId: "", installationId: "", source: "", status: "", from: "", to: "", q: "", activeStoresOnly: true };
@@ -30,22 +35,45 @@ export function FailuresView({ credentials, licenses, onNotice, onNavigate, perm
   const [cursors, setCursors] = useState([""]);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const companies = uniqueCompanies(licenses);
+  const detailRef = useRef<HTMLElement>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
+  const detailButtons = useRef(new Map<string, HTMLButtonElement>());
+  // A datalist displays code + name; the server searches individual fields.
+  const storeQuery = storeSearch.split(" · ", 1)[0].trim();
+  const companyState = useRemote(() => api.companies(credentials), [credentials.accessToken]);
+  const companies = companyState.data ?? uniqueCompanies(licenses);
   const state = useRemote(() => workspaceApi.failures(credentials, { ...filters, cursor: cursors[page], size: 50 }),
     [credentials.accessToken, filters, cursors[page]]);
-  const stores = useRemote(() => workspaceApi.stores(credentials, { companyId: draft.companyId, q: storeSearch,
+  const stores = useRemote(() => workspaceApi.stores(credentials, { companyId: draft.companyId, q: storeQuery,
     ...(draft.activeStoresOnly ? { active: true } : {}), page: 0, size: 100 }),
-    [credentials.accessToken, draft.companyId, storeSearch, draft.activeStoresOnly]);
+    [credentials.accessToken, draft.companyId, storeQuery, draft.activeStoresOnly]);
   const detail = useRemote(() => selectedId
     ? request<FailureRow>(credentials, `/api/v1/admin/supervision/failures/${encodeURIComponent(selectedId)}`)
     : Promise.resolve(null), [credentials.accessToken, selectedId]);
 
+  // Resolve pasted labels after their asynchronous lookup has arrived too.
+  const selectedStoreId = draft.storeId || stores.data?.items.find(store => storeLabel(store) === storeSearch)?.id || "";
+  useEffect(() => {
+    if (!selectedId) return;
+    detailRef.current?.focus({ preventScroll: true });
+    detailRef.current?.scrollIntoView({ block: "start" });
+  }, [selectedId]);
+  function openDetail(id: string) {
+    detailOpener.current = document.activeElement as HTMLElement;
+    setSelectedId(id);
+  }
+  function closeDetail() {
+    if (detailOpener.current?.isConnected) detailOpener.current.focus();
+    else if (selectedId) detailButtons.current.get(selectedId)?.focus();
+    setSelectedId(null);
+  }
+
   function apply(event: FormEvent) {
     event.preventDefault();
     if (!validInstallationId(draft.installationId.trim())) { onNotice({ type: "error", text: f("invalidInstallation") }); return; }
-    if (storeSearch.trim() && !draft.storeId) { onNotice({ type: "error", text: f("invalidStore") }); return; }
+    if (storeSearch.trim() && !selectedStoreId) { onNotice({ type: "error", text: f("invalidStore") }); return; }
     try {
-      setFilters({ ...draft, installationId: draft.installationId.trim(), q: draft.q.trim(), ...failureDateRange(draft.from, draft.to) });
+      setFilters({ ...draft, storeId: selectedStoreId, installationId: draft.installationId.trim(), q: draft.q.trim(), ...failureDateRange(draft.from, draft.to) });
       setCursors([""]); setPage(0); setSelectedId(null);
     } catch { onNotice({ type: "error", text: f("invalidDates") }); }
   }
@@ -58,59 +86,74 @@ export function FailuresView({ credentials, licenses, onNotice, onNavigate, perm
   }
   function storeLabel(store: { internalCode: string | null; code: string; name: string }) { return `${store.internalCode ?? store.code} · ${store.name}`; }
 
-  return <section className="content-section">
-    <SectionHeader title={f("title")} subtitle={f("scope")} />
-    <form onSubmit={apply} className="compact-form-grid">
+  const columns: DataColumn<FailureRow, string>[] = [
+    { key: "company", label: l("company"), defaultWidth: 210, render: row => <strong>{row.companyName ?? l("central")}</strong> },
+    { key: "store", label: l("store"), defaultWidth: 205, render: row => row.storeName ? <><strong>{row.internalCode}</strong><br />{row.storeName}{row.storeActive === false && <small> · {l("inactive")}</small>}</> : l("central") },
+    { key: "source", label: l("source"), defaultWidth: 245, render: row => <>{f(row.source)}<br /><small>{row.code}{row.module && <> · {f("module_" + row.module)}</>}</small></> },
+    { key: "severity", label: l("severity"), defaultWidth: 125, render: row => <span className={"failure-severity tone-" + row.severity.toLowerCase()}>{f(row.severity)}</span> },
+    { key: "status", label: l("status"), defaultWidth: 130, render: row => <StatusPill status={f(row.status)} tone={row.status === "RESOLVED" ? "ok" : row.status === "OPEN" ? "warning" : "muted"} /> },
+    { key: "lastSeen", label: l("lastSeen"), defaultWidth: 175, render: row => formatDate(row.lastSeenAt) },
+    { key: "occurrences", label: l("occurrences"), defaultWidth: 115, align: "right", render: row => row.occurrences },
+    { key: "detail", label: l("detail"), defaultWidth: 105, render: row => <button className="small-button" type="button" disabled={state.loading || Boolean(state.error)} ref={button => { if (button) detailButtons.current.set(row.id, button); else detailButtons.current.delete(row.id); }} aria-expanded={selectedId === row.id} aria-controls={selectedId === row.id ? "failure-detail" : undefined} onClick={() => openDetail(row.id)}>{l("detail")}</button> },
+    { key: "installation", label: f("installation"), defaultWidth: 210, defaultVisible: false, render: row => row.installationReference ?? row.installationId ?? "—" },
+    { key: "firstSeen", label: l("firstSeen"), defaultWidth: 175, defaultVisible: false, render: row => formatDate(row.firstSeenAt) },
+  ];
+
+  return <section className="content-section failures-workspace">
+    <div className="failures-heading">
+      <SectionHeader title={f("title")} subtitle={f("scope")} />
+    </div>
+    <form onSubmit={apply} className="failure-filters" aria-label={f("filters")}>
+      <div className="failure-filter-main">
       <Input label={f("search")} maxLength={200} value={draft.q} onChange={q => setDraft({ ...draft, q })} />
       <label>{l("company")}<select className="control-input" value={draft.companyId} onChange={event => {
         setDraft({ ...draft, companyId: event.target.value, storeId: "", installationId: "" }); setStoreSearch("");
       }}><option value="">{l("all")}</option>{companies.map(company => <option key={company.companyId} value={company.companyId}>{company.companyName}</option>)}</select></label>
+
       <label>{f("storeSearch")}<input className="control-input" list="failure-stores" value={storeSearch} maxLength={200} onChange={event => {
         const value = event.target.value;
         const store = stores.data?.items.find(item => storeLabel(item) === value);
         setStoreSearch(value); setDraft({ ...draft, storeId: store?.id ?? "" });
       }} /><datalist id="failure-stores">{stores.data?.items.map(store => <option key={store.id} value={storeLabel(store)} />)}</datalist></label>
-      {stores.error && <LoadState {...stores} />}
+      <label>{l("status")}<select className="control-input" value={draft.status} onChange={event => setDraft({ ...draft, status: event.target.value })}><option value="">{l("all")}</option>{FAILURE_STATUSES.map(status => <option key={status} value={status}>{f(status)}</option>)}</select></label>
+      </div>
+      <div className="failure-filter-extra">
       <Input label={f("installation")} value={draft.installationId} maxLength={36} onChange={installationId => setDraft({ ...draft, installationId })} />
       <label>{l("source")}<select className="control-input" value={draft.source} onChange={event => setDraft({ ...draft, source: event.target.value })}><option value="">{l("all")}</option>{FAILURE_SOURCES.map(source => <option key={source} value={source}>{f(source)}</option>)}</select></label>
-      <label>{l("status")}<select className="control-input" value={draft.status} onChange={event => setDraft({ ...draft, status: event.target.value })}><option value="">{l("all")}</option>{FAILURE_STATUSES.map(status => <option key={status} value={status}>{f(status)}</option>)}</select></label>
       <Input label={l("from")} type="date" value={draft.from} onChange={from => setDraft({ ...draft, from })} />
       <Input label={l("to")} type="date" value={draft.to} onChange={to => setDraft({ ...draft, to })} />
-      <label className="access-option"><input type="checkbox" checked={draft.activeStoresOnly} onChange={event => { setDraft({ ...draft, activeStoresOnly: event.target.checked, storeId: "" }); setStoreSearch(""); }} />{l("activeStores")}</label>
-      <div className="toolbar"><button type="submit">{f("apply")}</button><button type="button" onClick={clear}>{f("clear")}</button></div>
+      </div>
+      <div className="failure-filter-footer">
+      <label className="failure-active-toggle"><input type="checkbox" checked={draft.activeStoresOnly} onChange={event => { setDraft({ ...draft, activeStoresOnly: event.target.checked, storeId: "" }); setStoreSearch(""); }} />{l("activeStores")}</label>
+      <div className="failure-filter-actions"><button className="secondary-button" type="button" onClick={clear}>{f("clear")}</button><button className="primary-button" type="submit" disabled={state.loading}>{f("apply")}</button></div>
+      </div>
+      {companyState.error && <LoadState {...companyState} />}
+      {(stores.loading || stores.error) && <LoadState {...stores} />}
     </form>
-    <p className="field-hint">{f("dateScope")} {f("centralScope")}</p>
+    <div className="failure-filter-help"><p>{f("searchHint")}</p><p>{f("dateScope")} {f("centralScope")}</p></div>
     <LoadState {...state} />
     {state.data && <>
-      {state.data.items.length === 0 ? <EmptyState text={l("empty")} /> : <div className="table-wrap"><table>
-        <thead><tr>{[l("company"), l("store"), f("installation"), l("source"), l("severity"), l("status"), l("firstSeen"), l("lastSeen"), l("occurrences"), l("detail")].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
-        <tbody>{state.data.items.map(row => <tr key={row.id}>
-          <td>{row.companyName ?? l("central")}</td>
-          <td>{row.storeName ? <>{row.internalCode && <strong>{row.internalCode}<br /></strong>}{row.storeName}{row.storeActive === false && <><br />{l("inactive")}</>}</> : l("central")}</td>
-          <td>{row.installationReference ?? row.installationId ?? "—"}</td>
-          <td>{f(row.source)}<br /><small>{row.code}</small></td><td>{f(row.severity)}</td>
-          <td><StatusPill status={f(row.status)} tone={row.status === "RESOLVED" ? "ok" : row.status === "OPEN" ? "warning" : "muted"} /></td>
-          <td>{formatDate(row.firstSeenAt)}</td><td>{formatDate(row.lastSeenAt)}</td><td>{row.occurrences}</td>
-          <td><button type="button" onClick={() => setSelectedId(row.id)}>{l("detail")}</button></td>
-        </tr>)}</tbody>
-      </table></div>}
-      <nav className="pagination-controls"><button type="button" disabled={page === 0} onClick={() => { setPage(page - 1); setSelectedId(null); }}>{l("previous")}</button><span>{page + 1}</span><button type="button" disabled={!state.data.hasMore} onClick={next}>{l("next")}</button></nav>
+      <div className="failure-results-heading">
+        <h3>{f("results")}</h3><span aria-live="polite">{state.data.items.length} {f("onThisPage")}</span>
+      </div>
+      <div className="failure-table-region" aria-busy={state.loading}>
+        <SaasDataTable username={credentials.username} tableKey="failures" label={f("title")} columns={columns} rows={state.data.items}
+          sort={{ key: "", direction: "asc" }} onSort={() => undefined} onOpen={row => openDetail(row.id)} disabled={state.loading || Boolean(state.error)} />
+        {!state.loading && !state.error && state.data.items.length === 0 && <div className="empty-state failure-empty" role="status">
+          <strong>{f("emptyTitle")}</strong><p>{f("emptyHint")}</p>
+        </div>}
+      </div>
+      <nav className="pagination-controls failure-pagination" aria-label={f("pages")}><span>{f("page")} {page + 1}</span><div>
+        <button className="small-button" type="button" disabled={page === 0 || state.loading || Boolean(state.error)} onClick={() => { setPage(page - 1); setSelectedId(null); }}>{l("previous")}</button>
+        <button className="small-button" type="button" disabled={!state.data.hasMore || state.loading || Boolean(state.error)} onClick={next}>{l("next")}</button>
+      </div></nav>
     </>}
-    {selectedId && <section className="content-section" aria-label={l("detail")}>
-      <h3>{l("detail")}</h3><button type="button" onClick={() => setSelectedId(null)}>{f("close")}</button><LoadState {...detail} />
+    {selectedId && <section id="failure-detail" ref={detailRef} tabIndex={-1} className="content-section failure-detail" aria-label={l("detail")}>
+      <div className="failure-detail-heading"><h3>{l("detail")}</h3><button className="secondary-button" type="button" onClick={closeDetail}>{f("close")}</button></div><LoadState {...detail} />
       {detail.data && <>
-        <p>{f(`detail_${detail.data.source}`)}</p>
-        <dl>
-          <dt>{l("company")}</dt><dd>{detail.data.companyName ?? l("central")}</dd>
-          <dt>{l("store")}</dt><dd>{detail.data.storeName ? `${detail.data.internalCode ?? ""} · ${detail.data.storeName}` : l("central")}</dd>
-          <dt>{f("installation")}</dt><dd>{detail.data.installationId ?? "—"}</dd>
-          <dt>{f("reference")}</dt><dd>{detail.data.sourceId}</dd>
-          <dt>{f("code")}</dt><dd>{detail.data.code}</dd>
-          <dt>{l("status")}</dt><dd>{f(detail.data.status)}</dd>
-          <dt>{l("firstSeen")}</dt><dd>{formatDate(detail.data.firstSeenAt)}</dd>
-          <dt>{l("lastSeen")}</dt><dd>{formatDate(detail.data.lastSeenAt)}</dd>
-          <dt>{l("occurrences")}</dt><dd>{detail.data.occurrences}</dd>
-        </dl>
+        <FailureOverview failure={detail.data} />
+        <FailureRepairsPanel key={`${repairSession(credentials).id}:${detail.data.id}`} credentials={credentials} failureKey={detail.data.id} companyId={detail.data.companyId} permissions={permissions} onSupport={onNavigate ? () => onNavigate("support") : undefined} />
+        <FailureTechnicalDetails key={detail.data.id} failure={detail.data} onNotice={onNotice} />
         {onNavigate && <div className="toolbar">
           {detail.data.source === "SYNC_PROJECTION" && <button type="button" onClick={() => onNavigate("sync")}>{f("sync")}</button>}
           {["CENTRAL_SECURITY", "CENTRAL_INTEGRATION"].includes(detail.data.source) && permissions?.has("MANAGE_OPERATIONS") && <button type="button" onClick={() => onNavigate("outbox")}>{l("recovery")}</button>}

@@ -106,7 +106,7 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V69__pairing_code_revocation_and_store_uniqueness");
+                .isEqualTo("V72__support_interventions");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
                 "operational-incidents", "stores", "tenant-access", "supervision");

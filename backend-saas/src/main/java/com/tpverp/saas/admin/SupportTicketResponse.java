@@ -13,5 +13,10 @@ public record SupportTicketResponse(
         String priority,
         String createdBy,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        Long interventionVersion) {
+    public SupportTicketResponse(UUID id, UUID companyId, String companyName, String title, String description,
+            String status, String priority, String createdBy, Instant createdAt, Instant updatedAt) {
+        this(id, companyId, companyName, title, description, status, priority, createdBy, createdAt, updatedAt, null);
+    }
 }

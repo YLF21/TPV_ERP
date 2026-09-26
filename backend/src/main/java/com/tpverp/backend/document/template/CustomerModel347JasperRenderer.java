@@ -74,7 +74,7 @@ public class CustomerModel347JasperRenderer {
                     new JRMapCollectionDataSource(rows));
             return JasperExportManager.getInstance(context).exportToPdf(print);
         } catch (JRException exception) {
-            throw new IllegalStateException("customer_model347_jasper_render_failed", exception);
+            throw new PrintRenderingException("customer_model347_jasper_render_failed", exception);
         }
     }
 
@@ -83,7 +83,7 @@ public class CustomerModel347JasperRenderer {
             try (var input = new ClassPathResource(TEMPLATE).getInputStream()) {
                 compiled = compiler.compile(input.readAllBytes()).compiled();
             } catch (IOException exception) {
-                throw new IllegalStateException("customer_model347_jasper_template_missing", exception);
+                throw new PrintRenderingException("customer_model347_jasper_template_missing", exception);
             }
         }
         return compiled;

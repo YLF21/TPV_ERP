@@ -203,3 +203,41 @@ final result: passed
 - 38 pruebas backend pasan, incluidas las comprobaciones de ámbito, parámetros SQL, vigencia, trabajos en curso y nombres localizados.
 - TypeScript y compilación de APP VENTA y APP GESTIÓN correctos con todos los cambios de exportación.
 - El filtrado SQL se comprueba mediante mocks de JDBC; no se ejecutó contra PostgreSQL real. Las capturas utilizan el fixture aislado de promociones.
+
+---
+
+# Design QA — web comercial, dirección editorial 1, 2026-09-15
+
+## Evidencia y normalización
+
+- Verdad visual: `artifacts/marketing-redesign-option-1-source.png`, 1487 × 1058 px.
+- Implementación principal: `artifacts/redesign-option1-home-desktop.png`, viewport y captura de 1440 × 1024 CSS px, deviceScaleFactor 1.
+- Estados adicionales: `artifacts/redesign-option1-features-desktop.png`, `artifacts/redesign-option1-apps-desktop.png` y `artifacts/redesign-option1-home-mobile.png` a 390 × 844 CSS px, todos en estado inicial de su ruta.
+- Comparación normalizada: `artifacts/redesign-option1-comparison-final.jpg`. La fuente se ajustó proporcionalmente a 720 × 512 y la implementación a 720 × 512 para una comparación conjunta de composición.
+- Comparación focalizada: `artifacts/redesign-option1-hero-focus.jpg`. Fuente e implementación normalizadas a 1440 × 1024 y recortadas a los 720 × 800 px izquierdos para revisar marca, navegación, titular, cuerpo, CTA y señales de confianza.
+
+## Hallazgos y superficies de fidelidad
+
+- Tipografía: la implementación conserva una sans humanista con pesos, tracking y alturas de línea equivalentes al objetivo. El titular mantiene exactamente dos líneas en escritorio después de la corrección P2; la jerarquía de kicker, titular, promesa, explicación y acciones coincide. En móvil el titular se recompone sin truncamiento.
+- Espaciado y composición: coinciden el reparto 50/50 del hero, la navegación centrada, el espacio editorial, el bloque de producto derecho y la franja de cuatro beneficios. Las páginas interiores heredan el mismo ritmo, radios y elevación moderada. No hay desbordamiento horizontal a 1440 ni 390 px.
+- Colores y tokens: blanco cálido, tinta `#0e1626`, azul `#1264e8`, cian `#16c7d9` y azul hielo se corresponden con la dirección elegida. Contraste correcto en textos, navegación y acciones.
+- Imagen: se reutiliza el activo raster real `public/marketing/hero-ecosystem.png`; no hay sustituciones mediante CSS art, SVG artesanal ni marcadores. El encuadre es ligeramente más contenido que el mock para preservar detalle y evitar recorte en ratios reales; diferencia aceptable P3.
+- Iconos: Phosphor mantiene una sola familia visual, tamaños ópticos coherentes y estados hover/focus. No se introducen iconos dibujados a mano.
+- Copia: se conserva el mensaje aprobado y la acción pública correcta `Descargar aplicación`, en lugar del acceso web que el producto no ofrece. El texto es más breve que el mock, sin inventar capacidades.
+- Interacción y accesibilidad: navegación hash, menú móvil, CTA, pestañas, selección de producto y formulario siguen operativos; foco visible, etiquetas y textos alternativos permanecen. `prefers-reduced-motion` sigue respetado.
+- Consola: sin errores en Inicio, Funcionalidades, Apps ni Inicio móvil durante la captura.
+
+## Historial de comparación
+
+- Primera pasada: P2 por ruptura del titular azul en una tercera línea en escritorio y P2 porque la imagen de producto no aparecía dentro del primer viewport móvil.
+- Correcciones: hero cambiado a columnas 1:1, escala tipográfica máxima reducida a 64 px, activo ampliado dentro de su superficie y composición móvil comprimida; las señales repetidas se ocultan en móvil antes de la franja de beneficios.
+- Evidencia posterior: `artifacts/redesign-option1-comparison-final.jpg` confirma titular en dos líneas y proporción editorial equivalente; `artifacts/redesign-option1-home-mobile.png` confirma que la imagen comienza dentro del primer viewport. No quedan P0, P1 o P2.
+
+## Validación
+
+- Compilación de producción correcta.
+- 58 pruebas unitarias correctas.
+- Rutas principales capturadas sin overflow horizontal ni errores de consola.
+- P3 restante: el activo de producto tiene un encuadre algo más contenido que el concepto generado para proteger su legibilidad en responsive.
+
+final result: passed

@@ -54,7 +54,7 @@ public class OperationalReceiptJasperRenderer {
                             .exportToPdf(print),
                     InvoiceJasperRenderer.ticketRaster(print));
         } catch (IOException | SQLException | JRException exception) {
-            throw new IllegalStateException(
+            throw new PrintRenderingException(
                     "operational_receipt_jasper_render_failed:" + template.name(), exception);
         }
     }
@@ -66,7 +66,7 @@ public class OperationalReceiptJasperRenderer {
     private byte[] compile(Template template) {
         var resource = new ClassPathResource(RESOURCE_DIRECTORY + template.filename);
         if (!resource.exists()) {
-            throw new IllegalStateException(
+            throw new PrintRenderingException(
                     "operational_receipt_jasper_source_missing:" + template.filename);
         }
         try (var input = resource.getInputStream();
@@ -75,7 +75,7 @@ public class OperationalReceiptJasperRenderer {
                     .compileToStream(input, output);
             return output.toByteArray();
         } catch (IOException | JRException exception) {
-            throw new IllegalStateException(
+            throw new PrintRenderingException(
                     "operational_receipt_jasper_compile_failed:" + template.filename,
                     exception);
         }

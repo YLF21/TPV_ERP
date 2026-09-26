@@ -70,7 +70,7 @@ public class TicketCancellationJasperRenderer {
                     JasperExportManager.getInstance(context).exportToPdf(print),
                     InvoiceJasperRenderer.ticketRaster(print));
         } catch (JRException | IOException exception) {
-            throw new IllegalStateException(
+            throw new PrintRenderingException(
                     "ticket_cancellation_jasper_render_failed", exception);
         }
     }

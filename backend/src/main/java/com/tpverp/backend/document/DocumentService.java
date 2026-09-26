@@ -121,6 +121,12 @@ public class DocumentService {
     private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
     private SalesInvoiceRectificationRepository salesInvoiceRectifications;
     private TicketJasperRenderer ticketJasperRenderer;
+    private com.tpverp.backend.supervision.PrintFailureReporter printFailures;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrintFailureReporter(com.tpverp.backend.supervision.PrintFailureReporter printFailures) {
+        this.printFailures = printFailures;
+    }
     private DocumentFiscalQrService fiscalQr;
     private FiscalQrImageService fiscalQrImages;
 
@@ -2406,6 +2412,7 @@ public class DocumentService {
             var rendered = ticketJasperRenderer.renderForPrint(document);
             return printable.withRenderedDocument(rendered.pdf(), rendered.png());
         } catch (RuntimeException exception) {
+            if (printFailures != null) printFailures.record(exception);
             LOGGER.warn("Configured ticket rendering failed for document {}",
                     document.getId(), exception);
             return printable;

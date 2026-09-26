@@ -86,7 +86,49 @@ public class StoreFailurePublisher {
                 """, (rs, row) -> signal(rs, "LOCAL_SYNC"), site.companyId(), site.storeId(), site.installationId().toString(), SOURCE_BATCH_SIZE);
         for (Signal signal : control) enqueue(site, signal);
         for (Signal signal : sync) enqueue(site, signal);
-        return control.size() + sync.size();
+        // Every application revision carries a customer-visible trace. Retry the original
+        // durable event, including older revisions, rather than replacing it with only the latest.
+        int replayed = jdbc.update("""
+                update sync_outbox set estado = 'PENDIENTE', intentos = 0, proximo_intento_en = now(),
+                    reclamado_en = null, claim_token = null, actualizado_en = now(), version = version + 1
+                 where id in (select id from sync_outbox
+                    where empresa_id = ? and tienda_id = ? and tipo_entidad = 'STORE_FAILURE'
+                      and payload ->> 'source' = 'LOCAL_APPLICATION'
+                      and payload ->> 'installationId' = ? and estado = 'DEAD_LETTER'
+                    order by actualizado_en, id limit ? for update skip locked)
+                """, site.companyId(), site.storeId(), site.installationId().toString(), SOURCE_BATCH_SIZE);
+        List<Map<String, Object>> application = jdbc.query("""
+                select original.* from local_application_failure original
+                 where original.empresa_id = ? and original.tienda_id = ? and original.instalacion_id = ?
+                   and not exists (
+                    select 1 from sync_outbox sent
+                     where sent.empresa_id = original.empresa_id and sent.tienda_id = original.tienda_id
+                       and sent.tipo_entidad = 'STORE_FAILURE' and sent.entidad_id = original.id
+                       and sent.payload ->> 'source' = 'LOCAL_APPLICATION'
+                       and sent.payload ->> 'installationId' = ?
+                       and (sent.payload ->> 'sourceRevision')::bigint >= original.revision
+                       and sent.estado <> 'DEAD_LETTER')
+                 order by original.last_seen_at, original.id limit ?
+                """, (rs, row) -> applicationPayload(rs, site.installationId()), site.companyId(), site.storeId(), site.installationId(), site.installationId().toString(), SOURCE_BATCH_SIZE);
+        for (Map<String, Object> evidence : application) {
+            outbox.enqueue(new SyncOutboundEventCommand(site.companyId(), site.storeId(), null, ENTITY_TYPE,
+                    UUID.fromString((String) evidence.get("sourceId")), SyncOperation.ACTUALIZAR, evidence));
+        }
+        return control.size() + sync.size() + application.size() + replayed;
+    }
+
+    static Map<String, Object> applicationPayload(ResultSet rs, UUID installationId) throws SQLException {
+        Signal signal = new Signal("LOCAL_APPLICATION", rs.getObject("id", UUID.class), rs.getLong("revision"),
+                "OPEN", "DANGER", "APPLICATION_ERROR", rs.getTimestamp("first_seen_at").toInstant(),
+                rs.getTimestamp("last_seen_at").toInstant(), rs.getLong("occurrences"));
+        Map<String, Object> result = new LinkedHashMap<>(payload(installationId, signal));
+        result.put("schemaVersion", 2);
+        result.put("module", rs.getString("module"));
+        result.put("appVersion", rs.getString("app_version"));
+        result.put("traceId", rs.getString("trace_id"));
+        result.put("exceptionType", rs.getString("exception_type"));
+        result.put("errorLocation", rs.getString("error_location"));
+        return result;
     }
 
     private void enqueue(Site site, Signal signal) {

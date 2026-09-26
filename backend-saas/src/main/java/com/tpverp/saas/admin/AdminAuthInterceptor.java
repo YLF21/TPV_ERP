@@ -101,6 +101,10 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if ("DELETE".equals(method) && path.matches("/api/v1/admin/license-workspace/activation-codes/[^/]+")) {
             return AdminPermission.REGENERATE_PAIRING_CODE;
         }
+        if ("POST".equals(method) && path.startsWith("/api/v1/admin/supervision/failures/")) {
+            if (path.endsWith("/repairs")) return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
+            if (path.endsWith("/manual")) return AdminPermission.MANAGE_SUPPORT_TICKETS;
+        }
         if (path.startsWith("/api/v1/admin/operational-incidents")
                 && "POST".equals(method)) {
             return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;

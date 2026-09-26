@@ -74,6 +74,7 @@ public class AdminService {
     private final AdminPasswordHasher passwordHasher;
     private final IntegrationSecretCipher integrationSecrets;
     private final AdminAuditService audit;
+    private final com.tpverp.saas.supervision.SupportInterventionTicketState interventionState;
     private final SaasSessionTokenStore sessions;
     private final PlanLimitService planLimits;
     private final TenantAccessService tenantAccess;
@@ -94,6 +95,7 @@ public class AdminService {
             AdminPasswordHasher passwordHasher,
             IntegrationSecretCipher integrationSecrets,
             AdminAuditService audit,
+            com.tpverp.saas.supervision.SupportInterventionTicketState interventionState,
             SaasSessionTokenStore sessions,
             PlanLimitService planLimits,
             TenantAccessService tenantAccess,
@@ -111,6 +113,7 @@ public class AdminService {
         this.passwordHasher = passwordHasher;
         this.integrationSecrets = integrationSecrets;
         this.audit = audit;
+        this.interventionState = interventionState;
         this.sessions = sessions;
         this.planLimits = planLimits;
         this.tenantAccess = tenantAccess;
@@ -737,7 +740,10 @@ public class AdminService {
         ensureCompanyExists(companyId);
         return jdbc.query("""
                 select t.id, t.company_id, c.name as company_name, t.title, t.description,
-                       t.status, t.priority, t.created_by, t.created_at, t.updated_at
+                       t.status, t.priority, t.created_by, t.created_at, t.updated_at,
+                       case when exists(select 1 from saas_store_failure_manual m where m.ticket_id=t.id and m.company_id=t.company_id)
+                            then coalesce((select w.version from saas_support_intervention w where w.ticket_id=t.id),0)
+                            else null end as intervention_version
                 from saas_support_ticket t
                 join saas_company c on c.id = t.company_id
                 where t.company_id = ?
@@ -770,7 +776,13 @@ public class AdminService {
 
     @Transactional
     public SupportTicketResponse updateSupportTicket(UUID ticketId, UpdateSupportTicketRequest request) {
+        jdbc.query("select id from saas_support_ticket where id = ? for update", (rs, row) -> rs.getObject(1), ticketId);
         SupportTicketResponse existing = supportTicket(ticketId);
+        if (existing.interventionVersion() != null && request.status() != null
+                && (!existing.interventionVersion().equals(request.expectedInterventionVersion())
+                    || !existing.status().equals(request.expectedTicketStatus()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El seguimiento ha cambiado; actualice antes de cambiar el estado");
+        }
         String status = requireOneOf(request.status(), existing.status(),
                 Set.of("ABIERTO", "EN_CURSO", "RESUELTO"));
         String priority = requireOneOf(request.priority(), existing.priority(),
@@ -780,15 +792,20 @@ public class AdminService {
                 set status = ?, priority = ?, updated_at = ?
                 where id = ?
                 """, status, priority, sqlTimestamp(clock.instant()), ticketId);
-        audit.log("UPDATE_SUPPORT_TICKET", "SUPPORT_TICKET", ticketId.toString());
-        return supportTicket(ticketId);
+        interventionState.changed(ticketId, existing.status(), status);
+        SupportTicketResponse updated = supportTicket(ticketId);
+        audit.log("UPDATE_SUPPORT_TICKET", "SUPPORT_TICKET", ticketId.toString(),
+                "previousStatus=" + existing.status() + "; nextStatus=" + updated.status()
+                + "; interventionVersion=" + updated.interventionVersion()
+                + "; previousPriority=" + existing.priority() + "; nextPriority=" + updated.priority());
+        return updated;
     }
 
     @Transactional(readOnly = true)
     public List<SupportTicketCommentResponse> supportTicketComments(UUID ticketId) {
         supportTicket(ticketId);
         return jdbc.query("""
-                select id, ticket_id, author, message, created_at
+                select id, ticket_id, author, message, created_at, client_request_id
                 from saas_support_ticket_comment
                 where ticket_id = ?
                 order by created_at asc
@@ -798,12 +815,30 @@ public class AdminService {
     @Transactional
     public SupportTicketCommentResponse createSupportTicketComment(UUID ticketId, CreateSupportTicketCommentRequest request) {
         supportTicket(ticketId);
+        String author = currentAdminUsername();
+        com.tpverp.saas.DatabaseText.requireValid(request.message());
+        String message = request.message().trim();
+        if (request.requestId() != null) {
+            jdbc.query("select pg_advisory_xact_lock(hashtextextended(?,0))", (rs, row) -> 0,
+                    "support-comment:" + ticketId + ":" + request.requestId());
+            var previous = jdbc.query("""
+                    select id, ticket_id, author, message, created_at, client_request_id
+                      from saas_support_ticket_comment where ticket_id = ? and client_request_id = ?
+                    """, (rs, row) -> supportTicketComment(rs), ticketId, request.requestId());
+            if (!previous.isEmpty()) {
+                var existing = previous.getFirst();
+                if (!existing.author().equals(author) || !existing.message().equals(message)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "requestId ya utilizado para otro comentario");
+                }
+                return existing;
+            }
+        }
         Instant now = clock.instant();
         UUID commentId = UUID.randomUUID();
         jdbc.update("""
-                insert into saas_support_ticket_comment(id, ticket_id, author, message, created_at)
-                values (?, ?, ?, ?, ?)
-                """, commentId, ticketId, currentAdminUsername(), request.message().trim(), sqlTimestamp(now));
+                insert into saas_support_ticket_comment(id, ticket_id, author, message, created_at, client_request_id)
+                values (?, ?, ?, ?, ?, ?)
+                """, commentId, ticketId, author, message, sqlTimestamp(now), request.requestId());
         jdbc.update("""
                 update saas_support_ticket
                 set updated_at = ?
@@ -1692,7 +1727,10 @@ public class AdminService {
     private SupportTicketResponse supportTicket(UUID ticketId) {
         return jdbc.query("""
                 select t.id, t.company_id, c.name as company_name, t.title, t.description,
-                       t.status, t.priority, t.created_by, t.created_at, t.updated_at
+                       t.status, t.priority, t.created_by, t.created_at, t.updated_at,
+                       case when exists(select 1 from saas_store_failure_manual m where m.ticket_id=t.id and m.company_id=t.company_id)
+                            then coalesce((select w.version from saas_support_intervention w where w.ticket_id=t.id),0)
+                            else null end as intervention_version
                 from saas_support_ticket t
                 join saas_company c on c.id = t.company_id
                 where t.id = ?
@@ -1712,12 +1750,12 @@ public class AdminService {
                 rs.getString("priority"),
                 rs.getString("created_by"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant());
+                rs.getTimestamp("updated_at").toInstant(), rs.getObject("intervention_version", Long.class));
     }
 
     private SupportTicketCommentResponse supportTicketComment(UUID commentId) {
         return jdbc.query("""
-                select id, ticket_id, author, message, created_at
+                select id, ticket_id, author, message, created_at, client_request_id
                 from saas_support_ticket_comment
                 where id = ?
                 """, (rs, rowNum) -> supportTicketComment(rs), commentId).stream()
@@ -1731,7 +1769,8 @@ public class AdminService {
                 rs.getObject("ticket_id", UUID.class),
                 rs.getString("author"),
                 rs.getString("message"),
-                rs.getTimestamp("created_at").toInstant());
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getObject("client_request_id", UUID.class));
     }
 
     private BillingInvoiceResponse billingInvoice(UUID invoiceId) {

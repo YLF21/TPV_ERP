@@ -55,6 +55,8 @@ springdoc:
     enabled: false
 
 tpv:
+  sync:
+    remote-repair-enabled: ${TPV_REMOTE_REPAIR_ENABLED:false}
   monitoring:
     business:
       initial-delay-ms: ${TPV_MONITORING_INITIAL_DELAY_MS:5000}

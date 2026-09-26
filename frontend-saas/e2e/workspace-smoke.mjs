@@ -149,7 +149,7 @@ async function assertLogoutInsideViewport(page) {
   await page.setViewportSize({ width: 1600, height: 1000 });
 }
 async function latestCall(calls, predicate) {
-  for (let attempt = 0; attempt < 50; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const result = calls.findLast(predicate); if (result) return result;
     await new Promise(resolve => setTimeout(resolve, 50));
   }
@@ -284,6 +284,7 @@ try {
   await latestCall(calls, c => c.path.endsWith("supervision/failures") && c.query.q === "3500001" && c.query.source === "LOCAL_SYNC" && c.query.status === "OPEN");
   await page.getByRole("button", { name: "Detalle", exact: true }).click();
   await latestCall(calls, c => c.path.includes("supervision/failures/LOCAL_SYNC:"));
+  await page.locator("details.failure-technical summary").click();
   await page.getByText("50000000-0000-4000-8000-000000000001", { exact: true }).waitFor();
   const screenshotDirectory = fileURLToPath(new URL("../../output/playwright/", import.meta.url));
   await mkdir(screenshotDirectory, { recursive: true });

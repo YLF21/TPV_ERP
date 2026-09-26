@@ -173,7 +173,10 @@ class CustomerReceivablePrintServiceTest {
         var service = new CustomerReceivablePrintService(documents, payments, organization,
                 customers, null, null, null, null, receiptRenderer);
 
+        var capturedFailures = mock(com.tpverp.backend.supervision.PrintFailureReporter.class);
+        service.setPrintFailureReporter(capturedFailures);
         var pendingPrint = service.paymentReceipt(document.getId(), payment.getRequestId());
+        verify(capturedFailures).record(org.mockito.ArgumentMatchers.isA(IllegalStateException.class));
         var retry = service.paymentReceipt(document.getId(), payment.getRequestId());
 
         assertThat(pendingPrint.paymentId()).isEqualTo(payment.getRequestId());
@@ -181,6 +184,7 @@ class CustomerReceivablePrintServiceTest {
         assertThat(pendingPrint.remaining()).isEqualByComparingTo("80.00");
         assertThat(pendingPrint.renderedPdf()).isNull();
         assertThat(pendingPrint.ticketRenderedImage()).isNull();
+        org.mockito.Mockito.verifyNoMoreInteractions(capturedFailures);
         assertThat(retry.paymentId()).isEqualTo(pendingPrint.paymentId());
         assertThat(retry.amount()).isEqualByComparingTo(pendingPrint.amount());
         assertThat(retry.remaining()).isEqualByComparingTo(pendingPrint.remaining());

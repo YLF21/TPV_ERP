@@ -1,9 +1,53 @@
 import { useI18n } from "../../i18n";
 
 const labels = {
+  whatHappened: ["Qué ha ocurrido","What happened","发生了什么"],
+  problemSync: ["No se pudo enviar información a SaaS","Information could not be sent to SaaS","信息未能发送到 SaaS"],
+  problemPrinting: ["Se ha registrado un error de impresión","A printing error was reported","已上报打印错误"],
+  problemApplication: ["La aplicación ha comunicado un error","The application reported an error","应用已上报错误"],
+  problemOther: ["Se ha recibido una incidencia","An incident was reported","已收到异常报告"],
+  affectedStore: ["Dónde ha ocurrido","Where it happened","发生位置"],
+  unnamedInstallation: ["Sin referencia disponible","No reference available","暂无安装引用"],
+  technicalTitle: ["Datos técnicos para soporte","Technical details for support","技术支持信息"],
+  technicalSubtitle: ["Identificadores y diagnóstico","Identifiers and diagnostics","标识与诊断"],
+  technicalHint: ["Estos datos permiten localizar el equipo y el registro original. Cópialos cuando soporte te los solicite.","These details identify the installation and original record. Copy them when support asks for them.","这些信息可用于定位安装设备和原始记录，可按技术支持要求复制。"],
+  copyInstallation: ["Copiar ID de instalación","Copy installation ID","复制安装 ID"],
+  copySource: ["Copiar referencia del origen","Copy source reference","复制来源引用"],
+  installationHint: ["Identifica la instalación de la aplicación que comunicó el fallo.","Identifies the application installation that reported the failure.","标识上报此故障的应用安装。"],
+  sourceHint: ["Identifica el registro que originó esta incidencia; sirve para localizarlo en el sistema de origen.","Identifies the record behind this incident so it can be located in the source system.","标识此异常对应的原始记录，便于在来源系统中查找。"],
+  traceHint: ["Permite buscar este error en los registros de diagnóstico de la aplicación.","Use this ID to find the error in the application's diagnostic logs.","可用此 ID 在应用诊断日志中查找错误。"],
+  identifierCopied: ["Identificador copiado.","Identifier copied.","标识已复制。"],
+  identifierCopyFailed: ["No se pudo copiar. Selecciona y copia el identificador manualmente.","Could not copy. Select and copy the identifier manually.","复制失败，请选中标识后手动复制。"],
+  filters: ["Filtros de fallos", "Failure filters", "故障筛选"],
+  results: ["Resultados", "Results", "结果"],
+  onThisPage: ["fallos en esta página", "failures on this page", "条故障（本页）"],
+  page: ["Página", "Page", "页码"],
+  pages: ["Páginas de fallos", "Failure pages", "故障分页"],
+  emptyTitle: ["No hay fallos para estos filtros", "No failures match these filters", "没有符合筛选条件的故障"],
+  emptyHint: ["Prueba con otra búsqueda o limpia los filtros para consultar los fallos recibidos.", "Try another search or clear the filters to view received failures.", "请尝试其他搜索条件或清除筛选以查看已接收的故障。"],
   title: ["Fallos recibidos", "Received failures", "已接收故障"],
-  scope: ["Alertas de control y fallos de sincronización comunicados por las tiendas, y fallos registrados en el servicio central.", "Control alerts and synchronization failures reported by stores, and failures recorded by the central service.", "门店上报的控制警报与同步故障，以及中央服务记录的故障。"],
+  scope: ["Errores de aplicación, alertas de control y fallos de sincronización comunicados por las tiendas, y fallos registrados en el servicio central.", "Application errors, control alerts and synchronization failures reported by stores, and failures recorded by the central service.", "门店上报的应用错误、控制警报与同步故障，以及中央服务记录的故障。"],
   search: ["Buscar nombre, código o referencia", "Search name, code or reference", "搜索名称、编号或引用"],
+  searchHint: ["Busca por tienda, empresa, dispositivo, código o ID de seguimiento del error.", "Search by store, company, device, code or error trace ID.", "可按门店、企业、设备、错误代码或错误追踪 ID 搜索。"],
+  module: ["Módulo", "Module", "模块"],
+  appVersion: ["Versión de la aplicación", "Application version", "应用版本"],
+  traceId: ["ID de seguimiento", "Trace ID", "追踪 ID"],
+  copyTrace: ["Copiar ID de seguimiento", "Copy trace ID", "复制追踪 ID"],
+  traceCopied: ["ID de seguimiento copiado.", "Trace ID copied.", "追踪 ID 已复制。"],
+  traceCopyFailed: ["No se pudo copiar. Selecciona y copia el ID de seguimiento manualmente.", "Could not copy. Select and copy the trace ID manually.", "复制失败。请选中追踪 ID 并手动复制。"],
+  exceptionType: ["Tipo de excepción", "Exception type", "异常类型"],
+  errorLocation: ["Ubicación del error", "Error location", "错误位置"],
+  diagnosticDetail: ["Detalle de diagnóstico", "Diagnostic detail", "诊断详情"],
+  receivedAt: ["Última recepción en SaaS", "Last received by SaaS", "SaaS 最后接收时间"],
+  receiptScope: ["La detección corresponde al reloj de la tienda; la recepción, al servidor. Un fallo recibido no confirma que el dispositivo esté conectado ahora.", "Detection uses the store clock; receipt uses the server clock. A received failure does not confirm that the device is currently connected.", "检测时间来自门店时钟，接收时间来自服务器。收到故障记录并不表示设备当前在线。"],
+  notReported: ["No comunicado", "Not reported", "未上报"],
+  installationReference: ["Referencia de instalación", "Installation reference", "安装引用"],
+  module_SALES: ["Ventas", "Sales", "销售"],
+  module_PRINTING: ["Impresión", "Printing", "打印"],
+  module_SYNC: ["Sincronización", "Synchronization", "同步"],
+  module_APPLICATION: ["Aplicación", "Application", "应用"],
+  LOCAL_APPLICATION: ["Aplicación de tienda", "Store application", "门店应用"],
+  detail_LOCAL_APPLICATION: ["Error de aplicación comunicado por la tienda. Usa el ID de seguimiento para localizar el registro local. Los datos de diagnóstico excluyen mensajes y contenido comercial.", "Application error reported by the store. Use the trace ID to locate the local log. Diagnostics exclude messages and business content.", "门店上报的应用错误。可通过追踪 ID 定位本地日志。诊断数据不包含异常消息或业务内容。"],
   installation: ["ID de instalación", "Installation ID", "安装ID"],
   storeSearch: ["Buscar tienda por nombre o código", "Find store by name or code", "按名称或编号查找门店"],
   apply: ["Aplicar filtros", "Apply filters", "应用筛选"],
@@ -40,7 +84,7 @@ const labels = {
   detail_BOOTSTRAP: ["Inicialización de categorías de socios pendiente por inactividad o conflicto.", "Member category initialization is pending due to inactivity or conflict.", "会员类别初始化因无活动或冲突而挂起。"],
 } as const;
 
-export const FAILURE_SOURCES = ["LOCAL_CONTROL", "LOCAL_SYNC", "SYNC_PROJECTION", "CENTRAL_SECURITY", "CENTRAL_INTEGRATION", "BOOTSTRAP"] as const;
+export const FAILURE_SOURCES = ["LOCAL_APPLICATION", "LOCAL_CONTROL", "LOCAL_SYNC", "SYNC_PROJECTION", "CENTRAL_SECURITY", "CENTRAL_INTEGRATION", "BOOTSTRAP"] as const;
 export const FAILURE_STATUSES = ["OPEN", "REVIEWED", "RESOLVED", "DISMISSED", "ACKNOWLEDGED"] as const;
 export function useFailureLabels() {
   const { language } = useI18n();

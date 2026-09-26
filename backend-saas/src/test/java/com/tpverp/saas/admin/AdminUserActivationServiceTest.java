@@ -90,6 +90,7 @@ class AdminUserActivationServiceTest {
                 passwordHasher,
                 mock(IntegrationSecretCipher.class),
                 audit,
+                mock(com.tpverp.saas.supervision.SupportInterventionTicketState.class),
                 sessions,
                 mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class),
                 mock(JdbcTemplate.class),

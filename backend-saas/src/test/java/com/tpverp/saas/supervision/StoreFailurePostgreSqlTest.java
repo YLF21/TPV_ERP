@@ -155,6 +155,202 @@ class StoreFailurePostgreSqlTest {
         });
     }
 
+    @Test
+    void applicationDiagnosticsRemainIdempotentAndSearchableWithoutChangingLegacyPayloads() {
+        Site site = site(); UUID source = UUID.randomUUID(); UUID trace = UUID.randomUUID();
+        Map<String, Object> initial = applicationPayload(site, source, trace, 1, 2);
+        SyncEventRequest first = request(site, source, initial);
+        sync.receive(first, site.token());
+        sync.receive(first, site.token());
+        sync.receive(request(site, source, initial), site.token());
+        StoreFailureView original = rows(site).getFirst();
+        assertThat(original.occurrences()).isEqualTo(2);
+        assertThat(original.receivedAt()).isNotNull();
+        assertThat(original.module()).isEqualTo("SALES");
+        assertThat(original.appVersion()).isEqualTo("0.0.1-SNAPSHOT");
+        assertThat(original.traceId()).isEqualTo(trace.toString());
+        assertThat(original.exceptionType()).isEqualTo("java.lang.IllegalStateException");
+        assertThat(original.errorLocation()).isEqualTo("com.tpverp.backend.sales.SaleService.save:123");
+        assertThat(queries.detail(original.id())).isEqualTo(original);
+        for (String search : java.util.List.of(trace.toString(), "SALES", "SUPERVISION-INSTALLATION", site.installation().getInstallationId().toString())) {
+            assertThat(queries.page(new StoreFailureQueryService.Filter(site.company().getId(), site.store().getId(),
+                    site.installation().getInstallationId(), "LOCAL_APPLICATION", "OPEN", null, null, true, search), null, 50).items())
+                    .containsExactly(original);
+        }
+        UUID latestTrace = UUID.randomUUID();
+        sync.receive(request(site, source, applicationPayload(site, source, latestTrace, 2, 4)), site.token());
+        sync.receive(request(site, source, initial), site.token());
+        assertThat(rows(site)).singleElement().satisfies(row -> {
+            assertThat(row.traceId()).isEqualTo(latestTrace.toString());
+            assertThat(row.occurrences()).isEqualTo(4);
+            assertThat(row.status()).isEqualTo("OPEN");
+        });
+        assertThatThrownBy(() -> sync.receive(request(site, source, applicationPayload(site, source, trace, 2, 4)), site.token()))
+                .hasMessageContaining("Misma revision");
+        UUID legacySource = UUID.randomUUID();
+        sync.receive(request(site, legacySource, payload(site, legacySource, 1, "OPEN", 1)), site.token());
+        assertThat(rows(site).stream().filter(row -> row.source().equals("LOCAL_SYNC"))).singleElement().satisfies(row -> {
+            assertThat(row.module()).isNull(); assertThat(row.traceId()).isNull(); assertThat(row.receivedAt()).isNotNull();
+        });
+        UUID nullableSource = UUID.randomUUID();
+        Map<String, Object> nullable = applicationPayload(site, nullableSource, trace, 1, 1);
+        for (String field : java.util.List.of("module", "appVersion", "traceId", "exceptionType", "errorLocation")) nullable.put(field, null);
+        sync.receive(request(site, nullableSource, nullable), site.token());
+        assertThat(rows(site)).hasSize(3);
+    }
+
+    @Test
+    void diagnosticsRejectUntrustedMessagesUnknownFieldsInvalidVersionsAndForgedOwnership() {
+        Site owner = site(); Site foreign = site(); UUID source = UUID.randomUUID();
+        for (var badField : Map.<String, Object>ofEntries(
+                Map.entry("schemaVersion", 3), Map.entry("module", "SALES password=secret"),
+                Map.entry("appVersion", "v1 Authorization: Bearer secret"),
+                Map.entry("traceId", "invalid trace ID"), Map.entry("exceptionType", "java.lang.Exception: email@example.com"),
+                Map.entry("errorLocation", "C:/Users/customer/secret.txt:1"),
+                Map.entry("message", "password=must-not-persist"), Map.entry("status", "RESOLVED"),
+                Map.entry("severity", "INFO")).entrySet()) {
+            Map<String, Object> bad = applicationPayload(owner, source, UUID.randomUUID(), 1, 1);
+            bad.put(badField.getKey(), badField.getValue());
+            SyncEventRequest rejected = request(owner, source, bad);
+            assertThatThrownBy(() -> sync.receive(rejected, owner.token())).hasMessageContaining("Informe operativo invalido");
+            assertThat(jdbc.queryForObject("select count(*) from saas_sync_event where event_id = ?", Long.class, rejected.eventId())).isZero();
+        }
+        for (String field : java.util.List.of("module", "appVersion", "traceId", "exceptionType", "errorLocation")) {
+            Map<String, Object> missing = applicationPayload(owner, source, UUID.randomUUID(), 1, 1);
+            missing.remove(field);
+            assertThatThrownBy(() -> sync.receive(request(owner, source, missing), owner.token())).hasMessageContaining("Informe operativo invalido");
+            Map<String, Object> oversized = applicationPayload(owner, source, UUID.randomUUID(), 1, 1);
+            oversized.put(field, "A".repeat(241));
+            assertThatThrownBy(() -> sync.receive(request(owner, source, oversized), owner.token())).hasMessageContaining("Informe operativo invalido");
+        }
+        SyncEventRequest unsupported = new SyncEventRequest(UUID.randomUUID(), owner.company().getId(), owner.store().getId(),
+                null, StoreFailureProjector.ENTITY_TYPE, source, SyncOperation.CREAR, Map.of("message", "secret"));
+        assertThatThrownBy(() -> sync.receive(unsupported, owner.token())).hasMessageContaining("Operacion de informe operativo no soportada");
+        assertThat(jdbc.queryForObject("select count(*) from saas_sync_event where event_id = ?", Long.class, unsupported.eventId())).isZero();
+        Map<String, Object> forged = applicationPayload(owner, source, UUID.randomUUID(), 1, 1);
+        forged.put("installationId", foreign.installation().getInstallationId().toString());
+        assertThatThrownBy(() -> sync.receive(request(owner, source, forged), owner.token())).hasMessageContaining("Procedencia");
+        assertThatThrownBy(() -> sync.receive(request(foreign, source, applicationPayload(foreign, source, UUID.randomUUID(), 1, 1)), owner.token()));
+        assertThat(rows(owner)).isEmpty(); assertThat(rows(foreign)).isEmpty();
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "TPV_PHASE1_CAPTURED_PAYLOAD", matches = ".+")
+    void actualLocalPublisherPayloadSurvivesAuthenticatedHttpAndAdminQuery() throws Exception {
+        Site site = site();
+        Map<String, Object> captured = mapper.readValue(java.nio.file.Files.readString(
+                java.nio.file.Path.of(System.getenv("TPV_PHASE1_CAPTURED_PAYLOAD"))),
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        captured.put("installationId", site.installation().getInstallationId().toString());
+        UUID source = UUID.fromString((String) captured.get("sourceId"));
+        SyncEventRequest request = request(site, source, captured);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(post("/api/v1/sync/events").header("X-TPV-Installation-Token", site.token())
+                            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(request)))
+                    .andExpect(status().isOk());
+        }
+        var response = mvc.perform(get("/api/v1/admin/supervision/failures").header("Authorization", basic("admin", "admin"))
+                        .queryParam("companyId", site.company().getId().toString()).queryParam("source", "LOCAL_APPLICATION")
+                        .queryParam("q", (String) captured.get("traceId")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var items = mapper.readTree(response).path("items");
+        assertThat(items.size()).isEqualTo(1);
+        for (String field : java.util.List.of("module", "appVersion", "traceId", "exceptionType", "errorLocation")) {
+            assertThat(items.get(0).path(field).asText()).isEqualTo(captured.get(field));
+        }
+        assertThat(items.get(0).path("receivedAt").asText()).isNotBlank();
+        assertThat(items.get(0).path("occurrences").asLong()).isEqualTo(((Number) captured.get("occurrences")).longValue());
+    }
+
+    @Test
+    void foreignDuplicateEventCannotMutateOriginalEventOrTraceReceipts() {
+        Site owner = site(); Site foreign = site(); UUID source = UUID.randomUUID();
+        SyncEventRequest original = request(owner, source, applicationPayload(owner, source, UUID.randomUUID(), 1, 1));
+        sync.receive(original, owner.token());
+        var eventBefore = jdbc.queryForMap("select * from saas_sync_event where event_id = ?", original.eventId());
+        var failureBefore = rows(owner);
+        var traceBefore = jdbc.queryForList("select * from saas_store_failure_trace where failure_id = ?",
+                UUID.fromString(failureBefore.getFirst().id().split(":")[1]));
+        SyncEventRequest foreignRequest = new SyncEventRequest(original.eventId(), foreign.company().getId(), foreign.store().getId(),
+                null, StoreFailureProjector.ENTITY_TYPE, source, SyncOperation.ACTUALIZAR,
+                applicationPayload(foreign, source, UUID.randomUUID(), 1, 1));
+        assertThatThrownBy(() -> sync.receive(foreignRequest, foreign.token())).hasMessageContaining("Procedencia");
+        assertThat(jdbc.queryForMap("select * from saas_sync_event where event_id = ?", original.eventId())).isEqualTo(eventBefore);
+        assertThat(rows(owner)).isEqualTo(failureBefore);
+        assertThat(jdbc.queryForList("select * from saas_store_failure_trace where failure_id = ?",
+                UUID.fromString(failureBefore.getFirst().id().split(":")[1]))).isEqualTo(traceBefore);
+        assertThat(rows(foreign)).isEmpty();
+    }
+
+    @Test
+    void historicalCorrelationIdsRemainSearchableOutOfOrderWithoutAcceptingRevisionConflicts() {
+        Site owner = site(); Site foreign = site(); UUID source = UUID.randomUUID();
+        Map<String, Object> newer = applicationPayload(owner, source, UUID.randomUUID(), 2, 2);
+        newer.put("traceId", "web-request-newer");
+        Map<String, Object> older = applicationPayload(owner, source, UUID.randomUUID(), 1, 1);
+        older.put("traceId", "web-request-older");
+        sync.receive(request(owner, source, newer), owner.token());
+        sync.receive(request(owner, source, older), owner.token());
+        sync.receive(request(owner, source, older), owner.token());
+        var latest = rows(owner).getFirst();
+        assertThat(latest.traceId()).isEqualTo("web-request-newer");
+        assertThat(latest.occurrences()).isEqualTo(2);
+        for (String trace : java.util.List.of("web-request-newer", "web-request-older")) {
+            assertThat(search(owner, trace)).containsExactly(latest);
+            assertThat(search(foreign, trace)).isEmpty();
+        }
+        Map<String, Object> conflicting = new LinkedHashMap<>(older);
+        conflicting.put("traceId", "web-injected-trace");
+        assertThatThrownBy(() -> sync.receive(request(owner, source, conflicting), owner.token())).hasMessageContaining("Misma revision");
+        assertThat(search(owner, "web-injected-trace")).isEmpty();
+        assertThat(rows(owner)).containsExactly(latest);
+        Map<String, Object> newest = applicationPayload(owner, source, UUID.randomUUID(), 3, 3);
+        newest.put("traceId", "web-request-newest");
+        sync.receive(request(owner, source, newest), owner.token());
+        for (String trace : java.util.List.of("web-request-newer", "web-request-older", "web-request-newest")) {
+            assertThat(search(owner, trace)).singleElement().satisfies(row -> {
+                assertThat(row.occurrences()).isEqualTo(3);
+                assertThat(row.traceId()).isEqualTo("web-request-newest");
+            });
+        }
+        assertThat(jdbc.queryForObject("select count(*) from saas_store_failure_trace where failure_id = ?", Long.class,
+                UUID.fromString(latest.id().split(":")[1]))).isEqualTo(3);
+    }
+
+    @Test
+    void timestampsMustRemainInSupportedOperationalRange() {
+        Site site = site(); UUID source = UUID.randomUUID();
+        for (String badFirst : java.util.List.of("-10000-01-01T00:00:00Z", "1969-12-31T23:59:59Z")) {
+            Map<String, Object> invalid = applicationPayload(site, source, UUID.randomUUID(), 1, 1);
+            invalid.put("firstSeenAt", badFirst);
+            SyncEventRequest request = request(site, source, invalid);
+            assertThatThrownBy(() -> sync.receive(request, site.token()))
+                    .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                            failure -> assertThat(failure.getStatusCode().value()).isEqualTo(400));
+            assertThat(jdbc.queryForObject("select count(*) from saas_sync_event where event_id = ?", Long.class, request.eventId())).isZero();
+        }
+        Map<String, Object> future = applicationPayload(site, source, UUID.randomUUID(), 1, 1);
+        future.put("lastSeenAt", Instant.now().plusSeconds(3600).toString());
+        assertThatThrownBy(() -> sync.receive(request(site, source, future), site.token())).hasMessageContaining("Informe operativo invalido");
+        Map<String, Object> boundary = applicationPayload(site, source, UUID.randomUUID(), 1, 1);
+        boundary.put("firstSeenAt", Instant.EPOCH.toString());
+        sync.receive(request(site, source, boundary), site.token());
+        assertThat(rows(site)).singleElement().satisfies(row -> assertThat(row.firstSeenAt()).isEqualTo(Instant.EPOCH));
+    }
+
+    private java.util.List<StoreFailureView> search(Site site, String trace) {
+        return queries.page(new StoreFailureQueryService.Filter(site.company().getId(), site.store().getId(),
+                site.installation().getInstallationId(), null, null, null, null, false, trace), null, 50).items();
+    }
+    private Map<String, Object> applicationPayload(Site site, UUID source, UUID trace, long revision, long count) {
+        Map<String, Object> value = payload(site, source, revision, "OPEN", count);
+        value.put("schemaVersion", 2); value.put("source", "LOCAL_APPLICATION");
+        value.put("severity", "DANGER"); value.put("code", "APPLICATION_ERROR");
+        value.put("module", "SALES"); value.put("appVersion", "0.0.1-SNAPSHOT");
+        value.put("traceId", trace.toString()); value.put("exceptionType", "java.lang.IllegalStateException");
+        value.put("errorLocation", "com.tpverp.backend.sales.SaleService.save:123");
+        return value;
+    }
     private java.util.List<StoreFailureView> rows(Site site) { return queries.page(filter(site.company().getId(), false), null, 50).items(); }
     private StoreFailureQueryService.Filter filter(UUID company, boolean active) {
         return new StoreFailureQueryService.Filter(company, null, null, null, null, null, null, active, null);

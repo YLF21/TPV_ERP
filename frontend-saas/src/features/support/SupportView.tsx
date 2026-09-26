@@ -1,6 +1,7 @@
+import { useRepairLabels } from "../supervision/repair-labels";
 import { useRefreshVersion } from "../../app/RefreshContext";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import { isCurrentSelection } from "../../lib/frontend-runtime.mjs";
 import type { AdminNotification, Credentials, LicenseSummary, SaasStatus, SupportTicket, SupportTicketComment, TechnicalStatus } from "../../lib/types";
 import { Notice } from "../../shared/types";
@@ -20,6 +21,7 @@ export function SupportView({
   onNotice: (notice: Notice) => void;
 }) {
   const { t } = useI18n();
+  const repairLabel = useRepairLabels();
   const refreshVersion = useRefreshVersion();
   const overviewRequestId = useRef(0);
   const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
@@ -39,6 +41,11 @@ export function SupportView({
   const ticketRequestId = useRef(0);
   const selectedSupportCompanyRef = useRef(companyId);
   selectedSupportCompanyRef.current = companyId;
+  const mounted = useRef(true);
+  const currentScope = useRef({ credentials, companyId }); currentScope.current = { credentials, companyId };
+  const current = () => mounted.current && currentScope.current.credentials === credentials && currentScope.current.companyId === companyId;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ticketRequestId.current++; overviewRequestId.current++; }; }, []);
+  useEffect(() => { setBusy(null); }, [credentials, companyId]);
   const canManage = permissions.has("MANAGE_SUPPORT_TICKETS");
   const filteredTickets = tickets.filter((ticket) =>
     (!statusFilter || ticket.status === statusFilter) &&
@@ -99,11 +106,11 @@ export function SupportView({
     const requestId = ++ticketRequestId.current;
     try {
       const nextTickets = await api.supportTickets(credentials, nextCompanyId);
-      if (requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
+      if (!current() || requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
       setTickets(nextTickets);
       await loadTicketComments(nextTickets, requestId);
     } catch (error) {
-      if (requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
+      if (!current() || requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
       if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
         setTickets([]);
         setCommentsByTicket({});
@@ -125,7 +132,7 @@ export function SupportView({
         }
       })
     );
-    if (requestId === ticketRequestId.current) setCommentsByTicket(Object.fromEntries(entries));
+    if (current() && requestId === ticketRequestId.current) setCommentsByTicket(Object.fromEntries(entries));
   }
 
   async function createTicket(event: FormEvent) {
@@ -147,15 +154,21 @@ export function SupportView({
   }
 
   async function updateTicket(ticket: SupportTicket, status: string) {
+    if (!canManage || busy || ticket.companyId !== companyId) return;
     setBusy(ticket.id);
     try {
-      await api.updateSupportTicket(credentials, ticket.id, { status, priority: ticket.priority });
+      await api.updateSupportTicket(credentials, ticket.id, { status, expectedInterventionVersion: ticket.interventionVersion, expectedTicketStatus: ticket.status });
+      if (!current()) return;
       await Promise.all([loadTickets(ticket.companyId), loadOverview()]);
-      onNotice({ type: "success", text: t("ticketUpdated") });
+      if (current()) onNotice({ type: "success", text: t("ticketUpdated") });
     } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
+      if (!current()) return;
+      if (error instanceof ApiError && error.status === 409) {
+        await loadTickets(ticket.companyId);
+        if (current()) onNotice({ type: "error", text: repairLabel("ticketConflict") });
+      } else onNotice({ type: "error", text: errorMessage(error) });
     } finally {
-      setBusy(null);
+      if (current()) setBusy(null);
     }
   }
 

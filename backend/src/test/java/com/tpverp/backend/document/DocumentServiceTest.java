@@ -3289,6 +3289,29 @@ class DocumentServiceTest {
     }
 
     @Test
+    void ticketRenderingFallbackReportsFailureExactlyOnceWithoutChangingTicket() {
+        var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
+        var fiscalQrImages = org.mockito.Mockito.mock(com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        service.setFiscalQrServices(fiscalQr, fiscalQrImages);
+        var renderer = org.mockito.Mockito.mock(com.tpverp.backend.document.template.TicketJasperRenderer.class);
+        var reporter = org.mockito.Mockito.mock(com.tpverp.backend.supervision.PrintFailureReporter.class);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", user.getId(), NOW, false);
+        var failure = new com.tpverp.backend.document.template.PrintRenderingException("ticket_jasper_render_failed");
+        service.setTicketJasperRenderer(renderer);
+        service.setPrintFailureReporter(reporter);
+        when(renderer.renderForPrint(ticket)).thenThrow(failure);
+        var before = service.ticketPrintView(ticket);
+        var result = service.renderTicketPrintView(ticket, before);
+        assertThat(result).isSameAs(before);
+        assertThat(result.ticketRenderedPdf()).isNull();
+        assertThat(result.total()).isEqualByComparingTo(before.total());
+        verify(reporter, times(1)).record(failure);
+        org.mockito.Mockito.verifyNoMoreInteractions(reporter);
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
     void compensatingExchangeSummaryNeverInheritsSaleQrOrJasperRaster() {
         var fiscalQr = org.mockito.Mockito.mock(DocumentFiscalQrService.class);
         var fiscalQrImages = org.mockito.Mockito.mock(

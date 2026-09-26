@@ -244,7 +244,7 @@ public class InvoiceJasperRenderer {
                     ? ticketRaster(print) : null;
             return Optional.of(new RenderedDocument(pdf, ticketRaster));
         } catch (IOException | JRException exception) {
-            throw new IllegalStateException("invoice_jasper_render_failed", exception);
+            throw new PrintRenderingException("invoice_jasper_render_failed", exception);
         }
     }
 
@@ -256,12 +256,12 @@ public class InvoiceJasperRenderer {
             Store store) throws IOException {
         var template = templates.findPrintableTemplate(
                         reference.id(), company.getId(), store.getId())
-                .orElseThrow(() -> new IllegalStateException(
+                .orElseThrow(() -> new PrintRenderingException(
                         "invoice_print_template_not_available"));
         verifyReference(template, reference, templateType, format);
         byte[] source = storage.readSource(template.getArtifactReference());
         if (!SafeJrxmlCompiler.sha256(source).equals(template.getSha256())) {
-            throw new IllegalStateException(
+            throw new PrintRenderingException(
                     "document_template_artifact_integrity_failed");
         }
         return compiled(template, source);
@@ -269,7 +269,7 @@ public class InvoiceJasperRenderer {
 
     static byte[] ticketRaster(JasperPrint print) throws JRException, IOException {
         if (print.getPages().isEmpty() || print.getPageWidth() <= 0) {
-            throw new IllegalStateException("invoice_ticket_raster_empty");
+            throw new PrintRenderingException("invoice_ticket_raster_empty");
         }
         float zoom = (float) TICKET_RASTER_WIDTH / print.getPageWidth();
         var pages = new java.util.ArrayList<BufferedImage>(print.getPages().size());
@@ -282,7 +282,7 @@ public class InvoiceJasperRenderer {
             pages.add(cropped);
             totalHeight = Math.addExact(totalHeight, usedHeight);
             if (totalHeight > TICKET_RASTER_MAX_HEIGHT) {
-                throw new IllegalStateException("invoice_ticket_raster_too_long");
+                throw new PrintRenderingException("invoice_ticket_raster_too_long");
             }
         }
         var output = new BufferedImage(TICKET_RASTER_WIDTH, totalHeight, BufferedImage.TYPE_INT_RGB);
@@ -300,7 +300,7 @@ public class InvoiceJasperRenderer {
         }
         var bytes = new ByteArrayOutputStream();
         if (!ImageIO.write(output, "png", bytes)) {
-            throw new IllegalStateException("invoice_ticket_raster_encoder_unavailable");
+            throw new PrintRenderingException("invoice_ticket_raster_encoder_unavailable");
         }
         return bytes.toByteArray();
     }
@@ -603,7 +603,7 @@ public class InvoiceJasperRenderer {
                 || !Objects.equals(template.getSchemaVersion(), reference.dataSchemaVersion())
                 || !Objects.equals(template.getSha256(), reference.sha256())
                 || template.getArtifactReference() == null) {
-            throw new IllegalStateException("invoice_print_template_reference_mismatch");
+            throw new PrintRenderingException("invoice_print_template_reference_mismatch");
         }
     }
 
@@ -710,7 +710,7 @@ public class InvoiceJasperRenderer {
 
     private static void requireFrozenIssuer(FiscalPrintView fiscal) {
         if (fiscal == null || !fiscal.hasFrozenIssuerIdentity()) {
-            throw new IllegalStateException("fiscal_print_issuer_identity_missing");
+            throw new PrintRenderingException("fiscal_print_issuer_identity_missing");
         }
     }
 

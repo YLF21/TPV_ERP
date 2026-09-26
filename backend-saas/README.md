@@ -4,6 +4,12 @@ Backend central para licencias, vinculacion de instalaciones y eventos sincroniz
 
 La organización del panel, los accesos multitienda, los códigos internos y la supervisión se describen en [SaaS multitienda y supervisión](../docs/saas-multitienda-supervision-2026-09-20.md).
 
+La captura, el contrato v1/v2, la consulta de fallos de aplicación y el orden de actualización V70/V252 se describen en [Recepción y consulta de fallos: fase 1](../docs/saas-failure-reporting-phase1-2026-09-22.md).
+
+La reparación remota de entregas agotadas, el traspaso a soporte y la activación V71/V253 se describen en [Reparación remota y atención manual: fase 2](../docs/saas-remote-repair-phase2-2026-09-22.md).
+
+La asistencia remota humana, el paso a intervención presencial y la migración V72 se describen en [Asistencia y atención presencial: fase 3](../docs/saas-support-interventions-phase3-2026-09-22.md).
+
 ## Arranque local
 
 ```powershell

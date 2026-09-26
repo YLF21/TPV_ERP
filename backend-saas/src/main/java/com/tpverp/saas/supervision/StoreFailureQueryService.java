@@ -21,34 +21,36 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class StoreFailureQueryService {
-    private static final Set<String> SOURCES = Set.of("LOCAL_CONTROL", "LOCAL_SYNC", "SYNC_PROJECTION",
+    private static final Set<String> SOURCES = Set.of("LOCAL_CONTROL", "LOCAL_SYNC", "LOCAL_APPLICATION", "SYNC_PROJECTION",
             "CENTRAL_SECURITY", "CENTRAL_INTEGRATION", "BOOTSTRAP");
     private static final Set<String> STATUSES = Set.of("OPEN", "REVIEWED", "RESOLVED", "DISMISSED", "ACKNOWLEDGED");
     private static final String SQL = """
             with failures as (
                 select f.source || ':' || f.id::text as failure_key, f.source, f.source_id,
                        f.company_id, f.store_id, f.installation_id, f.status, f.severity, f.code,
-                       f.first_seen_at, f.last_seen_at, f.occurrences
+                       f.first_seen_at, f.last_seen_at, f.occurrences,
+                       f.module, f.app_version, f.trace_id, f.exception_type, f.error_location, f.received_at, f.id as stored_failure_id
                   from saas_store_failure f
                 union all
                 select 'CENTRAL_SECURITY:' || id::text, 'CENTRAL_SECURITY', id,
                        null::uuid, null::uuid, null::uuid,
                        case when status = 'ACKNOWLEDGED' then 'ACKNOWLEDGED' else 'OPEN' end,
                        'DANGER', 'SECURITY_DELIVERY_FAILED', created_at, coalesce(delivered_at, created_at),
-                       greatest(attempt_count, 1)::bigint
+                       greatest(attempt_count, 1)::bigint, null, null, null::varchar, null, null, null::timestamptz, null::uuid
                   from saas_security_notification_outbox where status in ('FAILED', 'ACKNOWLEDGED')
                 union all
                 select 'CENTRAL_INTEGRATION:' || r.id::text, 'CENTRAL_INTEGRATION', r.id,
                        e.company_id, null::uuid, null::uuid,
                        case when r.status = 'ACKNOWLEDGED' then 'ACKNOWLEDGED' else 'OPEN' end,
                        'DANGER', 'INTEGRATION_DELIVERY_FAILED', r.started_at, coalesce(r.completed_at, r.started_at),
-                       greatest(r.delivery_attempt_count, 1)::bigint
+                       greatest(r.delivery_attempt_count, 1)::bigint, null, null, null::varchar, null, null, null::timestamptz, null::uuid
                   from saas_integration_run r join saas_integration_endpoint e on e.id = r.integration_id
                  where r.status in ('FAILED', 'ACKNOWLEDGED') and r.delivery_attempt_count > 0
                 union all
                 select 'BOOTSTRAP:' || b.id::text, 'BOOTSTRAP', b.id,
                        b.company_id, null::uuid, null::uuid, 'OPEN', 'WARNING',
-                       'MEMBER_CATEGORY_BOOTSTRAP_STALLED', b.created_at, b.last_activity_at, 1::bigint
+                       'MEMBER_CATEGORY_BOOTSTRAP_STALLED', b.created_at, b.last_activity_at, 1::bigint,
+                       null, null, null::varchar, null, null, null::timestamptz, null::uuid
                   from saas_member_category_bootstrap b
                  where b.status in ('COLLECTING', 'CONFLICT') and b.last_activity_at <= ?
             )
@@ -121,8 +123,11 @@ public class StoreFailureQueryService {
         if (f.from() != null) { sql.append(" and f.last_seen_at >= ?"); args.add(Timestamp.from(f.from())); }
         if (f.to() != null) { sql.append(" and f.last_seen_at < ?"); args.add(Timestamp.from(f.to())); }
         if (f.q() != null && !f.q().isBlank()) {
-            sql.append(" and lower(concat_ws(' ', c.name, s.name, s.internal_code, i.installation_reference, f.code, f.source_id::text)) like ? escape '!'");
-            args.add("%" + f.q().trim().toLowerCase(java.util.Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%");
+            String pattern = "%" + f.q().trim().toLowerCase(java.util.Locale.ROOT)
+                    .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+            sql.append(" and (lower(concat_ws(' ', c.name, s.name, s.internal_code, i.installation_reference, i.installation_id::text, f.code, f.source_id::text, f.trace_id, f.module)) like ? escape '!'"
+                    + " or exists (select 1 from saas_store_failure_trace t where t.failure_id = f.stored_failure_id and lower(t.trace_id) like ? escape '!'))");
+            args.add(pattern); args.add(pattern);
         }
     }
 
@@ -138,12 +143,16 @@ public class StoreFailureQueryService {
                 rs.getString("internal_code"), rs.getObject("public_installation_id", UUID.class), rs.getString("installation_reference"),
                 rs.getString("status"), rs.getString("severity"), code, safeDetail(rs.getString("source"), code),
                 rs.getTimestamp("first_seen_at").toInstant(), rs.getTimestamp("last_seen_at").toInstant(),
-                rs.getLong("occurrences"), store == null, rs.getObject("store_active", Boolean.class));
+                rs.getLong("occurrences"), store == null, rs.getObject("store_active", Boolean.class),
+                rs.getString("module"), rs.getString("app_version"), rs.getString("trace_id"),
+                rs.getString("exception_type"), rs.getString("error_location"),
+                rs.getTimestamp("received_at") == null ? null : rs.getTimestamp("received_at").toInstant());
     }
 
     private static String safeDetail(String source, String code) {
         return switch (source) {
             case "LOCAL_CONTROL" -> "Alerta de control comunicada por la tienda: " + code;
+            case "LOCAL_APPLICATION" -> "Error de aplicacion comunicado por la tienda; consultar el modulo y la referencia de diagnostico.";
             case "LOCAL_SYNC" -> "Un evento de la cola local no pudo entregarse; consultar su referencia en la tienda.";
             case "SYNC_PROJECTION" -> "Un evento recibido no pudo proyectarse; consultar el evento de sincronizacion.";
             case "CENTRAL_SECURITY" -> "Fallo de entrega de una notificacion de seguridad del servidor central.";

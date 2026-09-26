@@ -57,7 +57,7 @@ public class OperationalDocumentJasperRenderer {
         String logo = presentation.logo() == null ? null
                 : printConfiguration.logoDataUri(store.getId(), presentation.logo());
         var rendered = renderer.renderPayload(reference, type, format, store, company, data, logo)
-                .orElseThrow(() -> new IllegalStateException("document_jasper_render_empty"));
+                .orElseThrow(() -> new PrintRenderingException("document_jasper_render_empty"));
         return RenderedDocumentView.from(resolved, rendered, fileName);
     }
 }

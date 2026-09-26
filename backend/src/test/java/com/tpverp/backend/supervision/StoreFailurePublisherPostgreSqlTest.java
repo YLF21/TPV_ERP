@@ -33,6 +33,8 @@ class StoreFailurePublisherPostgreSqlTest {
     private TransactionTemplate transaction;
     private StoreFailurePublisher publisher;
     private StoreFailurePublisher.Site site;
+    private ApplicationFailureRecorder recorder;
+    private LicenseRepository licenses;
 
     @BeforeEach
     void schema() throws Exception {
@@ -50,9 +52,10 @@ class StoreFailurePublisherPostgreSqlTest {
                     estado text,prioridad text,creada_en timestamptz,actualizada_en timestamptz);
                 create table sync_outbox(id uuid primary key,event_id uuid,empresa_id uuid,tienda_id uuid,
                     tipo_entidad text,entidad_id uuid,payload jsonb,creado_en timestamptz,actualizado_en timestamptz,
-                    estado text,version bigint,intentos integer);
+                    estado text,version bigint,intentos integer,proximo_intento_en timestamptz,reclamado_en timestamptz,claim_token uuid);
                 """);
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V251__store_failure_reporting.sql")).execute(dataSource);
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V262__local_application_failures.sql")).execute(dataSource);
         SyncOutboxService outbox = mock(SyncOutboxService.class);
         when(outbox.enqueue(any())).thenAnswer(call -> {
             SyncOutboundEventCommand command = call.getArgument(0);
@@ -63,8 +66,18 @@ class StoreFailurePublisherPostgreSqlTest {
                     mapper.writeValueAsString(command.payload()));
             return null;
         });
-        publisher = new StoreFailurePublisher(jdbc, mock(LicenseRepository.class), outbox);
+        licenses = mock(LicenseRepository.class);
+        publisher = new StoreFailurePublisher(jdbc, licenses, outbox);
         site = new StoreFailurePublisher.Site(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        recorder = new ApplicationFailureRecorder(jdbc, licenses, new DataSourceTransactionManager(dataSource),
+                new org.springframework.mock.env.MockEnvironment().withProperty("tpv.verifactu.system-version", "4.2.0"), outbox);
+        var license = mock(com.tpverp.backend.licensing.License.class);
+        when(license.getLocalCompanyId()).thenReturn(site.companyId());
+        when(license.getTiendaId()).thenReturn(site.storeId());
+        when(license.getInstalacionId()).thenReturn(site.installationId());
+        when(license.getSaasCompanyId()).thenReturn(UUID.randomUUID());
+        when(license.getSaasStoreId()).thenReturn(UUID.randomUUID());
+        when(licenses.findActiveByTiendaId(site.storeId())).thenReturn(java.util.List.of(license));
     }
 
     @AfterEach
@@ -120,6 +133,67 @@ class StoreFailurePublisherPostgreSqlTest {
         jdbc.update("insert into control_alerta values (?,?,?,0,'NEW','MEDIUM',now(),now())", UUID.randomUUID(), foreignEvent, foreignStore);
         assertThat(publish()).isEqualTo(50); assertThat(publish()).isEqualTo(5); assertThat(publish()).isZero();
         assertThat(jdbc.queryForObject("select count(*) from sync_outbox", Long.class)).isEqualTo(55);
+    }
+
+    @Test
+    void applicationFailureSurvivesBusinessRollbackAndRetainsEveryTraceAcrossOfflineRetries() throws Exception {
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("synthetic", null, java.util.List.of());
+        auth.setDetails(new com.tpverp.backend.security.domain.OperationalSessionContext(UUID.randomUUID(), site.storeId()));
+        var failure = new NullPointerException("private customer token SQL must never leave this process");
+        failure.setStackTrace(new StackTraceElement[]{new StackTraceElement("com.tpverp.backend.document.SaleService", "save", "Secret.java", 42)});
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        String firstTrace = "web-first-customer-reference";
+        request.setAttribute(com.tpverp.backend.shared.api.CorrelationIdFilter.ATTRIBUTE, firstTrace);
+        transaction.executeWithoutResult(status -> {
+            recorder.record(auth, ApplicationFailureRecorder.Module.SALES, failure, request);
+            status.setRollbackOnly();
+        });
+        assertThat(jdbc.queryForObject("select count(*) from local_application_failure", Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from sync_outbox", Long.class)).isEqualTo(1);
+        String trace = UUID.randomUUID().toString();
+        request.setAttribute(com.tpverp.backend.shared.api.CorrelationIdFilter.ATTRIBUTE, trace);
+        recorder.record(auth, ApplicationFailureRecorder.Module.SALES, failure, request);
+        assertThat(jdbc.queryForObject("select occurrences from local_application_failure", Long.class)).isEqualTo(2);
+        assertThat(publish()).isZero();
+        assertThat(jdbc.queryForList("select payload ->> 'traceId' from sync_outbox order by (payload ->> 'sourceRevision')::bigint", String.class))
+                .containsExactly(firstTrace, trace);
+        String payload = jdbc.queryForObject("select payload::text from sync_outbox where payload ->> 'sourceRevision'='1'", String.class);
+        var evidence = mapper.readTree(payload);
+        assertThat(evidence.get("schemaVersion").intValue()).isEqualTo(2);
+        assertThat(evidence.get("source").textValue()).isEqualTo("LOCAL_APPLICATION");
+        assertThat(evidence.get("status").textValue()).isEqualTo("OPEN");
+        assertThat(evidence.get("occurrences").longValue()).isEqualTo(2);
+        assertThat(evidence.get("traceId").textValue()).isEqualTo(trace);
+        assertThat(evidence.get("errorLocation").textValue()).isEqualTo("com.tpverp.backend.document.SaleService.save:42");
+        assertThat(payload).doesNotContain("private", "customer", "token", "SQL", "Secret.java");
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of("target"));
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target/phase1-application-payload.json"), payload);
+        var eventIds = jdbc.queryForList("select event_id from sync_outbox order by event_id", UUID.class);
+        jdbc.update("update sync_outbox set estado='DEAD_LETTER',intentos=10");
+        assertThat(publish()).isEqualTo(2);
+        assertThat(publish()).isZero();
+        assertThat(jdbc.queryForList("select event_id from sync_outbox order by event_id", UUID.class)).isEqualTo(eventIds);
+        assertThat(jdbc.queryForObject("select count(*) from sync_outbox where estado='PENDIENTE' and intentos=0", Long.class)).isEqualTo(2);
+        assertThat(transaction.<Integer>execute(status -> publisher.publish(new StoreFailurePublisher.Site(site.companyId(), site.storeId(), UUID.randomUUID())))).isZero();
+        assertThat(transaction.<Integer>execute(status -> publisher.publish(new StoreFailurePublisher.Site(UUID.randomUUID(), site.storeId(), site.installationId())))).isZero();
+        recorder.record(auth, ApplicationFailureRecorder.Module.SALES, failure, request);
+        assertThat(publish()).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from sync_outbox", Long.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from sync_outbox where payload ->> 'status'='RESOLVED'", Long.class)).isZero();
+    }
+
+    @Test
+    void nullableDiagnosticsRemainInV2AndUnknownStoresAreNotCaptured() {
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("synthetic", null, java.util.List.of());
+        auth.setDetails(new com.tpverp.backend.security.domain.OperationalSessionContext(UUID.randomUUID(), UUID.randomUUID()));
+        recorder.record(auth, ApplicationFailureRecorder.Module.APPLICATION, new RuntimeException(), null);
+        assertThat(jdbc.queryForObject("select count(*) from local_application_failure", Long.class)).isZero();
+        transaction.executeWithoutResult(status -> recorder.persist(site,
+                new ApplicationFailureRecorder.Evidence(ApplicationFailureRecorder.Module.APPLICATION, null, UUID.randomUUID().toString(), null, null)));
+        assertThat(publish()).isZero();
+        assertThat(jdbc.queryForObject("select payload ?& array['module','appVersion','traceId','exceptionType','errorLocation'] from sync_outbox", Boolean.class))
+                .isTrue();
+        assertThat(jdbc.queryForObject("select payload ->> 'appVersion' from sync_outbox", String.class)).isNull();
     }
 
     private int publish() { return transaction.execute(status -> publisher.publish(site)); }

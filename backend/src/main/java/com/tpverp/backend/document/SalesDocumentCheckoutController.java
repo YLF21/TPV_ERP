@@ -29,6 +29,12 @@ public class SalesDocumentCheckoutController {
     private final CustomerPendingSaleService service;
     private final CustomerReceivablePrintService printing;
     private final DocumentViewAssembler views;
+    private com.tpverp.backend.supervision.ApplicationFailureRecorder failures;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setFailureRecorder(com.tpverp.backend.supervision.ApplicationFailureRecorder failures) {
+        this.failures = failures;
+    }
 
     public SalesDocumentCheckoutController(
             CustomerPendingSaleService service,
@@ -75,16 +81,35 @@ public class SalesDocumentCheckoutController {
         var printable = request.completionMode()
                 == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
                 ? new PreparedPrint(null, null)
-                : preparePrintDocument(printing, document.getId());
+                : preparePrintDocument(printing, document.getId(), failure -> reportPrintFailure(failures, authentication, failure));
         return new Result(views.documentView(document), printable.document(), printable.errorCode());
+    }
+
+    static void reportPrintFailure(com.tpverp.backend.supervision.ApplicationFailureRecorder failures,
+            Authentication authentication, RuntimeException failure) {
+        if (failures == null) return;
+        var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        var servletRequest = attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet
+                ? servlet.getRequest() : null;
+        failures.record(authentication, com.tpverp.backend.supervision.ApplicationFailureRecorder.Module.PRINTING,
+                failure, servletRequest);
     }
 
     static PreparedPrint preparePrintDocument(
             CustomerReceivablePrintService printing,
             UUID documentId) {
+        return preparePrintDocument(printing, documentId, failure -> {});
+    }
+
+    static PreparedPrint preparePrintDocument(
+            CustomerReceivablePrintService printing,
+            UUID documentId,
+            java.util.function.Consumer<RuntimeException> reportFailure) {
         try {
             return new PreparedPrint(printing.document(documentId), null);
         } catch (RuntimeException failure) {
+            try { reportFailure.accept(failure); }
+            catch (RuntimeException ignored) { /* Reporting cannot alter an already confirmed sale. */ }
             // The document mutation has already committed. A printer/template failure must not
             // turn a confirmed sale into an apparently failed sale or encourage a duplicate retry.
             LOGGER.error("Could not prepare print data for confirmed document {}", documentId,

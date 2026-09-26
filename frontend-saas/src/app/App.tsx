@@ -86,13 +86,21 @@ export default function App() {
   }
 
   useEffect(() => {
-    const syncView = () => setActiveView(readViewFromLocation());
-    if (!window.location.hash) window.history.replaceState({ view: activeView }, "", `#/${activeView}`);
+    const syncView = () => {
+      // Old public-site bookmarks now enter the independent administration app.
+      if (!window.location.hash || /^#\/producto(?:\/|$)/.test(window.location.hash)) {
+        window.history.replaceState({ entry: "login" }, "", "#/login");
+      }
+      setActiveView(readViewFromLocation());
+    };
+    syncView();
     window.addEventListener("popstate", syncView);
     window.addEventListener("hashchange", syncView);
-    return () => { window.removeEventListener("popstate", syncView); window.removeEventListener("hashchange", syncView); };
+    return () => {
+      window.removeEventListener("popstate", syncView);
+      window.removeEventListener("hashchange", syncView);
+    };
   }, []);
-
   useEffect(() => {
     setUnauthorizedHandler((failedCredentials) => {
       if (!shouldInvalidateSession(
@@ -129,6 +137,9 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (credentials?.mode === "admin") {
+      if (window.location.hash === "#/login") {
+        window.history.replaceState({ view: activeView }, "", `#/${activeView}`);
+      }
       void refresh(credentials);
     }
   }, [credentials]);
@@ -265,7 +276,7 @@ export default function App() {
 
     setNotice(null);
     setLoading(false);
-    window.history.replaceState({ view: "dashboard" }, "", "#/dashboard");
+    window.history.replaceState({ entry: "login" }, "", "#/login");
   }
 
   if (pendingPasswordChange) {

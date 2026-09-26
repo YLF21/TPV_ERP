@@ -14,7 +14,8 @@ test("internal portal uses the admin login and retains tenant contracts only for
   assert.match(types, /mode: "admin" \| "tenant"/);
   assert.match(api, /publicPost<LoginResponse>\("\/api\/v1\/auth\/admin\/login", credentials\)/);
   assert.match(app, /mode: authenticated\.mode/);
-  assert.match(app, /if \(credentials\?\.mode === "admin"\) \{\s*void refresh\(credentials\)/);
+  // Navigation normalization may run inside the admin guard before refreshing.
+  assert.match(app, /if \(credentials\?\.mode === "admin"\) \{\s*(?:if \(window\.location\.hash[^\n]*\) \{\s*window\.history\.replaceState\([^\n]*\);\s*\}\s*)?void refresh\(credentials\)/);
   assert.doesNotMatch(app, /TenantWorkspace|MastersView|OperationsView/);
   const refresh = app.slice(app.indexOf("async function refresh"), app.indexOf("async function login"));
   assert.doesNotMatch(refresh, /error\.status === 403/);

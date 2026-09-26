@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --configLoader runner",
     "test": "node --test",
-    "test:e2e": "node e2e/saas-smoke.mjs && node e2e/workspace-smoke.mjs && node e2e/internal-portal.mjs && node e2e/company-store-onboarding.mjs && node e2e/company-filters-smoke.mjs && node e2e/company-contact-smoke.mjs && node e2e/license-table-smoke.mjs && node e2e/store-table-scroll.mjs && node e2e/create-license-smoke.mjs",
+    "test:e2e": "node e2e/saas-smoke.mjs && node e2e/workspace-smoke.mjs && node e2e/internal-portal.mjs && node e2e/company-store-onboarding.mjs && node e2e/company-filters-smoke.mjs && node e2e/company-contact-smoke.mjs && node e2e/license-table-smoke.mjs && node e2e/store-table-scroll.mjs && node e2e/create-license-smoke.mjs && node e2e/failure-diagnostics-smoke.mjs && node e2e/failure-repairs-smoke.mjs && node e2e/support-interventions-smoke.mjs",
     "build": "tsc -p tsconfig.app.json --noEmit --incremental false && tsc -p tsconfig.node.json --noEmit --incremental false && vite build --configLoader runner",
     "preview": "vite preview --host 127.0.0.1 --configLoader runner"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "^6.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.3.0",

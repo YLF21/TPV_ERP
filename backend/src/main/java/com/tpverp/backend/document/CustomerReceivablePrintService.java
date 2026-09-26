@@ -36,6 +36,12 @@ public class CustomerReceivablePrintService {
     private final com.tpverp.backend.verifactu.FiscalQrImageService fiscalQrImages;
     private final InvoiceJasperRenderer jasperRenderer;
     private final OperationalReceiptJasperRenderer receiptRenderer;
+    private com.tpverp.backend.supervision.PrintFailureReporter printFailures;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrintFailureReporter(com.tpverp.backend.supervision.PrintFailureReporter printFailures) {
+        this.printFailures = printFailures;
+    }
 
     public CustomerReceivablePrintService(CommercialDocumentRepository documents,
             DocumentPaymentRepository payments, CurrentOrganization organization,
@@ -227,6 +233,7 @@ public class CustomerReceivablePrintService {
         try {
             return receiptRenderer.renderPendingCollection(documentId, paymentId);
         } catch (RuntimeException exception) {
+            if (printFailures != null) printFailures.record(exception);
             LOGGER.warn("No se pudo renderizar el justificante Jasper del cobro {} para {}",
                     paymentId, documentId, exception);
             return null;

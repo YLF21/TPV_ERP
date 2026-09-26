@@ -591,7 +591,7 @@ export const api = {
     });
   },
 
-  updateSupportTicket(credentials: Credentials, ticketId: string, payload: { status: string; priority: string }) {
+  updateSupportTicket(credentials: Credentials, ticketId: string, payload: { status: string; priority?: string; expectedInterventionVersion?: number | null; expectedTicketStatus?: string }) {
     return request<SupportTicket>(credentials, `/api/v1/admin/tickets/${ticketId}`, {
       method: "PUT",
       body: payload
@@ -602,10 +602,10 @@ export const api = {
     return request<SupportTicketComment[]>(credentials, `/api/v1/admin/tickets/${ticketId}/comments`);
   },
 
-  createSupportTicketComment(credentials: Credentials, ticketId: string, message: string) {
+  createSupportTicketComment(credentials: Credentials, ticketId: string, message: string, requestId?: string) {
     return request<SupportTicketComment>(credentials, `/api/v1/admin/tickets/${ticketId}/comments`, {
       method: "POST",
-      body: { message }
+      body: { message, ...(requestId ? { requestId } : {}) }
     });
   },
 

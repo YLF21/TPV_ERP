@@ -77,7 +77,7 @@ public class TicketJasperRenderer {
                     JasperExportManager.exportReportToPdf(print),
                     InvoiceJasperRenderer.ticketRaster(print));
         } catch (IOException | SQLException | JRException exception) {
-            throw new IllegalStateException("ticket_jasper_render_failed", exception);
+            throw new PrintRenderingException("ticket_jasper_render_failed", exception);
         }
     }
 
@@ -88,12 +88,12 @@ public class TicketJasperRenderer {
         }
         var resolved = templates.resolve(DocumentTemplateType.TICKET);
         if (resolved.builtIn() || !storage.isBundle(resolved.artifactReference())) {
-            throw new IllegalStateException("ticket_imported_template_bundle_required");
+            throw new PrintRenderingException("ticket_imported_template_bundle_required");
         }
         var sources = storage.readBundleSources(resolved.artifactReference());
         if (!TicketJrxmlBundleCompiler.bundleSha256(sources)
                 .equals(resolved.sha256())) {
-            throw new IllegalStateException(
+            throw new PrintRenderingException(
                     "document_template_artifact_integrity_failed");
         }
         return storage.compiledBundleMaster(

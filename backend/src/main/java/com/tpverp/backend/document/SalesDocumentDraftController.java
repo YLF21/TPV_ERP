@@ -28,6 +28,12 @@ public class SalesDocumentDraftController {
     private final CustomerPendingSaleService service;
     private final CustomerReceivablePrintService printing;
     private final DocumentViewAssembler views;
+    private com.tpverp.backend.supervision.ApplicationFailureRecorder failures;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setFailureRecorder(com.tpverp.backend.supervision.ApplicationFailureRecorder failures) {
+        this.failures = failures;
+    }
 
     public SalesDocumentDraftController(
             SalesDocumentDraftQueryService drafts,
@@ -106,7 +112,7 @@ public class SalesDocumentDraftController {
         SalesDocumentCheckoutController.requireDocumentAccess(request, authentication);
         var document = service.completeDraft(id, request, authentication);
         var printable = SalesDocumentCheckoutController.preparePrintDocument(
-                printing, document.getId());
+                printing, document.getId(), failure -> SalesDocumentCheckoutController.reportPrintFailure(failures, authentication, failure));
         return new SalesDocumentCheckoutController.Result(
                 views.documentView(document), printable.document(), printable.errorCode());
     }

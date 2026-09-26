@@ -56,7 +56,7 @@ public class SaasProductSalesHistoryJasperRenderer {
             var context = SafeJrxmlCompiler.secureContext();
             var print = JasperFillManager.getInstance(context).fill(report, parameters, new JRMapCollectionDataSource(rows));
             return JasperExportManager.getInstance(context).exportToPdf(print);
-        } catch (Exception exception) { throw new IllegalStateException("product_history_pdf_failed", exception); }
+        } catch (Exception exception) { throw new PrintRenderingException("product_history_pdf_failed", exception); }
     }
     private synchronized byte[] template() throws java.io.IOException {
         if (compiled == null) {

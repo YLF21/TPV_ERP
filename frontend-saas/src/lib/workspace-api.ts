@@ -74,11 +74,39 @@ export type FailureRow = {
   severity: string;
   code: string;
   detail: string;
+  module?: string | null;
+  appVersion?: string | null;
+  traceId?: string | null;
+  exceptionType?: string | null;
+  errorLocation?: string | null;
+  receivedAt?: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
   occurrences: number;
   central: boolean;
   storeActive: boolean | null;
+};
+export type FailureRepairCommand = {
+  commandId: string; requestId: string; action: string; eventId: string; expectedVersion: number;
+  status: string; resultCode: string | null; requestedBy: string; reason: string;
+  createdAt: string; expiresAt: string; updatedAt: string;
+};
+export type FailureRepairs = {
+  remoteEligible: boolean; ineligibleReason: string | null;
+  commands: FailureRepairCommand[]; manualTicketId: string | null;
+};
+export type InterventionAction = "START_REMOTE" | "REQUIRE_ONSITE" | "START_ONSITE" | "RESOLVE" | "REOPEN";
+export type TicketInterventionRequest = {
+  requestId: string; expectedVersion: number; expectedTicketStatus: string;
+  action: InterventionAction; note: string; teamViewerId: string | null;
+};
+export type TicketInterventionEvent = {
+  requestId: string; version: number; action: string; status: string; note: string;
+  teamViewerId: string | null; actor: string; createdAt: string;
+};
+export type TicketInterventionState = {
+  ticketId: string; companyId: string; status: string; version: number;
+  ticketStatus: string; teamViewerId: string | null; events: TicketInterventionEvent[];
 };
 export const COMPANY_PRIVILEGES = [
   "READ_COMPANY",
@@ -132,6 +160,16 @@ export const workspaceApi = {
       c,
       `/api/v1/admin/supervision/failures${query(filters)}`,
     ),
+  failureRepairs: (c: Credentials, key: string) => request<FailureRepairs>(c,
+    `/api/v1/admin/supervision/failures/${encodeURIComponent(key)}/repairs`),
+  requestFailureRepair: (c: Credentials, key: string, body: { requestId: string; reason: string }) => request<FailureRepairCommand>(c,
+    `/api/v1/admin/supervision/failures/${encodeURIComponent(key)}/repairs`, { method: "POST", body }),
+  requestManualRepair: (c: Credentials, key: string, reason: string) => request<{ ticketId: string }>(c,
+    `/api/v1/admin/supervision/failures/${encodeURIComponent(key)}/manual`, { method: "POST", body: { reason } }),
+  ticketInterventions: (c: Credentials, ticketId: string) => request<TicketInterventionState>(c,
+    `/api/v1/admin/tickets/${encodeURIComponent(ticketId)}/interventions`),
+  recordTicketIntervention: (c: Credentials, ticketId: string, body: TicketInterventionRequest) => request<TicketInterventionState>(c,
+    `/api/v1/admin/tickets/${encodeURIComponent(ticketId)}/interventions`, { method: "POST", body }),
   access: (c: Credentials) => request<TenantAccess>(c, "/api/v1/tenant/access"),
   userAccess: (c: Credentials, username: string) =>
     request<TenantAccess>(

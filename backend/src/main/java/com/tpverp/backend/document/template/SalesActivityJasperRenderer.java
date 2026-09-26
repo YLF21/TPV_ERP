@@ -308,7 +308,7 @@ public class SalesActivityJasperRenderer {
                     ? InvoiceJasperRenderer.ticketRaster(print) : null;
             return new RenderedReport(pdf, image);
         } catch (IOException | JRException exception) {
-            throw new IllegalStateException("sales_activity_jasper_render_failed", exception);
+            throw new PrintRenderingException("sales_activity_jasper_render_failed", exception);
         }
     }
 
@@ -317,7 +317,7 @@ public class SalesActivityJasperRenderer {
         try (var input = resource.getInputStream()) {
             return compiler.compile(input.readAllBytes()).compiled();
         } catch (IOException exception) {
-            throw new IllegalStateException("sales_activity_jasper_template_missing", exception);
+            throw new PrintRenderingException("sales_activity_jasper_template_missing", exception);
         }
     }
 

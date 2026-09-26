@@ -109,6 +109,10 @@ public class SyncEventService {
     })
     public SyncEventReceipt receive(SyncEventRequest request, String token) {
         SaasInstallation installation = authenticate(request, token);
+        if (com.tpverp.saas.supervision.StoreFailureProjector.ENTITY_TYPE.equals(request.entityType())
+                && request.operation() != SyncOperation.ACTUALIZAR) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Operacion de informe operativo no soportada");
+        }
         String payload = canonicalPayload(request);
         String payloadHash = sha256(payload);
         int schemaVersion = schemaVersion(request);
@@ -119,6 +123,9 @@ public class SyncEventService {
         Optional<SaasSyncEvent> duplicate = events.findById(request.eventId());
         if (duplicate.isPresent()) {
             SaasSyncEvent existing = duplicate.get();
+            if (!ownsEvent(existing, installation)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Procedencia del evento incompatible con la instalacion autenticada");
+            }
             if (sameEvent(existing, installation, request, payloadHash)) {
                 if (existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.ERROR) {
                     project(existing, request, clock.instant());
@@ -272,13 +279,7 @@ public class SyncEventService {
             SaasInstallation installation,
             SyncEventRequest request,
             String payloadHash) {
-        return existing.getCompany().getId().equals(installation.getCompany().getId())
-                && Objects.equals(
-                        existing.getStore() == null ? null : existing.getStore().getId(),
-                        installation.getStore() == null ? null : installation.getStore().getId())
-                && Objects.equals(
-                        existing.getInstallation() == null ? null : existing.getInstallation().getId(),
-                        installation.getId())
+        return ownsEvent(existing, installation)
                 && Objects.equals(existing.getStoreSequence(), request.storeSequence())
                 && existing.getEntityType().equals(request.entityType())
                 && existing.getEntityId().equals(request.entityId())
@@ -286,6 +287,15 @@ public class SyncEventService {
                 && existing.getPayloadHash().equals(payloadHash);
     }
 
+    private static boolean ownsEvent(SaasSyncEvent existing, SaasInstallation installation) {
+        return existing.getCompany().getId().equals(installation.getCompany().getId())
+                && Objects.equals(
+                        existing.getStore() == null ? null : existing.getStore().getId(),
+                        installation.getStore() == null ? null : installation.getStore().getId())
+                && Objects.equals(
+                        existing.getInstallation() == null ? null : existing.getInstallation().getId(),
+                        installation.getId());
+    }
     private record InstantHolder(java.time.Instant value) {
     }
 }

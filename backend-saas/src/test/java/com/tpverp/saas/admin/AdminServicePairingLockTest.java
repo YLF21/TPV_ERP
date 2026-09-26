@@ -57,7 +57,7 @@ class AdminServicePairingLockTest {
         var service = new AdminService(
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
-                audit, sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
+                audit, mock(com.tpverp.saas.supervision.SupportInterventionTicketState.class), sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
                 mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), Clock.fixed(NOW, ZoneOffset.UTC));
 
         var company = new SaasCompany(
@@ -122,7 +122,7 @@ class AdminServicePairingLockTest {
         var service = new AdminService(
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
-                audit, sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
+                audit, mock(com.tpverp.saas.supervision.SupportInterventionTicketState.class), sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
                 mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), Clock.fixed(NOW, ZoneOffset.UTC));
         when(adminUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(tenantUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);

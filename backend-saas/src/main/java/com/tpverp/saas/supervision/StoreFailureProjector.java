@@ -45,6 +45,7 @@ public class StoreFailureProjector {
                 installation.getId(), value.source(), value.sourceId());
         if (!previous.isEmpty()) {
             Previous current = previous.getFirst();
+            recordRevision(current.id(), value, event.getPayloadHash());
             if (value.sourceRevision() < current.revision()) return;
             if (value.sourceRevision() == current.revision()) {
                 if (!event.getPayloadHash().equals(current.hash())) {
@@ -55,21 +56,39 @@ public class StoreFailureProjector {
             jdbc.update("""
                     update saas_store_failure set source_revision = ?, source_hash = ?, status = ?, severity = ?, code = ?,
                         first_seen_at = least(first_seen_at, ?), last_seen_at = greatest(last_seen_at, ?),
-                        received_at = ?, occurrences = greatest(occurrences, ?), last_event_id = ? where id = ?
+                        received_at = ?, occurrences = greatest(occurrences, ?), last_event_id = ?,
+                        module = ?, app_version = ?, trace_id = ?, exception_type = ?, error_location = ? where id = ?
                     """, value.sourceRevision(), event.getPayloadHash(), value.status(), value.severity(), value.code(),
-                    time(value.firstSeenAt()), time(value.lastSeenAt()), time(event.getReceivedAt()), value.occurrences(), event.getEventId(), current.id());
+                    time(value.firstSeenAt()), time(value.lastSeenAt()), time(event.getReceivedAt()), value.occurrences(), event.getEventId(),
+                    value.module(), value.appVersion(), value.traceId(), value.exceptionType(), value.errorLocation(), current.id());
         } else {
+            UUID failureId = UUID.randomUUID();
             jdbc.update("""
                     insert into saas_store_failure
                     (id, company_id, store_id, installation_id, source, source_id, source_revision, source_hash,
-                     status, severity, code, first_seen_at, last_seen_at, received_at, occurrences, last_event_id)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, UUID.randomUUID(), event.getCompany().getId(), event.getStore().getId(), installation.getId(),
+                     status, severity, code, first_seen_at, last_seen_at, received_at, occurrences, last_event_id,
+                     module, app_version, trace_id, exception_type, error_location)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, failureId, event.getCompany().getId(), event.getStore().getId(), installation.getId(),
                     value.source(), value.sourceId(), value.sourceRevision(), event.getPayloadHash(), value.status(), value.severity(), value.code(),
-                    time(value.firstSeenAt()), time(value.lastSeenAt()), time(event.getReceivedAt()), value.occurrences(), event.getEventId());
+                    time(value.firstSeenAt()), time(value.lastSeenAt()), time(event.getReceivedAt()), value.occurrences(), event.getEventId(),
+                    value.module(), value.appVersion(), value.traceId(), value.exceptionType(), value.errorLocation());
+            recordRevision(failureId, value, event.getPayloadHash());
         }
     }
 
+    private void recordRevision(UUID failureId, StoreFailureSnapshot value, String hash) {
+        var hashes = jdbc.queryForList("select source_hash from saas_store_failure_trace where failure_id = ? and source_revision = ?",
+                String.class, failureId, value.sourceRevision());
+        if (!hashes.isEmpty()) {
+            if (!hash.equals(hashes.getFirst())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Misma revision operativa con contenido diferente");
+            }
+            return;
+        }
+        jdbc.update("insert into saas_store_failure_trace(failure_id, source_revision, source_hash, trace_id) values (?, ?, ?, ?)",
+                failureId, value.sourceRevision(), hash, value.traceId());
+    }
     /** Called in the receiver transaction: rollback semantics are inherited from the source projection. */
     public void recordProjection(SaasSyncEvent event, Instant now) {
         if (ENTITY_TYPE.equals(event.getEntityType())) return; // reporting must never report its own failure recursively

@@ -44,7 +44,8 @@ async function ensureFrontend() {
 }
 
 await ensureFrontend();
-const browser = await chromium.launch({ headless: true });
+const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 try {
   async function runRealBackendScenario() {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -86,7 +87,7 @@ try {
       await route.fulfill({ status: 404 });
     }
   });
-  await passwordPage.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15_000 });
+  await passwordPage.goto(`${baseUrl}/#/login`, { waitUntil: "domcontentloaded", timeout: 15_000 });
   await passwordPage.locator('input[autocomplete="username"]').fill("PASSWORD_E2E");
   await passwordPage.locator('input[autocomplete="current-password"]').fill("not-a-real-password");
   await passwordPage.locator("form button[type=submit]").click();
@@ -175,7 +176,7 @@ try {
       await route.continue();
     }
   });
-  await adminPage.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15_000 });
+  await adminPage.goto(`${baseUrl}/#/login`, { waitUntil: "domcontentloaded", timeout: 15_000 });
   await adminPage.locator('input[autocomplete="username"]').fill("ADMIN_E2E");
   await adminPage.locator('input[autocomplete="current-password"]').fill("not-a-real-password");
   await adminPage.locator("form button[type=submit]").click();

@@ -300,6 +300,7 @@ export type SaasStatus = {
 };
 
 export type SupportTicket = {
+  interventionVersion?: number | null;
   id: string;
   companyId: string;
   companyName: string;
@@ -314,6 +315,7 @@ export type SupportTicket = {
 
 export type SupportTicketComment = {
   id: string;
+  requestId?: string | null;
   ticketId: string;
   author: string;
   message: string;

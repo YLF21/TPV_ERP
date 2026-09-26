@@ -52,7 +52,7 @@ public class AdminAuditService {
                 .toList();
     }
 
-    String currentUsername() {
+    public String currentUsername() {
         var attributes = RequestContextHolder.getRequestAttributes();
         if (attributes instanceof ServletRequestAttributes servletAttributes) {
             Object username = servletAttributes.getRequest().getAttribute(USERNAME_ATTRIBUTE);

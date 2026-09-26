@@ -51,7 +51,7 @@ class BuiltInTicketJasperBundle {
                         reference, TicketJrxmlBundleCompiler.MASTER_FILENAME);
                 return cachedMaster;
             } catch (IOException exception) {
-                throw new IllegalStateException(
+                throw new PrintRenderingException(
                         "ticket_jasper_builtin_bundle_compile_failed", exception);
             }
         }
