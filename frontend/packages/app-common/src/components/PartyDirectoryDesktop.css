@@ -1,0 +1,83 @@
+/* Shared desktop directories for APP GESTIÓN and APP VENTA > Gestión. */
+.party-desktop-table .party-directory-row { align-items: stretch; }
+.party-desktop-table .party-directory-row > .party-directory-cell { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 10px; font-size: 12px; }
+.party-desktop-table .party-directory-cell:is(.party-directory-cell-debt,.party-directory-cell-balance,.party-directory-cell-creditLimit,.party-directory-cell-discount,.party-directory-cell-points,.party-directory-cell-paymentTermDays) { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.party-desktop-table .party-directory-cell-name { display: block; }
+.party-desktop-table .party-directory-cell-status { flex-wrap: wrap; }
+.party-desktop-table .has-debt, .party-desktop-dialog .has-debt { color: #a62929; font-weight: 700; }
+.party-desktop-status { display: inline-flex; align-items: center; flex-shrink: 0; height: 22px; padding: 0 8px; border: 1px solid #d5dce3; border-radius: 2px; color: #5a6673; background: #eef1f4; font-size: 12px; font-weight: 600; line-height: 20px; }
+.party-desktop-status.is-active { color: #21633d; background: #eaf5ed; border-color: #c6dfcd; }
+
+/* Do not reserve a second, invisible control gutter inside the sort button. */
+.party-desktop-table .party-directory-row.header > .table-layout-header-cell { display: flex; align-items: center; height: 46px !important; min-height: 46px !important; padding: 0 8px !important; }
+.party-desktop-table .party-directory-row.header .table-layout-header-controls { position: relative; width: 100% !important; max-width: 100%; height: 100%; margin: 0 !important; padding: 0 !important; }
+.party-desktop-table .party-directory-row.header .table-layout-header-actions { position: absolute !important; top: 50%; right: 0; transform: translateY(-50%) !important; }
+.party-desktop-table .party-directory-row.header .table-layout-sort-button { gap: 3px; width: 100%; height: 100%; margin: 0 !important; padding: 4px 25px 4px 0 !important; }
+.party-desktop-table .party-directory-row.header :is(.table-layout-sort-label,.table-layout-header-label) { max-width: none !important; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; font-size: 12px; line-height: 16px; }
+.party-desktop-table .party-directory-row.header .table-layout-header-label { padding: 0 25px 0 0 !important; }
+.party-desktop-table .party-directory-row.header .table-layout-sort-button:not(.is-active) .table-layout-sort-indicator { display: none; }
+.party-desktop-table .party-directory-row.header .table-layout-drag-handle { display: none !important; }
+.party-desktop-table .party-directory-row.header .table-layout-column-menu-button { opacity: 1 !important; visibility: visible !important; width: 22px; min-width: 22px; flex-basis: 22px; }
+
+.party-directory-toolbar.party-directory-toolbar--classic.party-directory-toolbar--field-filters { grid-template-columns: minmax(220px, 420px) 180px auto 1fr; }
+.party-directory-toolbar--classic .party-directory-filter-button { grid-column: 3; grid-row: 2; align-self: stretch; }
+.party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-result-count { grid-column: 4; }
+.party-directory-toolbar--classic .party-directory-filter-fields { grid-column: 1 / -1; grid-row: 3; grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+.party-directory-toolbar--classic .party-directory-active-filters { grid-column: 1 / -1; }
+
+.filter-dialog.party-create-dialog.party-desktop-dialog.erp-classic-window { display: flex; flex-direction: column; width: min(1120px, calc(100vw - 40px)) !important; max-height: calc(100dvh - 40px) !important; padding: 0; gap: 0; border: 1px solid #12385f; border-radius: 2px; background: #f2f5f8; overflow: hidden; }
+.filter-dialog.party-create-dialog.party-desktop-dialog--suppliers.erp-classic-window { width: min(880px, calc(100vw - 40px)) !important; }
+.filter-dialog.party-desktop-dialog > .filter-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: 12px 16px; gap: 16px; margin: 0; color: #fff; background: #12385f; border-bottom: 1px solid #12385f; }
+.filter-dialog.party-desktop-dialog > .filter-header h2 { margin: 0 0 5px; font-size: 20px; color: #fff; line-height: 1.25; }
+.filter-dialog.party-desktop-dialog > .filter-header > div > span { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #e4edf7; }
+.filter-dialog.party-desktop-dialog > .filter-header > button { min-width: 72px; min-height: 32px; padding: 0 12px; color: #fff; background: transparent; border: 1px solid #8ba3bf; border-radius: 1px; }
+.filter-dialog.party-desktop-dialog > .filter-header .party-desktop-status { margin: 0; color: #5a6673 !important; }
+.filter-dialog.party-desktop-dialog > .filter-header .party-desktop-status.is-active { color: #21633d !important; }
+
+.filter-dialog.party-desktop-dialog .party-create-form { display: grid; min-height: 0; gap: 12px; padding: 14px; margin: 0; overflow: auto; background: #f2f5f8; }
+.party-desktop-dialog .party-form-sections { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.party-desktop-dialog .party-form-section, .party-desktop-dialog .party-credit-settings { display: grid; gap: 10px; padding: 12px; margin: 0; border: 1px solid #ccd7e2; border-radius: 2px; background: #fff; min-width: 0; }
+.party-desktop-dialog .party-form-section--identity { grid-column: 1; grid-row: 1; }
+.party-desktop-dialog .party-form-section--contact { grid-column: 2; grid-row: 1 / span 2; }
+.party-desktop-dialog .party-form-section--personal { grid-column: 1; grid-row: 2; }
+.party-desktop-dialog .party-credit-settings { grid-column: 1; }
+.party-desktop-dialog .party-form-section--communications { grid-column: 2; align-self: stretch; }
+.party-desktop-dialog .party-form-sections--supplier { grid-template-columns: minmax(0, 1fr); }
+.party-desktop-dialog .party-form-sections--supplier .party-form-section { grid-column: auto; grid-row: auto; }
+.party-desktop-dialog :is(.party-form-section,.party-credit-settings,.party-desktop-credit-overview) h3 { margin: 0; padding-bottom: 8px; border-bottom: 1px solid #e0e7ef; color: #163b60; font-size: 13px; }
+.party-desktop-dialog .party-form-section > label, .party-desktop-dialog .product-create-row > label { display: grid; min-width: 0; gap: 5px; }
+.party-desktop-dialog .product-create-row { gap: 10px; }
+.party-desktop-dialog .party-address-postal-row { grid-template-columns: 120px minmax(0, 1fr); }
+.party-desktop-dialog .party-form-sections input:not([type=checkbox]), .party-desktop-dialog .party-form-sections .erp-select__trigger { height: 34px; min-height: 34px; padding: 6px 9px; font-size: 12px; }
+.party-desktop-dialog .party-form-sections textarea { width: 100%; min-height: 54px; padding: 6px 9px; resize: vertical; font: inherit; font-size: 12px; box-sizing: border-box; }
+.party-desktop-dialog .party-form-sections label > span { font-size: 12px; }
+.party-desktop-dialog .party-form-sections label.party-commercial-consent { display: flex; align-items: center; gap: 8px; }
+.party-desktop-dialog .party-credit-checkboxes { display: grid; gap: 8px; }
+.party-desktop-dialog .party-credit-checkboxes > label { display: flex; align-items: center; gap: 8px; }
+.filter-dialog.party-desktop-dialog .filter-actions { display: flex; align-items: center; justify-content: flex-end; flex: none; gap: 8px; margin: 0; padding: 12px 14px !important; background: #fff; border-top: 1px solid #c6d2de; }
+.filter-dialog.party-desktop-dialog .party-create-form > .filter-actions { position: sticky; bottom: -14px; z-index: 2; margin: 0 -14px -14px; }
+.party-desktop-credit-overview { padding: 10px 12px; border: 1px solid #ccd7e2; background: #fff; }
+.party-desktop-credit-overview dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 8px 0 0; }
+.party-desktop-credit-overview dt { color: #52687e; font-size: 11px; }
+.party-desktop-credit-overview dd { margin: 4px 0 0; font-size: 16px; color: #173c61; font-weight: 700; font-variant-numeric: tabular-nums; }
+.party-desktop-dialog .party-member-customer-summary { grid-template-columns: minmax(0, 1fr) auto; padding: 12px; border: 1px solid #ccd7e2; border-radius: 2px; background: #fff; }
+.party-desktop-dialog .party-member-directory-detail { min-height: 0; overflow: auto; gap: 12px; padding: 14px; }
+.party-desktop-dialog .party-member-customer-picker { min-height: 0; overflow: auto; }
+.party-desktop-dialog .party-member-profile { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 8px 0 0; }
+.party-desktop-dialog .party-member-profile dt { color: #52687e; font-size: 11px; }
+.party-desktop-dialog .party-member-profile dd { margin: 3px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.party-desktop-dialog .party-member-profile > div:last-child { grid-column: 1 / -1; }
+.party-desktop-dialog .party-member-tabs { display: flex; flex: none; gap: 4px; padding: 8px 14px 0; border-bottom: 1px solid #c6d2de; background: #fff; }
+.party-desktop-dialog .party-member-tabs > button { min-height: 36px; padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; color: #52687e; background: transparent; font-size: 13px; font-weight: 600; }
+.party-desktop-dialog .party-member-tabs > button[aria-selected=true] { color: #12385f; border-bottom-color: #2878b9; }
+.party-desktop-dialog .party-member-tab-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.party-desktop-dialog .party-member-tab-panel[hidden] { display: none; }
+@media (max-width: 800px) {
+  .party-desktop-dialog .party-form-sections { grid-template-columns: minmax(0, 1fr); }
+  .party-desktop-dialog .party-form-section, .party-desktop-dialog .party-credit-settings { grid-column: auto; grid-row: auto; }
+  .party-desktop-credit-overview dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .party-directory-toolbar.party-directory-toolbar--classic.party-directory-toolbar--field-filters { grid-template-columns: minmax(0, 1fr) 150px; }
+  .party-directory-toolbar--classic .party-directory-filter-button { grid-column: 1; grid-row: 3; justify-self: start; }
+  .party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-result-count { grid-column: 2; grid-row: 3; }
+  .party-directory-toolbar--classic .party-directory-filter-fields { grid-row: 4; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

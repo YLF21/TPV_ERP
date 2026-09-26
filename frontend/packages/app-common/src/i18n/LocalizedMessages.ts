@@ -1,3 +1,4 @@
+import { partyGestionMessages } from "./PartyGestionMessages";
 import type { LocaleCode } from "../types";
 import { MessagesEn } from "./MessagesEn";
 import { MessagesEs } from "./MessagesEs";
@@ -33,9 +34,9 @@ const managementMessages = buildAppKind === "venta"
     };
 
 export const messages: Record<LocaleCode, Record<string, string>> = {
-  es: { ...MessagesEs.values, ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es"), ...managementMessages.es, ...rectificationMessages("es"), ...sharedManagementMessages("es"), ...salesOperationSecurityMessages("es"), ...cashClosureMessages("es"), ...cashCurrentBalanceMessages("es"), ...saleControlDeliveryMessages("es") },
-  en: { ...MessagesEn.values, ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en"), ...managementMessages.en, ...rectificationMessages("en"), ...sharedManagementMessages("en"), ...salesOperationSecurityMessages("en"), ...cashClosureMessages("en"), ...cashCurrentBalanceMessages("en"), ...saleControlDeliveryMessages("en") },
-  zh: { ...MessagesZh.values, ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh"), ...managementMessages.zh, ...rectificationMessages("zh"), ...sharedManagementMessages("zh"), ...salesOperationSecurityMessages("zh"), ...cashClosureMessages("zh"), ...cashCurrentBalanceMessages("zh"), ...saleControlDeliveryMessages("zh") }
+  es: { ...MessagesEs.values, ...partyGestionMessages("es"), ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es"), ...managementMessages.es, ...rectificationMessages("es"), ...sharedManagementMessages("es"), ...salesOperationSecurityMessages("es"), ...cashClosureMessages("es"), ...cashCurrentBalanceMessages("es"), ...saleControlDeliveryMessages("es") },
+  en: { ...MessagesEn.values, ...partyGestionMessages("en"), ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en"), ...managementMessages.en, ...rectificationMessages("en"), ...sharedManagementMessages("en"), ...salesOperationSecurityMessages("en"), ...cashClosureMessages("en"), ...cashCurrentBalanceMessages("en"), ...saleControlDeliveryMessages("en") },
+  zh: { ...MessagesZh.values, ...partyGestionMessages("zh"), ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh"), ...managementMessages.zh, ...rectificationMessages("zh"), ...sharedManagementMessages("zh"), ...salesOperationSecurityMessages("zh"), ...cashClosureMessages("zh"), ...cashCurrentBalanceMessages("zh"), ...saleControlDeliveryMessages("zh") }
 };
 
 export class LocalizedMessages {
