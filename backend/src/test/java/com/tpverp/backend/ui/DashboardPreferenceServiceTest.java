@@ -33,13 +33,19 @@ class DashboardPreferenceServiceTest {
         var result = fixture.service().get(authentication("GESTION_VENTAS"));
 
         assertThat(result.availableWidgets()).containsExactly(
-                "sales.today", "sales.operations", "sales.average", "sales.trend", "sales.top-products");
+                "sales.today", "sales.operations", "sales.average", "sales.units", "sales.trend", "sales.families", "sales.top-products",
+                "sales.hourly", "sales.corrections", "sales.payments");
         assertThat(result.widgets()).containsExactly(
-                new DashboardWidgetLayout("sales.today", 4, 1),
-                new DashboardWidgetLayout("sales.operations", 4, 1),
-                new DashboardWidgetLayout("sales.average", 4, 1),
-                new DashboardWidgetLayout("sales.trend", 12, 2),
-                new DashboardWidgetLayout("sales.top-products", 8, 2));
+                new DashboardWidgetLayout("sales.today", 3, 1),
+                new DashboardWidgetLayout("sales.operations", 3, 1),
+                new DashboardWidgetLayout("sales.average", 3, 1),
+                new DashboardWidgetLayout("sales.units", 3, 1),
+                new DashboardWidgetLayout("sales.trend", 8, 2),
+                new DashboardWidgetLayout("sales.families", 4, 2),
+                new DashboardWidgetLayout("sales.top-products", 6, 2),
+                new DashboardWidgetLayout("sales.hourly", 12, 3),
+                new DashboardWidgetLayout("sales.corrections", 4, 2),
+                new DashboardWidgetLayout("sales.payments", 4, 2));
         assertThat(result.options()).isEqualTo(DashboardOptions.defaults());
         assertThat(result.businessDate()).isEqualTo(java.time.LocalDate.of(2026, 7, 18));
         assertThat(result.storeTimezone()).isEqualTo("Atlantic/Canary");
@@ -98,8 +104,8 @@ class DashboardPreferenceServiceTest {
         var result = fixture.service().get(authentication("ROLE_ADMIN"));
 
         assertThat(result.availableWidgets()).containsExactly(
-                "sales.today", "sales.operations", "sales.average", "sales.trend", "sales.top-products",
-                "promotions.active", "control.alerts");
+                "sales.today", "sales.operations", "sales.average", "sales.units", "sales.trend", "sales.families", "sales.top-products",
+                "control.alerts", "promotions.active", "sales.hourly", "sales.corrections", "sales.payments", "finance.receivables");
     }
 
     @Test
@@ -155,7 +161,7 @@ class DashboardPreferenceServiceTest {
 
         assertThat(readResult.availableWidgets()).containsExactly("control.alerts");
         assertThat(readResult.widgets()).containsExactly(
-                new DashboardWidgetLayout("control.alerts", 4, 2));
+                new DashboardWidgetLayout("control.alerts", 3, 2));
 
         var manageFixture = fixture();
         when(manageFixture.preferences().findByUser(manageFixture.user())).thenReturn(Optional.empty());
@@ -164,7 +170,7 @@ class DashboardPreferenceServiceTest {
 
         assertThat(manageResult.availableWidgets()).containsExactly("control.alerts");
         assertThat(manageResult.widgets()).containsExactly(
-                new DashboardWidgetLayout("control.alerts", 4, 2));
+                new DashboardWidgetLayout("control.alerts", 3, 2));
     }
 
     @Test

@@ -228,6 +228,81 @@ class GestionSalesOverviewRepositoryPostgreSqlTest {
         return new Fixture(companyId, storeId, warehouse(storeId, "GENERAL"), userId, familyId, taxId);
     }
 
+    @Test
+    void reconcilesFamiliesWithGlobalDiscountsReturnsEconomicCorrectionsAndUnassignedAdjustments() {
+        var fixture = fixture(null, "031");
+        var product = product(fixture, "FAMILY-PRODUCT");
+        var ticket = document(fixture, fixture.warehouseId(), "TICKET", "PAGADO", DAY, "83.70");
+        jdbc.update("update documento set descuento_global=10 where id=?", ticket);
+        line(ticket, product, "10", 1);
+        jdbc.update("""
+                insert into documento_linea(id,documento_id,posicion,tipo_linea,cantidad,codigo,nombre,
+                    precio_unitario,descuento,impuestos_incluidos,regimen_impuesto,porcentaje_impuesto,base,impuesto,total)
+                values(?,?,2,'MANUAL_DISCOUNT',1,'DISCOUNT','Unassigned discount',-5,0,true,'IVA',0,-5,0,-5)
+                """, UUID.randomUUID(), ticket);
+        jdbc.update("""
+                insert into documento_linea(id,documento_id,posicion,tipo_linea,linea_origen_id,cantidad,codigo,nombre,
+                    precio_unitario,descuento,impuestos_incluidos,regimen_impuesto,porcentaje_impuesto,base,impuesto,total)
+                select ?,?,3,'MANUAL_DISCOUNT',id,1,'DISCOUNT','Product discount',-2,0,true,'IVA',0,-2,0,-2
+                from documento_linea where documento_id=? and posicion=1
+                """, UUID.randomUUID(), ticket, ticket);
+        var invoice = document(fixture, fixture.warehouseId(), "FACTURA_VENTA", "PAGADO", DAY, "83.70");
+        line(invoice, product, "10", 1);
+        derived(invoice, ticket);
+        var refund = document(fixture, fixture.warehouseId(), "RECTIFICATIVA_VENTA", "CONFIRMADO", DAY, "-20");
+        line(refund, product, "-2", 1);
+        var correction = document(fixture, fixture.warehouseId(), "RECTIFICATIVA_VENTA", "CONFIRMADO", DAY, "-3");
+        line(correction, product, "-0.3", 1);
+        rectification(correction, ticket, "POST_SALE_DISCOUNT", false);
+        line(document(fixture, fixture.warehouseId(), "FACTURA_VENTA", "PAGADO", DAY.minusDays(1), "40"), product, "4", 1);
+
+        var rows = repository.families(fixture.companyId(), fixture.storeId(), null, DAY.minusDays(1), DAY, DAY);
+        assertThat(rows).filteredOn(row -> row.key().equals(fixture.familyId().toString())).singleElement().satisfies(row -> {
+            assertThat(row.currentSales()).isEqualByComparingTo("65.20");
+            assertThat(row.previousSales()).isEqualByComparingTo("40");
+            assertThat(row.currentUnits()).isEqualByComparingTo("8");
+            assertThat(row.previousUnits()).isEqualByComparingTo("4");
+        });
+        assertThat(rows).filteredOn(row -> row.key().equals("ADJUSTMENTS")).singleElement()
+                .satisfies(row -> assertThat(row.currentSales()).isEqualByComparingTo("-4.50"));
+        assertThat(rows.stream().map(GestionSalesOverviewRepository.FamilySales::currentSales).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("60.70");
+        assertThat(repository.daily(fixture.companyId(), fixture.storeId(), null, DAY, DAY).getFirst().netSales()).isEqualByComparingTo("60.70");
+        assertThat(repository.topProducts(fixture.companyId(), fixture.storeId(), null, DAY, DAY)).singleElement().satisfies(row -> {
+            assertThat(row.netQuantity()).isEqualByComparingTo("8");
+            assertThat(row.netAmount()).isEqualByComparingTo("65.20");
+        });
+        var nextFamily = UUID.randomUUID();
+        jdbc.update("insert into familia(id,tienda_id,nombre,family_id) values(?,?,'NEW FAMILY','NEW')", nextFamily, fixture.storeId());
+        jdbc.update("update producto set familia_id=? where id=?", nextFamily, product);
+        assertThat(repository.families(fixture.companyId(), fixture.storeId(), null, DAY.minusDays(1), DAY, DAY))
+                .filteredOn(row -> row.key().equals(nextFamily.toString())).singleElement()
+                .satisfies(row -> assertThat(row.previousSales()).isEqualByComparingTo("40"));
+    }
+
+    @Test
+    void ranksAmountsOverAllProductsAndAccountsForDocumentsWithoutProductLines() {
+        var fixture = fixture(null, "032");
+        UUID expensiveProduct = null;
+        for (int i = 1; i <= 12; i++) {
+            var product = product(fixture, "RANK-" + i);
+            var doc = document(fixture, fixture.warehouseId(), "TICKET", "PAGADO", DAY, i == 1 ? "2000" : Integer.toString(i * 10));
+            line(doc, product, Integer.toString(i), 1);
+            if (i == 1) {
+                expensiveProduct = product;
+                jdbc.update("update documento_linea set base=2000,total=2000,precio_unitario=2000 where documento_id=?", doc);
+            }
+        }
+        document(fixture, fixture.warehouseId(), "FACTURA_VENTA", "PAGADO", DAY, "12");
+        assertThat(repository.topProducts(fixture.companyId(), fixture.storeId(), null, DAY, DAY))
+                .hasSize(10).extracting(GestionSalesOverviewRepository.TopProduct::productId).doesNotContain(expensiveProduct);
+        assertThat(repository.topProductsByAmount(fixture.companyId(), fixture.storeId(), null, DAY, DAY).getFirst().productId())
+                .isEqualTo(expensiveProduct);
+        assertThat(repository.families(fixture.companyId(), fixture.storeId(), null, DAY, DAY, DAY))
+                .filteredOn(row -> row.key().equals("ADJUSTMENTS")).singleElement()
+                .satisfies(row -> assertThat(row.currentSales()).isEqualByComparingTo("12"));
+    }
+
     private UUID warehouse(UUID storeId, String name) {
         var id = UUID.randomUUID();
         jdbc.update("insert into almacen(id,tienda_id,nombre) values(?,?,?)", id, storeId, name);

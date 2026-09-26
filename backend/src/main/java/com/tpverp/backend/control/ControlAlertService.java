@@ -141,11 +141,17 @@ public class ControlAlertService {
         var storeId = organization.currentStore().getId();
         long newCount = 0;
         long reviewedCount = 0;
+        long closedCount = 0;
+        long dismissedCount = 0;
         for (var count : alerts.countByStoreIdGroupedByStatus(storeId)) {
             if (count.getStatus() == ControlAlertStatus.NEW) {
                 newCount = count.getTotal();
             } else if (count.getStatus() == ControlAlertStatus.REVIEWED) {
                 reviewedCount = count.getTotal();
+            } else if (count.getStatus() == ControlAlertStatus.CLOSED) {
+                closedCount = count.getTotal();
+            } else if (count.getStatus() == ControlAlertStatus.DISMISSED) {
+                dismissedCount = count.getTotal();
             }
         }
         var recentAlerts = alerts.findAllByStoreId(
@@ -153,7 +159,7 @@ public class ControlAlertService {
                         PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "event.occurredAt", "id")));
         var views = summaries(recentAlerts);
         var recent = recentAlerts.stream().map(alert -> views.get(alert.getId())).toList();
-        return new AlertDashboardSummaryView(newCount, reviewedCount, recent);
+        return new AlertDashboardSummaryView(newCount, reviewedCount, recent, closedCount, dismissedCount);
     }
 
     private static Specification<ControlAlert> filter(
@@ -475,7 +481,13 @@ public class ControlAlertService {
     public record AlertDashboardSummaryView(
             long newCount,
             long reviewedCount,
-            List<AlertSummaryView> recentAlerts) {
+            List<AlertSummaryView> recentAlerts,
+            long closedCount,
+            long dismissedCount) {
+
+        public AlertDashboardSummaryView(long newCount, long reviewedCount, List<AlertSummaryView> recentAlerts) {
+            this(newCount, reviewedCount, recentAlerts, 0, 0);
+        }
 
         public AlertDashboardSummaryView {
             recentAlerts = List.copyOf(recentAlerts);
