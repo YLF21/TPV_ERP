@@ -64,7 +64,7 @@ describe("Party directory applied filter chips", () => {
     });
     render(<PartyDirectoryPanel app="gestion" kind={kind} locale="es" session={session} allowSafeRetirement />);
     await screen.findByText("Zoe");
-    expect(screen.queryByRole("button", { name: "Filtrar" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filtrar" })).toBeVisible();
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Activos" }));
@@ -86,7 +86,7 @@ describe("Party directory applied filter chips", () => {
     render(<PartyDirectoryPanel app="venta" kind="members" locale="es" session={session} />);
     await screen.findByText("Zoe");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
-    fireEvent.click(screen.getByRole("button", { name: "Nuevo miembro" }));
+    fireEvent.click(screen.getByRole("button", { name: "F8 Nuevo miembro" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByRole("searchbox"), { target: { value: "Ana" } });
     fireEvent.click(within(dialog).getByRole("option", { name: /Ana activa/ }));
