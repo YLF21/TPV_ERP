@@ -44,7 +44,8 @@ public class FiscalDocumentPolicy {
 
     private static void validateTicket(
             CommercialDocument document, FiscalDocumentType fiscalType) {
-        if (document.getEstado() != DocumentStatus.CONFIRMADO) {
+        if (document.getEstado() != DocumentStatus.CONFIRMADO
+                && !isConfirmedReceivableTicket(document)) {
             throw invalid("El ticket debe estar en estado CONFIRMADO");
         }
         var expected = document.getTotal().signum() < 0
@@ -52,6 +53,20 @@ public class FiscalDocumentPolicy {
         if (fiscalType != expected) {
             throw invalid("El ticket debe registrarse como " + expected);
         }
+    }
+
+    private static boolean isConfirmedReceivableTicket(CommercialDocument document) {
+        // Credit tickets retain their collection state after commercial confirmation.
+        var state = document.getEstado();
+        return document.isCuentaCobrar()
+                && (state == DocumentStatus.PENDIENTE
+                        || state == DocumentStatus.PARCIAL
+                        || state == DocumentStatus.PAGADO)
+                && document.getClienteId() != null
+                && document.getNumero() != null
+                && !document.getNumero().isBlank()
+                && document.getConfirmadoEn() != null
+                && document.getConfirmadoPor() != null;
     }
 
     private static void validateCancellation(CommercialDocument document) {
