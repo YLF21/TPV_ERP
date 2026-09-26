@@ -16,7 +16,8 @@ type Props = {
   onFocus: (hour: number) => void;
 };
 
-const hourLabel = (hour: number) => `${String(hour).padStart(2, "0")}:00 – ${String(hour + 1).padStart(2, "0")}:00`;
+const hourTime = (hour: number) => `${String(hour).padStart(2, "0")}:00`;
+const hourLabel = (hour: number) => `${hourTime(hour)} – ${hourTime(hour + 1)}`;
 
 export function HourlyColumns({ rows, metric, compare, currentLabel, previousLabel, metricLabel, format, focusedHour, onFocus }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -86,7 +87,7 @@ export function HourlyColumns({ rows, metric, compare, currentLabel, previousLab
           const x = center + (compare ? series === "current" ? -barWidth - gap / 2 : gap / 2 : -barWidth / 2);
           return <rect key={series} className={`gd-hourly-column ${series}`} x={x} y={Math.min(y(value), y(0))} width={barWidth} height={Math.abs(y(value) - y(0))} />;
         })}
-        {showHourLabels && index % labelEvery === 0 && <text x={center} y={chartBottom + 24} textAnchor="middle">{String(row.hour).padStart(2, "0")}:00</text>}
+        {showHourLabels && index % labelEvery === 0 && <text x={center} y={chartBottom + 24} textAnchor="middle">{hourTime(row.hour)}</text>}
       </g>;
     })}
   </svg></div>;
