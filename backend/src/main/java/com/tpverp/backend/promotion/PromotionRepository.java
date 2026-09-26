@@ -1,6 +1,7 @@
 package com.tpverp.backend.promotion;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,27 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
     List<Promotion> findByEmpresaIdAndEstado(UUID empresaId, PromotionStatus estado);
 
     List<Promotion> findByEmpresaIdOrderByNombreAsc(UUID empresaId);
+
+    @Query("""
+            select line.promotionVersionId as promotionId, count(distinct document.id) as usageCount
+            from DocumentLine line
+            join line.documento document
+            join Store store on store.id = document.tiendaId
+            where store.empresa.id = :empresaId
+              and line.promotionVersionId in :promotionIds
+              and line.lineType = com.tpverp.backend.document.DocumentLineType.PROMOTION
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado not in (
+                  com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                  com.tpverp.backend.document.DocumentStatus.ANULADO)
+            group by line.promotionVersionId
+            """)
+    List<PromotionUsageCount> findUsageCounts(
+            @Param("empresaId") UUID empresaId,
+            @Param("promotionIds") Collection<UUID> promotionIds);
 
     Optional<Promotion> findByIdAndEmpresaId(UUID id, UUID empresaId);
 
@@ -38,4 +60,10 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
     List<Promotion> findActiveLineage(
             @Param("empresaId") UUID empresaId,
             @Param("rootId") UUID rootId);
+
+    interface PromotionUsageCount {
+        UUID getPromotionId();
+
+        Long getUsageCount();
+    }
 }

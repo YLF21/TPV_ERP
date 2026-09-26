@@ -36,8 +36,17 @@ export type PromotionView = {
   discountPercent: string | number | null;
   maximumDiscount: string | number | null;
   packPrice: string | number | null;
+  couponAmount?: string | number | null;
+  couponPercent?: string | number | null;
+  couponMaximumDiscount?: string | number | null;
+  couponMinimumAmount?: string | number | null;
+  couponValidFromDate?: string | null;
+  couponValidFromDays?: number | null;
+  couponValidUntilDate?: string | null;
+  couponValidDays?: number | null;
   versionOrigenId?: string | null;
   used?: boolean;
+  usageCount?: number;
   targets: PromotionTargetRequest[];
 };
 

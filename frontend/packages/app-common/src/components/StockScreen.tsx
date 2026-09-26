@@ -44,6 +44,7 @@ import {
   mergeStockBulkPurchaseDocumentProducts,
   mergeStockBulkSupplierProducts,
   requestStockBulkXlsx,
+  stockBulkExportFileName,
   resolveStockBulkImportedClassification,
   stageStockBulkPrincipalSupplier,
   stockBulkClassificationCodesForRows,
@@ -86,7 +87,8 @@ import type { StockBulkImagePanelHandle, StockBulkImageSnapshot } from "./StockB
 import { StockBulkPriceRulesDialog } from "./StockBulkPriceRulesDialog";
 import { applyStockBulkPriceRulePreview } from "./stockBulkPriceRules";
 import { StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
-import { StockPromotionGroups } from "./StockPromotionGroups";
+import { StockPromotionGroups, type StockPromotionExportContext } from "./StockPromotionGroups";
+import { stockExcelDefaultFileName } from "./stockExcelExportNames";
 import { StockProductInformationPanel } from "./StockProductInformationPanel";
 import "./StockProductDetail.css";
 import "./ErpSearchField.css";
@@ -2229,6 +2231,9 @@ export function StockScreen({
   const [detailTab, setDetailTab] = useState<StockDetailTab>("stock");
   const [editingProduct, setEditingProduct] = useState<ProductCreateEditProduct | null>(null);
   const [stockPromotions, setStockPromotions] = useState<PromotionView[]>([]);
+  const [stockPromotionsLoadFailed, setStockPromotionsLoadFailed] = useState(false);
+  const [stockPromotionsLoading, setStockPromotionsLoading] = useState(false);
+  const [promotionExportContext, setPromotionExportContext] = useState<StockPromotionExportContext | null>(null);
   const [bulkEditTab, setBulkEditTab] = useState<StockBulkEditTab>("main");
   const [bulkFileOpen, setBulkFileOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
@@ -2384,9 +2389,12 @@ export function StockScreen({
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     ++stockRequestVersion.current;
     stockFirstPageLoading.current = Boolean(session.accessToken && canReadStock);
     setStockLoadingMore(false);
+    setStockPromotionsLoadFailed(false);
+    setStockPromotionsLoading(Boolean(session.accessToken && canReadStock));
     if (!session.accessToken || !canReadStock) {
       setAllStockRows([]);
       setLoadedStockQueryKey(stockQueryKey);
@@ -2403,17 +2411,34 @@ export function StockScreen({
       try {
         const warehousesRequest = apiRequest<WarehouseView[]>("/warehouses", { token: session.accessToken });
         // Resolve the warehouse before the first page so the initial result is final.
-        const pageRequest = warehousesRequest.then((warehouses) => {
+        const pageRequest = warehousesRequest.then(async (warehouses) => {
           if (cancelled) return null;
           const activeWarehouses = warehouses.filter((warehouse) => warehouse.active !== false);
           const defaultWarehouse = activeWarehouses.find((warehouse) => warehouse.defaultWarehouse)
             ?? activeWarehouses[0] ?? warehouses[0];
           const warehouseId = inventoryFilters.warehouse === "TOTAL" ? ""
             : inventoryFilters.warehouse || defaultWarehouse?.id || "";
-          return apiRequest<PagedResult<StockPageItemView>>(
+          const page = await apiRequest<PagedResult<StockPageItemView>>(
             stockPagePath(null, selectedView, searchText, inventoryFilters, inventorySort, warehouseId),
-            { token: session.accessToken }
+            { token: session.accessToken, signal: controller.signal }
           );
+          if (selectedView !== "stock.promotions") return page;
+          // A promotion can include products from any stock page. There is no
+          // inventory scroller in this view to request the remaining pages.
+          const items = [...page.items];
+          let nextPage = page;
+          const visitedCursors = new Set<string>();
+          while (!cancelled && nextPage.hasMore) {
+            const cursor = nextPage.nextCursor;
+            if (!cursor || visitedCursors.has(cursor)) throw new Error("stock_promotion_pagination");
+            visitedCursors.add(cursor);
+            nextPage = await apiRequest<PagedResult<StockPageItemView>>(
+              stockPagePath(cursor, selectedView, searchText, inventoryFilters, inventorySort, warehouseId),
+              { token: session.accessToken, signal: controller.signal }
+            );
+            items.push(...nextPage.items);
+          }
+          return cancelled ? null : { items, hasMore: false, nextCursor: null };
         });
         const [page, loadedWarehouses, families, taxes, promotionsResult] = await Promise.all([
           pageRequest,
@@ -2446,29 +2471,36 @@ export function StockScreen({
           setStockPage({ nextCursor: page.nextCursor ?? null, hasMore: Boolean(page.hasMore) });
           setWarehouseCatalog(loadedWarehouses);
           setStockPromotions(loadedPromotions);
+          setStockPromotionsLoadFailed(promotionsResult.status === "rejected");
           setStockCatalog({ families, subfamilies, taxes, promotions: loadedPromotions });
           setDefaultWarehouseId(defaultWarehouse?.id ?? "");
           setStatus(rows.length === 0 ? "stock.status.noData" : "stock.status.inventoryLoaded");
         }
       } catch (error) {
+        controller.abort();
         if (!cancelled) {
           setAllStockRows([]);
           setLoadedStockQueryKey(stockQueryKey);
           setStockPage({ nextCursor: null, hasMore: false });
           setWarehouseCatalog([]);
           setStockPromotions([]);
+          setStockPromotionsLoadFailed(true);
           setStockCatalog({ families: [], subfamilies: [], taxes: [], promotions: [] });
           setDefaultWarehouseId("");
           setStatus(stockLoadStatus(error, "stock.status.noData"));
         }
       } finally {
-        if (!cancelled) stockFirstPageLoading.current = false;
+        if (!cancelled) {
+          stockFirstPageLoading.current = false;
+          setStockPromotionsLoading(false);
+        }
       }
     }
 
     void loadStock();
     return () => {
       cancelled = true;
+      controller.abort();
       ++stockRequestVersion.current;
     };
   }, [
@@ -2562,6 +2594,11 @@ export function StockScreen({
     [allStockRows, bulkProductSupplierLinks, effectiveWarehouseId, stockDataCurrent]
   );
   const visibleRows = filterStockInventoryRows(stockRows, selectedView, searchText, inventoryFilters);
+  // The shared promotion browser includes historical promotions. Match their
+  // products in StockPromotionGroups instead of the active-only inventory tag.
+  const promotionProductRows = selectedView === "stock.promotions"
+    ? filterStockInventoryRows(stockRows, "stock.current", searchText, inventoryFilters)
+    : [];
   const filteredTopSalesRows = filterStockTopSalesRows(topSalesRows, topSalesFilters);
   const familyTree = useMemo(() => buildStockTopSalesFamilyTree(topSalesRows, t("stock.filter.noFamily")), [topSalesRows, t]);
   const inventoryFamilyTree = useMemo(() => buildStockInventoryFamilyTree(stockRows, t("stock.filter.noFamily")), [stockRows, t]);
@@ -7211,7 +7248,7 @@ export function StockScreen({
           <img alt="" className="report-action-icon" src={stockFilterIcon} />
           {t("salesReport.filter")}
         </button>
-        <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>
+        {selectedView !== "stock.promotions" && <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>}
         {renderStockExportButton()}
       </div>
       {app !== "pda" && <ErpFilterChips locale={locale} chips={inventoryFilterChips()} onClear={clearAppliedInventoryFilters} />}
@@ -7221,6 +7258,27 @@ export function StockScreen({
 
   function renderStockExportButton() {
     if (!isStockAsyncExportView(selectedView)) return null;
+    if (selectedView === "stock.promotions") {
+      const unavailable = stockExportBusy || !session.accessToken || !stockDataCurrent
+        || stockPromotionsLoading || stockPromotionsLoadFailed || !promotionExportContext;
+      return <div className="stock-promotion-export-actions">
+        <button type="button" className="stock-export-button"
+          aria-keyshortcuts={STOCK_EXPORT_SHORTCUT}
+          title={`${t("stock.exportExcel.selectedPromotionHint")} (${STOCK_EXPORT_SHORTCUT})`}
+          disabled={unavailable || !promotionExportContext?.promotionId}
+          onClick={() => void exportStockExcel("SELECTED")}>
+          <FileXls size={16} weight="bold" aria-hidden="true" />
+          <span>{t("stock.exportExcel.selectedPromotion")}</span>
+          <kbd aria-hidden="true">{STOCK_EXPORT_SHORTCUT}</kbd>
+        </button>
+        <button type="button" className="stock-export-button stock-export-all-promotions"
+          title={t("stock.exportExcel.activePromotionsHint")} disabled={unavailable}
+          onClick={() => void exportStockExcel("ACTIVE")}>
+          <FileXls size={16} weight="bold" aria-hidden="true" />
+          <span>{t("stock.exportExcel.activePromotions")}</span>
+        </button>
+      </div>;
+    }
     return (
       <button
         type="button"
@@ -7249,9 +7307,27 @@ export function StockScreen({
     );
   }
 
-  async function exportStockExcel() {
+  async function exportStockExcel(promotionScope: "SELECTED" | "ACTIVE" = "SELECTED") {
     if (!session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView)) return;
     const exportView = selectedView;
+    const exportingPromotions = exportView === "stock.promotions";
+    const exportContext = promotionExportContext;
+    if (exportingPromotions && (!stockDataCurrent || stockPromotionsLoading || stockPromotionsLoadFailed
+        || !exportContext || (promotionScope === "SELECTED" && !exportContext.promotionId))) return;
+    const exportColumns = exportingPromotions ? [
+      ...exportContext!.columns,
+      ...(promotionScope === "ACTIVE" ? [
+        { key: "promotion", label: t("stock.column.promotion") },
+        { key: "promotionType", label: t("stock.column.promotionType") },
+        { key: "promotionValidity", label: t("stock.column.promotionValidity") }
+      ] : [])
+    ] : selectedColumnSettings.map(column => ({
+      key: column.key,
+      label: t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)
+    }));
+    const exportSort = exportingPromotions ? exportContext?.sort : inventorySort;
+    const fallbackFileName = stockExcelDefaultFileName(exportView, locale,
+      exportContext?.promotionName, exportingPromotions ? promotionScope : undefined);
     setStockExportBusy(true);
     setStockExportNoticeView(exportView);
     setStockExportNoticeKind("info");
@@ -7262,16 +7338,18 @@ export function StockScreen({
         token: session.accessToken,
         body: {
           view: stockPageView(selectedView),
-          search: selectedView === "stock.topSales" ? topSalesFilters.search : searchText,
-          productType: inventoryFilters.type || null,
-          priceUseMode: inventoryFilters.discount || null,
-          familyId: isUuid(inventoryFilters.family) ? inventoryFilters.family : null,
-          taxId: isUuid(inventoryFilters.tax) ? inventoryFilters.tax : null,
-          offerActive: inventoryFilters.offerActive
+          ...(exportingPromotions ? { promotionScope,
+            promotionId: promotionScope === "SELECTED" ? exportContext!.promotionId : null } : {}),
+          search: exportingPromotions ? "" : selectedView === "stock.topSales" ? topSalesFilters.search : searchText,
+          productType: exportingPromotions ? null : inventoryFilters.type || null,
+          priceUseMode: exportingPromotions ? null : inventoryFilters.discount || null,
+          familyId: !exportingPromotions && isUuid(inventoryFilters.family) ? inventoryFilters.family : null,
+          taxId: !exportingPromotions && isUuid(inventoryFilters.tax) ? inventoryFilters.tax : null,
+          offerActive: !exportingPromotions && inventoryFilters.offerActive
             ? inventoryFilters.offerActive === "yes"
             : null,
-          stockStatus: inventoryFilters.status || null,
-          supplierId: inventoryFilters.supplier && isUuid(inventoryFilters.supplier)
+          stockStatus: exportingPromotions ? null : inventoryFilters.status || null,
+          supplierId: !exportingPromotions && inventoryFilters.supplier && isUuid(inventoryFilters.supplier)
             ? inventoryFilters.supplier
             : null,
           warehouseId: selectedView === "stock.topSales"
@@ -7279,20 +7357,17 @@ export function StockScreen({
             : (isUuid(effectiveWarehouseId) ? effectiveWarehouseId : null),
           sortBy: selectedView === "stock.topSales"
             ? (topSalesSorting.sort?.column ?? "ranking")
-            : (inventorySort?.column ?? "name"),
+            : (exportSort?.column ?? "name"),
           sortDirection: selectedView === "stock.topSales"
             ? (topSalesSorting.sort?.direction ?? "asc")
-            : (inventorySort?.direction ?? "asc"),
+            : (exportSort?.direction ?? "asc"),
           language: locale,
           dateFrom: selectedView === "stock.topSales" ? topSalesDateFrom : null,
           dateTo: selectedView === "stock.topSales" ? topSalesDateTo : null,
           topSalesFamily: selectedView === "stock.topSales" ? topSalesFilters.family : null,
           topSalesSubfamily: selectedView === "stock.topSales" ? topSalesFilters.subfamily : null,
           topSalesSupplier: selectedView === "stock.topSales" ? topSalesFilters.supplier : null,
-          columns: selectedColumnSettings.map((column) => ({
-            key: column.key,
-            label: t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)
-          }))
+          columns: exportColumns
         }
       });
       while (job.status === "QUEUED" || job.status === "RUNNING") {
@@ -7311,7 +7386,7 @@ export function StockScreen({
       });
       if (!response.ok) throw new Error(t("stock.exportExcel.error"));
       const bytes = new Uint8Array(await response.arrayBuffer());
-      const fileName = `stock-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const fileName = stockBulkExportFileName(response.headers.get("Content-Disposition"), fallbackFileName);
       if (window.tpvDesktop?.reports) {
         const result = await window.tpvDesktop.reports.saveFile({
           defaultFileName: fileName,
@@ -7371,7 +7446,7 @@ export function StockScreen({
   }
 
   return (
-    <main className={`stock-screen work-screen${app === "gestion" && allowSafeRetirement ? " erp-management-screen" : ""}${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
+    <main className={`stock-screen work-screen${selectedView === "stock.promotions" && !partyDirectory ? " stock-promotions-screen" : ""}${app === "gestion" && allowSafeRetirement ? " erp-management-screen" : ""}${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
       {!embedded && <SessionTopControls
         locale={locale}
         session={session}
@@ -7442,7 +7517,7 @@ export function StockScreen({
           <ModuleNavBackButton label={t("common.back")} onBack={onBack} />
         </aside>}
 
-        <section className={`stock-list work-panel ${!partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : selectedViewLabel}>
+        <section className={`stock-list work-panel ${!partyDirectory && selectedView === "stock.promotions" ? "stock-promotions-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : selectedViewLabel}>
           {partyDirectory ? null : selectedView === "stock.bulkEdit" ? (
             renderBulkEditHeading()
           ) : (
@@ -7550,8 +7625,12 @@ export function StockScreen({
                 username={session.username}
                 accessToken={session.accessToken}
                 promotions={stockPromotions}
-                productRows={visibleRows}
+                productRows={promotionProductRows}
                 t={t}
+                loading={!stockDataCurrent || stockPromotionsLoading}
+                statusMessage={stockPromotionsLoadFailed ? t("promotion.status.loadError") : ""}
+                onRefresh={() => setStockRefreshCounter(current => current + 1)}
+                onExportContextChange={setPromotionExportContext}
                 hideEmptyGroups={Boolean(searchText.trim()) || Object.values(inventoryFilters).some(Boolean)}
               />
             </>

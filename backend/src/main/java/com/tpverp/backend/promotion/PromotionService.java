@@ -43,9 +43,11 @@ public class PromotionService {
     public List<PromotionView> list() {
         var values = promotions.findByEmpresaIdOrderByNombreAsc(companyId());
         var byPromotion = targetMap(values);
+        var usageCounts = usageCounts(values);
         return values.stream()
-                .map(promotion -> PromotionView.from(
-                        promotion, byPromotion.getOrDefault(promotion.id(), List.of())))
+                .map(promotion -> PromotionView.from(promotion,
+                        byPromotion.getOrDefault(promotion.id(), List.of()),
+                        usageCounts.getOrDefault(promotion.id(), 0L)))
                 .toList();
     }
 
@@ -103,7 +105,7 @@ public class PromotionService {
         if (!persistedTargets.isEmpty()) {
             targets.saveAll(persistedTargets);
         }
-        return PromotionView.from(saved, persistedTargets);
+        return promotionView(saved, persistedTargets);
     }
 
     @Transactional
@@ -123,7 +125,7 @@ public class PromotionService {
         if (!duplicatedTargets.isEmpty()) {
             targets.saveAll(duplicatedTargets);
         }
-        return PromotionView.from(duplicate, duplicatedTargets);
+        return promotionView(duplicate, duplicatedTargets);
     }
 
     @Transactional
@@ -144,14 +146,14 @@ public class PromotionService {
                 .filter(active -> !active.id().equals(promotion.id()))
                 .forEach(Promotion::deactivate);
         promotion.activate();
-        return PromotionView.from(promotion, promotionTargets);
+        return promotionView(promotion, promotionTargets);
     }
 
     @Transactional
     public PromotionView deactivate(UUID id) {
         var promotion = promotion(id);
         promotion.deactivate();
-        return PromotionView.from(promotion, targets.findByPromocionId(promotion.id()));
+        return promotionView(promotion, targets.findByPromocionId(promotion.id()));
     }
 
     @Transactional
@@ -245,6 +247,22 @@ public class PromotionService {
         }
         return targets.findByPromocionIdIn(values.stream().map(Promotion::id).toList()).stream()
                 .collect(Collectors.groupingBy(PromotionTarget::promotionId));
+    }
+
+    private Map<UUID, Long> usageCounts(List<Promotion> values) {
+        if (values.isEmpty()) {
+            return Map.of();
+        }
+        return promotions.findUsageCounts(companyId(), values.stream().map(Promotion::id).toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        PromotionRepository.PromotionUsageCount::getPromotionId,
+                        row -> row.getUsageCount() == null ? 0L : row.getUsageCount()));
+    }
+
+    private PromotionView promotionView(Promotion promotion, List<PromotionTarget> promotionTargets) {
+        return PromotionView.from(promotion, promotionTargets,
+                usageCounts(List.of(promotion)).getOrDefault(promotion.id(), 0L));
     }
 
     private Promotion promotion(UUID id) {
@@ -341,11 +359,20 @@ public class PromotionService {
             BigDecimal discountPercent,
             BigDecimal maximumDiscount,
             BigDecimal packPrice,
+            BigDecimal couponAmount,
+            BigDecimal couponPercent,
+            BigDecimal couponMaximumDiscount,
+            BigDecimal couponMinimumAmount,
+            LocalDate couponValidFromDate,
+            Integer couponValidFromDays,
+            LocalDate couponValidUntilDate,
+            Integer couponValidDays,
             UUID versionOrigenId,
             boolean used,
+            long usageCount,
             List<PromotionTargetRequest> targets) {
 
-        static PromotionView from(Promotion promotion, List<PromotionTarget> targets) {
+        static PromotionView from(Promotion promotion, List<PromotionTarget> targets, long usageCount) {
             return new PromotionView(
                     promotion.id(), promotion.name(), promotion.type(), promotion.status(),
                     promotion.startDate(), promotion.endDate(), promotion.scope(),
@@ -353,7 +380,10 @@ public class PromotionService {
                     promotion.minimumAmount(), promotion.minimumQuantity(), promotion.buyQuantity(),
                     promotion.payQuantity(), promotion.buyXPayYMode(), promotion.discountAmount(),
                     promotion.discountPercent(), promotion.maximumDiscount(), promotion.packPrice(),
-                    promotion.versionOrigenId(), promotion.used(), targets.stream()
+                    promotion.couponAmount(), promotion.couponPercent(), promotion.couponMaximumDiscount(),
+                    promotion.couponMinimumAmount(), promotion.couponValidFromDate(),
+                    promotion.couponValidFromDays(), promotion.couponValidUntilDate(), promotion.couponValidDays(),
+                    promotion.versionOrigenId(), promotion.used(), usageCount, targets.stream()
                     .map(target -> new PromotionTargetRequest(target.type(), target.targetId()))
                     .toList());
         }
