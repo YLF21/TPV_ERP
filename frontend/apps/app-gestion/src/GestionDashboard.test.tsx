@@ -26,7 +26,7 @@ describe("GestionDashboard", () => {
     expect(html).not.toContain("gestion.products");
   });
 
-  it("adds the localized operational incident surface for administrators", () => {
+  it("keeps the operational incident surface out of the summary for administrators", () => {
     const html = renderToStaticMarkup(
       <GestionDashboard
         session={{
@@ -44,7 +44,7 @@ describe("GestionDashboard", () => {
       />
     );
 
-    expect(html).toContain("运行状态");
-    expect(html).toContain("gestion-operational-status");
+    expect(html).not.toContain("运行状态");
+    expect(html).not.toContain("gestion-operational-status");
   });
 });

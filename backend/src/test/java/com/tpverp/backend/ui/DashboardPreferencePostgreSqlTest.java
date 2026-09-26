@@ -137,7 +137,8 @@ class DashboardPreferencePostgreSqlTest {
 
         assertThat(honolulu.options()).isEqualTo(DashboardOptions.defaults());
         assertThat(honolulu.widgets()).extracting(DashboardWidgetLayout::key)
-                .containsExactly("sales.today", "sales.operations", "sales.average", "sales.trend", "sales.top-products");
+                .containsExactly("sales.today", "sales.operations", "sales.average", "sales.units", "sales.trend", "sales.families", "sales.top-products",
+                        "sales.hourly", "sales.corrections", "sales.payments");
         assertThat(honolulu.businessDate()).isEqualTo(LocalDate.of(2026, 7, 17));
         assertThat(honolulu.storeTimezone()).isEqualTo("Pacific/Honolulu");
         assertThat(tokyo.businessDate()).isEqualTo(LocalDate.of(2026, 7, 18));
@@ -154,7 +155,8 @@ class DashboardPreferencePostgreSqlTest {
         var authB = authentication("GESTION_VENTAS");
         var layoutA = List.of(new DashboardWidgetLayout("sales.trend", 12, 3));
         var layoutB = List.of(new DashboardWidgetLayout("sales.top-products", 8, 2));
-        var optionsA = new DashboardOptions("LAST_7_DAYS", "BAR", "TABLE", "COMPACT", false);
+        var optionsA = new DashboardOptions("LAST_7_DAYS", "BAR", "TABLE", "COMPACT", false,
+                "TABLE", "AMOUNT", "BAR", "BAR");
         var optionsB = new DashboardOptions("TODAY", "TABLE", "BAR", "COMFORTABLE", true);
 
         service(userA, authA, "Atlantic/Canary", NOW)

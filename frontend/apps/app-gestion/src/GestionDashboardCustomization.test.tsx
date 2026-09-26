@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type UserSession } from "@tpverp/app-common";
 import { GestionDashboard, type DashboardDataSource } from "./GestionDashboard";
@@ -40,6 +40,44 @@ beforeEach(() => vi.setSystemTime(new Date("2026-09-16T12:00:00Z")));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("dashboard explicit configuration and isolated requests", () => {
+  it("retains a direct data view after save failure and retries without changing layout or reloading sales", async () => {
+    const savePreference = vi.fn().mockRejectedValueOnce(new Error("offline"))
+      .mockImplementation(async (widgets, _token, options) => ({ ...preference, widgets, options }));
+    const dataSource = source({ savePreference });
+    const view = render(<GestionDashboard {...props(dataSource)} />);
+    await screen.findByText("Café");
+    const trend = within(view.container.querySelector('[data-widget-key="sales.trend"]') as HTMLElement);
+    fireEvent.click(trend.getByRole("button", { name: "gestion.dashboard.display.TABLE" }));
+    await screen.findByText("gestion.dashboard.viewSaveError");
+    expect(trend.getByRole("button", { name: "gestion.dashboard.display.TABLE" }).getAttribute("aria-pressed")).toBe("true");
+    expect(trend.queryByRole("img")).toBeNull();
+    expect(savePreference.mock.calls[0][0]).toEqual(preference.widgets);
+    fireEvent.click(screen.getByRole("button", { name: "gestion.dashboard.retry" }));
+    await screen.findByText("gestion.dashboard.saved");
+    expect(savePreference).toHaveBeenCalledTimes(2);
+    expect(savePreference.mock.calls[1][2]).toMatchObject({ trendDisplay: "TABLE" });
+    expect(dataSource.loadSalesOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the independent server amount ranking and expands without persisting layout", async () => {
+    const dataSource = source({ loadSalesOverview: vi.fn().mockResolvedValue({ ...overview,
+      topProductsByAmount: [{ productId: "p2", code: "002", name: "Máquina café", netQuantity: 1, netAmount: 95 }]
+    }) });
+    const view = render(<GestionDashboard {...props(dataSource)} />);
+    await screen.findByText("Café");
+    fireEvent.change(screen.getByRole("combobox", { name: "gestion.dashboard.sortBy" }), { target: { value: "AMOUNT" } });
+    await screen.findByText("Máquina café");
+    await screen.findByText("gestion.dashboard.saved");
+    expect(screen.queryByText("Café")).toBeNull();
+    expect(dataSource.loadSalesOverview).toHaveBeenCalledTimes(1);
+    const product = view.container.querySelector('[data-widget-key="sales.top-products"]') as HTMLElement;
+    fireEvent.click(within(product).getByRole("button", { name: /gestion.dashboard.expand/ }));
+    expect(product.className).toContain("is-expanded");
+    fireEvent.click(within(product).getByRole("button", { name: /gestion.dashboard.collapse/ }));
+    expect(product.className).not.toContain("is-expanded");
+    expect(dataSource.savePreference).toHaveBeenCalledTimes(1);
+  });
+
   it("removes applied period and warehouse tags independently without persisting widget configuration", async () => {
     const dataSource = source({ loadWarehouses: vi.fn().mockResolvedValue([{ id: "reserve", name: "RESERVA", active: true }]) });
     render(<GestionDashboard {...props(dataSource)} />);

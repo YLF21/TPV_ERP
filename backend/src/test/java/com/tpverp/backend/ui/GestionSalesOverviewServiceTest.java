@@ -35,6 +35,12 @@ class GestionSalesOverviewServiceTest {
                 UUID.randomUUID(), "TOP", "Top product", new BigDecimal("2.500"));
         when(fixture.sales().topProducts(fixture.companyId(), fixture.store().getId(), null, from, to))
                 .thenReturn(List.of(product));
+        var families = List.of(new GestionSalesOverviewRepository.FamilySales("family", "Food",
+                new BigDecimal("17.00"), new BigDecimal("10.01"), new BigDecimal("22.500"), new BigDecimal("-1.25")));
+        when(fixture.sales().families(fixture.companyId(), fixture.store().getId(), null, from.minusDays(4), to, from))
+                .thenReturn(families);
+        when(fixture.sales().topProductsByAmount(fixture.companyId(), fixture.store().getId(), null, from, to))
+                .thenReturn(List.of(product));
 
         var result = fixture.service().overview(from, to, null);
 
@@ -43,9 +49,9 @@ class GestionSalesOverviewServiceTest {
         assertThat(result.previousFrom()).isEqualTo(from.minusDays(4));
         assertThat(result.previousTo()).isEqualTo(from.minusDays(1));
         assertThat(result.current()).isEqualTo(new GestionSalesOverviewService.Metrics(
-                new BigDecimal("17.00"), 4, new BigDecimal("4.25")));
+                new BigDecimal("17.00"), 4, new BigDecimal("4.25"), new BigDecimal("22.5")));
         assertThat(result.previous()).isEqualTo(new GestionSalesOverviewService.Metrics(
-                new BigDecimal("10.01"), 2, new BigDecimal("5.01")));
+                new BigDecimal("10.01"), 2, new BigDecimal("5.01"), new BigDecimal("-1.25")));
         assertThat(result.daily()).containsExactly(
                 new GestionSalesOverviewService.Day(from, new BigDecimal("20.00"), 2),
                 new GestionSalesOverviewService.Day(from.plusDays(1), new BigDecimal("0.00"), 1),
@@ -58,6 +64,8 @@ class GestionSalesOverviewServiceTest {
             assertThat(day.operationCount()).isZero();
         });
         assertThat(result.topProducts()).containsExactly(product);
+        assertThat(result.topProductsByAmount()).containsExactly(product);
+        assertThat(result.families()).isEqualTo(families);
     }
 
     @Test
@@ -145,6 +153,8 @@ class GestionSalesOverviewServiceTest {
         verify(fixture.sales()).daily(fixture.companyId(), fixture.store().getId(), warehouseId,
                 LocalDate.of(2026, 8, 29), to);
         verify(fixture.sales()).topProducts(fixture.companyId(), fixture.store().getId(), warehouseId, from, to);
+        verify(fixture.sales()).topProductsByAmount(fixture.companyId(), fixture.store().getId(), warehouseId, from, to);
+        verify(fixture.sales()).families(fixture.companyId(), fixture.store().getId(), warehouseId, from.minusDays(3), to, from);
     }
 
     @Test

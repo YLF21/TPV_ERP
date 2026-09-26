@@ -1,18 +1,24 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Bell, DotsSixVertical, Info, X } from "@phosphor-icons/react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Bell, DotsSixVertical, Info, ArrowsOutSimple, ArrowsInSimple, X } from "@phosphor-icons/react";
+import { DashboardBars } from "./DashboardBars";
 import type { LocaleCode } from "@tpverp/app-common";
 import type { ActivePromotionData, ControlAlertsSummaryData, DashboardOptions, DashboardWidgetLayout, SalesOverviewData } from "./dashboardModel";
 
 export type DashboardTranslator = (key: string) => string;
-export type DashboardDataState<T> = { loading: boolean; error: boolean; data?: T };
+export type DashboardDataState<T> = { loading: boolean; error: boolean; data?: T; updatedAt?: number };
 type WidgetProps<T> = { state: DashboardDataState<T>; t: DashboardTranslator; locale: LocaleCode; onOpen: () => void };
 
-export function DashboardWidgetFrame({ widget, customizing, selected, disabled, t, onSelect, onDragStart, onDrop, onRemove, children }: {
+export function DashboardWidgetFrame({ widget, customizing, selected, disabled, t, onSelect, onDragStart, onDrop, onRemove, children, toolbar }: {
   widget: DashboardWidgetLayout; customizing: boolean; selected: boolean; disabled?: boolean; t: DashboardTranslator;
-  onSelect: () => void; onDragStart: () => void; onDrop: () => void; onRemove: () => void; children: ReactNode;
+  onSelect: () => void; onDragStart: () => void; onDrop: () => void; onRemove: () => void; children: ReactNode; toolbar?: ReactNode;
 }) {
-  const kpi = ["sales.today", "sales.operations", "sales.average"].includes(widget.key);
-  return <article className={`gd-widget ${kpi ? "gd-kpi-widget" : ""} ${customizing && selected ? "is-selected" : ""}`}
+  const [expanded, setExpanded] = useState(false);
+  const frameRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (expanded && !customizing) frameRef.current?.scrollIntoView?.({ block: "start", behavior: "instant" });
+  }, [expanded, customizing]);
+  const kpi = ["sales.today", "sales.operations", "sales.average", "sales.units"].includes(widget.key);
+  return <article ref={frameRef} className={`gd-widget ${kpi ? "gd-kpi-widget" : ""} ${expanded && !customizing ? "is-expanded" : ""} ${customizing && selected ? "is-selected" : ""}`}
     data-widget-key={widget.key} style={{ "--widget-width": widget.width, "--widget-height": widget.height } as CSSProperties}
     onDragOver={(event) => { if (customizing && !disabled) event.preventDefault(); }} onDrop={onDrop}>
     <header className="gd-widget-header">
@@ -20,15 +26,19 @@ export function DashboardWidgetFrame({ widget, customizing, selected, disabled, 
         onClick={onSelect} draggable={!disabled} onDragStart={onDragStart} title={t("gestion.dashboard.selectWidget")}>
         <DotsSixVertical size={17} aria-hidden="true" /><strong>{t(`gestion.widget.${widget.key}`)}</strong>
       </button> : <strong>{t(`gestion.widget.${widget.key}`)}</strong>}
+      {!customizing && !kpi && <button type="button" className="gd-icon-button" aria-expanded={expanded}
+        aria-label={`${t(expanded ? "gestion.dashboard.collapse" : "gestion.dashboard.expand")} ${t(`gestion.widget.${widget.key}`)}`}
+        onClick={() => setExpanded(value => !value)}>{expanded ? <ArrowsInSimple size={16} /> : <ArrowsOutSimple size={16} />}</button>}
       {customizing && <button type="button" className="gd-icon-button" disabled={disabled} onClick={onRemove}
         aria-label={`${t("gestion.dashboard.remove")} ${t(`gestion.widget.${widget.key}`)}`}><X size={15} aria-hidden="true" /></button>}
     </header>
+    {toolbar && <div className="gd-widget-toolbar">{toolbar}</div>}
     <div className="gd-widget-content">{children}</div>
   </article>;
 }
 
 export function SalesMetricWidget({ state, t, locale, onOpen, metric, showComparison }: WidgetProps<SalesOverviewData> & {
-  metric: "netSales" | "operationCount" | "averageAmount"; showComparison: boolean;
+  metric: "netSales" | "operationCount" | "averageAmount" | "netUnits"; showComparison: boolean;
 }) {
   const descriptionId = useId();
   if (!state.data) return <WidgetMessage text={t(state.error ? "gestion.widget.loadError" : "common.loading")} error={state.error} />;
@@ -39,20 +49,21 @@ export function SalesMetricWidget({ state, t, locale, onOpen, metric, showCompar
   const previousValue = previous[metric];
   const noAverage = metric === "averageAmount" && current.operationCount === 0;
   const noPreviousAverage = metric === "averageAmount" && previous.operationCount === 0;
-  const delta = previousValue === 0 || noAverage || noPreviousAverage ? null : (value - previousValue) / Math.abs(previousValue) * 100;
+  const delta = value == null || previousValue == null || previousValue === 0 || noAverage || noPreviousAverage ? null : (value - previousValue) / Math.abs(previousValue) * 100;
   const negative = delta != null && delta < 0;
   return <div className="gd-metric" aria-busy={state.loading}>
     <button type="button" className="gd-metric-value" onClick={onOpen}
       title={description ? `${description}\n${t("gestion.widget.openSales")}` : t("gestion.widget.openSales")}
       aria-describedby={description ? descriptionId : undefined}>
-      {noAverage ? "—" : metric === "operationCount" ? formatDashboardNumber(value, locale, 0) : formatDashboardMoney(value, locale, currency)}
+      {noAverage || value == null ? "—" : metric === "operationCount" || metric === "netUnits" ? formatDashboardNumber(value, locale, metric === "operationCount" ? 0 : 3) : formatDashboardMoney(value, locale, currency)}
     </button>
     {description && <span id={descriptionId} className="gd-visually-hidden">{description}</span>}
     {showComparison && <div className="gd-metric-comparison">
       <span className={`gd-change ${delta == null ? "neutral" : negative ? "negative" : "positive"}`}>
         {delta != null && (negative ? <ArrowDownRight size={14} aria-hidden="true" /> : <ArrowUpRight size={14} aria-hidden="true" />)}
         {delta == null ? "—" : `${delta > 0 ? "+" : ""}${formatDashboardNumber(delta, locale, 1)} %`}
-      </span><span>{t(delta == null ? "gestion.widget.noComparison" : "gestion.dashboard.vsPrevious")}</span>
+      </span><span title={formatDashboardRange(state.data.previousFrom, state.data.previousTo, locale)}>{t(delta == null ? "gestion.widget.noComparison" : "gestion.dashboard.vsPrevious")}
+        {previousValue != null && !noAverage && !noPreviousAverage && <> · {metric === "operationCount" || metric === "netUnits" ? formatDashboardNumber(previousValue, locale) : formatDashboardMoney(previousValue, locale, currency)}</>}</span>
     </div>}
     {state.error && <WidgetMessage text={t("gestion.dashboard.staleData")} error />}
   </div>;
@@ -141,18 +152,22 @@ function SalesTrendTable({ data, locale, t, comparison }: { data: SalesOverviewD
     </tr>)}</tbody></table></div>;
 }
 
-export function TopProductsWidget({ state, t, locale, onOpen, display }: WidgetProps<SalesOverviewData> & { display: DashboardOptions["productDisplay"] }) {
+export function TopProductsWidget({ state, t, locale, onOpen, display, sort = "QUANTITY" }: WidgetProps<SalesOverviewData> & { display: DashboardOptions["productDisplay"]; sort?: DashboardOptions["productSort"] }) {
   if (!state.data) return <WidgetMessage text={t(state.error ? "gestion.widget.loadError" : "common.loading")} error={state.error} />;
-  const rows = state.data.topProducts;
-  const largest = Math.max(1, ...rows.map((row) => Math.abs(row.netQuantity)));
+  const data = state.data;
+  const rows = sort === "AMOUNT" ? data.topProductsByAmount ?? [] : data.topProducts;
   return <div className="gd-ranking" aria-busy={state.loading}>
     <p className="gd-widget-note">{t("gestion.dashboard.rankingScope")}</p>
-    {rows.length === 0 ? <WidgetMessage text={t("gestion.widget.noSales")} /> : <div className="gd-table-wrap"><table className={`gd-table gd-product-table ${display === "BAR" ? "with-bars" : ""}`}>
-      <thead><tr><th>#</th><th>{t("gestion.widget.product")}</th><th className="numeric">{t("gestion.dashboard.netUnits")}</th></tr></thead>
+    {rows.length === 0 ? <WidgetMessage text={t("gestion.dashboard.noData")} /> : display === "BAR" ? <DashboardBars
+      rows={rows.map(row => ({ key: row.productId, label: row.name, value: sort === "AMOUNT" ? row.netAmount ?? 0 : row.netQuantity }))}
+      format={value => sort === "AMOUNT" ? formatDashboardMoney(value, locale, data.currency) : formatDashboardNumber(value, locale)}
+      currentLabel={t(sort === "AMOUNT" ? "gestion.widget.sales.today" : "gestion.dashboard.netUnits")} /> : <div className="gd-table-wrap"><table className="gd-table gd-product-table">
+      <thead><tr><th>#</th><th>{t("gestion.widget.product")}</th><th>{t("gestion.dashboard.family")}</th><th className="numeric">{t("gestion.dashboard.netUnits")}</th><th className="numeric">{t("gestion.widget.sales.today")}</th><th className="numeric">{t("gestion.dashboard.share")}</th></tr></thead>
       <tbody>{rows.map((row, index) => <tr key={row.productId}>
         <td>{index + 1}</td><td><span title={`${row.code} ${row.name}`}>{row.name}</span><small>{row.code}</small>
-          {display === "BAR" && <div className="gd-product-bar" aria-hidden="true"><i className={row.netQuantity < 0 ? "negative" : ""} style={{ width: `${Math.abs(row.netQuantity) / largest * 100}%` }} /></div>}
-        </td><td className="numeric">{formatDashboardNumber(row.netQuantity, locale)}</td>
+        </td><td>{row.familyName || t("gestion.dashboard.unclassified")}</td><td className="numeric">{formatDashboardNumber(row.netQuantity, locale)}</td>
+        <td className="numeric">{row.netAmount == null ? "—" : formatDashboardMoney(row.netAmount, locale, data.currency)}</td>
+        <td className="numeric">{data.current.netSales > 0 && row.netAmount != null ? `${formatDashboardNumber(row.netAmount / data.current.netSales * 100, locale, 1)} %` : "—"}</td>
       </tr>)}</tbody>
     </table></div>}
     {state.error && <WidgetMessage text={t("gestion.dashboard.staleData")} error />}
@@ -160,33 +175,60 @@ export function TopProductsWidget({ state, t, locale, onOpen, display }: WidgetP
   </div>;
 }
 
-export function ActivePromotionsWidget({ state, t, locale, onOpen, date }: WidgetProps<ActivePromotionData[]> & { date: string }) {
+export function ActivePromotionsWidget({ state, t, locale, onOpen, date, display = "TABLE" }: WidgetProps<ActivePromotionData[]> & { date: string; display?: "BAR" | "TABLE" }) {
   if (!state.data) return <WidgetMessage text={t(state.error ? "gestion.widget.loadError" : "common.loading")} error={state.error} />;
   return <div className="gd-promotions" aria-busy={state.loading}>
     <p className="gd-widget-note">{t("gestion.dashboard.activeOn")} {formatDashboardDate(date, locale)}</p>
     <div className="gd-activity-count"><strong>{formatDashboardNumber(state.data.length, locale, 0)}</strong><span>{t("gestion.widget.activeCount")}</span></div>
-    {state.data.length === 0 ? <WidgetMessage text={t("gestion.widget.noPromotions")} /> : <ul className="gd-activity-list">{state.data.slice(0, 6).map((promotion) =>
-      <li key={promotion.id}><div><strong>{promotion.name}</strong><small>{t(`promotion.type.${promotion.type}`)}</small></div>
-        <span>{promotion.endDate ? formatDashboardDate(promotion.endDate, locale) : "—"}</span></li>)}</ul>}
+    {state.data.length === 0 ? <WidgetMessage text={t("gestion.dashboard.noData")} /> : display === "BAR" ? <DashboardBars
+      rows={Object.entries(state.data.reduce<Record<string, number>>((counts, promotion) => { counts[promotion.type] = (counts[promotion.type] ?? 0) + 1; return counts; }, {}))
+        .map(([type, value]) => ({ key: type, label: t(`promotion.type.${type}`), value }))}
+      format={value => formatDashboardNumber(value, locale, 0)} currentLabel={t("gestion.widget.activeCount")} />
+      : <ul className="gd-activity-list">{state.data.map((promotion) =>
+      <li key={promotion.id}><div><strong>{promotion.name}</strong><small>{promotionSummary(promotion, t, locale)}</small>
+        <small>{promotion.startDate ? formatDashboardDate(promotion.startDate, locale) : "—"} – {promotion.endDate ? formatDashboardDate(promotion.endDate, locale) : t("gestion.dashboard.noEndDate")}</small></div></li>)}</ul>}
     {state.error && <WidgetMessage text={t("gestion.dashboard.staleData")} error />}
     <WidgetFooter label={t("gestion.widget.openPromotions")} onOpen={onOpen} />
   </div>;
 }
 
-export function ControlAlertsWidget({ state, t, locale, onOpen, timeZone }: WidgetProps<ControlAlertsSummaryData> & { timeZone?: string }) {
+export function ControlAlertsWidget({ state, t, locale, onOpen, timeZone, display = "TABLE" }: WidgetProps<ControlAlertsSummaryData> & { timeZone?: string; display?: "BAR" | "TABLE" }) {
   if (!state.data) return <WidgetMessage text={t(state.error ? "gestion.widget.loadError" : "common.loading")} error={state.error} />;
   const data = state.data;
   return <div className="gd-alerts" aria-busy={state.loading}>
     <p className="gd-widget-note"><Info size={14} aria-hidden="true" />{t("gestion.dashboard.alertsScope")}</p>
     <div className="gd-alert-counts"><div><Bell size={22} aria-hidden="true" /><strong>{formatDashboardNumber(data.newCount, locale, 0)}</strong><span>{t("gestion.widget.controlAlerts.new")}</span></div>
       <small><span>{formatDashboardNumber(data.reviewedCount, locale, 0)}</span> {t("gestion.widget.controlAlerts.reviewed")}</small></div>
+    {display === "BAR" ? <DashboardBars rows={[
+      { key: "NEW", value: data.newCount }, { key: "REVIEWED", value: data.reviewedCount },
+      { key: "CLOSED", value: data.closedCount ?? 0 }, { key: "DISMISSED", value: data.dismissedCount ?? 0 }
+    ].map(row => ({ ...row, label: t(`gestion.controlAlerts.status.${row.key}`) }))}
+      format={value => formatDashboardNumber(value, locale, 0)} currentLabel={t("gestion.widget.control.alerts")} /> : <>
     <p className="gd-widget-note">{t("gestion.dashboard.recentActivity")}</p>
     {data.recentAlerts.length === 0 ? <WidgetMessage text={t("gestion.widget.controlAlerts.empty")} /> : <ul className="gd-activity-list">{data.recentAlerts.slice(0, 5).map((alert) =>
       <li key={alert.id}><span className={`gd-alert-dot ${alert.status.toLowerCase()}`} /><div><strong>{t(`gestion.controlAlerts.type.${alert.type}`)}</strong><small>{alert.documentNumber || alert.userName || "—"} · {t(`gestion.controlAlerts.status.${alert.status}`)}</small></div>
         <time dateTime={alert.occurredAt}>{formatDashboardDateTime(alert.occurredAt, locale, timeZone)}</time></li>)}</ul>}
+    </>}
     {state.error && <WidgetMessage text={t("gestion.dashboard.staleData")} error />}
     <WidgetFooter label={t("gestion.widget.controlAlerts.open")} onOpen={onOpen} />
   </div>;
+}
+
+function promotionSummary(promotion: ActivePromotionData, t: DashboardTranslator, locale: LocaleCode) {
+  const number = (value: number) => formatDashboardNumber(value, locale);
+  const money = (value: number) => formatDashboardMoney(value, locale);
+  const label = t(`promotion.type.${promotion.type}`);
+  const discount = promotion.discountPercent != null ? `${number(promotion.discountPercent)} %`
+    : promotion.discountAmount != null ? money(promotion.discountAmount) : "";
+  if (promotion.type === "BUY_X_PAY_Y" && promotion.buyQuantity != null && promotion.payQuantity != null) {
+    return `${label}: ${number(promotion.buyQuantity)} × ${number(promotion.payQuantity)}`;
+  }
+  if (promotion.type === "FIXED_PACK_PRICE" && promotion.packPrice != null) {
+    return `${label}: ${promotion.minimumQuantity == null ? "" : `${number(promotion.minimumQuantity)} · `}${money(promotion.packPrice)}`;
+  }
+  const threshold = promotion.minimumAmount != null ? `${t("gestion.dashboard.fromAmount")} ${money(promotion.minimumAmount)}`
+    : promotion.minimumQuantity != null ? `${t("gestion.dashboard.fromQuantity")} ${number(promotion.minimumQuantity)}` : "";
+  return [label, discount, threshold].filter(Boolean).join(" · ");
 }
 
 function WidgetMessage({ text, error = false }: { text: string; error?: boolean }) {

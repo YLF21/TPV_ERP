@@ -4,6 +4,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.CO
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.CONTROL_ALERTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.CUSTOMER_RECEIVABLES_READ;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.PermissionChecks;
@@ -30,17 +31,23 @@ import org.springframework.transaction.annotation.Transactional;
 public class DashboardPreferenceService {
 
     private static final List<WidgetDefinition> CATALOG = List.of(
-            new WidgetDefinition("sales.today", Set.of(GESTION_VENTAS), 4, 1),
-            new WidgetDefinition("sales.operations", Set.of(GESTION_VENTAS), 4, 1),
-            new WidgetDefinition("sales.average", Set.of(GESTION_VENTAS), 4, 1),
-            new WidgetDefinition("sales.trend", Set.of(GESTION_VENTAS), 12, 2),
-            new WidgetDefinition("sales.top-products", Set.of(GESTION_VENTAS), 8, 2),
-            new WidgetDefinition("promotions.active", Set.of(GESTION_PRODUCTO), 4, 2),
+            new WidgetDefinition("sales.today", Set.of(GESTION_VENTAS), 3, 1),
+            new WidgetDefinition("sales.operations", Set.of(GESTION_VENTAS), 3, 1),
+            new WidgetDefinition("sales.average", Set.of(GESTION_VENTAS), 3, 1),
+            new WidgetDefinition("sales.units", Set.of(GESTION_VENTAS), 3, 1),
+            new WidgetDefinition("sales.trend", Set.of(GESTION_VENTAS), 8, 2),
+            new WidgetDefinition("sales.families", Set.of(GESTION_VENTAS), 4, 2),
+            new WidgetDefinition("sales.top-products", Set.of(GESTION_VENTAS), 6, 2),
             new WidgetDefinition(
                     "control.alerts",
                     Set.of(CONTROL_ALERTS_READ, CONTROL_ALERTS_MANAGE),
-                    4,
-                    2));
+                    3,
+                    2),
+            new WidgetDefinition("promotions.active", Set.of(GESTION_PRODUCTO), 3, 2),
+            new WidgetDefinition("sales.hourly", Set.of(GESTION_VENTAS), 12, 3),
+            new WidgetDefinition("sales.corrections", Set.of(GESTION_VENTAS), 4, 2),
+            new WidgetDefinition("sales.payments", Set.of(GESTION_VENTAS), 4, 2),
+            new WidgetDefinition("finance.receivables", Set.of(CUSTOMER_RECEIVABLES_READ), 4, 2));
     private static final Set<String> KNOWN_KEYS = CATALOG.stream()
             .map(WidgetDefinition::key)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());

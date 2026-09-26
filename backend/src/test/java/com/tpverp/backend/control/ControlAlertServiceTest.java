@@ -39,8 +39,9 @@ class ControlAlertServiceTest {
         var newCount = count(ControlAlertStatus.NEW, 7);
         var reviewedCount = count(ControlAlertStatus.REVIEWED, 3);
         var closedCount = count(ControlAlertStatus.CLOSED, 11);
+        var dismissedCount = count(ControlAlertStatus.DISMISSED, 2);
         when(alerts.countByStoreIdGroupedByStatus(storeId))
-                .thenReturn(List.of(newCount, reviewedCount, closedCount));
+                .thenReturn(List.of(newCount, reviewedCount, closedCount, dismissedCount));
 
         var userId = UUID.randomUUID();
         var rule = new ControlRule(
@@ -80,6 +81,8 @@ class ControlAlertServiceTest {
 
         assertThat(result.newCount()).isEqualTo(7);
         assertThat(result.reviewedCount()).isEqualTo(3);
+        assertThat(result.closedCount()).isEqualTo(11);
+        assertThat(result.dismissedCount()).isEqualTo(2);
         assertThat(result.recentAlerts()).singleElement().satisfies(recent -> {
             assertThat(recent.id()).isEqualTo(alert.getId());
             assertThat(recent.type()).isEqualTo(ControlAlertType.TICKET_CANCELLED);

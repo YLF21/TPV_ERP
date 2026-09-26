@@ -129,7 +129,7 @@ test.describe("APP GESTIÓN · recorridos esenciales", () => {
       await workspace.getByRole("button", { name: "Personalizar", exact: true }).click();
       const configuration = page.getByRole("complementary", { name: "Mi configuración", exact: true });
       await configuration.getByRole("button", { name: "Equilibrada", exact: true }).click();
-      await configuration.getByRole("button", { name: "Tabla", exact: true }).click();
+      await configuration.getByRole("button", { name: "Datos", exact: true }).click({ timeout: 5_000 });
       await configuration.getByRole("button", { name: "1/2", exact: true }).click();
       await configuration.getByRole("button", { name: "Mover antes", exact: true }).click();
 
@@ -147,12 +147,12 @@ test.describe("APP GESTIÓN · recorridos esenciales", () => {
       expect(saved.ok(), `Guardado explícito de preferencias: ${await safeResponseSummary(saved)}`).toBeTruthy();
       const submitted = saved.request().postDataJSON();
       expect(submitted.options.trendDisplay).toBe("TABLE");
-      expect(submitted.widgets[2]).toEqual({ key: "sales.trend", width: 6, height: 2 });
+      expect(submitted.widgets[3]).toEqual({ key: "sales.trend", width: 6, height: 2 });
       await expect(configuration).toBeHidden();
       const trend = workspace.locator('[data-widget-key="sales.trend"]');
       await expect(trend).toHaveAttribute("style", /--widget-width:\s*6/);
       await expect(trend.locator("table")).toBeVisible();
-      await expect(workspace.locator(".gd-grid > [data-widget-key]").nth(2)).toHaveAttribute("data-widget-key", "sales.trend");
+      await expect(workspace.locator(".gd-grid > [data-widget-key]").nth(3)).toHaveAttribute("data-widget-key", "sales.trend");
 
       const reloadedPreference = page.waitForResponse((response) => apiPath(response, "/api/v1/gestion/dashboard/preference"));
       await loginGestion(page);
@@ -164,7 +164,7 @@ test.describe("APP GESTIÓN · recorridos esenciales", () => {
       expect(reloaded.options).toEqual(submitted.options);
       await expect(trend).toHaveAttribute("style", /--widget-width:\s*6/);
       await expect(trend.locator("table")).toBeVisible();
-      await expect(workspace.locator(".gd-grid > [data-widget-key]").nth(2)).toHaveAttribute("data-widget-key", "sales.trend");
+      await expect(workspace.locator(".gd-grid > [data-widget-key]").nth(3)).toHaveAttribute("data-widget-key", "sales.trend");
     } finally {
       await restoreDashboardPreference(page, initialResponse.url(), authorization, original);
     }

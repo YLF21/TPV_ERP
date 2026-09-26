@@ -4,6 +4,12 @@ export type DashboardWidgetKey =
   | "sales.today"
   | "sales.operations"
   | "sales.average"
+  | "sales.units"
+  | "sales.families"
+  | "sales.hourly"
+  | "sales.corrections"
+  | "sales.payments"
+  | "finance.receivables"
   | "sales.trend"
   | "sales.top-products"
   | "promotions.active"
@@ -29,14 +35,39 @@ export type DashboardOptions = {
   productDisplay: "BAR" | "TABLE";
   density: "COMFORTABLE" | "COMPACT";
   showComparison: boolean;
+  familyDisplay?: "BAR" | "TABLE";
+  productSort?: "QUANTITY" | "AMOUNT";
+  alertDisplay?: "BAR" | "TABLE";
+  promotionDisplay?: "BAR" | "TABLE";
+  hourlyDisplay?: "BAR" | "TABLE";
+  correctionDisplay?: "BAR" | "TABLE";
+  paymentDisplay?: "BAR" | "TABLE";
+  receivableDisplay?: "BAR" | "TABLE";
 };
 export const defaultDashboardOptions: DashboardOptions = {
-  defaultPeriod: "MONTH", trendDisplay: "LINE", productDisplay: "BAR", density: "COMFORTABLE", showComparison: true
+  defaultPeriod: "MONTH", trendDisplay: "LINE", productDisplay: "BAR", density: "COMFORTABLE", showComparison: true,
+  familyDisplay: "BAR", productSort: "QUANTITY", alertDisplay: "TABLE", promotionDisplay: "TABLE",
+  hourlyDisplay: "BAR", correctionDisplay: "TABLE", paymentDisplay: "TABLE", receivableDisplay: "TABLE"
 };
 export type DashboardDateRange = { from: string; to: string };
 export type SalesOverviewScope = DashboardDateRange & { warehouseId?: string };
-export type SalesPeriodMetrics = { netSales: number; operationCount: number; averageAmount: number };
+export type SalesPeriodMetrics = { netSales: number; operationCount: number; averageAmount: number; netUnits?: number };
+export type FamilySales = { key: string; name: string | null; currentSales: number; previousSales: number; currentUnits: number; previousUnits: number };
+export type RankedProduct = { productId: string; code: string; name: string; netQuantity: number; netAmount?: number; familyId?: string | null; familyName?: string | null };
 export type DailySales = { date: string; netSales: number; operationCount: number };
+export type HourSales = { date: string; hour: number; sales: number; units: number; operations: number };
+export type HourlySalesScope = { from: string; to: string; comparisonFrom?: string; comparisonTo?: string; warehouseId?: string };
+export type HourlySalesData = { day: string; comparisonDay: string | null; from: string; to: string; comparisonFrom: string | null; comparisonTo: string | null; storeTimezone: string; currency: string; current: HourSales[]; previous: HourSales[] };
+export function loadHourlySales(token: string | undefined, scope: HourlySalesScope, signal?: AbortSignal): Promise<HourlySalesData> {
+  const query = new URLSearchParams({ from: scope.from, to: scope.to });
+  if (scope.comparisonFrom) query.set("comparisonFrom", scope.comparisonFrom);
+  if (scope.comparisonTo) query.set("comparisonTo", scope.comparisonTo);
+  if (scope.warehouseId) query.set("warehouseId", scope.warehouseId);
+  return apiRequest<HourlySalesData>(`/gestion/dashboard/data/sales-hourly?${query}`, { token, signal });
+}
+export type CorrectionSummary = { kind: string; operations: number; amount: number };
+export type PaymentSummary = { method: string; collected: number; refunded: number; net: number };
+export type ReceivablesSummary = { asOf: string; currency: string; balances: { kind: string; documents: number; amount: number }[] };
 export type SalesOverviewData = DashboardDateRange & {
   previousFrom: string;
   previousTo: string;
@@ -46,7 +77,12 @@ export type SalesOverviewData = DashboardDateRange & {
   previous: SalesPeriodMetrics;
   daily: DailySales[];
   previousDaily: DailySales[];
-  topProducts: { productId: string; code: string; name: string; netQuantity: number }[];
+  topProducts: RankedProduct[];
+  topProductsByAmount?: RankedProduct[];
+  families?: FamilySales[];
+  hourly?: HourSales[];
+  corrections?: CorrectionSummary[];
+  payments?: PaymentSummary[];
 };
 
 export type SalesTodayData = {
@@ -69,6 +105,14 @@ export type ActivePromotionData = {
   name: string;
   type: string;
   endDate: string | null;
+  startDate?: string;
+  minimumAmount?: number | null;
+  minimumQuantity?: number | null;
+  buyQuantity?: number | null;
+  payQuantity?: number | null;
+  discountAmount?: number | null;
+  discountPercent?: number | null;
+  packPrice?: number | null;
 };
 
 export type ControlAlertSummaryItem = {
@@ -83,6 +127,8 @@ export type ControlAlertSummaryItem = {
 export type ControlAlertsSummaryData = {
   newCount: number;
   reviewedCount: number;
+  closedCount?: number;
+  dismissedCount?: number;
   recentAlerts: ControlAlertSummaryItem[];
 };
 
@@ -98,13 +144,19 @@ export type DashboardWarehouse = {
 };
 
 export const dashboardWidgetDefaults: Record<DashboardWidgetKey, DashboardWidgetLayout> = {
-  "sales.today": { key: "sales.today", width: 4, height: 1 },
-  "sales.operations": { key: "sales.operations", width: 4, height: 1 },
-  "sales.average": { key: "sales.average", width: 4, height: 1 },
-  "sales.trend": { key: "sales.trend", width: 12, height: 2 },
-  "sales.top-products": { key: "sales.top-products", width: 8, height: 2 },
-  "promotions.active": { key: "promotions.active", width: 4, height: 2 },
-  "control.alerts": { key: "control.alerts", width: 4, height: 2 }
+  "sales.today": { key: "sales.today", width: 3, height: 1 },
+  "sales.operations": { key: "sales.operations", width: 3, height: 1 },
+  "sales.average": { key: "sales.average", width: 3, height: 1 },
+  "sales.units": { key: "sales.units", width: 3, height: 1 },
+  "sales.trend": { key: "sales.trend", width: 8, height: 2 },
+  "sales.families": { key: "sales.families", width: 4, height: 2 },
+  "sales.top-products": { key: "sales.top-products", width: 6, height: 2 },
+  "promotions.active": { key: "promotions.active", width: 3, height: 2 },
+  "control.alerts": { key: "control.alerts", width: 3, height: 2 },
+  "sales.hourly": { key: "sales.hourly", width: 12, height: 3 },
+  "sales.corrections": { key: "sales.corrections", width: 4, height: 2 },
+  "sales.payments": { key: "sales.payments", width: 4, height: 2 },
+  "finance.receivables": { key: "finance.receivables", width: 4, height: 2 }
 };
 
 export const dashboardWidths = [3, 4, 6, 8, 12] as const;
@@ -150,13 +202,14 @@ export function validDashboardRange(range: DashboardDateRange): boolean {
 export type DashboardPreset = "BALANCED" | "SALES" | "PRODUCTS";
 export function dashboardPreset(preset: DashboardPreset, available: DashboardWidgetKey[]): DashboardWidgetLayout[] {
   const orders: Record<DashboardPreset, DashboardWidgetKey[]> = {
-    BALANCED: ["sales.today", "sales.operations", "sales.average", "sales.trend", "sales.top-products", "control.alerts", "promotions.active"],
-    SALES: ["sales.today", "sales.operations", "sales.average", "sales.trend", "control.alerts", "sales.top-products", "promotions.active"],
-    PRODUCTS: ["sales.today", "sales.operations", "sales.average", "sales.top-products", "promotions.active", "sales.trend", "control.alerts"]
+    BALANCED: ["sales.today", "sales.operations", "sales.average", "sales.units", "sales.trend", "sales.families", "sales.top-products", "control.alerts", "promotions.active"],
+    SALES: ["sales.today", "sales.operations", "sales.average", "sales.units", "sales.trend", "sales.families", "sales.top-products", "control.alerts", "promotions.active"],
+    PRODUCTS: ["sales.today", "sales.operations", "sales.average", "sales.units", "sales.top-products", "sales.families", "promotions.active", "sales.trend", "control.alerts"]
   };
-  return orders[preset].filter((key) => available.includes(key)).map((key) => ({
+  const extended = [...orders[preset], "sales.hourly", "sales.corrections", "sales.payments", "finance.receivables"] as DashboardWidgetKey[];
+  return extended.filter((key) => available.includes(key)).map((key) => ({
     ...dashboardWidgetDefaults[key],
-    ...(preset === "SALES" && key === "sales.top-products" ? { width: 8 as const } : {}),
+    ...(preset === "SALES" && key === "sales.trend" ? { width: 12 as const, height: 3 as const } : {}),
     ...(preset === "PRODUCTS" && key === "sales.top-products" ? { width: 8 as const, height: 3 as const } : {})
   }));
 }
@@ -179,6 +232,11 @@ export function loadDashboardWarehouses(token?: string): Promise<DashboardWareho
 
 export function loadControlAlertsSummary(token?: string): Promise<ControlAlertsSummaryData> {
   return apiRequest<ControlAlertsSummaryData>("/control/alerts/summary", { token });
+}
+
+export function loadDashboardReceivables(token?: string, warehouseId?: string, signal?: AbortSignal): Promise<ReceivablesSummary> {
+  const query = warehouseId ? `?${new URLSearchParams({ warehouseId })}` : "";
+  return apiRequest<ReceivablesSummary>(`/gestion/dashboard/data/receivables-summary${query}`, { token, signal });
 }
 
 function dashboardDataPath(resource: string, scope: DashboardScope): string {

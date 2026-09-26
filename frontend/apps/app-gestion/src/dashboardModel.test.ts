@@ -72,7 +72,7 @@ describe("APP GESTION dashboard model", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(dashboardWidgetDefaults["control.alerts"]).toEqual({ key: "control.alerts", width: 4, height: 2 });
+    expect(dashboardWidgetDefaults["control.alerts"]).toEqual({ key: "control.alerts", width: 3, height: 2 });
     await expect(loadControlAlertsSummary("token")).resolves.toEqual(response);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/control/alerts/summary");
   });

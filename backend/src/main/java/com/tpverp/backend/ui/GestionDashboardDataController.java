@@ -88,7 +88,9 @@ public class GestionDashboardDataController {
                 .filter(promotion -> !today.isBefore(promotion.startDate()))
                 .filter(promotion -> promotion.endDate() == null || !today.isAfter(promotion.endDate()))
                 .map(promotion -> new ActivePromotionView(
-                        promotion.id(), promotion.name(), promotion.type(), promotion.endDate()))
+                        promotion.id(), promotion.name(), promotion.type(), promotion.endDate(), promotion.startDate(),
+                        promotion.minimumAmount(), promotion.minimumQuantity(), promotion.buyQuantity(), promotion.payQuantity(),
+                        promotion.discountAmount(), promotion.discountPercent(), promotion.packPrice()))
                 .toList();
     }
 
@@ -131,6 +133,14 @@ public class GestionDashboardDataController {
             UUID id,
             String name,
             PromotionType type,
-            LocalDate endDate) {
+            LocalDate endDate,
+            LocalDate startDate,
+            BigDecimal minimumAmount,
+            BigDecimal minimumQuantity,
+            BigDecimal buyQuantity,
+            BigDecimal payQuantity,
+            BigDecimal discountAmount,
+            BigDecimal discountPercent,
+            BigDecimal packPrice) {
     }
 }

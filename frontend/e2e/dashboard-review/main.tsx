@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { createTranslator, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { ChartBar, BellRinging, Package, Receipt, Users, Warehouse, Gear } from "@phosphor-icons/react";
 import { GestionDashboard } from "../../apps/app-gestion/src/GestionDashboard";
+import { dashboardPreset, defaultDashboardOptions, type DashboardWidgetKey } from "../../apps/app-gestion/src/dashboardModel";
 import { GestionShell } from "../../apps/app-gestion/src/GestionShell";
 import "../../packages/app-common/src/styles/tpv.css";
 import "../../apps/app-gestion/src/gestion.css";
@@ -12,14 +13,10 @@ const locale = (parameters.get("locale") || "es") as LocaleCode;
 const t = createTranslator(locale);
 const username = parameters.get("user") || "SUPERVISOR";
 const session: UserSession = { username, displayName: username, accessToken: "isolated-dashboard-review", permissions: parameters.has("restricted")
-  ? ["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"] : ["APP_GESTION_ACCESS", "GESTION_VENTAS", "GESTION_PRODUCTO", "CONTROL_ALERTS_READ"] };
-const today = "2026-09-16";
-const availableWidgets = parameters.has("restricted") ? ["control.alerts"] : ["sales.today", "sales.operations", "sales.average", "sales.trend", "sales.top-products", "control.alerts", "promotions.active"];
-const defaults = { widgets: [
-  { key: "sales.today", width: 4, height: 1 }, { key: "sales.operations", width: 4, height: 1 },
-  { key: "sales.average", width: 4, height: 1 }, { key: "sales.trend", width: 12, height: 2 },
-  { key: "sales.top-products", width: 8, height: 2 }, { key: "control.alerts", width: 4, height: 2 }
-].filter(widget => availableWidgets.includes(widget.key)), options: { defaultPeriod: "MONTH", trendDisplay: "LINE", productDisplay: "BAR", density: "COMFORTABLE", showComparison: true } };
+  ? ["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"] : ["APP_GESTION_ACCESS", "GESTION_VENTAS", "GESTION_PRODUCTO", "CONTROL_ALERTS_READ", "CUSTOMER_RECEIVABLES_READ"] };
+const today = "2026-09-25";
+const availableWidgets: DashboardWidgetKey[] = parameters.has("restricted") ? ["control.alerts"] : ["sales.today", "sales.operations", "sales.average", "sales.units", "sales.trend", "sales.families", "sales.top-products", "control.alerts", "promotions.active", "sales.hourly", "sales.corrections", "sales.payments", "finance.receivables"];
+const defaults = { widgets: dashboardPreset("BALANCED", availableWidgets), options: { ...defaultDashboardOptions } };
 let preferences = JSON.parse(localStorage.getItem(`dashboard-review:${username}`) || "null") || defaults;
 let failNextRead = parameters.has("load-error"), failNextSave = false;
 const errors: string[] = [];
@@ -38,8 +35,29 @@ function overview(params: URLSearchParams) {
   }
   function metric(rows: ReturnType<typeof series>) { const netSales = Math.round(rows.reduce((sum, row) => sum + row.netSales, 0) * 100) / 100; const operationCount = rows.reduce((sum, row) => sum + row.operationCount, 0); return { netSales, operationCount, averageAmount: operationCount ? Math.round(netSales / operationCount * 100) / 100 : 0 }; }
   const daily = series(from, false), previousDaily = series(previousFrom, true);
-  return { from, to, previousFrom, previousTo, storeTimezone: "Atlantic/Canary", currency: "EUR", current: metric(daily), previous: metric(previousDaily), daily, previousDaily,
-    topProducts: factor ? ["Agua mineral 1,5 L", "Leche entera 1 L", "Arroz largo 1 kg", "Aceite de oliva virgen 1 L", "Pan de molde integral", "Café molido natural 250 g"].map((name, index) => ({ productId: `product-${index}`, code: `000${index + 1}`, name, netQuantity: Math.round(factor * (480 - index * 63)) })) : [] };
+  const current = { ...metric(daily), netUnits: Math.round(factor * 3800) }, previous = { ...metric(previousDaily), netUnits: Math.round(factor * 2900) };
+  const families = factor ? ["Alimentación", "Bebidas", "Limpieza", "Congelados", "Frescos"].map((name, i) => ({
+    key: `family-${i}`, name, currentSales: Math.round(current.netSales * [0.40, 0.25, 0.15, 0.1, 0.12][i] * 100) / 100,
+    previousSales: Math.round(previous.netSales * [0.35, 0.3, 0.15, 0.1, 0.12][i] * 100) / 100,
+    currentUnits: Math.round(current.netUnits * [0.4, 0.2, 0.2, 0.1, 0.1][i]), previousUnits: Math.round(previous.netUnits * [0.4, 0.2, 0.2, 0.1, 0.1][i])
+  })) : [];
+  if (factor) families.push({ key: "ADJUSTMENTS", name: "", currentSales: Math.round((current.netSales - families.reduce((sum, f) => sum + f.currentSales, 0)) * 100) / 100,
+    previousSales: Math.round((previous.netSales - families.reduce((sum, f) => sum + f.previousSales, 0)) * 100) / 100, currentUnits: 0, previousUnits: 0 });
+  const topProducts = factor ? ["Agua mineral 1,5 L", "Leche entera 1 L", "Arroz largo 1 kg", "Aceite de oliva virgen 1 L", "Pan de molde integral", "Café molido natural 250 g"].map((name, index) => ({
+    productId: `product-${index}`, code: `000${index + 1}`, name, netQuantity: Math.round(factor * (480 - index * 63)),
+    familyName: index === 0 ? "Bebidas" : "Alimentación", netAmount: Math.round(factor * (index === 3 ? 2450 : 800 - index * 54) * 100) / 100
+  })) : [];
+  const hourly = daily.flatMap((row, index) => [
+    { date: row.date, hour: 9, sales: Math.round(row.netSales * 0.2 * 100) / 100, units: factor ? 40 + index : 0, operations: Math.floor(row.operationCount * 0.2) },
+    { date: row.date, hour: 13, sales: Math.round(row.netSales * 0.5 * 100) / 100, units: factor ? 110 + index : 0, operations: Math.floor(row.operationCount * 0.5) },
+    { date: row.date, hour: 18, sales: Math.round(row.netSales * 0.3 * 100) / 100, units: factor ? 70 + index : 0, operations: row.operationCount - Math.floor(row.operationCount * 0.2) - Math.floor(row.operationCount * 0.5) }
+  ]);
+  current.netUnits = hourly.reduce((sum, row) => sum + row.units, 0);
+  families.forEach((family, index) => { family.currentUnits = family.key === "ADJUSTMENTS" ? 0 : Math.round(current.netUnits * [0.4, 0.2, 0.2, 0.1, 0.1][index]); });
+  return { from, to, previousFrom, previousTo, storeTimezone: "Atlantic/Canary", currency: "EUR", current, previous, daily, previousDaily, hourly,
+    corrections: factor ? [{ kind: "RETURNS", operations: 5, amount: -125 }, { kind: "ECONOMIC", operations: 2, amount: -30 }, { kind: "INCREASES", operations: 1, amount: 10 }] : [],
+    payments: factor ? [{ method: "EFECTIVO", collected: 1800, refunded: 125, net: 1675 }, { method: "TARJETA", collected: 2450, refunded: 30, net: 2420 }] : [],
+    families, topProducts, topProductsByAmount: [...topProducts].sort((a, b) => b.netAmount - a.netAmount) };
 }
 
 // Unknown endpoints fail locally; no request can reach a real server.
@@ -52,10 +70,33 @@ window.fetch = async (input, init) => {
   let result: unknown;
   if (path === "/gestion/dashboard/preference") {
     if (method === "PUT") { preferences = body; localStorage.setItem(`dashboard-review:${username}`, JSON.stringify(body)); }
-    result = { ...preferences, widgets: preferences.widgets.filter((widget: { key: string }) => availableWidgets.includes(widget.key)), availableWidgets, businessDate: today, storeTimezone: "Atlantic/Canary" };
+    result = { ...preferences, widgets: preferences.widgets.filter((widget: { key: DashboardWidgetKey }) => availableWidgets.includes(widget.key)), availableWidgets, businessDate: today, storeTimezone: "Atlantic/Canary" };
   } else if (path === "/gestion/dashboard/data/sales-overview") result = overview(url.searchParams);
+  else if (path === "/gestion/dashboard/data/sales-hourly") {
+    const from = url.searchParams.get("from") || url.searchParams.get("day") || today;
+    const to = url.searchParams.get("to") || from;
+    const comparisonFrom = url.searchParams.get("comparisonFrom") || url.searchParams.get("comparisonDay");
+    const comparisonTo = url.searchParams.get("comparisonTo") || comparisonFrom;
+    const factor = parameters.has("empty") ? 0 : url.searchParams.get("warehouseId") ? 0.42 : 1;
+    const hours = (start: string, end: string) => {
+      const days = Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
+      return [12, 28, 46, 72, 110, 156, 128, 84, 62, 95, 138, 104, 57, 22].map((units, index) => {
+        const count = Math.round(units * factor * (end === today ? 1 : .8));
+        return { date: start, hour: index + 8, units: days * (parameters.has("negative") && index === 2 ? -count : count),
+          sales: days * (parameters.has("negative") && index === 2 ? -1 : 1) * count * 8.5, operations: days * Math.ceil(count / 4) };
+      });
+    };
+    result = { day: from, comparisonDay: comparisonFrom, from, to, comparisonFrom, comparisonTo, storeTimezone: "Atlantic/Canary", currency: "EUR", current: hours(from, to), previous: comparisonFrom && comparisonTo ? hours(comparisonFrom, comparisonTo) : [] };
+
+  }
+  else if (path === "/gestion/dashboard/data/receivables-summary") result = { asOf: today, currency: "EUR", balances: parameters.has("empty") ? [] : [
+    { kind: "OVERDUE", documents: 3, amount: 480 }, { kind: "NOT_DUE", documents: 5, amount: 920 }, { kind: "NO_DUE_DATE", documents: 2, amount: 150 }
+  ] };
   else if (path === "/warehouses") result = [{ id: "warehouse-main", name: "Almacén general", active: true }, { id: "warehouse-secondary", name: "Almacén secundario", active: true }];
-  else if (path === "/gestion/dashboard/data/active-promotions") result = parameters.has("empty") ? [] : [{ id: "promo-1", name: "Promoción de septiembre", type: "QUANTITY_DISCOUNT", endDate: "2026-09-30" }];
+  else if (path === "/gestion/dashboard/data/active-promotions") result = parameters.has("empty") ? [] : [
+    { id: "promo-1", name: "Promoción de septiembre", type: "QUANTITY_DISCOUNT", startDate: "2026-09-01", endDate: "2026-09-30", minimumQuantity: 3, discountPercent: 15 },
+    { id: "promo-2", name: "Bebidas · Segunda unidad", type: "SECOND_UNIT_PERCENT", startDate: "2026-09-01", endDate: "2026-09-30", discountPercent: 50 }
+  ];
   else if (path === "/control/alerts/summary") result = { newCount: parameters.has("empty") ? 0 : 8, reviewedCount: parameters.has("empty") ? 0 : 2, recentAlerts: parameters.has("empty") ? [] : ["MANUAL_DISCOUNT_OVER_PERCENT", "MANUAL_PRICE_CHANGED", "SALE_SCREEN_CLEARED"].map((type, index) => ({ id: `alert-${index}`, type, status: index === 2 ? "CLOSED" : index === 1 ? "REVIEWED" : "NEW", occurredAt: `${today}T10:${42 - index * 11}:00Z`, documentNumber: `T-2026-00${1821 - index}`, userName: "MARÍA" })) };
   else { errors.push(`${method} ${path}`); return Response.json({ message: "Ruta no simulada" }, { status: 400 }); }
   return Response.json(result);

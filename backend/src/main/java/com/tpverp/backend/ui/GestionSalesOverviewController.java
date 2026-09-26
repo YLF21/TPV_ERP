@@ -28,4 +28,18 @@ public class GestionSalesOverviewController {
             @RequestParam(required = false) UUID warehouseId) {
         return service.overview(from, to, warehouseId);
     }
+
+    @GetMapping("/sales-hourly")
+    @PreAuthorize("(hasRole('ADMIN') or hasAuthority('APP_GESTION_ACCESS'))"
+            + " and (hasRole('ADMIN') or hasAuthority('GESTION_VENTAS'))")
+    public GestionSalesOverviewService.HourlyComparison hourly(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate day,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate comparisonDay,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate comparisonFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate comparisonTo,
+            @RequestParam(required = false) UUID warehouseId) {
+        return service.hourlyComparison(day, comparisonDay, from, to, comparisonFrom, comparisonTo, warehouseId);
+    }
 }

@@ -26,6 +26,20 @@ class DashboardOptionsTest {
     }
 
     @Test
+    void readsOlderOptionsAndValidatesNewDisplayPreferences() {
+        var old = json.readValue("""
+                {"defaultPeriod":"MONTH","trendDisplay":"LINE","productDisplay":"BAR","density":"COMPACT","showComparison":true}
+                """, DashboardOptions.class);
+        assertThat(old.familyDisplay()).isEqualTo("BAR");
+        assertThat(old.productSort()).isEqualTo("QUANTITY");
+        assertThat(old.alertDisplay()).isEqualTo("TABLE");
+        assertThatThrownBy(() -> new DashboardOptions("MONTH", "LINE", "BAR", "COMPACT", true, "PIE", "AMOUNT", "TABLE", "TABLE"))
+                .isInstanceOf(IllegalArgumentException.class);
+        var all = new DashboardOptions("MONTH", "LINE", "TABLE", "COMPACT", true, "TABLE", "AMOUNT", "BAR", "BAR");
+        assertThat(json.readValue(json.writeValueAsString(all), DashboardOptions.class)).isEqualTo(all);
+    }
+
+    @Test
     void keepsTheLegacyWidgetsOnlyRequestCompatible() {
         var legacy = json.readValue("{\"widgets\":[]}", DashboardPreferenceService.SavePreferenceRequest.class);
         assertThat(legacy.widgets()).isEmpty();
