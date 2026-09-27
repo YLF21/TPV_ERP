@@ -808,6 +808,7 @@ function AlertDetailPanel({ session, t, locale, timeZone, selected, loading, err
           <dl className="gestion-alert-detail-data">
             <div><dt>{t("gestion.controlAlerts.column.occurredAt")}</dt><dd>{formatDateTime(selected.occurredAt, locale, timeZone)}</dd></div>
             <div><dt>{t("gestion.controlAlerts.column.username")}</dt><dd>{selected.userName || t("gestion.controlAlerts.unknownUser")}</dd></div>
+            <div><dt>{t("gestion.controlAlerts.authorizerLabel")}</dt><dd>{alertAuthorizer(selected, t)}</dd></div>
             <div><dt>{t("gestion.controlAlerts.column.terminal")}</dt><dd>{selected.terminalName || alertDataText(selected, "terminalCode") || t("gestion.controlAlerts.unknownTerminal")}</dd></div>
             <div><dt>{t("gestion.controlAlerts.column.document")}</dt><dd>{selected.documentNumber || alertDataText(selected, "documentNumber") || t("gestion.controlAlerts.noDocument")}</dd></div>
             {!editable && <><div><dt>{t("gestion.controlAlerts.priorityLabel")}</dt><dd><span className={`gestion-alert-priority ${selected.priority.toLowerCase()}`}>{t(`gestion.controlAlerts.priority.${selected.priority}`)}</span></dd></div>
@@ -888,7 +889,7 @@ function AlertEvidence({ alert, t, locale, timeZone }: { alert: ControlAlert; t:
   const changed = Array.isArray(data.changedLines) ? data.changedLines.filter(isRecord) : [];
   const details = [data.discountedLines, data.matchingLines, data.lines, data.products, data.negativeLines]
     .find((value) => Array.isArray(value) && value.length > 0);
-  const scalarKeys = ["globalDiscountPercent", "thresholdPercent", "total", "lineCount", "minimumCount", "deletionCount", "expectedCash", "declaredFund", "discrepancy", "tolerance", "authorizerName"];
+  const scalarKeys = ["globalDiscountPercent", "thresholdPercent", "total", "lineCount", "minimumCount", "deletionCount", "expectedCash", "declaredFund", "discrepancy", "tolerance"];
   const scalars = scalarKeys.filter((key) => data[key] != null);
   if (changed.length === 0 && !details && scalars.length === 0) return null;
   return <section className="gestion-alert-evidence" aria-label={t("gestion.controlAlerts.evidence")}>
@@ -898,7 +899,7 @@ function AlertEvidence({ alert, t, locale, timeZone }: { alert: ControlAlert; t:
       <div><span>{t("gestion.controlAlerts.originalPrice")}<strong>{amount(line.originalPrice)}</strong></span><ArrowRight size={28} aria-hidden="true" /><span>{t("gestion.controlAlerts.appliedPrice")}<strong>{amount(line.appliedPrice)}</strong></span></div>
       <p>{t("gestion.controlAlerts.priceReduction")} <strong>{priceVariation(line.originalPrice, line.appliedPrice, currency, locale)} · {new Intl.NumberFormat(locale, { maximumFractionDigits: 3, signDisplay: "exceptZero" }).format(-Number(line.changePercent))} %</strong></p>
     </article>)}
-    {scalars.length > 0 && <dl className="gestion-alert-evidence-values">{scalars.map((key) => <div key={key}><dt>{t(`gestion.controlAlerts.evidence.${key}`)}</dt><dd>{key === "authorizerName" ? String(data[key]) : number(data[key])}{key.endsWith("Percent") ? " %" : ""}</dd></div>)}</dl>}
+    {scalars.length > 0 && <dl className="gestion-alert-evidence-values">{scalars.map((key) => <div key={key}><dt>{t(`gestion.controlAlerts.evidence.${key}`)}</dt><dd>{number(data[key])}{key.endsWith("Percent") ? " %" : ""}</dd></div>)}</dl>}
     {Array.isArray(details) && <ul className="gestion-alert-evidence-lines">{details.filter(isRecord).map((line, index) => <li key={String(line.position ?? line.productId ?? index)}>
       <strong>{String(line.name || line.productName || line.code || `${t("gestion.controlAlerts.line")} ${line.position ?? index + 1}`)}</strong>
       {typeof line.code === "string" && line.code && <small>{t("gestion.controlAlerts.productReference")}: {line.code}</small>}
@@ -1170,6 +1171,13 @@ function alertDataText(alert: ControlAlert, key: string): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
 
+function alertAuthorizer(alert: ControlAlert, t: Translator): string {
+  const name = alertDataText(alert, "authorizerName").trim();
+  const username = alertDataText(alert, "authorizerUsername").trim();
+  if (name && username && name.toLocaleLowerCase() !== username.toLocaleLowerCase()) return `${name} (${username})`;
+  return name || username || t("gestion.controlAlerts.unknownAuthorizer");
+}
+
 function alertSummary(alert: ControlAlert, t: Translator, locale: LocaleCode = "es"): string {
   const data = alert.data ?? {};
   const number = (value: unknown) => formatUnknownNumber(value, locale);
@@ -1211,25 +1219,25 @@ function alertSummary(alert: ControlAlert, t: Translator, locale: LocaleCode = "
     return interpolate(t("gestion.controlAlerts.summaryRefundPolicyOverride"), {
       amount: alertDataText(alert, "amount") || "—",
       method: alertDataText(alert, "method") || "—",
-      authorizer: alertDataText(alert, "authorizerName") || "—"
+      authorizer: alertAuthorizer(alert, t)
     });
   }
   if (alert.type === "CASH_DRAWER_OPENED") {
     return interpolate(t("gestion.controlAlerts.summaryCashDrawer"), {
-      authorizer: alertDataText(alert, "authorizerName") || "—"
+      authorizer: alertAuthorizer(alert, t)
     });
   }
   if (alert.type === "CASH_SESSION_DISCREPANCY") return interpolate(t("gestion.controlAlerts.summaryCashDiscrepancy"), { amount: number(data.discrepancy) });
   if (alert.type === "PRODUCT_CATALOG_MODIFIED") {
     return interpolate(t("gestion.controlAlerts.summaryProductModified"), {
       product: alertDataText(alert, "productName") || alertDataText(alert, "productCode") || "—",
-      authorizer: alertDataText(alert, "authorizerName") || "—"
+      authorizer: alertAuthorizer(alert, t)
     });
   }
   if (alert.type === "PARKED_SALE_DELETED") {
     return interpolate(t("gestion.controlAlerts.summaryParkedSaleDeleted"), {
       count: number(data.deletedCount),
-      authorizer: alertDataText(alert, "authorizerName") || alert.userName || "—",
+      authorizer: alertAuthorizer(alert, t),
     });
   }
   const lines = Array.isArray(data.lines) ? data.lines : [];

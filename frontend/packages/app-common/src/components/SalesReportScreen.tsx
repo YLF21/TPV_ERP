@@ -452,6 +452,13 @@ type SalesDocumentDetail = {
   tax: number | string;
   discount: number | string;
   total: number | string;
+  cashier?: { userId: string; userName: string } | null;
+  authorizations?: Array<{
+    operationCode: string;
+    authorizerId: string;
+    authorizerName: string;
+    delegated: boolean;
+  }>;
   originTicket?: {
     id: string;
     number?: string | null;
@@ -470,6 +477,50 @@ type SalesDocumentDetail = {
     documentAdjustmentType?: string | null;
   }>;
 };
+
+function TicketPreviewSummary({ row, detail, loading, locale, t }: {
+  row: Record<string, string>;
+  detail: SalesDocumentDetail | null;
+  loading: boolean;
+  locale: LocaleCode;
+  t: (key: string) => string;
+}) {
+  const date = row.date || (detail?.date ? formatBackendDate(detail.date) : "");
+  const time = row.time || (detail?.date?.includes("T") ? formatBackendTime(detail.date) : "");
+  const statusKey = row.status || (detail?.status ? `salesReport.activity.documentStatus.${detail.status.toUpperCase()}` : "");
+  const statusLabel = statusKey && t(statusKey) !== statusKey ? t(statusKey) : "—";
+  const total = row.total ? formatEuroAmount(row.total, locale) : detail ? formatEuroAmount(detail.total, locale) : "—";
+  const authorizations = (detail?.authorizations ?? []).filter((authorization) => authorization.delegated && authorization.authorizerName?.trim());
+  const cashier = detail
+    ? detail.cashier?.userName?.trim() || t("salesReport.notRecorded")
+    : loading ? t("common.loading") : t("salesReport.value.unavailable");
+
+  return <div className="report-ticket-summary">
+    <dl className="report-ticket-facts">
+      <div><dt>{t("salesReport.ticketDateTime")}</dt><dd>{[date, time].filter(Boolean).join(" · ") || "—"}</dd></div>
+      <div><dt>{t("salesReport.column.terminal")}</dt><dd>{row.terminal && row.terminal !== "salesReport.value.unavailable" ? row.terminal : "—"}</dd></div>
+      <div><dt>{t("salesReport.column.customerId")}</dt><dd>{row.customerName || row.customer || "—"}</dd></div>
+      <div><dt>{t("salesReport.column.paymentOrRefund")}</dt><dd>{row.payment ? translateCompositeReportValue(row.payment, t) : "—"}</dd></div>
+      <div><dt>{t("salesReport.cashier")}</dt><dd>{cashier}</dd></div>
+    </dl>
+    <dl className="report-ticket-result">
+      <div><dt>{t("salesReport.column.status")}</dt><dd><span className={`report-ticket-status${statusKey === "salesReport.status.ticketCancelled" || statusKey === "salesReport.activity.documentStatus.ANULADO" ? " is-cancelled" : ["salesReport.status.confirmed", "salesReport.status.paid", "salesReport.status.invoiced", "salesReport.activity.documentStatus.CONFIRMADO", "salesReport.activity.documentStatus.PAGADO"].includes(statusKey) ? " is-confirmed" : ""}`}>{statusLabel}</span></dd></div>
+      <div><dt>{t("salesReport.column.total")}</dt><dd className="report-ticket-total">{total}</dd></div>
+      {row.invoiced?.trim() && <div><dt>{t("salesReport.column.invoice")}</dt><dd>{row.invoiced}</dd></div>}
+    </dl>
+    {authorizations.length > 0 && <section className="report-ticket-authorizations" aria-label={t("salesReport.authorizer")}>
+      <h3>{t("salesReport.authorizer")}</h3>
+      <ul>{authorizations.map((authorization, index) => {
+        const operationKey = `gestion.salesOperationSecurity.operation.${authorization.operationCode}`;
+        const operationLabel = t(operationKey);
+        return <li key={`${authorization.operationCode}-${authorization.authorizerId}-${index}`}>
+          <strong>{authorization.authorizerName}</strong>
+          {operationLabel !== operationKey && <span>{operationLabel}</span>}
+        </li>;
+      })}</ul>
+    </section>}
+  </div>;
+}
 
 type SalesDocumentPrintCopy = Omit<PendingCommercialDocumentPrintSnapshot, "kind">;
 
@@ -2010,6 +2061,7 @@ export function SalesReportScreen({
   const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
   const [documentPreviewRow, setDocumentPreviewRow] = useState<Record<string, string> | null>(null);
   const [documentPreview, setDocumentPreview] = useState<SalesDocumentDetail | null>(null);
+  const documentPreviewRequestId = useRef(0);
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
   const [documentPreviewError, setDocumentPreviewError] = useState("");
   const [documentPreviewPrinting, setDocumentPreviewPrinting] = useState(false);
@@ -2357,6 +2409,7 @@ export function SalesReportScreen({
   }
 
   function closeDocumentPreview() {
+    documentPreviewRequestId.current += 1;
     setDocumentPreviewRow(null);
     setDocumentPreview(null);
     setDocumentPreviewLoading(false);
@@ -2376,17 +2429,19 @@ export function SalesReportScreen({
 
   async function openDocumentPreview(row: Record<string, string>) {
     if (!canOpenDocumentPreview(row)) return;
+    const requestId = ++documentPreviewRequestId.current;
     setDocumentPreviewRow(row);
     setDocumentPreview(null);
     setDocumentPreviewError("");
     setDocumentPreviewPrintMessage("");
     setDocumentPreviewLoading(true);
     try {
-      setDocumentPreview(await loadDocumentDetail(row));
+      const detail = await loadDocumentDetail(row);
+      if (documentPreviewRequestId.current === requestId) setDocumentPreview(detail);
     } catch {
-      setDocumentPreviewError(t("salesReport.documentLoadError"));
+      if (documentPreviewRequestId.current === requestId) setDocumentPreviewError(t("salesReport.documentLoadError"));
     } finally {
-      setDocumentPreviewLoading(false);
+      if (documentPreviewRequestId.current === requestId) setDocumentPreviewLoading(false);
     }
   }
 
@@ -4184,16 +4239,18 @@ export function SalesReportScreen({
               </div>
               <button type="button" aria-label={t("common.close")} onClick={closeDocumentPreview}>×</button>
             </header>
-            <dl className="document-activity-summary">
-              {visibleColumnLayout.map((column) => (
-                <div key={column.key}>
-                  <dt>{t(reportAttributeLabelKey(selectedReport, column.key))}</dt>
-                  <dd>{REPORT_MONETARY_ATTRIBUTES.has(column.key) || column.key === "globalDiscount"
-                    ? formatReportDisplayValue(column.key, documentPreviewRow[column.key] ?? "", locale)
-                    : translateCompositeReportValue(documentPreviewRow[column.key] ?? "", t)}</dd>
-                </div>
-              ))}
-            </dl>
+            {documentPreview?.type === "TICKET" || (documentPreviewRow.__documentId && "ticket" in documentPreviewRow)
+              ? <TicketPreviewSummary row={documentPreviewRow} detail={documentPreview} loading={documentPreviewLoading} locale={locale} t={t} />
+              : <dl className="document-activity-summary">
+                {visibleColumnLayout.map((column) => (
+                  <div key={column.key}>
+                    <dt>{t(reportAttributeLabelKey(selectedReport, column.key))}</dt>
+                    <dd>{REPORT_MONETARY_ATTRIBUTES.has(column.key) || column.key === "globalDiscount"
+                      ? formatReportDisplayValue(column.key, documentPreviewRow[column.key] ?? "", locale)
+                      : translateCompositeReportValue(documentPreviewRow[column.key] ?? "", t)}</dd>
+                  </div>
+                ))}
+              </dl>}
             <section className="report-document-lines" aria-labelledby="report-document-lines-title">
               <h3 id="report-document-lines-title">{t("salesDocument.lines")}</h3>
               {documentPreviewLoading && <p role="status">{t("common.loading")}</p>}

@@ -1,0 +1,250 @@
+.sale-action-overlay.sale-mutation-authorization-overlay {
+  box-sizing: border-box;
+  background: #0b223a66;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+  border: 1px solid #12385f !important;
+  border-radius: 2px !important;
+  background: #fff !important;
+  color: #172e4c;
+  box-shadow: 0 14px 40px #10233833 !important;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog:not(.sale-touch-keyboard-dialog) {
+  width: min(600px, calc(100dvw - 32px));
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > header {
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 64px;
+  gap: 16px;
+  padding: 10px 18px;
+  border-bottom: 0;
+  background: #0a2a52;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog > header > div {
+  min-width: 0;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > header h2 {
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > header p {
+  margin-top: 3px;
+  color: #e4edf7;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > header > button {
+  display: grid;
+  flex: 0 0 34px;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #8ba3bf;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog > header > button:hover:not(:disabled) {
+  background: #24496f;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: 0;
+  overflow-y: auto;
+  padding: 18px 18px 0;
+  background: #fff;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-mutation-authorization-list {
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-mutation-authorization-requirement {
+  border: 1px solid #c3d0dc;
+  border-radius: 1px;
+  background: #fff;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-mutation-authorization-operation {
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #d9e3ec;
+  border-left: 3px solid #12385f;
+  background: #f3f7fb;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-mutation-authorization-operation small {
+  color: #52667c;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-mutation-authorization-operation strong {
+  color: #12385f;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-fields {
+  gap: 9px;
+  padding: 11px 12px 13px;
+  border-left: 0;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-identity {
+  padding-bottom: 8px;
+  border-bottom-color: #d9e3ec;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-avatar {
+  border-color: #12385f;
+  background: #12385f;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-user small,
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-hint {
+  color: #52667c;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-user strong {
+  color: #12385f;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-fields label {
+  gap: 6px;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog .sale-operation-authorization-fields input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px !important;
+  height: 38px !important;
+  padding: 0 10px;
+  border: 1px solid #aebfd2 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  color: #172e4c !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-action-error {
+  margin-top: 12px;
+  color: #972d2d;
+  line-height: 1.4;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog .sale-action-buttons {
+  position: sticky;
+  z-index: 1;
+  bottom: 0;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  min-height: 60px;
+  gap: 8px;
+  margin: 14px -18px 0;
+  padding: 10px 18px;
+  border-top: 1px solid #d9e3ec;
+  background: #fff;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog .sale-action-buttons button {
+  min-height: 36px !important;
+  height: auto !important;
+  padding: 7px 14px;
+  border: 1px solid #aebfd2 !important;
+  border-radius: 0 !important;
+  background: #f5f8fb !important;
+  color: #0a2a52 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 1.25;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog .sale-action-buttons button.primary {
+  border-color: #12385f !important;
+  background: #12385f !important;
+  color: #fff !important;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog .sale-action-buttons button:disabled {
+  border-color: #c6d1dc !important;
+  background: #e8edf2 !important;
+  color: #53677b !important;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog :is(button, input):focus-visible,
+.sale-mutation-authorization-overlay .sale-mutation-authorization-dialog .sale-operation-authorization-fields input:focus {
+  outline: 2px solid #1f5a94;
+  outline-offset: 2px;
+}
+
+@media (max-width: 540px) {
+  .sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > header {
+    padding-inline: 12px;
+  }
+
+  .sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog > form {
+    padding: 12px 12px 0;
+  }
+
+  .sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog .sale-action-buttons {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog.sale-touch-keyboard-dialog .sale-operation-authorization-fields input {
+  min-height: 44px !important;
+  height: 44px !important;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog.sale-touch-keyboard-dialog > header > button {
+  flex-basis: 44px;
+  width: 44px;
+  height: 44px;
+}
+
+.sale-mutation-authorization-overlay > .sale-action-dialog.sale-mutation-authorization-dialog.sale-touch-keyboard-dialog .sale-action-buttons button {
+  min-height: 48px !important;
+}

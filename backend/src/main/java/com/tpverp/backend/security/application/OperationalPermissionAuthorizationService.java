@@ -210,7 +210,8 @@ public class OperationalPermissionAuthorizationService {
             throw new AccessDeniedException("La contrasena de autorizacion es obligatoria");
         }
         if (!passwordEncoder.matches(password, operator.getPasswordHash())) {
-            throw new IllegalArgumentException("Contrasena incorrecta");
+            throw new OperationalAuthorizationCredentialsException(
+                    OperationalAuthorizationCredentialsException.Kind.CURRENT_PASSWORD);
         }
     }
 
@@ -221,11 +222,16 @@ public class OperationalPermissionAuthorizationService {
         var authorizer = users.findByEmpresaIdAndNombre(companyId, normalizedName)
                 .or(() -> users.findByNombreAndTiendaIsNull(normalizedName)
                         .filter(UserAccount::isProtegido))
-                .filter(UserAccount::isActivo)
-                .filter(user -> user.isProtegido() || users.hasStoreAccess(user.getId(), storeId))
-                .orElseThrow(() -> new IllegalArgumentException("Usuario autorizador no valido"));
+                .orElseThrow(() -> new OperationalAuthorizationCredentialsException(
+                        OperationalAuthorizationCredentialsException.Kind.DELEGATED_CREDENTIALS));
         if (!passwordEncoder.matches(password, authorizer.getPasswordHash())) {
-            throw new IllegalArgumentException("Usuario autorizador no valido");
+            throw new OperationalAuthorizationCredentialsException(
+                    OperationalAuthorizationCredentialsException.Kind.DELEGATED_CREDENTIALS);
+        }
+        if (!authorizer.isActivo()
+                || (!authorizer.isProtegido()
+                        && !users.hasStoreAccess(authorizer.getId(), storeId))) {
+            throw new AccessDeniedException("El usuario autorizador no puede operar en esta tienda");
         }
         return authorizer;
     }

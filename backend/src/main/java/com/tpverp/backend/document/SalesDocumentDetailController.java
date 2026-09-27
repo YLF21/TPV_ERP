@@ -13,6 +13,12 @@ public class SalesDocumentDetailController {
 
     private final DocumentService documents;
     private final CustomerReceivablePrintService printing;
+    private DocumentOperationAttributionService operationAttribution;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setOperationAttribution(DocumentOperationAttributionService operationAttribution) {
+        this.operationAttribution = operationAttribution;
+    }
 
     public SalesDocumentDetailController(DocumentService documents,
             CustomerReceivablePrintService printing) {
@@ -27,7 +33,9 @@ public class SalesDocumentDetailController {
         var originTicket = document.getTipo() == CommercialDocumentType.FACTURA_VENTA
                 ? documents.findOriginTicket(documentId).orElse(null)
                 : null;
-        return SalesDocumentDetailView.from(document, originTicket);
+        var view = SalesDocumentDetailView.from(document, originTicket);
+        return operationAttribution == null ? view
+                : view.withOperationAttribution(operationAttribution.resolve(document));
     }
 
     @GetMapping("/{documentId}/print-copy")

@@ -9,6 +9,7 @@ import com.tpverp.backend.document.template.DocumentTemplateFormat;
 import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.document.template.OperationalDocumentJasperRenderer;
 import com.tpverp.backend.document.template.RenderedDocumentView;
+import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -35,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class GiftReceiptService {
 
     private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final DateTimeFormatter PRINT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
     private final GiftReceiptRepository receipts;
     private final GiftReceiptLineRepository receiptLines;
@@ -44,6 +46,8 @@ public class GiftReceiptService {
     private final CurrentTerminal currentTerminal;
     private final AuditService audit;
     private final Clock clock;
+    private final GiftReceiptPrintIdentityRepository printIdentities;
+    private final StoreDocumentPrintConfigurationService printConfiguration;
     private OperationalDocumentJasperRenderer printing;
 
     public GiftReceiptService(
@@ -54,7 +58,9 @@ public class GiftReceiptService {
             CurrentOrganization organization,
             CurrentTerminal currentTerminal,
             AuditService audit,
-            Clock clock) {
+            Clock clock,
+            GiftReceiptPrintIdentityRepository printIdentities,
+            StoreDocumentPrintConfigurationService printConfiguration) {
         this.receipts = receipts;
         this.receiptLines = receiptLines;
         this.sequences = sequences;
@@ -63,6 +69,8 @@ public class GiftReceiptService {
         this.currentTerminal = currentTerminal;
         this.audit = audit;
         this.clock = clock;
+        this.printIdentities = printIdentities;
+        this.printConfiguration = printConfiguration;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -81,10 +89,34 @@ public class GiftReceiptService {
         var document = data.putObject("document");
         document.put("displayNumber", receipt.getCode());
         document.put("issueDate", receipt.getCreatedAt().toString());
+        document.put("issueDateDisplay", PRINT_DATE.withZone(ZoneId.of(
+                organization.currentStore().getTimezone())).format(receipt.getCreatedAt()));
+        document.put("barcode", receipt.getCode());
+        var identity = printIdentities.forSourceTicket(
+                receipt.getSourceDocumentId(), receipt.getStoreId());
         var issuer = data.putObject("issuer");
-        issuer.put("headerPrimaryName", organization.currentStore().getNombreEfectivo());
-        issuer.put("legalName", organization.currentCompany().getRazonSocial());
-        issuer.put("details", organization.currentCompany().getRazonSocial());
+        issuer.put("headerPrimaryName", identity.primaryName());
+        issuer.put("legalName", identity.legalName());
+        issuer.put("details", identity.legalName());
+        issuer.put("headerSecondaryName", identity.secondaryName());
+        issuer.put("taxId", identity.taxId());
+        issuer.put("phone", identity.phone());
+        issuer.put("email", identity.email());
+        issuer.put("headerContactLine", joinPresent(" · ",
+                identity.taxId() == null ? null : "NIF: " + identity.taxId(),
+                identity.phone() == null ? null : "Tel.: " + identity.phone()));
+        issuer.put("headerAddressLine", joinPresent(" · ",
+                identity.addressLine1(),
+                joinPresent(" ", identity.postalCode(), identity.city()),
+                identity.country()));
+        var address = issuer.putObject("address");
+        address.put("line1", identity.addressLine1());
+        address.put("postalCode", identity.postalCode());
+        address.put("city", identity.city());
+        address.put("province", identity.province());
+        address.put("countryName", identity.country());
+        data.put("observations", printConfiguration.presentation(DocumentTemplateType.TICKET)
+                .observations());
         var lines = data.putArray("lines");
         var selected = receipt.getLines().stream().collect(Collectors.toMap(
                 GiftReceiptLine::getSourceDocumentLineId, Function.identity()));
@@ -94,11 +126,20 @@ public class GiftReceiptService {
             line.put("code", option.code());
             line.put("articleName", option.name());
             line.put("quantity", issued.getQuantity());
+            line.put("quantityDisplay", issued.getQuantity().stripTrailingZeros().toPlainString());
             line.put("serials", String.join("\n", issued.getSerialNumbers()));
         });
         return printing.render(DocumentTemplateType.TICKET_REGALO,
                 DocumentTemplateFormat.TICKET_80, data,
                 receipt.getCode().toLowerCase(Locale.ROOT) + ".pdf");
+    }
+
+    private static String joinPresent(String separator, String... values) {
+        var present = java.util.Arrays.stream(values)
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .toList();
+        return present.isEmpty() ? null : String.join(separator, present);
     }
 
     @Transactional(readOnly = true)
