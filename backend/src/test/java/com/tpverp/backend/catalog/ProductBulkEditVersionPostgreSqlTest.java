@@ -38,7 +38,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class, ProductBulkEditService.class, ProductBulkCodeSequenceRepository.class,
+@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class, ProductCommercialHistoryService.class,
+        ProductBulkEditService.class, ProductBulkCodeSequenceRepository.class,
         ProductBulkEditVersionPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")

@@ -1,0 +1,14 @@
+/* Keep the date bar visible while the ranking scrolls in both desktop apps. */
+.stock-screen .stock-list.stock-top-sales-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-top-sales-panel > :is(.stock-panel-heading, .stock-inventory-controls, .report-date-range-filter, .report-date-options-error) {
+  flex: 0 0 auto;
+}
+
+.stock-top-sales-panel > .stock-top-sales-table {
+  flex: 1 1 0;
+  min-height: 0;
+}

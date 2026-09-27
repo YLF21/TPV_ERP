@@ -28,6 +28,7 @@ async function until(check, label = "expected UI state") {
 }
 async function nav(page, name) {
   const sidebar = page.locator(".top-nav-list");
+  await sidebar.locator(".nav-group-toggle").first().waitFor();
   const target = sidebar.getByRole("button", { name, exact: true });
   if (!await target.isVisible()) {
     for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
@@ -224,8 +225,17 @@ try {
   await newOwner.getByLabel("DNI/NIE", { exact: true }).fill("44444444A");
   const newContact = contactFields(create);
   await newContact.selector.selectOption("0");
+  await until(async () =>
+    await newContact.name.inputValue() === "Nueva Propietaria"
+    && await newContact.phone.evaluate(input => document.activeElement === input), "selected owner phone focus");
   await newContact.phone.fill("600444444");
   await newContact.email.fill("New.Owner+Contact@example.invalid");
+  await until(async () =>
+    await newContact.phone.inputValue() === "600444444"
+    && await newOwner.getByLabel("Teléfono", { exact: true }).inputValue() === "600444444"
+    && await newContact.email.inputValue() === "New.Owner+Contact@example.invalid"
+    && await newOwner.getByLabel("Email contacto", { exact: true }).inputValue() === "New.Owner+Contact@example.invalid"
+    && await newContact.email.evaluate(input => input.checkValidity()), "selected owner contact validation");
   await assertVisualOnlyUppercase(page, createDialog);
   await mkdir(output, { recursive: true });
   await createDialog.locator(".saas-workspace-dialog-body").evaluate(element => { element.scrollTop = element.scrollHeight; });

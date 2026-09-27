@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow } from "./StockScreen";
+import { ProductCommercialHistory } from "./ProductCommercialHistory";
 import {
   calculateNetPurchasePrice,
   useProductInformationResources,
@@ -171,17 +172,18 @@ export function StockProductInformationPanel({
             ]}
           />
         </section>
-        <InformationSection
-          title={t("stock.detail.offer")}
-          fields={[
+        <section className="stock-product-information-section stock-product-information-section--offer">
+          <h3>{t("stock.detail.offer")}</h3>
+          <InformationFields fields={[
             { label: t("stock.column.offerActive"), value: translatedValue(product.offerActive, t) },
             { label: t("stock.column.offerPrice"), value: decimal(product.offerPrice) },
             { label: t("product.field.offerDiscountPercent"), value: percentage(product.offerDiscountPercent) },
             { label: t("stock.column.offerFrom"), value: date(product.offerFrom) },
             { label: t("stock.column.offerUntil"), value: date(product.offerUntil) },
             { label: t("stock.column.promotion"), value: valueOrDash(product.promotionNames), wide: true }
-          ]}
-        />
+          ]} />
+          <ProductCommercialHistory productId={product.productId} productName={product.name} locale={locale} token={token} />
+        </section>
       </div>
 
       <section className="stock-product-information-section stock-product-information-notes">

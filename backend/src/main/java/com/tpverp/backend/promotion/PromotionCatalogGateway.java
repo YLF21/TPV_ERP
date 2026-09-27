@@ -52,6 +52,14 @@ public class PromotionCatalogGateway {
                 .orElseThrow(() -> new IllegalArgumentException("Tienda no encontrada"));
     }
 
+    @Transactional
+    public void lockCompanyForCatalogMutation(UUID companyId) {
+        stores.findByEmpresaId(companyId).stream()
+                .map(com.tpverp.backend.organization.Store::getId)
+                .sorted()
+                .forEach(this::lockStoreForCatalogMutation);
+    }
+
     @Transactional(readOnly = true)
     public Map<UUID, ProductSnapshot> products(UUID storeId, Collection<UUID> productIds) {
         var requestedIds = new HashSet<>(productIds == null ? List.of() : productIds);

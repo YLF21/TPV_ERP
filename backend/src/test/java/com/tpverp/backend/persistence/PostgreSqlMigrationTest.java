@@ -139,7 +139,7 @@ class PostgreSqlMigrationTest {
                             'configuracion_pago_tienda', 'configuracion_pago_terminal',
                             'impuesto_tienda', 'almacen', 'familia', 'subfamilia',
                             'producto', 'producto_identificador', 'producto_precio',
-                            'producto_precio_historial',
+                            'producto_precio_historial', 'producto_historial_comercial',
                             'producto_importacion_excel_linea',
                             'existencia', 'movimiento_stock', 'salida_almacen',
                             'salida_almacen_linea', 'cliente', 'miembro',
@@ -159,7 +159,7 @@ class PostgreSqlMigrationTest {
                             'verifactu_secret_deletion_job')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(58);
+                assertThat(result.getInt(1)).isEqualTo(59);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);

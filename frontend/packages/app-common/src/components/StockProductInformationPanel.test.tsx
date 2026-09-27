@@ -130,6 +130,8 @@ describe("StockProductInformationPanel", () => {
       expect(html).toContain(value);
     }
     expect(html).toContain('<table aria-label="Stock por almacén">');
-    expect(html).not.toContain("<button");
+    expect(html).toContain('<button class="product-commercial-history-trigger" type="button">Historial</button>');
+    expect(html.match(/<button\b/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<(?:input|select|textarea)\b|contenteditable=/i);
   });
 });

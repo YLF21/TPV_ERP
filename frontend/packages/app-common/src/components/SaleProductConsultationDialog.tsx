@@ -1,3 +1,4 @@
+import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { SaleProduct } from "./SaleScreen";
@@ -64,7 +65,7 @@ export function SaleProductConsultationDialog({
   const [selected, setSelected] = useState<SaleProduct | null>(initialProduct);
   const [stock, setStock] = useState<number | null>(null);
   const [stockError, setStockError] = useState("");
-  const results = useMemo(() => products.filter((product) => matches(product, query)).slice(0, 30), [products, query]);
+  const results = useMemo(() => sortProductsByCode(products.filter((product) => matches(product, query))).slice(0, 30), [products, query]);
 
   useEffect(() => {
     if (!selected) {

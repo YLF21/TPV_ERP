@@ -15,6 +15,17 @@ import jakarta.persistence.LockModeType;
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     @Query("""
+            select product.id from Product product
+            where product.storeId = :storeId and product.offerUntil < :businessDate
+              and (product.offerActive = true or product.priceUseMode in (
+                com.tpverp.backend.catalog.PriceUseMode.OFFER_PRICE,
+                com.tpverp.backend.catalog.PriceUseMode.OFFER_DISCOUNT))
+            order by product.id
+            """)
+    List<UUID> findExpiredOfferIds(@Param("storeId") UUID storeId,
+            @Param("businessDate") java.time.LocalDate businessDate, Pageable pageable);
+
+    @Query("""
             select product from Product product
             where product.storeId = :storeId and product.activo = true
               and product.productType <> com.tpverp.backend.catalog.ProductType.SERVICE
@@ -107,6 +118,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             @Param("subfamilyId") UUID subfamilyId);
 
     List<Product> findByFamilyId(UUID familyId);
+
+    List<Product> findBySubfamilyId(UUID subfamilyId);
 
     long countByFamilyId(UUID familyId);
 

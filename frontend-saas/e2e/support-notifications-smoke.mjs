@@ -52,7 +52,11 @@ try {
     await page.locator(".top-nav-list").getByRole("button", { name: "Soporte", exact: true }).click();
     await card("save-error").waitFor();
   };
-  const home = () => page.locator(".top-nav-list").getByRole("button", { name: "Resumen", exact: true }).click();
+  const home = async () => {
+    await page.locator(".top-nav-list").getByRole("button", { name: "Resumen", exact: true }).click();
+    await page.locator(".topbar h1").filter({ hasText: /^Resumen$/ }).waitFor();
+    await success.waitFor({ state: "hidden" });
+  };
   await openSupport();
   assert.equal(await card("already-read").count(), 0, "Server-read notifications must be hidden");
 
