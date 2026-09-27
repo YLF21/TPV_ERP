@@ -46,6 +46,7 @@ async function calendarDate(page, label, day) {
 }
 async function nav(page, name) {
   const sidebar = page.locator(".top-nav-list");
+  await sidebar.locator(".nav-group-toggle").first().waitFor();
   const target = sidebar.getByRole("button", { name, exact: true });
   if (!await target.isVisible()) {
     for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {

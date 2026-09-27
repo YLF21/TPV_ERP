@@ -45,7 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class,
+@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class, ProductCommercialHistoryService.class,
         CatalogDeleteConcurrencyPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")

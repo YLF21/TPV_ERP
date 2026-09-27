@@ -10,6 +10,7 @@ import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Family;
 import com.tpverp.backend.catalog.FamilyProductPageRepository;
 import com.tpverp.backend.catalog.PriceUseMode;
+import com.tpverp.backend.catalog.ProductCommercialHistoryService;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.StoreTax;
@@ -48,7 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** Real CatalogService + ProductRepository proof of all-or-nothing missing-product creation. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class,
+@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class, ProductCommercialHistoryService.class,
         ProductExcelImportApplyWriter.class, ProductExcelImportApplyWriterCatalogPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")

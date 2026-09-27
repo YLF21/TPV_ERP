@@ -38,7 +38,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class,
+@Import({FlywayPostgreSqlConfiguration.class, CatalogService.class, ProductCommercialHistoryService.class,
         ProductBulkXlsxService.class, ProductBulkXlsxCatalogPostgreSqlTest.Configuration.class})
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_URL", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "TPV_ERP_TEST_DB_USER", matches = ".+")
