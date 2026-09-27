@@ -53,6 +53,20 @@ public class CatalogService {
     private final StoreRepository storeRepository;
     private final Clock clock;
     private AuditService auditService;
+    private ProductCommercialHistoryService commercialHistory;
+
+    @Autowired
+    void setCommercialHistory(ProductCommercialHistoryService commercialHistory) {
+        this.commercialHistory = commercialHistory;
+    }
+
+    private void recordCommercialHistory(Product product) {
+        if (commercialHistory != null) commercialHistory.recordProduct(product);
+    }
+
+    private void recordCommercialHistory(List<Product> products) {
+        if (commercialHistory != null) commercialHistory.recordProducts(products);
+    }
 
     public CatalogService(
             CurrentOrganization organization,
@@ -641,12 +655,14 @@ public class CatalogService {
                     return change;
                 })
                 .toList();
+        recordCommercialHistory(products);
         int updated = productRepository.moveClassification(storeId, ids, targetFamily.getId(),
                 targetSubfamily == null ? null : targetSubfamily.getId());
         if (updated != ids.size()) {
             throw new IllegalStateException(
                     "No se actualizaron todos los productos solicitados; la operación se ha revertido");
         }
+        if (commercialHistory != null) commercialHistory.recordProductsByIds(storeId, ids);
         if (auditService != null) {
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("productCount", updated);
@@ -727,7 +743,12 @@ public class CatalogService {
         }
         Family general = familyRepository.findByStoreIdAndPredeterminadaTrue(family.getStoreId())
                 .orElseThrow(() -> new IllegalStateException("La familia GENERAL no esta inicializada"));
+        List<Product> reassignedProducts = commercialHistory == null ? List.of()
+                : productRepository.findByFamilyId(familyId);
+        recordCommercialHistory(reassignedProducts);
         productRepository.reassignFamilyToGeneral(familyId, general.getId());
+        if (commercialHistory != null) commercialHistory.recordProductsByIds(storeId,
+                reassignedProducts.stream().map(Product::getId).toList());
         requireFullyUnreferenced(familyDeleteImpact(family), "familia");
         auditFamily("FAMILY_DELETED", family.getName(), null, family);
         familyRepository.delete(family);
@@ -802,7 +823,12 @@ public class CatalogService {
             throw new IllegalStateException(
                     "La subfamilia tiene productos; confirma la limpieza de sus referencias");
         }
+        List<Product> clearedProducts = commercialHistory == null ? List.of()
+                : productRepository.findBySubfamilyId(subfamilyId);
+        recordCommercialHistory(clearedProducts);
         productRepository.clearSubfamilyReferences(subfamilyId);
+        if (commercialHistory != null) commercialHistory.recordProductsByIds(storeId,
+                clearedProducts.stream().map(Product::getId).toList());
         requireFullyUnreferenced(subfamilyDeleteImpact(subfamily), "subfamilia");
         auditSubfamily("SUBFAMILY_DELETED", subfamily.getName(), null, subfamily);
         subfamilyRepository.delete(subfamily);
@@ -903,6 +929,7 @@ public class CatalogService {
         applyProductData(product, request);
         Product saved = productRepository.saveAndFlush(product);
         recordInitialPrices(saved);
+        recordCommercialHistory(saved);
         return saved;
     }
 
@@ -933,11 +960,16 @@ public class CatalogService {
     }
 
     private Product updateProductLocked(Product product, ProductRequest request) {
+        return updateProductLocked(product, request, true);
+    }
+
+    private Product updateProductLocked(Product product, ProductRequest request, boolean captureHistory) {
         if (isOpenPriceProduct(product)
                 && (request.code() == null || !"0".equals(request.code().trim()))) {
             throw new IllegalArgumentException("product_zero_code_reserved");
         }
         validateProductRequest(product.getId(), product.getStoreId(), request);
+        if (captureHistory) recordCommercialHistory(product);
         PriceSnapshot before = PriceSnapshot.from(product);
         product.update(
                 request.familyId(), request.subfamilyId(), request.taxId(), request.productType(),
@@ -945,13 +977,18 @@ public class CatalogService {
                 request.purchasePrice(), request.taxesIncluded());
         applyProductData(product, request);
         recordChangedPrices(product, before);
+        if (captureHistory) recordCommercialHistory(product);
         return product;
     }
 
     @Transactional
     public Product setProductActive(UUID productId, boolean active) {
-        Product product = product(productId);
+        UUID storeId = currentStore().getId();
+        lockStoreForCatalogMutation(storeId);
+        Product product = productForUpdate(storeId, productId);
+        recordCommercialHistory(product);
         product.setActive(active);
+        recordCommercialHistory(product);
         return product;
     }
 
@@ -1016,6 +1053,7 @@ public class CatalogService {
             addHistory(history, product, ProductPriceHistoryType.OFERTA, product.getOfferPrice(), now);
         }
         saveHistory(history);
+        recordCommercialHistory(created);
         return List.copyOf(created);
     }
 
@@ -1887,10 +1925,12 @@ public class CatalogService {
                 .map(BulkProductUpdate::product).toList());
         validateImportBatchUpdateIdentifiers(storeId, updates);
 
+        recordCommercialHistory(new ArrayList<>(currentProducts.values()));
         List<Product> changed = new ArrayList<>(updates.size());
         for (BulkProductUpdate update : updates) {
-            changed.add(updateProductLocked(currentProducts.get(update.productId()), update.product()));
+            changed.add(updateProductLocked(currentProducts.get(update.productId()), update.product(), false));
         }
+        recordCommercialHistory(changed);
         return List.copyOf(changed);
     }
 

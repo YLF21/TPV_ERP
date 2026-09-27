@@ -423,6 +423,27 @@ public class Product {
         offerDiscountPercent = discountPercent;
     }
 
+    /** The last offer day is inclusive. Retain its price and dates for reference. */
+    public boolean expireOffer(LocalDate businessDate) {
+        Objects.requireNonNull(businessDate, "businessDate");
+        if (offerUntil == null || !businessDate.isAfter(offerUntil)) {
+            return false;
+        }
+        boolean usesOffer = priceUseMode == PriceUseMode.OFFER_PRICE
+                || priceUseMode == PriceUseMode.OFFER_DISCOUNT;
+        if (!offerActive && !usesOffer) {
+            return false;
+        }
+        offerActive = false;
+        if (usesOffer) {
+            priceUseMode = PriceUseMode.NORMAL;
+            if (discountType == DiscountType.DISCOUNT_PRICE) {
+                discountType = DiscountType.NORMAL;
+            }
+        }
+        return true;
+    }
+
     public void configurePurchaseDiscount(BigDecimal discountPercent) {
         if (discountPercent != null && (discountPercent.signum() < 0
                 || discountPercent.compareTo(new BigDecimal("100")) > 0)) {

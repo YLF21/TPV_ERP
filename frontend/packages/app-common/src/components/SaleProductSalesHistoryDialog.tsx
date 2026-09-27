@@ -1,3 +1,4 @@
+import { sortProductsByCode } from "./productSearchOrdering";
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { X } from "@phosphor-icons/react";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -55,9 +56,9 @@ export function SaleProductSalesHistoryDialog({
   });
   const results = useMemo(
     () => query.trim() && !selectedProduct
-      ? products.filter((product) => matchesProduct(product, query)).slice(0, 12)
+      ? sortProductsByCode(products.filter((product) => matchesProduct(product, query)), locale).slice(0, 12)
       : [],
-    [products, query, selectedProduct],
+    [products, query, selectedProduct, locale],
   );
 
   function selectProduct(product: SaleProduct | undefined) {

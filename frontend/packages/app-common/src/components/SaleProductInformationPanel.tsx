@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import {
@@ -7,6 +7,7 @@ import {
   type ProductInformationSupplierView,
 } from "./productInformationResources";
 import type { StockInventoryRow } from "./StockScreen";
+import { ProductCommercialHistory } from "./ProductCommercialHistory";
 
 type SaleProductInformationPanelProps = {
   product: StockInventoryRow;
@@ -51,10 +52,12 @@ function InformationSection({
   title,
   fields,
   className = "",
+  children,
 }: {
   title: string;
   fields: InformationField[];
   className?: string;
+  children?: ReactNode;
 }) {
   return (
     <section className={`sale-product-details-section${className ? ` ${className}` : ""}`}>
@@ -67,6 +70,7 @@ function InformationSection({
           </div>
         ))}
       </dl>
+      {children}
     </section>
   );
 }
@@ -227,6 +231,7 @@ export function SaleProductInformationPanel({
 
           <InformationSection
             title={t("stock.detail.offer")}
+            className="sale-product-details-section--offer"
             fields={[
               { label: t("stock.column.offerActive"), value: translatedValue(product.offerActive, t) },
               { label: t("stock.column.offerPrice"), value: decimal(product.offerPrice) },
@@ -235,7 +240,9 @@ export function SaleProductInformationPanel({
               { label: t("stock.column.offerUntil"), value: date(product.offerUntil) },
               { label: t("stock.column.promotion"), value: valueOrDash(product.promotionNames), wide: true },
             ]}
-          />
+          >
+            <ProductCommercialHistory productId={product.productId} productName={product.name} locale={locale} token={token} />
+          </InformationSection>
 
           <InformationSection
             title={t("stock.detail.inventory")}

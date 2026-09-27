@@ -2,6 +2,79 @@
   grid-template-columns: 250px minmax(0, 1fr) auto;
 }
 
+/* Tabla ERP Azul Clásica in every shared product finder. Keep the same columns
+   and horizontal scrolling in the header and results, including narrow windows. */
+.sale-product-search-overlay .sale-product-search-dialog {
+  --product-search-row-height: 36px;
+  --product-search-image-size: 32px;
+}
+
+.sale-product-search-overlay .sale-product-search-touch-dialog {
+  --product-search-row-height: 58px;
+  --product-search-image-size: 54px;
+}
+
+.sale-product-search-dialog :is(.sale-product-search-head, .sale-product-search-row) {
+  grid-template-columns: 80px 130px 200px minmax(420px, 1fr) 120px 160px;
+  min-width: 1110px;
+}
+
+.sale-product-search-dialog .sale-product-search-body {
+  min-width: 1110px;
+}
+
+/* The legacy skin pads every nested span, shrinking the label twice. */
+.sale-product-search-dialog .sale-product-search-head span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.sale-product-search-dialog .sale-product-search-head .table-layout-sort-button {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  gap: 0;
+  justify-content: flex-start;
+}
+
+.sale-product-search-dialog .sale-product-search-head .table-layout-sort-label {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.sale-product-search-dialog .sale-product-search-head .table-layout-sort-indicator {
+  display: none;
+}
+
+.sale-product-search-dialog .sale-product-search-row {
+  min-height: var(--product-search-row-height);
+}
+
+.sale-product-search-dialog .sale-product-search-row > * {
+  box-sizing: border-box;
+  min-height: var(--product-search-row-height);
+  align-self: stretch;
+  align-content: center;
+  padding: 5px 8px;
+}
+
+.sale-product-search-dialog .sale-product-search-row > strong {
+  display: block;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.sale-product-search-dialog .sale-product-search-image-cell {
+  height: var(--product-search-row-height);
+}
+
+.sale-product-search-dialog :is(.sale-product-search-thumbnail, .sale-product-search-thumbnail-placeholder) {
+  width: var(--product-search-image-size);
+  height: var(--product-search-image-size);
+}
+
 .sale-product-search-dialog.sale-product-search-touch-dialog {
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
 }

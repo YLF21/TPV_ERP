@@ -1,5 +1,6 @@
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./ErpClassicWindow.css";
+import "./StockTopSales.css";
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
@@ -2178,7 +2179,7 @@ export function StockScreen({
   const [topSalesDateOptionsFailed, setTopSalesDateOptionsFailed] = useState(false);
   const [topSalesDateOptionsReload, setTopSalesDateOptionsReload] = useState(0);
   useEffect(() => {
-    if (app !== "gestion" || selectedView !== "stock.topSales" || !session.accessToken) return;
+    if (app === "pda" || selectedView !== "stock.topSales" || !session.accessToken) return;
     let cancelled = false;
     setTopSalesDateOptions(null);
     setTopSalesDateOptionsFailed(false);
@@ -7517,7 +7518,7 @@ export function StockScreen({
           <ModuleNavBackButton label={t("common.back")} onBack={onBack} />
         </aside>}
 
-        <section className={`stock-list work-panel ${!partyDirectory && selectedView === "stock.promotions" ? "stock-promotions-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : selectedViewLabel}>
+        <section className={`stock-list work-panel ${!partyDirectory && selectedView === "stock.topSales" && app !== "pda" ? "stock-top-sales-panel" : ""} ${!partyDirectory && selectedView === "stock.promotions" ? "stock-promotions-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : selectedViewLabel}>
           {partyDirectory ? null : selectedView === "stock.bulkEdit" ? (
             renderBulkEditHeading()
           ) : (
@@ -7595,7 +7596,7 @@ export function StockScreen({
                   </article>
                 ))}
               </div>
-              {app === "gestion" && <>
+              {app !== "pda" && <>
                 {topSalesDateOptionsFailed && <div className="report-date-options-error" role="alert">
                   <span>{t("salesReport.loadError")}</span>
                   <button type="button" onClick={() => setTopSalesDateOptionsReload((value) => value + 1)}>{t("salesReport.retry")}</button>

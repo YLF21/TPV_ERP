@@ -1,3 +1,4 @@
+import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useState } from "react";
 import type { LocaleCode } from "../types";
 import {
@@ -132,10 +133,10 @@ export function SaleInternalEanDialog({
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
-    return products.filter((product) => !normalized || [
+    return sortProductsByCode(products.filter((product) => !normalized || [
       product.code, product.barcode, product.barcode2, product.name,
-    ].some((value) => value?.toLocaleLowerCase().includes(normalized))).slice(0, 50);
-  }, [products, query]);
+    ].some((value) => value?.toLocaleLowerCase().includes(normalized))), locale).slice(0, 50);
+  }, [products, query, locale]);
   const selectedProduct = products.find((product) => product.id === productId);
   const replacementRequired = Boolean(
     selectedProduct?.barcode2 && selectedProduct.barcode2 !== reservation?.code,

@@ -1,6 +1,7 @@
 package com.tpverp.backend.promotion;
 
 import com.tpverp.backend.catalog.DiscountType;
+import com.tpverp.backend.catalog.ProductCommercialHistoryService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -23,6 +24,16 @@ public class PromotionService {
     private final CurrentOrganization organization;
     private final PromotionCatalogGateway catalog;
     private final AuthoritativePromotionPricing pricing;
+    private ProductCommercialHistoryService commercialHistory;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setCommercialHistory(ProductCommercialHistoryService commercialHistory) {
+        this.commercialHistory = commercialHistory;
+    }
+
+    private void recordCommercialHistory(Promotion promotion, List<PromotionTarget> promotionTargets) {
+        if (commercialHistory != null) commercialHistory.recordPromotion(promotion, promotionTargets);
+    }
 
     public PromotionService(
             PromotionRepository promotions,
@@ -131,6 +142,7 @@ public class PromotionService {
     @Transactional
     public PromotionView activate(UUID id) {
         var companyId = companyId();
+        catalog.lockCompanyForCatalogMutation(companyId);
         var promotion = promotions.findByIdAndEmpresaId(id, companyId)
                 .orElseThrow(() -> new IllegalArgumentException("message.promotion.not_found"));
         var promotionTargets = targets.findByPromocionId(promotion.id());
@@ -144,20 +156,31 @@ public class PromotionService {
                 .orElseThrow(() -> new IllegalStateException("message.promotion.inconsistent_lineage"));
         promotions.findActiveLineage(companyId, rootId).stream()
                 .filter(active -> !active.id().equals(promotion.id()))
-                .forEach(Promotion::deactivate);
+                .forEach(active -> {
+                    var activeTargets = targets.findByPromocionId(active.id());
+                    recordCommercialHistory(active, activeTargets);
+                    active.deactivate();
+                    recordCommercialHistory(active, activeTargets);
+                });
         promotion.activate();
+        recordCommercialHistory(promotion, promotionTargets);
         return promotionView(promotion, promotionTargets);
     }
 
     @Transactional
     public PromotionView deactivate(UUID id) {
+        catalog.lockCompanyForCatalogMutation(companyId());
         var promotion = promotion(id);
+        var promotionTargets = targets.findByPromocionId(promotion.id());
+        recordCommercialHistory(promotion, promotionTargets);
         promotion.deactivate();
-        return promotionView(promotion, targets.findByPromocionId(promotion.id()));
+        recordCommercialHistory(promotion, promotionTargets);
+        return promotionView(promotion, promotionTargets);
     }
 
     @Transactional
     public void delete(UUID id) {
+        catalog.lockCompanyForCatalogMutation(companyId());
         var promotion = promotion(id);
         if (promotion.used()) {
             throw new IllegalStateException("message.promotion.used_requires_new_version");
@@ -165,6 +188,7 @@ public class PromotionService {
         if (promotion.status() == PromotionStatus.ACTIVE) {
             throw new IllegalStateException("message.promotion.delete_requires_draft_or_inactive");
         }
+        recordCommercialHistory(promotion, targets.findByPromocionId(promotion.id()));
         promotions.delete(promotion);
     }
 

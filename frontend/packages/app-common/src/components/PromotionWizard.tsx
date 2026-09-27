@@ -1,3 +1,4 @@
+import { sortProductsByCode } from "./productSearchOrdering";
 import { type ComponentProps, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Info } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
@@ -253,8 +254,8 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
   }, [draft.customerSegment, token, t]);
 
   const productOptions = useMemo(
-    () => products.map((product) => ({ id: product.id, label: productLabel(product) })),
-    [products]
+    () => sortProductsByCode(products, locale).map((product) => ({ id: product.id, label: productLabel(product) })),
+    [products, locale]
   );
   const familyOptions = useMemo(
     () => families.map((family) => ({ id: family.id, label: family.name?.trim() || family.id })),

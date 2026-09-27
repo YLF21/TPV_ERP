@@ -7,6 +7,7 @@ import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { TableSortButton } from "./TableSortButton";
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
+import { defaultProductSearchSort, sortProductsByCode } from "./productSearchOrdering";
 import "./SaleProductSearchDialog.css";
 import { ErpFilterChips } from "./ErpFilterChips";
 import "./WarehouseDocumentClassicTables.css";
@@ -72,13 +73,14 @@ export function filterSaleProductSearch<T extends SaleProductSearchOption>(
   products: T[],
   query: string,
   limit = 100,
+  locale = "es",
 ) {
   const normalizedQuery = normalizedSearchValue(query);
   if (!normalizedQuery) return [];
-  return products
+  const matches = products
     .filter((product) => [product.code, product.barcode, product.barcode2, product.name]
-      .some((value) => normalizedSearchValue(value).includes(normalizedQuery)))
-    .slice(0, limit);
+      .some((value) => normalizedSearchValue(value).includes(normalizedQuery)));
+  return sortProductsByCode(matches, locale).slice(0, limit);
 }
 
 export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
@@ -100,11 +102,11 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
 }: SaleProductSearchDialogProps<T>) {
   const [query, setQuery] = useState(initialQuery);
   const [selectedId, setSelectedId] = useState(initialSelectedId);
-  const [sort, setSort] = useState<TableSort<SaleProductSearchSortColumn> | null>(null);
+  const [sort, setSort] = useState<TableSort<SaleProductSearchSortColumn>>(defaultProductSearchSort);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const results = useMemo(() => sortTableRows(
-    filterSaleProductSearch(products, query),
+    filterSaleProductSearch(products, query, 100, locale),
     sort,
     (product, column) => {
       if (column === "code") return product.code;
@@ -112,8 +114,9 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
       if (column === "name") return product.name;
       if (column === "stock") return product.totalStock == null ? null : Number(product.totalStock);
       return product.salePrice == null ? null : Number(product.salePrice);
-    }
-  ), [products, query, sort]);
+    },
+    locale
+  ), [products, query, sort, locale]);
   const activeId = results.some((product) => product.id === selectedId)
     ? selectedId
     : results[0]?.id ?? "";
@@ -214,7 +217,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
 
   return (
     <div
-      className={`sale-action-overlay sale-product-search-overlay${tableTheme ? " erp-classic-tables warehouse-picker-classic" : ""}`}
+      className="sale-action-overlay sale-product-search-overlay erp-classic-tables warehouse-picker-classic"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();

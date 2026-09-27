@@ -1,3 +1,4 @@
+import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import "./SaleProductLabelDialog.css";
 import type { LocaleCode } from "../types";
@@ -347,9 +348,9 @@ export function SaleProductLabelDialog({
     ?? config.productLabelProfiles[0];
   const filteredProducts = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
-    return products.filter((product) => !normalized || [product.code, product.barcode, product.barcode2, product.name]
-      .some((value) => value?.toLocaleLowerCase().includes(normalized))).slice(0, 100);
-  }, [products, query]);
+    return sortProductsByCode(products.filter((product) => !normalized || [product.code, product.barcode, product.barcode2, product.name]
+      .some((value) => value?.toLocaleLowerCase().includes(normalized))), locale).slice(0, 100);
+  }, [products, query, locale]);
   const selectedItems = useMemo((): ProductLabelItem[] => selected.flatMap((entry) => {
     const product = products.find((candidate) => candidate.id === entry.productId);
     if (!product || !isValidEan(entry.barcode)) return [];

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
+import { sortProductsByCode } from "../../../packages/app-common/src/components/productSearchOrdering";
 import { activateModalFocusTrap, type ModalFocusRoot } from "../../../packages/app-common/src/components/modalFocusTrap";
 import { StockCountTable } from "./StockCountTable";
 import { countText } from "./stockCountMessages";
@@ -42,8 +43,7 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
   const counted = lines.filter((line) => line.input.trim() !== "").length;
   const number = (value: number) => value.toLocaleString(locale, { maximumFractionDigits: 3 });
   const term = query.trim().toLocaleLowerCase();
-  const suggestions = products.filter((p) => [p.code, p.barcode, p.name].some((value) => value?.toLocaleLowerCase().includes(term)))
-    .sort((a, b) => Number([b.code, b.barcode].some((value) => value?.toLocaleLowerCase() === term)) - Number([a.code, a.barcode].some((value) => value?.toLocaleLowerCase() === term)))
+  const suggestions = sortProductsByCode(products.filter((p) => [p.code, p.barcode, p.name].some((value) => value?.toLocaleLowerCase().includes(term))), locale)
     .slice(0, 50);
   function updateDocument(value: StockCountDetail) { documentRef.current = value; setDocument(value); setDate(value.documentDate ?? value.createdAt.slice(0, 10)); setNotes(value.notes ?? ""); setLines(draftLines(value)); setDirty(false); }
   useEffect(() => {
