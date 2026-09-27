@@ -77,6 +77,7 @@ const GiftReceiptDialog = lazy(() => import("./GiftReceiptDialog")
 import searchIcon from "../assets/reports/search.png";
 import "../styles/report-command-toolbar.css";
 import "../styles/report-print.css";
+import "../styles/report-ticket-summary.css";
 import "./SalesReportClassicTables.css";
 import "./ErpSearchField.css";
 import "./ErpFilterDialog.css";
