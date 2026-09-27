@@ -44,6 +44,17 @@ async function calendarDate(page, label, day) {
   await calendar.getByRole("grid").getByRole("button", { name: String(day), exact: true }).click();
   await calendar.getByRole("button", { name: "Cerrar calendario", exact: true }).click();
 }
+async function nav(page, name) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 
 try {
   server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5196", "--strictPort", "--configLoader", "runner"], { cwd: root, stdio: "ignore", windowsHide: true });
@@ -76,9 +87,9 @@ try {
   await page.locator('input[autocomplete="username"]').fill("COMPANY_FILTERS_DEMO");
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
-  await page.locator(".top-nav-list").getByRole("button", { name: "Estado de clientes", exact: true }).click();
+  await nav(page, "Estado de clientes");
   await page.getByLabel("Buscar empresa, licencia, NIF o tienda", { exact: true }).fill("NO-CUSTOMER-MATCHES");
-  await page.locator(".top-nav-list").getByRole("button", { name: "Empresas", exact: true }).click();
+  await nav(page, "Empresas");
   const table = page.getByRole("table", { name: "Empresas", exact: true });
   await until(async () => await table.locator("tbody tr").count() === companies.length, "complete synthetic directory");
   const panel = page.locator(".company-list-section");

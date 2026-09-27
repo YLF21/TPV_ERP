@@ -101,7 +101,17 @@ try {
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
   await page.locator(".saas-dashboard").waitFor();
-  const nav = label => page.locator(".top-nav-list").getByRole("button", { name: label, exact: true }).click();
+  const nav = async label => {
+    const sidebar = page.locator(".top-nav-list");
+    const target = sidebar.getByRole("button", { name: label, exact: true });
+    if (!await target.isVisible()) {
+      for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+        if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+        if (await target.isVisible()) break;
+      }
+    }
+    await target.click();
+  };
   await nav("Empresas");
   await page.locator("main .retry-error").waitFor();
   assert.equal(await page.locator("main form").count(), 0);

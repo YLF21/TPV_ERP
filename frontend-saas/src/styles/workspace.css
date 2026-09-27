@@ -651,7 +651,7 @@ pre {
 }
 
 .login-page::before {
-  content: "TPV ERP SaaS";
+  content: "esPOS SAAS";
   position: absolute;
   top: 0;
   right: 0;

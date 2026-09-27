@@ -26,6 +26,17 @@ async function until(check, label = "expected UI state") {
   }
   throw new Error(`Timed out waiting for ${label}`);
 }
+async function nav(page, name) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 async function setup(viewer = false, initialCompany = original) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage(); page.setDefaultTimeout(10_000);
@@ -64,7 +75,8 @@ async function setup(viewer = false, initialCompany = original) {
   await page.locator('input[autocomplete="username"]').fill(viewer ? "CONTACT_VIEWER" : "CONTACT_DEMO");
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
-  await page.locator(".top-nav-list").getByRole("button", { name: "Empresas", exact: true }).click();
+  await page.locator(".saas-dashboard").waitFor();
+  await nav(page, "Empresas");
   await page.locator('tr[data-row-id="company-contact"]').waitFor();
   return { page, context, calls, companies };
 }

@@ -182,6 +182,8 @@ try {
   await adminPage.locator("form button[type=submit]").click();
   await adminPage.locator(".saas-dashboard").waitFor({ state: "visible", timeout: 15_000 });
   assert.equal(await adminPage.locator('.top-nav-list button[aria-current="page"]').count(), 1);
+  const ownCompanyNavigation = adminPage.locator(".top-nav-list").getByRole("button", { name: "Mi empresa", exact: true });
+  if (await ownCompanyNavigation.getAttribute("aria-expanded") !== "true") await ownCompanyNavigation.click();
   const billingNavigation = adminPage.locator(".top-nav-list").getByRole("button", { name: "Facturacion", exact: true });
   await billingNavigation.click();
   await adminPage.waitForFunction(() => location.hash === "#/billing");
@@ -236,6 +238,8 @@ try {
   assert.equal(staleCompanyReloads, 0);
   assert.equal(await adminPage.getByText("OTHER-1", { exact: true }).isVisible(), true);
   console.log("SaaS E2E passed: company switch isolates an in-flight billing mutation.");
+  const supervisionNavigation = adminPage.locator(".top-nav-list").getByRole("button", { name: "Supervisión", exact: true });
+  if (await supervisionNavigation.getAttribute("aria-expanded") !== "true") await supervisionNavigation.click();
   await adminPage.getByRole("button", { name: "Recuperación de entregas" }).click();
   await adminPage.getByText("SECURITY_ALERT", { exact: true }).waitFor();
   await adminPage.getByRole("button", { name: "Reencolar" }).click();

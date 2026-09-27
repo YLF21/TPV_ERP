@@ -131,7 +131,17 @@ async function setup(permissions = allPermissions) {
   return { page, calls, failCompanies: value => { companiesFail = value; } };
 }
 
-async function nav(page, name) { await page.locator(".top-nav-list").getByRole("button", { name, exact: true }).click(); }
+async function nav(page, name) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 async function assertLogoutInsideViewport(page) {
   for (const width of [1600, 1280]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -235,7 +245,11 @@ try {
   await tenantSection.locator(".retry-error").waitFor();
   assert.equal(await tenantSection.getByLabel("Empresa", { exact: true }).isDisabled(), true);
   assert.equal(await tenantSection.getByRole("button", { name: "Crear usuario cliente", exact: true }).isDisabled(), true);
-  failCompanies(false); await tenantSection.getByRole("button", { name: "Reintentar", exact: true }).click();
+  failCompanies(false);
+  await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/companies" && response.ok()),
+    tenantSection.getByRole("button", { name: "Reintentar", exact: true }).click(),
+  ]);
   await tenantSection.getByLabel("Empresa", { exact: true }).selectOption(companyWithoutLicense);
   const createTenant = page.getByRole("form", { name: "Crear usuario cliente", exact: true });
   await createTenant.getByLabel("Usuario", { exact: true }).fill("unlicensed-company-user");
@@ -252,7 +266,11 @@ try {
   await page.getByRole("button", { name: "Detalle", exact: true }).click();
   await page.locator(".retry-error").waitFor();
   assert.equal(await page.getByLabel("Empresa", { exact: true }).isDisabled(), true);
-  failCompanies(false); await page.getByRole("button", { name: "Reintentar", exact: true }).click();
+  failCompanies(false);
+  await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/companies" && response.ok()),
+    page.getByRole("button", { name: "Reintentar", exact: true }).click(),
+  ]);
   await page.getByLabel(/^Empresa/).selectOption(companyB);
   await page.getByLabel(/^Rol/).selectOption("MANAGER");
   await page.getByLabel("Gestionar maestros", { exact: true }).check();

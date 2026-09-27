@@ -96,34 +96,46 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
   }
   const disabled = blocked || loading || readFailed || mustRefresh || busy || !canManage;
   const displayedId = state?.status !== "REMOTE_PENDING" && state?.teamViewerId && /^\d{6,15}$/.test(state.teamViewerId) ? state.teamViewerId : null;
-  return <section className="content-section" aria-label={f("title")}>
-    <h5>{f("title")}</h5>
+  return <section className="content-section ticket-interventions" aria-label={f("title")}>
+    <header className="intervention-heading"><h5>{f("title")}</h5>
+      <button className="secondary-button" type="button" disabled={busy || loading} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>{f("reload")}</button>
+    </header>
     {loading && <p role="status">{f("loading")}</p>}
     {readFailed && <p role="alert">{f("readError")}</p>}
     {message && <p role="status">{message}</p>}
     {pending && <p role="status">{f("pending")}</p>}
-    <button type="button" disabled={busy || loading} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>{f("reload")}</button>
-    <p><a href="https://web.teamviewer.com/" target="_blank" rel="noopener noreferrer">{f("open")}</a></p>
-    <p>{f("external")}</p>
-    {displayedId && <p>TeamViewer ID: <code>{displayedId}</code> <button type="button" onClick={() => void copy(displayedId)}>{f("copy")}</button></p>}
-    {state && <>
-      <p>{f("phase")}: <StatusPill status={f(state.status)} tone={state.status === "RESOLVED" ? "ok" : "muted"} /></p>
-      <label>{f("note")}<textarea className="control-input" minLength={5} maxLength={4000} required value={note} disabled={busy || !!pending || !canManage}
-        onChange={event => setNote(event.target.value)} /></label>
-      {(state.status === "REMOTE_PENDING" || pending?.action === "START_REMOTE") && <label>{f("remoteId")}<span className="field-hint">{f("emptyRemoteId")}</span><input className="control-input" inputMode="numeric" maxLength={15} value={remoteId} disabled={busy || !!pending || !canManage} onChange={event => setRemoteId(event.target.value)} /></label>}
-      <div className="toolbar">
-        {pending ? <button type="button" disabled={disabled} onClick={() => void write(pending.action)}>{f("retry")}</button>
-          : (actions[state.status] ?? []).map(action => <button key={action} type="button" disabled={disabled} onClick={() => void write(action)}>{f(action)}</button>)}
-      </div>
-      {!canManage && <p>{f("permission")}</p>}
+    {state && <div className={"intervention-phase" + (state.status === "RESOLVED" ? " intervention-phase--resolved" : "")}>
+      <div><span>{f("phase")}</span><StatusPill status={f(state.status)} tone={state.status === "RESOLVED" ? "ok" : "muted"} /></div>
+      {actions[state.status] && <p>{f(state.status + "_HELP")}</p>}
+    </div>}
+    <div className="intervention-workspace">
+      {state && <div className="intervention-action-card">
+        <h6>{f("nextStep")}</h6>
+        <label>{f("note")}<textarea className="control-input" rows={4} placeholder={f("notePlaceholder")} minLength={5} maxLength={4000} required value={note} disabled={busy || !!pending || !canManage}
+          onChange={event => setNote(event.target.value)} /></label>
+        {(state.status === "REMOTE_PENDING" || pending?.action === "START_REMOTE") && <label>{f("remoteId")}<span className="field-hint">{f("emptyRemoteId")}</span><input className="control-input" inputMode="numeric" maxLength={15} value={remoteId} disabled={busy || !!pending || !canManage} onChange={event => setRemoteId(event.target.value)} /></label>}
+        <div className="intervention-actions">
+          {pending ? <button className="primary-button" type="button" disabled={disabled} onClick={() => void write(pending.action)}>{f("retry")}</button>
+            : (actions[state.status] ?? []).map(action => <button className={action === "REQUIRE_ONSITE" ? "secondary-button" : "primary-button"} key={action} type="button" disabled={disabled} onClick={() => void write(action)}>{f(action)}</button>)}
+        </div>
+        {!canManage && <p>{f("permission")}</p>}
+      </div>}
+      <aside className="intervention-connection">
+        <div className="intervention-connection-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="3" y="3" width="18" height="13" rx="2" /><path d="M8 21h8M12 16v5M7 9h10m-3-3 3 3-3 3" /></svg><h6>{f("remoteTools")}</h6></div>
+        <p>{f("external")}</p>
+        {displayedId && <div className="intervention-remote-id"><span>TeamViewer ID</span><code>{displayedId}</code><button className="secondary-button" type="button" onClick={() => void copy(displayedId)}>{f("copy")}</button></div>}
+        <a className="intervention-external-link" href="https://web.teamviewer.com/" target="_blank" rel="noopener noreferrer">{f("open")}<span aria-hidden="true">↗</span></a>
+      </aside>
+    </div>
+    {state && <div className="intervention-history">
       <h6>{f("history")}</h6>
-      {!state.events.length && <p>{f("noHistory")}</p>}
-      {[...state.events].sort((a, b) => b.version - a.version).map(event => <article key={event.requestId}>
-        <strong>{f(event.action)}</strong> · {f(event.status)}
-        <p>{f("actor")}: {event.actor} · {f("time")}: {formatDate(event.createdAt)}</p>
-        <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{event.note}</p>
+      {!state.events.length && <p className="intervention-empty">{f("noHistory")}</p>}
+      {[...state.events].sort((a, b) => b.version - a.version).map(event => <article className="intervention-event" key={event.requestId}>
+        <div><strong>{f(event.action)}</strong><StatusPill status={f(event.status)} tone={event.status === "RESOLVED" ? "ok" : "muted"} /></div>
+        <p className="intervention-event-meta">{f("actor")}: {event.actor} · {f("time")}: {formatDate(event.createdAt)}</p>
+        <p className="intervention-event-note">{event.note}</p>
         {event.teamViewerId && /^\d{6,15}$/.test(event.teamViewerId) && <p>TeamViewer ID: {event.teamViewerId}</p>}
       </article>)}
-    </>}
+    </div>}
   </section>;
 }

@@ -27,6 +27,13 @@ export function SupportView({
   const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
   const [companyId, setCompanyId] = useState("");
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const confirmedReadNotifications = useRef(new Set<string>());
+  const pendingReadNotifications = useRef(new Set<string>());
+  const [readingNotifications, setReadingNotifications] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    confirmedReadNotifications.current.clear(); pendingReadNotifications.current.clear();
+    setReadingNotifications(new Set());
+  }, [credentials]);
   const [technicalStatus, setTechnicalStatus] = useState<TechnicalStatus | null>(null);
   const [saasStatus, setSaasStatus] = useState<SaasStatus | null>(null);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -79,7 +86,7 @@ export function SupportView({
 
     if (id !== overviewRequestId.current) return;
     if (nextNotifications.status === "fulfilled") {
-      setNotifications(nextNotifications.value);
+      setNotifications(nextNotifications.value.map(notification => ({ ...notification, read: notification.read || confirmedReadNotifications.current.has(notification.id) })));
     } else if (isMissingPhase3Endpoint(nextNotifications.reason) || isRecoverableBackendDataError(nextNotifications.reason)) {
       setNotifications([]);
     } else {
@@ -189,15 +196,22 @@ export function SupportView({
   }
 
   async function markNotificationRead(notificationId: string) {
-    const removed = notifications.find((notification) => notification.id === notificationId);
+    if (pendingReadNotifications.current.has(notificationId) || confirmedReadNotifications.current.has(notificationId)) return;
+    pendingReadNotifications.current.add(notificationId);
+    setReadingNotifications(new Set(pendingReadNotifications.current));
+    const activeSession = () => mounted.current && currentScope.current.credentials === credentials;
     try {
-      setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
       await api.markNotificationRead(credentials, notificationId);
+      if (!activeSession()) return;
+      confirmedReadNotifications.current.add(notificationId);
+      setNotifications(rows => rows.map(notification => notification.id === notificationId ? { ...notification, read: true } : notification));
       onNotice({ type: "success", text: t("notificationRead") });
     } catch (error) {
-      if (removed) setNotifications((current) => current.some((item) => item.id === removed.id) ? current : [removed, ...current]);
-      if (!isMissingPhase3Endpoint(error) && !isRecoverableBackendDataError(error)) {
-        onNotice({ type: "error", text: errorMessage(error) });
+      if (activeSession()) onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      if (activeSession()) {
+        pendingReadNotifications.current.delete(notificationId);
+        setReadingNotifications(new Set(pendingReadNotifications.current));
       }
     }
   }
@@ -217,7 +231,7 @@ export function SupportView({
       <section className="content-section two-column support-layout">
         <div>
           <SectionHeader title={t("notifications")} subtitle={t("notificationsSubtitle")} />
-          <NotificationList notifications={notifications} onMarkRead={(notificationId) => void markNotificationRead(notificationId)} />
+          <NotificationList notifications={notifications} pendingIds={readingNotifications} onMarkRead={(notificationId) => void markNotificationRead(notificationId)} />
         </div>
         <div>
           <SectionHeader title={t("technicalPanel")} subtitle={t("technicalPanelSubtitle")} />
@@ -286,19 +300,20 @@ export function SupportView({
   );
 }
 
-export function NotificationList({ notifications, onMarkRead }: { notifications: AdminNotification[]; onMarkRead: (notificationId: string) => void }) {
+export function NotificationList({ notifications, onMarkRead, pendingIds }: { notifications: AdminNotification[]; onMarkRead: (notificationId: string) => void; pendingIds?: ReadonlySet<string> }) {
   const { t } = useI18n();
-  if (notifications.length === 0) return <EmptyState text={t("noNotifications")} />;
+  const unread = notifications.filter(notification => !notification.read);
+  if (unread.length === 0) return <EmptyState text={t("noNotifications")} />;
   return (
     <div className="notification-list">
-      {notifications.map((notification) => (
+      {unread.map((notification) => (
         <article className={`notification-card ${notification.severity.toLowerCase()}`} key={notification.id}>
           <div>
             <strong>{notification.title}</strong>
             <span>{notification.companyName}</span>
           </div>
           <p>{notification.detail}</p>
-          <button className="small-button" type="button" onClick={() => onMarkRead(notification.id)}>
+          <button className="small-button" type="button" disabled={pendingIds?.has(notification.id)} onClick={() => onMarkRead(notification.id)}>
             {t("markRead")}
           </button>
         </article>

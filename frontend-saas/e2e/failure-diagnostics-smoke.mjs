@@ -41,6 +41,17 @@ const records = [record, legacy, ...Array.from({ length: 53 }, (_, i) => ({ ...r
   traceId: `trace-secondary-${i}`, detail: `Synthetic secondary failure ${i}`,
 }))];
 const calls = []; const errors = []; let browser;
+async function nav(page, name) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)),
   "--host", "127.0.0.1", "--port", "5197", "--strictPort", "--configLoader", "runner"], { cwd: root, stdio: "ignore", windowsHide: true });
 try {
@@ -98,7 +109,7 @@ try {
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
   await page.locator(".saas-dashboard").waitFor();
-  await page.locator(".top-nav-list").getByRole("button", { name: "Fallos de tiendas", exact: true }).click();
+  await nav(page, "Fallos de tiendas");
   await page.getByRole("cell", { name: /APPLICATION_ERROR/ }).first().waitFor();
   const captureDirectory = fileURLToPath(new URL("../../output/playwright/", import.meta.url));
   await mkdir(captureDirectory, { recursive: true });

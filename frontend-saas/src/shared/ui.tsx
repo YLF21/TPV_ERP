@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { paginateRows } from "../lib/frontend-runtime.mjs";
 import type { FiscalAddress } from "../lib/types";
@@ -7,10 +7,10 @@ import { parsePickerDate, monthStart, calendarDays, calendarWeekDays, toDateInpu
 import { ProvinceSelect } from "./provinces/ProvinceSelect";
 import { EuropeanCountrySelect } from "./countries/EuropeanCountrySelect";
 
-export function NavButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+export function NavButton({ active, onClick, label, icon }: { active: boolean; onClick: () => void; label: string; icon?: ReactNode }) {
   return (
     <button className={active ? "nav-button active" : "nav-button"} type="button" aria-current={active ? "page" : undefined} onClick={onClick}>
-      {label}
+      {icon}<span className="nav-module-label">{label}</span>
     </button>
   );
 }

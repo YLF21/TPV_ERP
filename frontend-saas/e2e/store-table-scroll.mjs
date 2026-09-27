@@ -10,6 +10,17 @@ const baseUrl = "http://127.0.0.1:5192/";
 const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5192", "--strictPort", "--configLoader", "runner"], { cwd: root, stdio: "ignore", windowsHide: true });
 const messages = [];
 const report = message => { messages.push(message); console.log(message); };
+async function nav(page, name) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 let browser;
 try {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -115,7 +126,7 @@ try {
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
   await page.locator(".saas-dashboard").waitFor();
-  await page.locator(".top-nav-list").getByRole("button", { name: "Tiendas", exact: true }).click();
+  await nav(page, "Tiendas");
   const workspace = page.locator(".stores-workspace");
   const toolbar = workspace.getByRole("search", { name: "Tiendas", exact: true });
   const table = workspace.getByRole("table", { name: "Tiendas", exact: true });
@@ -253,7 +264,7 @@ try {
   await page.locator('input[autocomplete="username"]').fill("STORES_SCROLL_DEMO");
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click(); await page.locator(".top-nav-list").waitFor();
-  await page.locator(".top-nav-list").getByRole("button", { name: "Tiendas", exact: true }).click();
+  await nav(page, "Tiendas");
   await waitRows(25);
   assert.deepEqual(await headers(), savedHeaders, "Column order and visibility must survive a browser reload");
   assert.equal((await statusHeading.boundingBox()).width, resizedWidth, "Column width must survive a browser reload");

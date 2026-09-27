@@ -154,10 +154,16 @@ export function FailuresView({ credentials, licenses, onNotice, onNavigate, perm
         <FailureOverview failure={detail.data} />
         <FailureRepairsPanel key={`${repairSession(credentials).id}:${detail.data.id}`} credentials={credentials} failureKey={detail.data.id} companyId={detail.data.companyId} permissions={permissions} onSupport={onNavigate ? () => onNavigate("support") : undefined} />
         <FailureTechnicalDetails key={detail.data.id} failure={detail.data} onNotice={onNotice} />
-        {onNavigate && <div className="toolbar">
-          {detail.data.source === "SYNC_PROJECTION" && <button type="button" onClick={() => onNavigate("sync")}>{f("sync")}</button>}
-          {["CENTRAL_SECURITY", "CENTRAL_INTEGRATION"].includes(detail.data.source) && permissions?.has("MANAGE_OPERATIONS") && <button type="button" onClick={() => onNavigate("outbox")}>{l("recovery")}</button>}
-          <button type="button" onClick={() => onNavigate("support")}>{f("support")}</button>
+        {onNavigate && <div className="failure-followup">
+          <div className="failure-followup-copy"><h4>{f("supportArea")}</h4><p>{f("supportHint")}</p></div>
+          <div className="failure-followup-actions">
+            {detail.data.source === "SYNC_PROJECTION" && <button className="secondary-button" type="button" onClick={() => onNavigate("sync")}>{f("sync")}</button>}
+            {["CENTRAL_SECURITY", "CENTRAL_INTEGRATION"].includes(detail.data.source) && permissions?.has("MANAGE_OPERATIONS") && <button className="secondary-button" type="button" onClick={() => onNavigate("outbox")}>{l("recovery")}</button>}
+            <button className="secondary-button failure-support-button" type="button" onClick={() => onNavigate("support")}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M4 13v-1a8 8 0 0 1 16 0v1M4 12H3v7h4v-7H4Zm16 0h1v7h-4v-7h3ZM20 19a3 3 0 0 1-3 3h-4" /></svg>
+              <span>{f("support")}</span><span className="failure-support-arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
         </div>}
       </>}
     </section>}

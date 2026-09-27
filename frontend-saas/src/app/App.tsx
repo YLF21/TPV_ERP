@@ -7,6 +7,7 @@ import { View, Notice, GlobalSearchCriterion } from "../shared/types";
 import { readViewFromLocation, buildGlobalSearchSuggestions, filterDashboardData, errorMessage, viewTitle } from "../shared/lib";
 import { RequiredPasswordChangeScreen, LoginScreen } from "../features/auth/AuthScreens";
 import { navigation, navigationGroups } from "./navigation";
+import { NavigationIcon } from "./NavigationIcon";
 import { AccountPassword } from "../shared/AccountPassword";
 import { RefreshContext } from "./RefreshContext";
 import { workspaceLabels } from "../i18n/workspace";
@@ -46,6 +47,7 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchStores, setSearchStores] = useState<FiscalStatusAdmin[]>([]);
   const [navigationQuery, setNavigationQuery] = useState("");
+  const [expandedNavigationGroups, setExpandedNavigationGroups] = useState<Set<typeof navigationGroups[number]>>(() => new Set([navigation.find(item => item.view === readViewFromLocation())?.group ?? "home"]));
   const navigationSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshRequestId = useRef(0);
   const authRequestId = useRef(0);
@@ -79,11 +81,22 @@ export default function App() {
   );
   const permissions = useMemo(() => new Set(session?.permissions ?? []), [session]);
 
+  function revealNavigationGroup(view: View) {
+    const group = navigation.find(item => item.view === view)?.group;
+    if (group) setExpandedNavigationGroups(previous => previous.has(group) ? previous : new Set([...previous, group]));
+  }
+
   function navigate(view: View) {
     setActiveView(view);
+    revealNavigationGroup(view);
     const nextHash = `#/${view}`;
     if (window.location.hash !== nextHash) window.history.pushState({ view }, "", nextHash);
   }
+
+  useEffect(() => {
+    revealNavigationGroup(activeView);
+    setNotice(null);
+  }, [activeView]);
 
   useEffect(() => {
     const syncView = () => {
@@ -301,7 +314,7 @@ export default function App() {
     <div className={`app-shell${["companies", "stores", "licenses"].includes(activeView) ? " app-shell--table-workspace" : ""}`}>
       <header className="app-system-bar">
         <div className="system-product">
-          <strong>APP SAAS</strong>
+          <strong>esPOS SAAS</strong>
           <span>{l("shellDescription")}</span>
         </div>
         <div className="system-session">
@@ -316,31 +329,47 @@ export default function App() {
 
       <aside className="app-header" aria-label={i18n.t("mainNavigation")}>
         <div className="brand">
+          <div className="sidebar-brand-symbol" aria-hidden="true"><NavigationIcon view="dashboard" /></div>
           <div>
-            <strong>APP SAAS</strong>
+            <strong>esPOS SAAS</strong>
             <span>{l("platform")}</span>
           </div>
         </div>
         <div className="saas-nav-search">
+          <svg className="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5" /></svg>
           <input ref={navigationSearchRef} type="search" value={navigationQuery} placeholder={l("searchModules")} aria-label={l("searchModules")} onChange={(event) => setNavigationQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setNavigationQuery(""); event.currentTarget.blur(); } }} />
-          <kbd>Ctrl K</kbd>
+          <kbd aria-hidden="true">Ctrl K</kbd>
         </div>
-        <nav className="nav-list top-nav-list">
+        <nav className="nav-list top-nav-list" aria-label={i18n.t("mainNavigation")}>
           {navigationGroups.map(group => {
             const items = visibleNavigationItems.filter(item => item.group === group);
+            const expanded = Boolean(navigationQuery.trim()) || expandedNavigationGroups.has(group);
+            const current = activeNavigationItem?.group === group;
             return items.length > 0 && <div className="nav-group" key={group}>
-              <span className="nav-group-title">{l(group)}</span>
-              {items.map((item, index) => <Fragment key={item.view}>
-                {group === "system" && item.phase && item.phase !== items[index - 1]?.phase && <span className="nav-phase-title">{l(item.phase)}</span>}
-                <NavButton active={activeView === item.view} onClick={() => { navigate(item.view); setNavigationQuery(""); }} label={item.label} />
-              </Fragment>)}
+              <button className={"nav-group-toggle" + (current ? " nav-group-toggle--current" : "")} type="button"
+                aria-expanded={expanded} aria-controls={"nav-group-" + group} disabled={Boolean(navigationQuery.trim())}
+                onClick={() => setExpandedNavigationGroups(previous => {
+                  const next = new Set(previous);
+                  if (next.has(group)) next.delete(group); else next.add(group);
+                  return next;
+                })}>
+                <span className="nav-group-title">{l(group)}</span>
+                <svg className="nav-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><path d="m9 5 7 7-7 7" /></svg>
+              </button>
+              <div id={"nav-group-" + group} className="nav-group-items" hidden={!expanded}>
+                {items.map((item, index) => <Fragment key={item.view}>
+                  {group === "system" && item.phase && item.phase !== items[index - 1]?.phase && <span className="nav-phase-title">{l(item.phase)}</span>}
+                  <NavButton active={activeView === item.view} onClick={() => { navigate(item.view); setNavigationQuery(""); }} label={item.label} icon={<NavigationIcon view={item.view} />} />
+                </Fragment>)}
+              </div>
             </div>;
           })}
           {visibleNavigationItems.length === 0 && <p className="saas-nav-empty">{i18n.t("noEventsForFilter")}</p>}
         </nav>
         <footer className="app-context-footer" aria-label={l("platform")}>
-          <strong>{session?.username ?? credentials.username}</strong>
-          <span>{title(activeView)}</span>
+          <div className="sidebar-account-icon" aria-hidden="true"><NavigationIcon view="users" /></div>
+          <div className="sidebar-account-copy"><strong>{session?.username ?? credentials.username}</strong>
+          <span>{title(activeView)}</span></div>
         </footer>
       </aside>
 

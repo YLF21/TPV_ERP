@@ -114,6 +114,8 @@ export async function setup(browser, errors, base, permissions = allPermissions,
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
   await page.locator(".saas-dashboard").waitFor();
+  const supervision = page.locator(".top-nav-list").getByRole("button", { name: "Supervisión", exact: true });
+  if (await supervision.getAttribute("aria-expanded") !== "true") await supervision.click();
   await page.locator(".top-nav-list").getByRole("button", { name: "Fallos de tiendas", exact: true }).click();
   await page.getByRole("cell", { name: /SYNC_DELIVERY_FAILED/ }).waitFor();
   await page.clock.install();

@@ -29,7 +29,17 @@ function deferred() {
   held.done = new Promise(resolve => { held.finished = resolve; });
   return held;
 }
-async function nav(page, label) { await page.locator(".top-nav-list").getByRole("button", { name: label, exact: true }).click(); }
+async function nav(page, label) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name: label, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 async function login(page, username) {
   await page.locator('input[autocomplete="username"]').fill(username);
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");

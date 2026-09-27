@@ -93,3 +93,82 @@
   .failure-attempt dl { grid-template-columns: 1fr; }
   .failure-problem h4 { font-size: 18px; }
 }
+
+/* Support navigation has its own footer, separate from technical disclosure. */
+.failure-followup { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-top: 18px; padding: 16px; border: 1px solid #c4d2df; background: #f5f8fc; }
+.failure-followup-copy { flex: 1 1 260px; min-width: 0; }
+.failure-followup-copy h4 { margin: 0 0 5px; color: #17324f; font-size: 14px; }
+.failure-followup-copy p { margin: 0; color: #536b83; font-size: 12px; line-height: 1.5; }
+.failure-followup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.failure-followup-actions > button { min-height: 40px; }
+.failure-followup-actions .failure-support-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 9px 16px; border-color: #245ca5; background: #fff; color: #173d64; font-size: 13px; font-weight: 700; cursor: pointer; }
+.failure-support-button svg { flex: 0 0 19px; width: 19px; height: 19px; }
+.failure-support-arrow { margin-left: 6px; font-size: 18px; line-height: 1; }
+.failure-followup-actions .failure-support-button:hover { color: #fff; background: #173d64; border-color: #173d64; }
+.failure-followup-actions .failure-support-button:active { background: #102f57; }
+.failure-followup-actions .failure-support-button:focus-visible { outline: 3px solid #245ca5; outline-offset: 3px; }
+@media (max-width: 700px) {
+  .failure-followup-actions { width: 100%; }
+  .failure-followup-actions > button { flex: 1 1 auto; }
+}
+
+/* Guided manual assistance and linked ticket. */
+.linked-ticket-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-top: 18px; padding: 16px; border: 1px solid #c4d2df; background: #edf4fb; }
+.linked-ticket-toolbar > div:first-child { display: grid; gap: 6px; min-width: 0; }
+.linked-ticket-toolbar strong { color: #17324f; font-size: 15px; }
+.linked-ticket-toolbar code { color: #536b83; font-size: 11px; overflow-wrap: anywhere; }
+.linked-ticket-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.linked-ticket-toolbar button, .linked-failure-ticket button { min-height: 38px; padding: 8px 12px; font-size: 13px; }
+.linked-ticket-tools .linked-ticket-support { display: inline-flex; align-items: center; gap: 16px; border-color: #245ca5; color: #173d64; background: #fff; font-weight: 700; }
+.linked-ticket-tools .linked-ticket-support:hover { background: #173d64; color: #fff; }
+.failure-resolution .linked-failure-ticket { margin-top: 0; padding: 18px; border-top: 0; }
+.linked-ticket-scope { margin: 0 0 12px; color: #536b83; font-size: 12px; line-height: 1.5; }
+.linked-ticket-refresh { float: right; margin: 0 0 10px 12px; }
+.linked-ticket-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; min-height: 38px; }
+.linked-ticket-heading h5 { margin: 0; font-size: 16px; line-height: 1.4; color: #17324f; overflow-wrap: anywhere; }
+.linked-ticket-description { clear: both; border: 1px solid #d9e1e9; border-radius: 6px; margin-bottom: 18px; }
+.linked-ticket-description summary { padding: 12px 14px; background: #f5f8fc; font-size: 13px; font-weight: 600; color: #425c76; cursor: pointer; }
+.linked-ticket-description p { margin: 0; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.linked-failure-ticket .ticket-interventions { padding: 18px; border: 1px solid #c4d2df; border-radius: 8px; background: #fbfcfe; }
+.intervention-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.intervention-heading h5 { margin: 0; color: #17324f; font-size: 16px; }
+.intervention-phase { padding: 14px 16px; border-left: 3px solid #245ca5; background: #edf4fb; margin-bottom: 18px; }
+.intervention-phase--resolved { background: #eef8f3; border-left-color: #258358; }
+.intervention-phase > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.intervention-phase > div > span:first-child { color: #425c76; font-size: 12px; font-weight: 600; }
+.intervention-phase p { margin: 8px 0 0; font-size: 13px; color: #425c76; line-height: 1.6; }
+.intervention-workspace { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 18px; align-items: start; }
+.intervention-action-card, .intervention-connection { min-width: 0; padding: 16px; background: #fff; border: 1px solid #d9e1e9; border-radius: 6px; }
+.ticket-interventions h6, .linked-ticket-comments h6 { margin: 0 0 14px; color: #17324f; font-size: 14px; }
+.intervention-action-card label, .linked-ticket-note { display: grid; gap: 7px; margin: 0 0 14px; font-size: 13px; font-weight: 600; }
+.intervention-action-card .field-hint { color: #536b83; font-size: 12px; font-weight: 400; line-height: 1.5; }
+.intervention-action-card textarea, .linked-ticket-note textarea { min-height: 88px; width: 100%; resize: vertical; font-weight: 400; }
+.intervention-action-card input { min-height: 38px; }
+.intervention-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.intervention-connection-title { display: flex; align-items: center; gap: 9px; }
+.intervention-connection-title svg { width: 22px; height: 22px; color: #245ca5; flex-shrink: 0; }
+.intervention-connection-title h6 { margin: 0; }
+.intervention-connection > p { color: #536b83; font-size: 12px; line-height: 1.6; margin: 12px 0; }
+.intervention-remote-id { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0; font-size: 12px; }
+.intervention-remote-id code { font-size: 14px; }
+.intervention-external-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 40px; padding: 9px 13px; border: 1px solid #245ca5; border-radius: 5px; background: #fff; color: #173d64; text-decoration: none; font-size: 13px; font-weight: 600; }
+.intervention-external-link:hover { background: #edf4fb; }
+.intervention-history { margin-top: 20px; padding-top: 16px; border-top: 1px solid #d9e1e9; }
+.intervention-empty { margin: 0; padding: 14px; background: #f2f5f9; border-radius: 5px; color: #536b83; font-size: 13px; }
+.intervention-event { margin-top: 10px; padding: 14px 16px; border: 1px solid #d9e1e9; border-left: 3px solid #abc2db; background: #fff; border-radius: 4px; font-size: 13px; }
+.intervention-event > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.intervention-event p { margin: 8px 0 0; }
+.intervention-event-meta { color: #536b83; font-size: 12px; }
+.intervention-event-note { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.linked-ticket-comments { margin-top: 22px; padding-top: 18px; border-top: 1px solid #d9e1e9; }
+.linked-ticket-hint { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: #536b83; }
+.linked-ticket-comment { padding: 12px; margin-bottom: 12px; border-left: 3px solid #c4d2df; background: #f5f8fc; font-size: 13px; }
+.linked-ticket-comment p { margin: 6px 0 0; }
+.linked-failure-ticket button:focus-visible, .linked-ticket-toolbar button:focus-visible, .linked-ticket-description summary:focus-visible, .intervention-external-link:focus-visible { outline: 3px solid #245ca5; outline-offset: 2px; }
+@media (max-width: 1100px) { .intervention-workspace { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) {
+  .failure-resolution .linked-failure-ticket, .linked-failure-ticket .ticket-interventions { padding: 12px; }
+  .linked-ticket-tools, .intervention-actions { width: 100%; }
+  .linked-ticket-tools button, .intervention-actions button { flex: 1 1 auto; }
+  .linked-ticket-refresh { float: none; margin: 0 0 12px; }
+}

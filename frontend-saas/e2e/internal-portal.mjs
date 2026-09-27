@@ -182,38 +182,53 @@ try {
 
 async function captureNavigation(page) {
   const sidebar = page.locator(".top-nav-list");
-  const buttons = sidebar.getByRole("button");
-  for (const width of [1600, 1280]) {
+  const toggle = name => sidebar.getByRole("button", { name, exact: true });
+  for (const width of [1600, 1280, 700]) {
     await page.setViewportSize({ width, height: 900 });
-    await buttons.first().focus();
-    for (let index = 1; index < await buttons.count(); index++) await page.keyboard.press("Tab");
-    const last = buttons.last();
-    assert.equal(await last.evaluate(element => element === document.activeElement), true, "All menu items must remain reachable by keyboard");
-    assert.equal(await last.evaluate(element => {
+    for (const button of await sidebar.locator('.nav-group-toggle').all()) {
+      if (await button.getAttribute('aria-expanded') === 'true') await button.click();
+    }
+    await toggle("Inicio").click();
+    await toggle("Administración").focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await toggle("Administración").getAttribute("aria-expanded"), "true");
+    assert.equal(await sidebar.locator('.nav-group-toggle[aria-expanded="true"]').count(), 2);
+    assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true");
+    const modules = sidebar.locator('#nav-group-security .nav-button');
+    for (let index = 0; index < await modules.count(); index++) await page.keyboard.press("Tab");
+    assert.equal(await modules.last().evaluate(element => element === document.activeElement), true);
+    assert.equal(await modules.last().evaluate(element => {
       const rect = element.getBoundingClientRect();
-      return rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
+      return rect.x >= 0 && rect.right <= innerWidth && rect.y >= 0 && rect.bottom <= innerHeight
         && element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
-    }), true, `Last menu item must be visible and clickable after scrolling at ${width}px`);
-    const scroll = await sidebar.evaluate(element => ({ top: element.scrollTop, height: element.scrollHeight, viewport: element.clientHeight }));
-    if (scroll.height > scroll.viewport) assert.ok(scroll.top > 0, "Keyboard navigation must scroll overflowing menu items into view");
+    }), true, "Expanded modules must remain reachable and visible by keyboard");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => location.hash === "#/audit");
-    await sidebar.getByRole("button", { name: "Estado fiscal", exact: true }).click();
-    await page.waitForFunction(() => location.hash === "#/fiscal");
-    await page.locator("main .module-help").waitFor();
-    await sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-title").filter({ hasText: /^Supervisión$/ }) }).evaluate(group => {
-      const menu = group.parentElement;
-      menu.scrollTop += group.getBoundingClientRect().top - menu.getBoundingClientRect().top;
-    });
-    assert.equal(await sidebar.locator(".nav-phase-title").last().evaluate(element => {
-      const bounds = element.getBoundingClientRect();
-      const menu = element.closest(".top-nav-list").getBoundingClientRect();
-      return bounds.top >= menu.top && bounds.bottom <= menu.bottom;
-    }), true, "The supervision phase overview must fit within the scrolled menu");
+    assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true", "Navigating must preserve other open sections");
+    await toggle("Administración").click();
+    assert.equal(await sidebar.locator('.nav-group-toggle[aria-expanded="true"]').count(), 1);
+    assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true");
+    assert.equal(await sidebar.getByRole("button", { name: "Auditoria", exact: true }).count(), 0);
+    await page.keyboard.press("Control+k");
+    const search = page.locator('.saas-nav-search input');
+    assert.equal(await search.evaluate(element => element === document.activeElement), true);
+    await search.fill("Facturacion");
+    assert.equal(await sidebar.getByRole("button", { name: "Facturacion", exact: true }).isVisible(), true);
+    await page.keyboard.press("Escape");
+    assert.equal(await search.inputValue(), "");
+    assert.equal(await sidebar.locator('.nav-group-toggle[aria-expanded="true"]').count(), 1);
+    assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true");
+    // An external route change must reveal its section, including after manual collapse.
+    await page.evaluate(() => { location.hash = "#/fiscal"; });
+    await page.locator('.topbar h1').filter({ hasText: /^Estado fiscal$/ }).waitFor();
+    assert.equal(await toggle("Supervisión").getAttribute("aria-expanded"), "true");
+    assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true", "External routes must preserve other open sections");
+    assert.equal(await sidebar.getByRole("button", { name: "Estado fiscal", exact: true }).getAttribute("aria-current"), "page");
+    await sidebar.getByRole("button", { name: "Estado fiscal", exact: true }).scrollIntoViewIfNeeded();
     await page.mouse.move(width - 40, 150);
-    await page.screenshot({ path: `${screenshotDirectory}/saas-internal-navigation-${width}.png`, animations: "disabled" });
+    await page.screenshot({ path: screenshotDirectory + "/saas-internal-navigation-" + width + ".png", animations: "disabled" });
   }
-  console.log("Internal portal E2E: menu keyboard scrolling at 1600/1280px and synthetic login/navigation screenshots passed.");
+  console.log("Internal portal E2E: independent expandable sections, keyboard, search, route changes and 1600/1280/700px screenshots passed.");
 }
 
 async function assertNavigation(page, calls) {
@@ -222,13 +237,16 @@ async function assertNavigation(page, calls) {
   const clients = sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-title").filter({ hasText: /^Clientes$/ }) });
   const supervision = sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-title").filter({ hasText: /^Supervisión$/ }) });
   const technical = sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-title").filter({ hasText: /^Configuración técnica$/ }) });
+  assert.equal(await sidebar.locator('.nav-group-toggle[aria-expanded="true"]').count(), 1);
+  if (await ownCompany.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await ownCompany.locator(".nav-group-toggle").click();
   assert.equal(await ownCompany.getByRole("button", { name: /^Facturaci[oó]n$/ }).count(), 1);
   assert.equal(await clients.getByRole("button", { name: /^(Maestros|Operaciones|Facturaci[oó]n)$/ }).count(), 0);
   assert.equal(await sidebar.getByRole("button", { name: /^(Maestros|Operaciones)$/ }).count(), 0);
+  if (await supervision.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await supervision.locator(".nav-group-toggle").click();
   assert.deepEqual(await supervision.locator(".nav-phase-title").allTextContents(), ["1. Revisar estado", "2. Detectar fallos", "3. Diagnosticar", "4. Recuperar entregas", "5. Atender al cliente"]);
   assert.deepEqual(await supervision.evaluate(element => {
     const phases = [];
-    for (const child of element.children) {
+    for (const child of element.querySelector(".nav-group-items").children) {
       if (child.classList.contains("nav-phase-title")) phases.push({ title: child.textContent.trim(), modules: [] });
       if (child.tagName === "BUTTON") phases.at(-1).modules.push(child.textContent.trim());
     }
@@ -240,6 +258,7 @@ async function assertNavigation(page, calls) {
     { title: "4. Recuperar entregas", modules: ["Recuperación de entregas"] },
     { title: "5. Atender al cliente", modules: ["Soporte"] },
   ]);
+  if (await ownCompany.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await ownCompany.locator(".nav-group-toggle").click();
   await Promise.all([
     page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/billing-summary"),
     ownCompany.getByRole("button", { name: /^Facturaci[oó]n$/ }).click(),
@@ -247,6 +266,7 @@ async function assertNavigation(page, calls) {
   await page.waitForFunction(() => location.hash === "#/billing");
   assert.equal(await page.locator(".topbar .eyebrow").textContent(), "Mi empresa");
   assert.ok(await page.locator(".module-help").isVisible());
+  if (await supervision.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await supervision.locator(".nav-group-toggle").click();
   await Promise.all([
     page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/fiscal-status/companies"),
     supervision.getByRole("button", { name: "Estado fiscal", exact: true }).click(),
@@ -255,6 +275,7 @@ async function assertNavigation(page, calls) {
   assert.equal(await page.locator(".verifactu-policy-section").count(), 0, "Fiscal supervision must remain read only and separate from policy configuration");
   assert.equal(calls.some(call => call.path === "/api/v1/admin/verifactu-activation-policies"), false);
   assert.equal(await page.locator("main").getByRole("button", { name: "Actualizar politica", exact: true }).count(), 0);
+  await technical.locator(".nav-group-toggle").click();
   await technical.getByRole("button", { name: "Activacion global de VeriFactu", exact: true }).click();
   await page.waitForFunction(() => location.hash === "#/fiscal-policy");
   await page.locator(".verifactu-policy-section").getByRole("button", { name: "Actualizar politica", exact: true }).waitFor();

@@ -37,7 +37,7 @@ export function LoginScreen({
   return (
     <main className="login-page">
       <header className="saas-login-topbar">
-        <strong className="saas-login-brand">APP SAAS</strong>
+        <strong className="saas-login-brand">esPOS SAAS</strong>
         <span className="saas-login-context">{t("centralAdministration")}</span>
         <span className="saas-login-terminal">{t("internalPortal")}</span>
         <div className="saas-login-tools">
@@ -48,7 +48,7 @@ export function LoginScreen({
 
       <section className="login-panel" aria-label={t("adminAccess")}>
         <header className="login-panel-heading">
-          <strong>APP SAAS</strong>
+          <strong>esPOS SAAS</strong>
           <span>{t("internalPortal")}</span>
         </header>
         {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
@@ -85,7 +85,7 @@ export function RequiredPasswordChangeScreen({ username, loading, notice, onSubm
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   return <main className="login-page"><section className="login-panel" aria-labelledby="password-change-title">
-    <header className="login-panel-heading"><strong>APP SAAS</strong><span>{username}</span></header>
+    <header className="login-panel-heading"><strong>esPOS SAAS</strong><span>{username}</span></header>
     <form className="stack-form" onSubmit={(event) => { event.preventDefault(); void onSubmit(newPassword, confirmation); }}>
       <h1 id="password-change-title">{t("passwordChangeTitle")}</h1><p>{t("passwordChangeHelp")}</p>
       {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}

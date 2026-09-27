@@ -1,6 +1,8 @@
 import { useI18n } from "../../i18n";
 
 const labels = {
+  supportArea: ["Seguimiento y soporte", "Follow-up and support", "跟进与支持"],
+  supportHint: ["Abre la lista de tickets para consultar y gestionar la atención al cliente.", "Open the ticket list to view and manage customer support.", "打开工单列表，查看并管理客户支持。"],
   whatHappened: ["Qué ha ocurrido","What happened","发生了什么"],
   problemSync: ["No se pudo enviar información a SaaS","Information could not be sent to SaaS","信息未能发送到 SaaS"],
   problemPrinting: ["Se ha registrado un error de impresión","A printing error was reported","已上报打印错误"],

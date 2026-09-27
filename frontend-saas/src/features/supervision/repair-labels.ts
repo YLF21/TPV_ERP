@@ -1,5 +1,9 @@
 import { useI18n } from "../../i18n";
 const labels = {
+  linkedHelp: ["El caso tiene un ticket vinculado. Gestiona la asistencia y registra el resultado en el panel inferior.","This case has a linked ticket. Manage assistance and record the outcome in the panel below.","此故障已关联工单，请在下方面板管理协助并记录结果。"],
+  ticketDetails: ["Descripción y referencias del ticket","Ticket description and references","工单描述和参考信息"],
+  commentsTitle: ["Comentarios del ticket","Ticket comments","工单备注"],
+  commentHelp: ["Añade información de seguimiento. Para cambiar la fase, utiliza las acciones de asistencia.","Add follow-up information. Use the assistance actions to change the stage.","添加跟进信息。请使用协助操作更改处理阶段。"],
   reloadHelp: ["Consulta el estado de los intentos. Este botón no inicia ninguna reparación.","Check the state of attempts. This button does not start a repair.","查询处理尝试的状态，此按钮不会发起修复。"],
   nextAction: ["Qué puedes hacer ahora","What you can do now","现在可以怎么处理"],
   retryHelp: ["Solicita a la tienda que vuelva a enviar el evento pendiente. Escribe el motivo y pulsa Reintentar sincronización; después espera la confirmación de la tienda.","Ask the store to resend the pending event. Enter a reason and select Retry synchronization, then wait for the store's confirmation.","请求门店重新发送待处理事件。填写原因并点击重试同步，然后等待门店确认。"],

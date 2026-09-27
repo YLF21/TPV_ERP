@@ -109,7 +109,7 @@ export function FailureRepairsPanel({ credentials, failureKey, companyId, permis
     {data && <>
       {!error && !running && <div className="failure-next-action">
         <strong>{r("nextAction")}</strong>
-        <p>{r(data.remoteEligible ? "retryHelp" : !companyId ? "centralOnly" : data.commands[0]?.status === "SUCCEEDED" ? "confirmedHelp" : "unsupported")}</p>
+        <p>{r(data.manualTicketId ? "linkedHelp" : data.remoteEligible ? "retryHelp" : !companyId ? "centralOnly" : data.commands[0]?.status === "SUCCEEDED" ? "confirmedHelp" : "unsupported")}</p>
       </div>}
       {running && <p className="failure-next-action" role="status">{r("runningHint")}</p>}
       {pending && <p role="status">{r("pending")}</p>}
@@ -122,7 +122,11 @@ export function FailureRepairsPanel({ credentials, failureKey, companyId, permis
         </div>
         {((data.remoteEligible && !canRepair) || (needsManual && !data.manualTicketId && !canManual)) && <p>{r("permission")}</p>}
       </>}
-      {data.manualTicketId && <p>{r("ticket")}: <code>{data.manualTicketId}</code> <button type="button" onClick={() => void copyTicket(data.manualTicketId!)}>{r("copy")}</button> {onSupport && <button type="button" onClick={onSupport}>{r("support")}</button>}</p>}
+      {data.manualTicketId && <div className="linked-ticket-toolbar">
+        <div><strong>{r("ticket")}</strong><code>{data.manualTicketId}</code></div>
+        <div className="linked-ticket-tools"><button className="secondary-button" type="button" onClick={() => void copyTicket(data.manualTicketId!)}>{r("copy")}</button>
+        {onSupport && <button className="secondary-button linked-ticket-support" type="button" onClick={onSupport}>{r("support")} <span aria-hidden="true">→</span></button>}</div>
+      </div>}
       {data.manualTicketId && companyId && <LinkedFailureTicket key={data.manualTicketId} credentials={credentials} companyId={companyId} ticketId={data.manualTicketId} canManage={canManual} />}
       <div className="failure-attempts"><h5>{r("history")}</h5>
       {!data.commands.length && <p>{r("noCommands")}</p>}

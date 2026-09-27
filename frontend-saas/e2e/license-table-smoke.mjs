@@ -15,7 +15,17 @@ async function waitFor(check) {
   for (let index = 0; index < 100; index++) { const value = await check(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 50)); }
   throw new Error("Timed out waiting for expected browser/API state");
 }
-async function nav(page, name) { await page.locator(".top-nav-list").getByRole("button", { name, exact: true }).click(); }
+async function nav(page, name) {
+  const sidebar = page.locator(".top-nav-list");
+  const target = sidebar.getByRole("button", { name, exact: true });
+  if (!await target.isVisible()) {
+    for (const toggle of await sidebar.locator(".nav-group-toggle").all()) {
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+      if (await target.isVisible()) break;
+    }
+  }
+  await target.click();
+}
 async function setup(username = "LICENSE_DEMO", allowed = permissions, count = 3) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
   const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));

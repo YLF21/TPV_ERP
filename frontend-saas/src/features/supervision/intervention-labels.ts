@@ -1,5 +1,13 @@
 import { useI18n } from "../../i18n";
 const labels = {
+  remoteTools: ["Conexión con el cliente","Customer connection","连接客户"],
+  nextStep: ["Siguiente paso","Next step","下一步"],
+  notePlaceholder: ["Describe la actuación o el resultado antes de continuar.","Describe the action or outcome before continuing.","继续前请描述处理操作或结果。"],
+  REMOTE_PENDING_HELP: ["Inicia la asistencia remota o deriva el caso a una visita si necesita atención presencial.","Start remote assistance or refer the case for an on-site visit if needed.","开始远程协助，或在需要时转为现场处理。"],
+  REMOTE_IN_PROGRESS_HELP: ["Registra el resultado. Si has comprobado que funciona, resuelve la intervención; si no, deriva a una visita presencial.","Record the outcome. Resolve after checking it works, or refer for an on-site visit.","记录结果。确认恢复后完成处理，否则转现场处理。"],
+  ONSITE_REQUIRED_HELP: ["Coordina la visita con el cliente y registra su inicio cuando el técnico empiece a trabajar.","Arrange the visit with the customer and record its start when the technician begins work.","与客户安排上门时间，在技术人员开始工作时记录。"],
+  ONSITE_IN_PROGRESS_HELP: ["Comprueba el funcionamiento con el cliente y describe la solución antes de cerrar.","Check operation with the customer and describe the solution before closing.","关闭前请与客户确认运行情况并描述解决方法。"],
+  RESOLVED_HELP: ["La atención está cerrada. Si el problema continúa, escribe el motivo y reabre la intervención.","Support is closed. If the problem persists, enter the reason and reopen the intervention.","处理已关闭。如果问题仍然存在，请填写原因并重新打开。"],
   title: ["Asistencia remota y presencial", "Remote and on-site assistance", "远程与现场协助"],
   phase: ["Fase de intervención", "Intervention stage", "处理阶段"],
   note: ["Nota de la intervención (obligatoria)", "Intervention note (required)", "处理备注（必填）"],

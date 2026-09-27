@@ -75,24 +75,27 @@ export function LinkedFailureTicket({ credentials, companyId, ticketId, canManag
     }
     finally { if (current()) { busyRef.current = false; setBusy(false); } }
   }
-  return <section aria-label={f("ticket")} className="content-section">
-    <h5>{f("ticket")}</h5>
-    <p>{f("ticketScope")}</p>
+  return <section aria-label={f("ticket")} className="content-section linked-failure-ticket">
+    <p className="linked-ticket-scope">{f("ticketScope")}</p>
     {loading && <p role="status">{f("loading")}</p>}
     {error && <p role="alert">{error}</p>}
     {pendingWrite && <p role="status">{f("ticketPending")}</p>}
     {saved && <p role="status">{f("manualSaved")}</p>}
-    <button type="button" disabled={busy || interventionBusy || loading} onClick={() => setRevision(value => value + 1)}>{f("ticketReload")}</button>
+    <button className="secondary-button linked-ticket-refresh" type="button" disabled={busy || interventionBusy || loading} onClick={() => setRevision(value => value + 1)}>{f("ticketReload")}</button>
     {ticket && <>
-      <p><strong>{ticket.title}</strong> <StatusPill status={f(ticket.status === "RESUELTO" ? "ticketResolved" : ticket.status === "EN_CURSO" ? "ticketInProgress" : ticket.status === "ABIERTO" ? "ticketOpen" : "unknown")} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} /></p>
-      {ticket.description && <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{ticket.description}</p>}
-      {comments.map(item => <article key={item.id}><strong>{item.author}</strong> · {formatDate(item.createdAt)}<p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.message}</p></article>)}
+      <div className="linked-ticket-heading"><h5>{ticket.title}</h5> <StatusPill status={f(ticket.status === "RESUELTO" ? "ticketResolved" : ticket.status === "EN_CURSO" ? "ticketInProgress" : ticket.status === "ABIERTO" ? "ticketOpen" : "unknown")} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} /></div>
+      {ticket.description && <details className="linked-ticket-description"><summary>{f("ticketDetails")}</summary><p>{ticket.description}</p></details>}
+
       <TicketInterventionsPanel key={`${repairSession(credentials).id}:${ticketId}`} credentials={credentials} ticketId={ticketId} companyId={companyId} ticketStatus={ticket.status} canManage={canManage}
         blocked={loading || loadError || mustRefresh || busy || !!pendingWrite} refreshVersion={revision} onChanged={() => setRevision(value => value + 1)} onBusyChange={setInterventionBusy} />
+      <div className="linked-ticket-comments"><h6>{f("commentsTitle")}</h6>
+      {comments.map(item => <article className="linked-ticket-comment" key={item.id}><strong>{item.author}</strong> · {formatDate(item.createdAt)}<p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.message}</p></article>)}
       {canManage && <>
-        <label>{f("manualComment")}<textarea className="control-input" value={comment} maxLength={4000} disabled={busy || interventionBusy || !!pendingWrite} onChange={event => setComment(event.target.value)} /></label>
-        <button type="button" disabled={busy || interventionBusy || loading || loadError || mustRefresh || !comment.trim()} onClick={() => void write()}>{pendingWrite?.kind === "comment" ? f("retryComment") : t("addComment")}</button>
+        <p className="linked-ticket-hint">{f("commentHelp")}</p>
+        <label className="linked-ticket-note">{f("manualComment")}<textarea rows={3} className="control-input" value={comment} maxLength={4000} disabled={busy || interventionBusy || !!pendingWrite} onChange={event => setComment(event.target.value)} /></label>
+        <button className="secondary-button" type="button" disabled={busy || interventionBusy || loading || loadError || mustRefresh || !comment.trim()} onClick={() => void write()}>{pendingWrite?.kind === "comment" ? f("retryComment") : t("addComment")}</button>
       </>}
+      </div>
     </>}
   </section>;
 }
