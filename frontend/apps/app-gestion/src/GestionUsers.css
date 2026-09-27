@@ -1,0 +1,413 @@
+.gestion-users-workspace {
+  min-width: 0;
+  background: #fff;
+  color: #172e4c;
+}
+
+.gestion-users-workspace .gestion-security-header {
+  margin-bottom: 0;
+}
+
+.gestion-users-workspace .gestion-dashboard-actions button,
+.gestion-users-workspace .gestion-security-actions button,
+.gestion-users-dialog :is(.gestion-security-form, .gestion-confirm-content) footer button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #aebfd2;
+  border-radius: 0;
+  background: #f5f8fb;
+  color: #0a2a52;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gestion-users-workspace .gestion-dashboard-actions button.primary,
+.gestion-users-dialog :is(.gestion-security-form, .gestion-confirm-content) footer button.primary {
+  border-color: #12385f;
+  background: #12385f;
+  color: #fff;
+}
+
+.gestion-users-workspace .gestion-security-actions button.danger {
+  border-color: #b98787;
+  background: #fff;
+  color: #8a3030;
+}
+
+.gestion-users-workspace .gestion-dashboard-actions button:hover,
+.gestion-users-workspace .gestion-security-actions button:hover,
+.gestion-users-dialog :is(.gestion-security-form, .gestion-confirm-content) footer button:hover {
+  filter: brightness(.96);
+}
+
+.gestion-users-workspace :is(button, input):focus-visible,
+.gestion-users-dialog :is(button, input, select):focus-visible {
+  outline: 2px solid #1f5a94;
+  outline-offset: 2px;
+}
+
+.gestion-users-workspace .gestion-security-toolbar {
+  align-items: center;
+  padding: 10px 12px;
+  border-color: #c3d0dc;
+  background: #f3f7fb;
+}
+
+.gestion-users-workspace .gestion-security-toolbar label {
+  width: min(440px, 100%);
+  gap: 5px;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-users-workspace .gestion-security-toolbar input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #aebfd2;
+  border-radius: 0;
+  background: #fff;
+  color: #172e4c;
+  font: inherit;
+  font-size: 13px;
+}
+
+.gestion-users-workspace .gestion-security-toolbar > span {
+  flex: 0 0 auto;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gestion-users-workspace .gestion-security-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 320px);
+  border-color: #aebfd2;
+}
+
+.gestion-users-workspace .gestion-security-list {
+  border-right-color: #aebfd2;
+}
+
+.gestion-users-workspace .gestion-security-table {
+  width: 100%;
+  min-width: 0;
+}
+
+.gestion-users-workspace .gestion-security-table > .gestion-security-row {
+  min-height: 36px !important;
+}
+
+.gestion-users-workspace .gestion-security-table > .gestion-security-row.head {
+  background: #12385f !important;
+  color: #fff !important;
+}
+
+.gestion-users-workspace .gestion-security-table > .gestion-security-row > span {
+  min-height: 36px;
+  padding: 5px 8px;
+  border-right-color: #d9e3ec;
+  text-overflow: ellipsis;
+}
+
+.gestion-users-workspace .gestion-security-table > .gestion-security-row.head > .table-layout-header-cell {
+  padding: 0 !important;
+  overflow: visible;
+  border-right-color: #385b7e;
+}
+
+.gestion-users-workspace .gestion-security-row.head .table-layout-sort-button {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 36px;
+  gap: 3px;
+  margin: 0;
+  padding: 4px 4px 4px 16px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.gestion-users-workspace .gestion-security-row.head .table-layout-header-cell.movable > .table-layout-sort-button {
+  padding-left: 16px;
+}
+
+.gestion-users-workspace .gestion-security-row.head .table-layout-drag-handle {
+  width: 12px;
+}
+
+.gestion-users-workspace .gestion-security-row.head .table-layout-sort-indicator {
+  width: 13px;
+  height: 16px;
+}
+
+.gestion-users-workspace .gestion-security-row.head .table-layout-sort-indicator {
+  visibility: visible;
+  opacity: 1;
+}
+
+.gestion-users-workspace .gestion-security-row.head .table-layout-sort-label {
+  min-width: 0;
+  overflow: visible;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.gestion-users-workspace .gestion-security-table > .gestion-security-row[aria-selected="true"] {
+  --gestion-classic-row-background: #d8e9fb;
+  box-shadow: inset 3px 0 0 #1f5a94 !important;
+}
+
+.gestion-users-workspace .gestion-security-status {
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-users-workspace .gestion-security-status.active {
+  border-color: #c6dfcd;
+  background: #eaf5ed;
+  color: #21633d;
+}
+
+.gestion-users-workspace .gestion-security-status.inactive {
+  border-color: #d5dce3;
+  background: #eef1f4;
+  color: #5a6673;
+}
+
+.gestion-users-workspace .gestion-security-detail {
+  padding: 14px;
+  background: #f6f8fb;
+}
+
+.gestion-users-workspace .gestion-security-detail > header {
+  align-items: center;
+  gap: 8px;
+  border-bottom-color: #c3d0dc;
+}
+
+.gestion-users-workspace .gestion-security-detail h3 {
+  overflow-wrap: anywhere;
+}
+
+.gestion-users-workspace .gestion-security-detail dl {
+  border-color: #c3d0dc;
+}
+
+.gestion-users-workspace .gestion-security-detail dl div {
+  display: grid;
+  grid-template-columns: minmax(110px, 43%) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.gestion-users-workspace .gestion-security-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.gestion-users-workspace .gestion-security-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.gestion-users-workspace .gestion-security-actions button {
+  height: auto;
+  text-align: center;
+}
+
+.gestion-users-workspace .gestion-security-actions button:last-child {
+  grid-column: 1 / -1;
+}
+
+.gestion-security-dialog.gestion-users-dialog {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  min-height: 0;
+  border-color: #12385f;
+  border-radius: 2px;
+}
+
+.gestion-security-dialog.gestion-users-dialog-create {
+  width: min(740px, calc(100vw - 40px));
+}
+
+.gestion-users-dialog > header {
+  flex: 0 0 auto;
+  min-height: 54px;
+  padding: 0 18px;
+  background: #0a2a52;
+}
+
+.gestion-users-dialog > header h2 {
+  font-size: 19px;
+}
+
+.gestion-users-dialog > header button {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+}
+
+.gestion-users-dialog .gestion-users-form {
+  min-height: 0;
+  overflow-y: auto;
+  gap: 14px;
+  padding: 18px;
+  background: #fff;
+}
+
+.gestion-users-dialog .gestion-users-form-create {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gestion-users-dialog .gestion-users-form-create > label:has(select),
+.gestion-users-dialog .gestion-users-form-create > .gestion-inline-error,
+.gestion-users-dialog .gestion-users-form-create > footer {
+  grid-column: 1 / -1;
+}
+
+.gestion-users-dialog .gestion-users-form label {
+  min-width: 0;
+  gap: 6px;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-users-dialog .gestion-users-form :is(input, select) {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid #aebfd2;
+  border-radius: 0;
+  background-color: #fff;
+  color: #172e4c;
+  font: inherit;
+  font-size: 13px;
+}
+
+.gestion-users-dialog .gestion-users-form select {
+  appearance: none;
+  padding-right: 48px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E"), linear-gradient(#12385f, #12385f);
+  background-position: right 12px center, right center;
+  background-repeat: no-repeat;
+  background-size: 12px 8px, 36px 100%;
+  cursor: pointer;
+}
+
+.gestion-users-dialog .gestion-users-form :is(input, select):disabled,
+.gestion-users-dialog :is(.gestion-users-form, .gestion-confirm-content) footer button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.gestion-users-dialog .gestion-inline-error {
+  color: #972d2d;
+}
+
+.gestion-users-dialog :is(.gestion-users-form, .gestion-confirm-content) footer {
+  position: sticky;
+  bottom: -18px;
+  z-index: 1;
+  align-items: center;
+  min-height: 58px;
+  gap: 8px;
+  margin: 4px -18px -18px;
+  padding: 10px 18px;
+  border-top: 1px solid #d9e3ec;
+  background: #fff;
+}
+
+.gestion-users-dialog .gestion-confirm-content {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 18px 18px;
+}
+
+.gestion-users-dialog .gestion-confirm-content p {
+  line-height: 1.5;
+}
+
+@media (max-width: 1040px) {
+  .gestion-classic-tables .gestion-users-workspace,
+  .gestion-classic-tables .gestion-users-workspace:has(> .erp-filter-applied) {
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  .gestion-users-workspace .gestion-security-grid {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .gestion-users-workspace .gestion-security-list {
+    min-height: 260px;
+    max-height: 420px;
+    border-right: 0;
+    border-bottom: 1px solid #aebfd2;
+  }
+
+  .gestion-users-workspace .gestion-security-detail {
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 660px) {
+  .gestion-users-workspace .gestion-security-header,
+  .gestion-users-workspace .gestion-security-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .gestion-users-workspace .gestion-security-toolbar label {
+    width: 100%;
+  }
+
+  .gestion-users-workspace .gestion-security-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gestion-users-workspace .gestion-security-actions button:last-child {
+    grid-column: auto;
+  }
+
+  .gestion-users-dialog .gestion-users-form-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gestion-users-dialog .gestion-users-form-create > label:has(select),
+  .gestion-users-dialog .gestion-users-form-create > .gestion-inline-error,
+  .gestion-users-dialog .gestion-users-form-create > footer {
+    grid-column: auto;
+  }
+}

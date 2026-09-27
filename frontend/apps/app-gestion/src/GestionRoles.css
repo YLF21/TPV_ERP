@@ -1,0 +1,433 @@
+.gestion-role-workspace {
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  color: #172e4c;
+}
+
+.gestion-role-workspace .gestion-security-header {
+  margin-bottom: 0;
+}
+
+.gestion-role-workspace .gestion-dashboard-actions button,
+.gestion-role-workspace .gestion-role-header-actions button,
+.gestion-role-workspace .gestion-permission-editor > footer button,
+.gestion-roles-dialog :is(.gestion-security-form, .gestion-confirm-content) footer button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #aebfd2;
+  border-radius: 0;
+  background: #f5f8fb;
+  color: #0a2a52;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gestion-role-workspace .gestion-dashboard-actions button.primary,
+.gestion-role-workspace .gestion-permission-editor > footer button.primary,
+.gestion-roles-dialog :is(.gestion-security-form, .gestion-confirm-content) footer button.primary {
+  border-color: #12385f;
+  background: #12385f;
+  color: #fff;
+}
+
+.gestion-role-workspace .gestion-role-header-actions button.danger,
+.gestion-roles-dialog .gestion-confirm-content footer button.danger {
+  border-color: #b98787;
+  background: #fff;
+  color: #8a3030;
+}
+
+.gestion-role-workspace :is(button, input):focus-visible,
+.gestion-roles-dialog :is(button, input):focus-visible {
+  outline: 2px solid #1f5a94;
+  outline-offset: 2px;
+}
+
+.gestion-role-workspace .gestion-dashboard-actions button:hover,
+.gestion-role-workspace .gestion-role-header-actions button:hover,
+.gestion-role-workspace .gestion-permission-editor > footer button:hover,
+.gestion-roles-dialog :is(.gestion-security-form, .gestion-confirm-content) footer button:hover {
+  filter: brightness(.96);
+}
+
+.gestion-role-workspace button:disabled,
+.gestion-roles-dialog button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.gestion-role-workspace .gestion-role-layout {
+  min-height: 0;
+  border-color: #aebfd2;
+}
+
+.gestion-role-workspace .gestion-role-list {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border-right-color: #aebfd2;
+  background: #f3f7fb;
+  scrollbar-gutter: stable;
+}
+
+.gestion-role-workspace .gestion-role-list > label {
+  display: grid;
+  gap: 5px;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-role-workspace .gestion-role-list > label input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  margin-bottom: 9px;
+  padding: 0 10px;
+  border: 1px solid #aebfd2;
+  border-radius: 0;
+  background: #fff;
+  color: #172e4c;
+  font: inherit;
+  font-size: 13px;
+}
+
+.gestion-role-workspace .gestion-role-list > div:not(.erp-filter-applied) > button {
+  min-height: 48px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: #c3d0dc;
+  background: #fff;
+}
+
+.gestion-role-workspace .gestion-role-list > div:not(.erp-filter-applied) > button:hover {
+  background: #e8f1fa;
+}
+
+.gestion-role-workspace .gestion-role-list > div:not(.erp-filter-applied) > button.selected,
+.gestion-role-workspace .gestion-role-list > div:not(.erp-filter-applied) > button.selected:hover {
+  background: #d8e9fb;
+  box-shadow: inset 3px 0 0 #1f5a94;
+}
+
+.gestion-role-workspace .gestion-role-list button span {
+  min-width: 0;
+}
+
+.gestion-role-workspace .gestion-role-list button :is(strong, small),
+.gestion-role-workspace .gestion-permission-editor h3 {
+  overflow-wrap: anywhere;
+}
+
+.gestion-role-workspace .gestion-role-list button strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gestion-role-workspace .gestion-role-list button small {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-role-workspace .gestion-permission-editor {
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.gestion-role-workspace .gestion-permission-editor > header {
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-bottom-color: #c3d0dc;
+  background: #f6f8fb;
+}
+
+.gestion-role-workspace .gestion-permission-editor > header > div:first-child {
+  min-width: 0;
+}
+
+.gestion-role-workspace .gestion-permission-editor h3 {
+  margin-top: 2px;
+  font-size: 17px;
+}
+
+.gestion-role-workspace .gestion-role-header-actions {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.gestion-role-workspace .gestion-role-header-actions > strong {
+  margin-right: 4px;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gestion-role-workspace .gestion-permission-groups {
+  min-height: 0;
+  padding: 12px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: #fff;
+}
+
+.gestion-role-workspace .gestion-permission-groups > section {
+  margin-bottom: 11px;
+  border-color: #c3d0dc;
+}
+
+.gestion-role-workspace .gestion-permission-groups > section > header {
+  min-height: 40px;
+  padding: 5px 10px;
+  background: #12385f;
+  color: #fff;
+}
+
+.gestion-role-workspace .gestion-permission-groups > section > header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.gestion-role-workspace .gestion-permission-groups > section > header button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid #8ca9c6;
+  border-radius: 0;
+  background: #fff;
+  color: #12385f;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gestion-role-workspace .gestion-permission-groups > section > header button:hover {
+  background: #e8f1fa;
+}
+
+.gestion-role-workspace .gestion-permission-groups > section > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gestion-role-workspace .gestion-permission-groups label {
+  min-width: 0;
+  min-height: 46px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 9px;
+  border-color: #d9e3ec;
+  background: #fff;
+}
+
+.gestion-role-workspace .gestion-permission-groups label:nth-child(4n + 3),
+.gestion-role-workspace .gestion-permission-groups label:nth-child(4n + 4) {
+  background: #f2f6fa;
+}
+
+.gestion-role-workspace .gestion-permission-groups label:hover {
+  background: #e8f1fa;
+}
+
+.gestion-role-workspace .gestion-permission-groups input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #12385f;
+}
+
+.gestion-role-workspace .gestion-permission-groups label span {
+  min-width: 0;
+}
+
+.gestion-role-workspace .gestion-permission-groups label strong {
+  color: #172e4c;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.gestion-role-workspace .gestion-permission-groups label small {
+  color: #52667c;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.gestion-role-workspace .gestion-permission-editor > footer {
+  position: relative;
+  z-index: 1;
+  min-height: 56px;
+  flex-wrap: wrap;
+  padding: 8px 13px;
+  border-top-color: #c3d0dc;
+  background: #f3f7fb;
+}
+
+.gestion-role-workspace .gestion-permission-editor > footer .gestion-inline-error {
+  margin: 0 auto 0 0;
+  color: #972d2d;
+}
+
+.gestion-security-dialog.gestion-roles-dialog {
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-color: #12385f;
+  border-radius: 2px;
+}
+
+.gestion-roles-dialog > header {
+  flex: 0 0 auto;
+  min-height: 54px;
+  padding: 0 18px;
+  background: #0a2a52;
+}
+
+.gestion-roles-dialog > header h2 {
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+
+.gestion-roles-dialog > header button {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+}
+
+.gestion-roles-dialog :is(.gestion-security-form, .gestion-confirm-content) {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  background: #fff;
+}
+
+.gestion-roles-dialog .gestion-security-form label {
+  min-width: 0;
+  gap: 6px;
+  color: #52667c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-roles-dialog .gestion-security-form input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid #aebfd2;
+  border-radius: 0;
+  background: #fff;
+  color: #172e4c;
+  font: inherit;
+  font-size: 13px;
+}
+
+.gestion-roles-dialog .gestion-confirm-content p {
+  color: #172e4c;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gestion-roles-dialog .gestion-confirm-warning {
+  border-left-color: #b78332;
+  background: #fff8e8;
+  color: #664b1f !important;
+}
+
+.gestion-roles-dialog .gestion-inline-error,
+.gestion-roles-dialog .gestion-confirm-content .gestion-inline-error {
+  color: #972d2d;
+  font-weight: 700;
+}
+
+.gestion-roles-dialog :is(.gestion-security-form, .gestion-confirm-content) footer {
+  position: sticky;
+  bottom: -18px;
+  z-index: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  min-height: 58px;
+  gap: 8px;
+  margin: 4px -18px -18px;
+  padding: 10px 18px;
+  border-top: 1px solid #d9e3ec;
+  background: #fff;
+}
+
+@media (max-width: 950px) {
+  .gestion-role-workspace .gestion-role-layout {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(110px, 24%) minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .gestion-role-workspace .gestion-role-list {
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid #aebfd2;
+  }
+
+  .gestion-role-workspace .gestion-permission-groups > section > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gestion-role-workspace .gestion-permission-groups label {
+    border-right: 0;
+  }
+
+  .gestion-role-workspace .gestion-permission-groups label:nth-child(odd) {
+    background: #fff;
+  }
+
+  .gestion-role-workspace .gestion-permission-groups label:nth-child(even) {
+    background: #f2f6fa;
+  }
+
+  .gestion-role-workspace .gestion-permission-groups label:hover {
+    background: #e8f1fa;
+  }
+}
+
+@media (max-width: 620px) {
+  .gestion-role-workspace .gestion-security-header {
+    flex-wrap: wrap;
+  }
+
+  .gestion-role-workspace .gestion-role-header-actions {
+    justify-content: flex-start;
+  }
+
+  .gestion-role-workspace .gestion-role-header-actions > strong {
+    flex-basis: 100%;
+  }
+}
+
+@media (max-height: 560px) {
+  .gestion-role-workspace {
+    overflow-y: auto;
+  }
+
+  .gestion-role-workspace .gestion-role-layout {
+    min-height: 440px;
+  }
+}

@@ -123,7 +123,7 @@ public class TicketReportService {
         var memberBalanceResolution = memberBalances.resolve(pageValues);
 
         var items = pageValues.stream().map(ticket -> {
-            var customer = customerIndex.get(ticket.getClienteId());
+            var customer = ticket.getClienteId() == null ? null : customerIndex.get(ticket.getClienteId());
             var attribution = attributionIndex.getOrDefault(
                     ticket.getId(), DocumentAttributionResolver.Attribution.empty(ticket));
             var invoice = invoiceIndex.get(ticket.getId());

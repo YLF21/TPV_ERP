@@ -3,7 +3,6 @@ import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpF
 import {
   TableLayoutHeaderCell,
   sortTableRows,
-  tableLayoutGridTemplate,
   useTableLayoutPreference,
   useTableSortPreference,
   visibleTableColumns,
@@ -30,6 +29,8 @@ import {
   type SecurityRole,
   type SecurityUser
 } from "./securityAdministrationApi";
+import "./GestionUsers.css";
+import "./GestionRoles.css";
 
 type Translator = (key: string) => string;
 export type SecurityAdministrationMode = "users" | "roles";
@@ -89,7 +90,13 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
     columns: securityUserColumnDefinitions.map((column) => column.key),
     defaultSort: null
   });
-  const tableStyle = { gridTemplateColumns: tableLayoutGridTemplate(tableLayout.layout) } as CSSProperties;
+  const flexibleColumn = visibleColumns.some((column) => column.key === "name") ? "name" : visibleColumns[0]?.key;
+  const tableStyle = {
+    gridTemplateColumns: visibleColumns.map((column) => column.key === flexibleColumn
+      ? `minmax(${column.width}px, 1fr)`
+      : `${column.width}px`).join(" "),
+    minWidth: visibleColumns.reduce((width, column) => width + column.width, 0)
+  } as CSSProperties;
 
   async function refresh(preferredId = selectedId) {
     setLoading(true);
@@ -146,7 +153,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
   }
 
   return (
-    <section className="gestion-workspace gestion-security-workspace">
+    <section className="gestion-workspace gestion-security-workspace gestion-users-workspace">
       <SecurityHeader
         eyebrow={t("gestion.security.eyebrow")}
         title={t("gestion.users.title")}
@@ -261,6 +268,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
       )}
       {selected && confirmActive !== null && (
         <ConfirmDialog
+          className="gestion-users-dialog gestion-users-confirm-dialog"
           title={t(confirmActive ? "gestion.users.confirmActivateTitle" : "gestion.users.confirmDeactivateTitle")}
           text={t(confirmActive ? "gestion.users.confirmActivate" : "gestion.users.confirmDeactivate").replace("{name}", selected.name)}
           t={t}
@@ -330,8 +338,8 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
 
   const title = t(`gestion.users.dialog.${kind}`);
   return (
-    <Modal title={title} closeLabel={t("common.close")} onClose={onClose}>
-      <form className="gestion-security-form" onSubmit={submit}>
+    <Modal title={title} closeLabel={t("common.close")} onClose={onClose} className={`gestion-users-dialog gestion-users-dialog-${kind}`}>
+      <form className={`gestion-security-form gestion-users-form gestion-users-form-${kind}`} onSubmit={submit}>
         {(kind === "create" || kind === "identity") && (
           <>
             <label><span>{t("gestion.users.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
@@ -546,7 +554,7 @@ function CreateRoleDialog({ token, t, onClose, onCreated }: { token?: string; t:
     catch { setError(t("gestion.security.saveError")); }
     finally { setSaving(false); }
   }
-  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose}><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
+  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
 }
 
 function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
@@ -568,7 +576,7 @@ function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
     finally { setSaving(false); }
   }
   return (
-    <Modal title={t("gestion.roles.dialog.rename")} closeLabel={t("common.close")} onClose={onClose}>
+    <Modal title={t("gestion.roles.dialog.rename")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog">
       <form className="gestion-security-form" onSubmit={submit}>
         <label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
@@ -600,7 +608,7 @@ function DeleteRoleDialog({ role, token, t, onClose, onDeleted }: {
     }
   }
   return (
-    <Modal title={t("gestion.roles.dialog.delete")} closeLabel={t("common.close")} onClose={onClose}>
+    <Modal title={t("gestion.roles.dialog.delete")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog">
       <div className="gestion-confirm-content">
         <p>{t("gestion.roles.deleteConfirm").replace("{name}", role.name)}</p>
         <p className="gestion-confirm-warning">{t("gestion.roles.deleteRequirement")}</p>
@@ -633,12 +641,12 @@ function roleDeletionError(reason: unknown, t: Translator) {
   return t("gestion.security.saveError");
 }
 
-function Modal({ title, closeLabel, onClose, children }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode }) {
-  return <div className="gestion-modal-backdrop"><section className="gestion-security-dialog" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>×</button></header>{children}</section></div>;
+function Modal({ title, closeLabel, onClose, children, className = "" }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode; className?: string }) {
+  return <div className="gestion-modal-backdrop"><section className={`gestion-security-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>×</button></header>{children}</section></div>;
 }
 
-function ConfirmDialog({ title, text, t, onCancel, onConfirm }: { title: string; text: string; t: Translator; onCancel: () => void; onConfirm: () => void }) {
-  return <Modal title={title} closeLabel={t("common.close")} onClose={onCancel}><div className="gestion-confirm-content"><p>{text}</p><footer><button type="button" onClick={onCancel}>{t("common.cancel")}</button><button type="button" className="primary" onClick={onConfirm}>{t("common.confirm")}</button></footer></div></Modal>;
+function ConfirmDialog({ title, text, t, onCancel, onConfirm, className = "" }: { title: string; text: string; t: Translator; onCancel: () => void; onConfirm: () => void; className?: string }) {
+  return <Modal title={title} closeLabel={t("common.close")} onClose={onCancel} className={className}><div className="gestion-confirm-content"><p>{text}</p><footer><button type="button" onClick={onCancel}>{t("common.cancel")}</button><button type="button" className="primary" onClick={onConfirm}>{t("common.confirm")}</button></footer></div></Modal>;
 }
 
 function SecurityState({ error = false, children }: { error?: boolean; children: ReactNode }) {

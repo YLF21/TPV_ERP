@@ -19,7 +19,25 @@ public record SalesDocumentDetailView(
         BigDecimal discount,
         BigDecimal total,
         RelatedDocumentView originTicket,
-        List<LineView> lines) {
+        List<LineView> lines,
+        CashierView cashier,
+        List<AuthorizationView> authorizations) {
+
+    public SalesDocumentDetailView(UUID id, CommercialDocumentType type, DocumentStatus status,
+            String number, LocalDate date, BigDecimal base, BigDecimal tax, BigDecimal discount,
+            BigDecimal total, RelatedDocumentView originTicket, List<LineView> lines) {
+        this(id, type, status, number, date, base, tax, discount, total, originTicket, lines, null, List.of());
+    }
+
+    SalesDocumentDetailView withOperationAttribution(DocumentOperationAttributionService.Attribution attribution) {
+        return new SalesDocumentDetailView(id, type, status, number, date, base, tax, discount,
+                total, originTicket, lines, attribution.cashier(), List.copyOf(attribution.authorizations()));
+    }
+
+    public record CashierView(UUID userId, String userName) { }
+
+    public record AuthorizationView(String operationCode, UUID authorizerId, String authorizerName,
+            boolean delegated) { }
 
     static SalesDocumentDetailView from(CommercialDocument document) {
         return from(document, null);

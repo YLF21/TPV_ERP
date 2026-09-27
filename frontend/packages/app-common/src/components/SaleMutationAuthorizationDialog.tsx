@@ -12,6 +12,7 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
+import "./SaleMutationAuthorizationDialog.css";
 
 type Draft = {
   username: string;

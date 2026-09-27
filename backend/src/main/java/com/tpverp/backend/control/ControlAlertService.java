@@ -39,6 +39,12 @@ public class ControlAlertService {
     private final ControlAlertReadRepository read;
     private final CurrentOrganization organization;
     private final Clock clock;
+    private ControlAlertAuthorizationEvidence authorizationEvidence;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAuthorizationEvidence(ControlAlertAuthorizationEvidence authorizationEvidence) {
+        this.authorizationEvidence = authorizationEvidence;
+    }
 
     public ControlAlertService(
             ControlAlertRepository alerts,
@@ -336,9 +342,12 @@ public class ControlAlertService {
                     .put(new LineIdentity(Integer.toString(item.getPosition()), item.getProductId().toString()), item));
         }
         var result = new HashMap<UUID, AlertSummaryView>();
+        var authorizers = authorizationEvidence == null ? Map.<UUID, Map<String, Object>>of()
+                : authorizationEvidence.resolve(page.stream().map(ControlAlert::getEvent).toList());
         for (var alert : page) {
             result.put(alert.getId(), summary(alert, labels.get(alert.getId()),
-                    lineLabels.getOrDefault(alert.getId(), Map.of())));
+                    lineLabels.getOrDefault(alert.getId(), Map.of()),
+                    authorizers.getOrDefault(alert.getEvent().getId(), Map.of())));
         }
         return result;
     }
@@ -369,14 +378,17 @@ public class ControlAlertService {
 
     private static AlertSummaryView summary(ControlAlert alert,
             ControlAlertReadRepository.SummaryLabels labels,
-            Map<LineIdentity, ControlAlertReadRepository.EvidenceLineLabels> lineLabels) {
+            Map<LineIdentity, ControlAlertReadRepository.EvidenceLineLabels> lineLabels,
+            Map<String, Object> authorizer) {
         var event = alert.getEvent();
+        var data = new LinkedHashMap<>(evidenceData(event.getData(), lineLabels));
+        authorizer.forEach(data::putIfAbsent);
         return new AlertSummaryView(
                 alert.getId(), alert.getStatus(), event.getType(), event.getRuleId(),
                 event.getRuleVersion(), event.getRuleName(), event.getDocumentId(),
                 event.getDocumentNumber(), event.getTerminalId(),
                 event.getUserId(), event.getUserName(), event.getOccurredAt(),
-                evidenceData(event.getData(), lineLabels), alert.getPriority(), alert.getAssigneeId(), alert.getDueAt(),
+                data, alert.getPriority(), alert.getAssigneeId(), alert.getDueAt(),
                 alert.getUpdatedAt(), alert.getVersion(), labels == null ? null : labels.getTerminalName(),
                 labels == null ? null : labels.getReviewComment(), labels == null ? null : labels.getAssigneeName());
     }

@@ -15,6 +15,7 @@ import com.tpverp.backend.document.TicketGeneratedVoucherAlreadyUsedException;
 import com.tpverp.backend.document.TicketNotFoundException;
 import com.tpverp.backend.document.template.DocumentTemplateRequiredException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
+import com.tpverp.backend.security.application.OperationalAuthorizationCredentialsException;
 import com.tpverp.backend.security.application.TerminalDisabledException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
@@ -353,7 +354,7 @@ public class ApiExceptionHandler {
         return problem(
                 HttpStatus.FORBIDDEN,
                 SaleOperationAuthorizationDeniedException.CODE,
-                saleAuthorizationDeniedDetail(language),
+                saleAuthorizationDeniedDetail(language, exception),
                 language,
                 request);
     }
@@ -876,7 +877,22 @@ public class ApiExceptionHandler {
     }
 
     private static String saleAuthorizationDeniedDetail(
-            SupportedLanguage language) {
+            SupportedLanguage language,
+            SaleOperationAuthorizationDeniedException exception) {
+        if (exception.getCause() instanceof OperationalAuthorizationCredentialsException credentials) {
+            return switch (credentials.kind()) {
+                case CURRENT_PASSWORD -> switch (language) {
+                    case EN -> "The password is incorrect. Try again.";
+                    case ZH -> "密码错误，请重试。";
+                    default -> "La contraseña es incorrecta. Inténtalo de nuevo.";
+                };
+                case DELEGATED_CREDENTIALS -> switch (language) {
+                    case EN -> "The authorizer username or password is incorrect.";
+                    case ZH -> "授权人的用户名或密码错误。";
+                    default -> "El usuario o la contraseña del autorizador son incorrectos.";
+                };
+            };
+        }
         return switch (language) {
             case EN -> "Operational authorization was denied";
             case ZH -> "操作授权已被拒绝";
