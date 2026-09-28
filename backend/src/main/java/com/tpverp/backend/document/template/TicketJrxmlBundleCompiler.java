@@ -34,7 +34,8 @@ public class TicketJrxmlBundleCompiler {
     public static final Set<String> REQUIRED_FILENAMES = requiredFilenames();
     private static final Set<String> ALLOWED_TABLES = Set.of(
             "cliente", "configuracion_documento_impreso_tienda", "cupon_promocional",
-            "documento", "documento_ajuste", "documento_linea", "documento_pago", "empresa", "licencia",
+            "documento", "documento_ajuste", "documento_linea", "documento_pago",
+            "documento_relacion", "empresa", "licencia",
             "logo_documento_tienda", "metodo_pago", "payment_terminal_operation",
             "payment_terminal_receipt", "promocion", "registro_fiscal",
             "artefacto_registro_fiscal", "snapshot_impresion_fiscal",

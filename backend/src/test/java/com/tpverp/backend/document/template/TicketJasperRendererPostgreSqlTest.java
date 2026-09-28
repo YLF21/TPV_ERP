@@ -120,7 +120,8 @@ class TicketJasperRendererPostgreSqlTest {
         assertThat(rendered.pdf()).startsWith(0x25, 0x50, 0x44, 0x46);
         try (var pdf = Loader.loadPDF(rendered.pdf())) {
             assertThat(new PDFTextStripper().getText(pdf))
-                    .contains(fixture.document().getNumero(), "OBS-LINE-4", "QR tributario:");
+                    .contains(fixture.document().getNumero(), "OBS-LINE-4", "QR tributario:")
+                    .doesNotContain("Ticket devolución:", "Ticket original:");
             var observations = textBounds(pdf, "OBS-LINE-4");
             var qrPrefix = textBounds(pdf, "QR tributario:");
             assertThat(qrPrefix.top()).isGreaterThan(observations.bottom() + 2f);
@@ -128,6 +129,102 @@ class TicketJasperRendererPostgreSqlTest {
         var raster = ImageIO.read(new java.io.ByteArrayInputStream(rendered.png()));
         assertThat(raster.getWidth()).isEqualTo(576);
         assertThat(decodeQr(raster)).isEqualTo(QR_URL);
+    }
+
+    @ParameterizedTest(name = "cambio {0}")
+    @EnumSource(TicketPrintStyle.class)
+    void rendersPersistedExchangeReferencesBeforeArticles(TicketPrintStyle style) throws Exception {
+        var fixture = insertFixture();
+        var renderer = integratedRenderer(style);
+        var normal = renderer.renderForPrint(fixture.document());
+        var original = insertRelatedTicket(fixture.document(), "001-260823-000000", 10.00);
+        var refund = insertRelatedTicket(fixture.document(), "001-260823-000002", -10.00);
+        jdbc.update("insert into documento_relacion (documento_id, origen_id, tipo) values (?, ?, 'RECTIFICA')",
+                refund.getId(), original.getId());
+        jdbc.update("insert into documento_relacion (documento_id, origen_id, tipo) values (?, ?, 'COMPENSA')",
+                fixture.document().getId(), refund.getId());
+
+        var exchange = renderer.renderForPrint(fixture.document());
+        try (var plainPdf = Loader.loadPDF(normal.pdf());
+                var exchangePdf = Loader.loadPDF(exchange.pdf())) {
+            assertThat(new PDFTextStripper().getText(exchangePdf))
+                    .contains("Ticket devolución: " + refund.getNumero(),
+                            "Ticket original: " + original.getNumero());
+            var refundReference = textBounds(exchangePdf, "Ticket devolución:");
+            var originalReference = textBounds(exchangePdf, "Ticket original:");
+            var article = textBounds(exchangePdf, "Producto TEST");
+            assertThat(refundReference.top()).isLessThan(originalReference.top());
+            assertThat(originalReference.top()).isLessThan(article.top());
+            assertThat(article.top()).isGreaterThan(textBounds(plainPdf, "Producto TEST").top() + 20f);
+        }
+        assertThat(decodeQr(ImageIO.read(new java.io.ByteArrayInputStream(exchange.png()))))
+                .isEqualTo(QR_URL);
+        writePreview(style, exchange);
+
+        if (style == TicketPrintStyle.PRINCIPAL) {
+            var returned = renderer.renderForPrint(refund);
+            try (var refundPdf = Loader.loadPDF(returned.pdf())) {
+                assertThat(new PDFTextStripper().getText(refundPdf))
+                        .contains("Ticket original: " + original.getNumero())
+                        .doesNotContain("Ticket devolución:");
+            }
+        }
+    }
+
+    private TicketJasperRenderer integratedRenderer(TicketPrintStyle style) {
+        var storage = new DocumentTemplateArtifactStorage(temporaryDirectory);
+        var bundle = new BuiltInTicketJasperBundle(new TicketJrxmlBundleCompiler(), storage);
+        var printConfiguration = mock(StoreDocumentPrintConfigurationService.class);
+        when(printConfiguration.ticketTemplateOrigin()).thenReturn(TicketTemplateOrigin.INTEGRATED);
+        when(printConfiguration.ticketStyle()).thenReturn(style);
+        return new TicketJasperRenderer(
+                dataSource, mock(DocumentTemplateResolver.class), storage,
+                printConfiguration, bundle);
+    }
+
+    private CommercialDocument insertRelatedTicket(
+            CommercialDocument sale, String number, double total) {
+        var related = new CommercialDocument(
+                sale.getTiendaId(), sale.getAlmacenId(), CommercialDocumentType.TICKET,
+                sale.getFecha(), sale.getCreadoPor(), BigDecimal.ZERO);
+        related.addLine(new DocumentLine(
+                related, sale.getLineas().get(0).getProductoId(), 1,
+                total < 0 ? BigDecimal.ONE.negate() : BigDecimal.ONE,
+                "P-1", "Producto TEST", "VENTA", new BigDecimal("10.00"),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00")));
+        related.confirm(number, sale.getCreadoPor(), NOW, false);
+        jdbc.update("""
+                insert into documento (
+                    id, tienda_id, almacen_id, tipo, estado, numero, fecha,
+                    creado_en, confirmado_en, creado_por, confirmado_por, total)
+                values (?, ?, ?, 'TICKET', 'CONFIRMADO', ?, ?, ?, ?, ?, ?, ?)
+                """, related.getId(), related.getTiendaId(), related.getAlmacenId(),
+                related.getNumero(), related.getFecha(), timestamp(NOW.minusSeconds(30)),
+                timestamp(NOW), related.getCreadoPor(), related.getCreadoPor(), total);
+        jdbc.update("""
+                insert into documento_linea (
+                    id, documento_id, producto_id, posicion, cantidad, codigo, nombre, tarifa,
+                    precio_unitario, descuento, impuestos_incluidos, regimen_impuesto,
+                    porcentaje_impuesto, base, impuesto, total, tipo_linea)
+                select gen_random_uuid(), ?, producto_id, posicion, cantidad * ?, codigo, nombre, tarifa,
+                    precio_unitario, descuento, impuestos_incluidos, regimen_impuesto,
+                    porcentaje_impuesto, base * ?, impuesto * ?, total * ?, tipo_linea
+                from documento_linea where documento_id = ?
+                """, related.getId(), total < 0 ? -1 : 1, total < 0 ? -1 : 1,
+                total < 0 ? -1 : 1, total < 0 ? -1 : 1, sale.getId());
+        return related;
+    }
+
+    private static void writePreview(
+            TicketPrintStyle style, TicketJasperRenderer.RenderedTicket rendered)
+            throws Exception {
+        var configuredDirectory = System.getProperty("tpv.test.printPreviewDirectory");
+        if (configuredDirectory == null || configuredDirectory.isBlank()) return;
+        var directory = java.nio.file.Path.of(configuredDirectory);
+        java.nio.file.Files.createDirectories(directory);
+        var filename = "cambio-" + style.name().toLowerCase(java.util.Locale.ROOT);
+        java.nio.file.Files.write(directory.resolve(filename + ".pdf"), rendered.pdf());
+        java.nio.file.Files.write(directory.resolve(filename + ".png"), rendered.png());
     }
 
     @Test

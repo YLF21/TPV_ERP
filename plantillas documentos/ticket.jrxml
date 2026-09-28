@@ -27,9 +27,31 @@
 	<query language="sql"><![CDATA[SELECT
     1 AS dummy,
     d.cliente_id IS NOT NULL AS tiene_cliente,
-    EXISTS (SELECT 1 FROM documento_pago dp WHERE dp.documento_id = d.id) AS tiene_pago
+    EXISTS (SELECT 1 FROM documento_pago dp WHERE dp.documento_id = d.id) AS tiene_pago,
+    compensacion.numero AS numero_devolucion,
+    original.numero AS numero_original
 FROM documento d
-WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
+LEFT JOIN LATERAL (
+    SELECT devolucion.id, devolucion.numero
+    FROM documento_relacion relacion
+    JOIN documento devolucion ON devolucion.id = relacion.origen_id
+        AND devolucion.tienda_id = d.tienda_id
+    WHERE relacion.documento_id = d.id AND relacion.tipo = 'COMPENSA'
+    ORDER BY devolucion.numero
+    LIMIT 1
+) compensacion ON TRUE
+LEFT JOIN LATERAL (
+    SELECT origen.numero
+    FROM documento_relacion relacion
+    JOIN documento origen ON origen.id = relacion.origen_id
+        AND origen.tienda_id = d.tienda_id
+    WHERE relacion.documento_id = COALESCE(compensacion.id, d.id)
+        AND relacion.tipo = 'RECTIFICA'
+    ORDER BY origen.numero
+    LIMIT 1
+) original ON TRUE
+WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
+  AND d.tienda_id = CAST($P{TIENDA_ID} AS uuid)]]></query>
 	<field name="dummy" class="java.lang.Integer">
 		<property name="com.jaspersoft.studio.field.name" value="dummy"/>
 		<property name="com.jaspersoft.studio.field.label" value="dummy"/>
@@ -44,6 +66,8 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 		<property name="com.jaspersoft.studio.field.label" value="tiene_pago"/>
 		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
 	</field>
+	<field name="numero_devolucion" class="java.lang.String"/>
+	<field name="numero_original" class="java.lang.String"/>
 	<background splitType="Stretch"/>
 	<title height="67">
 		<element kind="subreport" uuid="c4bd1278-d456-4d61-8d05-a8c9c2aed29f" x="0" y="0" width="204" height="65">
@@ -68,6 +92,18 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)]]></query>
 		</element>
 	</title>
 	<detail>
+		<band height="12" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{numero_devolucion} != null && !$F{numero_devolucion}.isBlank()]]></printWhenExpression>
+			<element kind="textField" uuid="c0a467ee-95ad-4ad1-91d8-e118b17a2b64" x="3" y="0" width="201" height="12" fontSize="8.0" textAdjust="StretchHeight">
+				<expression><![CDATA["Ticket devolución: " + $F{numero_devolucion}]]></expression>
+			</element>
+		</band>
+		<band height="12" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{numero_original} != null && !$F{numero_original}.isBlank()]]></printWhenExpression>
+			<element kind="textField" uuid="9944594d-b4a1-4714-b3b8-472841d16515" x="3" y="0" width="201" height="12" fontSize="8.0" textAdjust="StretchHeight">
+				<expression><![CDATA["Ticket original: " + $F{numero_original}]]></expression>
+			</element>
+		</band>
 		<band height="3" splitType="Stretch">
 			<element kind="subreport" uuid="e2723f0c-d7b7-4b4e-ac39-f184dd0f1bf5" x="0" y="0" width="204" height="1">
 				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
