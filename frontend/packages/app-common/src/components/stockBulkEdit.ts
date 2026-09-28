@@ -696,6 +696,17 @@ export function buildStockBulkUpdates(rows: StockBulkEditRowData[]): StockBulkPr
   });
 }
 
+/** Exchange the effective identifiers while keeping the rest of each draft intact. */
+export function swapStockBulkCodeAndBarcode(rows: StockBulkEditRowData[], rowIds: string[]): StockBulkEditRowData[] {
+  const targetIds = new Set(rowIds);
+  return rows.map((row) => {
+    if (!targetIds.has(row.id)) return row;
+    const code = text(row.draft.code ?? row.product?.code);
+    const barcode = text(row.draft.barcode ?? row.product?.barcode);
+    return { ...row, draft: { ...row.draft, code: barcode, barcode: code } };
+  });
+}
+
 export function stockBulkEffectiveProduct(row: StockBulkEditRowData): StockInventoryRow | undefined {
   if (!row.product) {
     return undefined;

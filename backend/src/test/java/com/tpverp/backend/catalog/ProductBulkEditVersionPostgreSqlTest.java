@@ -19,6 +19,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -108,6 +110,39 @@ class ProductBulkEditVersionPostgreSqlTest {
     }
 
     @Test
+    void resolvesGlobalCreatorAndStoreEditorNamesOnSavedLists() {
+        UUID globalRoleId = UUID.randomUUID();
+        UUID globalUserId = UUID.randomUUID();
+        jdbc.update("insert into rol (id,tienda_id,nombre,protegido) values (?,null,'ADMIN',true)", globalRoleId);
+        jdbc.update("insert into usuario (id,tienda_id,nombre,password_hash,rol_id,user_name,protegido) values (?,null,'ADMIN','test',?,'Administrador global',true)",
+                globalUserId, globalRoleId);
+        UserAccount manager = organization.currentUser(authentication);
+        UserAccount globalUser = mock(UserAccount.class);
+        when(globalUser.getId()).thenReturn(globalUserId);
+        when(organization.currentUser(authentication)).thenReturn(globalUser);
+
+        var created = service.create(new ProductBulkEditService.ProductBulkCreateRequest("Autores", List.of()), authentication);
+        assertThat(created.createdBy()).isEqualTo("Administrador global");
+        assertThat(created.updatedBy()).isEqualTo("Administrador global");
+        var commented = service.addComment(created.id(), new ProductBulkEditService.ProductBulkCommentRequest("Revision global"), authentication);
+        assertThat(commented.comments().getFirst().username()).isEqualTo("Administrador global");
+
+        when(organization.currentUser(authentication)).thenReturn(manager);
+        var renamed = service.rename(created.id(),
+                new ProductBulkEditService.ProductBulkRenameRequest(commented.version(), "Autores revisados"), authentication);
+        for (var view : List.of(renamed, service.get(created.id()), service.list().getFirst())) {
+            assertThat(view.createdById()).isEqualTo(globalUserId);
+            assertThat(view.createdBy()).isEqualTo("Administrador global");
+            assertThat(view.updatedById()).isEqualTo(manager.getId());
+            assertThat(view.updatedBy()).isEqualTo("Gestor");
+            assertThat(view.comments().getFirst().userId()).isEqualTo(globalUserId);
+            assertThat(view.comments().getFirst().username()).isEqualTo("Administrador global");
+        }
+        assertThat(jdbc.queryForObject("select creado_por from producto_edicion_masiva where id = ?", UUID.class, created.id()))
+                .isEqualTo(globalUserId);
+    }
+
+    @Test
     void returnedVersionsAllowFamilyAndTaxChangesThenAnotherApplication() {
         var base = new TransactionTemplate(transactionManager).execute(status ->
                 ProductBulkEditContent.ProductData.fromProduct(catalog.createProduct(request(familyId, taxId))));
@@ -167,6 +202,69 @@ class ProductBulkEditVersionPostgreSqlTest {
         assertThat(jdbc.queryForObject("select estado from producto_edicion_masiva where id = ?", String.class, saved.id())).isEqualTo("PENDING");
     }
 
+    @ParameterizedTest
+    @CsvSource(value = {
+            "00123, 00841, 00841, 00123",
+            "00123, NULL, NULL, 00123",
+            "NULL, 00841, 00841, NULL"
+    }, nullValues = "NULL")
+    void appliesSavedCodeBarcodeExchangeAndPreservesSecondaryBarcode(
+            String code, String barcode, String expectedCode, String expectedBarcode) {
+        String barcode2 = "00999";
+        var base = new TransactionTemplate(transactionManager).execute(status ->
+                ProductBulkEditContent.ProductData.fromProduct(
+                        catalog.createProduct(request(familyId, taxId, code, barcode, barcode2))));
+        var created = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Intercambio de identificadores", List.of(row(base, ProductBulkEditContent.ProductData.empty()))),
+                authentication);
+        // Empty draft values explicitly remove identifiers; null would retain the snapshot value.
+        String draftCode = expectedCode == null ? "" : expectedCode;
+        String draftBarcode = expectedBarcode == null ? "" : expectedBarcode;
+        var changed = identifierData(base, draftCode, draftBarcode);
+        var saved = service.update(created.id(), new ProductBulkEditService.ProductBulkUpdateRequest(
+                created.version(), created.name(), List.of(row(base, changed))), authentication);
+        var reopened = service.get(saved.id());
+        assertThat(reopened.content().getFirst().effectiveProduct().code()).isEqualTo(draftCode);
+        assertThat(reopened.content().getFirst().effectiveProduct().barcode()).isEqualTo(draftBarcode);
+
+        var applied = service.apply(reopened.id(), new ProductBulkEditService.ProductBulkApplyRequest(
+                reopened.version(), List.of(new CatalogService.BulkProductUpdate(
+                        base.productId(), base.version(),
+                        request(familyId, taxId, expectedCode, expectedBarcode, barcode2))),
+                List.of(), reopened.content()), authentication);
+
+        assertThat(applied.status()).isEqualTo(ProductBulkEditStatus.APPLIED);
+        var result = applied.content().getFirst();
+        assertThat(result.product().productId()).isEqualTo(base.productId());
+        assertThat(result.product().code()).isEqualTo(draftCode);
+        assertThat(result.product().barcode()).isEqualTo(draftBarcode);
+        assertThat(result.product().barcode2()).isEqualTo(barcode2);
+        assertThat(result.draft()).isEqualTo(ProductBulkEditContent.ProductData.empty());
+        assertPersistenceVersions(applied);
+        assertPersistedIdentifier(base.productId(), "CODIGO", expectedCode);
+        assertPersistedIdentifier(base.productId(), "CODIGO_BARRAS", expectedBarcode);
+        assertPersistedIdentifier(base.productId(), "CODIGO_BARRAS_2", barcode2);
+        assertThat(service.get(applied.id()).content()).isEqualTo(applied.content());
+    }
+
+    private void assertPersistedIdentifier(UUID productId, String type, String expectedValue) {
+        assertThat(jdbc.queryForList(
+                "select valor from producto_identificador where producto_id = ? and tipo = ?",
+                String.class, productId, type))
+                .isEqualTo(expectedValue == null ? List.of() : List.of(expectedValue));
+    }
+
+    private static ProductBulkEditContent.ProductData identifierData(
+            ProductBulkEditContent.ProductData p, String code, String barcode) {
+        return new ProductBulkEditContent.ProductData(p.productId(), p.version(), p.imageId(), p.warehouseId(),
+                code, barcode, p.barcode2(), p.name(), p.description(), p.comments(), p.purchasePrice(),
+                p.purchaseDiscountPercent(), p.salePrice(), p.memberPrice(), p.wholesalePrice(), p.offerPrice(),
+                p.offerDiscountPercent(), p.productType(), p.discountType(), p.backendDiscountType(),
+                p.familyId(), p.familyName(), p.subfamilyId(), p.subfamilyName(), p.taxId(), p.taxName(), p.taxesIncluded(),
+                p.offerActive(), p.offerFrom(), p.offerUntil(), p.warehouseName(), p.quantity(), p.totalQuantity(),
+                p.stockMin(), p.stockMax(), p.active(), p.packageQuantity());
+    }
+
     private ProductBulkEditView applyClassification(ProductBulkEditView current, ProductBulkEditContent.ProductData base, UUID family, UUID tax) {
         var changed = classificationData(base, family, tax);
         var saved = service.update(current.id(), new ProductBulkEditService.ProductBulkUpdateRequest(current.version(), current.name(), List.of(row(base, changed))), authentication);
@@ -197,8 +295,13 @@ class ProductBulkEditVersionPostgreSqlTest {
     }
 
     private static CatalogService.ProductRequest request(UUID family, UUID tax) {
+        return request(family, tax, "P-1", null, null);
+    }
+
+    private static CatalogService.ProductRequest request(
+            UUID family, UUID tax, String code, String barcode, String barcode2) {
         return new CatalogService.ProductRequest(family, null, tax, ProductType.UNIT, DiscountType.NORMAL,
-                PriceUseMode.NORMAL, "PRODUCTO", null, null, BigDecimal.TEN, true, "P-1", null, null,
+                PriceUseMode.NORMAL, "PRODUCTO", null, null, BigDecimal.TEN, true, code, barcode, barcode2,
                 new BigDecimal("12.00"), null, null, null, null, BigDecimal.ZERO, false, null, null,
                 null, null, BigDecimal.ONE, true);
     }

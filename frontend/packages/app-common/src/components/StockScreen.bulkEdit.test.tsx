@@ -166,6 +166,83 @@ async function applyChanges() {
 }
 
 describe("Stock bulk editing save and apply", () => {
+  it("confirms only selected products, cancels without mutation, and undoes the exchange", async () => {
+    const first = { ...initialProduct, code: "2004461", barcode: "8435606744034", barcode2: "000091" };
+    const second = { ...initialProduct, productId: "product-2", code: "00022", barcode: "00033" };
+    const content = [
+      { ...rowFor(first), id: "row-first", draft: { description: "Edición previa" } },
+      { ...rowFor(second), id: "row-second", selected: false }
+    ];
+    const backend = mockBulkEditing([], { content });
+    const { container } = await openWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Información de productos" }));
+    const firstRow = () => container.querySelector<HTMLElement>('[data-bulk-row-id="row-first"]')!;
+    const secondRow = () => container.querySelector<HTMLElement>('[data-bulk-row-id="row-second"]')!;
+    const openSelected = () => {
+      fireEvent.click(screen.getByRole("button", { name: /Editar seleccionado/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Intercambiar código y código de barras" }));
+      return screen.getByRole("dialog", { name: "Intercambiar código y código de barras" });
+    };
+
+    let dialog = openSelected();
+    expect(within(dialog).getByText(/selección \(1\)/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(firstRow().textContent).toContain("2004461");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Editar seleccionado/ })));
+    expect(backend.saves).toHaveLength(0);
+
+    dialog = openSelected();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Intercambiar código y código de barras" })).toBeNull();
+    expect(firstRow().textContent).toContain("2004461");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Editar seleccionado/ })));
+
+    dialog = openSelected();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar" }));
+    expect(firstRow().querySelector(".bulk-code-value")?.textContent).toBe("8435606744034");
+    expect(secondRow().querySelector(".bulk-code-value")?.textContent).toBe("00022");
+
+    dialog = openSelected();
+    const confirm = within(dialog).getByRole("button", { name: "Confirmar" });
+    ["s", "z", "a"].forEach((key) => fireEvent.keyDown(confirm, { key, ctrlKey: true }));
+    await Promise.resolve();
+    expect(screen.getByRole("dialog", { name: "Intercambiar código y código de barras" })).toBe(dialog);
+    expect(firstRow().querySelector(".bulk-code-value")?.textContent).toBe("8435606744034");
+    expect(backend.saves).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    expect(firstRow().querySelector(".bulk-code-value")?.textContent).toBe("2004461");
+    expect(backend.saves).toHaveLength(0);
+  });
+
+  it("quick edit exchanges every list product, including an unselected row hidden by search, and sends the original versions", async () => {
+    const first = { ...initialProduct, code: "2004461", barcode: "8435606744034", barcode2: "000091" };
+    const second = { ...initialProduct, productId: "product-2", code: "00022", barcode: "00033" };
+    const content = [
+      { ...rowFor(first), id: "row-first", draft: { description: "Edición previa" } },
+      { ...rowFor(second), id: "row-second", selected: false }
+    ];
+    const backend = mockBulkEditing([{ ...first, version: 5 }], { content });
+    const { container } = await openWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Información de productos" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar en la lista" }), { target: { value: "2004461" } });
+    expect(container.querySelector('[data-bulk-row-id="row-second"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edición rápida" }));
+    fireEvent.click(screen.getByRole("button", { name: "Intercambiar código y código de barras" }));
+    const dialog = screen.getByRole("dialog", { name: "Intercambiar código y código de barras" });
+    expect(within(dialog).getByText(/toda la lista \(2\)/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar" }));
+    expect(screen.getByText("8435606744034")).toBeTruthy();
+    expect(backend.saves).toHaveLength(0);
+    await applyChanges();
+    expect(backend.applies[0].body.updates).toHaveLength(2);
+    expect(backend.applies[0].body.updates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productId: "product-1", expectedVersion: 4, product: expect.objectContaining({ code: "8435606744034", barcode: "2004461", barcode2: "000091", description: "Edición previa" }) }),
+      expect.objectContaining({ productId: "product-2", expectedVersion: 4, product: expect.objectContaining({ code: "00033", barcode: "00022" }) })
+    ]));
+  });
+
   it.each([
     { app: "venta" as const, expectedCodes: ["1", "2", "10"] },
     { app: "gestion" as const, expectedCodes: ["10", "2", "1"] }

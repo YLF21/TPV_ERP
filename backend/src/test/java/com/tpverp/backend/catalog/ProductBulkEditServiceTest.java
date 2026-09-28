@@ -16,8 +16,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,6 +77,95 @@ class ProductBulkEditServiceTest {
                 subfamilies,
                 taxes,
                 Clock.fixed(Instant.parse("2026-07-11T10:00:00Z"), ZoneOffset.UTC));
+    }
+
+    @Test
+    void listsReferencedActorsInOneQueryIncludingGlobalAndOtherStoreUsers() {
+        UUID adminId = UUID.randomUUID();
+        UUID editorId = UUID.randomUUID();
+        UUID appliedId = UUID.randomUUID();
+        UUID commenterId = UUID.randomUUID();
+        ProductBulkEdit first = editCreatedBy(adminId);
+        first.apply(first.getContenido(), appliedId, Instant.parse("2026-07-11T09:10:00Z"));
+        first.addComment("Revisado", commenterId, Instant.parse("2026-07-11T09:20:00Z"));
+        first.rename("Lista revisada", editorId, Instant.parse("2026-07-11T09:30:00Z"));
+        ProductBulkEdit second = editCreatedBy(editorId);
+        second.addComment("Pendiente", adminId, Instant.parse("2026-07-11T09:40:00Z"));
+        when(repository.findByStoreIdOrderByActualizadoEnDesc(storeId)).thenReturn(List.of(first, second));
+
+        UserAccount admin = org.mockito.Mockito.mock(UserAccount.class);
+        UserAccount editor = org.mockito.Mockito.mock(UserAccount.class);
+        UserAccount applied = org.mockito.Mockito.mock(UserAccount.class);
+        UserAccount commenter = org.mockito.Mockito.mock(UserAccount.class);
+        when(admin.getId()).thenReturn(adminId);
+        when(admin.getUserName()).thenReturn("admin-global");
+        when(editor.getId()).thenReturn(editorId);
+        when(editor.getUserName()).thenReturn("editor-otra-tienda");
+        when(applied.getId()).thenReturn(appliedId);
+        when(applied.getUserName()).thenReturn("aplicador");
+        when(commenter.getId()).thenReturn(commenterId);
+        when(commenter.getUserName()).thenReturn("comentarista");
+        when(users.findAllById(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(admin, editor, applied, commenter));
+
+        List<ProductBulkEditView> views = service.list();
+
+        assertThat(views).hasSize(2);
+        assertThat(views.getFirst().createdById()).isEqualTo(adminId);
+        assertThat(views.getFirst().createdBy()).isEqualTo("admin-global");
+        assertThat(views.getFirst().updatedById()).isEqualTo(editorId);
+        assertThat(views.getFirst().updatedBy()).isEqualTo("editor-otra-tienda");
+        assertThat(views.getFirst().appliedById()).isEqualTo(appliedId);
+        assertThat(views.getFirst().appliedBy()).isEqualTo("aplicador");
+        assertThat(views.getFirst().comments()).singleElement().satisfies(comment -> {
+            assertThat(comment.userId()).isEqualTo(commenterId);
+            assertThat(comment.username()).isEqualTo("comentarista");
+        });
+        assertThat(views.getLast().createdBy()).isEqualTo("editor-otra-tienda");
+        assertThat(views.getLast().comments().getFirst().username()).isEqualTo("admin-global");
+        verify(users, times(1)).findAllById(org.mockito.ArgumentMatchers.argThat(ids -> {
+            Set<UUID> actual = new HashSet<>();
+            ids.forEach(actual::add);
+            return actual.equals(Set.of(adminId, editorId, appliedId, commenterId));
+        }));
+        verify(users, never()).findAllByTiendaIdOrderByNombre(storeId);
+    }
+
+    @Test
+    void keepsMissingActorIdsButShowsNoUuidAsTheirNames() {
+        UUID creatorId = UUID.randomUUID();
+        UUID commenterId = UUID.randomUUID();
+        UUID appliedId = UUID.randomUUID();
+        ProductBulkEdit edit = editCreatedBy(creatorId);
+        edit.addComment("Revisado", commenterId, Instant.parse("2026-07-11T09:20:00Z"));
+        edit.apply(edit.getContenido(), appliedId, Instant.parse("2026-07-11T09:30:00Z"));
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        ProductBulkEditView opened = service.get(edit.getId());
+
+        assertThat(opened.createdById()).isEqualTo(creatorId);
+        assertThat(opened.createdBy()).isEqualTo("-");
+        assertThat(opened.updatedById()).isEqualTo(appliedId);
+        assertThat(opened.updatedBy()).isEqualTo("-");
+        assertThat(opened.appliedById()).isEqualTo(appliedId);
+        assertThat(opened.appliedBy()).isEqualTo("-");
+        assertThat(opened.comments()).singleElement().satisfies(comment -> {
+            assertThat(comment.userId()).isEqualTo(commenterId);
+            assertThat(comment.username()).isEqualTo("-");
+        });
+        verify(users).findAllById(org.mockito.ArgumentMatchers.argThat(ids -> {
+            Set<UUID> actual = new HashSet<>();
+            ids.forEach(actual::add);
+            return actual.equals(Set.of(creatorId, commenterId, appliedId));
+        }));
+    }
+
+    @Test
+    void skipsUserLookupWhenThereAreNoLists() {
+        when(repository.findByStoreIdOrderByActualizadoEnDesc(storeId)).thenReturn(List.of());
+
+        assertThat(service.list()).isEmpty();
+
+        verify(users, never()).findAllById(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
