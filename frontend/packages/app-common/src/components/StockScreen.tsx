@@ -51,6 +51,7 @@ import {
   stockBulkClassificationCodesForRows,
   stockBulkDisplayedSupplier,
   stockBulkEffectiveProduct,
+  swapStockBulkCodeAndBarcode,
   stockOfferPriceFromDiscount,
   stockBulkVersionedDeletePath,
   stockBulkRequestConflict,
@@ -166,6 +167,7 @@ type BulkSelectedAction =
   | "supplier"
   | "principalSupplier"
   | "family"
+  | "swapCodeBarcode"
   | BulkValueField
   | "benefit"
   | "priceUse"
@@ -481,7 +483,7 @@ export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelecte
     "priceUse", "offerActive", "offerDates", "tax", "taxesIncluded", "productActive", "supplier",
     "principalSupplier", "family"
   ],
-  info: ["tax", "taxesIncluded", "productActive", "supplier", "principalSupplier", "family"],
+  info: ["swapCodeBarcode", "tax", "taxesIncluded", "productActive", "supplier", "principalSupplier", "family"],
   salePrice: ["purchasePrice", "salePrice", "benefit", "priceUse", "productActive", "supplier", "principalSupplier", "family"],
   memberPrice: ["purchasePrice", "memberPrice", "benefit", "priceUse", "productActive", "supplier", "principalSupplier", "family"],
   wholesalePrice: ["purchasePrice", "wholesalePrice", "benefit", "priceUse", "productActive", "supplier", "principalSupplier", "family"],
@@ -2251,6 +2253,7 @@ export function StockScreen({
   const [bulkDecimalDialogOpen, setBulkDecimalDialogOpen] = useState(false);
   const [bulkPriceRulesOpen, setBulkPriceRulesOpen] = useState(false);
   const [bulkEditorDialog, setBulkEditorDialog] = useState<BulkEditorDialog>(null);
+  const [bulkSwapConfirmation, setBulkSwapConfirmation] = useState<{ scope: "selected" | "all"; rowIds: string[] } | null>(null);
   const [bulkEditorSearch, setBulkEditorSearch] = useState("");
   const [bulkExpandedFamilies, setBulkExpandedFamilies] = useState<Record<string, boolean>>({});
   const [bulkValidationErrors, setBulkValidationErrors] = useState<StockBulkValidationError[]>([]);
@@ -2883,7 +2886,9 @@ export function StockScreen({
       const editingText = target?.matches("input, textarea, select, [contenteditable='true']") ?? false;
       if (event.key === "Escape") {
         event.preventDefault();
-        if (bulkQuickEditOpen) {
+        if (bulkSwapConfirmation) {
+          closeBulkSwapConfirmation(bulkSwapConfirmation.scope);
+        } else if (bulkQuickEditOpen) {
           setBulkQuickEditOpen(false);
         } else if (bulkQuickEditField) {
           setBulkQuickEditField(null);
@@ -2921,6 +2926,10 @@ export function StockScreen({
         metaKey: event.metaKey,
         editingText
       });
+      if (bulkSwapConfirmation) {
+        if (shortcut) event.preventDefault();
+        return;
+      }
       if (shortcut === "save") {
         event.preventDefault();
         if (activeBulkDraft || bulkDraftName.trim()) {
@@ -2938,7 +2947,7 @@ export function StockScreen({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeBulkDraft, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkWorkspaceView, selectedView, session.accessToken]);
+  }, [activeBulkDraft, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
 
   useEffect(() => {
     if (!bulkFileOpen && !bulkEditSelectedOpen && !bulkQuickEditOpen) {
@@ -3541,7 +3550,8 @@ export function StockScreen({
       offerDates: "product.field.offerRange",
       tax: "stock.bulkEdit.taxPercent",
       taxesIncluded: "stock.bulkEdit.taxesIncluded",
-      productActive: "stock.bulkEdit.productActivation"
+      productActive: "stock.bulkEdit.productActivation",
+      swapCodeBarcode: "stock.bulkEdit.swapCodeBarcode"
     };
     return labels[action];
   }
@@ -3571,7 +3581,7 @@ export function StockScreen({
   }
 
   function openBulkEditor(
-    action: Exclude<BulkSelectedAction, "supplier" | "principalSupplier">,
+    action: Exclude<BulkSelectedAction, "supplier" | "principalSupplier" | "swapCodeBarcode">,
     rowIds: string[]
   ) {
     const firstRow = bulkRows.find((row) => rowIds.includes(row.id));
@@ -3667,6 +3677,10 @@ export function StockScreen({
   }
 
   function handleBulkSelectedAction(action: BulkSelectedAction) {
+    if (action === "swapCodeBarcode") {
+      openBulkSwapConfirmation("selected");
+      return;
+    }
     const rowIds = selectedBulkRowIds();
     if (rowIds.length === 0) {
       setBulkStatus(t("stock.bulkEdit.selectProductsFirst"));
@@ -3683,6 +3697,37 @@ export function StockScreen({
     }
     bulkEditorReturnFocusRef.current = null;
     openBulkEditor(action, rowIds);
+  }
+
+  function openBulkSwapConfirmation(scope: "selected" | "all") {
+    const rowIds = bulkRows
+      .filter((row) => (scope === "all" || row.selected)
+        && (row.product || row.draft.code != null || row.draft.barcode != null))
+      .map((row) => row.id);
+    setBulkEditSelectedOpen(false);
+    setBulkQuickEditOpen(false);
+    if (rowIds.length === 0) {
+      setBulkStatus(t("stock.bulkEdit.selectProductsFirst"));
+      return;
+    }
+    setBulkSwapConfirmation({ scope, rowIds });
+  }
+
+  function closeBulkSwapConfirmation(scope: "selected" | "all") {
+    setBulkSwapConfirmation(null);
+    window.requestAnimationFrame(() => {
+      const control = scope === "selected" ? bulkEditSelectedRef.current : bulkQuickEditRef.current;
+      control?.querySelector("button")?.focus({ preventScroll: true });
+    });
+  }
+
+  function confirmBulkSwap() {
+    const confirmation = bulkSwapConfirmation;
+    if (!confirmation) return;
+    commitBulkRows((current) => swapStockBulkCodeAndBarcode(current, confirmation.rowIds));
+    clearBulkValidationFields(confirmation.rowIds, ["code", "barcode"]);
+    setBulkStatus(t("stock.bulkEdit.selectedUpdated").replace("{count}", String(confirmation.rowIds.length)));
+    closeBulkSwapConfirmation(confirmation.scope);
   }
 
   function openBulkRowEditor(
@@ -5704,7 +5749,7 @@ export function StockScreen({
         </label>
         {includeImage && <ProductThumbnail product={product} token={session.accessToken ?? ""} />}
         {product ? (
-          <span className={`bulk-code-value ${bulkCellInvalid(row, "productId") ? "invalid" : ""}`}>{product.code || "-"}</span>
+          <span className={`bulk-code-value ${bulkCellInvalid(row, "productId") ? "invalid" : ""}`}>{bulkValue(row, "code") || "-"}</span>
         ) : (
           <label className="bulk-search-cell">
             <input
@@ -5723,7 +5768,7 @@ export function StockScreen({
             />
           </label>
         )}
-        <span>{product?.barcode ?? "-"}</span>
+        <span>{bulkValue(row, "barcode") || "-"}</span>
       </>
     );
     const commonStart = renderCommonStart();
@@ -6110,8 +6155,39 @@ export function StockScreen({
                 {t(bulkSelectedActionLabel(field))}
               </button>
             ))}
+            {bulkEditTab === "info" && (
+              <button type="button" onClick={() => openBulkSwapConfirmation("all")}>
+                {t("stock.bulkEdit.swapCodeBarcode")}
+              </button>
+            )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  function renderBulkSwapConfirmation() {
+    const confirmation = bulkSwapConfirmation;
+    if (!confirmation) return null;
+    const close = () => closeBulkSwapConfirmation(confirmation.scope);
+    return (
+      <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="bulk-swap-title" aria-describedby="bulk-swap-description">
+        <section className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog">
+          <header className="filter-header">
+            <h2 id="bulk-swap-title">{t("stock.bulkEdit.swapCodeBarcode")}</h2>
+            <button type="button" aria-label={t("common.close")} onClick={close}>
+              <X size={18} weight="bold" aria-hidden="true" />
+            </button>
+          </header>
+          <p className="bulk-confirm-copy" id="bulk-swap-description">
+            {t(confirmation.scope === "selected" ? "stock.bulkEdit.swapConfirmSelected" : "stock.bulkEdit.swapConfirmAll")
+              .replace("{count}", String(confirmation.rowIds.length))}
+          </p>
+          <footer className="filter-actions">
+            <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
+            <button autoFocus type="button" onClick={confirmBulkSwap}>{t("common.confirm")}</button>
+          </footer>
+        </section>
       </div>
     );
   }
@@ -7031,6 +7107,7 @@ export function StockScreen({
           </div>
         ) : renderBulkRows(renderBulkEditHeader())}
         {renderBulkFinder()}
+        {renderBulkSwapConfirmation()}
         {renderBulkEditorDialog()}
         {renderBulkSupplierDialog()}
         {renderBulkPurchaseDocumentDialog()}

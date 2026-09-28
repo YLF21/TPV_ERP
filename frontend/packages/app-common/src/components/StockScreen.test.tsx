@@ -350,6 +350,7 @@ describe("StockScreen", () => {
       "family"
     ]);
     expect(stockBulkSelectedActionsByTab.info).toEqual([
+      "swapCodeBarcode",
       "tax",
       "taxesIncluded",
       "productActive",

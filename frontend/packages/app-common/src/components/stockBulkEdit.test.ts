@@ -21,6 +21,7 @@ import {
   stockBulkExportFileName,
   stockBulkRowsChanged,
   stockBulkVersionedDeletePath,
+  swapStockBulkCodeAndBarcode,
   validateStockBulkRows
 } from "./stockBulkEdit";
 import type { StockInventoryRow } from "./StockScreen";
@@ -68,6 +69,35 @@ const product: StockInventoryRow = {
 };
 
 describe("stock bulk edit", () => {
+  it("swaps effective code and primary barcode as strings, preserving drafts and product versions", () => {
+    const rows = [
+      { id: "existing", selected: true, query: "2004461", product: { ...product, version: 9, code: "2004461", barcode: "8435606744034", barcode2: "00001234" }, draft: { name: "Nombre pendiente", code: "0002004461" } },
+      { id: "missing", selected: false, query: "", draft: { ...product, code: "00012", barcode: "000345", name: "Nuevo" } },
+      { id: "untouched", selected: false, query: "", product, draft: {} }
+    ];
+    const swapped = swapStockBulkCodeAndBarcode(rows, ["existing", "missing"]);
+
+    expect(swapped[0].draft).toEqual({ name: "Nombre pendiente", code: "8435606744034", barcode: "0002004461" });
+    expect(swapped[0].product).toBe(rows[0].product);
+    expect(swapped[1].draft).toEqual(expect.objectContaining({ code: "000345", barcode: "00012", name: "Nuevo" }));
+    expect(swapped[2]).toBe(rows[2]);
+    expect(buildStockBulkUpdates(swapped)[0]).toEqual(expect.objectContaining({
+      expectedVersion: 9,
+      product: expect.objectContaining({ code: "8435606744034", barcode: "0002004461", barcode2: "00001234", name: "Nombre pendiente" })
+    }));
+    expect(buildStockBulkCreates(swapped)[0].product).toEqual(expect.objectContaining({ code: "000345", barcode: "00012" }));
+  });
+
+  it("keeps empty values explicitly in the draft when swapping either blank identifier", () => {
+    const codeOnly = { id: "code-only", selected: true, query: "", product: { ...product, code: "00007", barcode: "" }, draft: {} };
+    const barcodeOnly = { id: "barcode-only", selected: true, query: "", product: { ...product, code: "", barcode: "00008" }, draft: {} };
+    const [first, second] = swapStockBulkCodeAndBarcode([codeOnly, barcodeOnly], ["code-only", "barcode-only"]);
+    expect(first.draft).toEqual({ code: "", barcode: "00007" });
+    expect(second.draft).toEqual({ code: "00008", barcode: "" });
+    expect(buildStockBulkUpdates([first])[0].product).toEqual(expect.objectContaining({ code: null, barcode: "00007" }));
+    expect(buildStockBulkUpdates([second])[0].product).toEqual(expect.objectContaining({ code: "00008", barcode: null }));
+  });
+
   it("hydrates every product supplier and prioritizes the last and principal links", () => {
     const rows = [{
       id: "row-1",

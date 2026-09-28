@@ -73,8 +73,9 @@ public class ProductBulkEditService {
     @Transactional(readOnly = true)
     public List<ProductBulkEditView> list() {
         UUID storeId = organization.currentStore().getId();
-        Map<UUID, UserAccount> userIndex = userIndex(storeId);
-        return repository.findByStoreIdOrderByActualizadoEnDesc(storeId).stream()
+        List<ProductBulkEdit> edits = repository.findByStoreIdOrderByActualizadoEnDesc(storeId);
+        Map<UUID, UserAccount> userIndex = userIndex(edits);
+        return edits.stream()
                 .map(edit -> view(edit, userIndex))
                 .toList();
     }
@@ -84,7 +85,7 @@ public class ProductBulkEditService {
         UUID storeId = organization.currentStore().getId();
         ProductBulkEdit edit = find(id, storeId);
         List<ProductBulkEditContent.Row> content = refreshUnchangedProductSnapshots(edit);
-        return view(edit, userIndex(storeId), content, !content.equals(edit.getContenido()));
+        return view(edit, userIndex(List.of(edit)), content, !content.equals(edit.getContenido()));
     }
 
     private List<ProductBulkEditContent.Row> refreshUnchangedProductSnapshots(ProductBulkEdit edit) {
@@ -138,7 +139,7 @@ public class ProductBulkEditService {
         ProductBulkEdit edit = new ProductBulkEdit(
                 store.getId(), nextCode(store.getId()), request.name(), request.content(), user.getId(), now);
         repository.saveAndFlush(edit);
-        return view(edit, userIndex(store.getId()));
+        return view(edit);
     }
 
     @Transactional
@@ -160,11 +161,11 @@ public class ProductBulkEditService {
             ProductBulkEdit next = edit.nextVersion(
                     nextCode(storeId), nextVersionNumber, request.name(), request.content(), user.getId(), now);
             flushWithOptimisticConflict(next, 0L);
-            return view(next, userIndex(storeId));
+            return view(next);
         }
         edit.update(request.name(), request.content(), user.getId(), now);
         flushWithOptimisticConflict(edit, request.version());
-        return view(edit, userIndex(storeId));
+        return view(edit);
     }
 
     @Transactional
@@ -178,7 +179,7 @@ public class ProductBulkEditService {
         requireVersion(edit, request.version());
         edit.rename(request.name(), user.getId(), clock.instant());
         flushWithOptimisticConflict(edit, request.version());
-        return view(edit, userIndex(storeId));
+        return view(edit);
     }
 
     @Transactional
@@ -245,7 +246,7 @@ public class ProductBulkEditService {
         edit.apply(content, user.getId(), clock.instant());
         images.deleteAll(stagedImages);
         flushWithOptimisticConflict(edit, request.version());
-        return view(edit, userIndex(storeId));
+        return view(edit);
     }
 
     @Transactional
@@ -255,7 +256,7 @@ public class ProductBulkEditService {
         ProductBulkEdit edit = find(id, storeId);
         edit.addComment(request.text(), user.getId(), clock.instant());
         flushWithOptimisticConflict(edit, edit.getVersion());
-        return view(edit, userIndex(storeId));
+        return view(edit);
     }
 
     @Transactional
@@ -774,9 +775,24 @@ public class ProductBulkEditService {
         return ProductBulkEditConflictException.list(id, expected, actual);
     }
 
-    private Map<UUID, UserAccount> userIndex(UUID storeId) {
-        return users.findAllByTiendaIdOrderByNombre(storeId).stream()
+    private Map<UUID, UserAccount> userIndex(List<ProductBulkEdit> edits) {
+        Set<UUID> actorIds = new HashSet<>();
+        for (ProductBulkEdit edit : edits) {
+            actorIds.add(edit.getCreadoPor());
+            actorIds.add(edit.getActualizadoPor());
+            actorIds.add(edit.getAplicadoPor());
+            edit.getComentarios().forEach(comment -> actorIds.add(comment.getUsuarioId()));
+        }
+        actorIds.remove(null);
+        if (actorIds.isEmpty()) {
+            return Map.of();
+        }
+        return users.findAllById(actorIds).stream()
                 .collect(Collectors.toMap(UserAccount::getId, Function.identity()));
+    }
+
+    private ProductBulkEditView view(ProductBulkEdit edit) {
+        return view(edit, userIndex(List.of(edit)));
     }
 
     private ProductBulkEditView view(ProductBulkEdit edit, Map<UUID, UserAccount> userIndex) {
@@ -785,7 +801,6 @@ public class ProductBulkEditService {
 
     private ProductBulkEditView view(ProductBulkEdit edit, Map<UUID, UserAccount> userIndex,
             List<ProductBulkEditContent.Row> content, boolean productSnapshotsRefreshed) {
-        Map<UUID, UserAccount> allUsers = new HashMap<>(userIndex);
         return new ProductBulkEditView(
                 edit.getId(),
                 edit.getCodigo(),
@@ -797,18 +812,18 @@ public class ProductBulkEditService {
                 content,
                 edit.getVersion(),
                 edit.getCreadoPor(),
-                userName(allUsers, edit.getCreadoPor()),
+                userName(userIndex, edit.getCreadoPor()),
                 edit.getCreadoEn(),
                 edit.getActualizadoPor(),
-                userName(allUsers, edit.getActualizadoPor()),
+                userName(userIndex, edit.getActualizadoPor()),
                 edit.getActualizadoEn(),
                 edit.getAplicadoPor(),
-                userName(allUsers, edit.getAplicadoPor()),
+                userName(userIndex, edit.getAplicadoPor()),
                 edit.getAplicadoEn(),
                 edit.getComentarios().stream().map(comment -> new ProductBulkEditView.Comment(
                         comment.getId(),
                         comment.getUsuarioId(),
-                        userName(allUsers, comment.getUsuarioId()),
+                        userName(userIndex, comment.getUsuarioId()),
                         comment.getTexto(),
                         comment.getCreadoEn())).toList(),
                 productSnapshotsRefreshed);
@@ -819,7 +834,7 @@ public class ProductBulkEditService {
             return null;
         }
         UserAccount user = users.get(userId);
-        return user == null ? userId.toString() : user.getUserName();
+        return user == null ? "-" : user.getUserName();
     }
 
     private static boolean isAdmin(Authentication authentication) {
