@@ -82,6 +82,21 @@ describe("AppVentaHomeEscapeNavigation", () => {
     expect(document.activeElement).toBe(product);
   });
 
+  it("restores focus if a screen guard keeps the screen open after confirming Home", async () => {
+    render(
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={vi.fn()}>
+        <input aria-label="Configuración pendiente" />
+      </AppVentaHomeEscapeNavigation>,
+    );
+    const input = screen.getByRole("textbox", { name: "Configuración pendiente" });
+    input.focus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    await Promise.resolve();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
+
   it("leaves Escape to an open functional dialog without showing the Home confirmation", () => {
     const onClose = vi.fn();
     function FunctionalDialog() {

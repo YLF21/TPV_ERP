@@ -62,6 +62,32 @@ function fireScannerBurst(input: HTMLInputElement, code = "8412345678901", start
 }
 
 describe("PaymentAllocationPanel", () => {
+  it.each([
+    ["KEYBOARD", "touch", true],
+    ["TOUCH", "keyboard", false],
+  ] as const)("uses %s sale mode with %s cash entry without changing other methods", async (interfaceMode, cashInputMode, showsKeypad) => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode={interfaceMode} cashInputMode={cashInputMode}
+      onAdd={onAdd} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    await waitFor(() => expect(amount).toHaveFocus());
+    expect(Boolean(container.querySelector(".sale-checkout-keypad"))).toBe(showsKeypad);
+    if (showsKeypad) {
+      fireEvent.click(within(container.querySelector(".sale-checkout-keypad") as HTMLElement)
+        .getByRole("button", { name: "20 €" }));
+      expect(amount).toHaveValue("20,00");
+      expect(amount).toHaveFocus();
+      expect(onAdd).not.toHaveBeenCalled();
+    }
+
+    fireEvent.click(within(container).getByRole("button", { name: "Tarjeta" }));
+    expect(Boolean(container.querySelector(".sale-checkout-keypad"))).toBe(interfaceMode === "TOUCH");
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
   describe.each(["KEYBOARD", "TOUCH"] as const)("payment command parity in %s mode", (interfaceMode) => {
     it("selects card with plus and cash with asterisk, resetting the amount before Enter submits", async () => {
       const onAdd = vi.fn();

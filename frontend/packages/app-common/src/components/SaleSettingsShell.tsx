@@ -1,10 +1,9 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   Desktop,
-  FileText,
-  LockKey,
+  CashRegister,
+  Eye,
   Printer,
-  ShoppingCartSimple,
   UserCircle,
   Wrench
 } from "@phosphor-icons/react";
@@ -18,15 +17,33 @@ import { ModuleNavBackButton } from "./ModuleNavBackButton";
 import { ModuleNavItem } from "./ModuleNavItem";
 import "./SaleSettingsShell.css";
 
-export type SaleSettingsDestination =
+export type CanonicalSaleSettingsDestination =
   | "account"
+  | "visualization"
+  | "printers"
+  | "devices"
+  | "cash"
+  | "diagnostics";
+
+// Preserve callers of the previous settings destinations while presenting one menu.
+export type SaleSettingsDestination = CanonicalSaleSettingsDestination
   | "language"
   | "security"
   | "reports"
   | "sale"
-  | "devices"
-  | "printing"
-  | "diagnostics";
+  | "printing";
+
+export function normalizeSaleSettingsDestination(destination: SaleSettingsDestination): CanonicalSaleSettingsDestination {
+  if (destination === "language" || destination === "security") return "account";
+  if (destination === "reports" || destination === "sale") return "visualization";
+  if (destination === "printing") return "printers";
+  return destination;
+}
+
+// Let the mounted settings screen apply its own unsaved-change guard to Escape.
+export function requestSaleSettingsBack(): boolean {
+  return !window.dispatchEvent(new Event("tpv-sale-settings-back", { cancelable: true }));
+}
 
 export type SaleSettingsShellProps = {
   app: AppKind;
@@ -51,15 +68,14 @@ type SaleSettingsNavigationItem = {
 };
 
 const personalDestinations: SaleSettingsNavigationItem[] = [
-  { destination: "account", labelKey: "settings.account", icon: UserCircle },
-  { destination: "security", labelKey: "settings.security", icon: LockKey },
-  { destination: "reports", labelKey: "settings.reports", icon: FileText }
+  { destination: "account", labelKey: "settings.accountSecurity", icon: UserCircle },
+  { destination: "visualization", labelKey: "settings.visualization", icon: Eye }
 ];
 
 const workstationDestinations: SaleSettingsNavigationItem[] = [
-  { destination: "sale", labelKey: "settings.sale", icon: ShoppingCartSimple },
+  { destination: "printers", labelKey: "settings.printers", icon: Printer },
   { destination: "devices", labelKey: "settings.devices", icon: Desktop },
-  { destination: "printing", labelKey: "settings.printing", icon: Printer }
+  { destination: "cash", labelKey: "settings.cash", icon: CashRegister }
 ];
 
 export function SaleSettingsShell({
@@ -80,12 +96,21 @@ export function SaleSettingsShell({
   const t = createTranslator(locale);
   const canConfigureTerminal = app === "venta" && hasPermission(session, "CONFIGURACION_TERMINAL");
 
+  useEffect(() => {
+    const handleBackRequest = (event: Event) => {
+      event.preventDefault();
+      onBack();
+    };
+    window.addEventListener("tpv-sale-settings-back", handleBackRequest);
+    return () => window.removeEventListener("tpv-sale-settings-back", handleBackRequest);
+  }, [onBack]);
+
   function navigationButton({
     destination,
     labelKey,
     icon: Icon
   }: SaleSettingsNavigationItem) {
-    const selected = active === destination;
+    const selected = normalizeSaleSettingsDestination(active) === destination;
     return (
       <ModuleNavItem
         className="sale-settings-nav-item"
@@ -141,7 +166,7 @@ export function SaleSettingsShell({
               </div>
               <div className="sale-settings-nav-group">
                 <strong className="sale-settings-nav-heading">{t("settings.group.support")}</strong>
-                {navigationButton({ destination: "diagnostics", labelKey: "settings.diagnostics", icon: Wrench })}
+                {navigationButton({ destination: "diagnostics", labelKey: "settings.diagnosticsMaintenance", icon: Wrench })}
               </div>
             </>
           ) : null}

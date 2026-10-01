@@ -31,7 +31,7 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
 
   function confirmNavigation() {
     if (navigationBlocked) return;
-    setConfirmationOpen(false);
+    cancelNavigation();
     onConfirmHome();
   }
 

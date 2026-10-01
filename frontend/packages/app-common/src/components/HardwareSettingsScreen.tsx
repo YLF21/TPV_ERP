@@ -10,6 +10,7 @@ import {
   createTestTicket,
   defaultHardwareConfig,
   getHardwareBridge,
+  normalizeHardwareConfigForUi,
 } from "../hardware/hardware";
 import type {
   CashDrawerPaymentMethod,
@@ -18,6 +19,7 @@ import type {
   HardwareBridge,
   HardwareConfig,
   HardwarePrinter,
+  ProductLabelProfile,
 } from "../hardware/hardware";
 import {
   defaultScannerTimingConfig,
@@ -25,6 +27,8 @@ import {
   scannerTimingKeyDecision,
 } from "../hardware/scannerTimingDetection";
 import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
+import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
+import { productLabelMinimumSize } from "./productLabelLayout";
 import { SaleSettingsShell, type SaleSettingsDestination } from "./SaleSettingsShell";
 import { OperationalStatusCard } from "./OperationalStatusCard";
 import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
@@ -32,10 +36,13 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { useSettingsNavigationGuard, type SettingsSaveResult } from "./useSettingsNavigationGuard";
+import "./ErpClassicTables.css";
 
 type HardwareDiagnosticKey = "electron" | "printers" | "ticket" | "a4" | "drawer" | "customerDisplay";
-type HardwareSettingsMode = "devices" | "printing" | "diagnostics";
-type HardwareDeviceTab = "printerDrawer" | "scannerConnection" | "customerDisplay";
+type HardwareSettingsMode = "devices" | "printers" | "printing" | "diagnostics";
+type HardwareDeviceTab = "drawer" | "scanner" | "customerDisplay" | "paymentTerminal";
+type HardwarePrinterTab = "tickets" | "a4" | "routes" | "labels";
 type HardwareRouteColumnKey = "document" | "target" | "printer" | "paper" | "orientation" | "copies" | "auto" | "dialog";
 
 type HardwareRouteColumnDefinition = TableColumnDefinition<HardwareRouteColumnKey> & {
@@ -97,7 +104,7 @@ export function HardwareSettingsScreen({
   onOpenProductLabels,
 }: HardwareSettingsScreenProps) {
   const t = createTranslator(locale);
-  const effectiveMode: HardwareSettingsMode = documentRoutingOnly ? "printing" : mode;
+  const effectiveMode = documentRoutingOnly || mode === "printers" ? "printing" : mode;
   const canConfigureTerminal = hasPermission(session, "CONFIGURACION_TERMINAL");
   const desktopHardwareAvailable = typeof window !== "undefined" && Boolean(window.tpvDesktop?.hardware);
   const hardware = useMemo<HardwareBridge | null>(
@@ -112,8 +119,7 @@ export function HardwareSettingsScreen({
     definitions: hardwareRouteColumnDefinitions,
   });
   const visibleRouteColumns = visibleTableColumns(routeTableLayout.layout);
-  const routeTableWidth = visibleRouteColumns.reduce((sum, column) => sum + column.width, 0)
-    + Math.max(0, visibleRouteColumns.length - 1) * 10;
+  const routeTableWidth = visibleRouteColumns.reduce((sum, column) => sum + column.width, 0);
   const routeGridStyle = {
     gridTemplateColumns: visibleRouteColumns
       .map((column) => `minmax(${column.width}px, ${column.width}fr)`)
@@ -123,11 +129,16 @@ export function HardwareSettingsScreen({
   const [config, setConfig] = useState<HardwareConfig>(defaultHardwareConfig);
   const [printers, setPrinters] = useState<HardwarePrinter[]>([]);
   const [customerDisplays, setCustomerDisplays] = useState<CustomerDisplayScreen[]>([]);
-  const [status, setStatus] = useState(t("hardware.status.ready"));
+  const [status, setStatus] = useState("");
   const [scannerValue, setScannerValue] = useState("");
   const scannerCaptureRef = useRef(idleScannerTimingCapture);
   const [lastScan, setLastScan] = useState("");
-  const [deviceTab, setDeviceTab] = useState<HardwareDeviceTab>("printerDrawer");
+  const [deviceTab, setDeviceTab] = useState<HardwareDeviceTab>("drawer");
+  const [printerTab, setPrinterTab] = useState<HardwarePrinterTab>("tickets");
+  const [profileId, setProfileId] = useState(defaultHardwareConfig.defaultProductLabelProfileId);
+  const [savedConfig, setSavedConfig] = useState(JSON.stringify(defaultHardwareConfig));
+  const [savingConfig, setSavingConfig] = useState(false);
+  const dirty = JSON.stringify(config) !== savedConfig;
   const [diagnostics, setDiagnostics] = useState<Partial<Record<HardwareDiagnosticKey, HardwareDiagnosticResult>>>({});
 
   const diagnosticItems: Array<{ key: HardwareDiagnosticKey; label: string }> = [
@@ -144,7 +155,12 @@ export function HardwareSettingsScreen({
     let active = true;
     void hardware.getHardwareConfig()
       .then((loaded) => {
-        if (active) setConfig(loaded);
+        if (active) {
+          const normalized = normalizeHardwareConfigForUi(loaded);
+          setConfig(normalized);
+          setSavedConfig(JSON.stringify(normalized));
+          setProfileId(normalized.defaultProductLabelProfileId);
+        }
       })
       .catch((error: unknown) => {
         if (active) setStatus(errorMessage(error));
@@ -154,6 +170,13 @@ export function HardwareSettingsScreen({
     // Hardware is stable for the lifetime of the permitted session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hardware]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const preventUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [dirty]);
 
   function errorMessage(error: unknown) {
     return error instanceof Error ? error.message : t("hardware.status.failed");
@@ -199,26 +222,46 @@ export function HardwareSettingsScreen({
         return;
       }
       setCustomerDisplays(result.displays);
-      const secondary = result.displays.find((display) => !display.primary) ?? result.displays[0];
-      if (secondary) {
-        setConfig((current) => current.customerDisplayScreenId
-          ? current
-          : { ...current, customerDisplayScreenId: secondary.id });
-      }
     } catch (error) {
       setStatus(errorMessage(error));
     }
   }
 
-  async function saveConfig() {
-    if (!hardware) return;
+  async function saveConfig(): Promise<SettingsSaveResult> {
+    if (savingConfig) return { ok: false, error: t("settings.unsavedChanges.saveError") };
+    if (!hardware) return { ok: false, error: t("hardware.status.desktopUnavailable") };
+    setSavingConfig(true);
     try {
       const result = await hardware.saveHardwareConfig(config);
       setStatus(result.ok ? t("hardware.status.saved") : result.message);
+      if (result.ok) {
+        setSavedConfig(JSON.stringify(config));
+        return { ok: true };
+      }
+      return { ok: false, error: result.message };
     } catch (error) {
-      setStatus(errorMessage(error));
+      const message = errorMessage(error);
+      setStatus(message);
+      return { ok: false, error: message };
+    } finally {
+      setSavingConfig(false);
     }
   }
+
+  function discardConfig() {
+    const restored = JSON.parse(savedConfig) as HardwareConfig;
+    setConfig(restored);
+    setProfileId(restored.defaultProductLabelProfileId);
+    setStatus("");
+  }
+
+  const { requestNavigation, confirmationDialog } = useSettingsNavigationGuard({
+    dirty,
+    saving: savingConfig,
+    locale,
+    save: saveConfig,
+    discard: discardConfig,
+  });
 
   async function testDesktopBridge() {
     if (!hardware) return;
@@ -423,24 +466,43 @@ export function HardwareSettingsScreen({
   }
 
   function handleNavigate(destination: SaleSettingsDestination) {
-    onNavigateSettings?.(destination);
+    requestNavigation(() => onNavigateSettings?.(destination));
   }
+
+  function handleBack() {
+    requestNavigation(onBack);
+  }
+
+  function updateProfile(patch: Partial<ProductLabelProfile>) {
+    updateConfig({ productLabelProfiles: config.productLabelProfiles.map((profile) =>
+      profile.id === profileId ? { ...profile, ...patch } : profile) });
+  }
+
+  function updateProfileNumber(key: keyof ProductLabelProfile, value: string, min: number, max: number) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    updateProfile({ [key]: Math.min(max, Math.max(min, parsed)) });
+  }
+
+  const profile = config.productLabelProfiles.find((item) => item.id === profileId)
+    ?? config.productLabelProfiles[0];
+  const minimumLabelSize = productLabelMinimumSize(profile.showStoreName);
 
   const shellProps = {
     app,
     locale,
     session,
     terminalContext,
-    active: effectiveMode as SaleSettingsDestination,
+    active: (effectiveMode === "printing" ? "printers" : effectiveMode) as SaleSettingsDestination,
     onNavigate: handleNavigate,
-    onBack,
-    onLocaleChange,
-    onLogout,
+    onBack: handleBack,
+    onLocaleChange: (nextLocale: LocaleCode) => requestNavigation(() => onLocaleChange(nextLocale)),
+    onLogout: onLogout ? () => requestNavigation(onLogout) : undefined,
     heading: t(effectiveMode === "devices"
       ? "hardware.devices.title"
       : effectiveMode === "printing"
-        ? "hardware.printing.title"
-        : "hardware.diagnostics.title"),
+        ? "settings.printers"
+        : "settings.diagnosticsMaintenance"),
     subtitle: t(effectiveMode === "devices"
       ? "hardware.devices.subtitle"
       : effectiveMode === "printing"
@@ -460,21 +522,182 @@ export function HardwareSettingsScreen({
 
   return <SaleSettingsShell {...shellProps}>
     <section className={`hardware-settings-content hardware-settings-content-${effectiveMode}`}>
-      <div className="hardware-status" aria-live="polite">{status}</div>
+      {status && <div className="hardware-status" aria-live="polite">{status}</div>}
 
       {effectiveMode === "devices" && <>
         <nav className="hardware-device-tabs" aria-label={t("hardware.devices.title")}>
           {([
-            ["printerDrawer", "hardware.devices.tab.printerDrawer"],
-            ["scannerConnection", "hardware.devices.tab.scannerConnection"],
+            ["drawer", "hardware.devices.tab.drawer"],
+            ["scanner", "hardware.devices.tab.scanner"],
             ["customerDisplay", "hardware.devices.tab.customerDisplay"],
+            ["paymentTerminal", "hardware.devices.tab.paymentTerminal"],
           ] as const).map(([key, labelKey]) => <button type="button" key={key}
             className={deviceTab === key ? "selected" : ""}
             aria-pressed={deviceTab === key}
             onClick={() => setDeviceTab(key)}>{t(labelKey)}</button>)}
         </nav>
 
-        {deviceTab === "printerDrawer" && <div className="hardware-combined-sections">
+        {deviceTab === "drawer" && <div className="hardware-combined-sections">
+          <section className="hardware-section">
+            <h2>{t("hardware.cashDrawer")}</h2>
+            <label className="hardware-control-field"><span>{t("hardware.connectionType")}</span>
+              <ErpSelect aria-label={t("hardware.connectionType")} value={config.cashDrawerConnection}
+                onChange={(value) => updateConfig({ cashDrawerConnection: value as HardwareConfig["cashDrawerConnection"] })}
+                options={[
+                  { value: "NONE", label: t("hardware.drawer.none") },
+                  { value: "PRINTER", label: t("hardware.drawer.printer") },
+                  { value: "SERIAL", label: "COM" },
+                  { value: "NETWORK", label: "LAN" },
+                ] satisfies readonly ErpSelectOption[]} />
+            </label>
+            {config.cashDrawerConnection === "PRINTER" && <div className="hardware-device-summary hardware-printer-summary">
+              <span>{t("hardware.windowsPrinter")}</span>
+              <strong>{config.ticketPrinterName || t("hardware.selectPrinter")}</strong>
+              <button type="button" className="sale-settings-action-button" onClick={() => handleNavigate("printers")}>{t("hardware.configurePrinter")}</button>
+            </div>}
+            {config.cashDrawerConnection === "SERIAL" && <div className="hardware-escpos-grid">
+              <label><span>{t("hardware.devicePath")}</span>
+                <input value={config.cashDrawerDevicePath}
+                  onChange={(event) => updateConfig({ cashDrawerDevicePath: event.target.value })} placeholder="COM3" />
+              </label>
+              <label><span>{t("hardware.serialBaudRate")}</span>
+                <input type="number" value={config.cashDrawerSerialBaudRate}
+                  onChange={(event) => updateConfig({ cashDrawerSerialBaudRate: Number(event.target.value) || 9600 })} />
+              </label>
+            </div>}
+            {config.cashDrawerConnection === "NETWORK" && <div className="hardware-escpos-grid">
+              <label><span>{t("hardware.host")}</span>
+                <input value={config.cashDrawerHost} onChange={(event) => updateConfig({ cashDrawerHost: event.target.value })} />
+              </label>
+              <label><span>{t("hardware.port")}</span>
+                <input type="number" value={config.cashDrawerPort}
+                  onChange={(event) => updateConfig({ cashDrawerPort: Number(event.target.value) || 9100 })} />
+              </label>
+            </div>}
+            <label className="hardware-check">
+              <input type="checkbox" checked={config.openCashDrawerWithTicket}
+                onChange={(event) => updateConfig({ openCashDrawerWithTicket: event.target.checked })} />
+              <span>{t("hardware.openDrawerWithTicket")}</span>
+            </label>
+            <div className="hardware-payment-methods">
+              <strong>{t("hardware.drawer.paymentMethods")}</strong>
+              <div>{cashDrawerPaymentMethods.map((method) => <label className="hardware-check" key={method}>
+                <input type="checkbox" checked={config.cashDrawerOpeningPaymentMethods.includes(method)}
+                  onChange={(event) => toggleCashDrawerPaymentMethod(method, event.target.checked)} />
+                <span>{t(method)}</span>
+              </label>)}</div>
+            </div>
+            <label className="hardware-control-field"><span>{t("hardware.drawerProfile")}</span>
+              <ErpSelect aria-label={t("hardware.drawerProfile")} value={config.cashDrawerCommandProfile}
+                onChange={(value) => updateConfig({ cashDrawerCommandProfile: value as HardwareConfig["cashDrawerCommandProfile"] })}
+                options={[{ value: "ESCPOS_STANDARD", label: "ESC/POS standard" }]} />
+            </label>
+            <div className="hardware-inline-actions">
+              <button type="button" onClick={openCashDrawer} disabled={!desktopHardwareAvailable}>{t("hardware.openDrawer")}</button>
+            </div>
+          </section>
+        </div>}
+
+        {deviceTab === "scanner" && <div className="hardware-combined-sections">
+          <section className="hardware-section">
+            <h2>{t("hardware.scanner")}</h2>
+            <label><span>{t("hardware.scannerMode")}</span>
+              <ErpSelect aria-label={t("hardware.scannerMode")} value={config.scannerMode}
+                onChange={() => updateConfig({ scannerMode: "KEYBOARD" })}
+                options={[{ value: "KEYBOARD", label: t("hardware.mode.keyboard") }]} />
+            </label>
+            <p className="hardware-device-summary">{t("hardware.scannerTimingHelp")}</p>
+            <label><span>{t("hardware.scannerTest")}</span>
+              <input autoFocus disabled={!desktopHardwareAvailable} value={scannerValue} onChange={(event) => setScannerValue(event.target.value)}
+                onKeyDown={(event) => {
+                  const decision = scannerTimingKeyDecision(scannerCaptureRef.current, event.key,
+                    defaultScannerTimingConfig, event.timeStamp, scannerValue);
+                  scannerCaptureRef.current = decision.next;
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  if (!decision.detected) {
+                    setScannerValue("");
+                    setStatus(t("hardware.status.scannerTimingNotDetected"));
+                    return;
+                  }
+                  void testScanner(decision.completedCode ?? scannerValue);
+                }} placeholder={t("hardware.scannerPlaceholder")} />
+            </label>
+            <div className="hardware-last-scan"><span>{t("hardware.lastScan")}</span><strong>{lastScan || "-"}</strong></div>
+          </section>
+
+        </div>}
+
+        {deviceTab === "customerDisplay" && <section className="hardware-section hardware-section-wide">
+          <h2>{t("hardware.customerDisplay")}</h2>
+          <div className="hardware-display-grid">
+            <label className="hardware-check">
+              <input type="checkbox" checked={config.customerDisplayEnabled}
+                onChange={(event) => updateConfig({ customerDisplayEnabled: event.target.checked })} />
+              <span>{t("hardware.customerDisplayEnabled")}</span>
+            </label>
+            <label><span>{t("hardware.customerDisplayScreen")}</span>
+              <ErpSelect aria-label={t("hardware.customerDisplayScreen")} value={config.customerDisplayScreenId}
+                onChange={(value) => updateConfig({ customerDisplayScreenId: value })}
+                options={[
+                  { value: "", label: t("hardware.customerDisplayAutoScreen") },
+                  ...customerDisplays.map((display) => ({
+                    value: display.id,
+                    label: `${display.label}${display.primary ? ` · ${t("hardware.primaryScreen")}` : ""}`,
+                  })),
+                ]} />
+            </label>
+            <label><span>{t("hardware.customerDisplayIdleLine1")}</span>
+              <input value={config.customerDisplayIdleLine1}
+                onChange={(event) => updateConfig({ customerDisplayIdleLine1: event.target.value })} />
+            </label>
+            <label><span>{t("hardware.customerDisplayIdleLine2")}</span>
+              <input value={config.customerDisplayIdleLine2}
+                onChange={(event) => updateConfig({ customerDisplayIdleLine2: event.target.value })} />
+            </label>
+          </div>
+          <div className="hardware-inline-actions">
+            <button type="button" onClick={refreshCustomerDisplays} disabled={!desktopHardwareAvailable}>{t("hardware.detectScreens")}</button>
+            <button type="button" onClick={openCustomerDisplay} disabled={!desktopHardwareAvailable}>{t("hardware.openCustomerDisplay")}</button>
+            <button type="button" onClick={closeCustomerDisplay} disabled={!desktopHardwareAvailable}>{t("hardware.closeCustomerDisplay")}</button>
+          </div>
+          <div className="hardware-inline-actions">
+            <button type="button" disabled={!desktopHardwareAvailable} onClick={() => updateCustomerDisplay(
+              createCustomerDisplayIdleState(config.customerDisplayIdleLine1, config.customerDisplayIdleLine2))}>
+              {t("hardware.sendIdleDisplay")}
+            </button>
+            <button type="button" disabled={!desktopHardwareAvailable} onClick={() => updateCustomerDisplay(
+              createCustomerDisplaySaleState({ name: "TEST HARDWARE", quantity: 1, price: 1 }))}>
+              {t("hardware.sendSaleDisplay")}
+            </button>
+            <button type="button" disabled={!desktopHardwareAvailable} onClick={() => updateCustomerDisplay(
+              createCustomerDisplayPaymentState({ total: 12.5, change: 2.5 }))}>
+              {t("hardware.sendPaymentDisplay")}
+            </button>
+          </div>
+        </section>}
+
+        {deviceTab === "paymentTerminal" && <PaymentTerminalSettings locale={locale} token={session.accessToken} />}
+
+        {deviceTab !== "paymentTerminal" && <div className="hardware-settings-actions">
+          <button type="button" className="hardware-save-button" disabled={savingConfig} onClick={saveConfig}>{t("hardware.save")}</button>
+        </div>}
+      </>}
+
+      {effectiveMode === "printing" && <>
+        <nav className="hardware-device-tabs" aria-label={t("hardware.printing.title")}>
+          {([
+            ["tickets", "hardware.printers.tab.tickets"],
+            ["a4", "hardware.printers.tab.a4"],
+            ["routes", "hardware.printers.tab.routes"],
+            ["labels", "hardware.printers.tab.labels"],
+          ] as const).map(([key, labelKey]) => <button type="button" key={key}
+            className={printerTab === key ? "selected" : ""}
+            aria-pressed={printerTab === key}
+            onClick={() => setPrinterTab(key)}>{t(labelKey)}</button>)}
+        </nav>
+
+        {printerTab === "tickets" && <div className="hardware-combined-sections">
           <section className="hardware-section">
             <h2>{t("hardware.printer")}</h2>
             <div className="hardware-escpos-grid">
@@ -519,93 +742,6 @@ export function HardwareSettingsScreen({
             {!desktopHardwareAvailable ? (
               <p className="hardware-desktop-note">{t("hardware.desktopActionsHelp")}</p>
             ) : null}
-          </section>
-
-          <section className="hardware-section">
-            <h2>{t("hardware.cashDrawer")}</h2>
-            <label className="hardware-control-field"><span>{t("hardware.connectionType")}</span>
-              <ErpSelect aria-label={t("hardware.connectionType")} value={config.cashDrawerConnection}
-                onChange={(value) => updateConfig({ cashDrawerConnection: value as HardwareConfig["cashDrawerConnection"] })}
-                options={[
-                  { value: "NONE", label: t("hardware.drawer.none") },
-                  { value: "PRINTER", label: t("hardware.drawer.printer") },
-                  { value: "SERIAL", label: "COM" },
-                  { value: "NETWORK", label: "LAN" },
-                ] satisfies readonly ErpSelectOption[]} />
-            </label>
-            {config.cashDrawerConnection === "PRINTER" && <div className="hardware-device-summary">
-              <span>{t("hardware.windowsPrinter")}</span>
-              <strong>{config.ticketPrinterName || t("hardware.selectPrinter")}</strong>
-            </div>}
-            {config.cashDrawerConnection === "SERIAL" && <div className="hardware-escpos-grid">
-              <label><span>{t("hardware.devicePath")}</span>
-                <input value={config.cashDrawerDevicePath}
-                  onChange={(event) => updateConfig({ cashDrawerDevicePath: event.target.value })} placeholder="COM3" />
-              </label>
-              <label><span>{t("hardware.serialBaudRate")}</span>
-                <input type="number" value={config.cashDrawerSerialBaudRate}
-                  onChange={(event) => updateConfig({ cashDrawerSerialBaudRate: Number(event.target.value) || 9600 })} />
-              </label>
-            </div>}
-            {config.cashDrawerConnection === "NETWORK" && <div className="hardware-escpos-grid">
-              <label><span>{t("hardware.host")}</span>
-                <input value={config.cashDrawerHost} onChange={(event) => updateConfig({ cashDrawerHost: event.target.value })} />
-              </label>
-              <label><span>{t("hardware.port")}</span>
-                <input type="number" value={config.cashDrawerPort}
-                  onChange={(event) => updateConfig({ cashDrawerPort: Number(event.target.value) || 9100 })} />
-              </label>
-            </div>}
-            <label className="hardware-check">
-              <input type="checkbox" checked={config.openCashDrawerWithTicket}
-                onChange={(event) => updateConfig({ openCashDrawerWithTicket: event.target.checked })} />
-              <span>{t("hardware.openDrawerWithTicket")}</span>
-            </label>
-            <div className="hardware-payment-methods">
-              <strong>{t("hardware.drawer.paymentMethods")}</strong>
-              <div>{cashDrawerPaymentMethods.map((method) => <label className="hardware-check" key={method}>
-                <input type="checkbox" checked={config.cashDrawerOpeningPaymentMethods.includes(method)}
-                  onChange={(event) => toggleCashDrawerPaymentMethod(method, event.target.checked)} />
-                <span>{t(method)}</span>
-              </label>)}</div>
-            </div>
-            <label className="hardware-control-field"><span>{t("hardware.drawerProfile")}</span>
-              <ErpSelect aria-label={t("hardware.drawerProfile")} value={config.cashDrawerCommandProfile}
-                onChange={(value) => updateConfig({ cashDrawerCommandProfile: value as HardwareConfig["cashDrawerCommandProfile"] })}
-                options={[{ value: "ESCPOS_STANDARD", label: "ESC/POS standard" }]} />
-            </label>
-            <div className="hardware-inline-actions">
-              <button type="button" onClick={openCashDrawer}>{t("hardware.openDrawer")}</button>
-            </div>
-          </section>
-        </div>}
-
-        {deviceTab === "scannerConnection" && <div className="hardware-combined-sections">
-          <section className="hardware-section">
-            <h2>{t("hardware.scanner")}</h2>
-            <label><span>{t("hardware.scannerMode")}</span>
-              <ErpSelect aria-label={t("hardware.scannerMode")} value={config.scannerMode}
-                onChange={() => updateConfig({ scannerMode: "KEYBOARD" })}
-                options={[{ value: "KEYBOARD", label: t("hardware.mode.keyboard") }]} />
-            </label>
-            <p className="hardware-device-summary">{t("hardware.scannerTimingHelp")}</p>
-            <label><span>{t("hardware.scannerTest")}</span>
-              <input autoFocus value={scannerValue} onChange={(event) => setScannerValue(event.target.value)}
-                onKeyDown={(event) => {
-                  const decision = scannerTimingKeyDecision(scannerCaptureRef.current, event.key,
-                    defaultScannerTimingConfig, event.timeStamp, scannerValue);
-                  scannerCaptureRef.current = decision.next;
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  if (!decision.detected) {
-                    setScannerValue("");
-                    setStatus(t("hardware.status.scannerTimingNotDetected"));
-                    return;
-                  }
-                  void testScanner(decision.completedCode ?? scannerValue);
-                }} placeholder={t("hardware.scannerPlaceholder")} />
-            </label>
-            <div className="hardware-last-scan"><span>{t("hardware.lastScan")}</span><strong>{lastScan || "-"}</strong></div>
           </section>
 
           <section className="hardware-section hardware-section-wide">
@@ -666,62 +802,7 @@ export function HardwareSettingsScreen({
           </section>
         </div>}
 
-        {deviceTab === "customerDisplay" && <section className="hardware-section hardware-section-wide">
-          <h2>{t("hardware.customerDisplay")}</h2>
-          <div className="hardware-display-grid">
-            <label className="hardware-check">
-              <input type="checkbox" checked={config.customerDisplayEnabled}
-                onChange={(event) => updateConfig({ customerDisplayEnabled: event.target.checked })} />
-              <span>{t("hardware.customerDisplayEnabled")}</span>
-            </label>
-            <label><span>{t("hardware.customerDisplayScreen")}</span>
-              <ErpSelect aria-label={t("hardware.customerDisplayScreen")} value={config.customerDisplayScreenId}
-                onChange={(value) => updateConfig({ customerDisplayScreenId: value })}
-                options={[
-                  { value: "", label: t("hardware.customerDisplayAutoScreen") },
-                  ...customerDisplays.map((display) => ({
-                    value: display.id,
-                    label: `${display.label}${display.primary ? ` · ${t("hardware.primaryScreen")}` : ""}`,
-                  })),
-                ]} />
-            </label>
-            <label><span>{t("hardware.customerDisplayIdleLine1")}</span>
-              <input value={config.customerDisplayIdleLine1}
-                onChange={(event) => updateConfig({ customerDisplayIdleLine1: event.target.value })} />
-            </label>
-            <label><span>{t("hardware.customerDisplayIdleLine2")}</span>
-              <input value={config.customerDisplayIdleLine2}
-                onChange={(event) => updateConfig({ customerDisplayIdleLine2: event.target.value })} />
-            </label>
-          </div>
-          <div className="hardware-inline-actions">
-            <button type="button" onClick={refreshCustomerDisplays}>{t("hardware.detectScreens")}</button>
-            <button type="button" onClick={openCustomerDisplay}>{t("hardware.openCustomerDisplay")}</button>
-            <button type="button" onClick={closeCustomerDisplay}>{t("hardware.closeCustomerDisplay")}</button>
-          </div>
-          <div className="hardware-inline-actions">
-            <button type="button" onClick={() => updateCustomerDisplay(
-              createCustomerDisplayIdleState(config.customerDisplayIdleLine1, config.customerDisplayIdleLine2))}>
-              {t("hardware.sendIdleDisplay")}
-            </button>
-            <button type="button" onClick={() => updateCustomerDisplay(
-              createCustomerDisplaySaleState({ name: "TEST HARDWARE", quantity: 1, price: 1 }))}>
-              {t("hardware.sendSaleDisplay")}
-            </button>
-            <button type="button" onClick={() => updateCustomerDisplay(
-              createCustomerDisplayPaymentState({ total: 12.5, change: 2.5 }))}>
-              {t("hardware.sendPaymentDisplay")}
-            </button>
-          </div>
-        </section>}
-
-        <div className="hardware-settings-actions">
-          <button type="button" className="hardware-save-button" onClick={saveConfig}>{t("hardware.save")}</button>
-        </div>
-      </>}
-
-      {effectiveMode === "printing" && <>
-        <section className="hardware-section hardware-section-wide">
+        {printerTab === "a4" && <section className="hardware-section hardware-section-wide">
           <h2>{t("hardware.a4Printer")}</h2>
           <div className="hardware-a4-grid">
             <label><span>{t("hardware.a4PrinterName")}</span>
@@ -736,7 +817,15 @@ export function HardwareSettingsScreen({
                 ]} />
             </label>
           </div>
-          <div className="hardware-route-table">
+          <div className="hardware-inline-actions">
+            <button type="button" onClick={refreshPrinters} disabled={!desktopHardwareAvailable}>{t("hardware.detectPrinters")}</button>
+            <button type="button" onClick={printA4TestDocument} disabled={!desktopHardwareAvailable}>{t("hardware.printA4Test")}</button>
+          </div>
+        </section>}
+
+        {printerTab === "routes" && <section className="hardware-section hardware-section-wide">
+          <h2>{t("hardware.printers.tab.routes")}</h2>
+          <div className="hardware-route-table erp-classic-tables">
             <div className="hardware-route-header" style={routeGridStyle}>
               {visibleRouteColumns.map((column) => {
                 const definition = hardwareRouteColumnDefinitions.find((candidate) => candidate.key === column.key);
@@ -753,20 +842,100 @@ export function HardwareSettingsScreen({
               </div>)}
             </div>)}
           </div>
-          <div className="hardware-inline-actions">
-            <button type="button" onClick={refreshPrinters}>{t("hardware.detectPrinters")}</button>
-            <button type="button" onClick={printA4TestDocument}>{t("hardware.printA4Test")}</button>
-          </div>
-        </section>
+        </section>}
 
-        {onOpenProductLabels && <section className="hardware-label-tools">
+        {printerTab === "labels" && <section className="hardware-label-tools">
           <h2>{t("hardware.printing.labelsTitle")}</h2>
-          <p>{t("hardware.printing.labelsDescription")}</p>
-          <button type="button" onClick={onOpenProductLabels}>{t("hardware.printing.openLabels")}</button>
+          <div className="hardware-escpos-grid">
+            <label><span>{t("hardware.labels.profile")}</span>
+              <ErpSelect aria-label={t("hardware.labels.profile")} value={profile.id}
+                onChange={setProfileId}
+                options={config.productLabelProfiles.map((item) => ({ value: item.id, label: item.name }))} />
+            </label>
+            <label><span>{t("hardware.labels.name")}</span>
+              <input value={profile.name} onChange={(event) => updateProfile({ name: event.target.value })} />
+            </label>
+            <label><span>{t("hardware.labels.destination")}</span>
+              <ErpSelect aria-label={t("hardware.labels.destination")} value={profile.destination}
+                onChange={(value) => updateProfile({ destination: value as ProductLabelProfile["destination"], printerName: "" })}
+                options={[
+                  { value: "LABEL_PRINTER", label: t("hardware.labels.destination.labelPrinter") },
+                  { value: "TICKET_PRINTER", label: t("hardware.labels.destination.ticketPrinter") },
+                  { value: "A4", label: t("hardware.labels.destination.a4") },
+                ]} />
+            </label>
+            <label><span>{t("hardware.labels.printer")}</span>
+              <ErpSelect aria-label={t("hardware.labels.printer")} value={profile.printerName}
+                onChange={(value) => updateProfile({ printerName: value })}
+                options={[
+                  { value: "", label: profile.destination === "TICKET_PRINTER"
+                    ? config.ticketPrinterName || t("hardware.labels.useDefault")
+                    : profile.destination === "A4" ? config.a4PrinterName || t("hardware.labels.useDefault")
+                      : t("hardware.labels.useDefault") },
+                  ...printers.map((printer) => ({ value: printer.name, label: printer.displayName })),
+                ]} />
+            </label>
+            <label><span>{t("hardware.labels.width")}</span>
+              <input type="number" min={minimumLabelSize.widthMm} max={210} step={1} value={profile.widthMm}
+                onChange={(event) => updateProfileNumber("widthMm", event.target.value, minimumLabelSize.widthMm, 210)} />
+            </label>
+            <label><span>{t("hardware.labels.height")}</span>
+              <input type="number" min={minimumLabelSize.heightMm} max={297} step={1} value={profile.heightMm}
+                onChange={(event) => updateProfileNumber("heightMm", event.target.value, minimumLabelSize.heightMm, 297)} />
+            </label>
+            <label><span>{t("hardware.labels.orientation")}</span>
+              <ErpSelect aria-label={t("hardware.labels.orientation")} value={profile.orientation}
+                onChange={(value) => updateProfile({ orientation: value as ProductLabelProfile["orientation"] })}
+                options={[
+                  { value: "PORTRAIT", label: t("hardware.route.portrait") },
+                  { value: "LANDSCAPE", label: t("hardware.route.landscape") },
+                ]} />
+            </label>
+            <label><span>{t("hardware.labels.copies")}</span>
+              <input type="number" min={1} max={999} step={1} value={profile.copies}
+                onChange={(event) => updateProfileNumber("copies", event.target.value, 1, 999)} />
+            </label>
+          </div>
+          <label className="hardware-check"><input type="checkbox" checked={profile.showStoreName}
+            onChange={(event) => {
+              const minimum = productLabelMinimumSize(event.target.checked);
+              updateProfile({ showStoreName: event.target.checked,
+                widthMm: Math.max(profile.widthMm, minimum.widthMm),
+                heightMm: Math.max(profile.heightMm, minimum.heightMm) });
+            }} /><span>{t("hardware.labels.showStoreName")}</span></label>
+          <label className="hardware-check"><input type="checkbox" checked={config.defaultProductLabelProfileId === profile.id}
+            onChange={() => updateConfig({ defaultProductLabelProfileId: profile.id })} />
+            <span>{t("hardware.labels.defaultProfile")}</span></label>
+          {profile.destination === "A4" && <>
+            <fieldset><legend>{t("hardware.labels.margins")}</legend>
+              <div className="hardware-escpos-grid">
+                {([[
+                  "marginTopMm", "hardware.labels.margins.top", 50,
+                ], ["marginRightMm", "hardware.labels.margins.right", 50],
+                ["marginBottomMm", "hardware.labels.margins.bottom", 50],
+                ["marginLeftMm", "hardware.labels.margins.left", 50]] as const).map(([key, label, max]) =>
+                  <label key={key}><span>{t(label)}</span><input type="number" min={0} max={max}
+                    value={profile[key]} onChange={(event) => updateProfileNumber(key, event.target.value, 0, max)} /></label>)}
+              </div>
+            </fieldset>
+            <fieldset><legend>{t("hardware.labels.gaps")}</legend>
+              <div className="hardware-escpos-grid">
+                {([[
+                  "horizontalGapMm", "hardware.labels.margins.horizontalGap",
+                ], ["verticalGapMm", "hardware.labels.margins.verticalGap"]] as const).map(([key, label]) =>
+                  <label key={key}><span>{t(label)}</span><input type="number" min={0} max={25}
+                    value={profile[key]} onChange={(event) => updateProfileNumber(key, event.target.value, 0, 25)} /></label>)}
+              </div>
+            </fieldset>
+          </>}
+          <div className="hardware-inline-actions">
+            <button type="button" onClick={refreshPrinters} disabled={!desktopHardwareAvailable}>{t("hardware.detectPrinters")}</button>
+            {onOpenProductLabels && <button type="button" onClick={() => requestNavigation(onOpenProductLabels)}>{t("hardware.printing.openLabels")}</button>}
+          </div>
         </section>}
 
         <div className="hardware-settings-actions">
-          <button type="button" className="hardware-save-button" onClick={saveConfig}>{t("hardware.save")}</button>
+          <button type="button" className="hardware-save-button" disabled={savingConfig} onClick={saveConfig}>{t("hardware.save")}</button>
         </div>
       </>}
 
@@ -779,12 +948,12 @@ export function HardwareSettingsScreen({
               <span className={`hardware-diagnostic-status ${result?.ok ? "ok" : result ? "error" : "pending"}`}>
                 {result ? (result.ok ? "OK" : "ERROR") : t("hardware.diagnostics.notChecked")}
               </span>
-              <button type="button" onClick={() => void runDiagnostic(item.key)}>{t("hardware.diagnostics.test")}</button>
+              <button type="button" disabled={!desktopHardwareAvailable} onClick={() => void runDiagnostic(item.key)}>{t("hardware.diagnostics.test")}</button>
             </article>;
           })}
         </section>
         <div className="hardware-settings-actions">
-          <button type="button" className="hardware-save-button" onClick={() => void runAllDiagnostics()}>
+          <button type="button" className="hardware-save-button" disabled={!desktopHardwareAvailable} onClick={() => void runAllDiagnostics()}>
             {t("hardware.diagnostics.runAll")}
           </button>
         </div>
@@ -794,5 +963,6 @@ export function HardwareSettingsScreen({
         </div>
       </>}
     </section>
+    {confirmationDialog}
   </SaleSettingsShell>;
 }

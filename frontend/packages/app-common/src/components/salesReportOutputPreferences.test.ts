@@ -23,7 +23,7 @@ const terminalContext: TerminalContext = {
 };
 
 describe("salesReportOutputPreferences", () => {
-  it("keeps report preferences scoped to app, terminal and user", () => {
+  it("keeps density scoped to app, terminal and user while APP VENTA always uses the output menu", () => {
     const storage = memoryStorage();
     saveSalesReportOutputPreferences("venta", "admin", terminalContext, {
       density: "compact",
@@ -32,14 +32,33 @@ describe("salesReportOutputPreferences", () => {
 
     expect(readSalesReportOutputPreferences("venta", "admin", terminalContext, storage)).toEqual({
       density: "compact",
-      primaryAction: "pdf"
+      primaryAction: "menu"
     });
+    expect(JSON.parse(storage.getItem(salesReportOutputPreferencesStorageKey("venta", "admin", terminalContext)) ?? "null"))
+      .toEqual({ density: "compact", primaryAction: "menu" });
     expect(readSalesReportOutputPreferences("venta", "vendedor", terminalContext, storage)).toEqual(
       defaultSalesReportOutputPreferences
     );
     expect(salesReportOutputPreferencesStorageKey("venta", "admin", terminalContext)).toContain(
       "terminal:01:user:admin"
     );
+  });
+
+  it("ignores legacy direct output actions in APP VENTA without changing APP GESTION", () => {
+    const storage = memoryStorage();
+    storage.setItem(salesReportOutputPreferencesStorageKey("venta", "admin", terminalContext),
+      JSON.stringify({ density: "compact", primaryAction: "print" }));
+    storage.setItem(salesReportOutputPreferencesStorageKey("gestion", "admin", terminalContext),
+      JSON.stringify({ density: "compact", primaryAction: "excel" }));
+
+    expect(readSalesReportOutputPreferences("venta", "admin", terminalContext, storage)).toEqual({
+      density: "compact",
+      primaryAction: "menu"
+    });
+    expect(readSalesReportOutputPreferences("gestion", "admin", terminalContext, storage)).toEqual({
+      density: "compact",
+      primaryAction: "excel"
+    });
   });
 
   it("falls back safely when stored preferences are invalid", () => {

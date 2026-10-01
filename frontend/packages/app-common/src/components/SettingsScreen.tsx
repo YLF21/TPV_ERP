@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowSquareOut, Key } from "@phosphor-icons/react";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -7,7 +7,6 @@ import {
   persistCashInputModeSelection,
   type CashInputMode
 } from "../sale/cashInputMode";
-import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
 import {
   defaultSaleInterfaceMode,
   loadSaleInterfaceConfiguration,
@@ -16,6 +15,7 @@ import {
 } from "./saleInterfacePreferences";
 import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
 import { CashOperationsCard } from "./CashOperationsCard";
+import { ErpSelect } from "./ErpSelect";
 import { OperationalStatusCard } from "./OperationalStatusCard";
 import { apiRequest, ApiError } from "../api/client";
 import { hasPermission } from "../auth/auth";
@@ -25,7 +25,13 @@ import {
   type SalesReportDensity,
   type SalesReportPrimaryAction
 } from "./salesReportOutputPreferences";
-import { SaleSettingsShell, type SaleSettingsDestination } from "./SaleSettingsShell";
+import {
+  SaleSettingsShell,
+  normalizeSaleSettingsDestination,
+  type CanonicalSaleSettingsDestination,
+  type SaleSettingsDestination
+} from "./SaleSettingsShell";
+import { useSettingsNavigationGuard, type SettingsSaveResult } from "./useSettingsNavigationGuard";
 
 type SettingsScreenProps = {
   app: AppKind;
@@ -44,16 +50,12 @@ type SettingsScreenProps = {
   request?: typeof apiRequest;
 };
 
-const protectedDestinations = new Set<SaleSettingsDestination>([
-  "sale",
+const protectedDestinations = new Set<CanonicalSaleSettingsDestination>([
   "devices",
-  "printing",
+  "printers",
+  "cash",
   "diagnostics"
 ]);
-
-function normalizeDestination(destination: SaleSettingsDestination) {
-  return destination === "language" ? "account" : destination;
-}
 
 function languageLabel(code: LocaleCode) {
   if (code === "es") return "Español";
@@ -79,12 +81,15 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const t = createTranslator(locale);
   const canConfigureTerminal = app === "venta" && hasPermission(session, "CONFIGURACION_TERMINAL");
-  const [selectedSection, setSelectedSection] = useState<SaleSettingsDestination>(() => {
-    if (initialDestination && (canConfigureTerminal || !protectedDestinations.has(initialDestination))) {
-      return normalizeDestination(initialDestination);
+  const [selectedSection, setSelectedSection] = useState<CanonicalSaleSettingsDestination>(() => {
+    const destination = initialDestination && normalizeSaleSettingsDestination(initialDestination);
+    if (destination && (canConfigureTerminal || !protectedDestinations.has(destination))) {
+      return destination;
     }
-    return canConfigureTerminal ? "sale" : "account";
+    return canConfigureTerminal ? "visualization" : "account";
   });
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+  const passwordFocusRequested = useRef(initialDestination === "security");
   const [cashInputMode, setCashInputMode] = useState<CashInputMode>(() => readCashInputMode());
   const [saleInterfaceMode, setSaleInterfaceMode] = useState<SaleInterfaceMode>(defaultSaleInterfaceMode);
   const [savedSaleInterfaceMode, setSavedSaleInterfaceMode] =
@@ -102,6 +107,16 @@ export function SettingsScreen({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] =
     useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const { requestNavigation, confirmationDialog } = useSettingsNavigationGuard({
+    dirty: selectedSection === "visualization" && saleInterfaceMode !== savedSaleInterfaceMode,
+    saving: saleInterfaceSaving,
+    locale,
+    save: saveSaleInterfaceMode,
+    discard: () => {
+      setSaleInterfaceMode(savedSaleInterfaceMode);
+      setSaleInterfaceMessage(null);
+    }
+  });
 
   useEffect(() => {
     if (!canConfigureTerminal && protectedDestinations.has(selectedSection)) {
@@ -110,10 +125,23 @@ export function SettingsScreen({
   }, [canConfigureTerminal, selectedSection]);
 
   useEffect(() => {
-    if (initialDestination && (canConfigureTerminal || !protectedDestinations.has(initialDestination))) {
-      setSelectedSection(normalizeDestination(initialDestination));
+    const destination = initialDestination && normalizeSaleSettingsDestination(initialDestination);
+    if (destination && (canConfigureTerminal || !protectedDestinations.has(destination))) {
+      if (initialDestination === "security") passwordFocusRequested.current = true;
+      setSelectedSection(destination);
+      if (destination === "account" && initialDestination === "security") {
+        passwordInputRef.current?.focus();
+        if (passwordInputRef.current) passwordFocusRequested.current = false;
+      }
     }
   }, [canConfigureTerminal, initialDestination]);
+
+  useEffect(() => {
+    if (selectedSection === "account" && passwordFocusRequested.current) {
+      passwordInputRef.current?.focus();
+      passwordFocusRequested.current = false;
+    }
+  }, [selectedSection]);
 
   useEffect(() => {
     let active = true;
@@ -148,21 +176,30 @@ export function SettingsScreen({
   }, [app, session.username, terminalContext.terminalCode, terminalContext.terminalId]);
 
   function handleNavigation(destination: SaleSettingsDestination) {
-    if (protectedDestinations.has(destination) && !canConfigureTerminal) return;
-    const normalizedDestination = normalizeDestination(destination);
-    if (destination === "devices") {
-      onOpenHardware?.();
-      return;
-    }
-    if (destination === "printing") {
-      onOpenDocumentPrinting?.();
-      return;
-    }
-    if (destination === "diagnostics" && onOpenDiagnostics) {
-      onOpenDiagnostics();
-      return;
-    }
-    setSelectedSection(normalizedDestination);
+    const normalizedDestination = normalizeSaleSettingsDestination(destination);
+    if (protectedDestinations.has(normalizedDestination) && !canConfigureTerminal) return;
+    const navigate = () => {
+      if (destination === "devices") {
+        onOpenHardware?.();
+        return;
+      }
+      if (normalizedDestination === "printers") {
+        onOpenDocumentPrinting?.();
+        return;
+      }
+      if (destination === "diagnostics" && onOpenDiagnostics) {
+        onOpenDiagnostics();
+        return;
+      }
+      if (destination === "security") {
+        passwordFocusRequested.current = true;
+        passwordInputRef.current?.focus();
+        if (passwordInputRef.current) passwordFocusRequested.current = false;
+      }
+      setSelectedSection(normalizedDestination);
+    };
+    if (normalizedDestination === selectedSection) navigate();
+    else requestNavigation(navigate);
   }
 
   const handleCashInputModeChange = (value: string) => {
@@ -170,8 +207,10 @@ export function SettingsScreen({
     if (mode) setCashInputMode(mode);
   };
 
-  async function saveSaleInterfaceMode() {
-    if (!session.accessToken || !canConfigureTerminal) return;
+  async function saveSaleInterfaceMode(): Promise<SettingsSaveResult> {
+    if (!session.accessToken || !canConfigureTerminal) {
+      return { ok: false, error: t("settings.saleInterface.saveError") };
+    }
     setSaleInterfaceSaving(true);
     setSaleInterfaceMessage(null);
     try {
@@ -184,13 +223,16 @@ export function SettingsScreen({
       setSavedSaleInterfaceMode(configuration.saleMode);
       onSaleInterfaceModeChange?.(configuration.saleMode);
       setSaleInterfaceMessage({ kind: "success", text: t("settings.saleInterface.saved") });
+      return { ok: true };
     } catch (failure) {
+      const message = failure instanceof ApiError
+        ? `${t("settings.saleInterface.saveError")} ${failure.message}`
+        : t("settings.saleInterface.saveError");
       setSaleInterfaceMessage({
         kind: "error",
-        text: failure instanceof ApiError
-          ? `${t("settings.saleInterface.saveError")} ${failure.message}`
-          : t("settings.saleInterface.saveError")
+        text: message
       });
+      return { ok: false, error: message };
     } finally {
       setSaleInterfaceSaving(false);
     }
@@ -202,7 +244,8 @@ export function SettingsScreen({
     saveSalesReportOutputPreferences(app, session.username, terminalContext, next);
   }
 
-  function updateReportPrimaryAction(primaryAction: SalesReportPrimaryAction) {
+  function updateGestionReportPrimaryAction(primaryAction: SalesReportPrimaryAction) {
+    if (app !== "gestion") return;
     const next = { ...reportPreferences, primaryAction };
     setReportPreferences(next);
     saveSalesReportOutputPreferences(app, session.username, terminalContext, next);
@@ -247,27 +290,19 @@ export function SettingsScreen({
   }
 
   function sectionHeading() {
-    if (selectedSection === "account") return t("settings.account");
-    if (selectedSection === "security") return t("settings.security");
-    if (selectedSection === "reports") return t("settings.reports");
-    if (selectedSection === "diagnostics") return t("settings.diagnostics");
-    return t("settings.sale");
+    if (selectedSection === "account") return t("settings.accountSecurity");
+    if (selectedSection === "visualization") return t("settings.visualization");
+    if (selectedSection === "cash") return t("settings.cash");
+    return t("settings.diagnosticsMaintenance");
   }
 
   function sectionSubtitle() {
-    if (selectedSection === "account") return t("settings.account.subtitle");
-    if (selectedSection === "security") return t("settings.security.subtitle");
-    if (selectedSection === "reports") return t("settings.reports.subtitle");
+    if (selectedSection === "account") return t("settings.accountSecurity.subtitle");
+    if (selectedSection === "visualization") return t("settings.visualization.subtitle");
+    if (selectedSection === "cash") return t("settings.cash.subtitle");
     if (selectedSection === "diagnostics") return t("settings.system.subtitle");
-    return t("settings.sale.subtitle").replace(
-      "{terminal}",
-      `${t("login.terminalPrefix")} ${terminalContext.terminalCode}`
-    );
+    return "";
   }
-
-  const personalSection = selectedSection === "account"
-    || selectedSection === "security"
-    || selectedSection === "reports";
 
   return (
     <SaleSettingsShell
@@ -277,14 +312,16 @@ export function SettingsScreen({
       terminalContext={terminalContext}
       active={selectedSection}
       onNavigate={handleNavigation}
-      onBack={onBack}
-      onLocaleChange={onLocaleChange}
-      onLogout={onLogout}
+      onBack={() => requestNavigation(onBack)}
+      onLocaleChange={(nextLocale) => requestNavigation(() => onLocaleChange(nextLocale))}
+      onLogout={onLogout ? () => requestNavigation(onLogout) : undefined}
       heading={sectionHeading()}
       subtitle={sectionSubtitle()}
-      scopeLabel={t(personalSection ? "settings.scope.user" : "settings.scope.terminal")}
+      scopeLabel={selectedSection === "account" ? t("settings.scope.user")
+        : selectedSection === "cash" ? t("settings.scope.terminal") : undefined}
     >
       {selectedSection === "account" ? (
+        <div className="sale-settings-account-layout">
         <section className="sale-settings-panel sale-settings-account">
           <h3>{t("settings.user.profile")}</h3>
           <dl className="sale-settings-readonly-list">
@@ -302,8 +339,9 @@ export function SettingsScreen({
               <dd>{session.maxDiscountPercent == null ? "-" : `${session.maxDiscountPercent}%`}</dd>
             </div>
           </dl>
-          <div className="sale-settings-section-divider" />
-          <fieldset className="settings-language-options sale-settings-language-options">
+        </section>
+        <section className="sale-settings-panel settings-user-language">
+          <fieldset className="sale-settings-fieldset settings-language-options sale-settings-language-options">
             <legend>{t("settings.user.language")}</legend>
             <div>
               {(["es", "en", "zh"] as const).map((code) => (
@@ -312,7 +350,7 @@ export function SettingsScreen({
                   className={locale === code ? "selected" : ""}
                   aria-pressed={locale === code}
                   key={code}
-                  onClick={() => onLocaleChange(code)}
+                  onClick={() => requestNavigation(() => onLocaleChange(code))}
                 >
                   {languageLabel(code)}
                 </button>
@@ -320,15 +358,12 @@ export function SettingsScreen({
             </div>
           </fieldset>
         </section>
-      ) : null}
-
-      {selectedSection === "security" ? (
         <section className="sale-settings-panel settings-user-security">
           <h3>{t("settings.user.security")}</h3>
           <p>{t("settings.user.passwordHelp")}</p>
           <form className="sale-settings-security-form" onSubmit={(event) => void handlePasswordChange(event)}>
             <label>{t("settings.user.currentPassword")}
-              <input type="password" inputMode="numeric" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.currentTarget.value)} />
+              <input ref={passwordInputRef} type="password" inputMode="numeric" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.currentTarget.value)} />
             </label>
             <label>{t("settings.user.newPassword")}
               <input type="password" inputMode="numeric" pattern="[0-9]*" minLength={4} maxLength={12} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.currentTarget.value)} />
@@ -351,58 +386,78 @@ export function SettingsScreen({
             </button>
           </form>
         </section>
+        </div>
       ) : null}
 
-      {selectedSection === "reports" ? (
-        <div className="sale-settings-reports-layout">
+      {selectedSection === "visualization" ? (
+        <div className="sale-settings-visualization-layout">
           <section className="sale-settings-panel settings-report-preferences">
             <h3>{t("settings.reports.visualization")}</h3>
             <p>{t("settings.reports.visualizationHelp")}</p>
-            <label htmlFor="report-density">{t("settings.reports.density")}</label>
-            <select id="report-density" value={reportPreferences.density} onChange={(event) => updateReportDensity(event.currentTarget.value as SalesReportDensity)}>
-              <option value="comfortable">{t("settings.reports.densityComfortable")}</option>
-              <option value="compact">{t("settings.reports.densityCompact")}</option>
-            </select>
-            <div className={`settings-report-density-preview ${reportPreferences.density}`} aria-hidden="true">
-              <span /><span /><span />
+            <div className="sale-settings-report-controls">
+              <div>
+                <label htmlFor="report-density">{t("settings.reports.density")}</label>
+                <ErpSelect
+                  id="report-density"
+                  aria-label={t("settings.reports.density")}
+                  value={reportPreferences.density}
+                  options={([
+                    { value: "comfortable", label: t("settings.reports.densityComfortable") },
+                    { value: "compact", label: t("settings.reports.densityCompact") }
+                  ])}
+                  onChange={(value) => updateReportDensity(value as SalesReportDensity)}
+                />
+                <p className="settings-report-note">{t("settings.reports.columnsHelp")}</p>
+                <p className="settings-report-saved" role="status">{t("settings.visualization.localScope")}</p>
+              </div>
+              <div className={`sale-settings-report-preview ${reportPreferences.density}`}>
+                <span>{t("settings.reports.preview")}</span>
+                <table aria-hidden="true">
+                  <thead><tr>
+                    <th>{t("salesReport.column.ticket")}</th>
+                    <th>{t("salesReport.column.date")}</th>
+                    <th>{t("salesReport.column.customer")}</th>
+                    <th>{t("salesReport.column.total")}</th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td>T-001</td><td>30/09/2026</td><td>—</td><td>25,00</td></tr>
+                    <tr><td>T-002</td><td>29/09/2026</td><td>—</td><td>43,50</td></tr>
+                    <tr><td>T-003</td><td>28/09/2026</td><td>—</td><td>18,75</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <p className="settings-report-note">{t("settings.reports.columnsHelp")}</p>
             <button
               type="button"
               className="sale-settings-action-button"
-              onClick={onOpenReports}
+              onClick={() => requestNavigation(() => onOpenReports?.())}
               disabled={!onOpenReports}
             >
               <ArrowSquareOut size={18} weight="bold" aria-hidden="true" />
               {t("settings.reports.openReports")}
             </button>
           </section>
-          <section className="sale-settings-panel settings-report-preferences">
-            <h3>{t("settings.reports.output")}</h3>
-            <p>{t("settings.reports.outputHelp")}</p>
-            <label htmlFor="report-primary-action">{t("settings.reports.primaryAction")}</label>
-            <select id="report-primary-action" value={reportPreferences.primaryAction} onChange={(event) => updateReportPrimaryAction(event.currentTarget.value as SalesReportPrimaryAction)}>
-              <option value="menu">{t("settings.reports.actionMenu")}</option>
-              <option value="print">{t("settings.reports.actionPrint")}</option>
-              <option value="pdf">{t("settings.reports.actionPdf")}</option>
-              <option value="excel">{t("settings.reports.actionExcel")}</option>
-            </select>
-            <p className="settings-report-saved" role="status">{t("settings.reports.savedLocally")}</p>
-          </section>
-        </div>
-      ) : null}
-
-      {selectedSection === "sale" && canConfigureTerminal ? (
-        <div className="sale-settings-sale-layout">
-          <CashOperationsCard
-            locale={locale}
-            currentUsername={session.username}
-            token={session.accessToken}
-            terminalId={terminalContext.terminalId}
-            request={request}
-          />
-
-          <div className="sale-settings-section-divider" />
+          {app === "gestion" ? (
+            <section className="sale-settings-panel settings-report-preferences">
+              <h3>{t("settings.reports.output")}</h3>
+              <p>{t("settings.reports.outputHelp")}</p>
+              <label htmlFor="report-primary-action">{t("settings.reports.primaryAction")}</label>
+              <ErpSelect
+                id="report-primary-action"
+                aria-label={t("settings.reports.primaryAction")}
+                value={reportPreferences.primaryAction}
+                options={[
+                  { value: "menu", label: t("settings.reports.actionMenu") },
+                  { value: "print", label: t("settings.reports.actionPrint") },
+                  { value: "pdf", label: t("settings.reports.actionPdf") },
+                  { value: "excel", label: t("settings.reports.actionExcel") }
+                ]}
+                onChange={(value) => updateGestionReportPrimaryAction(value as SalesReportPrimaryAction)}
+              />
+            </section>
+          ) : null}
+          {canConfigureTerminal ? (
+          <>
           <section className="sale-settings-panel settings-sale-interface-card">
             <h3>{t("settings.saleInterface")}</h3>
             <p>{t("settings.saleInterface.description")}</p>
@@ -410,7 +465,7 @@ export function SettingsScreen({
               <p role="status">{t("settings.saleInterface.loading")}</p>
             ) : (
               <>
-                <fieldset className="settings-sale-interface-options" disabled={saleInterfaceSaving}>
+                <fieldset className="sale-settings-fieldset settings-sale-interface-options" disabled={saleInterfaceSaving}>
                   <legend>{t("settings.saleInterface.mode")}</legend>
                   <label className={saleInterfaceMode === "KEYBOARD" ? "selected" : ""}>
                     <input type="radio" name="sale-interface-mode" value="KEYBOARD" checked={saleInterfaceMode === "KEYBOARD"} onChange={() => setSaleInterfaceMode("KEYBOARD")} />
@@ -421,7 +476,7 @@ export function SettingsScreen({
                     <span><strong>{t("settings.saleInterface.touch")}</strong><small>{t("settings.saleInterface.touchHelp")}</small></span>
                   </label>
                 </fieldset>
-                <button type="button" disabled={saleInterfaceSaving || saleInterfaceMode === savedSaleInterfaceMode} onClick={() => void saveSaleInterfaceMode()}>
+                <button type="button" className="sale-settings-action-button" disabled={saleInterfaceSaving || saleInterfaceMode === savedSaleInterfaceMode} onClick={() => void saveSaleInterfaceMode()}>
                   {saleInterfaceSaving ? t("settings.saleInterface.saving") : t("settings.saleInterface.save")}
                 </button>
               </>
@@ -437,14 +492,31 @@ export function SettingsScreen({
             <h3>{t("settings.cashInput")}</h3>
             <p>{t("settings.cashInput.description")}</p>
             <label htmlFor="cash-input-mode">{t("settings.cashInput")}</label>
-            <select id="cash-input-mode" value={cashInputMode} onChange={(event) => handleCashInputModeChange(event.currentTarget.value)}>
-              <option value="touch">{t("settings.cashInput.touch")}</option>
-              <option value="keyboard">{t("settings.cashInput.keyboard")}</option>
-            </select>
+            <ErpSelect
+              id="cash-input-mode"
+              aria-label={t("settings.cashInput")}
+              value={cashInputMode}
+              options={[
+                { value: "touch", label: t("settings.cashInput.touch") },
+                { value: "keyboard", label: t("settings.cashInput.keyboard") }
+              ]}
+              onChange={handleCashInputModeChange}
+            />
           </section>
+          </>
+          ) : null}
+        </div>
+      ) : null}
 
-          <div className="sale-settings-section-divider" />
-          <PaymentTerminalSettings locale={locale} token={session.accessToken} />
+      {selectedSection === "cash" && canConfigureTerminal ? (
+        <div className="sale-settings-cash-layout">
+          <CashOperationsCard
+            locale={locale}
+            currentUsername={session.username}
+            token={session.accessToken}
+            terminalId={terminalContext.terminalId}
+            request={request}
+          />
         </div>
       ) : null}
 
@@ -454,6 +526,7 @@ export function SettingsScreen({
           <OperationalStatusCard locale={locale} token={session.accessToken} request={request} />
         </div>
       ) : null}
+      {confirmationDialog}
     </SaleSettingsShell>
   );
 }

@@ -14,6 +14,7 @@
 .filter-dialog.erp-classic-window.safe-retirement-dialog { width:min(640px,100%); }
 .filter-dialog.erp-classic-window.erp-confirm-dialog { width:min(520px,100%); }
 .erp-confirm-message { padding:20px; margin:0; line-height:1.5; }
+.erp-confirm-error { margin:0 20px 20px; padding:10px 12px; border:1px solid #d9a8a8; background:#fff4f4; color:#a12626; font-size:13px; }
 .erp-confirm-overlay { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:24px; background:#0b223a66; }
 .erp-classic-window :is(button,input,textarea):focus-visible { outline:2px solid #1f5a94; outline-offset:2px; }
 .erp-classic-window .erp-filter-applied { padding-inline:12px; }
