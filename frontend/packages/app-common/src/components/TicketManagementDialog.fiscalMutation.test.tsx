@@ -192,7 +192,11 @@ describe("TicketManagementDialog onFiscalMutation", () => {
     const onFiscalMutation = vi.fn();
     renderDialog(onFiscalMutation);
 
-    fireEvent.change(await screen.findByLabelText("Motivo de anulación"), {
+    const cancelReason = await screen.findByLabelText("Motivo de anulación");
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: "Reimprimir ticket"
+    })).toBeEnabled());
+    fireEvent.change(cancelReason, {
       target: { value: "Operación inválida" }
     });
     const cancelButton = screen.getByRole("button", { name: "Anular ticket" });
