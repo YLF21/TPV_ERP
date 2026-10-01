@@ -259,7 +259,9 @@ describe("CustomerReceivablesScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Reimprimir justificante" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Reimprimir justificante" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Cobro realizado; impresión pendiente.");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reimprimir justificante" })).toBeEnabled());
     fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Detalle del cobro" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Consultar FV-2" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Reimprimir justificante" })).toBeEnabled());
     fireEvent.keyDown(window, { key: "Escape" });

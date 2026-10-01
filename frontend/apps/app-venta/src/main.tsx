@@ -28,7 +28,7 @@ import type { ProductLabelIssuer } from "../../../packages/app-common/src/hardwa
 import type { ProductLabelCommercialContext } from "../../../packages/app-common/src/components/SaleProductLabelDialog";
 import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/components/AppVentaHomeEscapeNavigation";
 import { createTranslator } from "../../../packages/app-common/src/i18n/LocalizedMessages";
-import { normalizeSaleSettingsDestination, requestSaleSettingsBack, type SaleSettingsDestination } from "../../../packages/app-common/src/components/SaleSettingsShell";
+import { normalizeSaleSettingsDestination, requestSaleSettingsBack, type SaleSettingsDestination } from "../../../packages/app-common/src/components/saleSettingsNavigation";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string; sessionToken?: string };
 

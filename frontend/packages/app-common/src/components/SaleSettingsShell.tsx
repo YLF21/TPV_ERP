@@ -15,35 +15,15 @@ import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { ModuleNavBackButton } from "./ModuleNavBackButton";
 import { ModuleNavItem } from "./ModuleNavItem";
+import { normalizeSaleSettingsDestination, type SaleSettingsDestination } from "./saleSettingsNavigation";
 import "./SaleSettingsShell.css";
 
-export type CanonicalSaleSettingsDestination =
-  | "account"
-  | "visualization"
-  | "printers"
-  | "devices"
-  | "cash"
-  | "diagnostics";
-
-// Preserve callers of the previous settings destinations while presenting one menu.
-export type SaleSettingsDestination = CanonicalSaleSettingsDestination
-  | "language"
-  | "security"
-  | "reports"
-  | "sale"
-  | "printing";
-
-export function normalizeSaleSettingsDestination(destination: SaleSettingsDestination): CanonicalSaleSettingsDestination {
-  if (destination === "language" || destination === "security") return "account";
-  if (destination === "reports" || destination === "sale") return "visualization";
-  if (destination === "printing") return "printers";
-  return destination;
-}
-
-// Let the mounted settings screen apply its own unsaved-change guard to Escape.
-export function requestSaleSettingsBack(): boolean {
-  return !window.dispatchEvent(new Event("tpv-sale-settings-back", { cancelable: true }));
-}
+export {
+  normalizeSaleSettingsDestination,
+  requestSaleSettingsBack,
+  type CanonicalSaleSettingsDestination,
+  type SaleSettingsDestination
+} from "./saleSettingsNavigation";
 
 export type SaleSettingsShellProps = {
   app: AppKind;
