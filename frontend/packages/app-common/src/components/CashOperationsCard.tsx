@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createCashCloseWithdrawalIdempotencyKey } from "../sale/cashSessions";
 import type { LocaleCode } from "../types";
+import "./ErpClassicTables.css";
 
 type RequestFunction = typeof apiRequest;
 
@@ -60,6 +61,10 @@ const copy = {
     closeTitle: "Cierre y conciliación",
     finalWithdrawal: "Retirada final",
     closeCash: "Cerrar caja",
+    closeNav: "Cierre",
+    entryNav: "Entrada",
+    withdrawalNav: "Retirada",
+    concept: "Concepto",
     dailySummary: "Resumen de hoy",
     noMovements: "Sin movimientos registrados hoy.",
     retained: "Fondos retenidos",
@@ -67,6 +72,15 @@ const copy = {
     success: "Operación de caja completada.",
     sessionClosed: "La caja se ha cerrado correctamente.",
     error: "No se pudo completar la operación de caja.",
+    movementTypes: {
+      COBRO_EFECTIVO: "Cobros en efectivo",
+      DEVOLUCION_EFECTIVO: "Devoluciones en efectivo",
+      ENTRADA: "Entradas de efectivo",
+      RETIRADA: "Retiradas de efectivo",
+      RETIRADA_CIERRE: "Retiradas de cierre",
+      ENTRADA_ENTRE_SESIONES: "Entradas entre sesiones",
+      RETIRADA_ENTRE_SESIONES: "Retiradas entre sesiones",
+    },
   },
   en: {
     title: "Cash register and shift",
@@ -95,6 +109,10 @@ const copy = {
     closeTitle: "Closing and reconciliation",
     finalWithdrawal: "Final withdrawal",
     closeCash: "Close register",
+    closeNav: "Closing",
+    entryNav: "Entry",
+    withdrawalNav: "Withdrawal",
+    concept: "Concept",
     dailySummary: "Today's summary",
     noMovements: "No movements registered today.",
     retained: "Retained funds",
@@ -102,6 +120,15 @@ const copy = {
     success: "Cash register operation completed.",
     sessionClosed: "The cash register was closed successfully.",
     error: "The cash register operation could not be completed.",
+    movementTypes: {
+      COBRO_EFECTIVO: "Cash payments",
+      DEVOLUCION_EFECTIVO: "Cash refunds",
+      ENTRADA: "Cash entries",
+      RETIRADA: "Cash withdrawals",
+      RETIRADA_CIERRE: "Closing withdrawals",
+      ENTRADA_ENTRE_SESIONES: "Entries between sessions",
+      RETIRADA_ENTRE_SESIONES: "Withdrawals between sessions",
+    },
   },
   zh: {
     title: "钱箱与班次",
@@ -130,6 +157,10 @@ const copy = {
     closeTitle: "关箱与对账",
     finalWithdrawal: "最终取出",
     closeCash: "关闭钱箱",
+    closeNav: "关箱",
+    entryNav: "存入",
+    withdrawalNav: "取出",
+    concept: "项目",
     dailySummary: "今日汇总",
     noMovements: "今天没有现金变动。",
     retained: "保留资金",
@@ -137,6 +168,15 @@ const copy = {
     success: "钱箱操作已完成。",
     sessionClosed: "钱箱已成功关闭。",
     error: "无法完成钱箱操作。",
+    movementTypes: {
+      COBRO_EFECTIVO: "现金收款",
+      DEVOLUCION_EFECTIVO: "现金退款",
+      ENTRADA: "现金存入",
+      RETIRADA: "现金取出",
+      RETIRADA_CIERRE: "关箱取出",
+      ENTRADA_ENTRE_SESIONES: "班次间存入",
+      RETIRADA_ENTRE_SESIONES: "班次间取出",
+    },
   },
 } as const;
 
@@ -196,6 +236,7 @@ export function CashOperationsCard({
   const [comment, setComment] = useState("");
   const [managerUsername, setManagerUsername] = useState("");
   const [managerPassword, setManagerPassword] = useState("");
+  const [selectedOperation, setSelectedOperation] = useState<"close" | "entry" | "withdrawal">("close");
   const [closeFlow, setCloseFlow] = useState(() => ({
     sessionId: null as string | null,
     operationId: createCashCloseWithdrawalIdempotencyKey(),
@@ -405,162 +446,203 @@ export function CashOperationsCard({
             </div>
           </div>
 
-          <div className="cash-operation-grid">
-            <div className="cash-operation-panel">
-              <h4>{t.entry}</h4>
-              <label>
-                <span>{t.amount}</span>
-                <input inputMode="decimal" value={entryAmount} onChange={(event) => setEntryAmount(event.target.value)} />
-              </label>
-              <button
-                className="primary-button"
-                type="button"
-                disabled={busy || !parsePositiveAmount(entryAmount)}
-                onClick={() => {
-                  const amount = parsePositiveAmount(entryAmount);
-                  if (amount) void execute("/cash/movements/entry", commonMovementBody(amount));
-                }}
-              >
-                {t.registerEntry}
-              </button>
-            </div>
+          <div className="cash-operation-workspace">
+            <nav className="cash-operation-nav" aria-label={t.title}>
+              {([
+                ["close", t.closeNav],
+                ["entry", t.entryNav],
+                ["withdrawal", t.withdrawalNav],
+              ] as const).map(([operation, label]) => (
+                <button
+                  key={operation}
+                  className={selectedOperation === operation ? "cash-selected-operation" : ""}
+                  type="button"
+                  aria-pressed={selectedOperation === operation}
+                  disabled={busy}
+                  onClick={() => setSelectedOperation(operation)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
 
-            <div className="cash-operation-panel">
-              <h4>{t.withdrawal}</h4>
-              <label>
-                <span>{t.amount}</span>
-                <input
-                  inputMode="decimal"
-                  value={withdrawalAmount}
-                  onChange={(event) => setWithdrawalAmount(event.target.value)}
-                />
-              </label>
-              <button
-                className="primary-button"
-                type="button"
-                disabled={busy || !parsePositiveAmount(withdrawalAmount)}
-                onClick={() => {
-                  const amount = parsePositiveAmount(withdrawalAmount);
-                  if (amount) {
-                    void execute("/cash/movements/withdrawal", {
-                      terminalId,
-                      amount,
-                      comment: comment.trim(),
-                      denominations: [],
-                      withdrawal: true,
-                      authorizerUsername: managerUsername.trim(),
-                      authorizerPassword: managerPassword,
-                    });
-                  }
-                }}
-              >
-                {t.registerWithdrawal}
-              </button>
-            </div>
+            <div className="cash-operation-panel cash-selected-operation-panel">
+              <h4>{selectedOperation === "close" ? t.closeTitle : selectedOperation === "entry" ? t.entry : t.withdrawal}</h4>
+              <div className="cash-operation-fields">
+                {selectedOperation === "close" ? (
+                  <>
+                    <label>
+                      <span>{t.retainedFund}</span>
+                      <input inputMode="decimal" value={retainedFund} disabled={busy} onChange={(event) => setRetainedFund(event.target.value)} />
+                    </label>
+                    <label>
+                      <span>{t.finalWithdrawal}</span>
+                      <input
+                        inputMode="decimal"
+                        value={finalWithdrawal}
+                        disabled={busy}
+                        onChange={(event) => setFinalWithdrawal(event.target.value)}
+                      />
+                    </label>
+                  </>
+                ) : selectedOperation === "entry" ? (
+                  <label>
+                    <span>{t.amount}</span>
+                    <input inputMode="decimal" value={entryAmount} disabled={busy} onChange={(event) => setEntryAmount(event.target.value)} />
+                  </label>
+                ) : (
+                  <label>
+                    <span>{t.amount}</span>
+                    <input
+                      inputMode="decimal"
+                      value={withdrawalAmount}
+                      disabled={busy}
+                      onChange={(event) => setWithdrawalAmount(event.target.value)}
+                    />
+                  </label>
+                )}
+              </div>
 
-            <div className="cash-operation-panel cash-close-panel">
-              <h4>{t.closeTitle}</h4>
-              <label>
-                <span>{t.retainedFund}</span>
-                <input inputMode="decimal" value={retainedFund} onChange={(event) => setRetainedFund(event.target.value)} />
-              </label>
-              <label>
-                <span>{t.finalWithdrawal}</span>
-                <input
-                  inputMode="decimal"
-                  value={finalWithdrawal}
-                  onChange={(event) => setFinalWithdrawal(event.target.value)}
-                />
-              </label>
-              <button
-                className="danger-button"
-                type="button"
-                disabled={
-                  busy ||
-                  parsePositiveAmount(retainedFund) === null ||
-                  parsePositiveAmount(finalWithdrawal) === null
-                }
-                onClick={() => {
-                  const retained = parsePositiveAmount(retainedFund);
-                  const withdrawal = parsePositiveAmount(finalWithdrawal);
-                  if (retained !== null && withdrawal !== null) {
-                    void execute(
-                      "/cash/sessions/close",
-                      {
-                        terminalId,
-                        retainedFund: retained,
-                        retainedFundDenominations: [],
-                        finalWithdrawalAmount: withdrawal,
-                        finalWithdrawalComment: comment.trim(),
-                        finalWithdrawalDenominations: [],
-                        closeOperationId: closeFlow.operationId,
-                        reconciliationAttemptId: closeFlow.attemptId,
-                      },
-                      t.sessionClosed,
-                    ).then((result) => {
-                      if (result?.status === "ABIERTA") {
-                        setCloseFlow((current) => ({
-                          ...current,
-                          attemptId: createCashCloseWithdrawalIdempotencyKey(),
-                        }));
+              <div className="cash-authorization-row">
+                <div className="cash-authorization-operator sale-operation-authorization-identity">
+                  <span className="sale-operation-authorization-avatar" aria-hidden="true">
+                    {currentUsername.trim().slice(0, 1).toLocaleUpperCase(locale) || "?"}
+                  </span>
+                  <span className="sale-operation-authorization-user">
+                    <small>{t.currentOperator}</small>
+                    <strong>{currentUsername.trim() || "-"}</strong>
+                  </span>
+                </div>
+                <label>
+                  <span>{t.comment}</span>
+                  <input value={comment} disabled={busy} onChange={(event) => setComment(event.target.value)} />
+                </label>
+                <label>
+                  <span>{t.managerUser}</span>
+                  <input value={managerUsername} disabled={busy} onChange={(event) => setManagerUsername(event.target.value)} />
+                </label>
+                <label>
+                  <span>{t.managerPassword}</span>
+                  <input
+                    type="password"
+                    value={managerPassword}
+                    disabled={busy}
+                    onChange={(event) => setManagerPassword(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="cash-operation-submit">
+                {selectedOperation === "close" ? (
+                  <button
+                    className="danger-button"
+                    type="button"
+                    disabled={
+                      busy ||
+                      parsePositiveAmount(retainedFund) === null ||
+                      parsePositiveAmount(finalWithdrawal) === null
+                    }
+                    onClick={() => {
+                      const retained = parsePositiveAmount(retainedFund);
+                      const withdrawal = parsePositiveAmount(finalWithdrawal);
+                      if (retained !== null && withdrawal !== null) {
+                        void execute(
+                          "/cash/sessions/close",
+                          {
+                            terminalId,
+                            retainedFund: retained,
+                            retainedFundDenominations: [],
+                            finalWithdrawalAmount: withdrawal,
+                            finalWithdrawalComment: comment.trim(),
+                            finalWithdrawalDenominations: [],
+                            closeOperationId: closeFlow.operationId,
+                            reconciliationAttemptId: closeFlow.attemptId,
+                            authorizerUsername: managerUsername.trim(),
+                            authorizerPassword: managerPassword,
+                          },
+                          t.sessionClosed,
+                        ).then((result) => {
+                          if (result?.status === "ABIERTA") {
+                            setCloseFlow((current) => ({
+                              ...current,
+                              attemptId: createCashCloseWithdrawalIdempotencyKey(),
+                            }));
+                          }
+                        });
                       }
-                    });
-                  }
-                }}
-              >
-                {t.closeCash}
-              </button>
+                    }}
+                  >
+                    {t.closeCash}
+                  </button>
+                ) : selectedOperation === "entry" ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={busy || !parsePositiveAmount(entryAmount)}
+                    onClick={() => {
+                      const amount = parsePositiveAmount(entryAmount);
+                      if (amount) void execute("/cash/movements/entry", commonMovementBody(amount));
+                    }}
+                  >
+                    {t.registerEntry}
+                  </button>
+                ) : (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={busy || !parsePositiveAmount(withdrawalAmount)}
+                    onClick={() => {
+                      const amount = parsePositiveAmount(withdrawalAmount);
+                      if (amount) {
+                        void execute("/cash/movements/withdrawal", {
+                          terminalId,
+                          amount,
+                          comment: comment.trim(),
+                          denominations: [],
+                          withdrawal: true,
+                          authorizerUsername: managerUsername.trim(),
+                          authorizerPassword: managerPassword,
+                        });
+                      }
+                    }}
+                  >
+                    {t.registerWithdrawal}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-
-          <div className="cash-authorization-row">
-            <div className="cash-authorization-operator sale-operation-authorization-identity">
-              <span className="sale-operation-authorization-avatar" aria-hidden="true">
-                {currentUsername.trim().slice(0, 1).toLocaleUpperCase(locale) || "?"}
-              </span>
-              <span className="sale-operation-authorization-user">
-                <small>{t.currentOperator}</small>
-                <strong>{currentUsername.trim() || "-"}</strong>
-              </span>
-            </div>
-            <label>
-              <span>{t.comment}</span>
-              <input value={comment} onChange={(event) => setComment(event.target.value)} />
-            </label>
-            <label>
-              <span>{t.managerUser}</span>
-              <input value={managerUsername} onChange={(event) => setManagerUsername(event.target.value)} />
-            </label>
-            <label>
-              <span>{t.managerPassword}</span>
-              <input
-                type="password"
-                value={managerPassword}
-                onChange={(event) => setManagerPassword(event.target.value)}
-              />
-            </label>
           </div>
         </>
       ) : null}
 
       <div className="cash-daily-summary">
         <h4>{t.dailySummary}</h4>
-        {reportEntries.length ? (
-          <div className="cash-report-grid">
-            {reportEntries.map(([type, amount]) => (
-              <div key={type}>
-                <span>{type.replaceAll("_", " ")}</span>
-                <strong>{money.format(amount ?? 0)}</strong>
-              </div>
-            ))}
-            <div>
-              <span>{t.retained}</span>
-              <strong>{money.format(report?.retainedFunds ?? 0)}</strong>
-            </div>
-            <div>
-              <span>{t.discrepancies}</span>
-              <strong>{money.format(report?.discrepancies ?? 0)}</strong>
-            </div>
+        {report ? (
+          <div className="cash-report-table-wrap erp-classic-tables">
+            <table className="cash-report-table" aria-label={t.dailySummary}>
+              <thead>
+                <tr>
+                  <th scope="col">{t.concept}</th>
+                  <th scope="col">{t.amount}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportEntries.map(([type, amount]) => (
+                  <tr key={type}>
+                    <td>{t.movementTypes[type as keyof typeof t.movementTypes] ?? type.replaceAll("_", " ")}</td>
+                    <td>{money.format(amount ?? 0)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>{t.retained}</td>
+                  <td>{money.format(report.retainedFunds ?? 0)}</td>
+                </tr>
+                <tr>
+                  <td>{t.discrepancies}</td>
+                  <td>{money.format(report.discrepancies ?? 0)}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         ) : (
           <span className="settings-muted-text">{t.noMovements}</span>

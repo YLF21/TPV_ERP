@@ -28,7 +28,7 @@ import type { ProductLabelIssuer } from "../../../packages/app-common/src/hardwa
 import type { ProductLabelCommercialContext } from "../../../packages/app-common/src/components/SaleProductLabelDialog";
 import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/components/AppVentaHomeEscapeNavigation";
 import { createTranslator } from "../../../packages/app-common/src/i18n/LocalizedMessages";
-import type { SaleSettingsDestination } from "../../../packages/app-common/src/components/SaleSettingsShell";
+import { normalizeSaleSettingsDestination, requestSaleSettingsBack, type SaleSettingsDestination } from "../../../packages/app-common/src/components/saleSettingsNavigation";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string; sessionToken?: string };
 
@@ -336,7 +336,7 @@ export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings">("home");
-  const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("sale");
+  const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("visualization");
   const [saleExitBlocked, setSaleExitBlocked] = useState(false);
   const [receivablesOpen, setReceivablesOpen] = useState(false);
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
@@ -423,7 +423,9 @@ export function App() {
     setScreen("home");
   };
   const withHomeEscapeConfirmation = (content: ReactNode) => (
-    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={handleReturnHome}
+    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={() => {
+      if (!requestSaleSettingsBack()) handleReturnHome();
+    }}
       navigationBlocked={screen === "sale" && saleExitBlocked}>
       {content}
     </AppVentaHomeEscapeNavigation>
@@ -442,15 +444,16 @@ export function App() {
 
   function openSettingsDestination(destination: SaleSettingsDestination) {
     setAppNotice(null);
-    if (destination === "devices") {
+    const normalizedDestination = normalizeSaleSettingsDestination(destination);
+    if (normalizedDestination === "devices") {
       setScreen("hardwareSettings");
       return;
     }
-    if (destination === "printing") {
+    if (normalizedDestination === "printers") {
       setScreen("documentPrintingSettings");
       return;
     }
-    if (destination === "diagnostics") {
+    if (normalizedDestination === "diagnostics") {
       setScreen("diagnosticsSettings");
       return;
     }
@@ -742,14 +745,14 @@ export function App() {
           locale={locale}
           session={session}
           terminalContext={terminalContext}
-          initialDestination={canConfigureTerminal ? settingsDestination : "account"}
+          initialDestination={settingsDestination}
           onBack={() => setScreen("home")}
           onLogout={handleLogout}
           onLocaleChange={handleLocaleChange}
           onOpenHardware={() => openSettingsDestination("devices")}
-          onOpenDocumentPrinting={() => openSettingsDestination("printing")}
+          onOpenDocumentPrinting={() => openSettingsDestination("printers")}
           onOpenDiagnostics={() => openSettingsDestination("diagnostics")}
-          onOpenReports={() => setScreen("salesReport")}
+          onOpenReports={canOpenSalesReport ? () => setScreen("salesReport") : undefined}
           onSaleInterfaceModeChange={setSaleInterfaceMode}
         />
         {settingsNotice}

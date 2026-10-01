@@ -52,7 +52,7 @@ export function readSalesReportOutputPreferences(
     ) ?? "null") as Partial<SalesReportOutputPreferences> | null;
     return {
       density: isDensity(saved?.density) ? saved.density : defaultSalesReportOutputPreferences.density,
-      primaryAction: isPrimaryAction(saved?.primaryAction)
+      primaryAction: app === "venta" ? "menu" : isPrimaryAction(saved?.primaryAction)
         ? saved.primaryAction
         : defaultSalesReportOutputPreferences.primaryAction
     };
@@ -73,6 +73,6 @@ export function saveSalesReportOutputPreferences(
   }
   storage.setItem(
     salesReportOutputPreferencesStorageKey(app, username, terminalContext),
-    JSON.stringify(preferences)
+    JSON.stringify(app === "venta" ? { ...preferences, primaryAction: "menu" } : preferences)
   );
 }

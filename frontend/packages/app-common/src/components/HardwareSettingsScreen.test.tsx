@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultHardwareConfig } from "../hardware/hardware";
 import type { HardwareBridge } from "../hardware/hardware";
@@ -70,6 +70,7 @@ function renderHardware(
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   Reflect.deleteProperty(window, "tpvDesktop");
 });
 
@@ -98,18 +99,18 @@ describe("HardwareSettingsScreen", () => {
     expect(html).toContain('class="report-footer-context"');
   });
 
-  it("groups devices into the three selected UI tabs without losing drawer controls", () => {
+  it("separates the four device tabs from printer configuration", () => {
     installHardware(createHardwareBridge());
     renderHardware();
 
-    expect(document.querySelectorAll(".hardware-device-tabs button")).toHaveLength(3);
-    expect(screen.getByText("Impresora de ticket")).toBeTruthy();
+    expect(document.querySelectorAll(".hardware-device-tabs button")).toHaveLength(4);
+    expect(screen.queryByText("Impresora de ticket")).toBeNull();
     expect(screen.getByText("Cajón de dinero")).toBeTruthy();
     expect(screen.getByText("Métodos que abren cajón")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Lector y conexión" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lector" }));
     expect(screen.getByText("Escáner código de barras")).toBeTruthy();
-    expect(screen.getByText("ESC/POS")).toBeTruthy();
+    expect(screen.queryByText("ESC/POS")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Visor de cliente" }));
     expect(screen.getByText("Pantalla cliente")).toBeTruthy();
@@ -120,9 +121,9 @@ describe("HardwareSettingsScreen", () => {
   it("configures only additional ESC/POS feed while preserving the current minimum", async () => {
     const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
     installHardware(createHardwareBridge({ saveHardwareConfig }));
-    renderHardware();
+    renderHardware({ mode: "printing" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Lector y conexión" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tickets" }));
     const input = screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" });
     expect(input).toHaveAttribute("min", "0");
     expect(input).toHaveAttribute("max", "12");
@@ -136,10 +137,39 @@ describe("HardwareSettingsScreen", () => {
     ));
   });
 
+  it("keeps ticket driver and ESC/POS transport as separate saved settings", async () => {
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    installHardware(createHardwareBridge({
+      getHardwareConfig: vi.fn(async () => ({ ...defaultHardwareConfig, escposAdditionalFeedLines: 4 })),
+      saveHardwareConfig,
+    }));
+    renderHardware({ mode: "printing" });
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" }))
+      .toHaveValue(4));
+
+    fireEvent.click(screen.getByRole("button", { name: "Modo de impresora" }));
+    fireEvent.click(screen.getByRole("option", { name: "ESC/POS directo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Conexión ESC/POS" }));
+    fireEvent.click(screen.getByRole("option", { name: "COM" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ ticketPrinterDriver: "ESCPOS_RAW", ticketPrinterConnection: "SERIAL" }),
+    ));
+
+    fireEvent.click(screen.getByRole("button", { name: "Modo de impresora" }));
+    fireEvent.click(screen.getByRole("option", { name: "Impresora Windows" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ticketPrinterDriver: "WINDOWS_DRIVER", ticketPrinterConnection: "SERIAL" }),
+    ));
+  });
+
   it("keeps documentRoutingOnly compatible and renders all four real routes", async () => {
     installHardware(createHardwareBridge());
     renderHardware({ documentRoutingOnly: true });
 
+    expect(document.querySelectorAll(".hardware-device-tabs button")).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Asignación de documentos" }));
     expect(screen.getByText("Factura")).toBeTruthy();
     expect(screen.getByText("Albaran")).toBeTruthy();
     expect(screen.getByText("Ticket")).toBeTruthy();
@@ -164,6 +194,7 @@ describe("HardwareSettingsScreen", () => {
       mode="printing"
       onOpenProductLabels={onOpenProductLabels}
     />);
+    fireEvent.click(screen.getByRole("button", { name: "Etiquetas" }));
     fireEvent.click(screen.getByRole("button", { name: "Abrir impresión de etiquetas" }));
     expect(onOpenProductLabels).toHaveBeenCalledOnce();
   });
@@ -201,7 +232,7 @@ describe("HardwareSettingsScreen", () => {
       getHardwareConfig,
       saveHardwareConfig,
     }));
-    renderHardware();
+    renderHardware({ mode: "printing" });
 
     await waitFor(() => expect(getHardwareConfig).toHaveBeenCalledOnce());
     expect(listPrinters).not.toHaveBeenCalled();
@@ -222,7 +253,7 @@ describe("HardwareSettingsScreen", () => {
   it("prints a real test ticket through the desktop hardware bridge", async () => {
     const printTicket = vi.fn(async () => ({ ok: true as const }));
     installHardware(createHardwareBridge({ printTicket }));
-    renderHardware();
+    renderHardware({ mode: "printing" });
 
     fireEvent.click(screen.getByRole("button", { name: "Imprimir prueba" }));
     await waitFor(() => expect(printTicket).toHaveBeenCalledOnce());
@@ -230,7 +261,7 @@ describe("HardwareSettingsScreen", () => {
   });
 
   it("does not present desktop-only printer actions as functional in a browser", () => {
-    renderHardware();
+    renderHardware({ mode: "printing" });
 
     expect(screen.getByRole("button", { name: "Detectar impresoras" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Imprimir prueba" })).toBeDisabled();
@@ -265,6 +296,145 @@ describe("HardwareSettingsScreen", () => {
     ));
   });
 
+  it("does not choose a customer display automatically after detection", async () => {
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    installHardware(createHardwareBridge({
+      listCustomerDisplays: vi.fn(async () => ({ ok: true as const, displays: [
+        { id: "secondary", label: "Secundaria", width: 1920, height: 1080, primary: false },
+      ] })),
+      saveHardwareConfig,
+    }));
+    renderHardware();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visor de cliente" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ customerDisplayScreenId: "" }),
+    ));
+  });
+
+  it("edits an existing label profile and saves other hardware fields unchanged", async () => {
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    const existing = {
+      ...defaultHardwareConfig,
+      ticketPrinterName: "EPSON TM-T20",
+      productLabelProfiles: [{
+        ...defaultHardwareConfig.productLabelProfiles[0],
+        id: "existing-label",
+        name: "Producto 58 x 40",
+      }],
+      defaultProductLabelProfileId: "existing-label",
+    };
+    installHardware(createHardwareBridge({
+      getHardwareConfig: vi.fn(async () => existing),
+      saveHardwareConfig,
+    }));
+    renderHardware({ mode: "printing" });
+    fireEvent.click(screen.getByRole("button", { name: "Etiquetas" }));
+    const profileName = screen.getByRole("textbox", { name: /Nombre/i });
+    await waitFor(() => expect(profileName).toHaveValue("Producto 58 x 40"));
+    fireEvent.change(profileName, { target: { value: "Producto 60 x 40" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: /Ancho/i }), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketPrinterName: "EPSON TM-T20",
+        defaultProductLabelProfileId: "existing-label",
+        productLabelProfiles: [expect.objectContaining({
+          id: "existing-label", name: "Producto 60 x 40", widthMm: 60,
+        })],
+      }),
+    ));
+  });
+
+  it("discards unsaved hardware changes and continues when Cancelar is chosen", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    const onBack = vi.fn();
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    installHardware(createHardwareBridge({
+      getHardwareConfig: vi.fn(async () => ({ ...defaultHardwareConfig, escposAdditionalFeedLines: 1 })),
+      saveHardwareConfig,
+    }));
+    renderHardware({ mode: "printing", onBack });
+    const feed = screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" });
+    await waitFor(() => expect(feed).toHaveValue(1));
+    fireEvent.change(feed, { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: /Volver/i }));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog", { name: "¿Desea guardar cambios?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(feed).toHaveValue(1);
+    expect(saveHardwareConfig).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("routes Escape through the ERP save dialog and waits for persistence", async () => {
+    let finishSave: ((value: { ok: true }) => void) | undefined;
+    const saveHardwareConfig = vi.fn(() => new Promise<{ ok: true }>((resolve) => { finishSave = resolve; }));
+    const onBack = vi.fn();
+    installHardware(createHardwareBridge({
+      getHardwareConfig: vi.fn(async () => ({ ...defaultHardwareConfig, escposAdditionalFeedLines: 1 })),
+      saveHardwareConfig,
+    }));
+    renderHardware({ mode: "printing", onBack });
+    const feed = screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" });
+    await waitFor(() => expect(feed).toHaveValue(1));
+    fireEvent.change(feed, { target: { value: "2" } });
+
+    act(() => { window.dispatchEvent(new Event("tpv-sale-settings-back", { cancelable: true })); });
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog", { name: "¿Desea guardar cambios?" })).toBeInTheDocument();
+    expect(feed).toHaveValue(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(saveHardwareConfig).toHaveBeenCalledOnce();
+    expect(onBack).not.toHaveBeenCalled();
+    await act(async () => { finishSave?.({ ok: true }); });
+    await waitFor(() => expect(onBack).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("keeps the dialog and hardware edits when saving before navigation fails", async () => {
+    const onBack = vi.fn();
+    const saveHardwareConfig = vi.fn(async () => ({
+      ok: false as const,
+      code: "HARDWARE_UNAVAILABLE" as const,
+      message: "No se pudo guardar",
+    }));
+    installHardware(createHardwareBridge({
+      getHardwareConfig: vi.fn(async () => ({ ...defaultHardwareConfig, escposAdditionalFeedLines: 1 })),
+      saveHardwareConfig,
+    }));
+    renderHardware({ mode: "printing", onBack });
+    const feed = screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" });
+    await waitFor(() => expect(feed).toHaveValue(1));
+    fireEvent.change(feed, { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledOnce());
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog", { name: "¿Desea guardar cambios?" })).toBeInTheDocument();
+    expect(feed).toHaveValue(2);
+    expect(screen.getAllByText("No se pudo guardar").length).toBeGreaterThan(0);
+  });
+
+  it("allows leaving without another prompt after successive saves", async () => {
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    const onBack = vi.fn();
+    installHardware(createHardwareBridge({ saveHardwareConfig }));
+    renderHardware({ mode: "printing", onBack });
+    const feed = screen.getByRole("spinbutton", { name: "Espacio final adicional (líneas)" });
+    fireEvent.change(feed, { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledTimes(1));
+    fireEvent.change(feed, { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
   it("verifies a scanner with the fixed automatic timing rule", async () => {
     const testScannerInput = vi.fn(async (code: string) => ({
       ok: true as const,
@@ -273,7 +443,7 @@ describe("HardwareSettingsScreen", () => {
     }));
     installHardware(createHardwareBridge({ testScannerInput }));
     renderHardware();
-    fireEvent.click(screen.getByRole("button", { name: "Lector y conexión" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lector" }));
 
     const input = screen.getByPlaceholderText("Escanea o escribe código y pulsa Enter");
     fireEvent.change(input, { target: { value: "12345" } });

@@ -30,6 +30,8 @@ import {
 import { SalePaymentCheckout, type SalePaymentCheckoutHandle, type ServerSession } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { SettingsScreen } from "./SettingsScreen";
+import { writeCashInputMode } from "../sale/cashInputMode";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 
 const printTicket = (documentNumber: string): ConfirmedTicketPrintSnapshot => ({
@@ -55,6 +57,75 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("applies the real cash-entry settings selector each time the unified checkout opens", async () => {
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  writeCashInputMode("keyboard");
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:1000,interfaceMode:"KEYBOARD",
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized,
+  }));
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/active",expect.anything()));
+  for (const [option,showsKeypad] of [["Táctil",true],["Teclado normal",false]] as const) {
+   const settings=render(createElement(SettingsScreen,{
+    app:"venta",locale:"es",session:{username:"admin",displayName:"ADMIN",permissions:["ADMIN"]},
+    terminalContext:{storeName:"Tienda",terminalCode:"01"},
+    onBack:vi.fn(),onLocaleChange:vi.fn(),initialDestination:"visualization",
+   }));
+   fireEvent.click(screen.getByRole("button",{name:"Entrada de cobro"}));
+   fireEvent.click(screen.getByRole("option",{name:option}));
+   settings.unmount();
+
+   act(()=>ref.current!.openCheckout("CASH"));
+   const dialog=await screen.findByRole("dialog",{name:"COBRO"});
+   expect(Boolean(dialog.querySelector(".sale-checkout-keypad"))).toBe(showsKeypad);
+   if(showsKeypad){
+    fireEvent.click(within(dialog).getByRole("button",{name:"20 €"}));
+    expect(within(dialog).getByRole("textbox",{name:"IMPORTE / RECIBIDO"})).toHaveValue("20,00");
+   }
+   expect(onFinalized).not.toHaveBeenCalled();
+   expect(apiRequestMock.mock.calls.some(([path])=>String(path).endsWith("/allocations"))).toBe(false);
+   fireEvent.click(within(dialog.querySelector(".sale-checkout-footer") as HTMLElement).getByRole("button",{name:"CANCELAR"}));
+   await waitFor(()=>expect(screen.queryByRole("dialog",{name:"COBRO"})).not.toBeInTheDocument());
+  }
+ });
+
+ it("refreshes cash-entry preference when an active payment session reopens the unified checkout", async () => {
+  let finishRecovery!:(session:ServerSession)=>void;
+  const recovery=new Promise<ServerSession>(resolve=>{finishRecovery=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return recovery;
+   throw new Error(`unexpected request ${path}`);
+  });
+  writeCashInputMode("keyboard");
+  render(createElement(SalePaymentCheckout,{
+   locale:"es",totalCents:1000,interfaceMode:"KEYBOARD",
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized:vi.fn(),
+  }));
+  writeCashInputMode("touch");
+  await act(async()=>finishRecovery({
+   id:"recovered-cash",total:"10.00",direction:"SALE",status:"COLLECTING",
+   allocations:[{id:"cash-1",idempotencyKey:"cash-1",kind:"CASH",amount:"5.00",status:"APPROVED"}],
+  }));
+  const dialog=await screen.findByRole("dialog",{name:"COBRO"});
+  expect(within(dialog).getByRole("complementary",{name:"Teclado numérico"})).toBeInTheDocument();
+  expect(within(dialog).getByRole("textbox",{name:"IMPORTE / RECIBIDO"})).toHaveValue("5,00");
+ });
+
  it("removes the F11 checkout discount when F12 clears the checkout", async () => {
   apiRequestMock.mockImplementation(async(path:string)=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
@@ -116,7 +187,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    "El saldo de miembro no está disponible. Continúa el cobro sin utilizarlo.",
   );
   expect(apiRequestMock.mock.calls.some(([path]) => String(path).endsWith("/allocations"))).toBe(false);
-  expect(screen.getAllByText("10,00 €")).toHaveLength(2);
+  expect(within(document.querySelector(".sale-checkout-totals") as HTMLElement).getAllByText("10,00 €")).toHaveLength(2);
  });
 
  it("shows a duplicate reservation warning without blocking checkout", async () => {
@@ -277,7 +348,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    .toMatchObject({kind:"MEMBER_CREDIT",amount:"4.39"});
   await waitFor(()=>expect(screen.getByText("-16,67 €")).toBeInTheDocument());
   expect(screen.getAllByText("20,00 €").length).toBeGreaterThan(0);
-  expect(screen.getByText("3,33 €")).toBeInTheDocument();
+  expect(within(document.querySelector(".sale-checkout-totals") as HTMLElement).getByText("3,33 €")).toBeInTheDocument();
   expect(screen.getByRole("button",{name:"Efectivo"})).toBeEnabled();
  });
 

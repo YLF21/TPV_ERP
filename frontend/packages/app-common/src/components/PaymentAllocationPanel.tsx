@@ -12,6 +12,7 @@ import type { LocaleCode } from "../types";
 import { MemberWalletDialog, type MemberWalletLot } from "./MemberWalletDialog";
 import { editTouchText, TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 import "./PaymentTouchKeyboard.css";
+import type { CashInputMode } from "../sale/cashInputMode";
 
 export type CheckoutMethod = "CASH" | "CARD" | "VOUCHER" | "PENDING" | "TRANSFER" | "MEMBER_BALANCE" | "MEMBER_CREDIT" | "DISCOUNT";
 
@@ -65,6 +66,7 @@ type Props = {
   transferDateEnabled?: boolean;
   vouchers?: Array<{ code: string; balance: number | string }>;
   interfaceMode?: "KEYBOARD" | "TOUCH";
+  cashInputMode?: CashInputMode;
   initialMethod?: CheckoutMethod;
   customerSelected?: boolean;
   memberCreditEligible?: boolean;
@@ -228,6 +230,7 @@ export function PaymentAllocationPanel({
   transferDateEnabled = false,
   vouchers = [],
   interfaceMode = "KEYBOARD",
+  cashInputMode,
   initialMethod = "CASH",
   customerSelected = false,
   memberCreditEligible = false,
@@ -396,6 +399,10 @@ export function PaymentAllocationPanel({
   const selectedMethod = (!allowAdd || compensationRequired) && recoveryMethod
     ? recoveryMethod
     : method;
+  const touchAmountInput = selectedMethod === "CASH" && cashInputMode !== undefined
+    ? cashInputMode === "touch"
+    : interfaceMode === "TOUCH";
+  const touchPresentation = interfaceMode === "TOUCH" || touchAmountInput;
   const integratedPaymentLocked = hasLockedIntegratedPayment(session.allocations);
   const integratedPaymentInFlight = session.allocations.some((allocation) =>
     allocation.kind === "INTEGRATED_CARD"
@@ -535,7 +542,7 @@ export function PaymentAllocationPanel({
 
   function closeWallet() {
     setWalletOpen(false);
-    if (interfaceMode === "TOUCH") setFocusEntryAfterWallet(true);
+    if (touchPresentation) setFocusEntryAfterWallet(true);
   }
 
   function resetScannerCapture() {
@@ -889,7 +896,7 @@ export function PaymentAllocationPanel({
   })[value];
 
   return <><div className="sale-checkout-overlay" role="presentation">
-    <section ref={checkoutDialogRef} className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}${touchTextKeyboardVisible ? " has-touch-text-keyboard" : ""}`}
+    <section ref={checkoutDialogRef} className={`sale-checkout-dialog ${touchPresentation ? "is-touch" : "is-keyboard"}${touchTextKeyboardVisible ? " has-touch-text-keyboard" : ""}`}
       role="dialog" aria-modal="true" aria-hidden={walletOpen ? true : undefined}
       aria-labelledby="sale-checkout-title" aria-busy={busy || voucherResolving}>
       <header className="sale-checkout-header">
@@ -1052,7 +1059,7 @@ export function PaymentAllocationPanel({
           </footer>
         </div>
 
-        {interfaceMode === "TOUCH" && !zero && !walletOpen && touchField === "amount" && <aside className="sale-checkout-keypad" aria-label={copy.keypad}
+        {touchAmountInput && !zero && !walletOpen && touchField === "amount" && <aside className="sale-checkout-keypad" aria-label={copy.keypad}
           onPointerDown={(event) => event.preventDefault()}>
           <button type="button" className="exact" disabled={entryLocked} aria-label={copy.exact}
             onClick={() => selectTouchAmount(remaining)}><span>{copy.exact}</span><strong>{money(remaining)} €</strong></button>

@@ -120,12 +120,13 @@ vi.mock("../../../packages/app-common/src/components/HardwareSettingsScreen", ()
     onOpenProductLabels,
   }: {
     mode?: string;
-    onNavigateSettings?: (destination: "account") => void;
+    onNavigateSettings?: (destination: "account" | "security") => void;
     onOpenProductLabels?: () => void;
   }) => (
     <section aria-label="hardware settings">
       <output aria-label="hardware mode">{mode}</output>
       <button type="button" onClick={() => onNavigateSettings?.("account")}>Open account settings</button>
+      <button type="button" onClick={() => onNavigateSettings?.("security")}>Open security settings</button>
       {onOpenProductLabels ? <button type="button" onClick={onOpenProductLabels}>Open product labels</button> : null}
     </section>
   ),
@@ -378,10 +379,13 @@ describe("APP VENTA locale wiring", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("sale");
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("visualization");
 
     fireEvent.click(screen.getByRole("button", { name: "Open devices" }));
     expect(await screen.findByLabelText("hardware mode")).toHaveTextContent("devices");
+    fireEvent.click(screen.getByRole("button", { name: "Open security settings" }));
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("security");
+    fireEvent.click(screen.getByRole("button", { name: "Open devices" }));
     fireEvent.click(screen.getByRole("button", { name: "Open account settings" }));
     expect(await screen.findByLabelText("settings destination")).toHaveTextContent("account");
 
@@ -407,11 +411,10 @@ describe("APP VENTA locale wiring", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("account");
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("visualization");
 
     fireEvent.click(screen.getByRole("button", { name: "Open devices" }));
     expect(await screen.findByLabelText("settings")).toBeVisible();
-    expect(screen.getByLabelText("settings destination")).toHaveTextContent("account");
     expect(screen.queryByLabelText("hardware settings")).not.toBeInTheDocument();
   });
 
