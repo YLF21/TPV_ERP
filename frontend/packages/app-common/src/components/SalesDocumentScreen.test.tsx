@@ -212,7 +212,7 @@ describe("SalesDocumentScreen", () => {
     );
 
     const topbar = document.querySelector<HTMLElement>(".sales-document-topbar")!;
-    expect(within(topbar).getByText("APP VENTA")).toHaveClass("sales-document-app-badge");
+    expect(within(topbar).getByText("esPOS VENTA")).toHaveClass("sales-document-app-badge");
     expect(within(topbar).getByRole("heading", { name: "Venta documental" })).toBeVisible();
     expect(within(topbar).getByRole("button", { name: "Factura" })).toHaveAttribute(
       "aria-pressed",

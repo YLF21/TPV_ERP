@@ -22,6 +22,7 @@ fs.cpSync(path.join(root, "desktop"), path.join(staging, "desktop"), {
     && !(/main-(venta|gestion)\.cjs$/.test(source)
       && !source.replaceAll("\\", "/").endsWith(app.main))
 });
+fs.cpSync(path.join(root, "branding"), path.join(staging, "branding"), { recursive: true });
 fs.cpSync(path.join(root, app.dist), path.join(staging, app.dist), {
   recursive: true,
   filter: (source) => !source.endsWith(".map") && !path.basename(source).startsWith(".env")

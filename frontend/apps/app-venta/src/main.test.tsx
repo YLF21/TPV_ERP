@@ -323,8 +323,8 @@ describe("APP VENTA locale wiring", () => {
   it("shows a centered localized loading experience", () => {
     render(<AppLoadingFallback locale="zh" />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("正在加载 APP VENTA");
-    expect(screen.getByRole("progressbar", { name: "正在加载 APP VENTA" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载 esPOS VENTA");
+    expect(screen.getByRole("progressbar", { name: "正在加载 esPOS VENTA" })).toBeInTheDocument();
     expect(screen.getByText("TPV ERP")).toBeInTheDocument();
   });
 

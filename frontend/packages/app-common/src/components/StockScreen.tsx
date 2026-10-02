@@ -1,3 +1,4 @@
+import { AppLogo } from "./AppLogo";
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./ErpClassicWindow.css";
 import "./StockTopSales.css";
@@ -7546,6 +7547,7 @@ export function StockScreen({
       >
         <header className="work-topbar">
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
+            <AppLogo app={app} />
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>}
           {selectedView !== "stock.bulkEdit" && (

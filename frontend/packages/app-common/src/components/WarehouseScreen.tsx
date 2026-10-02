@@ -1,3 +1,4 @@
+import { AppLogo } from "./AppLogo";
 import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardText,
@@ -162,6 +163,7 @@ export function WarehouseScreen({
       <section className="work-shell" aria-label={t("home.warehouse")}>
         <header className="work-topbar">
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
+            <AppLogo app={app} />
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>}
           <h1 className="report-title">{t("home.warehouse")}</h1>

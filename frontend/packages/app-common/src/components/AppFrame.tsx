@@ -5,6 +5,7 @@ import languageIcon from "../assets/language.png";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { SaasConnectionStatus } from "./SaasConnectionStatus";
 import { useScreenConnectionStatus } from "./useScreenConnectionStatus";
+import { AppLogo } from "./AppLogo";
 
 type AppFrameProps = {
   titleKey: string;
@@ -35,7 +36,11 @@ export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, 
   return (
     <div className="app-frame">
       <header className="app-titlebar">
-        <strong>{t(titleKey)}</strong>
+        <strong className="app-titlebar-brand">
+          {titleKey === "gestion.title" && <AppLogo app="gestion" />}
+          {titleKey === "venta.title" && <AppLogo app="venta" />}
+          {t(titleKey)}
+        </strong>
         <span>{t("login.serverContext")}</span>
         <div className="app-titlebar-status">
           <span>{session.displayName}</span>

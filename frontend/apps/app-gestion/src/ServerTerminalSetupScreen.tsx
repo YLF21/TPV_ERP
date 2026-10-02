@@ -9,6 +9,7 @@ import {
   type LocaleCode,
   type TerminalContext
 } from "@tpverp/app-common";
+import { AppLogo } from "../../../packages/app-common/src/components/AppLogo";
 
 type InstallationLoginResult = {
   accessToken: string;
@@ -143,7 +144,7 @@ export function ServerTerminalSetupScreen({
   return (
     <main className="login-screen server-setup-screen">
       <header className="entry-topbar">
-        <strong className="app-brand-static">{t("gestion.title")}</strong>
+        <strong className="app-brand-static"><AppLogo app="gestion" />{t("gestion.title")}</strong>
       </header>
       <form className="login-panel server-setup-panel" onSubmit={submit}>
         <header className="login-panel-heading">

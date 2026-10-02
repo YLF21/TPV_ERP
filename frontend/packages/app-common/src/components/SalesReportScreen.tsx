@@ -1,3 +1,4 @@
+import { AppLogo } from "./AppLogo";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { lazy, Suspense } from "react";
@@ -3940,6 +3941,7 @@ export function SalesReportScreen({
       <section className="report-shell" aria-label={t("home.salesReport")}>
         <header className="report-topbar">
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
+            <AppLogo app={app} />
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>}
           <h1 className="report-title">{t("home.salesReport")}</h1>

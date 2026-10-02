@@ -27,6 +27,7 @@ export type {
 export { loadTerminalIdentity, resolveTerminalIdentity } from "./terminalIdentity";
 export type { TerminalIdentityBridge, TerminalIdentityLoadResult } from "./terminalIdentity";
 export { AppFrame } from "./components/AppFrame";
+export { AppLogo } from "./components/AppLogo";
 export { ErpSelect } from "./components/ErpSelect";
 export type { ErpSelectOption } from "./components/ErpSelect";
 export { LoginScreen } from "./components/LoginScreen";

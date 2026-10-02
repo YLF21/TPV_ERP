@@ -4,8 +4,8 @@ const crypto = require("node:crypto");
 
 const frontendRoot = path.resolve(__dirname, "..");
 const apps = {
-  venta: { productName: "TPV ERP - APP VENTA", artifactPrefix: "TPV-ERP-APP-VENTA" },
-  gestion: { productName: "TPV ERP - APP GESTION", artifactPrefix: "TPV-ERP-APP-GESTION" }
+  venta: { productName: "esPOS VENTA", artifactPrefix: "esPOS-VENTA", icon: "branding/app-venta.ico" },
+  gestion: { productName: "esPOS GESTIÓN", artifactPrefix: "esPOS-GESTION", icon: "branding/app-gestion.ico" }
 };
 
 function readBuildMetadata(root = frontendRoot, checkInstalled = false) {
@@ -63,8 +63,10 @@ function createDesktopConfig(appKey) {
     electronVersion: metadata.electronVersion,
     npmRebuild: false,
     publish: null,
-    win: { target: [{ target: "nsis", arch: ["x64"] }] },
+    win: { icon: app.icon, target: [{ target: "nsis", arch: ["x64"] }] },
     nsis: {
+      installerIcon: app.icon,
+      uninstallerIcon: app.icon,
       oneClick: false,
       perMachine: false,
       allowToChangeInstallationDirectory: true,

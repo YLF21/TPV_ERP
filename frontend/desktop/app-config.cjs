@@ -5,19 +5,21 @@ const DESKTOP_APP_VERSION = "4.2.0";
 const APP_CONFIGS = Object.freeze({
   venta: Object.freeze({
     key: "venta",
-    name: "APP VENTA",
+    name: "esPOS VENTA",
     appId: "com.tpverp.app.venta",
-    productName: "TPV ERP - APP VENTA",
+    productName: "esPOS VENTA",
     main: "desktop/main-venta.cjs",
+    iconRelativePath: path.join("branding", "app-venta.ico"),
     distRelativePath: path.join("apps", "app-venta", "dist"),
     windowMode: "FULLSCREEN"
   }),
   gestion: Object.freeze({
     key: "gestion",
-    name: "APP GESTION",
+    name: "esPOS GESTIÓN",
     appId: "com.tpverp.app.gestion",
-    productName: "TPV ERP - APP GESTION",
+    productName: "esPOS GESTIÓN",
     main: "desktop/main-gestion.cjs",
+    iconRelativePath: path.join("branding", "app-gestion.ico"),
     distRelativePath: path.join("apps", "app-gestion", "dist"),
     windowMode: "MAXIMIZED"
   })
@@ -41,4 +43,8 @@ function resolveDesktopDist(config, desktopDirectory = __dirname) {
   return dist;
 }
 
-module.exports = { APP_CONFIGS, DESKTOP_APP_VERSION, getDesktopAppConfig, resolveDesktopDist };
+function resolveDesktopIcon(config, desktopDirectory = __dirname) {
+  return path.resolve(desktopDirectory, "..", config.iconRelativePath);
+}
+
+module.exports = { APP_CONFIGS, DESKTOP_APP_VERSION, getDesktopAppConfig, resolveDesktopDist, resolveDesktopIcon };

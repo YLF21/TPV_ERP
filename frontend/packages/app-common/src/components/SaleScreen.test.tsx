@@ -2281,7 +2281,7 @@ describe("SaleScreen", () => {
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).toHaveBeenCalledOnce();
     onBack.mockClear();
 
@@ -2289,7 +2289,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
     const statuses = screen.queryAllByRole("status").map((status) => status.textContent);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     fireEvent.click(await logoutButton());
     fireEvent.click(screen.getByRole("button", { name: "Apagar" }));
     expect(onBack).not.toHaveBeenCalled();
@@ -2305,7 +2305,7 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(search, { key: "Pause" });
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).toHaveBeenCalledOnce();
     fireEvent.click(await logoutButton());
     await waitFor(() => expect(onLogout).toHaveBeenCalledOnce());
@@ -2329,7 +2329,7 @@ describe("SaleScreen", () => {
     expect(screen.getByText("0,00", { selector: ".sale-total strong" })).toBeInTheDocument();
     expect(checkoutProps.current?.sale?.lines).toHaveLength(1);
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).not.toHaveBeenCalled();
   });
 
@@ -3181,7 +3181,7 @@ describe("SaleScreen", () => {
     expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
     expect(document.querySelector("main.sale-screen")).toHaveAttribute("inert");
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).not.toHaveBeenCalled();
     fireEvent.keyDown(search, { key: "Pause" });
     expect(controlDeliveryMock.persist).toHaveBeenCalledOnce();
@@ -3189,7 +3189,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument());
     expect(controlDeliveryMock.deliver).toHaveBeenCalledOnce();
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
 
@@ -3214,13 +3214,13 @@ describe("SaleScreen", () => {
     expect(controlDeliveryMock.persist).toHaveBeenCalledWith(expect.objectContaining({ fullTicketClear: true, lines: expect.any(Array) }));
     expect(controlDeliveryMock.deliver).not.toHaveBeenCalled();
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: label }));
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
 
@@ -3790,14 +3790,14 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
     await waitFor(() => expect(parkRequest).toHaveBeenCalledOnce());
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).not.toHaveBeenCalled();
 
     await act(async () => rejectPark(new Error("park service unavailable")));
     await screen.findByText("park service unavailable");
     expect(checkoutProps.current?.sale?.lines).toHaveLength(1);
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).not.toHaveBeenCalled();
 
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
@@ -3805,7 +3805,7 @@ describe("SaleScreen", () => {
     await act(async () => resolvePark(new Response(JSON.stringify({ id: "parked-exit" }), { status: 200 })));
     await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(0));
     expect(onExitBlockedChange).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "APP VENTA" }));
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
 

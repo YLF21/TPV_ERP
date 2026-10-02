@@ -4,6 +4,7 @@ import { devTerminalContext } from "../../../packages/app-common/src/api/runtime
 import { useSaleControlDelivery } from "../../../packages/app-common/src/sale/useSaleControlDelivery";
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
 import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
+import { AppLogo } from "../../../packages/app-common/src/components/AppLogo";
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
 import { SaleTouchKeyboardScope } from "../../../packages/app-common/src/components/SaleTouchKeyboardScope";
 import {
@@ -38,16 +39,16 @@ function appLoadingCopy(language: string, phase: AppLoadingPhase) {
   if (language.startsWith("en")) {
     return phase === "compatibility"
       ? { title: "Preparing the point of sale", detail: "Checking the secure connection to the backend" }
-      : { title: "Loading APP VENTA", detail: "Preparing your sales workspace" };
+      : { title: "Loading esPOS VENTA", detail: "Preparing your sales workspace" };
   }
   if (language.startsWith("zh")) {
     return phase === "compatibility"
       ? { title: "正在准备销售终端", detail: "正在检查与后端的安全连接" }
-      : { title: "正在加载 APP VENTA", detail: "正在准备销售工作区" };
+      : { title: "正在加载 esPOS VENTA", detail: "正在准备销售工作区" };
   }
   return phase === "compatibility"
     ? { title: "Preparando el punto de venta", detail: "Comprobando compatibilidad y conexión segura con el backend" }
-    : { title: "Cargando APP VENTA", detail: "Preparando tu espacio de venta" };
+    : { title: "Cargando esPOS VENTA", detail: "Preparando tu espacio de venta" };
 }
 
 export function AppLoadingFallback({ phase = "application", locale }: { phase?: AppLoadingPhase; locale?: LocaleCode }) {
@@ -56,7 +57,7 @@ export function AppLoadingFallback({ phase = "application", locale }: { phase?: 
   return (
     <main className="app-loading-screen">
       <section className="app-loading-card" role="status" aria-live="polite" aria-busy="true">
-        <span className="app-loading-brand">APP VENTA</span>
+        <span className="app-loading-brand"><AppLogo app="venta" />esPOS VENTA</span>
         <div className="app-loading-copy">
           <h1>{copy.title}</h1>
           <p>{copy.detail}</p>
@@ -77,7 +78,7 @@ class LazyModuleErrorBoundary extends Component<{ children: ReactNode }, { faile
   render() {
     if (!this.state.failed) return this.props.children;
     return <main className="settings-screen"><section className="settings-card" role="alert">
-      <h1>No se pudo cargar esta parte de APP VENTA</h1>
+      <h1>No se pudo cargar esta parte de esPOS VENTA</h1>
       <p>La información técnica no se muestra por seguridad.</p>
       <button type="button" onClick={() => window.location.reload()}>Reintentar</button>
       <button type="button" onClick={() => window.history.back()}>Volver</button>
@@ -492,18 +493,18 @@ export function App() {
     const copy = locale === "en"
       ? {
           title: "Terminal not configured",
-          detail: "APP VENTA has no valid terminal identity. Configure and approve this device before signing in.",
+          detail: "esPOS VENTA has no valid terminal identity. Configure and approve this device before signing in.",
           retry: "Retry"
         }
       : locale === "zh"
         ? {
             title: "终端未配置",
-            detail: "APP VENTA 没有有效的终端身份。请先配置并批准此设备，然后再登录。",
+            detail: "esPOS VENTA 没有有效的终端身份。请先配置并批准此设备，然后再登录。",
             retry: "重试"
           }
         : {
             title: "Terminal no configurado",
-            detail: "APP VENTA no dispone de una identidad de terminal válida. Configura y aprueba este equipo antes de iniciar sesión.",
+            detail: "esPOS VENTA no dispone de una identidad de terminal válida. Configura y aprueba este equipo antes de iniciar sesión.",
             retry: "Reintentar"
           };
     return (
@@ -536,9 +537,9 @@ export function App() {
 
   if (compatibilityGate.status === "blocked") {
     const unreachable = compatibilityGate.reason === "BACKEND_UNREACHABLE";
-    const message = locale === "en" ? (unreachable ? "The backend is unreachable. Payments remain blocked." : "APP VENTA and the backend are not compatible. Update before taking payments.")
-      : locale === "zh" ? (unreachable ? "无法连接后端。收款功能保持锁定。" : "APP VENTA 与后端不兼容。请先更新再进行收款。")
-        : unreachable ? "No se puede conectar con el backend. Los cobros permanecen bloqueados." : "APP VENTA y el backend no son compatibles. Actualiza antes de realizar cobros.";
+    const message = locale === "en" ? (unreachable ? "The backend is unreachable. Payments remain blocked." : "esPOS VENTA and the backend are not compatible. Update before taking payments.")
+      : locale === "zh" ? (unreachable ? "无法连接后端。收款功能保持锁定。" : "esPOS VENTA 与后端不兼容。请先更新再进行收款。")
+        : unreachable ? "No se puede conectar con el backend. Los cobros permanecen bloqueados." : "esPOS VENTA y el backend no son compatibles. Actualiza antes de realizar cobros.";
     return <main className="settings-screen"><section className="settings-card" role="alert">
       <h1>{message}</h1><p>{compatibilityGate.reason}</p>
       <button type="button" onClick={handleLogout}>{locale === "en" ? "Log out" : locale === "zh" ? "退出" : "Cerrar sesión"}</button>

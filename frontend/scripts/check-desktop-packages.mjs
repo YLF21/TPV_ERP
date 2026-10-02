@@ -7,8 +7,8 @@ import desktopBuild from "../build/desktop-build-config.cjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apps = [
-  { key: "venta", dist: "apps/app-venta/dist", main: "main-venta.cjs", title: "APP VENTA" },
-  { key: "gestion", dist: "apps/app-gestion/dist", main: "main-gestion.cjs", title: "APP GESTION" }
+  { key: "venta", dist: "apps/app-venta/dist", main: "main-venta.cjs", title: "esPOS VENTA" },
+  { key: "gestion", dist: "apps/app-gestion/dist", main: "main-gestion.cjs", title: "esPOS GESTIÓN" }
 ];
 const forbiddenName = /(^|[\\/])(?:vite|\.env|.*\.map$|.*\.(?:pem|key|p12|pfx|crt|cer|der)$)/i;
 const forbiddenText = /(?:127\.0\.0\.1:517[34]|localhost:517[34]|\/\@vite\/client|vite\/dist\/client|import\.meta\.env\.DEV)/i;

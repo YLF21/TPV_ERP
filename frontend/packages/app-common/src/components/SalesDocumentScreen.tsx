@@ -1298,7 +1298,7 @@ export function SalesDocumentScreen({
     <main className="sales-document-screen">
       <header className="sales-document-topbar">
         <div className="sales-document-heading">
-          <span className="sales-document-app-badge">APP VENTA</span>
+          <span className="sales-document-app-badge">{t("venta.title")}</span>
           <h1>{t("salesDocument.title")}</h1>
         </div>
         <div className="sales-document-type-switch" role="group" aria-label={t("salesDocument.type")}>
