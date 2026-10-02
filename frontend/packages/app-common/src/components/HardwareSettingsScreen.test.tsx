@@ -265,7 +265,7 @@ describe("HardwareSettingsScreen", () => {
 
     expect(screen.getByRole("button", { name: "Detectar impresoras" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Imprimir prueba" })).toBeDisabled();
-    expect(screen.getByText(/disponibles en APP VENTA de escritorio/)).toBeTruthy();
+    expect(screen.getByText(/disponibles en esPOS VENTA de escritorio/)).toBeTruthy();
   });
 
   it("preserves the configured customer display when screen detection finishes later", async () => {

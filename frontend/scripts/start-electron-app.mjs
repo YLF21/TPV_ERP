@@ -6,13 +6,13 @@ import { pathToFileURL } from "node:url";
 
 const configs = {
   venta: {
-    name: "APP VENTA",
+    name: "esPOS VENTA",
     workspace: "@tpverp/app-venta",
     port: 5173,
     windowMode: "FULLSCREEN"
   },
   gestion: {
-    name: "APP GESTION",
+    name: "esPOS GESTIÓN",
     workspace: "@tpverp/app-gestion",
     port: 5174,
     windowMode: "MAXIMIZED"

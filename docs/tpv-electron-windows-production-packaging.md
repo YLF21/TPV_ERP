@@ -2,8 +2,8 @@
 
 El frontend dispone de dos aplicaciones Electron independientes. La versión de aplicación procede de `frontend/package.json`; la versión exacta de Electron procede de `frontend/package-lock.json`, compartida por ambos destinos. El staging y la comprobación del ASAR usan esas mismas identidades, sin fijar otra versión en cada configuración. Antes de preparar el staging se rechaza un `node_modules/electron` que no coincida con el lock: se requiere ejecutar `npm ci` en el entorno de construcción autorizado. Los lanzadores DEV `app:venta` y `app:gestion` conservan su comportamiento y no quedan bloqueados por este control de release; una ejecución DEV con dependencias antiguas no acredita el runtime productivo.
 
-- `APP VENTA`: `npm run package:desktop:venta`
-- `APP GESTION`: `npm run package:desktop:gestion`
+- `esPOS VENTA`: `npm run package:desktop:venta`
+- `esPOS GESTIÓN`: `npm run package:desktop:gestion`
 
 Cada comando compila su workspace, crea un staging mínimo y ejecuta `electron-builder --dir`. Los artefactos quedan separados en `frontend/output/desktop-production/venta/win-unpacked` y `frontend/output/desktop-production/gestion/win-unpacked`. El staging contiene únicamente el `dist` de la aplicación, el código Electron necesario y un `package.json` mínimo; el código fuente, pruebas, Vite, mapas y secretos no se distribuyen. `asar` está habilitado.
 
@@ -44,6 +44,6 @@ npm run check:desktop:installer
 
 Cada comando compila, prepara y genera NSIS x64 mediante electron-builder con `forceCodeSigning=true` y `--publish never`. No publica releases ni descarga/instala certificados. Sin un proveedor o certificado Authenticode válido, la generación no se considera exitosa. La firma se configura externamente según [electron-builder v26 para Windows](https://www.electron.build/v26/docs/win/), sin claves ni contraseñas en el repositorio. No desactivar la firma para sortear este control.
 
-Los artefactos esperados son `frontend/output/desktop-production/<app>/TPV-ERP-APP-<VENTA|GESTION>-<version>-setup.exe` y su `.exe.sha256`. El hook calcula SHA-256 sobre el instalador terminado. La comprobación compara el checksum, valida el ASAR/entrypoint/versiones y exige Authenticode válido, firmante esperado y sello de tiempo tanto en el instalador como en el ejecutable `win-unpacked`. También puede ejecutarse para una aplicación: `node scripts/check-desktop-packages.mjs --installer venta`.
+Los artefactos esperados son `frontend/output/desktop-production/<app>/esPOS-<VENTA|GESTION>-<version>-setup.exe` y su `.exe.sha256`. El hook calcula SHA-256 sobre el instalador terminado. La comprobación compara el checksum, valida el ASAR/entrypoint/versiones y exige Authenticode válido, firmante esperado y sello de tiempo tanto en el instalador como en el ejecutable `win-unpacked`. También puede ejecutarse para una aplicación: `node scripts/check-desktop-packages.mjs --installer venta`.
 
 El checksum protege la integridad, no sustituye una firma. Los tests unitarios usan artefactos ficticios sin ejecución y no acreditan una firma real. La custodia/certificado, ejecución de NSIS firmado, instalación/actualización/desinstalación en Windows limpio, comprobación de impresora/hardware y publicación controlada siguen siendo puertas externas de aceptación. El instalador no configura automáticamente secretos fiscales ni el backend remoto: el técnico debe provisionar la configuración de `ProgramData` y aplicar la ACL documentada. Una desinstalación no debe usarse para borrar datos fiscales locales.

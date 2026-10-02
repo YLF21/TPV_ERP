@@ -78,7 +78,7 @@ const labels = {
   INFO: ["Información", "Information", "信息"],
   WARNING: ["Advertencia", "Warning", "警告"],
   DANGER: ["Error", "Error", "错误"],
-  detail_LOCAL_CONTROL: ["Alerta de control comunicada por la tienda. Consulta la referencia de origen en APP GESTIÓN.", "Control alert reported by the store. Look up the source reference in APP GESTIÓN.", "门店上报的控制警报。请在APP GESTIÓN中查询来源引用。"],
+  detail_LOCAL_CONTROL: ["Alerta de control comunicada por la tienda. Consulta la referencia de origen en esPOS GESTIÓN.", "Control alert reported by the store. Look up the source reference in esPOS GESTIÓN.", "门店上报的控制警报。请在esPOS GESTIÓN中查询来源引用。"],
   detail_LOCAL_SYNC: ["Un evento de la cola local no pudo entregarse. Consulta la referencia de origen en la tienda.", "A local queue event could not be delivered. Look up the source reference at the store.", "本地队列事件发送失败。请在门店查询来源引用。"],
   detail_SYNC_PROJECTION: ["Un evento recibido no pudo proyectarse. Consulta el evento en sincronización.", "A received event could not be projected. Look up the event in synchronization.", "收到的事件投影失败。请在同步页面查询该事件。"],
   detail_CENTRAL_SECURITY: ["Fallo de entrega de una notificación de seguridad central.", "A central security notification failed delivery.", "中央安全通知发送失败。"],

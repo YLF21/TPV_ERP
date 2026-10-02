@@ -29,6 +29,10 @@ describe("desktop release metadata", () => {
       expect(config.extraMetadata.version).toBe(metadata.version);
       expect(config.extraMetadata.tpvBuild.electronVersion).toBe(metadata.electronVersion);
       expect(config.win.target).toEqual([{ target: "nsis", arch: ["x64"] }]);
+      expect(config.win.icon).toBe(`branding/app-${appKey}.ico`);
+      expect(config.nsis.installerIcon).toBe(config.win.icon);
+      expect(config.nsis.uninstallerIcon).toBe(config.win.icon);
+      expect(fs.existsSync(path.join(desktopBuild.frontendRoot, config.win.icon))).toBe(true);
       expect(config.nsis.oneClick).toBe(false);
       expect(config.publish).toBeNull();
     }
@@ -96,7 +100,7 @@ describe("desktop artifact verification", () => {
     const source = path.join(root, "source");
     const output = path.join(root, "unpacked");
     const metadata = { version: "1.0.0", electronVersion: "44.2.0" };
-    const app = { key: "venta", title: "APP VENTA", main: "main-venta.cjs", dist: "apps/app-venta/dist" };
+    const app = { key: "venta", title: "esPOS VENTA", main: "main-venta.cjs", dist: "apps/app-venta/dist" };
     writeJson(path.join(source, "package.json"), { version: metadata.version, main: "desktop/main-venta.cjs", tpvBuild: { electronVersion: metadata.electronVersion } });
     for (const name of ["desktop/main-venta.cjs", "desktop/preload.cjs", "apps/app-venta/dist/index.html"]) {
       const file = path.join(source, name);

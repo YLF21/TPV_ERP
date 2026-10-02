@@ -65,7 +65,7 @@ type SupplierOption = {
 const copy = {
   es: {
     setupTitle: "Registrar este PDA",
-    setupHelp: "Asigna un nombre reconocible. Después un administrador deberá aprobar el dispositivo en APP GESTIÓN.",
+    setupHelp: "Asigna un nombre reconocible. Después un administrador deberá aprobar el dispositivo en esPOS GESTIÓN.",
     deviceName: "Nombre del dispositivo",
     devicePlaceholder: "PDA ALMACÉN 1",
     request: "Solicitar acceso",
@@ -73,10 +73,10 @@ const copy = {
     linkExisting: "Vincular existente",
     pairingCode: "Código temporal",
     pairingPlaceholder: "ABCD-EFGH",
-    pairingHelp: "Genera el código desde APP GESTIÓN → Seguridad → Terminales y PDA.",
+    pairingHelp: "Genera el código desde esPOS GESTIÓN → Seguridad → Terminales y PDA.",
     link: "Vincular PDA",
     linkError: "El código no es válido, ha caducado o ya fue utilizado.",
-    pending: "Solicitud enviada. Aprueba el PDA desde APP GESTIÓN y después inicia sesión.",
+    pending: "Solicitud enviada. Aprueba el PDA desde esPOS GESTIÓN y después inicia sesión.",
     requestError: "No se pudo registrar el PDA",
     reset: "Registrar otro dispositivo",
     loginTitle: "APP PDA",

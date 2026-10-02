@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { APP_CONFIGS, DESKTOP_APP_VERSION, getDesktopAppConfig } from "./app-config.cjs";
+import { APP_CONFIGS, DESKTOP_APP_VERSION, getDesktopAppConfig, resolveDesktopIcon } from "./app-config.cjs";
 import { DEFAULT_BACKEND_URL, productionBackendConfigPath, readBackendConfig, resolveBackendConfig, resolveBackendUrl, validateBackendUrl } from "./backend-config.cjs";
 
 const temporaryFiles = [];
@@ -14,9 +15,12 @@ afterEach(() => {
 describe("production desktop app contracts", () => {
   it("selects separate versioned Venta and Gestión entrypoints", () => {
     expect(DESKTOP_APP_VERSION).toBe("4.2.0");
-    expect(getDesktopAppConfig("venta")).toMatchObject({ main: "desktop/main-venta.cjs", windowMode: "FULLSCREEN" });
-    expect(getDesktopAppConfig("gestion")).toMatchObject({ main: "desktop/main-gestion.cjs", windowMode: "MAXIMIZED" });
+    expect(getDesktopAppConfig("venta")).toMatchObject({ name: "esPOS VENTA", productName: "esPOS VENTA", appId: "com.tpverp.app.venta", main: "desktop/main-venta.cjs", windowMode: "FULLSCREEN" });
+    expect(getDesktopAppConfig("gestion")).toMatchObject({ name: "esPOS GESTIÓN", productName: "esPOS GESTIÓN", appId: "com.tpverp.app.gestion", main: "desktop/main-gestion.cjs", windowMode: "MAXIMIZED" });
     expect(Object.keys(APP_CONFIGS)).toEqual(["venta", "gestion"]);
+    for (const appKey of ["venta", "gestion"]) {
+      expect(resolveDesktopIcon(getDesktopAppConfig(appKey))).toBe(fileURLToPath(new URL(`../branding/app-${appKey}.ico`, import.meta.url)));
+    }
   });
 
   it("defaults to loopback and accepts only origin HTTP(S) backend URLs", () => {

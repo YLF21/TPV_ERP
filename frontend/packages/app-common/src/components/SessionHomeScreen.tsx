@@ -8,6 +8,7 @@ import { SessionTopControls } from "./SessionTopControls";
 import { DeferredCashSessionDialog as SaleCashSessionDialog } from "./DeferredCashSessionDialog";
 import { loadCashSessionReadiness } from "../sale/cashSessions";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
+import { AppLogo } from "./AppLogo";
 
 type SessionHomeScreenProps = {
   app: AppKind;
@@ -137,8 +138,7 @@ export function SessionHomeScreen({
   return (
     <main className="home-screen" data-app={app}>
       <header className="entry-topbar">
-        <CashRegisterIcon className="home-brand-icon" weight="duotone" aria-hidden="true" focusable="false" />
-        <strong className="app-brand-static">{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
+        <strong className="app-brand-static"><AppLogo app={app} />{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
       </header>
       <div className="login-store-heading">
         <strong>{terminalContext.storeName}</strong>

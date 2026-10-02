@@ -66,6 +66,9 @@ textarea {
 }
 
 .app-loading-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   width: max-content;
   padding: 7px 11px;
   border-radius: 5px;
@@ -1861,6 +1864,45 @@ textarea {
   font-size: 14px;
 }
 
+.app-logo {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  object-fit: contain;
+}
+
+.app-titlebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-screen[data-app="venta"] .login-store-heading,
+.login-screen[data-app="gestion"] .login-store-heading {
+  left: 188px !important;
+  max-width: calc(50vw - 309px) !important;
+}
+
+.login-screen[data-app="venta"] .login-store-heading span,
+.login-screen[data-app="gestion"] .login-store-heading span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.report-brand-back .app-logo,
+.promotion-back .app-logo {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+
+.promotion-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .app-titlebar-status {
   justify-self: end;
   color: #05610f;
@@ -2083,6 +2125,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   border: 1px solid #d7e0ea;
   border-radius: 999px;
   background: #f3f7fb;
@@ -2773,6 +2816,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   border: 1px solid #d7e0ea;
   border-radius: 12px;
   background: #f3f7fb;

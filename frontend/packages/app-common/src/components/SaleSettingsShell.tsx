@@ -1,3 +1,4 @@
+import { AppLogo } from "./AppLogo";
 import { useEffect, type ReactNode } from "react";
 import {
   Desktop,
@@ -126,6 +127,7 @@ export function SaleSettingsShell({
       <section className="settings-shell sale-settings-shell" aria-label={t("settings.title")}>
         <header className="settings-topbar sale-settings-topbar">
           <button type="button" className="report-brand-back" onClick={onBack}>
+            <AppLogo app={app} />
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
           <h1 className="report-title">{t("settings.title")}</h1>

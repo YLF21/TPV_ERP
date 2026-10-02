@@ -25,7 +25,7 @@ const {
   ticketPrinterHealthFromPrinters,
   unavailableTicketPrinterHealth
 } = require("./ticket-printer-health.cjs");
-const { getDesktopAppConfig, resolveDesktopDist } = require("./app-config.cjs");
+const { getDesktopAppConfig, resolveDesktopDist, resolveDesktopIcon } = require("./app-config.cjs");
 const { productionBackendConfigPath, resolveBackendConfig } = require("./backend-config.cjs");
 const { createDesktopServer } = require("./loopback-server.cjs");
 const { resolveRendererAppUrl } = require("./renderer-runtime-config.cjs");
@@ -33,6 +33,7 @@ const { createPrivilegedIpcRegistrar } = require("./electron-security.cjs");
 const { createSaleControlOutbox } = require("./sale-control-outbox.cjs");
 
 const desktopAppConfig = getDesktopAppConfig(process.env.TPV_DESKTOP_APP_KIND);
+const desktopAppIcon = resolveDesktopIcon(desktopAppConfig);
 const appName = process.env.TPV_DESKTOP_APP_NAME || desktopAppConfig.name;
 let appUrl = process.env.TPV_DESKTOP_APP_URL || "";
 const mainWindowMode = process.env.TPV_DESKTOP_WINDOW_MODE || desktopAppConfig.windowMode;
@@ -149,6 +150,7 @@ function createWindow() {
   const opensMaximized = mainWindowMode === "MAXIMIZED";
 
   mainWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     title: appName,
     fullscreen: !opensMaximized,
     frame: true,
@@ -188,6 +190,7 @@ function createSalesDocumentWindow(bootstrap) {
     );
   }
   salesDocumentWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     title: `${appName} - Factura / Albaran`,
     fullscreen: false,
     frame: true,
@@ -392,6 +395,7 @@ async function exportTableReportPdf(report, defaultFileName) {
     return { ok: true, canceled: true };
   }
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -442,6 +446,7 @@ function createSalesUtilityWindow(bootstrap) {
   const isLabel = bootstrap.kind === "PRODUCT_LABEL";
   salesUtilityResult = { ok: true, canceled: true };
   salesUtilityWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     title: `${appName} - ${isLabel ? "Imprimir etiqueta" : "Generador EAN"}`,
     width: isLabel ? 1280 : 1040,
     height: isLabel ? 880 : 780,
@@ -551,7 +556,7 @@ function legacyRenderTicketHtml(ticket) {
   </style>
 </head>
 <body>
-  <h1>${escapeHtml(ticket.storeName || "APP VENTA")}</h1>
+  <h1>${escapeHtml(ticket.storeName || "esPOS VENTA")}</h1>
   <div class="meta">
     <div>${escapeHtml(ticket.documentNumber || "")}</div>
     <div>Terminal ${escapeHtml(ticket.terminalCode || "")}</div>
@@ -765,6 +770,7 @@ function openCustomerDisplay(config, state) {
   }
 
   customerDisplayWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     x: targetDisplay.bounds.x,
     y: targetDisplay.bounds.y,
     width: targetDisplay.bounds.width,
@@ -877,6 +883,7 @@ async function printTicket(ticket, config) {
   }
 
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -933,6 +940,7 @@ async function exportTicketPdf(ticket, defaultFileName) {
     );
   }
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -989,6 +997,7 @@ async function exportA4DocumentPdf(document, defaultFileName) {
     );
   }
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -1063,6 +1072,7 @@ async function printA4Document(document, config) {
   }
 
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -1116,6 +1126,7 @@ async function printProductLabel(request, config) {
     return structuredError("PRINTER_NOT_CONFIGURED", "Impresora de etiquetas no configurada");
   }
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
@@ -1164,6 +1175,7 @@ async function exportProductLabelPdf(request, defaultFileName) {
   }
   const profile = normalizedProfile(request?.profile);
   const printWindow = new BrowserWindow({
+    icon: desktopAppIcon,
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
