@@ -19,13 +19,21 @@ type Props = {
 
 const copy = {
   es: {
-    title: "Sesión de caja en Ventas",
-    description: "Configura cómo debe iniciarse la caja al entrar en la pantalla de Ventas.",
-    required: "Sesión de caja obligatoria",
-    yes: "Sí, exigir apertura manual",
-    no: "No, abrir automáticamente",
-    helpYes: "Sin una caja abierta, Ventas queda bloqueada hasta abrirla o salir.",
-    helpNo: "Ventas abre la caja automáticamente con el saldo conservado del cierre anterior.",
+    title: "Apertura antes de vender",
+    description: "Se aplica a todas las terminales de esta tienda. Cada terminal conserva su propio saldo.",
+    required: "Modo de apertura",
+    yes: "Sí, exigir apertura manual con recuento",
+    no: "No, apertura automática",
+    helpYes: "Cada usuario cuenta el efectivo e introduce el fondo inicial antes de vender.",
+    helpNo: "Cada terminal utiliza su propio saldo del último cierre y los movimientos posteriores.",
+    differences: "Diferencias en la apertura",
+    differencesHelp: "La caja se abre aunque el recuento no coincida. Se registra una alerta para revisión en Caja → Cierres de caja.",
+    expected: "Saldo esperado",
+    expectedValue: "Saldo calculado antes de abrir",
+    counted: "Efectivo contado",
+    countedValue: "Fondo inicial real de la sesión",
+    difference: "Diferencia",
+    differenceValue: "Contado − esperado",
     loading: "Consultando configuración…",
     save: "Guardar configuración",
     saving: "Guardando…",
@@ -33,13 +41,21 @@ const copy = {
     error: "No se pudo guardar la configuración de caja.",
   },
   en: {
-    title: "Cash session in Sales",
-    description: "Configure how the cash session starts when entering Sales.",
-    required: "Cash session required",
-    yes: "Yes, require manual opening",
+    title: "Opening before sales",
+    description: "Applies to every terminal in this store. Each terminal keeps its own balance.",
+    required: "Opening mode",
+    yes: "Yes, require manual opening with cash count",
     no: "No, open automatically",
-    helpYes: "Without an open session, Sales remains blocked until it is opened or exited.",
-    helpNo: "Sales opens the session automatically with the balance retained at the previous close.",
+    helpYes: "Each user counts cash and enters the initial fund before selling.",
+    helpNo: "Each terminal uses its own balance from the last closure and subsequent movements.",
+    differences: "Differences at opening",
+    differencesHelp: "The session opens even if the count differs. An alert is recorded for review under Cash → Cash closures.",
+    expected: "Expected balance",
+    expectedValue: "Balance calculated before opening",
+    counted: "Counted cash",
+    countedValue: "Actual opening fund for the session",
+    difference: "Difference",
+    differenceValue: "Counted − expected",
     loading: "Loading configuration…",
     save: "Save configuration",
     saving: "Saving…",
@@ -47,13 +63,21 @@ const copy = {
     error: "The cash configuration could not be saved.",
   },
   zh: {
-    title: "销售收银会话",
-    description: "配置进入销售界面时收银会话的启动方式。",
-    required: "必须开启收银会话",
-    yes: "是，需要手动开启",
+    title: "销售前开启钱箱",
+    description: "适用于本店所有终端。每台终端保留各自的余额。",
+    required: "开启方式",
+    yes: "是，手动清点后开启",
     no: "否，自动开启",
-    helpYes: "未开启收银会话时，只能开启会话或退出销售。",
-    helpNo: "销售会使用上次关账保留的余额自动开启收银会话。",
+    helpYes: "每位用户销售前清点现金并输入实际初始金额。",
+    helpNo: "每台终端使用上次关账留存的余额和之后的现金变动。",
+    differences: "开箱差额",
+    differencesHelp: "清点金额不符时仍可开启钱箱，并在现金管理 → 关账记录中生成待审核警报。",
+    expected: "预期余额",
+    expectedValue: "开启前计算的余额",
+    counted: "清点现金",
+    countedValue: "会话的实际初始金额",
+    difference: "差额",
+    differenceValue: "清点 − 预期",
     loading: "正在读取配置…",
     save: "保存配置",
     saving: "正在保存…",
@@ -157,6 +181,12 @@ export function CashPolicySettingsCard({ locale, token, request = apiRequest }: 
               <span><strong>{t.no}</strong><small>{t.helpNo}</small></span>
             </label>
           </fieldset>
+          <section className="settings-cash-policy-differences">
+            <h4>{t.differences}</h4>
+            <p>{t.differencesHelp}</p>
+            <table><thead><tr><th>{t.expected}</th><th>{t.counted}</th><th>{t.difference}</th></tr></thead>
+              <tbody><tr><td>{t.expectedValue}</td><td>{t.countedValue}</td><td>{t.differenceValue}</td></tr></tbody></table>
+          </section>
           <button
             type="button"
             disabled={saving || config.cashSessionRequired === savedValue}

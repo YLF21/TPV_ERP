@@ -1,0 +1,37 @@
+/* Ventana ERP Azul Clásica, shared by F8 and terminal cash settings. */
+.cash-session-flow { color:#12385f; min-width:0; }
+.sale-cash-session-dialog.cash-session-flow { width:min(1180px,100%); }
+.cash-session-flow > header { display:flex; align-items:center; min-height:44px; padding:10px 14px; background:#12385f; color:#fff; }
+.cash-session-flow > header h2 { margin:0; font-size:18px; color:#fff; }
+.cash-session-flow > form { padding:14px; }
+.cash-session-flow > form > p { margin:0 0 12px; font-size:13px; color:#536c84; }
+.cash-session-close-parts { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(220px,1fr); gap:10px; }
+.cash-session-part { min-width:0; padding:12px; border:1px solid #c2d2e3; background:#fff; }
+.cash-session-part h4 { margin:0 0 12px; font-size:14px; }
+.cash-session-flow label { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:12px; font-weight:700; }
+.cash-session-flow input { box-sizing:border-box; width:100%; min-width:0; height:34px; border:1px solid #aebfd2; border-radius:0; padding:6px 9px; background:#fff; color:#12385f; font:inherit; font-size:14px; }
+.cash-session-flow input:disabled { background:#f2f6fa; color:#667b91; }
+.cash-session-flow .cash-denomination-trigger { margin-top:8px; min-height:34px; padding:6px 10px; border:1px solid #aebfd2; border-radius:1px; background:#f5f8fb; color:#12385f; font-size:12px; font-weight:700; }
+.cash-session-flow .sale-operation-authorization-inputs { display:flex; flex-direction:column; gap:8px; }
+.cash-session-flow .sale-operation-authorization-hint { margin:6px 0; font-size:12px; }
+.cash-session-comment { margin-top:12px; }
+.cash-session-current-user { display:block; padding:8px; background:#f2f6fa; }
+.cash-session-opening { max-width:540px; display:grid; gap:10px; }
+.cash-session-flow .filter-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.cash-session-flow .filter-actions button { min-height:34px; padding:6px 18px; border:1px solid #aebfd2 !important; border-radius:1px; background:#12385f !important; color:#fff !important; font-weight:700; }
+.cash-session-flow .filter-actions button.secondary { background:#f5f8fb !important; color:#12385f !important; }
+.cash-session-flow .filter-actions button.cash-close-action { background:#b32118 !important; border-color:#a12626 !important; }
+.cash-session-flow button:disabled { opacity:.55; cursor:default; }
+.cash-session-embedded { min-width:0; }
+.cash-session-embedded .cash-session-flow > header { display:none; }
+.cash-session-embedded .cash-session-flow > form { padding:0; }
+.cash-session-embedded .cash-session-part { padding:10px; }
+.cash-session-embedded .cash-session-close-parts { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.cash-timeline-table { width:100%; table-layout:fixed; }
+.cash-timeline-table th { height:36px; padding:5px 8px; background:#12385f; color:#fff; font-size:12px; text-align:left; }
+.cash-timeline-table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cash-timeline-table .cash-timeline-amount { text-align:right; font-variant-numeric:tabular-nums; }
+.cash-timeline-error { color:#a12626; font-size:13px; }
+.cash-flow-denomination-field { display:grid; gap:6px; }
+@media(max-width:1050px) { .cash-session-embedded .cash-session-close-parts { grid-template-columns:repeat(2,minmax(0,1fr)); } .cash-session-embedded .cash-session-part:last-child { grid-column:1 / -1; } }
+@media(max-width:700px) { .cash-session-close-parts, .cash-session-embedded .cash-session-close-parts { grid-template-columns:1fr; } .cash-session-embedded .cash-session-part:last-child { grid-column:auto; } }

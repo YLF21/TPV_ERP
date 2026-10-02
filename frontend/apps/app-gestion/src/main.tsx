@@ -725,7 +725,7 @@ function GestionScreen({
   } else if (effectiveModule === "controlAlerts" && modules.includes("gestion.controlAlerts")) {
     content = <ControlAlertsScreen session={session} t={t} locale={locale} />;
   } else if (effectiveModule === "cashClosures" && modules.includes("gestion.cashClosures")) {
-    content = <CashClosuresScreen session={session} t={t} />;
+    content = <CashClosuresScreen session={session} t={t} locale={locale} />;
   } else if (effectiveModule === "cashCurrentBalances" && modules.includes("gestion.cashCurrentBalances")) {
     content = <CashCurrentBalancesScreen session={session} t={t} />;
   } else if (effectiveModule === "sales" && reports.includes(salesReport)) {

@@ -764,6 +764,7 @@ export function App() {
     <SessionHomeScreen
       app="venta"
       locale={locale}
+      interfaceMode={saleInterfaceMode}
       session={session}
       terminalContext={terminalContext}
       canOpenSalesReport={canOpenSalesReport}

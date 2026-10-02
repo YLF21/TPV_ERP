@@ -31,6 +31,7 @@ type TableLayoutHeaderCellProps<Key extends string> = {
   showColumnMenu?: boolean;
   onToggleVisibility?: (columnKey: Key) => void;
   columnVisibilityOptions?: readonly TableColumnVisibilityOption<Key>[];
+  constrainColumnMenuToViewport?: boolean;
   resizeLabel: string;
   onReorder: (draggedKey: Key, targetKey: Key) => void;
   onMove: (columnKey: Key, direction: TableColumnMoveDirection) => void;
@@ -52,6 +53,7 @@ export function TableLayoutHeaderCell<Key extends string>({
   showColumnMenu = false,
   onToggleVisibility,
   columnVisibilityOptions,
+  constrainColumnMenuToViewport = false,
   resizeLabel,
   onReorder,
   onMove,
@@ -205,7 +207,8 @@ export function TableLayoutHeaderCell<Key extends string>({
       className="table-layout-column-menu"
       role="menu"
       aria-label={copy.menu}
-      style={{ left: menuPosition.left, top: menuPosition.top }}
+      style={{ left: menuPosition.left, top: menuPosition.top,
+        ...(constrainColumnMenuToViewport ? { boxSizing: "border-box", maxHeight: Math.max(0, window.innerHeight - menuPosition.top - 8), overflowY: "auto" } : {}) }}
     >
       {onSort && <button type="button" role="menuitem" onClick={() => runMenuAction(() => onSort(column.key))}>
         <span>{copy.sort}</span><kbd aria-hidden="true">↕</kbd>

@@ -27,6 +27,16 @@ const flow = (): CashCloseRecoveryFlow => ({
 });
 
 describe("cash close recovery", () => {
+  it("restores counted denominations and rejects malformed quantities", () => {
+    const storage = new MemoryStorage();
+    const counted = { ...flow(), retainedFundDenominations: [{ denomination: 20, quantity: 2 }], finalWithdrawalDenominations: [{ denomination: 10, quantity: 1 }] };
+    saveCashCloseRecovery(storage, "T-01", counted);
+    expect(loadCashCloseRecovery(storage, "T-01")).toMatchObject({ status: "valid", envelope: { flow: counted } });
+    const envelope = JSON.parse(storage.getItem(cashCloseRecoveryKey("T-01"))!);
+    envelope.flow.retainedFundDenominations[0].quantity = -1;
+    storage.setItem(cashCloseRecoveryKey("T-01"), JSON.stringify(envelope));
+    expect(loadCashCloseRecovery(storage, "T-01").status).toBe("blocked");
+  });
   it("persists only non-secret close identities and restores them by terminal", () => {
     const storage = new MemoryStorage();
     saveCashCloseRecovery(storage, "T-01", flow());

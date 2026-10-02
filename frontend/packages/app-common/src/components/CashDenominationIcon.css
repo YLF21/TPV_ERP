@@ -1,0 +1,94 @@
+.cash-value-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  overflow: visible;
+  vertical-align: middle;
+}
+
+.cash-value-icon--banknote {
+  width: 52px;
+  height: 32px;
+}
+
+.cash-value-icon--coin {
+  width: 32px;
+  height: 32px;
+}
+
+.cash-value-icon__note {
+  fill: #e5e9ed;
+  stroke: #778697;
+  stroke-width: 1;
+}
+
+.cash-value-icon__note-center {
+  fill: rgb(255 255 255 / 35%);
+  stroke: rgb(18 56 95 / 38%);
+  stroke-width: 0.65;
+}
+
+.cash-value-icon__note-detail {
+  fill: none;
+  stroke: rgb(18 56 95 / 60%);
+  stroke-width: 0.8;
+}
+
+.cash-value-icon__coin-rim {
+  fill: #d5d9dc;
+  stroke: #747e86;
+  stroke-width: 1;
+}
+
+.cash-value-icon__coin-center {
+  fill: #e3b84e;
+  stroke: #9c7725;
+  stroke-width: 0.65;
+}
+
+.cash-value-icon__coin-inner-rim {
+  fill: none;
+  stroke: rgb(18 56 95 / 25%);
+  stroke-width: 0.55;
+}
+
+.cash-value-icon__label {
+  fill: #17324d;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  paint-order: stroke;
+  stroke: rgb(255 255 255 / 45%);
+  stroke-width: 0.35px;
+  stroke-linejoin: round;
+}
+
+.cash-value-icon--banknote .cash-value-icon__label { font-size: 10px; }
+.cash-value-icon--coin .cash-value-icon__label { font-size: 7px; letter-spacing: -0.3px; }
+.cash-value-icon--coin--200 .cash-value-icon__label,
+.cash-value-icon--coin--100 .cash-value-icon__label { font-size: 7.5px; }
+
+/* Euro banknote palette: gray, red, blue, orange, green, yellow, violet. */
+.cash-value-icon--banknote--500 .cash-value-icon__note { fill: #aeb5bd; stroke: #626c77; }
+.cash-value-icon--banknote--1000 .cash-value-icon__note { fill: #d85a55; stroke: #8d302e; }
+.cash-value-icon--banknote--2000 .cash-value-icon__note { fill: #5c91c8; stroke: #2b5d91; }
+.cash-value-icon--banknote--5000 .cash-value-icon__note { fill: #e99642; stroke: #a95e16; }
+.cash-value-icon--banknote--10000 .cash-value-icon__note { fill: #63a879; stroke: #347347; }
+.cash-value-icon--banknote--20000 .cash-value-icon__note { fill: #dfc64d; stroke: #988324; }
+.cash-value-icon--banknote--50000 .cash-value-icon__note { fill: #9274b8; stroke: #5c427f; }
+
+/* €2 has a silver ring and gold center; €1 reverses those metals. */
+.cash-value-icon--two-euro .cash-value-icon__coin-rim { fill: #c9ced2; stroke: #68747d; }
+.cash-value-icon--two-euro .cash-value-icon__coin-center { fill: #e2b64c; stroke: #97701d; }
+.cash-value-icon--one-euro .cash-value-icon__coin-rim { fill: #dfb647; stroke: #96711e; }
+.cash-value-icon--one-euro .cash-value-icon__coin-center { fill: #d3d8dc; stroke: #77828a; }
+
+/* The three higher cent values are gold; the three lower values are copper. */
+.cash-value-icon--coin--50 .cash-value-icon__coin-rim,
+.cash-value-icon--coin--20 .cash-value-icon__coin-rim,
+.cash-value-icon--coin--10 .cash-value-icon__coin-rim { fill: #e1bd61; stroke: #a27d2d; }
+.cash-value-icon--coin--50 .cash-value-icon__coin-center,
+.cash-value-icon--coin--20 .cash-value-icon__coin-center,
+.cash-value-icon--coin--10 .cash-value-icon__coin-center { fill: #efd78e; stroke: #ad893d; }
+.cash-value-icon--copper .cash-value-icon__coin-rim { fill: #bd7651; stroke: #7e452e; }
+.cash-value-icon--copper .cash-value-icon__coin-center { fill: #d8976f; stroke: #8e5438; }

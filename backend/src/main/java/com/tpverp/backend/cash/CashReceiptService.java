@@ -127,7 +127,8 @@ public class CashReceiptService {
 
     @Transactional(readOnly = true)
     public CashReceiptView entryReceipt(UUID movementId, Authentication authentication) {
-        return movementReceipt(movementId, authentication, EnumSet.of(CashMovementType.ENTRADA),
+        return movementReceipt(movementId, authentication,
+                EnumSet.of(CashMovementType.ENTRADA, CashMovementType.ENTRADA_ENTRE_SESIONES),
                 "El movimiento no es una entrada de caja");
     }
 

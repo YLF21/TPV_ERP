@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadCashClosureFilterOptions, loadCashClosures } from "./cashClosuresApi";
+import { loadCashClosure, loadCashClosureFilterOptions, loadCashClosures } from "./cashClosuresApi";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -46,5 +46,14 @@ describe("cash closures API", () => {
     expect(url).toContain("cursor=next-page");
     expect(url).toContain("sortBy=retainedFund");
     expect(url).toContain("sortDirection=desc");
+  });
+
+  it("loads the selected closure detail using its id and token", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "closure-1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    await loadCashClosure("closure-1", "token");
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/v1/cash/closures/closure-1"), expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: "Bearer token" })
+    }));
   });
 });

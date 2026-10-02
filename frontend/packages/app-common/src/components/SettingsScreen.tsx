@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ArrowSquareOut, Key } from "@phosphor-icons/react";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -15,6 +15,7 @@ import {
 } from "./saleInterfacePreferences";
 import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
 import { CashOperationsCard } from "./CashOperationsCard";
+import { CashActivityPanel } from "./CashActivityPanel";
 import { ErpSelect } from "./ErpSelect";
 import { OperationalStatusCard } from "./OperationalStatusCard";
 import { apiRequest, ApiError } from "../api/client";
@@ -57,6 +58,14 @@ const protectedDestinations = new Set<CanonicalSaleSettingsDestination>([
   "diagnostics"
 ]);
 
+const cashTabsCopy = {
+  es: { operations: "Operaciones de caja", activity: "Actividad caja", activitySubtitle: "Historial de movimientos de caja del terminal." },
+  en: { operations: "Cash operations", activity: "Cash activity", activitySubtitle: "Cash movement history for this terminal." },
+  zh: { operations: "钱箱操作", activity: "钱箱活动", activitySubtitle: "查看此终端的钱箱变动记录。" }
+} as const;
+const cashTabs = ["operations", "activity"] as const;
+type CashSettingsTab = typeof cashTabs[number];
+
 function languageLabel(code: LocaleCode) {
   if (code === "es") return "Español";
   if (code === "zh") return "中文";
@@ -80,6 +89,10 @@ export function SettingsScreen({
   request = apiRequest
 }: SettingsScreenProps) {
   const t = createTranslator(locale);
+  const [cashTab, setCashTab] = useState<CashSettingsTab>("operations");
+  const [cashRefreshContainer, setCashRefreshContainer] = useState<HTMLDivElement | null>(null);
+  const cashTabId = useId();
+  const cashTabLabels = cashTabsCopy[locale];
   const canConfigureTerminal = app === "venta" && hasPermission(session, "CONFIGURACION_TERMINAL");
   const [selectedSection, setSelectedSection] = useState<CanonicalSaleSettingsDestination>(() => {
     const destination = initialDestination && normalizeSaleSettingsDestination(initialDestination);
@@ -292,17 +305,35 @@ export function SettingsScreen({
   function sectionHeading() {
     if (selectedSection === "account") return t("settings.accountSecurity");
     if (selectedSection === "visualization") return t("settings.visualization");
-    if (selectedSection === "cash") return t("settings.cash");
+    if (selectedSection === "cash") return cashTab === "activity" ? cashTabLabels.activity : t("settings.cash");
     return t("settings.diagnosticsMaintenance");
   }
 
   function sectionSubtitle() {
     if (selectedSection === "account") return t("settings.accountSecurity.subtitle");
     if (selectedSection === "visualization") return t("settings.visualization.subtitle");
-    if (selectedSection === "cash") return t("settings.cash.subtitle");
+    if (selectedSection === "cash") return cashTab === "activity" ? cashTabLabels.activitySubtitle : t("settings.cash.subtitle");
     if (selectedSection === "diagnostics") return t("settings.system.subtitle");
     return "";
   }
+
+  const cashNavigation = selectedSection === "cash" && canConfigureTerminal ? (
+    <div className="sale-settings-cash-navigation">
+      <div className="sale-settings-cash-tabs" role="tablist" aria-label={t("settings.cash")}>
+        {cashTabs.map(tab => <button key={tab} type="button" role="tab" id={`${cashTabId}-${tab}`}
+          aria-selected={cashTab === tab} aria-controls={`${cashTabId}-${tab}-panel`} tabIndex={cashTab === tab ? 0 : -1}
+          onClick={() => setCashTab(tab)} onKeyDown={event => {
+            const next = event.key === "ArrowLeft" || event.key === "ArrowRight" ? (tab === "operations" ? "activity" : "operations")
+              : event.key === "Home" ? "operations" : event.key === "End" ? "activity" : null;
+            if (!next) return;
+            event.preventDefault();
+            setCashTab(next);
+            document.getElementById(`${cashTabId}-${next}`)?.focus();
+          }}>{cashTabLabels[tab]}</button>)}
+      </div>
+      <div className="sale-settings-cash-refresh" ref={setCashRefreshContainer} />
+    </div>
+  ) : undefined;
 
   return (
     <SaleSettingsShell
@@ -319,6 +350,7 @@ export function SettingsScreen({
       subtitle={sectionSubtitle()}
       scopeLabel={selectedSection === "account" ? t("settings.scope.user")
         : selectedSection === "cash" ? t("settings.scope.terminal") : undefined}
+      headerNavigation={cashNavigation}
     >
       {selectedSection === "account" ? (
         <div className="sale-settings-account-layout">
@@ -510,13 +542,26 @@ export function SettingsScreen({
 
       {selectedSection === "cash" && canConfigureTerminal ? (
         <div className="sale-settings-cash-layout">
+          <div className="sale-settings-cash-tab-panel" role="tabpanel" id={`${cashTabId}-operations-panel`}
+            aria-labelledby={`${cashTabId}-operations`} hidden={cashTab !== "operations"}>
           <CashOperationsCard
             locale={locale}
+            refreshContainer={cashTab === "operations" ? cashRefreshContainer : null}
+            interfaceMode={savedSaleInterfaceMode}
             currentUsername={session.username}
+            permissions={session.permissions}
+            terminalCode={terminalContext.terminalCode}
+            storeName={terminalContext.storeName}
             token={session.accessToken}
             terminalId={terminalContext.terminalId}
             request={request}
           />
+          </div>
+          {cashTab === "activity" ? <div className="sale-settings-cash-tab-panel" role="tabpanel" id={`${cashTabId}-activity-panel`}
+            aria-labelledby={`${cashTabId}-activity`}>
+            <CashActivityPanel locale={locale} showTitle={false} refreshContainer={cashRefreshContainer} currentUsername={session.username} token={session.accessToken}
+              terminalId={terminalContext.terminalId} request={request} />
+          </div> : null}
         </div>
       ) : null}
 

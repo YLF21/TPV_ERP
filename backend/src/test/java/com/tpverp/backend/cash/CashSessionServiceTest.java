@@ -295,38 +295,70 @@ class CashSessionServiceTest {
     }
 
     @Test
-    void firstOpeningRequiresPreviousBetweenSessionEntry() {
-        var fixture = serviceFixture();
-        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
-                .thenReturn(Optional.empty());
-        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
-                fixture.terminal.getId(), CashSessionStatus.CERRADA))
-                .thenReturn(Optional.empty());
-        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
-                .thenReturn(List.of());
-
-        assertThatThrownBy(() -> fixture.service.open(fixture.terminal.getId(), salesAuthentication(fixture.user)))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("entrada entre sesiones");
+    void firstManualCountOpensDirectlyAndPersistsEvidenceWithoutAdjustmentMovement() {
+        var fixture=manualFixture();
+        var result=fixture.service.open(new CashOpenRequest(fixture.terminal.getId(),new BigDecimal("37.50"),
+                List.of(new CashDenominationCommand(new BigDecimal("0.50"),75))),salesAuthentication(fixture.user));
+        assertThat(result.openingFund()).isEqualByComparingTo("37.50");
+        var saved=ArgumentCaptor.forClass(CashSession.class);
+        verify(fixture.sessions).save(saved.capture());
+        assertThat(saved.getValue().getOpeningExpectedFund()).isEqualByComparingTo("0");
+        assertThat(saved.getValue().getOpeningCountedFund()).isEqualByComparingTo("37.50");
+        assertThat(saved.getValue().getOpeningDifference()).isEqualByComparingTo("37.50");
+        assertThat(saved.getValue().getOpeningDenominations()).hasSize(1);
+        verify(fixture.movements,never()).save(any());
+        assertThat(result.expectedCash()).isNull();
+        verify(fixture.terminals).findForCashSessionPreparation(fixture.terminal.getId(),fixture.store.getId());
     }
 
     @Test
-    void firstOpeningRequiresBetweenSessionEntryNotWithdrawal() {
-        var fixture = serviceFixture();
-        var betweenSessionWithdrawal = CashMovement.betweenSessionWithdrawal(
-                fixture.store.getId(), fixture.terminal.getId(), new BigDecimal("25.00"),
-                NOW.minusSeconds(60), fixture.user.getId(), null, "retirada entre sesiones");
-        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
-                .thenReturn(Optional.empty());
-        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
-                fixture.terminal.getId(), CashSessionStatus.CERRADA))
-                .thenReturn(Optional.empty());
-        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
-                .thenReturn(List.of(betweenSessionWithdrawal));
+    void manualShortageBecomesRealOpeningFundWithoutDoubleAdjustmentOrClosingDiscrepancy() {
+        var fixture=manualFixture();
+        var previous=closedSession(fixture.store.getId(),fixture.terminal.getId(),fixture.user.getId(),"100.00");
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(fixture.terminal.getId(),CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+        var result=fixture.service.open(new CashOpenRequest(fixture.terminal.getId(),new BigDecimal("90.00"),List.of()),
+                salesAndAccountingAuthentication(fixture.user));
+        var saved=ArgumentCaptor.forClass(CashSession.class);
+        verify(fixture.sessions).save(saved.capture());
+        var session=saved.getValue();
+        assertThat(result.availableCash()).isEqualByComparingTo("90");
+        assertThat(session.getOpeningDifference()).isEqualByComparingTo("-10");
+        var attempt=session.registerAttempt(fixture.user.getId(),NOW.plusSeconds(60),new BigDecimal("90"),
+                new CashAmountCalculator(fixture.sessions,fixture.movements).availableCash(session),BigDecimal.ZERO);
+        assertThat(attempt.closedSession()).isTrue();
+        assertThat(session.getDiscrepancy()).isEqualByComparingTo("0");
+        verify(fixture.movements,never()).save(any());
+    }
 
-        assertThatThrownBy(() -> fixture.service.open(fixture.terminal.getId(), salesAuthentication(fixture.user)))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("entrada entre sesiones");
+    @Test
+    void manualOpeningRejectsMissingNegativeAndExcessPrecisionCountsAndMismatchedBreakdown() {
+        var fixture=manualFixture();
+        for(var value : java.util.Arrays.asList(null,new BigDecimal("-0.001"),new BigDecimal("1.001"))) {
+            assertThatThrownBy(()->fixture.service.open(new CashOpenRequest(fixture.terminal.getId(),value,List.of()),
+                    salesAuthentication(fixture.user))).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(()->fixture.service.open(new CashOpenRequest(fixture.terminal.getId(),new BigDecimal("10"),
+                List.of(new CashDenominationCommand(new BigDecimal("5"),1))),salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("no coincide");
+        verify(fixture.sessions,never()).save(any());
+    }
+
+    @Test
+    void automaticPolicyDoesNotAcceptClientSuppliedCountAndFirstOpenMayBeZero() {
+        var fixture=serviceFixture();
+        assertThatThrownBy(()->fixture.service.open(new CashOpenRequest(fixture.terminal.getId(),BigDecimal.TEN,List.of()),
+                salesAuthentication(fixture.user))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(fixture.service.open(fixture.terminal.getId(),salesAuthentication(fixture.user)).openingFund())
+                .isEqualByComparingTo("0");
+    }
+
+    private static ServiceFixture manualFixture() {
+        var fixture=serviceFixture();
+        var config=new CashStoreConfig(fixture.store.getId());
+        config.update(BigDecimal.ZERO,false,false,false,true);
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+        return fixture;
     }
 
     @Test
@@ -801,6 +833,21 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void zeroClosingFundAcceptsEmptyMandatoryBreakdownAndPersistsIt() {
+        var fixture=serviceFixture();
+        var config=new CashStoreConfig(fixture.store.getId());
+        config.update(BigDecimal.ZERO,false,true,true,true);
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+        var session=CashSession.open(fixture.store.getId(),fixture.terminal.getId(),fixture.user.getId(),NOW,BigDecimal.ZERO);
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(),CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        var result=fixture.service.close(fixture.terminal.getId(),
+                new CashCloseRequest(BigDecimal.ZERO,List.of(),BigDecimal.ZERO,null,List.of()),salesAuthentication(fixture.user));
+        assertThat(result.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(session.getRetainedFundDenominations()).isEmpty();
+    }
+
+    @Test
     void closedCashSessionEnqueuesSyncEvent() {
         var fixture = serviceFixture();
         var session = CashSession.open(
@@ -859,11 +906,12 @@ class CashSessionServiceTest {
 
         var view = fixture.service.close(
                 fixture.terminal.getId(),
-                new CashCloseRequest(new BigDecimal("80.00"), List.of(), new BigDecimal("20.00"), "retirada cierre",
+                new CashCloseRequest(new BigDecimal("80.00"), List.of(new CashDenominationCommand(new BigDecimal("20.00"),4)), new BigDecimal("20.00"), "retirada cierre",
                         List.of(new CashDenominationCommand(new BigDecimal("20.00"), 1))),
                 salesAndAccountingAuthentication(fixture.user));
 
         assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(session.getRetainedFundDenominations()).containsExactly(new CashDenominationCommand(new BigDecimal("20.00"),4));
         assertThat(view.expectedCash()).isEqualByComparingTo("80.00");
         assertThat(view.discrepancy()).isEqualByComparingTo("0.00");
         verify(fixture.movements).save(any(CashMovement.class));

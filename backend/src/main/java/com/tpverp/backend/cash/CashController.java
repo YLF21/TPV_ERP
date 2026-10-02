@@ -43,18 +43,27 @@ public class CashController {
     private final CashReportService reports;
     private final CashClosureService closures;
     private final CashCurrentBalanceService currentBalances;
+    private final CashOpeningAlertService openingAlerts;
+    private final CashAlertService alerts;
+    private final CashTimelineService timeline;
+    private final CashActivityService activity;
 
     public CashController(
             CashSessionService sessions,
             CashReceiptService receipts,
             CashReportService reports,
             CashClosureService closures,
-            CashCurrentBalanceService currentBalances) {
+            CashCurrentBalanceService currentBalances, CashOpeningAlertService openingAlerts, CashTimelineService timeline,
+            CashActivityService activity, CashAlertService alerts) {
         this.sessions = sessions;
         this.receipts = receipts;
         this.reports = reports;
         this.closures = closures;
         this.currentBalances = currentBalances;
+        this.openingAlerts = openingAlerts;
+        this.timeline = timeline;
+        this.activity = activity;
+        this.alerts = alerts;
     }
 
     @GetMapping("/status")
@@ -69,15 +78,15 @@ public class CashController {
     @PostMapping("/sessions/open")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashSessionView open(
-            @RequestBody CashOpenRequest request,
+            @Valid @RequestBody CashOpenRequest request,
             Authentication authentication) {
-        return sessions.open(request.terminalId(), authentication);
+        return sessions.open(request, authentication);
     }
 
     @PostMapping("/sessions/prepare-sales")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashSalesSessionReadinessView prepareForSales(
-            @RequestBody CashOpenRequest request,
+            @Valid @RequestBody CashOpenRequest request,
             Authentication authentication) {
         return sessions.prepareForSales(request.terminalId(), authentication);
     }
@@ -180,6 +189,30 @@ public class CashController {
         return reports.report(terminalId, storeId, from, to, authentication);
     }
 
+    @GetMapping("/activity")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public PagedResult<CashActivityView> activity(
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
+            @RequestParam(required = false) UUID terminalId,
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String cashState,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection,
+            Authentication authentication) {
+        return activity.list(from, to, terminalId, userId, action, cashState, limit, cursor,
+                sortBy, sortDirection, authentication);
+    }
+
+    @GetMapping("/activity/filter-options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public CashActivityFilterOptionsView activityFilterOptions(Authentication authentication) {
+        return activity.filterOptions(authentication);
+    }
+
     @GetMapping("/closures")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
     public PagedResult<CashClosureView> closures(
@@ -201,6 +234,66 @@ public class CashController {
         return closures.list(
                 from, to, terminalId, userId, onlyDiscrepancies,
                 limit, cursor, sortBy, sortDirection, authentication);
+    }
+
+    @GetMapping("/closures/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public CashClosureView closure(@PathVariable UUID id, Authentication authentication) {
+        return closures.detail(id, authentication);
+    }
+
+    @GetMapping("/alerts")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public CashAlertPage alerts(@RequestParam(required=false) LocalDate from,
+            @RequestParam(required=false) LocalDate to, @RequestParam(required=false) UUID terminalId,
+            @RequestParam(required=false) UUID userId, @RequestParam(required=false) String status,
+            @RequestParam(required=false) String type, @RequestParam(defaultValue="50") int limit,
+            @RequestParam(required=false) String cursor, Authentication authentication) {
+        return alerts.list(from,to,terminalId,userId,status,type,limit,cursor,authentication);
+    }
+
+    @GetMapping("/alerts/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public CashAlertDetailView alertDetail(@PathVariable UUID id, @RequestParam String type,
+            Authentication authentication) {
+        return alerts.detail(id,type,authentication);
+    }
+
+    @PostMapping("/alerts/{id}/review")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_CUENTAS + "')")
+    public CashAlertView reviewAlert(@PathVariable UUID id,
+            @Valid @RequestBody AlertReviewRequest request, Authentication authentication) {
+        return alerts.review(id,request.type(),request.comment(),request.expectedVersion(),authentication);
+    }
+
+    public record AlertReviewRequest(@NotBlank String type, @NotBlank @Size(max=1000) String comment,
+            @NotNull @Min(0) Long expectedVersion) { }
+
+    @GetMapping("/opening-alerts")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public CashOpeningAlertPage openingAlerts(@RequestParam(required=false) LocalDate from,
+            @RequestParam(required=false) LocalDate to, @RequestParam(required=false) UUID terminalId,
+            @RequestParam(required=false) UUID userId, @RequestParam(required=false) String status,
+            @RequestParam(defaultValue="50") int limit, @RequestParam(required=false) String cursor,
+            Authentication authentication) {
+        return openingAlerts.list(from,to,terminalId,userId,status,limit,cursor,authentication);
+    }
+
+    @PostMapping("/opening-alerts/{id}/review")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_CUENTAS + "')")
+    public CashOpeningAlertView reviewOpeningAlert(@PathVariable UUID id,
+            @Valid @RequestBody OpeningAlertReviewRequest request, Authentication authentication) {
+        return openingAlerts.review(id,request.comment(),request.expectedVersion(),authentication);
+    }
+
+    public record OpeningAlertReviewRequest(@NotBlank @Size(max=1000) String comment,
+            @NotNull @Min(0) Long expectedVersion) { }
+
+    @GetMapping("/timeline")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+    public CashTimelineView timeline(@RequestParam UUID terminalId, @RequestParam(required=false) LocalDate date,
+            Authentication authentication) {
+        return timeline.timeline(terminalId,date,authentication);
     }
 
     @GetMapping("/closures/filter-options")

@@ -1,0 +1,114 @@
+.gestion-cash-workspace { --cash-navy:#12385f; --cash-line:#aebfd2; --cash-stripe:#f2f6fa; --cash-selected:#d8e9fb; }
+.gestion-cash-tabs { display:flex; flex:0 0 auto; align-items:end; gap:3px; margin-top:4px; border-bottom:1px solid #aebfd2; }
+.gestion-cash-tabs button { min-height:39px; min-width:118px; padding:0 18px; border:1px solid #aebfd2; border-bottom:0; border-radius:0; background:#f2f6fa; color:#12385f; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.gestion-cash-tabs button[aria-selected="true"] { background:#2878b9; color:#fff; border-color:#1c6298; }
+.gestion-cash-tabs button:focus-visible, .gestion-cash-workspace [role="row"][tabindex]:focus-visible { outline:2px solid #1f5a94; outline-offset:-2px; }
+.gestion-cash-review-notice { flex:0 0 auto; margin:6px 0 0; padding:8px 10px; border:1px solid #8fb79a; background:#edf8f0; color:#165d2b; font-size:13px; font-weight:700; }
+.gestion-cash-review-notice:focus-visible { outline:2px solid #1f5a94; outline-offset:2px; }
+.gestion-cash-tab-panel { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:auto; background:#fff; border:1px solid #aebfd2; border-top:0; padding:12px; }
+.gestion-cash-closures-view { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+.gestion-cash-workspace .gestion-cash-closure-row { box-sizing:border-box; height:36px; min-height:36px !important; }
+.gestion-cash-workspace .gestion-cash-closure-row.head { min-height:36px; background:#12385f; }
+.gestion-cash-workspace .gestion-cash-closure-row:not(.head):nth-child(odd) { background:#f2f6fa; }
+.gestion-cash-workspace .gestion-cash-closure-row.selected { background:#d8e9fb !important; }
+.gestion-cash-workspace .gestion-cash-closure-row > span { padding:5px 8px; }
+.gestion-cash-closure-detail { flex:0 0 auto; border:1px solid #aebfd2; padding:12px; margin-top:10px; background:#fff; }
+.gestion-cash-closure-detail header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.gestion-cash-closure-detail :is(h3,h4) { margin:0 0 10px; color:#0a2a52; }
+.gestion-cash-closure-detail header button { min-height:30px; border:1px solid #aebfd2; background:#f2f6fa; color:#12385f; cursor:pointer; }
+.gestion-cash-closure-detail-summary { display:flex; flex-wrap:wrap; gap:8px 20px; padding:8px; background:#f2f6fa; }
+.gestion-cash-closure-breakdowns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+.gestion-cash-closure-breakdowns > div { min-width:0; }
+.gestion-cash-closure-breakdowns table, .gestion-cash-policy table { width:100%; border-collapse:collapse; font-size:13px; }
+.gestion-cash-closure-breakdowns th, .gestion-cash-policy th { height:36px; padding:5px 8px; background:#12385f; color:#fff; text-align:left; }
+.gestion-cash-closure-breakdowns td, .gestion-cash-policy td { height:36px; padding:5px 8px; border:1px solid #d9e1e9; }
+.gestion-cash-closure-breakdowns tr:nth-child(even) td { background:#f2f6fa; }
+.gestion-cash-alerts { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+.gestion-cash-alerts-intro h3, .gestion-cash-alert-detail h3 { margin:0; color:#0a2a52; font-size:17px; }
+.gestion-cash-alerts-intro p { margin:4px 0 12px; color:#52677f; }
+.gestion-cash-alerts-filters { display:grid; grid-template-columns:minmax(185px,1.1fr) minmax(145px,1fr) minmax(120px,.8fr) 110px; align-items:end; gap:8px; margin-bottom:8px; }
+.gestion-cash-alerts-filters label { min-width:0; display:grid; gap:3px; font-size:12px; font-weight:700; color:#344b62; }
+.gestion-cash-alerts-filters .erp-select { width:100%; }
+.gestion-cash-alerts-filters .erp-select__trigger { min-height:34px; border-radius:0; }
+.gestion-cash-alerts-filters > button, .gestion-cash-alert-detail > button { min-height:34px; padding:0 12px; border:1px solid #12385f; border-radius:0; background:#12385f; color:#fff; font:inherit; font-weight:700; cursor:pointer; }
+.gestion-cash-alerts-filters > button:disabled, .gestion-cash-alert-detail > button:disabled { opacity:.55; cursor:default; }
+.gestion-cash-alerts .erp-filter-applied { margin:0 0 8px; }
+.gestion-cash-alerts-body { flex:1 1 auto; min-height:352px; min-width:0; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:10px; }
+.gestion-cash-alerts-body.with-detail { grid-template-columns:minmax(0,1fr) clamp(300px,30%,380px); }
+.gestion-cash-alerts-list { min-width:0; min-height:0; display:flex; flex-direction:column; }
+.gestion-cash-alerts-table-wrap { flex:1 1 auto; min-height:324px; overflow:auto; border:1px solid #aebfd2; }
+.gestion-cash-alert-row { display:grid; grid-template-columns:90px 60px minmax(160px,1.2fr) minmax(95px,1fr) minmax(95px,1fr) 110px 110px 110px 90px; width:100%; min-width:990px; min-height:36px; border-bottom:1px solid #d9e1e9; color:#172e4c; background:#fff; cursor:pointer; }
+.gestion-cash-alert-row.head { position:sticky; top:0; z-index:2; min-height:36px; background:#12385f; color:#fff; cursor:default; }
+.gestion-cash-alert-row:not(.head):nth-child(odd) { background:#f2f6fa; }
+.gestion-cash-alert-row:not(.head):hover { background:#e8f1fa; }
+.gestion-cash-alert-row.selected { background:#d8e9fb !important; }
+.gestion-cash-alert-row > span { min-width:0; display:flex; align-items:center; padding:5px 8px; border-right:1px solid #d9e1e9; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:13px; }
+.gestion-cash-alert-row.head > span { border-color:#476584; font-weight:700; }
+.gestion-cash-alert-row > span:nth-child(6), .gestion-cash-alert-row > span:nth-child(7), .gestion-cash-alert-row > span:nth-child(8) { justify-content:flex-end; font-variant-numeric:tabular-nums; }
+.gestion-cash-alert-row .shortage, .gestion-cash-alert-amounts .shortage { color:#b4232c; font-weight:700; }
+.gestion-cash-alert-row .surplus { color:#17672a; font-weight:700; }
+.gestion-cash-alerts-count { flex:0 0 auto; min-height:28px; display:flex; align-items:center; padding:0 8px; border:1px solid #aebfd2; border-top:0; background:#f2f6fa; color:#52677f; font-size:12px; }
+.gestion-cash-alerts > .report-date-range-filter { flex:0 0 auto; order:0; margin-top:8px; }
+.gestion-cash-alert-detail { min-width:0; min-height:0; margin:0; padding:12px; overflow:auto; border:1px solid #aebfd2; background:#fff; }
+.gestion-cash-alert-detail-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.gestion-cash-alert-detail-header button { flex:0 0 auto; width:28px; height:28px; padding:0; border:1px solid #aebfd2; border-radius:0; background:#f2f6fa; color:#12385f; font:inherit; font-size:21px; font-weight:700; line-height:1; cursor:pointer; }
+.gestion-cash-alert-detail-header button:focus-visible { outline:2px solid #1f5a94; outline-offset:2px; }
+.gestion-cash-alert-detail-header button:disabled { opacity:.55; cursor:default; }
+.gestion-cash-alert-detail > strong { display:block; padding:8px; margin:10px 0; background:#f2f6fa; overflow-wrap:anywhere; }
+.gestion-cash-alert-context { display:flex; flex-wrap:wrap; gap:8px 20px; margin:0 0 10px; padding:8px; background:#f2f6fa; color:#172e4c; font-size:13px; }
+.gestion-cash-alert-detail-state { margin:0 0 8px; color:#52677f; font-size:12px; }
+.gestion-cash-alert-attempts { display:grid; gap:8px; }
+.gestion-cash-alert-attempt { border:1px solid #aebfd2; }
+.gestion-cash-alert-attempt h4 { margin:0; padding:6px 8px; background:#12385f; color:#fff; font-size:13px; }
+.gestion-cash-alert-attempt-meta { display:grid; gap:3px; padding:7px 8px; color:#172e4c; font-size:12px; }
+.gestion-cash-alert-attempt .gestion-cash-alert-amounts { border:0; border-top:1px solid #d9e1e9; }
+.gestion-cash-alert-attempt .gestion-cash-alert-amounts > div { min-width:0; padding:6px 4px; }
+.gestion-cash-alert-attempt .gestion-cash-alert-amounts strong { overflow-wrap:anywhere; font-size:12px; }
+.gestion-cash-alert-amounts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid #d9e1e9; }
+.gestion-cash-alert-amounts > div { display:grid; gap:5px; padding:9px; border-right:1px solid #d9e1e9; text-align:center; }
+.gestion-cash-alert-amounts > div:last-child { border-right:0; }
+.gestion-cash-alert-amounts span { color:#52677f; font-size:12px; font-weight:700; }
+.gestion-cash-alert-comment { display:grid; gap:4px; margin:10px 0; color:#52677f; font-size:12px; font-weight:700; }
+.gestion-cash-alert-comment textarea { width:100%; min-height:50px; resize:vertical; box-sizing:border-box; border:1px solid #aebfd2; border-radius:0; padding:8px; font:inherit; }
+.gestion-cash-alert-reviewed { display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:10px; }
+.gestion-cash-alert-reviewed p { flex-basis:100%; white-space:pre-wrap; overflow-wrap:anywhere; }
+.gestion-cash-policy { flex:1 1 auto; min-height:0; overflow:auto; }
+.gestion-cash-policy .settings-cash-policy-card { max-width:none; margin:0; padding:16px; border:1px solid #aebfd2; border-radius:0; box-shadow:none; }
+.gestion-cash-policy .settings-cash-policy-card fieldset { display:grid; gap:10px; border:0; padding:0; margin:18px 0; }
+.gestion-cash-policy .settings-cash-policy-card fieldset label { display:flex; align-items:start; gap:10px; }
+.gestion-cash-policy .settings-cash-policy-card fieldset small { display:block; margin-top:3px; }
+.gestion-cash-policy .settings-cash-policy-card input[type="radio"] { accent-color:#2878b9; }
+.gestion-cash-policy .settings-cash-policy-card > button { min-height:34px; padding:0 16px; border:1px solid #12385f; border-radius:0; background:#12385f; color:#fff; font-weight:700; }
+.settings-cash-policy-differences { margin:18px 0; }
+.settings-cash-policy-differences h4 { margin:0 0 5px; }
+.settings-cash-policy-differences p { margin:0 0 12px; padding:10px; border:1px solid #d9e1e9; background:#f2f6fa; }
+.gestion-cash-activity-view { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+.gestion-cash-activity-filters { flex:0 0 auto; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+.gestion-cash-activity-filters label { min-width:0; display:grid; gap:3px; color:#344b62; font-size:12px; font-weight:700; }
+.gestion-cash-activity-filters .erp-select { width:100%; }
+.gestion-cash-activity-filters .erp-select__trigger { min-height:34px; border-radius:0; }
+.gestion-cash-activity-view .erp-filter-applied { flex:0 0 auto; margin:0 0 8px; }
+.gestion-cash-activity-table-wrap { flex:1 1 auto; min-height:324px; overflow:auto; border:1px solid #aebfd2; background:#fff; }
+.gestion-cash-activity-row { box-sizing:border-box; display:grid; width:100%; min-width:max-content; min-height:36px; height:36px; color:#172e4c; border-bottom:1px solid #d9e1e9; background:#fff; cursor:pointer; }
+.gestion-cash-activity-row.head { position:sticky; top:0; z-index:2; background:#12385f; color:#fff; cursor:default; font-size:12px; font-weight:700; }
+.gestion-cash-activity-row:not(.head):nth-child(odd) { background:#f2f6fa; }
+.gestion-cash-activity-row:not(.head):hover { background:#e8f1fa; }
+.gestion-cash-activity-row.selected, .gestion-cash-activity-row.selected:hover { background:#d8e9fb !important; }
+.gestion-cash-activity-row:focus-visible { outline:2px solid #1f5a94; outline-offset:-2px; }
+.gestion-cash-activity-row > span { min-width:0; display:flex; align-items:center; padding:5px 8px; border-right:1px solid #d9e1e9; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:13px; }
+.gestion-cash-activity-row.head > span { border-color:#476584; }
+/* Hidden header controls must not reserve space that clips the column label. */
+.gestion-cash-workspace .gestion-cash-activity-row.head .table-layout-header-actions { position:absolute !important; top:50%; right:0; transform:translateY(-50%) !important; }
+.gestion-cash-workspace .gestion-cash-activity-row.head .table-layout-sort-indicator { position:absolute !important; right:28px; }
+.gestion-cash-workspace .gestion-cash-activity-row.head .table-layout-sort-label { flex:1; width:100%; }
+.gestion-cash-workspace .gestion-cash-activity-row.head .table-layout-header-cell:is(:hover,:focus-within,:has(.table-layout-column-menu-button.is-open)) .table-layout-sort-button { padding-right:46px !important; }
+@media(hover:none), (any-pointer:coarse) { .gestion-cash-workspace .gestion-cash-activity-row.head .table-layout-sort-button { padding-right:46px !important; } }
+.gestion-cash-activity-row > span[data-column-key="quantity"], .gestion-cash-activity-row > span[data-column-key="balance"] { justify-content:flex-end; font-variant-numeric:tabular-nums; }
+.gestion-cash-activity-state { min-height:288px; display:flex; align-items:center; justify-content:center; color:#52677f; font-size:13px; font-weight:700; }
+.gestion-cash-activity-state.error { color:#b4232c; }
+.gestion-cash-activity-count { flex:0 0 auto; min-height:28px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 8px; border:1px solid #aebfd2; border-top:0; background:#f2f6fa; color:#52677f; font-size:12px; }
+.gestion-cash-activity-count button { border:0; background:transparent; color:#12385f; text-decoration:underline; cursor:pointer; }
+.gestion-cash-activity-view > .report-date-range-filter { flex:0 0 auto; margin-top:8px; }
+@media(max-width:1120px) { .gestion-cash-closure-breakdowns { grid-template-columns:1fr; } }
+@media(max-width:1000px) { .gestion-cash-alerts-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:1120px) { .gestion-cash-activity-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }

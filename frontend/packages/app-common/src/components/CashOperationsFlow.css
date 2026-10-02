@@ -1,0 +1,14 @@
+.cash-operations-card .cash-no-session { display:grid; gap:14px; }
+.cash-operations-card .cash-automatic-opening { display:grid; justify-items:start; gap:8px; padding:12px; border:1px solid #c2d2e3; background:#f2f6fa; }
+.cash-operations-card .cash-automatic-opening h4, .cash-operations-card .cash-automatic-opening p { margin:0; }
+.cash-operations-card .cash-between-session { display:grid; gap:8px; padding-top:12px; border-top:1px solid #d9e1e9; }
+.cash-operations-card .cash-between-session h4, .cash-operations-card .cash-movement-form h4 { margin:0; color:#12385f; }
+.cash-operations-card .cash-between-session p { margin:0; font-size:12px; color:#52667c; }
+.cash-operations-card .cash-movement-form { display:grid; gap:12px; }
+.cash-operations-card .cash-movement-form .cash-denomination-trigger { justify-self:start; min-height:34px; padding:5px 10px; border:1px solid #aebfd2; border-radius:1px; background:#f5f8fb; color:#12385f; font-weight:700; }
+.cash-operations-card .cash-movement-form input { height:34px; border-radius:0; }
+.cash-operations-card .cash-between-operator { display:flex; align-items:center; gap:8px; }
+.cash-operations-card .cash-movement-print-warning { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.cash-operations-card .cash-movement-print-warning > div { display:grid; gap:4px; flex:1; min-width:0; }
+.cash-operations-card .cash-movement-print-warning small { font-size:12px; overflow-wrap:anywhere; }
+.cash-operations-card .cash-movement-print-warning > button { flex-shrink:0; }

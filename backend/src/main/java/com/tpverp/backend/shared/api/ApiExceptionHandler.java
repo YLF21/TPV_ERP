@@ -784,6 +784,21 @@ public class ApiExceptionHandler {
     ProblemDetail integrityConflict(
             DataIntegrityViolationException exception,
             HttpServletRequest request) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
+                    && "cash_activity_daily_limit".equals(violation.getConstraintName())
+                    || cause instanceof java.sql.SQLException sql
+                    && "23514".equals(sql.getSQLState())
+                    && sql.getMessage() != null && sql.getMessage().contains("cash_activity_daily_limit")) {
+                var language = language(request);
+                var detail = switch (language) {
+                    case EN -> "This store has reached the limit of 999 cash activities for this day. The operation was not saved.";
+                    case ZH -> "该门店当天的现金活动已达到999条上限。本次操作未保存。";
+                    default -> "Esta tienda ha alcanzado el límite de 999 actividades de caja de este día. La operación no se ha guardado.";
+                };
+                return problem(HttpStatus.CONFLICT, "CASH_ACTIVITY_DAILY_LIMIT", detail, language, request);
+            }
+        }
         return systemProblem(HttpStatus.CONFLICT, SystemErrorCode.DATA_INTEGRITY_CONFLICT, request);
     }
 

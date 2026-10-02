@@ -74,6 +74,104 @@ class CashControllerContractTest {
 
     @MockitoBean
     private CashCurrentBalanceService currentBalances;
+    @MockitoBean
+    private CashOpeningAlertService openingAlerts;
+    @MockitoBean
+    private CashAlertService alerts;
+    @MockitoBean
+    private CashTimelineService timeline;
+    @MockitoBean
+    private CashActivityService activity;
+
+    @Test
+    void unifiedAlertsRequireReadPermissionAndPassBothSourceTypes() throws Exception {
+        when(alerts.list(any(), any(), any(), any(), any(), any(), eq(25), any(), any()))
+                .thenReturn(new CashAlertPage(List.of(), null, false, 2));
+        mvc.perform(get("/api/v1/cash/alerts").param("limit", "25").param("type", "CLOSING")
+                        .with(user("reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pendingCount").value(2));
+        verify(alerts).list(any(), any(), any(), any(), any(), eq("CLOSING"), eq(25), any(), any());
+        mvc.perform(get("/api/v1/cash/alerts").with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unifiedAlertDetailRequiresReadPermissionAndExplicitSourceType() throws Exception {
+        var attempts = List.of(new CashAlertAttemptView(UUID.randomUUID(),1,Instant.parse("2026-07-31T12:00:00Z"),
+                UUID.randomUUID(),"seller","Seller",null,null,null,false));
+        when(alerts.detail(eq(SESSION_ID),eq("CLOSING"),any())).thenReturn(new CashAlertDetailView(null,attempts));
+        mvc.perform(get("/api/v1/cash/alerts/{id}", SESSION_ID).param("type","CLOSING")
+                        .with(user("reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.attempts[0].attemptNumber").value(1))
+                .andExpect(jsonPath("$.attempts[0].sessionClosed").value(false));
+        verify(alerts).detail(eq(SESSION_ID),eq("CLOSING"),any());
+        mvc.perform(get("/api/v1/cash/alerts/{id}", SESSION_ID)
+                        .with(user("reader").authorities(() -> CASH_READ))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/cash/alerts/{id}", SESSION_ID).param("type","CLOSING")
+                        .with(user("seller").authorities(() -> VENTA))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unifiedReviewRequiresAccountingAndExplicitSourceType() throws Exception {
+        var body = "{\"type\":\"CLOSING\",\"comment\":\"Revisado\",\"expectedVersion\":0}";
+        mvc.perform(post("/api/v1/cash/alerts/{id}/review", SESSION_ID).with(csrf())
+                        .with(user("reader").authorities(() -> CASH_READ)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(alerts);
+        mvc.perform(post("/api/v1/cash/alerts/{id}/review", SESSION_ID).with(csrf())
+                        .with(user("accountant").authorities(() -> GESTION_CUENTAS))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"Revisado\",\"expectedVersion\":0}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/cash/alerts/{id}/review", SESSION_ID).with(csrf())
+                        .with(user("accountant").authorities(() -> GESTION_CUENTAS)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        verify(alerts).review(eq(SESSION_ID), eq("CLOSING"), eq("Revisado"), eq(0L), any());
+    }
+
+    @Test
+    void activityUsesManagementPermissionsAndPassesAllFiltersToTheService() throws Exception {
+        var userId = UUID.randomUUID();
+        when(activity.list(any(), any(), any(), any(), any(), any(), eq(25), any(), any(), any(), any()))
+                .thenReturn(new com.tpverp.backend.shared.api.PagedResult<>(List.of(), "next", true));
+        mvc.perform(get("/api/v1/cash/activity")
+                        .param("from", "2026-08-01").param("to", "2026-08-31")
+                        .param("terminalId", TERMINAL_ID.toString()).param("userId", userId.toString())
+                        .param("action", "ENTRADA").param("cashState", "ABIERTA").param("limit", "25")
+                        .param("cursor", "previous").param("sortBy", "reference").param("sortDirection", "desc")
+                        .with(user("reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").value("next"));
+        verify(activity).list(eq(LocalDate.parse("2026-08-01")), eq(LocalDate.parse("2026-08-31")),
+                eq(TERMINAL_ID), eq(userId), eq("ENTRADA"), eq("ABIERTA"), eq(25), eq("previous"),
+                eq("reference"), eq("desc"), any());
+        for (var authority : List.of(VENTA, CASH_OPERATE)) {
+            mvc.perform(get("/api/v1/cash/activity").with(user("seller").authorities(() -> authority)))
+                    .andExpect(status().isForbidden());
+            mvc.perform(get("/api/v1/cash/activity/filter-options").with(user("seller").authorities(() -> authority)))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    void activityFilterOptionsExposeTheStoreDateAndEarliestCashDate() throws Exception {
+        when(activity.filterOptions(any())).thenReturn(new CashActivityFilterOptionsView(
+                LocalDate.parse("2026-08-01"), "Atlantic/Canary", LocalDate.parse("2025-01-01"),
+                List.of(new CashClosureFilterOptionView(TERMINAL_ID, "TPV 1", "")), List.of()));
+        for (var authority : List.of(CASH_READ, GESTION_CUENTAS, "ROLE_ADMIN")) {
+            mvc.perform(get("/api/v1/cash/activity/filter-options").with(user("reader").authorities(() -> authority)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.businessDate").value("2026-08-01"))
+                    .andExpect(jsonPath("$.earliestDate").value("2025-01-01"))
+                    .andExpect(jsonPath("$.terminals[0].name").value("TPV 1"));
+        }
+        mvc.perform(get("/api/v1/cash/activity").param("limit", "101")
+                        .with(user("reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/cash/activity").param("from", "invalid")
+                        .with(user("reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isBadRequest());
+        verify(activity, org.mockito.Mockito.never()).list(any(), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyInt(), any(), any(), any(), any());
+    }
 
     @Test
     void exposesCashEndpointsWithCashPermissions() throws Exception {
@@ -116,6 +214,31 @@ class CashControllerContractTest {
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
         assertEndpoint("updateConfig", PutMapping.class, new String[] {"/config"},
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
+    }
+
+    @Test
+    void cashReaderCanReadAlertsButCannotReviewAndSellerCannotReadAlerts() throws Exception {
+        mvc.perform(get("/api/v1/cash/opening-alerts").with(user("reader").authorities(()->CASH_READ)))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/cash/opening-alerts").with(user("seller").authorities(()->VENTA)))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/cash/opening-alerts/"+SESSION_ID+"/review").with(csrf())
+                .with(user("reader").authorities(()->CASH_READ)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"comment\":\"Revisado\",\"expectedVersion\":0}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void accountingCanReviewAndVersionIsRequired() throws Exception {
+        mvc.perform(post("/api/v1/cash/opening-alerts/"+SESSION_ID+"/review").with(csrf())
+                .with(user("accounting").authorities(()->GESTION_CUENTAS)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"comment\":\"Revisado\",\"expectedVersion\":0}"))
+                .andExpect(status().isOk());
+        verify(openingAlerts).review(eq(SESSION_ID),eq("Revisado"),eq(0L),any());
+        mvc.perform(post("/api/v1/cash/opening-alerts/"+SESSION_ID+"/review").with(csrf())
+                .with(user("accounting").authorities(()->GESTION_CUENTAS)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"comment\":\"Revisado\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -518,7 +641,7 @@ class CashControllerContractTest {
 
     @Test
     void openDelegatesAuthenticationAndTerminalFromRequestBody() throws Exception {
-        when(sessions.open(any(), any())).thenReturn(new CashSessionView(
+        when(sessions.open(any(CashOpenRequest.class), any())).thenReturn(new CashSessionView(
                 SESSION_ID, TERMINAL_ID, CashSessionStatus.ABIERTA, Instant.parse("2026-06-25T09:00:00Z"),
                 new BigDecimal("40.00"), null, null, null, null, null, null, false));
 
@@ -531,7 +654,7 @@ class CashControllerContractTest {
                                 """.formatted(TERMINAL_ID)))
                 .andExpect(status().isOk());
 
-        verify(sessions).open(any(), any());
+        verify(sessions).open(any(CashOpenRequest.class), any());
     }
 
     private void assertEndpoint(

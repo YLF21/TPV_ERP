@@ -52,7 +52,7 @@ describe("APP GESTIÓN navigation registry", () => {
       "Productos", "Almacén", "Terceros", "Control fiscal", "Seguridad", "Configuración",
     ]);
     expect(gestionNavigationGroups[2].destinations.map((item) => t(item.labelKey))).toEqual([
-      "Ventas diarias", "Efectivo en caja", "Cierres de caja",
+      "Ventas diarias", "Efectivo en caja", "Actividad caja",
     ]);
     expect(gestionNavigationGroups[4].destinations.map((item) => t(item.labelKey))).toEqual([
       "Albaranes de entrada",

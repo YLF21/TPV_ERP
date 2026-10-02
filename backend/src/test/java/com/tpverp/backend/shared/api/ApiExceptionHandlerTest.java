@@ -49,6 +49,19 @@ class ApiExceptionHandlerTest {
 
     private final ApiExceptionHandler handler = new ApiExceptionHandler(messageSource());
 
+    @Test
+    void cashActivityDailyLimitReturnsBusinessConflictWithoutDatabaseDetails() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es");
+        var sql = new java.sql.SQLException("ERROR: cash_activity_daily_limit", "23514");
+        var error = new org.springframework.dao.DataIntegrityViolationException("could not execute statement", sql);
+        var problem = handler.integrityConflict(error, request);
+        assertEquals(409, problem.getStatus());
+        assertEquals("CASH_ACTIVITY_DAILY_LIMIT", problem.getProperties().get("code"));
+        assertEquals("Esta tienda ha alcanzado el límite de 999 actividades de caja de este día. La operación no se ha guardado.",
+                problem.getDetail());
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({
             "es,La lista guardada ha cambiado.,Un producto de esta lista ha cambiado.",
