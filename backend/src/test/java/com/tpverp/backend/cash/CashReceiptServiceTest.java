@@ -3,6 +3,7 @@ package com.tpverp.backend.cash;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -250,6 +251,32 @@ class CashReceiptServiceTest {
                 "Operador", "Terminal", "Importe", "Motivo", "Unidades de 20,00\u00a0€");
         assertThat(root.path("lines").findValuesAsText("value")).containsExactly(
                 "María López", "TPV 1", "20.00", "Ingreso en banco", "1");
+    }
+
+    @Test
+    void betweenSessionEntryCanBeReadAndPrintedWithoutWritingOrLoadingSession() {
+        var fixture = fixture();
+        var renderer = mock(OperationalDocumentJasperRenderer.class);
+        when(renderer.mapper()).thenReturn(new ObjectMapper());
+        fixture.service.setPrinting(renderer);
+        var movement = CashMovement.betweenSessions(
+                fixture.store.getId(), fixture.terminal.getId(), new BigDecimal("20.00"), NOW,
+                fixture.user.getId(), null, "Reposición del fondo de cambio");
+        when(fixture.movements.findById(movement.getId())).thenReturn(Optional.of(movement));
+
+        var receipt = fixture.service.entryReceipt(movement.getId(), salesAuthentication(fixture.user));
+        fixture.service.entryPrintDocument(movement.getId(), salesAuthentication(fixture.user));
+
+        assertThat(movement.getType()).isEqualTo(CashMovementType.ENTRADA_ENTRE_SESIONES);
+        assertThat(receipt.movementId()).isEqualTo(movement.getId());
+        assertThat(receipt.sessionId()).isNull();
+        assertThat(receipt.amount()).isEqualByComparingTo("20.00");
+        verify(fixture.movements, org.mockito.Mockito.times(2)).findById(movement.getId());
+        verify(fixture.movements, never()).save(org.mockito.ArgumentMatchers.any(CashMovement.class));
+        verifyNoInteractions(fixture.sessions);
+        verify(renderer).render(org.mockito.ArgumentMatchers.eq(DocumentTemplateType.ENTRADA_CAJA),
+                org.mockito.ArgumentMatchers.eq(DocumentTemplateFormat.TICKET_80),
+                org.mockito.ArgumentMatchers.any(ObjectNode.class), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test

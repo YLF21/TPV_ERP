@@ -14,6 +14,12 @@ import { readSalesReportOutputPreferences } from "./salesReportOutputPreferences
 import { ApiError } from "../api/client";
 import type { apiRequest } from "../api/client";
 
+vi.mock("./tableLayoutPreferences", async () => {
+  const actual = await vi.importActual<typeof import("./tableLayoutPreferences")>("./tableLayoutPreferences");
+  return { ...actual, loadTablePreference: vi.fn(async () => undefined),
+    saveTablePreference: vi.fn(async (...[app, tableKey, columns]: Parameters<typeof actual.saveTablePreference>) => ({ app, tableKey, columns })) };
+});
+
 function storageWith(value: string | null): Storage {
   return {
     getItem: vi.fn(() => value),
@@ -398,6 +404,85 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("button", { name: "Caja" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Caja y turno")).toBeTruthy();
     expect(screen.queryByText("Interfaz de venta")).toBeNull();
+  });
+
+  it("opens cash activity in its own tab and preserves an unfinished movement when returning by keyboard", async () => {
+    const cashSession = { id: "session-1", terminalId: "terminal-1", status: "ABIERTA", openedAt: "2026-10-02T08:00:00Z",
+      openingFund: 200, expectedCash: 200, availableCash: 200, retainedFund: 0 };
+    let timelineRefreshBarrier: Promise<void> | undefined;
+    const requestMock = vi.fn(async (path: string) => {
+      if (path === "/terminal-configuration/interface") return { terminalId: "terminal-1", saleMode: "KEYBOARD" };
+      if (path.startsWith("/cash/status")) return cashSession;
+      if (path.startsWith("/cash/sessions/readiness")) return { cashSessionRequired: true, open: true, session: cashSession,
+        requireEntryBreakdown: false, requireWithdrawalBreakdown: false, requireClosingBreakdown: false,
+        entryDenominations: [], withdrawalDenominations: [], closingDenominations: [] };
+      if (path === "/sales/operation-security") return { storeId: "store-1", version: 1, operations: [] };
+      if (path.startsWith("/cash/timeline")) {
+        await timelineRefreshBarrier;
+        return { businessDate: "2026-10-02", timezone: "Atlantic/Canary", items: [
+        { id: "entry-1", occurredAt: "2026-10-02T08:10:00Z", userId: "user-1", username: "admin", userName: "ADMIN",
+          action: "ENTRADA", concept: "Cambio", amount: 20, balance: 220, reference: "261002001", sessionId: "session-1", cashState: "ABIERTA" }
+        ] };
+      }
+      return undefined;
+    });
+    render(<SettingsScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }}
+      terminalContext={{ ...terminalContext, terminalId: "terminal-1" }} initialDestination="cash"
+      onBack={vi.fn()} onLocaleChange={vi.fn()} request={requestMock as unknown as typeof apiRequest} />);
+
+    const operations = screen.getByRole("tab", { name: "Operaciones de caja" });
+    const activity = screen.getByRole("tab", { name: "Actividad caja" });
+    expect(activity.closest(".sale-settings-heading")).toContainElement(operations);
+    expect(operations).toHaveAttribute("aria-selected", "true");
+    expect(requestMock.mock.calls.some(([path]) => path.startsWith("/cash/timeline"))).toBe(false);
+    const requestCount = (prefix: string) => requestMock.mock.calls.filter(([path]) => path.startsWith(prefix)).length;
+    const refresh = await screen.findByRole("button", { name: "Actualizar" });
+    expect(operations.closest(".sale-settings-cash-navigation")).toContainElement(refresh);
+    expect(document.querySelector(".sale-settings-content")).not.toContainElement(refresh);
+    await waitFor(() => expect(refresh).toBeEnabled());
+    const initialStatusRequests = requestCount("/cash/status");
+    fireEvent.click(refresh);
+    await waitFor(() => expect(requestCount("/cash/status")).toBe(initialStatusRequests + 1));
+    await waitFor(() => expect(refresh).toBeEnabled());
+    expect(requestCount("/cash/timeline")).toBe(0);
+    fireEvent.click(await screen.findByRole("button", { name: "Entrada" }));
+    const amount = screen.getByRole("textbox", { name: "Importe" });
+    fireEvent.change(amount, { target: { value: "25.50" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Motivo o comentario" }), { target: { value: "Fondo de cambio" } });
+    fireEvent.click(activity);
+
+    const table = await screen.findByRole("table", { name: "Historial de hoy" });
+    await within(table).findByText("261002001");
+    expect(within(table).getAllByRole("columnheader")[0]).toHaveTextContent("Referencia");
+    expect(screen.getByRole("tabpanel", { name: "Actividad caja" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Actividad caja", level: 2 })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Actividad caja", level: 3 })).toBeNull();
+    expect(amount).not.toBeVisible();
+    const activityRefresh = screen.getByRole("button", { name: "Actualizar" });
+    expect(screen.getAllByRole("button", { name: "Actualizar", hidden: true })).toHaveLength(1);
+    expect(activity.closest(".sale-settings-cash-navigation")).toContainElement(activityRefresh);
+    await waitFor(() => expect(activityRefresh).toBeEnabled());
+    const priorStatusRequests = requestCount("/cash/status");
+    const priorTimelineRequests = requestCount("/cash/timeline");
+    let finishRefresh!: () => void;
+    timelineRefreshBarrier = new Promise<void>(resolve => { finishRefresh = resolve; });
+    fireEvent.click(activityRefresh);
+    await waitFor(() => expect(activityRefresh).toBeDisabled());
+    fireEvent.click(activityRefresh);
+    expect(requestCount("/cash/timeline")).toBe(priorTimelineRequests + 1);
+    expect(requestCount("/cash/status")).toBe(priorStatusRequests);
+    await act(async () => { finishRefresh(); });
+    await waitFor(() => expect(activityRefresh).toBeEnabled());
+    await within(table).findByText("261002001");
+    fireEvent.keyDown(activity, { key: "ArrowLeft" });
+    expect(operations).toHaveFocus();
+    expect(operations).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Caja", level: 2 })).toBeVisible();
+    expect(amount).toBeVisible();
+    expect(amount).toHaveValue("25.50");
+    expect(screen.getByRole("textbox", { name: "Motivo o comentario" })).toHaveValue("Fondo de cambio");
+    expect(screen.queryByRole("table", { name: "Historial de hoy" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Actualizar", hidden: true })).toHaveLength(1);
   });
 
   it("maps the old reports and sale destinations to visualization", () => {

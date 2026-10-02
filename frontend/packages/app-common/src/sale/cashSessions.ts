@@ -7,6 +7,8 @@ export type CashSessionView = {
   status: "ABIERTA" | "CERRADA";
   openedAt: string;
   openingFund: number;
+  expectedOpeningFund?: number | null;
+  openingDiscrepancy?: number | null;
   expectedCash?: number | null;
   availableCash?: number | null;
   retainedFund?: number | null;
@@ -24,7 +26,33 @@ export type CashSalesSessionReadiness = {
   entryDenominations?: number[];
   requireWithdrawalBreakdown: boolean;
   withdrawalDenominations: number[];
+  requireClosingBreakdown?: boolean;
+  closingDenominations?: number[];
 };
+
+export type CashDenominationCount = { denomination: number; quantity: number };
+
+export type CashTimelineEntry = {
+  id: string;
+  occurredAt: string;
+  userId: string;
+  username: string;
+  userName: string;
+  action: string;
+  concept: string | null;
+  amount: number | null;
+  balance: number | null;
+  reference: string | null;
+  sourceReference?: string | null;
+  sessionId: string | null;
+  cashState: "ABIERTA" | "CERRADA" | null;
+};
+
+export type CashTimeline = { businessDate: string; timezone: string; items: CashTimelineEntry[] };
+
+export function loadCashTimeline(terminalId: string, token: string, request: RequestFunction = apiRequest) {
+  return request<CashTimeline>(`/cash/timeline?${new URLSearchParams({ terminalId })}`, { token });
+}
 
 export type CashCloseOperationView = {
   operationId: string;
@@ -66,11 +94,13 @@ export function openCashSession(
   terminalId: string,
   token: string,
   request: RequestFunction = apiRequest,
+  countedFund?: number,
+  denominations: CashDenominationCount[] = [],
 ) {
   return request<CashSessionView>("/cash/sessions/open", {
     token,
     method: "POST",
-    body: { terminalId },
+    body: { terminalId, ...(countedFund == null ? {} : { countedFund, denominations }) },
   });
 }
 
@@ -104,6 +134,10 @@ export function closeCashSession(
   authorization: SaleOperationCredentials = {},
   closeOperationId: string = createCashCloseWithdrawalIdempotencyKey(),
   reconciliationAttemptId: string = createCashCloseWithdrawalIdempotencyKey(),
+  breakdowns: {
+    retainedFundDenominations?: CashDenominationCount[];
+    finalWithdrawalDenominations?: CashDenominationCount[];
+  } = {},
 ) {
   return request<CashSessionView>("/cash/sessions/close", {
     token,
@@ -111,10 +145,10 @@ export function closeCashSession(
     body: {
       terminalId,
       retainedFund,
-      retainedFundDenominations: [],
+      retainedFundDenominations: breakdowns.retainedFundDenominations ?? [],
       finalWithdrawalAmount,
       finalWithdrawalComment: finalWithdrawalComment.trim() || null,
-      finalWithdrawalDenominations: [],
+      finalWithdrawalDenominations: breakdowns.finalWithdrawalDenominations ?? [],
       closeOperationId,
       reconciliationAttemptId,
       ...authorization,

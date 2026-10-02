@@ -18,16 +18,7 @@ public class CashClosureQueryRepository {
         this.jdbc = jdbc;
     }
 
-    public List<CashClosureRow> findClosures(
-            UUID storeId,
-            Instant from,
-            Instant toExclusive,
-            UUID terminalId,
-            UUID closingUserId,
-            boolean onlyDiscrepancies,
-            CashClosureCursor cursor,
-            int limit) {
-        var sql = new StringBuilder("""
+    private static final String SELECT = """
                 select session.id as session_id,
                        session.terminal_id,
                        terminal.nombre as terminal_name,
@@ -39,7 +30,14 @@ public class CashClosureQueryRepository {
                        session.efectivo_teorico,
                        session.fondo_dejado,
                        session.descuadre,
-                       session.cierre_tardio
+                       session.cierre_tardio,
+                       coalesce((select sum(m.importe) from movimiento_caja m
+                         where m.sesion_caja_id=session.id and m.tipo='RETIRADA_CIERRE'),0) final_withdrawal,
+                       session.fondo_dejado_desglose retained_breakdown,
+                       (select jsonb_agg(jsonb_build_object('denomination',d.denominacion,'quantity',d.cantidad)
+                                order by d.denominacion desc)
+                        from movimiento_caja m join movimiento_caja_denominacion d on d.movimiento_caja_id=m.id
+                        where m.sesion_caja_id=session.id and m.tipo='RETIRADA_CIERRE') withdrawal_breakdown
                 from sesion_caja session
                 join terminal terminal
                   on terminal.id = session.terminal_id
@@ -47,9 +45,18 @@ public class CashClosureQueryRepository {
                 left join usuario account on account.id = session.usuario_cierre_id
                 where session.tienda_id = :storeId
                   and session.estado = 'CERRADA'
-                  and session.cerrada_en >= :from
-                  and session.cerrada_en < :toExclusive
-                """);
+                """;
+
+    public List<CashClosureRow> findClosures(
+            UUID storeId,
+            Instant from,
+            Instant toExclusive,
+            UUID terminalId,
+            UUID closingUserId,
+            boolean onlyDiscrepancies,
+            CashClosureCursor cursor,
+            int limit) {
+        var sql = new StringBuilder(SELECT + " and session.cerrada_en >= :from and session.cerrada_en < :toExclusive ");
         var parameters = new MapSqlParameterSource()
                 .addValue("storeId", storeId)
                 .addValue("from", Timestamp.from(from))
@@ -88,19 +95,7 @@ public class CashClosureQueryRepository {
                          session.id asc
                 limit :limit
                 """);
-        return jdbc.query(sql.toString(), parameters, (result, rowNumber) -> new CashClosureRow(
-                result.getObject("session_id", UUID.class),
-                result.getObject("terminal_id", UUID.class),
-                result.getString("terminal_name"),
-                result.getString("terminal_sort_key"),
-                result.getObject("closing_user_id", UUID.class),
-                result.getString("closing_user_name"),
-                result.getString("closing_username"),
-                result.getTimestamp("cerrada_en").toInstant(),
-                result.getBigDecimal("efectivo_teorico"),
-                result.getBigDecimal("fondo_dejado"),
-                result.getBigDecimal("descuadre"),
-                result.getBoolean("cierre_tardio")));
+        return jdbc.query(sql.toString(), parameters, (result, rowNumber) -> map(result));
     }
 
     public List<CashClosureRow> findClosures(
@@ -115,29 +110,7 @@ public class CashClosureQueryRepository {
             String sortBy,
             String sortDirection) {
         var sort = closureSort(sortBy, sortDirection);
-        var sql = new StringBuilder("""
-                select session.id as session_id,
-                       session.terminal_id,
-                       terminal.nombre as terminal_name,
-                       lower(terminal.nombre) as terminal_sort_key,
-                       session.usuario_cierre_id as closing_user_id,
-                       coalesce(account.nombre, '') as closing_user_name,
-                       coalesce(account.user_name, '') as closing_username,
-                       session.cerrada_en,
-                       session.efectivo_teorico,
-                       session.fondo_dejado,
-                       session.descuadre,
-                       session.cierre_tardio
-                from sesion_caja session
-                join terminal terminal
-                  on terminal.id = session.terminal_id
-                 and terminal.tienda_id = session.tienda_id
-                left join usuario account on account.id = session.usuario_cierre_id
-                where session.tienda_id = :storeId
-                  and session.estado = 'CERRADA'
-                  and session.cerrada_en >= :from
-                  and session.cerrada_en < :toExclusive
-                """);
+        var sql = new StringBuilder(SELECT + " and session.cerrada_en >= :from and session.cerrada_en < :toExclusive ");
         var parameters = new MapSqlParameterSource()
                 .addValue("storeId", storeId)
                 .addValue("from", Timestamp.from(from))
@@ -164,7 +137,16 @@ public class CashClosureQueryRepository {
         }
         sql.append(" order by ").append(sort.expression()).append(" ").append(sort.direction())
                 .append(", session.id asc limit :limit");
-        return jdbc.query(sql.toString(), parameters, (result, rowNumber) -> new CashClosureRow(
+        return jdbc.query(sql.toString(), parameters, (result, rowNumber) -> map(result));
+    }
+
+    public java.util.Optional<CashClosureRow> findById(UUID storeId, UUID sessionId) {
+        return jdbc.query(SELECT + " and session.id=:id",new MapSqlParameterSource("storeId",storeId).addValue("id",sessionId),
+                (result,rowNumber)->map(result)).stream().findFirst();
+    }
+
+    private static CashClosureRow map(java.sql.ResultSet result) throws java.sql.SQLException {
+        return new CashClosureRow(
                 result.getObject("session_id", UUID.class),
                 result.getObject("terminal_id", UUID.class),
                 result.getString("terminal_name"),
@@ -176,7 +158,18 @@ public class CashClosureQueryRepository {
                 result.getBigDecimal("efectivo_teorico"),
                 result.getBigDecimal("fondo_dejado"),
                 result.getBigDecimal("descuadre"),
-                result.getBoolean("cierre_tardio")));
+                result.getBoolean("cierre_tardio"),result.getBigDecimal("final_withdrawal"),
+                denominations(result.getString("retained_breakdown")),denominations(result.getString("withdrawal_breakdown")));
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON=new com.fasterxml.jackson.databind.ObjectMapper();
+    private static List<CashDenominationCommand> denominations(String value) {
+        if(value==null) return List.of();
+        try {
+            return List.of(JSON.readValue(value,CashDenominationCommand[].class));
+        } catch(com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("Desglose de caja persistido no valido",error);
+        }
     }
 
     public List<CashClosureFilterOptionView> findTerminalOptions(UUID storeId) {
@@ -187,7 +180,6 @@ public class CashClosureQueryRepository {
                           on session.terminal_id = terminal.id
                          and session.tienda_id = terminal.tienda_id
                         where session.tienda_id = :storeId
-                          and session.estado = 'CERRADA'
                         order by terminal.nombre
                         """,
                 new MapSqlParameterSource("storeId", storeId),
@@ -201,9 +193,8 @@ public class CashClosureQueryRepository {
         return jdbc.query("""
                         select distinct account.id, account.nombre, account.user_name
                         from usuario account
-                        join sesion_caja session on session.usuario_cierre_id = account.id
+                        join sesion_caja session on session.usuario_cierre_id = account.id or session.usuario_apertura_id = account.id
                         where session.tienda_id = :storeId
-                          and session.estado = 'CERRADA'
                         order by account.nombre, account.user_name
                         """,
                 new MapSqlParameterSource("storeId", storeId),
@@ -263,6 +254,14 @@ public class CashClosureQueryRepository {
             java.math.BigDecimal expectedCash,
             java.math.BigDecimal retainedFund,
             java.math.BigDecimal discrepancy,
-            boolean lateClosing) {
+            boolean lateClosing, BigDecimal finalWithdrawalAmount,
+            List<CashDenominationCommand> retainedFundDenominations,
+            List<CashDenominationCommand> finalWithdrawalDenominations) {
+        CashClosureRow(UUID id,UUID terminalId,String terminalName,String terminalSortKey,
+                UUID closingUserId,String closingUserName,String closingUsername,Instant closedAt,
+                BigDecimal expectedCash,BigDecimal retainedFund,BigDecimal discrepancy,boolean lateClosing) {
+            this(id,terminalId,terminalName,terminalSortKey,closingUserId,closingUserName,closingUsername,
+                    closedAt,expectedCash,retainedFund,discrepancy,lateClosing,BigDecimal.ZERO,List.of(),List.of());
+        }
     }
 }

@@ -108,9 +108,9 @@ import {
 } from "./ProductCreateDialog";
 import {
   createCashCloseUiFlow,
-  SaleCashSessionDialog,
   type CashCloseUiFlow,
-} from "./SaleCashSessionDialog";
+} from "../sale/cashCloseUiFlow";
+import { DeferredCashSessionDialog as SaleCashSessionDialog } from "./DeferredCashSessionDialog";
 import { SaleCashWithdrawalDialog } from "./SaleCashWithdrawalDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
 import { TouchNumericKeypad } from "./TouchNumericKeypad";
@@ -1840,11 +1840,15 @@ export function SaleScreen({
     entryDenominations: number[];
     requireBreakdown: boolean;
     denominations: number[];
+    requireClosingBreakdown: boolean;
+    closingDenominations: number[];
   }>({
     requireEntryBreakdown: false,
     entryDenominations: [],
     requireBreakdown: false,
     denominations: [],
+    requireClosingBreakdown: false,
+    closingDenominations: [],
   });
   const [operationSecurity, setOperationSecurity] =
     useState<SalesOperationSecurityConfiguration | null>(null);
@@ -2939,6 +2943,8 @@ export function SaleScreen({
         denominations: Array.isArray(readiness.withdrawalDenominations)
           ? readiness.withdrawalDenominations
           : [],
+        requireClosingBreakdown: Boolean(readiness.requireClosingBreakdown),
+        closingDenominations: Array.isArray(readiness.closingDenominations) ? readiness.closingDenominations : [],
       });
       setCashSessionState(readiness.open ? "OPEN" : "REQUIRED");
       if (readiness.open && closeFlowAfterReadiness) {
@@ -7056,10 +7062,12 @@ export function SaleScreen({
       {cashSessionState === "REQUIRED" && terminalContext.terminalId && session.accessToken && (
         <SaleCashSessionDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           currentUsername={session.username}
           mode="OPEN"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}
+          denominations={cashWithdrawalPolicy.closingDenominations}
           onExitSales={handleBack}
           onOpened={() => setCashSessionState("OPEN")}
         />
@@ -7091,10 +7099,15 @@ export function SaleScreen({
         && terminalContext.terminalId && session.accessToken && (
         <SaleCashSessionDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           currentUsername={session.username}
           mode="CLOSE"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}
+          denominations={cashWithdrawalPolicy.closingDenominations}
+          requireClosingBreakdown={cashWithdrawalPolicy.requireClosingBreakdown}
+          requireWithdrawalBreakdown={cashWithdrawalPolicy.requireBreakdown}
+          withdrawalDenominations={cashWithdrawalPolicy.denominations}
           authorization={cashSessionCloseAuthorization ?? {
             mode: "CURRENT_PASSWORD",
             requireUsername: false,

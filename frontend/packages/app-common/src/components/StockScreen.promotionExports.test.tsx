@@ -152,6 +152,7 @@ describe("StockScreen promotion Excel exports", () => {
       { key: "promotionValidity", label: t("stock.column.promotionValidity") }
     ]);
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(activeButton).toHaveProperty("disabled", false));
     fireEvent.keyDown(document.body, { key: "F6" });
     await waitFor(() => expect(exportBodies()).toHaveLength(2));
     expect(exportBodies()[1]).toMatchObject({ promotionScope: "SELECTED", promotionId: "expired" });

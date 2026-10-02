@@ -7,6 +7,8 @@ export type CashCloseRecoveryFlow = {
   retainedFund: string;
   finalWithdrawal: string;
   comment: string;
+  retainedFundDenominations?: { denomination: number; quantity: number }[];
+  finalWithdrawalDenominations?: { denomination: number; quantity: number }[];
 };
 
 export type CashCloseRecoveryEnvelope = {
@@ -75,7 +77,16 @@ function validEnvelope(value: unknown): value is CashCloseRecoveryEnvelope {
     && (flow.phase === "READY" || flow.phase === "ATTEMPTED" || flow.phase === "RECONCILIATION_REQUIRED")
     && typeof flow.retainedFund === "string" && flow.retainedFund.length <= 32
     && typeof flow.finalWithdrawal === "string" && flow.finalWithdrawal.length <= 32
-    && typeof flow.comment === "string" && flow.comment.length <= 500;
+    && typeof flow.comment === "string" && flow.comment.length <= 500
+    && validDenominations(flow.retainedFundDenominations)
+    && validDenominations(flow.finalWithdrawalDenominations);
+}
+
+function validDenominations(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.length <= 32 && value.every(row =>
+    isRecord(row) && typeof row.denomination === "number" && Number.isFinite(row.denomination)
+    && row.denomination > 0 && typeof row.quantity === "number"
+    && Number.isSafeInteger(row.quantity) && row.quantity >= 0));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

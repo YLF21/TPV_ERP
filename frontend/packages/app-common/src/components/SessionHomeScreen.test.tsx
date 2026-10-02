@@ -258,11 +258,23 @@ describe("SessionHomeScreen", () => {
     expect(callbacks.onOpenSales).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir caja y turno" }));
-    expect(screen.getByRole("dialog", { name: "Abrir caja" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "Abrir caja" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Confirmar apertura" }));
 
     expect(screen.getByRole("button", { name: "VENTA" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Abrir caja y turno" })).toBeNull();
+  });
+
+  it("allows entering Sales without a manual opening when automatic opening is configured", async () => {
+    loadCashSessionReadiness.mockResolvedValueOnce({
+      cashSessionRequired: false, open: false, session: null,
+      requireWithdrawalBreakdown: false, withdrawalDenominations: [],
+    });
+    const callbacks = renderHome();
+    await waitFor(() => expect(screen.getByRole("button", { name: "VENTA" })).toBeEnabled());
+    expect(screen.queryByRole("button", { name: "Abrir caja y turno" })).toBeNull();
+    dispatchShortcut("F1");
+    expect(callbacks.onOpenSales).toHaveBeenCalledOnce();
   });
 
   it("keeps Sales locked and retries when cash status cannot be checked", async () => {

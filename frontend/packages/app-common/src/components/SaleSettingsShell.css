@@ -1146,6 +1146,58 @@
   }
 }
 
+/* Caja: separate the operational flow from the activity list. */
+.sale-settings-screen .sale-settings-heading--with-navigation { padding-bottom:0; border-bottom:0; }
+.sale-settings-screen .sale-settings-cash-navigation {
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:8px;
+  border-bottom:1px solid #aebfd2;
+}
+.sale-settings-screen .sale-settings-cash-tabs { display:flex; align-items:end; gap:3px; }
+.sale-settings-screen .sale-settings-cash-refresh { flex-shrink:0; display:flex; }
+.sale-settings-screen .sale-settings-cash-refresh button {
+  box-sizing:border-box;
+  min-height:39px;
+  min-width:118px;
+  padding:0 18px;
+  border:1px solid #aebfd2;
+  border-radius:0;
+  background:#f2f6fa;
+  color:#12385f;
+  font:inherit;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+}
+.sale-settings-screen .sale-settings-cash-tabs button {
+  min-height:39px;
+  min-width:118px;
+  padding:0 18px;
+  border:1px solid #aebfd2;
+  border-bottom:0;
+  border-radius:0;
+  background:#f2f6fa;
+  color:#12385f;
+  font:inherit;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+}
+.sale-settings-screen .sale-settings-cash-tabs button[aria-selected="true"] {
+  background:#2878b9;
+  color:#fff;
+  border-color:#1c6298;
+}
+.sale-settings-screen .sale-settings-cash-tabs button:focus-visible,
+.sale-settings-screen .sale-settings-cash-refresh button:focus-visible {
+  outline:2px solid #1f5a94;
+  outline-offset:-2px;
+}
+.sale-settings-screen .sale-settings-cash-tab-panel[hidden] { display:none; }
+
 /* Caja: one operation at a time, keeping the shared authorization in view. */
 .sale-settings-screen .cash-operation-workspace {
   display: grid;

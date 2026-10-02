@@ -91,27 +91,39 @@ public class CashSessionService {
         return view(session, permissions.canSeeExpectedTotals(authentication));
     }
 
-    // Abre una sesion de caja con el fondo calculado para la terminal actual.
     @Transactional
     public CashSessionView open(UUID terminalId, Authentication authentication) {
+        return open(new CashOpenRequest(terminalId), authentication);
+    }
+
+    @Transactional
+    public CashSessionView open(CashOpenRequest request, Authentication authentication) {
         permissions.requireSalesPermission(authentication);
-        var terminal = validateTerminalForCashSessionPreparation(terminalId);
+        var terminal = validateTerminalForCashSessionPreparation(request.terminalId());
         if (sessions.findByTerminalIdAndStatus(terminal.getId(), CashSessionStatus.ABIERTA).isPresent()) {
             throw new IllegalStateException("Ya existe una sesion de caja abierta para la terminal");
         }
-        var hasPreviousClosed = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
-                terminal.getId(), CashSessionStatus.CERRADA).isPresent();
-        var betweenSessions = movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(terminal.getId());
-        var hasBetweenSessionEntry = betweenSessions.stream()
-                .anyMatch(movement -> movement.getType() == CashMovementType.ENTRADA_ENTRE_SESIONES);
-        if (!hasPreviousClosed && !hasBetweenSessionEntry) {
-            throw new IllegalStateException("La primera apertura requiere una entrada entre sesiones");
+        var cashConfig = config(terminal.getTienda().getId());
+        if (cashConfig.isCashSessionRequired() && request.countedFund() == null) {
+            throw new IllegalArgumentException("El recuento de apertura es obligatorio");
         }
-        var user = organization.currentUser(authentication);
-        var session = createSession(
-                terminal,
-                user,
-                calculator.nextOpeningFund(terminal.getId()));
+        if (!cashConfig.isCashSessionRequired() && request.countedFund() != null) {
+            throw new IllegalArgumentException("La politica de tienda requiere apertura automatica");
+        }
+        var expected = calculator.nextOpeningFund(terminal.getId());
+        var openingFund = expected;
+        if (cashConfig.isCashSessionRequired()) {
+            if (request.countedFund().signum() < 0 || request.countedFund().stripTrailingZeros().scale() > 2
+                    || request.countedFund().precision() - request.countedFund().scale() > 17) {
+                throw new IllegalArgumentException("El recuento debe ser un importe no negativo con dos decimales");
+            }
+            openingFund = nonNegativeAmount(request.countedFund());
+            validateDenominations(openingFund, request.denominations(), false);
+        }
+        var session = createSession(terminal, organization.currentUser(authentication), openingFund);
+        if (cashConfig.isCashSessionRequired()) {
+            session.recordOpeningCount(expected, request.denominations());
+        }
         return view(sessions.save(session), permissions.canSeeExpectedTotals(authentication));
     }
 
@@ -136,7 +148,8 @@ public class CashSessionService {
                     cashConfig.isRequireEntryBreakdown(),
                     CashDenomination.valuesInEuroOrder(),
                     cashConfig.isRequireWithdrawalBreakdown(),
-                    CashDenomination.valuesInEuroOrder());
+                    CashDenomination.valuesInEuroOrder(),
+                    cashConfig.isRequireClosingBreakdown(), CashDenomination.valuesInEuroOrder());
         }
         var hasPreviousClosed = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
                 terminal.getId(), CashSessionStatus.CERRADA).isPresent();
@@ -170,7 +183,8 @@ public class CashSessionService {
                 cashConfig.isRequireEntryBreakdown(),
                 CashDenomination.valuesInEuroOrder(),
                 cashConfig.isRequireWithdrawalBreakdown(),
-                CashDenomination.valuesInEuroOrder());
+                CashDenomination.valuesInEuroOrder(),
+                cashConfig.isRequireClosingBreakdown(), CashDenomination.valuesInEuroOrder());
     }
 
     // Records a manual entry in an open session after resolving the configured F9 policy.
@@ -347,6 +361,9 @@ public class CashSessionService {
         if (attempt.closedSession() && isLateClose(session, attempt.getCreatedAt())) {
             session.markLateClosing();
         }
+        if (attempt.closedSession()) {
+            session.recordRetainedFundDenominations(request.retainedFundDenominations());
+        }
         sessions.save(session);
         closeOperation.recordAttempt(attempt.closedSession(), attempt.getCreatedAt());
         closeOperations.save(closeOperation);
@@ -449,7 +466,7 @@ public class CashSessionService {
     public CashMovementView betweenSessions(
             UUID terminalId, CashWithdrawalRequest request, Authentication authentication) {
         permissions.requireConfigPermission(authentication);
-        var terminal = validateTerminal(terminalId);
+        var terminal = validateTerminalForCashSessionPreparation(terminalId);
         if (sessions.findByTerminalIdAndStatus(terminal.getId(), CashSessionStatus.ABIERTA).isPresent()) {
             throw new IllegalStateException("No se permiten movimientos entre sesiones con caja abierta");
         }
@@ -520,7 +537,8 @@ public class CashSessionService {
                 cashConfig.isRequireEntryBreakdown(),
                 CashDenomination.valuesInEuroOrder(),
                 cashConfig.isRequireWithdrawalBreakdown(),
-                CashDenomination.valuesInEuroOrder());
+                CashDenomination.valuesInEuroOrder(),
+                cashConfig.isRequireClosingBreakdown(), CashDenomination.valuesInEuroOrder());
     }
 
     private CashSessionView view(CashSession session, boolean includeExpectedTotals) {
@@ -666,7 +684,7 @@ public class CashSessionService {
             List<CashDenominationCommand> denominations,
             boolean required) {
         var commands = denominations == null ? List.<CashDenominationCommand>of() : denominations;
-        if (required && commands.isEmpty()) {
+        if (required && amount.signum() > 0 && commands.isEmpty()) {
             throw new IllegalArgumentException("El desglose de denominaciones es obligatorio");
         }
         if (commands.isEmpty()) {

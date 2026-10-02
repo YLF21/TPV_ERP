@@ -11,9 +11,14 @@ export type CashClosure = {
   closedAt: string;
   expectedCash: number;
   retainedFund: number;
+  finalWithdrawalAmount: number;
+  retainedFundDenominations: CashDenomination[];
+  finalWithdrawalDenominations: CashDenomination[];
   discrepancy: number;
   lateClosing: boolean;
 };
+
+export type CashDenomination = { denomination: number; quantity: number };
 
 export type CashClosureFilterOption = {
   id: string;
@@ -44,6 +49,10 @@ export type CashClosurePage = {
 
 export async function loadCashClosureFilterOptions(token?: string) {
   return apiRequest<CashClosureFilterOptions>("/cash/closures/filter-options", { token });
+}
+
+export async function loadCashClosure(id: string, token?: string) {
+  return apiRequest<CashClosure>(`/cash/closures/${encodeURIComponent(id)}`, { token });
 }
 
 export async function loadCashClosures(

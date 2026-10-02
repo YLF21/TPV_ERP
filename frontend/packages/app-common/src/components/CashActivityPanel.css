@@ -1,0 +1,17 @@
+.cash-activity-panel .settings-card-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.cash-activity-panel .settings-card-heading h3 { margin:0; }
+.cash-activity-panel .settings-card-heading > button { margin-left:auto; }
+.cash-activity-panel .cash-timeline-filters { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.cash-activity-panel .cash-timeline-filters > div { display:grid; gap:4px; min-width:180px; font-size:12px; color:#52667c; }
+.cash-activity-panel .cash-timeline-filters .erp-select__trigger { min-height:34px; }
+.cash-activity-panel .cash-report-table-wrap { box-sizing:border-box; min-height:326px; max-width:100%; overflow:auto; border:1px solid #aebfd2; }
+.cash-activity-panel .cash-timeline-table { width:100%; table-layout:fixed; }
+.cash-activity-panel .cash-timeline-table th { height:36px; padding:5px 8px; background:#12385f; color:#fff; font-size:12px; text-align:left; }
+.cash-activity-panel .cash-timeline-table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cash-activity-panel .cash-timeline-table .cash-timeline-amount { text-align:right; font-variant-numeric:tabular-nums; }
+.cash-activity-panel .cash-timeline-error { color:#a12626; font-size:13px; }
+.cash-activity-panel .cash-activity-state { font-weight:600; }
+.cash-activity-panel .cash-activity-state--abierta { color:#24573d !important; }
+.cash-activity-panel .cash-activity-state--cerrada { color:#52667c !important; }
+.sale-settings-screen .cash-activity-panel .cash-timeline-table .table-layout-column-resizer { width:9px; min-width:0; min-height:0; padding:0; border:0; border-radius:0; background:transparent; cursor:col-resize; }
+.sale-settings-screen .cash-activity-panel .cash-timeline-table .table-layout-column-menu-button { min-height:27px; padding:0; border:0; border-radius:1px; background:transparent; }

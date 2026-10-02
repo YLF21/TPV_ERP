@@ -5,12 +5,14 @@ import { hasPermission } from "../auth/auth";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
-import { SaleCashSessionDialog } from "./SaleCashSessionDialog";
+import { DeferredCashSessionDialog as SaleCashSessionDialog } from "./DeferredCashSessionDialog";
 import { loadCashSessionReadiness } from "../sale/cashSessions";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 
 type SessionHomeScreenProps = {
   app: AppKind;
   locale: LocaleCode;
+  interfaceMode?: SaleInterfaceMode;
   session: UserSession;
   terminalContext: TerminalContext;
   canOpenSalesReport?: boolean;
@@ -47,6 +49,7 @@ function hasOpenDialog() {
 export function SessionHomeScreen({
   app,
   locale,
+  interfaceMode = "KEYBOARD",
   session,
   terminalContext,
   canOpenSalesReport = false,
@@ -87,7 +90,7 @@ export function SessionHomeScreen({
     setCashSessionState("LOADING");
     void loadCashSessionReadiness(terminalContext.terminalId, session.accessToken)
       .then((readiness) => {
-        if (active) setCashSessionState(readiness.open ? "OPEN" : "CLOSED");
+        if (active) setCashSessionState(readiness.open || !readiness.cashSessionRequired ? "OPEN" : "CLOSED");
       })
       .catch(() => {
         if (active) setCashSessionState("ERROR");
@@ -242,6 +245,7 @@ export function SessionHomeScreen({
       {cashDialogOpen && terminalContext.terminalId && session.accessToken && (
         <SaleCashSessionDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           currentUsername={session.username}
           mode="OPEN"
           terminalId={terminalContext.terminalId}

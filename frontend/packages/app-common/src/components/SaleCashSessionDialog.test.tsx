@@ -61,7 +61,7 @@ describe("SaleCashSessionDialog", () => {
     await userEvent.type(screen.getByLabelText("Fondo que queda en caja"), "40");
     await userEvent.clear(screen.getByLabelText("Retirada final"));
     await userEvent.type(screen.getByLabelText("Retirada final"), "10");
-    await userEvent.type(screen.getByLabelText("Comentario de la retirada"), "Cierre");
+    await userEvent.type(screen.getByLabelText("Motivo o comentario"), "Cierre");
     await userEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
 
     expect(onClosed).toHaveBeenCalledWith(expect.objectContaining({ status: "CERRADA" }));
@@ -124,13 +124,13 @@ describe("SaleCashSessionDialog", () => {
     await userEvent.type(screen.getByLabelText("Fondo que queda en caja"), "70");
     await userEvent.clear(screen.getByLabelText("Retirada final"));
     await userEvent.type(screen.getByLabelText("Retirada final"), "20");
-    await userEvent.type(screen.getByLabelText("Comentario de la retirada"), "Cierre");
+    await userEvent.type(screen.getByLabelText("Motivo o comentario"), "Cierre");
     await userEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
     await screen.findByRole("alert");
 
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
     expect(screen.getByLabelText("Retirada final")).toBeDisabled();
-    expect(screen.getByLabelText("Comentario de la retirada")).toBeDisabled();
+    expect(screen.getByLabelText("Motivo o comentario")).toBeDisabled();
     expect(screen.getByLabelText("Fondo que queda en caja")).toBeEnabled();
     await userEvent.clear(screen.getByLabelText("Fondo que queda en caja"));
     await userEvent.type(screen.getByLabelText("Fondo que queda en caja"), "80");
@@ -257,7 +257,7 @@ describe("SaleCashSessionDialog", () => {
     await userEvent.type(screen.getByLabelText("Fondo que queda en caja"), "80");
     await userEvent.clear(screen.getByLabelText("Retirada final"));
     await userEvent.type(screen.getByLabelText("Retirada final"), "20");
-    await userEvent.type(screen.getByLabelText("Comentario de la retirada"), "Cierre");
+    await userEvent.type(screen.getByLabelText("Motivo o comentario"), "Cierre");
     await userEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
     await screen.findByRole("alert");
 
@@ -288,7 +288,7 @@ describe("SaleCashSessionDialog", () => {
 
     expect(screen.getByLabelText("Fondo que queda en caja")).toHaveValue("80");
     expect(screen.getByLabelText("Retirada final")).toHaveValue("20");
-    expect(screen.getByLabelText("Comentario de la retirada")).toHaveValue("Cierre");
+    expect(screen.getByLabelText("Motivo o comentario")).toHaveValue("Cierre");
     expect(screen.getByLabelText("Fondo que queda en caja")).toBeDisabled();
     expect(screen.getByLabelText("Retirada final")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();

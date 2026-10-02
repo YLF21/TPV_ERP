@@ -38,6 +38,7 @@ export type SaleSettingsShellProps = {
   heading: string;
   subtitle: string;
   scopeLabel?: string;
+  headerNavigation?: ReactNode;
   children: ReactNode;
 };
 
@@ -71,6 +72,7 @@ export function SaleSettingsShell({
   heading,
   subtitle,
   scopeLabel,
+  headerNavigation,
   children
 }: SaleSettingsShellProps) {
   const t = createTranslator(locale);
@@ -159,10 +161,11 @@ export function SaleSettingsShell({
         </aside>
 
         <section className="settings-workspace sale-settings-workspace">
-          <header className="settings-heading sale-settings-heading">
+          <header className={"settings-heading sale-settings-heading" + (headerNavigation ? " sale-settings-heading--with-navigation" : "")}>
             <h2>{heading}</h2>
             <span>{subtitle}</span>
             {scopeLabel ? <strong className="sale-settings-scope">{scopeLabel}</strong> : null}
+            {headerNavigation}
           </header>
           <div className="sale-settings-content">{children}</div>
         </section>

@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { ApiError } from "../api/client";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import { ApiError, apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
 import {
   saleOperationAuthorizationComplete,
@@ -13,16 +13,30 @@ import {
   recoverCashCloseOperation,
   type CashSessionView,
 } from "../sale/cashSessions";
-import type { CashCloseRecoveryFlow } from "../sale/cashCloseRecovery";
+import { createCashCloseUiFlow, type CashCloseUiFlow, type CashCloseUiPhase } from "../sale/cashCloseUiFlow";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
+import type { CashDenominationCount } from "./CashDenominationDialog";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
+import "./CashSessionFlow.css";
+
+const CashDenominationDialog = lazy(() => import("./CashDenominationDialog")
+  .then(module => ({ default: module.CashDenominationDialog })));
 
 type Props = {
   locale: LocaleCode;
+  interfaceMode?: SaleInterfaceMode;
   currentUsername?: string;
   mode: "OPEN" | "CLOSE";
   openContext?: "SALES" | "HOME";
   terminalId: string;
   token: string;
+  request?: typeof apiRequest;
+  embedded?: boolean;
+  denominations?: number[];
+  withdrawalDenominations?: number[];
+  requireClosingBreakdown?: boolean;
+  requireWithdrawalBreakdown?: boolean;
+  onBusyChange?: (busy: boolean) => void;
   authorization?: SaleOperationAuthorization;
   closeFlow?: CashCloseUiFlow;
   onCloseFlowChange?: (flow: CashCloseUiFlow) => void;
@@ -32,24 +46,20 @@ type Props = {
   onCancel?: () => void;
 };
 
-export type CashCloseUiPhase = CashCloseRecoveryFlow["phase"];
-export type CashCloseUiFlow = CashCloseRecoveryFlow;
-
-export function createCashCloseUiFlow(): CashCloseUiFlow {
-  return {
-    closeOperationId: createCashCloseWithdrawalIdempotencyKey(),
-    reconciliationAttemptId: createCashCloseWithdrawalIdempotencyKey(),
-    phase: "READY",
-    retainedFund: "0",
-    finalWithdrawal: "0",
-    comment: "",
-  };
-}
+export { createCashCloseUiFlow };
+export type { CashCloseUiPhase, CashCloseUiFlow };
 
 const copy = {
   es: {
     openTitle: "Abrir caja",
-    openText: "La sesión de caja es obligatoria. Debes abrirla para continuar en Ventas.",
+    openText: "Cuenta e introduce el efectivo que hay en caja antes de vender.",
+    countedFund: "Efectivo contado / fondo inicial",
+    count: "Contar monedas y billetes",
+    withdrawing: "1. Retirada de efectivo",
+    retaining: "2. Fondo que queda",
+    closingUser: "3. Usuario que cierra",
+    countedRequired: "Completa el recuento de monedas y billetes de ambos importes.",
+    closeWindow: "Cerrar ventana",
     openAction: "Abrir caja",
     opening: "Abriendo…",
     exit: "Salir de Ventas",
@@ -57,7 +67,7 @@ const copy = {
     closeText: "Introduce el efectivo que quedará como fondo y la retirada final realizada.",
     retained: "Fondo que queda en caja",
     withdrawal: "Retirada final",
-    comment: "Comentario de la retirada",
+    comment: "Motivo o comentario",
     closeAction: "Cerrar caja",
     closing: "Comprobando arqueo…",
     retryAction: "Reintentar cierre",
@@ -73,7 +83,14 @@ const copy = {
   },
   en: {
     openTitle: "Open cash register",
-    openText: "A cash session is required. Open it to continue in Sales.",
+    openText: "Count and enter the cash in the register before selling.",
+    countedFund: "Counted cash / opening fund",
+    count: "Count coins and notes",
+    withdrawing: "1. Cash withdrawal",
+    retaining: "2. Cash retained",
+    closingUser: "3. Closing user",
+    countedRequired: "Complete the coin and note count for both amounts.",
+    closeWindow: "Close window",
     openAction: "Open register",
     opening: "Opening…",
     exit: "Exit Sales",
@@ -81,7 +98,7 @@ const copy = {
     closeText: "Enter the cash retained as opening fund and the final withdrawal performed.",
     retained: "Cash retained in register",
     withdrawal: "Final withdrawal",
-    comment: "Withdrawal comment",
+    comment: "Reason or comment",
     closeAction: "Close register",
     closing: "Checking cash count…",
     retryAction: "Retry close",
@@ -97,7 +114,14 @@ const copy = {
   },
   zh: {
     openTitle: "开启收银会话",
-    openText: "必须开启收银会话。开启后才能继续销售。",
+    openText: "销售前请清点并输入钱箱中的现金。",
+    countedFund: "清点现金／初始备用金",
+    count: "清点硬币和纸币",
+    withdrawing: "1. 取出现金",
+    retaining: "2. 保留现金",
+    closingUser: "3. 关箱用户",
+    countedRequired: "请完成两个金额的硬币和纸币清点。",
+    closeWindow: "关闭窗口",
     openAction: "开启收银会话",
     opening: "正在开启…",
     exit: "退出销售",
@@ -105,7 +129,7 @@ const copy = {
     closeText: "请输入保留为备用金的现金和最终取出的现金。",
     retained: "保留在钱箱中的现金",
     withdrawal: "最终取款",
-    comment: "取款备注",
+    comment: "原因或备注",
     closeAction: "关闭收银会话",
     closing: "正在核对盘点…",
     retryAction: "重试关闭",
@@ -132,17 +156,27 @@ function operationError(error: unknown, fallback: string): string {
 }
 
 function amount(value: string) {
-  const parsed = Number(value.replace(",", "."));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  const text = value.trim();
+  if (!/^(?:\d+|\d*[.,]\d{1,2})$/.test(text)) return null;
+  const parsed = Number(text.replace(",", "."));
+  return Number.isSafeInteger(Math.round(parsed * 100)) && parsed >= 0 ? parsed : null;
 }
 
 export function SaleCashSessionDialog({
   locale,
+  interfaceMode = "KEYBOARD",
   currentUsername = "",
   mode,
   openContext = "SALES",
   terminalId,
   token,
+  request = apiRequest,
+  embedded = false,
+  denominations,
+  withdrawalDenominations: configuredWithdrawalDenominations,
+  requireClosingBreakdown = false,
+  requireWithdrawalBreakdown = false,
+  onBusyChange,
   authorization = {
     mode: "DIRECT",
     requireUsername: false,
@@ -160,6 +194,12 @@ export function SaleCashSessionDialog({
   const [retainedFund, setRetainedFund] = useState(initialCloseFlow.retainedFund);
   const [finalWithdrawal, setFinalWithdrawal] = useState(initialCloseFlow.finalWithdrawal);
   const [comment, setComment] = useState(initialCloseFlow.comment);
+  const [countedFund, setCountedFund] = useState("");
+  const [openingDenominations, setOpeningDenominations] = useState<CashDenominationCount[]>([]);
+  const [retainedDenominations, setRetainedDenominations] = useState<CashDenominationCount[]>(initialCloseFlow.retainedFundDenominations ?? []);
+  const [withdrawalDenominations, setWithdrawalDenominations] = useState<CashDenominationCount[]>(initialCloseFlow.finalWithdrawalDenominations ?? []);
+  const [countTarget, setCountTarget] = useState<"opening" | "retained" | "withdrawal" | null>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const [reconciliationAttemptId, setReconciliationAttemptId] =
     useState(initialCloseFlow.reconciliationAttemptId);
   const [authorizerUsername, setAuthorizerUsername] = useState("");
@@ -168,6 +208,15 @@ export function SaleCashSessionDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const closeAttemptLocked = mode === "CLOSE" && closePhase !== "READY";
+
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  useEffect(() => () => { onBusyChange?.(false); }, [onBusyChange]);
+  useEffect(() => {
+    if (embedded) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.querySelector<HTMLInputElement>("input:not(:disabled)")?.focus();
+    return () => { if (opener?.isConnected) opener.focus(); };
+  }, [embedded]);
 
   function updateCloseFlow(
     phase: CashCloseUiPhase,
@@ -181,6 +230,8 @@ export function SaleCashSessionDialog({
       retainedFund,
       finalWithdrawal,
       comment,
+      retainedFundDenominations: retainedDenominations,
+      finalWithdrawalDenominations: withdrawalDenominations,
     });
   }
 
@@ -191,6 +242,7 @@ export function SaleCashSessionDialog({
         terminalId,
         initialCloseFlow.closeOperationId,
         token,
+        request,
       );
       if ((recovery.status === "CERRADA" || recovery.result?.status === "CERRADA")
         && recovery.result) {
@@ -223,13 +275,21 @@ export function SaleCashSessionDialog({
     setError("");
     try {
       if (mode === "OPEN") {
-        onOpened?.(await openCashSession(terminalId, token));
+        const counted = amount(countedFund);
+        if (counted == null) { setError(t.invalidAmount); return; }
+        const openedSession = await openCashSession(terminalId, token, request, counted, openingDenominations);
+        onOpened?.(openedSession);
         return;
       }
       const retained = amount(retainedFund);
       const withdrawal = amount(finalWithdrawal);
       if (retained == null || withdrawal == null) {
         setError(t.invalidAmount);
+        return;
+      }
+      if ((requireClosingBreakdown && retained > 0 && !retainedDenominations.length)
+        || (requireWithdrawalBreakdown && withdrawal > 0 && !withdrawalDenominations.length)) {
+        setError(t.countedRequired);
         return;
       }
       if (!saleOperationAuthorizationComplete(
@@ -247,7 +307,7 @@ export function SaleCashSessionDialog({
         withdrawal,
         comment,
         token,
-        undefined,
+        request,
         saleOperationCredentials(
           authorization,
           authorizerUsername,
@@ -255,6 +315,7 @@ export function SaleCashSessionDialog({
         ),
         initialCloseFlow.closeOperationId,
         reconciliationAttemptId,
+        { retainedFundDenominations: retainedDenominations, finalWithdrawalDenominations: withdrawalDenominations },
       );
       if (session.status === "ABIERTA") {
         const nextAttemptId = createCashCloseWithdrawalIdempotencyKey();
@@ -274,48 +335,76 @@ export function SaleCashSessionDialog({
   }
 
   return (
-    <div className="sale-cash-session-overlay" role="presentation">
+    <div className={embedded ? "cash-session-embedded" : "sale-cash-session-overlay filter-overlay erp-classic-overlay"} role="presentation">
       <section
-        className="sale-cash-session-dialog"
-        role="dialog"
-        aria-modal="true"
+        ref={dialogRef}
+        className={embedded ? "cash-session-flow" : "sale-cash-session-dialog filter-dialog erp-classic-window cash-session-flow"}
+        role={embedded ? undefined : "dialog"}
+        aria-modal={embedded ? undefined : true}
         aria-labelledby="sale-cash-session-title"
         onKeyDown={(event) => {
-          if (mode !== "CLOSE" || event.key !== "Escape") return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (!closeAttemptLocked && !busy) onCancel?.();
+          if (countTarget) return;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!closeAttemptLocked && !busy) {
+              if (mode === "OPEN") onExitSales?.(); else onCancel?.();
+            }
+          }
+          if (event.key === "Tab" && !embedded) {
+            const nodes = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),textarea:not(:disabled)"));
+            const first = nodes[0], last = nodes.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }
         }}
       >
         <header>
           <h2 id="sale-cash-session-title">{mode === "OPEN" ? t.openTitle : t.closeTitle}</h2>
+          {!embedded && <button type="button" aria-label={t.closeWindow} disabled={busy || closeAttemptLocked}
+            onClick={() => { if (mode === "OPEN") onExitSales?.(); else onCancel?.(); }}>×</button>}
         </header>
         <form onSubmit={(event) => void submit(event)}>
           <p>{mode === "OPEN" ? t.openText : t.closeText}</p>
+          {mode === "OPEN" && (
+            <div className="cash-session-opening">
+              <strong>{currentUsername}</strong>
+              <label><span>{t.countedFund}</span><input inputMode="decimal" value={countedFund}
+                disabled={busy} onChange={event => { setCountedFund(event.target.value); setOpeningDenominations([]); }} /></label>
+              <button type="button" className="cash-denomination-trigger" disabled={busy} onClick={() => setCountTarget("opening")}>{t.count}</button>
+            </div>
+          )}
           {mode === "CLOSE" && (
-            <div className="sale-cash-session-fields">
-              <label>
-                <span>{t.retained}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={retainedFund}
-                  onChange={(event) => setRetainedFund(event.currentTarget.value)}
-                  disabled={busy || closePhase === "ATTEMPTED"}
-                  autoFocus
-                />
-              </label>
-              <label>
+            <>
+            <div className="cash-session-close-parts">
+              <section className="cash-session-part"><h4>{t.withdrawing}</h4><label>
                 <span>{t.withdrawal}</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={finalWithdrawal}
-                  onChange={(event) => setFinalWithdrawal(event.currentTarget.value)}
+                  onChange={(event) => { setFinalWithdrawal(event.currentTarget.value); setWithdrawalDenominations([]); }}
                   disabled={busy || closeAttemptLocked}
                 />
               </label>
-              <label className="sale-cash-session-comment">
+              <button type="button" className="cash-denomination-trigger" disabled={busy || closeAttemptLocked}
+                onClick={() => setCountTarget("withdrawal")}>{t.count}</button></section>
+              <section className="cash-session-part"><h4>{t.retaining}</h4><label>
+                <span>{t.retained}</span>
+                <input type="text" inputMode="decimal" value={retainedFund}
+                  onChange={event => { setRetainedFund(event.target.value); setRetainedDenominations([]); }}
+                  disabled={busy || closePhase === "ATTEMPTED"} />
+              </label>
+              <button type="button" className="cash-denomination-trigger" disabled={busy || closePhase === "ATTEMPTED"}
+                onClick={() => setCountTarget("retained")}>{t.count}</button></section>
+              <section className="cash-session-part"><h4>{t.closingUser}</h4>
+              {authorization.mode === "DIRECT" && <strong className="cash-session-current-user">{currentUsername || "—"}</strong>}
+              <SaleOperationAuthorizationFields locale={locale} currentUsername={currentUsername}
+                authorization={authorization} username={authorizerUsername} password={authorizerPassword}
+                disabled={busy} onUsernameChange={setAuthorizerUsername} onPasswordChange={setAuthorizerPassword} />
+              </section>
+            </div>
+              <label className="sale-cash-session-comment cash-session-comment">
                 <span>{t.comment}</span>
                 <input
                   value={comment}
@@ -323,17 +412,7 @@ export function SaleCashSessionDialog({
                   disabled={busy || closeAttemptLocked}
                 />
               </label>
-              <SaleOperationAuthorizationFields
-                locale={locale}
-                currentUsername={currentUsername}
-                authorization={authorization}
-                username={authorizerUsername}
-                password={authorizerPassword}
-                disabled={busy}
-                onUsernameChange={setAuthorizerUsername}
-                onPasswordChange={setAuthorizerPassword}
-              />
-            </div>
+            </>
           )}
           {closeAttemptLocked && (
             <p className="sale-cash-session-progress" role="status">
@@ -343,12 +422,12 @@ export function SaleCashSessionDialog({
             </p>
           )}
           {error && <p className="sale-cash-session-error" role="alert">{error}</p>}
-          <footer>
+          <footer className="filter-actions">
             {mode === "OPEN" ? (
               <button type="button" className="secondary" disabled={busy} onClick={onExitSales}>
                 {openContext === "HOME" ? t.cancel : t.exit}
               </button>
-            ) : (
+            ) : !embedded ? (
               <button
                 type="button"
                 className="secondary"
@@ -357,8 +436,8 @@ export function SaleCashSessionDialog({
               >
                 {t.cancel}
               </button>
-            )}
-            <button type="submit" disabled={busy}>
+            ) : null}
+            <button type="submit" className={mode === "CLOSE" ? "cash-close-action" : ""} disabled={busy || (mode === "OPEN" && amount(countedFund) == null)}>
               {busy
                 ? mode === "OPEN" ? t.opening : t.closing
                 : mode === "OPEN"
@@ -368,6 +447,19 @@ export function SaleCashSessionDialog({
           </footer>
         </form>
       </section>
+      {countTarget && <Suspense fallback={null}><CashDenominationDialog locale={locale} interfaceMode={interfaceMode}
+        title={countTarget === "opening" ? t.countedFund : countTarget === "retained" ? t.retained : t.withdrawal}
+        denominations={countTarget === "withdrawal"
+          ? configuredWithdrawalDenominations?.length ? configuredWithdrawalDenominations : undefined
+          : denominations?.length ? denominations : undefined}
+        value={countTarget === "opening" ? openingDenominations : countTarget === "retained" ? retainedDenominations : withdrawalDenominations}
+        onCancel={() => setCountTarget(null)} onAccept={(rows, total) => {
+          const countedRows = rows.filter(row => row.quantity > 0);
+          if (countTarget === "opening") { setCountedFund(total.toFixed(2)); setOpeningDenominations(countedRows); }
+          else if (countTarget === "retained") { setRetainedFund(total.toFixed(2)); setRetainedDenominations(countedRows); }
+          else { setFinalWithdrawal(total.toFixed(2)); setWithdrawalDenominations(countedRows); }
+          setCountTarget(null);
+        }} /></Suspense>}
     </div>
   );
 }

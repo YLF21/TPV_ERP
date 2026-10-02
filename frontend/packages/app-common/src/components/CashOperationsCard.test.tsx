@@ -1,246 +1,276 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiRequest } from "../api/client";
+import { defaultHardwareConfig } from "../hardware/hardware";
+import { saveCashCloseRecovery } from "../sale/cashCloseRecovery";
+import type { CashDenominationCount } from "./CashDenominationDialog";
 import { CashOperationsCard } from "./CashOperationsCard";
+import { createCashCloseUiFlow } from "./SaleCashSessionDialog";
 
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
+const hardware = vi.hoisted(() => ({ getHardwareConfig: vi.fn(), printTicket: vi.fn() }));
+vi.mock("../hardware/hardware", async () => ({
+  ...await vi.importActual<typeof import("../hardware/hardware")>("../hardware/hardware"),
+  getHardwareBridge: () => hardware,
+}));
+
+vi.mock("./tableLayoutPreferences", async () => ({
+  ...await vi.importActual<typeof import("./tableLayoutPreferences")>("./tableLayoutPreferences"),
+  loadTablePreference: vi.fn().mockResolvedValue(null),
+  saveTablePreference: vi.fn(async (app, tableKey, columns) => ({ app, tableKey, columns })),
+}));
+
+beforeEach(() => {
+  hardware.getHardwareConfig.mockReset().mockResolvedValue(defaultHardwareConfig);
+  hardware.printTicket.mockReset().mockResolvedValue({ ok: true });
 });
+afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); });
 
-const openSession = {
-  id: "cash-1", terminalId: "terminal-1", status: "ABIERTA",
-  openedAt: "2026-09-30T08:00:00Z", openingFund: 200,
-  expectedCash: 215, availableCash: 215, retainedFund: 5,
-};
+const openSession = { id: "session-1", terminalId: "terminal-1", status: "ABIERTA", openedAt: "2026-10-01T08:00:00Z", openingFund: 200, expectedCash: 215, availableCash: 215, retainedFund: 5 };
+const readiness = { cashSessionRequired: true, open: true, session: openSession, requireEntryBreakdown: false, entryDenominations: [100, 50, 20, 10, 5], requireWithdrawalBreakdown: false, withdrawalDenominations: [100, 50, 20, 10, 5], requireClosingBreakdown: false, closingDenominations: [100, 50, 20, 10, 5] };
+const operation = (code: string, permissions: string[] = []) => ({ code, category: "CASH", shortcuts: [], permissions, defaultRequirePermission: true, defaultRequirePassword: true, requirePermission: true, requirePassword: true, customized: false });
 
-function cashRequest(post: () => Promise<unknown> = async () => ({ status: "ABIERTA" })) {
-  return vi.fn(async (path: string, options?: { method?: string; body?: Record<string, unknown> }) => {
-    if (options?.method === "POST") return post();
-    if (path.startsWith("/cash/status")) return openSession;
-    if (path.startsWith("/cash/reports")) return {
-      totalsByType: { ENTRADA: 30, RETIRADA: 15, COBRO_EFECTIVO: 0, DEVOLUCION_EFECTIVO: 0 },
-      retainedFunds: 5, discrepancies: -2.5,
+function createRequest(options: { session?: boolean; view?: unknown; security?: unknown; close?: () => Promise<unknown>; movement?: () => Promise<unknown>; readiness?: unknown; recovery?: () => Promise<unknown> } = {}) {
+  let hasSession = options.session !== false;
+  return vi.fn(async (path: string, init?: { method?: string; body?: Record<string, unknown> }) => {
+    if (path.startsWith("/cash/status")) {
+      if (!hasSession) throw new ApiError("No hay una sesión de caja abierta", 404, { detail: "No hay una sesión de caja abierta" });
+      return options.view ?? openSession;
+    }
+    if (path.startsWith("/cash/sessions/readiness")) return options.readiness ?? readiness;
+    if (path === "/sales/operation-security") return options.security ?? { storeId: "store-1", version: 1, operations: [operation("CLOSE_CASH_SESSION", ["CASH_CLOSE"]), operation("CASH_MOVEMENT", ["CASH_MOVE"])] };
+    if (path === "/cash/sessions/open" && init?.method === "POST") { hasSession = true; return openSession; }
+    if (path === "/cash/sessions/prepare-sales" && init?.method === "POST") { hasSession = true; return { ...readiness, open: true, session: openSession }; }
+    if (path.startsWith("/cash/sessions/close-operations/")) return options.recovery?.() ?? { status: "INICIADA", sessionId: "session-1", terminalId: "terminal-1", finalWithdrawalAmount: 180 };
+    if (path === "/cash/sessions/close" && init?.method === "POST") {
+      const result = await (options.close?.() ?? Promise.resolve({ ...openSession, status: "CERRADA" }));
+      if ((result as { status?: string })?.status === "CERRADA") hasSession = false;
+      return result;
+    }
+    if (path.startsWith("/cash/movements/") && init?.method === "POST") return options.movement?.() ?? { id: "new-movement" };
+    if (path.startsWith("/cash/receipts/")) return {
+      fileName: path.includes("/entries/") ? "entrada.pdf" : "retirada.pdf",
+      renderedPdf: { contentType: "application/pdf", base64: "rendered-pdf" },
+      ticketRenderedImage: { contentType: "image/png", base64: "rendered-raster" },
     };
     return undefined;
   });
 }
 
-function renderCash(request: ReturnType<typeof cashRequest>) {
-  return render(<CashOperationsCard locale="es" token="token" currentUsername="admin"
-    terminalId="terminal-1" request={request as unknown as typeof apiRequest} />);
+function renderCard(request: ReturnType<typeof createRequest>, permissions: string[] = []) {
+  return render(<CashOperationsCard locale="es" token="token" currentUsername="ana" terminalId="terminal-1"
+    terminalCode="T1" storeName="Tienda" permissions={permissions} request={request as unknown as typeof apiRequest} />);
+}
+
+const printableMovements = [
+  { session: true, entry: true, navigation: "Entrada", submit: "Registrar entrada", post: "/cash/movements/entry", receipt: "entries" },
+  { session: true, entry: false, navigation: "Retirada", submit: "Registrar retirada", post: "/cash/movements/withdrawal", receipt: "withdrawals" },
+  { session: false, entry: true, navigation: "Entrada entre sesiones", submit: "Registrar entrada entre sesiones", post: "/cash/movements/between-sessions", receipt: "entries" },
+  { session: false, entry: false, navigation: "Retirada entre sesiones", submit: "Registrar retirada entre sesiones", post: "/cash/movements/between-sessions", receipt: "withdrawals" },
+] as const;
+
+async function fillMovement(navigation: string, session: boolean) {
+  fireEvent.click(await screen.findByRole("button", { name: navigation }));
+  fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "25,50" } });
+  const form = within(document.querySelector(".cash-movement-form")!);
+  fireEvent.change(form.getByLabelText("Motivo o comentario"), { target: { value: "Cambio" } });
+  if (session) fireEvent.change(form.getByLabelText("Tu contraseña"), { target: { value: "secret" } });
 }
 
 describe("CashOperationsCard", () => {
-  it("shows the current cash position and daily reconciliation", async () => {
-    const request = vi.fn(async (path: string) => {
-      if (path.startsWith("/cash/status")) {
-        return {
-          id: "cash-1",
-          terminalId: "terminal-1",
-          status: "OPEN",
-          openedAt: "2026-07-23T08:00:00Z",
-          openingFund: 100,
-          expectedCash: 125.5,
-          availableCash: 120.5,
-          retainedFund: 5,
-        };
-      }
-      if (path.startsWith("/cash/reports")) {
-        return {
-          totalsByType: { CASH_SALE: 25.5 },
-          retainedFunds: 5,
-          discrepancies: 0,
-        };
-      }
-      return undefined;
-    }) as unknown as typeof apiRequest;
-
-    render(
-      <CashOperationsCard
-        locale="es"
-        token="token"
-        terminalId="terminal-1"
-        request={request}
-      />,
-    );
-
-    expect(await screen.findByText("Caja abierta")).toBeVisible();
-    expect(screen.getByText(/125,50/)).toBeVisible();
-    expect(screen.getByText("CASH SALE")).toBeVisible();
-    expect(screen.getByText(/^25,50/)).toBeVisible();
-  });
-
-  it("prepares the opening fund before opening a register", async () => {
-    const request = vi.fn(async (path: string) => {
-      if (path.startsWith("/cash/status")) {
-        throw new ApiError("No hay una sesión de caja abierta", 404, {
-          detail: "No hay una sesión de caja abierta",
-        });
-      }
-      if (path.startsWith("/cash/reports")) {
-        return { totalsByType: {}, retainedFunds: 0, discrepancies: 0 };
-      }
-      return undefined;
-    }) as unknown as typeof apiRequest;
-
-    render(
-      <CashOperationsCard
-        locale="es"
-        token="token"
-        terminalId="terminal-1"
-        request={request}
-      />,
-    );
-
+  it("opens with the actually counted fund without posting a between-session movement", async () => {
+    const request = createRequest({ session: false });
+    renderCard(request);
     expect(await screen.findByText("No hay una caja abierta en este terminal.")).toBeVisible();
-    fireEvent.change(screen.getByLabelText("Fondo inicial"), { target: { value: "80" } });
-    fireEvent.change(screen.getByLabelText("Motivo o comentario"), {
-      target: { value: "Fondo de apertura" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Preparar fondo" }));
-
-    await waitFor(() =>
-      expect(request).toHaveBeenCalledWith("/cash/movements/between-sessions", {
-        token: "token",
-        method: "POST",
-        body: {
-          terminalId: "terminal-1",
-          amount: 80,
-          comment: "Fondo de apertura",
-          denominations: [],
-          withdrawal: false,
-        },
-      }),
-    );
+    fireEvent.change(screen.getByLabelText("Efectivo contado / fondo inicial"), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Abrir caja" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/cash/sessions/open", {
+      token: "token", method: "POST", body: { terminalId: "terminal-1", countedFund: 200, denominations: [] },
+    }));
+    expect(request.mock.calls.some(([path]) => path === "/cash/movements/between-sessions")).toBe(false);
   });
 
-  it("opens Cierre by default and switches forms without posting or losing a draft", async () => {
-    const request = cashRequest();
-    renderCash(request);
-    const close = await screen.findByRole("button", { name: "Cierre" });
-    expect(close).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("Fondo retenido")).toHaveValue("5");
-    expect(screen.queryByLabelText("Importe")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Registrar entrada" })).toBeNull();
+  it("uses automatic opening when the store does not require a cash session", async () => {
+    const request = createRequest({ session: false, readiness: { ...readiness, open: false, session: null, cashSessionRequired: false } });
+    renderCard(request);
+    expect(await screen.findByText("Apertura automática")).toBeVisible();
+    expect(screen.queryByLabelText("Efectivo contado / fondo inicial")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir caja automáticamente" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/cash/sessions/prepare-sales", {
+      token: "token", method: "POST", body: { terminalId: "terminal-1" },
+    }));
+    expect(request.mock.calls.some(([path]) => path === "/cash/sessions/open")).toBe(false);
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Entrada" }));
+  it("uses delegated close authorization and passes the shared close payload", async () => {
+    const request = createRequest();
+    renderCard(request, []);
+    expect(await screen.findByRole("button", { name: "Cierre" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("1. Retirada de efectivo")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Fondo que queda en caja"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Retirada final"), { target: { value: "180" } });
+    fireEvent.change(screen.getByLabelText("Usuario autorizador"), { target: { value: "jefe" } });
+    fireEvent.change(screen.getByLabelText("Contraseña del autorizador"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    await waitFor(() => expect(request.mock.calls.some(([path, init]) => path === "/cash/sessions/close"
+      && init?.body?.retainedFund === 20 && init?.body?.finalWithdrawalAmount === 180
+      && init?.body?.authorizerUsername === "jefe" && init?.body?.authorizerPassword === "secret")).toBe(true));
+  });
+
+  it("keeps close mounted and locks navigation after a first reconciliation attempt", async () => {
+    const request = createRequest({ close: async () => ({ ...openSession, status: "ABIERTA" }) });
+    renderCard(request, ["CASH_CLOSE"]);
+    await screen.findByRole("button", { name: "Cierre" });
+    fireEvent.change(await screen.findByLabelText("Tu contraseña"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    expect(await screen.findByRole("button", { name: "Reintentar cierre" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Entrada" })).toBeDisabled();
+    const saved = JSON.parse(localStorage.getItem("tpverp.cash-close.v1.T1")!);
+    expect(saved.flow.phase).toBe("RECONCILIATION_REQUIRED");
+    expect(saved.flow.authorizerPassword).toBeUndefined();
+  });
+
+  it("unlocks automatic opening after a successful close", async () => {
+    const request = createRequest({ readiness: { ...readiness, cashSessionRequired: false } });
+    renderCard(request, ["CASH_CLOSE"]);
+    fireEvent.change(await screen.findByLabelText("Tu contraseña"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    await waitFor(() => expect(request.mock.calls.some(([path]) => path === "/cash/sessions/close")).toBe(true));
+    expect(await screen.findByRole("button", { name: "Abrir caja automáticamente" })).toBeEnabled();
+  });
+
+  it("blocks opening when a confirmed in-progress close has no open session", async () => {
+    saveCashCloseRecovery(localStorage, "T1", { ...createCashCloseUiFlow(), phase: "ATTEMPTED", finalWithdrawal: "180" });
+    const request = createRequest({ session: false });
+    renderCard(request);
+    expect(await screen.findByText(/cierre pendiente que no se puede recuperar/i)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Abrir caja" })).toBeNull();
+    expect(request.mock.calls.findIndex(([path]) => path.startsWith("/cash/sessions/close-operations/")))
+      .toBeLessThan(request.mock.calls.findIndex(([path]) => path.startsWith("/cash/status")));
+  });
+
+  it("blocks reuse of a previous close operation for a new open session", async () => {
+    saveCashCloseRecovery(localStorage, "T1", { ...createCashCloseUiFlow(), phase: "RECONCILIATION_REQUIRED", finalWithdrawal: "180" });
+    const request = createRequest({ recovery: async () => ({ status: "REQUIERE_ARQUEO", sessionId: "older-session", terminalId: "terminal-1", finalWithdrawalAmount: 180 }) });
+    renderCard(request);
+    expect(await screen.findByText(/cierre pendiente que no se puede recuperar/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Entrada" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reintentar cierre" })).toBeNull();
+  });
+
+  it("clears a server-confirmed completed close before showing the next opening", async () => {
+    saveCashCloseRecovery(localStorage, "T1", { ...createCashCloseUiFlow(), phase: "ATTEMPTED" });
+    const request = createRequest({ session: false, recovery: async () => ({ status: "CERRADA", sessionId: "old-session", terminalId: "terminal-1", finalWithdrawalAmount: 0 }) });
+    renderCard(request);
+    expect(await screen.findByRole("button", { name: "Abrir caja" })).toBeVisible();
+    expect(localStorage.getItem("tpverp.cash-close.v1.T1")).toBeNull();
+  });
+
+  it("shows redacted amounts as dashes when the API hides expected cash", async () => {
+    const request = createRequest({ view: { ...openSession, openingFund: null, expectedCash: null, availableCash: null } });
+    renderCard(request);
+    expect((await screen.findByText("Fondo inicial")).parentElement).toHaveTextContent("—");
+    expect(screen.getByText("Efectivo esperado").parentElement).toHaveTextContent("—");
+    expect(screen.getByText("Disponible").parentElement).toHaveTextContent("—");
+  });
+
+  it("keeps entry and withdrawal drafts separate and preserves a denied movement draft", async () => {
+    const request = createRequest({ movement: async () => { throw new ApiError("Denegado", 403, { detail: "Denegado" }); } });
+    renderCard(request, ["CASH_MOVE"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Entrada" }));
     fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "25,50" } });
-    fireEvent.change(screen.getByLabelText("Motivo o comentario"), { target: { value: "Cambio" } });
+    fireEvent.change(within(document.querySelector(".cash-movement-form")!).getByLabelText("Motivo o comentario"), { target: { value: "Cambio" } });
+    fireEvent.change(within(document.querySelector(".cash-movement-form")!).getByLabelText("Tu contraseña"), { target: { value: "bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Retirada" }));
     expect(screen.getByLabelText("Importe")).toHaveValue("");
-    fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "Entrada" }));
     expect(screen.getByLabelText("Importe")).toHaveValue("25,50");
-    expect(screen.getByLabelText("Motivo o comentario")).toHaveValue("Cambio");
-    expect(request.mock.calls.some(([, options]) => options?.method === "POST")).toBe(false);
-  });
-
-  it.each([
-    ["Entrada", "Registrar entrada", "/cash/movements/entry"],
-    ["Retirada", "Registrar retirada", "/cash/movements/withdrawal"],
-  ])("submits only the selected %s operation after reason and authorization", async (operation, action, path) => {
-    const request = cashRequest();
-    renderCash(request);
-    await screen.findByRole("button", { name: "Cierre" });
-    fireEvent.click(screen.getByRole("button", { name: operation }));
-    fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "10,50" } });
-    fireEvent.change(screen.getByLabelText("Motivo o comentario"), { target: { value: " Cambio de turno " } });
-    fireEvent.change(screen.getByLabelText("Usuario autorizador"), { target: { value: " ADMIN " } });
-    fireEvent.change(screen.getByLabelText("Contraseña autorizador"), { target: { value: "test-pin" } });
-    const submit = screen.getByRole("button", { name: action });
-    expect(screen.getByLabelText("Contraseña autorizador").compareDocumentPosition(submit)
-      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(submit);
-    await waitFor(() => expect(request).toHaveBeenCalledWith(path, {
-      token: "token", method: "POST", body: {
-        terminalId: "terminal-1", amount: 10.5, comment: "Cambio de turno",
-        authorizerUsername: "ADMIN", authorizerPassword: "test-pin", denominations: [],
-        ...(operation === "Retirada" ? { withdrawal: true } : {}),
-      },
-    }));
-    await waitFor(() => expect(screen.getByLabelText("Contraseña autorizador")).toHaveValue(""));
-  });
-
-  it("sends close authorization and keeps one operation id across reconciliation retries", async () => {
-    const request = cashRequest();
-    renderCash(request);
-    await screen.findByRole("button", { name: "Cierre" });
-    fireEvent.change(screen.getByLabelText("Fondo retenido"), { target: { value: "200" } });
-    fireEvent.change(screen.getByLabelText("Retirada final"), { target: { value: "15" } });
-    fireEvent.change(screen.getByLabelText("Motivo o comentario"), { target: { value: " Cierre del turno " } });
-    fireEvent.change(screen.getByLabelText("Usuario autorizador"), { target: { value: " ADMIN " } });
-    fireEvent.change(screen.getByLabelText("Contraseña autorizador"), { target: { value: "test-pin" } });
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Cerrar caja" })).toBeEnabled());
-    const first = request.mock.calls.find(([path]) => path === "/cash/sessions/close")?.[1]?.body;
-    expect(first).toEqual(expect.objectContaining({
-      terminalId: "terminal-1", retainedFund: 200, finalWithdrawalAmount: 15,
-      finalWithdrawalComment: "Cierre del turno", authorizerUsername: "ADMIN",
-      authorizerPassword: "test-pin", retainedFundDenominations: [], finalWithdrawalDenominations: [],
-    }));
-    expect(first?.closeOperationId).toMatch(/^[\da-f-]{36}$/i);
-    expect(first?.reconciliationAttemptId).toMatch(/^[\da-f-]{36}$/i);
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
-    await waitFor(() => expect(request.mock.calls.filter(([path]) => path === "/cash/sessions/close")).toHaveLength(2));
-    const second = request.mock.calls.filter(([path]) => path === "/cash/sessions/close")[1][1]?.body;
-    expect(second?.closeOperationId).toBe(first?.closeOperationId);
-    expect(second?.reconciliationAttemptId).not.toBe(first?.reconciliationAttemptId);
-  });
-
-  it("blocks switching and duplicate submission while a movement is pending", async () => {
-    let complete!: (value: unknown) => void;
-    const pending = new Promise(resolve => { complete = resolve; });
-    const request = cashRequest(() => pending);
-    renderCash(request);
-    await screen.findByRole("button", { name: "Cierre" });
-    fireEvent.click(screen.getByRole("button", { name: "Entrada" }));
-    fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "5" } });
+    expect(within(document.querySelector(".cash-movement-form")!).getByLabelText("Motivo o comentario")).toHaveValue("Cambio");
     fireEvent.click(screen.getByRole("button", { name: "Registrar entrada" }));
-    expect(screen.getByRole("button", { name: "Retirada" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Registrar entrada" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Retirada" }));
-    fireEvent.click(screen.getByRole("button", { name: "Registrar entrada" }));
-    expect(request.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(1);
-    await act(async () => complete({ status: "ABIERTA" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Retirada" })).toBeEnabled());
+    expect(await screen.findByText("Denegado")).toBeVisible();
+    expect(screen.getByLabelText("Importe")).toHaveValue("25,50");
+    expect(within(document.querySelector(".cash-movement-form")!).getByLabelText("Tu contraseña")).toHaveValue("");
+    expect(hardware.printTicket).not.toHaveBeenCalled();
+    expect(request.mock.calls.some(([path]) => path.startsWith("/cash/receipts/"))).toBe(false);
   });
 
-  it("keeps the selected form and draft after a rejected operation", async () => {
-    const request = cashRequest(async () => { throw new ApiError("Autorización rechazada", 403); });
-    renderCash(request);
-    await screen.findByRole("button", { name: "Cierre" });
-    fireEvent.click(screen.getByRole("button", { name: "Retirada" }));
-    fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText("Motivo o comentario"), { target: { value: "Retirada" } });
-    fireEvent.click(screen.getByRole("button", { name: "Registrar retirada" }));
-    expect(await screen.findByText("Autorización rechazada")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Retirada" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("Importe")).toHaveValue("10");
-    expect(screen.getByLabelText("Motivo o comentario")).toHaveValue("Retirada");
+  it.each(printableMovements)("prints the $navigation template after registering its movement", async movement => {
+    const request = createRequest({ session: movement.session });
+    renderCard(request, ["CASH_MOVE"]);
+    await fillMovement(movement.navigation, movement.session);
+    fireEvent.click(screen.getByRole("button", { name: movement.submit }));
+    await waitFor(() => expect(hardware.printTicket).toHaveBeenCalledOnce());
+    expect(request).toHaveBeenCalledWith(`/cash/receipts/${movement.receipt}/new-movement/print-document`, { token: "token" });
+    expect(hardware.printTicket).toHaveBeenCalledWith(expect.objectContaining({
+      requireRenderedDocument: true, storeName: "Tienda", terminalCode: "T1",
+      documentNumber: movement.entry ? "entrada.pdf" : "retirada.pdf",
+      renderedPdf: { contentType: "application/pdf", base64: "rendered-pdf" },
+      documentRaster: "data:image/png;base64,rendered-raster",
+    }), defaultHardwareConfig);
+    expect(request.mock.calls.filter(([path, init]) => path === movement.post && init?.method === "POST")).toHaveLength(1);
+    await waitFor(() => expect(screen.getByRole("button", { name: movement.submit })).toBeDisabled());
+    expect(screen.getByLabelText("Importe")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Reimprimir justificante" })).toBeNull();
   });
 
-  it("shows every movement type and reconciliation figures in the final summary table", async () => {
-    const request = cashRequest();
-    renderCash(request);
-    const table = await screen.findByRole("table", { name: "Resumen de hoy" });
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(2);
-    expect(within(table).getAllByRole("row")).toHaveLength(7);
-    expect(within(table).getByText("Fondos retenidos").closest("tr")).toHaveTextContent(/5,00/);
-    expect(within(table).getByText("Descuadres").closest("tr")).toHaveTextContent(/-2,50/);
-    expect(table.compareDocumentPosition(screen.getByRole("button", { name: "Cerrar caja" }))
-      & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  it.each(printableMovements)("retries only printing after a failed $navigation receipt", async movement => {
+    hardware.printTicket.mockResolvedValueOnce({ ok: false, message: "Impresora sin conexión" });
+    const request = createRequest({ session: movement.session });
+    renderCard(request, ["CASH_MOVE"]);
+    await fillMovement(movement.navigation, movement.session);
+    fireEvent.click(screen.getByRole("button", { name: movement.submit }));
+    const retry = await screen.findByRole("button", { name: "Reimprimir justificante" });
+    expect(screen.getByText(movement.entry
+      ? "La entrada se registró, pero no se pudo imprimir el justificante."
+      : "La retirada se registró, pero no se pudo imprimir el justificante.")).toBeVisible();
+    expect(screen.getByText("Impresora sin conexión")).toBeVisible();
+    await waitFor(() => expect(retry).toBeEnabled());
+    expect(screen.getByLabelText("Importe")).toHaveValue("");
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reimprimir justificante" })).toBeNull());
+    expect(hardware.printTicket).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls.filter(([path, init]) => path.startsWith("/cash/movements/") && init?.method === "POST")).toHaveLength(1);
+    expect(request.mock.calls.filter(([path]) => path === `/cash/receipts/${movement.receipt}/new-movement/print-document`)).toHaveLength(2);
   });
 
-  it("still shows retained funds and discrepancies when the report has no movements", async () => {
-    const request = vi.fn(async (path: string) => path.startsWith("/cash/status")
-      ? openSession : { totalsByType: {}, retainedFunds: 80, discrepancies: -2.5 });
-    render(<CashOperationsCard locale="es" token="token" terminalId="terminal-1"
-      request={request as unknown as typeof apiRequest} />);
-    const table = await screen.findByRole("table", { name: "Resumen de hoy" });
-    expect(within(table).getByText("Fondos retenidos").closest("tr")).toHaveTextContent(/80,00/);
-    expect(within(table).getByText("Descuadres").closest("tr")).toHaveTextContent(/-2,50/);
+  it("keeps each failed receipt when another cash movement is registered", async () => {
+    hardware.printTicket.mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: false });
+    let nextId = 0;
+    const request = createRequest({ movement: async () => ({ id: `movement-${++nextId}` }) });
+    renderCard(request, ["CASH_MOVE"]);
+    for (let index = 0; index < 2; index++) {
+      await fillMovement("Entrada", true);
+      fireEvent.click(screen.getByRole("button", { name: "Registrar entrada" }));
+      await waitFor(() => expect(screen.getAllByRole("button", { name: "Reimprimir justificante" })).toHaveLength(index + 1));
+      await waitFor(() => expect(screen.getAllByRole("button", { name: "Reimprimir justificante" })[0]).toBeEnabled());
+    }
+    fireEvent.click(screen.getAllByRole("button", { name: "Reimprimir justificante" })[0]);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Reimprimir justificante" })).toHaveLength(1));
+    expect(request.mock.calls.filter(([path]) => path === "/cash/receipts/entries/movement-1/print-document")).toHaveLength(2);
+    expect(request.mock.calls.filter(([path]) => path === "/cash/receipts/entries/movement-2/print-document")).toHaveLength(1);
+    expect(nextId).toBe(2);
+  });
+
+  it("leaves history requests to the activity tab", async () => {
+    const request = createRequest();
+    renderCard(request);
+    await screen.findByText("Fondo inicial");
+    expect(request.mock.calls.some(([path]) => path.startsWith("/cash/timeline"))).toBe(false);
+    expect(screen.queryByRole("table", { name: "Historial de hoy" })).toBeNull();
+  });
+
+  it("registers a distinct between-session withdrawal with its counted denominations", async () => {
+    const request = createRequest({ session: false, readiness: { ...readiness, open: false, session: null, requireWithdrawalBreakdown: true } });
+    renderCard(request);
+    await screen.findByText("No hay una caja abierta en este terminal.");
+    fireEvent.click(screen.getByRole("button", { name: "Retirada entre sesiones" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Contar monedas y billetes/ }).at(-1)!);
+    fireEvent.change(screen.getByRole("spinbutton", { name: /Unidades 20/ }), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registrar retirada entre sesiones" }));
+    await waitFor(() => expect(request.mock.calls.some(([path, init]) => path === "/cash/movements/between-sessions"
+      && init?.body?.withdrawal === true && init?.body?.amount === 20
+      && Array.isArray(init?.body?.denominations) && init.body.denominations.some((row: CashDenominationCount) => row.denomination === 20 && row.quantity === 1))).toBe(true));
   });
 });

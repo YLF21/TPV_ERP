@@ -64,6 +64,40 @@ public class CashSession {
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CashReconciliationAttempt> attempts = new ArrayList<>();
 
+    @Column(name = "apertura_esperado", precision = 19, scale = 2)
+    private BigDecimal openingExpectedFund;
+
+    @Column(name = "apertura_contado", precision = 19, scale = 2)
+    private BigDecimal openingCountedFund;
+
+    @Column(name = "apertura_diferencia", precision = 19, scale = 2)
+    private BigDecimal openingDifference;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "apertura_desglose", columnDefinition = "jsonb")
+    private List<CashDenominationCommand> openingDenominations;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "fondo_dejado_desglose", columnDefinition = "jsonb")
+    private List<CashDenominationCommand> retainedFundDenominations;
+
+    public void recordOpeningCount(BigDecimal expected, List<CashDenominationCommand> denominations) {
+        if (openingCountedFund != null) throw new IllegalStateException("El recuento de apertura ya existe");
+        openingExpectedFund = Money.euros(expected);
+        openingCountedFund = openingFund;
+        openingDifference = Money.euros(openingCountedFund.subtract(openingExpectedFund));
+        openingDenominations = denominations == null ? List.of() : List.copyOf(denominations);
+    }
+
+    public BigDecimal getOpeningExpectedFund() { return openingExpectedFund; }
+    public BigDecimal getOpeningCountedFund() { return openingCountedFund; }
+    public BigDecimal getOpeningDifference() { return openingDifference; }
+    public List<CashDenominationCommand> getOpeningDenominations() { return openingDenominations; }
+    public List<CashDenominationCommand> getRetainedFundDenominations() { return retainedFundDenominations; }
+    public void recordRetainedFundDenominations(List<CashDenominationCommand> denominations) {
+        retainedFundDenominations = denominations == null ? List.of() : List.copyOf(denominations);
+    }
+
     @Version
     private long version;
 

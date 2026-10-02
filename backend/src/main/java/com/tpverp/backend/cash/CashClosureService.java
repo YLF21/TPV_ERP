@@ -117,6 +117,13 @@ public class CashClosureService {
         return new PagedResult<>(items, nextCursor, hasMore);
     }
 
+    @Transactional(readOnly=true)
+    public CashClosureView detail(UUID id, Authentication authentication) {
+        permissions.requireReportPermission(authentication);
+        return view(repository.findById(organization.currentStore().getId(),id)
+                .orElseThrow(()->new java.util.NoSuchElementException("Cierre de caja no encontrado")));
+    }
+
     @Transactional(readOnly = true)
     public CashClosureFilterOptionsView filterOptions(Authentication authentication) {
         permissions.requireReportPermission(authentication);
@@ -134,7 +141,8 @@ public class CashClosureService {
                 row.id(), row.terminalId(), row.terminalName(),
                 row.closingUserId(), row.closingUserName(), row.closingUsername(),
                 row.closedAt(), Money.euros(row.expectedCash()), Money.euros(row.retainedFund()),
-                Money.euros(row.discrepancy()), row.lateClosing());
+                Money.euros(row.discrepancy()), row.lateClosing(),row.finalWithdrawalAmount(),
+                row.retainedFundDenominations(),row.finalWithdrawalDenominations());
     }
 
     private static String encodeCursor(CashClosureQueryRepository.CashClosureRow row) {
