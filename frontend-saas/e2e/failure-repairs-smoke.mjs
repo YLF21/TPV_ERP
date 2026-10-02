@@ -122,10 +122,12 @@ try {
   assert.equal(await note.isDisabled(), true, "Uncertain comment content remains fixed for idempotent retry");
   assert.equal(await linked.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).isDisabled(), true, "Cannot hide uncertainty under another ticket write");
   await commentRetry.click();
-  await linked.getByText("Comentario confirmado con respuesta perdida", { exact: true }).waitFor();
+  await commentRetry.waitFor({ state: "hidden" });
+  const timelineComment = linked.locator(".incident-timeline").getByText("Comentario confirmado con respuesta perdida", { exact: true });
+  await timelineComment.waitFor();
   assert.equal(failed.state.comments.length, 2, "Retry of a committed comment creates no duplicate");
   assert.deepEqual(failed.state.commentPosts[1], failed.state.commentPosts[2], "Comment retries reuse requestId and message");
-  assert.equal(await linked.getByText("Comentario confirmado con respuesta perdida", { exact: true }).count(), 1);
+  assert.equal(await timelineComment.count(), 1);
   await note.fill("Comentario reconocido al actualizar"); failed.state.loseCommentResponse = true;
   await linked.getByRole("button", { name: "Añadir comentario", exact: true }).click();
   await commentRetry.waitFor();
