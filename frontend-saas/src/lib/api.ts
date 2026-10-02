@@ -170,6 +170,9 @@ export async function request<T>(credentials: Credentials, path: string, options
 }
 
 export const api = {
+  tenantLogin(credentials: LoginCredentials) {
+    return publicPost<LoginResponse>("/api/v1/auth/login", credentials);
+  },
   login(credentials: LoginCredentials) {
     return publicPost<LoginResponse>("/api/v1/auth/admin/login", credentials);
   },

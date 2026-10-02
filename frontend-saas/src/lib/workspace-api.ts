@@ -95,18 +95,23 @@ export type FailureRepairs = {
   remoteEligible: boolean; ineligibleReason: string | null;
   commands: FailureRepairCommand[]; manualTicketId: string | null;
 };
-export type InterventionAction = "START_REMOTE" | "REQUIRE_ONSITE" | "START_ONSITE" | "RESOLVE" | "REOPEN";
+export type InterventionAction = "START_SAAS" | "WAIT_CUSTOMER" | "WAIT_MATERIAL" | "RESUME" | "START_REMOTE" | "REQUIRE_ONSITE" | "START_ONSITE" | "RESOLVE" | "REOPEN" | "SAVE_DETAILS" | "REQUEST_VERIFICATION" | "VERIFICATION_FAILED";
 export type TicketInterventionRequest = {
   requestId: string; expectedVersion: number; expectedTicketStatus: string;
   action: InterventionAction; note: string; teamViewerId: string | null;
+  assigneeUserId?: string | null; nextReviewAt?: string | null; assignee?: string | null; visitAt?: string | null; resolutionSummary?: string | null; verificationNotes?: string | null; confirmedBy?: string | null;
 };
 export type TicketInterventionEvent = {
   requestId: string; version: number; action: string; status: string; note: string;
   teamViewerId: string | null; actor: string; createdAt: string;
+  assigneeUserId?: string | null; nextReviewAt?: string | null; resumeStatus?: string | null; assignee?: string | null; visitAt?: string | null; resolutionSummary?: string | null; verificationNotes?: string | null; confirmedBy?: string | null;
 };
 export type TicketInterventionState = {
   ticketId: string; companyId: string; status: string; version: number;
   ticketStatus: string; teamViewerId: string | null; events: TicketInterventionEvent[];
+  assigneeUserId?: string | null; nextReviewAt?: string | null; resumeStatus?: string | null; assignee?: string | null; visitAt?: string | null; resolutionSummary?: string | null; verificationNotes?: string | null; confirmedBy?: string | null;
+  assignees?: { id: string; username: string }[];
+  failure?: { key: string; status: string; code: string; storeName: string | null; receivedAt: string } | null;
 };
 export const COMPANY_PRIVILEGES = [
   "READ_COMPANY",

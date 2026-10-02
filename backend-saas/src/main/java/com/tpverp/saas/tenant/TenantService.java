@@ -14,7 +14,6 @@ import com.tpverp.saas.admin.ErpSupplierResponse;
 import com.tpverp.saas.admin.ErpWarehouseResponse;
 import com.tpverp.saas.admin.LicenseSummaryResponse;
 import com.tpverp.saas.admin.SupportTicketCommentResponse;
-import com.tpverp.saas.admin.SupportTicketResponse;
 import com.tpverp.saas.license.SaasCompany;
 import com.tpverp.saas.license.SaasCompanyRepository;
 import com.tpverp.saas.license.SaasInstallationRepository;
@@ -80,7 +79,7 @@ public class TenantService {
         CompanyOperationsResponse operations = context.permits(TenantCompanyPrivilege.READ_BILLING)
                 ? companyOperations(company.getId()) : null;
         Long openTickets = context.permits(TenantCompanyPrivilege.SUPPORT) ? jdbc.queryForObject(
-                "select count(*) from saas_support_ticket where company_id = ? and status <> 'CERRADO'",
+                "select count(*) from saas_support_ticket where company_id = ? and status not in ('RESUELTO','CERRADO')",
                 Long.class,
                 company.getId()) : null;
         Long installationCount = jdbc.queryForObject("""
@@ -128,8 +127,8 @@ public class TenantService {
     }
 
     @Transactional(readOnly = true)
-    public List<SupportTicketResponse> tickets() {
-        UUID companyId = TenantContextHolder.current().companyId();
+    public List<TenantSupportTicketResponse> tickets() {
+        UUID companyId = supportContext(false).companyId();
         return jdbc.query(ticketSql("where t.company_id = ?"), (rs, rowNum) -> supportTicket(rs), companyId);
     }
 
@@ -275,8 +274,8 @@ public class TenantService {
     }
 
     @Transactional
-    public SupportTicketResponse createTicket(CreateSupportTicketRequest request) {
-        TenantContext context = TenantContextHolder.current();
+    public TenantSupportTicketResponse createTicket(CreateSupportTicketRequest request) {
+        TenantContext context = supportContext(true);
         Instant now = clock.instant();
         UUID ticketId = UUID.randomUUID();
         jdbc.update("""
@@ -298,9 +297,9 @@ public class TenantService {
 
     @Transactional(readOnly = true)
     public List<SupportTicketCommentResponse> ticketComments(UUID ticketId) {
-        ticket(ticketId, TenantContextHolder.current().companyId());
+        ticket(ticketId, supportContext(false).companyId());
         return jdbc.query("""
-                select id, ticket_id, author, message, created_at
+                select id, ticket_id, author, message, created_at, client_request_id
                 from saas_support_ticket_comment
                 where ticket_id = ?
                 order by created_at asc
@@ -309,17 +308,53 @@ public class TenantService {
 
     @Transactional
     public SupportTicketCommentResponse createTicketComment(UUID ticketId, CreateSupportTicketCommentRequest request) {
-        TenantContext context = TenantContextHolder.current();
+        TenantContext context = supportContext(false);
         ticket(ticketId, context.companyId());
+        if (request == null || request.message() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Comentario obligatorio");
+        com.tpverp.saas.DatabaseText.requireValid(request.message());
+        String message = request.message().trim();
+        if (message.isEmpty() || message.length() > 4000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Comentario de 1 a 4000 caracteres requerido");
+        String author = "tenant:" + context.username().toLowerCase(Locale.ROOT);
+        if (request.requestId() != null) {
+            jdbc.query("select pg_advisory_xact_lock(hashtextextended(?,0))", (rs,row)->0,
+                    "support-comment:" + ticketId + ":" + request.requestId());
+        }
+        // Recheck both ticket scope and current grant after any wait, before reading a receipt or writing.
+        if (jdbc.query("select id from saas_support_ticket where id=? and company_id=? for update",
+                (rs,row)->rs.getObject(1,UUID.class),ticketId,context.companyId()).isEmpty())
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Ticket no existe para este cliente");
+        supportContext(true);
+        if (request.requestId() != null) {
+            var previous=jdbc.query("""
+                    select id,ticket_id,author,message,created_at,client_request_id from saas_support_ticket_comment
+                    where ticket_id=? and client_request_id=?
+                    """,(rs,row)->supportTicketComment(rs),ticketId,request.requestId());
+            if (!previous.isEmpty()) {
+                var saved=previous.getFirst();
+                if (!saved.author().equals(author) || !saved.message().equals(message))
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,"requestId ya utilizado para otro comentario");
+                return saved;
+            }
+        }
         Instant now = clock.instant();
         UUID commentId = UUID.randomUUID();
         jdbc.update("""
-                insert into saas_support_ticket_comment(id, ticket_id, author, message, created_at)
-                values (?, ?, ?, ?, ?)
-                """, commentId, ticketId, "tenant:" + context.username().toLowerCase(), request.message().trim(),
-                sqlTimestamp(now));
+                insert into saas_support_ticket_comment(id, ticket_id, author, message, created_at, client_request_id)
+                values (?, ?, ?, ?, ?, ?)
+                """, commentId, ticketId, author, message, sqlTimestamp(now), request.requestId());
         jdbc.update("update saas_support_ticket set updated_at = ? where id = ?", sqlTimestamp(now), ticketId);
         return supportTicketComment(commentId);
+    }
+
+    private TenantContext supportContext(boolean lock) {
+        TenantContext context=TenantContextHolder.current();
+        if (!context.permits(TenantCompanyPrivilege.SUPPORT)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Acceso a soporte no concedido");
+        var permitted=jdbc.query("""
+                select u.id from saas_tenant_user u join saas_tenant_company_access a on a.user_id=u.id
+                where lower(u.username)=lower(?) and u.active and a.company_id=? and 'SUPPORT'=any(a.company_privileges)
+                """ + (lock ? " for share of u,a" : ""),(rs,row)->rs.getObject(1,UUID.class),context.username(),context.companyId());
+        if (permitted.isEmpty()) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Acceso a soporte no concedido");
+        return context;
     }
 
     private SaasCompany company(UUID companyId) {
@@ -350,7 +385,7 @@ public class TenantService {
                 .orElse(new CompanyOperationsResponse(companyId, "STANDARD", "PENDIENTE", null, null, "NORMAL", null, null, null));
     }
 
-    private SupportTicketResponse ticket(UUID ticketId, UUID companyId) {
+    private TenantSupportTicketResponse ticket(UUID ticketId, UUID companyId) {
         return jdbc.query(ticketSql("where t.id = ? and t.company_id = ?"), (rs, rowNum) -> supportTicket(rs), ticketId, companyId)
                 .stream()
                 .findFirst()
@@ -359,7 +394,7 @@ public class TenantService {
 
     private SupportTicketCommentResponse supportTicketComment(UUID commentId) {
         return jdbc.query("""
-                select id, ticket_id, author, message, created_at
+                select id, ticket_id, author, message, created_at, client_request_id
                 from saas_support_ticket_comment
                 where id = ?
                 """, (rs, rowNum) -> supportTicketComment(rs), commentId).stream()
@@ -367,17 +402,28 @@ public class TenantService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comentario no existe"));
     }
 
+    private static Instant publicInstant(ResultSet rs,String column) throws SQLException {
+        var value=rs.getTimestamp(column); return value==null?null:value.toInstant();
+    }
+
     private static String ticketSql(String where) {
         return """
-                select t.id, t.company_id, c.name as company_name, t.title, t.description,
-                       t.status, t.priority, t.created_by, t.created_at, t.updated_at
+                select t.id, t.company_id, c.name as company_name, t.title,
+                       case when exists(select 1 from saas_store_failure_manual m where m.ticket_id=t.id)
+                            then null else t.description end as description,
+                       t.status, t.priority, t.created_at, t.updated_at,
+                       case when t.status in ('RESUELTO','CERRADO') then 'RESOLVED'
+                            when w.status='RESOLVED' then 'REMOTE_PENDING'
+                            else coalesce(w.status,'REMOTE_PENDING') end as intervention_status,
+                       w.next_review_at,w.visit_at
                 from saas_support_ticket t
                 join saas_company c on c.id = t.company_id
+                left join saas_support_intervention w on w.ticket_id=t.id
                 """ + where + " order by t.updated_at desc";
     }
 
-    private static SupportTicketResponse supportTicket(ResultSet rs) throws SQLException {
-        return new SupportTicketResponse(
+    private static TenantSupportTicketResponse supportTicket(ResultSet rs) throws SQLException {
+        return new TenantSupportTicketResponse(
                 rs.getObject("id", UUID.class),
                 rs.getObject("company_id", UUID.class),
                 rs.getString("company_name"),
@@ -385,9 +431,9 @@ public class TenantService {
                 rs.getString("description"),
                 rs.getString("status"),
                 rs.getString("priority"),
-                rs.getString("created_by"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant());
+                rs.getTimestamp("updated_at").toInstant(),rs.getString("intervention_status"),
+                publicInstant(rs,"next_review_at"),publicInstant(rs,"visit_at"));
     }
 
     private static SupportTicketCommentResponse supportTicketComment(ResultSet rs) throws SQLException {
@@ -396,7 +442,7 @@ public class TenantService {
                 rs.getObject("ticket_id", UUID.class),
                 rs.getString("author"),
                 rs.getString("message"),
-                rs.getTimestamp("created_at").toInstant());
+                rs.getTimestamp("created_at").toInstant(),rs.getObject("client_request_id",UUID.class));
     }
 
     private static String invoiceSql(String where) {

@@ -312,7 +312,7 @@ export function ticketStatusLabel(status: string, t: (key: string) => string) {
   const labels: Record<string, string> = {
     ABIERTO: t("open"),
     EN_CURSO: t("inProgress"),
-    RESUELTO: t("resolve")
+    RESUELTO: t("resolved")
   };
   return labels[status] ?? status;
 }

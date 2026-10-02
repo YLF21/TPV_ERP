@@ -1,0 +1,15 @@
+import type { Credentials, SupportTicketComment } from "../../lib/types";
+export function tenantCommentAuthor(username:string):string;
+export type TenantCommentWrite={requestId:string;message:string;author:string;uncertain:boolean};
+export type TenantCommentOperation={write:TenantCommentWrite};
+export type TenantConversationState={draft:string;pending:TenantCommentWrite|null;inFlight:TenantCommentOperation|null;version:number;listeners:Set<()=>void>};
+export function tenantConversationState(session:Credentials,companyId:string,ticketId:string):TenantConversationState;
+export function subscribeConversation(state:TenantConversationState,notify:()=>void):()=>void;
+export function editConversationDraft(state:TenantConversationState,value:string):void;
+export function validTenantComment(value:unknown,ticketId:string):value is SupportTicketComment;
+export function beginTenantComment(state:TenantConversationState,author:string,createId?:()=>string):TenantCommentOperation|null;
+export function matchesTenantComment(comment:unknown,write:TenantCommentWrite,ticketId:string):boolean;
+export function reconcileTenantComment(state:TenantConversationState,comments:SupportTicketComment[],ticketId:string):boolean;
+export function confirmTenantComment(state:TenantConversationState,operation:TenantCommentOperation,comment:unknown,ticketId:string):boolean;
+export function rejectTenantComment(state:TenantConversationState,operation:TenantCommentOperation,definitive:boolean):void;
+export function finishTenantComment(state:TenantConversationState,operation:TenantCommentOperation):void;

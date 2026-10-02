@@ -1,7 +1,12 @@
-import { useRepairLabels } from "../supervision/repair-labels";
+import { TicketCommentComposer, validTicketComment } from "./TicketCommentComposer";
+import { repairSession } from "../supervision/repair-session";
+import { useSupportLabels, type SupportTarget } from "./support-labels";
+import "./support-workflow.css";
+import { TicketInterventionsPanel } from "../supervision/TicketInterventionsPanel";
+import { useInterventionLabels } from "../supervision/intervention-labels";
 import { useRefreshVersion } from "../../app/RefreshContext";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError } from "../../lib/api";
+import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../../lib/api";
 import { isCurrentSelection } from "../../lib/frontend-runtime.mjs";
 import type { AdminNotification, Credentials, LicenseSummary, SaasStatus, SupportTicket, SupportTicketComment, TechnicalStatus } from "../../lib/types";
 import { Notice } from "../../shared/types";
@@ -13,19 +18,37 @@ export function SupportView({
   credentials,
   licenses,
   permissions,
-  onNotice
+  onNotice, target, onReturnToFailure, onClearTarget
 }: {
   credentials: Credentials;
   licenses: LicenseSummary[];
   permissions: Set<string>;
   onNotice: (notice: Notice) => void;
+  target?: SupportTarget | null;
+  onReturnToFailure?: (key: string) => void;
+  onClearTarget?: () => void;
 }) {
   const { t } = useI18n();
-  const repairLabel = useRepairLabels();
   const refreshVersion = useRefreshVersion();
+  const q = useSupportLabels();
+  const session = repairSession(credentials);
+  const [workflowRevision, setWorkflowRevision] = useState(0);
+  const [commentsBlocked, setCommentsBlocked] = useState<Record<string, boolean>>({});
+  const [queueFilter, setQueueFilter] = useState("");
+  const [expandedTicket, setExpandedTicket] = useState<string | null>(target?.ticketId ?? null);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const resolvedTarget = useRef<SupportTarget | null>(null);
   const overviewRequestId = useRef(0);
-  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
-  const [companyId, setCompanyId] = useState("");
+  const fallbackCompanies = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const [loadedCompanies, setLoadedCompanies] = useState<Array<{ companyId: string; companyName: string }> | null>(null);
+  const companies = loadedCompanies ?? fallbackCompanies;
+  useEffect(() => {
+    let active = true;
+    void api.companies(credentials).then(value => { if (active) setLoadedCompanies(value); })
+      .catch(error => { if (active) onNotice({ type: "error", text: errorMessage(error) }); });
+    return () => { active = false; };
+  }, [credentials, refreshVersion]);
+  const [companyId, setCompanyId] = useState(target?.companyId ?? "");
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const confirmedReadNotifications = useRef(new Set<string>());
   const pendingReadNotifications = useRef(new Set<string>());
@@ -38,7 +61,6 @@ export function SupportView({
   const [saasStatus, setSaasStatus] = useState<SaasStatus | null>(null);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [commentsByTicket, setCommentsByTicket] = useState<Record<string, SupportTicketComment[]>>({});
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [title, setTitle] = useState("");
@@ -56,14 +78,30 @@ export function SupportView({
   const canManage = permissions.has("MANAGE_SUPPORT_TICKETS");
   const filteredTickets = tickets.filter((ticket) =>
     (!statusFilter || ticket.status === statusFilter) &&
-    (!priorityFilter || ticket.priority === priorityFilter)
+    (!priorityFilter || ticket.priority === priorityFilter) &&
+    (!queueFilter || queueFilter === "mine" && ticket.assigneeUserId != null && ticket.assignee === credentials.username && ticket.status !== "RESUELTO"
+      || queueFilter === "unassigned" && !ticket.assigneeUserId && ticket.status !== "RESUELTO"
+      || queueFilter === "visits" && !!ticket.visitAt && ticket.status !== "RESUELTO" && ["ONSITE_REQUIRED", "ONSITE_IN_PROGRESS"].includes(ticket.interventionStatus ?? "")
+      || queueFilter === "due" && !!ticket.nextReviewAt && Date.parse(ticket.nextReviewAt) <= Date.now() && ["WAITING_CUSTOMER", "WAITING_MATERIAL"].includes(ticket.interventionStatus ?? ""))
   );
 
   useEffect(() => {
+    if (target?.companyId === companyId) return;
     if (!companies.some(c => c.companyId === companyId)) {
       setCompanyId(companies[0]?.companyId ?? "");
     }
-  }, [companies, companyId]);
+  }, [companies, companyId, target]);
+
+  useEffect(() => {
+    if (!target) return;
+    resolvedTarget.current = null;
+    setCompanyId(target.companyId); setStatusFilter(""); setPriorityFilter(""); setQueueFilter(""); setExpandedTicket(target.ticketId ?? null);
+  }, [target]);
+  useEffect(() => {
+    if (!target || resolvedTarget.current === target || target.companyId !== companyId || !target.failureKey || target.ticketId) return;
+    const linked = tickets.find(ticket => ticket.failureKey === target.failureKey);
+    if (linked) { setExpandedTicket(linked.id); resolvedTarget.current = target; }
+  }, [target, companyId, tickets]);
 
   useEffect(() => {
     void loadOverview();
@@ -72,6 +110,7 @@ export function SupportView({
   useEffect(() => {
     ticketRequestId.current += 1;
     setTickets([]);
+    setTicketsLoading(!!companyId);
     setCommentsByTicket({});
     if (companyId) void loadTickets(companyId);
   }, [companyId, credentials.accessToken, refreshVersion]);
@@ -114,8 +153,8 @@ export function SupportView({
     try {
       const nextTickets = await api.supportTickets(credentials, nextCompanyId);
       if (!current() || requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
-      setTickets(nextTickets);
-      await loadTicketComments(nextTickets, requestId);
+      setTickets(nextTickets.filter(ticket => ticket.companyId === nextCompanyId));
+      await loadTicketComments(nextTickets.filter(ticket => ticket.companyId === nextCompanyId), requestId);
     } catch (error) {
       if (!current() || requestId !== ticketRequestId.current || !isCurrentSelection(nextCompanyId, selectedSupportCompanyRef.current)) return;
       if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
@@ -125,14 +164,16 @@ export function SupportView({
         return;
       }
       onNotice({ type: "error", text: errorMessage(error) });
-    }
+    } finally { if (current() && requestId === ticketRequestId.current) setTicketsLoading(false); }
   }
 
   async function loadTicketComments(nextTickets: SupportTicket[], requestId = ticketRequestId.current) {
     const entries = await Promise.all(
       nextTickets.map(async (ticket) => {
         try {
-          return [ticket.id, await api.supportTicketComments(credentials, ticket.id)] as const;
+          const rows = await api.supportTicketComments(credentials, ticket.id);
+          if (!Array.isArray(rows) || !rows.every(row => validTicketComment(row, ticket.id))) throw new Error("Invalid comments response");
+          return [ticket.id, rows] as const;
         } catch (error) {
           if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) return [ticket.id, []] as const;
           throw error;
@@ -144,54 +185,20 @@ export function SupportView({
 
   async function createTicket(event: FormEvent) {
     event.preventDefault();
-    if (!companyId) return;
+    if (!companyId || busy || !canManage) return;
     setBusy("create");
     try {
       await api.createSupportTicket(credentials, companyId, { title, description, priority });
+      if (!current()) return;
       setTitle("");
       setDescription("");
       setPriority("NORMAL");
       await Promise.all([loadTickets(companyId), loadOverview()]);
-      onNotice({ type: "success", text: t("ticketCreated") });
+      if (current()) onNotice({ type: "success", text: t("ticketCreated") });
     } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function updateTicket(ticket: SupportTicket, status: string) {
-    if (!canManage || busy || ticket.companyId !== companyId) return;
-    setBusy(ticket.id);
-    try {
-      await api.updateSupportTicket(credentials, ticket.id, { status, expectedInterventionVersion: ticket.interventionVersion, expectedTicketStatus: ticket.status });
-      if (!current()) return;
-      await Promise.all([loadTickets(ticket.companyId), loadOverview()]);
-      if (current()) onNotice({ type: "success", text: t("ticketUpdated") });
-    } catch (error) {
-      if (!current()) return;
-      if (error instanceof ApiError && error.status === 409) {
-        await loadTickets(ticket.companyId);
-        if (current()) onNotice({ type: "error", text: repairLabel("ticketConflict") });
-      } else onNotice({ type: "error", text: errorMessage(error) });
+      if (current()) onNotice({ type: "error", text: errorMessage(error) });
     } finally {
       if (current()) setBusy(null);
-    }
-  }
-
-  async function addComment(ticket: SupportTicket) {
-    const message = (commentDrafts[ticket.id] ?? "").trim();
-    if (!message) return;
-    setBusy(`comment:${ticket.id}`);
-    try {
-      await api.createSupportTicketComment(credentials, ticket.id, message);
-      setCommentDrafts((current) => ({ ...current, [ticket.id]: "" }));
-      await loadTicketComments(tickets);
-      onNotice({ type: "success", text: t("commentAdded") });
-    } catch (error) {
-      onNotice({ type: "error", text: errorMessage(error) });
-    } finally {
-      setBusy(null);
     }
   }
 
@@ -250,7 +257,8 @@ export function SupportView({
           <>
             <label className="company-ticket-selector">
               {t("company")}
-              <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              <select className="control-input" value={companyId} disabled={!!busy} onChange={(event) => { onClearTarget?.(); setExpandedTicket(null); setCompanyId(event.target.value); }}>
+                {companyId && !companies.some(company => company.companyId === companyId) && <option value={companyId}>{companyId}</option>}
                 {companies.map((company) => (
                   <option key={company.companyId} value={company.companyId}>
                     {company.companyName}
@@ -264,7 +272,7 @@ export function SupportView({
                   <Input label={t("title")} value={title} onChange={setTitle} required />
                   <Select label={t("priority")} value={priority} options={["NORMAL", "ALTA", "URGENTE"]} onChange={setPriority} />
                   <div className="form-actions">
-                    <button className="primary-button" type="submit" disabled={busy === "create"}>
+                    <button className="primary-button" type="submit" disabled={!!busy}>
                       {busy === "create" ? t("saving") : t("createTicket")}
                     </button>
                   </div>
@@ -279,19 +287,31 @@ export function SupportView({
                 </label>
               </form>
             )}
+            {target && target.companyId === companyId && <div className="support-context-banner"><span>{q("context")}</span>{target.failureKey && onReturnToFailure && <button type="button" className="secondary-button" onClick={() => onReturnToFailure(target.failureKey!)}>{q("back")}</button>}</div>}
+            {!ticketsLoading && target?.ticketId && target.companyId === companyId && !tickets.some(ticket => ticket.id === target.ticketId) && <p role="alert">{q("missing")}</p>}
             <div className="support-ticket-filters">
+              <label>{q("queue")}<select className="control-input" value={queueFilter} onChange={event => setQueueFilter(event.target.value)}><option value="">{q("all")}</option>{(["mine", "unassigned", "visits", "due"] as const).map(value => <option key={value} value={value}>{q(value)}</option>)}</select></label>
               <Select label={t("status")} value={statusFilter} options={["", "ABIERTO", "EN_CURSO", "RESUELTO"]} onChange={setStatusFilter} emptyLabel={t("allStatuses")} />
               <Select label={t("priority")} value={priorityFilter} options={["", "NORMAL", "ALTA", "URGENTE"]} onChange={setPriorityFilter} emptyLabel={t("allPriorities")} />
             </div>
+            <p className="support-queue-scope">{q("queueScope")} · {filteredTickets.length} / {tickets.length}</p>
             <TicketList
               tickets={filteredTickets}
               commentsByTicket={commentsByTicket}
-              commentDrafts={commentDrafts}
+              expanded={expandedTicket} onToggle={id => setExpandedTicket(expandedTicket === id ? null : id)}
+              onReturnToFailure={onReturnToFailure}
               canManage={canManage}
               busy={busy}
-              onUpdate={updateTicket}
-              onCommentDraftChange={(ticketId, message) => setCommentDrafts((current) => ({ ...current, [ticketId]: message }))}
-              onAddComment={(ticket) => void addComment(ticket)}
+              renderWorkflow={ticket => <TicketInterventionsPanel key={session.id + ":" + ticket.id}
+                credentials={credentials} companyId={ticket.companyId} ticketId={ticket.id} ticketStatus={ticket.status}
+                canManage={canManage} blocked={(!!busy && busy !== "workflow:" + ticket.id) || session.tickets.has(ticket.id) || (canManage && commentsBlocked[ticket.id] !== false)} refreshVersion={refreshVersion + workflowRevision}
+                onBusyChange={value => { if (current()) setBusy(value ? "workflow:" + ticket.id : null); }}
+                onChanged={() => { if (current()) void Promise.all([loadTickets(ticket.companyId), loadOverview()]); }} />}
+              renderComposer={ticket => <TicketCommentComposer key={session.id + ":comment:" + ticket.id} credentials={credentials} ticketId={ticket.id}
+                disabled={!!busy && busy !== "comment:" + ticket.id}
+                onBlockedChange={value => { if (current()) setCommentsBlocked(previous => previous[ticket.id] === value ? previous : {...previous, [ticket.id]: value}); }}
+                onBusyChange={value => { if (current()) setBusy(value ? "comment:" + ticket.id : null); }}
+                onChanged={() => { if (current()) { setWorkflowRevision(value => value + 1); void loadTicketComments(tickets).catch(error => { if (current()) onNotice({type: "error", text: errorMessage(error)}); }); } }} />}
             />
           </>
         )}
@@ -322,82 +342,23 @@ export function NotificationList({ notifications, onMarkRead, pendingIds }: { no
   );
 }
 
-export function TicketList({
-  tickets,
-  commentsByTicket,
-  commentDrafts,
-  canManage,
-  busy,
-  onUpdate,
-  onCommentDraftChange,
-  onAddComment
-}: {
-  tickets: SupportTicket[];
-  commentsByTicket: Record<string, SupportTicketComment[]>;
-  commentDrafts: Record<string, string>;
-  canManage: boolean;
-  busy: string | null;
-  onUpdate: (ticket: SupportTicket, status: string) => void;
-  onCommentDraftChange: (ticketId: string, message: string) => void;
-  onAddComment: (ticket: SupportTicket) => void;
+export function TicketList({tickets,commentsByTicket,canManage,busy,renderWorkflow,renderComposer,expanded,onToggle,onReturnToFailure}: {
+ tickets:SupportTicket[];commentsByTicket:Record<string,SupportTicketComment[]>;canManage:boolean;busy:string|null;
+ renderWorkflow:(ticket:SupportTicket)=>ReactNode;renderComposer:(ticket:SupportTicket)=>ReactNode;
+ expanded:string|null;onToggle:(id:string)=>void;onReturnToFailure?:(key:string)=>void;
 }) {
-  const { t } = useI18n();
-  if (tickets.length === 0) return <EmptyState text={t("noTickets")} />;
-  return (
-    <div className="ticket-list">
-      {tickets.map((ticket) => (
-        <article className="ticket-card" key={ticket.id}>
-          <div className="ticket-main">
-            <div>
-              <strong>{ticket.title}</strong>
-              <span>{ticket.companyName} - {ticket.createdBy} - {formatDate(ticket.createdAt)}</span>
-            </div>
-            <div className="ticket-badges">
-              <StatusPill status={ticketStatusLabel(ticket.status, t)} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} />
-              <StatusPill status={ticketPriorityLabel(ticket.priority, t)} tone={ticket.priority === "URGENTE" ? "warning" : "muted"} />
-            </div>
-          </div>
-          {ticket.description && <p>{ticket.description}</p>}
-          <div className="ticket-comments">
-            {(commentsByTicket[ticket.id] ?? []).length === 0 ? (
-              <span>{t("noComments")}</span>
-            ) : (
-              (commentsByTicket[ticket.id] ?? []).map((comment) => (
-                <div className="ticket-comment" key={comment.id}>
-                  <strong>{comment.author}</strong>
-                  <span>{formatDate(comment.createdAt)}</span>
-                  <p>{comment.message}</p>
-                </div>
-              ))
-            )}
-          </div>
-          {canManage && ticket.status !== "RESUELTO" && (
-            <div className="ticket-actions">
-              {ticket.status !== "EN_CURSO" && (
-                <button className="small-button" type="button" disabled={busy === ticket.id} onClick={() => onUpdate(ticket, "EN_CURSO")}>
-                  {t("inProgress")}
-                </button>
-              )}
-              <button className="small-button" type="button" disabled={busy === ticket.id} onClick={() => onUpdate(ticket, "RESUELTO")}>
-                {t("resolve")}
-              </button>
-            </div>
-          )}
-          {canManage && (
-            <div className="ticket-comment-form">
-              <input
-                className="control-input"
-                value={commentDrafts[ticket.id] ?? ""}
-                onChange={(event) => onCommentDraftChange(ticket.id, event.target.value)}
-                placeholder={t("comment")}
-              />
-              <button className="small-button" type="button" disabled={busy === `comment:${ticket.id}`} onClick={() => onAddComment(ticket)}>
-                {t("addComment")}
-              </button>
-            </div>
-          )}
-        </article>
-      ))}
-    </div>
-  );
+ const {t}=useI18n();const f=useInterventionLabels();const q=useSupportLabels();
+ useEffect(()=>{if(expanded)document.getElementById("support-ticket-"+expanded)?.scrollIntoView({block:"start"});},[expanded,tickets.length]);
+ if(!tickets.length)return <EmptyState text={t("noTickets")}/>;
+ return <div className="ticket-list">{tickets.map(ticket=><article className="ticket-card" id={"support-ticket-"+ticket.id} key={ticket.id}>
+  <div className="ticket-main"><div><strong>{ticket.title}</strong><span>{ticket.companyName} - {ticket.createdBy} - {formatDate(ticket.createdAt)}</span></div>
+  <div className="ticket-badges"><StatusPill status={ticketStatusLabel(ticket.status,t)} tone={ticket.status==="RESUELTO"?"ok":"warning"}/><StatusPill status={ticketPriorityLabel(ticket.priority,t)} tone={ticket.priority==="URGENTE"?"warning":"muted"}/></div></div>
+  <div className="support-ticket-context"><span>{f(ticket.interventionStatus ?? (ticket.status==="RESUELTO"?"RESOLVED":"REMOTE_PENDING"))}</span><span>{q("owner")}: {ticket.assignee ?? q("unassigned")}</span>{ticket.visitAt&&<span>{q("visit")}: {formatDate(ticket.visitAt)}</span>}{ticket.nextReviewAt&&<span>{q("review")}: {formatDate(ticket.nextReviewAt)}</span>}</div>
+  {ticket.status==="RESUELTO"&&ticket.failureKey&&ticket.failureStatus!=="RESOLVED"&&<p className="support-technical-pending">{q("closedPending")}{ticket.failureReceivedAt&&<> · {q("lastSignal")}: {formatDate(ticket.failureReceivedAt)}</>}</p>}
+  {ticket.description&&<p>{ticket.description}</p>}
+  {expanded!==ticket.id&&<details className="ticket-comments"><summary>{q("showComments")} ({(commentsByTicket[ticket.id]??[]).length})</summary>{(commentsByTicket[ticket.id]??[]).map(comment=><div className="ticket-comment" key={comment.id}><strong>{comment.author}</strong><span>{formatDate(comment.createdAt)}</span><p>{comment.message}</p></div>)}</details>}
+  <div className="ticket-actions"><button className="primary-button" type="button" disabled={!!busy} aria-expanded={expanded===ticket.id} onClick={()=>onToggle(ticket.id)}>{f(expanded===ticket.id?"closePanel":"manage")}</button>{ticket.failureKey&&onReturnToFailure&&<button className="secondary-button" type="button" disabled={!!busy} onClick={()=>onReturnToFailure(ticket.failureKey!)}>{q("back")}</button>}</div>
+  {expanded===ticket.id&&<div className="support-workflow"><p>{f("scope")}</p>{renderWorkflow(ticket)}</div>}
+  {canManage&&renderComposer(ticket)}
+ </article>)}</div>;
 }

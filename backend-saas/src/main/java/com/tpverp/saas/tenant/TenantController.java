@@ -13,7 +13,6 @@ import com.tpverp.saas.admin.ErpSupplierResponse;
 import com.tpverp.saas.admin.ErpWarehouseResponse;
 import com.tpverp.saas.admin.LicenseSummaryResponse;
 import com.tpverp.saas.admin.SupportTicketCommentResponse;
-import com.tpverp.saas.admin.SupportTicketResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -55,7 +54,7 @@ public class TenantController {
     }
 
     @GetMapping("/tickets")
-    public List<SupportTicketResponse> tickets() {
+    public List<TenantSupportTicketResponse> tickets() {
         return service.tickets();
     }
 
@@ -105,7 +104,7 @@ public class TenantController {
     }
 
     @PostMapping("/tickets")
-    public SupportTicketResponse createTicket(@Valid @RequestBody CreateSupportTicketRequest request) {
+    public TenantSupportTicketResponse createTicket(@Valid @RequestBody CreateSupportTicketRequest request) {
         return service.createTicket(request);
     }
 

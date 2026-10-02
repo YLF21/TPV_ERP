@@ -70,8 +70,8 @@ class SupportInterventionPostgreSqlTest {
         submit(ticket, new Request(UUID.randomUUID(), 0L, "ABIERTO", "START_REMOTE", "   a   ", null), 400);
         submit(ticket, new Request(UUID.randomUUID(), 0L, "ABIERTO", "START_REMOTE", "x".repeat(2001), null), 400);
         UUID ordinary = support.createSupportTicket(linked.site().company().getId(), new CreateSupportTicketRequest("Ordinary ticket", "Normal support", "NORMAL")).id();
-        http(get(path(ordinary)), null, 404);
-        submit(ordinary, request, 404);
+        http(get(path(ordinary)), null, 200);
+        submit(ordinary, request, 200);
         submit(ticket, new Request(UUID.randomUUID(), 0L, "ABIERTO", "START_REMOTE", "😀😀😀", null), 400);
         Site foreign = site();
         jdbc.update("update saas_store_failure_manual set company_id=? where ticket_id=?", foreign.company().getId(), ticket);
@@ -93,17 +93,18 @@ class SupportInterventionPostgreSqlTest {
         assertThat(read(ticket)).isEqualTo(state);
         state = apply(ticket, state, "REQUIRE_ONSITE", null);
         assertThat(state.status()).isEqualTo("ONSITE_REQUIRED"); assertThat(state.teamViewerId()).isEqualTo("123456789");
+        state = submit(ticket, planning(state, "Technician Ana"), 200);
         state = apply(ticket, state, "START_ONSITE", null);
-        state = apply(ticket, state, "RESOLVE", null);
+        state = close(ticket, state);
         assertThat(state.status()).isEqualTo("RESOLVED"); assertThat(state.ticketStatus()).isEqualTo("RESUELTO");
         state = apply(ticket, state, "REOPEN", null);
         assertThat(state.status()).isEqualTo("REMOTE_PENDING"); assertThat(state.ticketStatus()).isEqualTo("ABIERTO");
         state = apply(ticket, state, "START_REMOTE", "");
         assertThat(state.teamViewerId()).isNull();
-        assertThat(state.events()).hasSize(6);
+        assertThat(state.events()).hasSize(8);
         assertThat(state.events()).extracting(Event::actor).containsOnly("admin");
-        assertThat(state.events()).extracting(Event::version).containsExactly(1L,2L,3L,4L,5L,6L);
-        assertThat(audits(ticket)).isEqualTo(6);
+        assertThat(state.events()).extracting(Event::version).containsExactly(1L,2L,3L,4L,5L,6L,7L,8L);
+        assertThat(audits(ticket)).isEqualTo(8);
         assertThat(jdbc.queryForMap("select * from saas_store_failure where id=?", failureId(linked.failure()))).isEqualTo(original);
         assertThat(jdbc.queryForMap("select description from saas_support_ticket where id=?", ticket)).isEqualTo(originalTicket);
         assertThat(jdbc.queryForObject("select count(*) from saas_support_ticket_comment where ticket_id=?", Long.class, ticket)).isZero();
@@ -125,7 +126,7 @@ class SupportInterventionPostgreSqlTest {
     void retryReturnsCurrentStateAndRejectsReusedKeyAcrossPayloadActorAndTicket() throws Exception {
         UUID ticket = linked().ticket(); Request start = request(read(ticket), "START_REMOTE", "123456789");
         State first = submit(ticket, start, 200);
-        State resolved = apply(ticket, first, "RESOLVE", null);
+        State resolved = close(ticket, first);
         assertThat(submit(ticket, start, 200)).isEqualTo(resolved);
         Request whitespace = new Request(start.requestId(), start.expectedVersion(), start.expectedTicketStatus(), start.action(), "  " + start.note() + "  ", start.teamViewerId());
         assertThat(submit(ticket, whitespace, 200)).isEqualTo(resolved);
@@ -134,7 +135,7 @@ class SupportInterventionPostgreSqlTest {
         assertThat(responseCode(() -> interventions.apply(ticket, start))).isEqualTo(409); // system is not original admin
         submit(linked().ticket(), start, 409);
         assertThat(read(ticket)).isEqualTo(resolved);
-        assertThat(audits(ticket)).isEqualTo(2);
+        assertThat(audits(ticket)).isEqualTo(3);
     }
 
     @Test
@@ -149,7 +150,7 @@ class SupportInterventionPostgreSqlTest {
         State current = interventions.state(ticket);
         CountDownLatch second = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var a = executor.submit(() -> { second.await(); return responseCode(() -> interventions.apply(ticket, request(current, "RESOLVE", null))); });
+            var a = executor.submit(() -> { second.await(); return responseCode(() -> interventions.apply(ticket, request(current, "REQUEST_VERIFICATION", null))); });
             var b = executor.submit(() -> { second.await(); return responseCode(() -> interventions.apply(ticket, request(current, "REQUIRE_ONSITE", null))); });
             second.countDown(); assertThat(List.of(a.get(15, TimeUnit.SECONDS), b.get(15, TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
         }
@@ -158,33 +159,64 @@ class SupportInterventionPostgreSqlTest {
     }
 
     @Test
-    void ordinaryStatusChangesPreventAbaAndPreserveHistoryAndTeamViewer() throws Exception {
+    void genericStatusChangesCannotBypassVerificationOrReopening() throws Exception {
         UUID ticket = linked().ticket(); State initial = read(ticket);
-        changeTicketStatus(ticket, "RESUELTO");
-        State closed = read(ticket); assertThat(closed.status()).isEqualTo("RESOLVED"); assertThat(closed.version()).isEqualTo(1);
-        changeTicketStatus(ticket, "ABIERTO");
-        State reopened = read(ticket); assertThat(reopened.status()).isEqualTo("REMOTE_PENDING"); assertThat(reopened.version()).isEqualTo(2);
-        submit(ticket, request(initial, "START_REMOTE", null), 409);
-        State started = apply(ticket, reopened, "START_REMOTE", "123456789");
-        changeTicketStatus(ticket, "RESUELTO");
-        changeTicketStatus(ticket, "ABIERTO");
-        State after = read(ticket);
-        assertThat(after.status()).isEqualTo("REMOTE_PENDING"); assertThat(after.version()).isEqualTo(5);
-        assertThat(after.teamViewerId()).isEqualTo("123456789"); assertThat(after.events()).isEqualTo(started.events());
+        assertThat(responseCode(() -> changeTicketStatus(ticket, "RESUELTO"))).isEqualTo(409);
+        assertThat(responseCode(() -> changeTicketStatus(ticket, "EN_CURSO"))).isEqualTo(409);
+        assertThat(read(ticket)).isEqualTo(initial);
+        State started = apply(ticket, initial, "START_REMOTE", "123456789");
         submit(ticket, request(started, "RESOLVE", null), 409);
+        State closed = close(ticket, started);
+        assertThat(responseCode(() -> changeTicketStatus(ticket, "ABIERTO"))).isEqualTo(409);
+        State reopened = apply(ticket, closed, "REOPEN", null);
+        submit(ticket, request(initial, "START_REMOTE", null), 409);
         support.updateSupportTicket(ticket, new UpdateSupportTicketRequest(null, "URGENTE"));
-        assertThat(read(ticket).version()).isEqualTo(5);
-        State last = apply(ticket, after, "START_REMOTE", null);
-        assertThat(last.events()).extracting(Event::version).containsExactly(3L,6L);
-        assertThat(submit(ticket, new Request(last.events().getLast().requestId(), 5L, "ABIERTO", "START_REMOTE", "Investigation with controlled evidence", null), 200)).isEqualTo(last);
+        assertThat(read(ticket)).isEqualTo(reopened);
+        assertThat(reopened.resolutionSummary()).isNull(); assertThat(reopened.verificationNotes()).isNull();
+        assertThat(reopened.events()).hasSize(4);
+        assertThat(reopened.events().get(2).confirmedBy()).isEqualTo("Store manager");
+        assertThat(reopened.failure().status()).isEqualTo("OPEN");
     }
 
     @Test
-    void unlinkedTicketStatusUpdatesKeepOrdinaryBehavior() {
-        Site site = site(); UUID ordinary = support.createSupportTicket(site.company().getId(), new CreateSupportTicketRequest("Ordinary", "Support", "NORMAL")).id();
-        assertThat(support.updateSupportTicket(ordinary, new UpdateSupportTicketRequest("RESUELTO", "ALTA")).status()).isEqualTo("RESUELTO");
-        assertThat(support.updateSupportTicket(ordinary, new UpdateSupportTicketRequest("ABIERTO", null)).priority()).isEqualTo("ALTA");
-        assertThat(jdbc.queryForObject("select count(*) from saas_support_intervention where ticket_id=?", Long.class, ordinary)).isZero();
+    void generalTicketsUseSameWorkflowAndFailedVerificationReturnsToDiagnosis() throws Exception {
+        Site site = site(); UUID ticket = support.createSupportTicket(site.company().getId(), new CreateSupportTicketRequest("Ordinary", "Support", "NORMAL")).id();
+        assertThat(responseCode(() -> changeTicketStatus(ticket, "RESUELTO"))).isEqualTo(409);
+        State initial = read(ticket); assertThat(initial.failure()).isNull();
+        State remote = apply(ticket, initial, "START_REMOTE", null);
+        submit(ticket, new Request(UUID.randomUUID(), remote.version(), remote.ticketStatus(), "REQUEST_VERIFICATION", "Check repair", null), 400);
+        State checking = apply(ticket, remote, "REQUEST_VERIFICATION", null);
+        submit(ticket, new Request(UUID.randomUUID(), checking.version(), checking.ticketStatus(), "RESOLVE", "Check repair", null), 400);
+        State failed = apply(ticket, checking, "VERIFICATION_FAILED", null);
+        assertThat(failed.status()).isEqualTo("REMOTE_PENDING"); assertThat(failed.ticketStatus()).isEqualTo("ABIERTO");
+        assertThat(failed.resolutionSummary()).isNull();
+        State closed = close(ticket, apply(ticket, failed, "START_REMOTE", null));
+        assertThat(closed.verificationNotes()).isEqualTo("Test sale and printing succeeded");
+        assertThat(closed.confirmedBy()).isEqualTo("Store manager");
+        assertThat(support.updateSupportTicket(ticket, new UpdateSupportTicketRequest(null, "ALTA")).status()).isEqualTo("RESUELTO");
+    }
+
+    @Test
+    void planningRequiresAssigneeAndVisitAndHasIdempotentSnapshot() throws Exception {
+        UUID ticket = linked().ticket(); State initial = read(ticket);
+        State onsite = apply(ticket, initial, "REQUIRE_ONSITE", null);
+        submit(ticket, request(onsite, "START_ONSITE", null), 409);
+        Request plan = planning(onsite, "Technician Ana");
+        State planned = submit(ticket, plan, 200);
+        assertThat(submit(ticket, plan, 200)).isEqualTo(planned);
+        submit(ticket, new Request(plan.requestId(), plan.expectedVersion(), plan.expectedTicketStatus(), plan.action(), plan.note(), null, null, plan.visitAt(), null, null, null, technicianId("Technician Bea"), null), 409);
+        assertThat(planned.assignee()).isEqualTo("Technician Ana"); assertThat(planned.visitAt()).isEqualTo(plan.visitAt());
+        State working = apply(ticket, planned, "START_ONSITE", null);
+        submit(ticket, new Request(UUID.randomUUID(), working.version(), working.ticketStatus(), "SAVE_DETAILS", "Clear visit date", null, null, null, null, null, null, technicianId("Technician Ana"), null), 400);
+        assertThat(close(ticket, working).events()).hasSize(5);
+    }
+
+    @Test
+    void historicalClosedTicketsStayClosedWithoutInventingEvidence() throws Exception {
+        UUID ticket = linked().ticket(); jdbc.update("update saas_support_ticket set status='RESUELTO' where id=?", ticket);
+        State old = read(ticket); assertThat(old.status()).isEqualTo("RESOLVED"); assertThat(old.events()).isEmpty();
+        assertThat(old.verificationNotes()).isNull(); assertThat(old.confirmedBy()).isNull();
+        assertThat(apply(ticket, old, "REOPEN", null).status()).isEqualTo("REMOTE_PENDING");
     }
 
     @Test
@@ -237,17 +269,17 @@ class SupportInterventionPostgreSqlTest {
     @Test
     void newRemoteSessionCanReplaceOrClearIdWithoutChangingHistoricalEvents() throws Exception {
         UUID ticket = linked().ticket(); State first = apply(ticket, read(ticket), "START_REMOTE", "111111111");
-        State closed = apply(ticket, first, "RESOLVE", null);
+        State closed = close(ticket, first);
         State pending = apply(ticket, closed, "REOPEN", null);
         assertThat(pending.teamViewerId()).isEqualTo("111111111");
         State second = apply(ticket, pending, "START_REMOTE", "222222222");
         assertThat(second.teamViewerId()).isEqualTo("222222222");
-        closed = apply(ticket, second, "RESOLVE", null);
+        closed = close(ticket, second);
         pending = apply(ticket, closed, "REOPEN", null);
         State cleared = apply(ticket, pending, "START_REMOTE", null);
         assertThat(cleared.teamViewerId()).isNull();
         assertThat(cleared.events().subList(0, first.events().size())).isEqualTo(first.events());
-        assertThat(cleared.events().get(3).teamViewerId()).isEqualTo("222222222");
+        assertThat(cleared.events().get(4).teamViewerId()).isEqualTo("222222222");
         assertThat(cleared.events().getLast().teamViewerId()).isNull();
     }
 
@@ -267,14 +299,9 @@ class SupportInterventionPostgreSqlTest {
         assertThat(read(ticket)).isEqualTo(onsite); assertThat(updateAudits(ticket)).isEqualTo(before);
         var priority = mapper.readValue(http(put(updatePath),new UpdateSupportTicketRequest(null,"URGENTE"),200),SupportTicketResponse.class);
         assertThat(priority.status()).isEqualTo("EN_CURSO"); assertThat(priority.interventionVersion()).isEqualTo(2);
-        var closed = mapper.readValue(http(put(updatePath),new UpdateSupportTicketRequest("RESUELTO",null,2L,"EN_CURSO"),200),SupportTicketResponse.class);
-        assertThat(closed.interventionVersion()).isEqualTo(3); assertThat(closed.priority()).isEqualTo("URGENTE");
-        var reopened = mapper.readValue(http(put(updatePath),new UpdateSupportTicketRequest("ABIERTO",null,3L,"RESUELTO"),200),SupportTicketResponse.class);
-        assertThat(reopened.interventionVersion()).isEqualTo(4); assertThat(read(ticket).status()).isEqualTo("REMOTE_PENDING");
-        var details = jdbc.queryForList("select details from saas_admin_audit_log where action='UPDATE_SUPPORT_TICKET' and target_id=?",String.class,ticket.toString());
-        assertThat(details).anySatisfy(value -> assertThat(value).contains("previousStatus=EN_CURSO", "nextStatus=RESUELTO", "interventionVersion=3"));
-        assertThat(details).anySatisfy(value -> assertThat(value).contains("previousStatus=RESUELTO", "nextStatus=ABIERTO", "interventionVersion=4"));
-        assertThat(details).allSatisfy(value -> assertThat(value).doesNotContain("123456789", "Investigation with controlled evidence"));
+        http(put(updatePath),new UpdateSupportTicketRequest("RESUELTO",null,2L,"EN_CURSO"),409);
+        assertThat(read(ticket)).isEqualTo(onsite);
+        assertThat(updateAudits(ticket)).isEqualTo(before + 1);
         assertThat(read(ticket).events()).isEqualTo(onsite.events());
     }
 
@@ -316,7 +343,7 @@ class SupportInterventionPostgreSqlTest {
     }
 
     @Test
-    void workflowWriteWaitingOnGenericCloseReopenDetectsChangedVersion() throws Exception {
+    void workflowWriteWaitingOnPlanningChangesDetectsChangedVersion() throws Exception {
         UUID ticket = linked().ticket(); State initial = read(ticket);
         var waiting = new java.util.concurrent.atomic.AtomicReference<Future<Integer>>();
         try (var executor = Executors.newSingleThreadExecutor()) {
@@ -325,12 +352,13 @@ class SupportInterventionPostgreSqlTest {
                 int pid = jdbc.queryForObject("select pg_backend_pid()",Integer.class);
                 waiting.set(executor.submit(() -> responseCode(() -> interventions.apply(ticket,request(initial,"START_REMOTE",null)))));
                 awaitBlocked(pid,waiting.get());
-                changeTicketStatus(ticket,"RESUELTO"); changeTicketStatus(ticket,"ABIERTO");
+                State planned = interventions.apply(ticket, planning(initial, "Technician Ana"));
+                interventions.apply(ticket, planning(planned, "Technician Bea"));
             });
             assertThat(waiting.get().get(15,TimeUnit.SECONDS)).isEqualTo(409);
         }
-        assertThat(read(ticket).version()).isEqualTo(2); assertThat(read(ticket).events()).isEmpty();
-        assertThat(audits(ticket)).isZero();
+        assertThat(read(ticket).version()).isEqualTo(2); assertThat(read(ticket).events()).hasSize(2);
+        assertThat(audits(ticket)).isEqualTo(2);
     }
 
     private long updateAudits(UUID ticket) {
@@ -345,6 +373,102 @@ class SupportInterventionPostgreSqlTest {
         }
         assertThat(blocked).as("real request is waiting on transaction row lock").isTrue();
     }
+    @Test
+    void saasDiagnosisCanCloseOnlyAfterVerificationAndCanEscalate() throws Exception {
+        Linked linked=linked(); UUID ticket=linked.ticket();
+        State initial=read(ticket);
+        State diagnosis=apply(ticket,initial,"START_SAAS",null);
+        assertThat(diagnosis.status()).isEqualTo("SAAS_IN_PROGRESS");
+        assertThat(diagnosis.assigneeUserId()).isNotNull();
+        assertThat(diagnosis.assignee()).isEqualTo("admin");
+        submit(ticket,request(diagnosis,"RESOLVE",null),409);
+        State closed=close(ticket,diagnosis);
+        assertThat(closed.failure().status()).isEqualTo("OPEN");
+        assertThat(closed.ticketStatus()).isEqualTo("RESUELTO");
+        var listed=support.supportTickets(linked.site().company().getId()).stream().filter(t->t.id().equals(ticket)).findFirst().orElseThrow();
+        assertThat(listed.interventionStatus()).isEqualTo("RESOLVED");
+        assertThat(listed.failureKey()).isEqualTo(linked.failure());
+        assertThat(listed.failureStatus()).isEqualTo("OPEN");
+        assertThat(listed.failureReceivedAt()).isNotNull();
+        assertThat(listed.assigneeUserId()).isEqualTo(diagnosis.assigneeUserId());
+        State restarted=apply(ticket,apply(ticket,closed,"REOPEN",null),"START_SAAS",null);
+        assertThat(apply(ticket,restarted,"START_REMOTE",null).status()).isEqualTo("REMOTE_IN_PROGRESS");
+        UUID other=linked().ticket();
+        assertThat(apply(other,apply(other,read(other),"START_SAAS",null),"REQUIRE_ONSITE",null).status()).isEqualTo("ONSITE_REQUIRED");
+    }
+
+    @Test
+    void waitsRequireReasonAndFutureReviewAndResumeSavedPhaseWithoutClosing() throws Exception {
+        UUID ticket=linked().ticket(); State diagnosis=apply(ticket,read(ticket),"START_SAAS",null);
+        submit(ticket,waitRequest(diagnosis,"WAIT_CUSTOMER",null),400);
+        submit(ticket,waitRequest(diagnosis,"WAIT_CUSTOMER",Instant.now().minusSeconds(60)),400);
+        Request wait=waitRequest(diagnosis,"WAIT_CUSTOMER",Instant.now().plusSeconds(7200).truncatedTo(java.time.temporal.ChronoUnit.MICROS));
+        State waiting=submit(ticket,wait,200);
+        assertThat(waiting.status()).isEqualTo("WAITING_CUSTOMER"); assertThat(waiting.resumeStatus()).isEqualTo("SAAS_IN_PROGRESS");
+        assertThat(waiting.nextReviewAt()).isEqualTo(wait.nextReviewAt());
+        assertThat(submit(ticket,wait,200)).isEqualTo(waiting);
+        submit(ticket,new Request(wait.requestId(),wait.expectedVersion(),wait.expectedTicketStatus(),wait.action(),wait.note(),null,null,null,null,null,null,null,wait.nextReviewAt().plusSeconds(60)),409);
+        submit(ticket,request(waiting,"RESOLVE",null),409);
+        submit(ticket,request(waiting,"REQUEST_VERIFICATION",null),409);
+        State material=submit(ticket,waitRequest(waiting,"WAIT_MATERIAL",Instant.now().plusSeconds(14400)),200);
+        assertThat(material.resumeStatus()).isEqualTo("SAAS_IN_PROGRESS");
+        State planned=submit(ticket,planning(material,"Technician Ana"),200);
+        assertThat(planned.nextReviewAt()).isEqualTo(material.nextReviewAt());
+        State resumed=apply(ticket,planned,"RESUME",null);
+        assertThat(resumed.status()).isEqualTo("SAAS_IN_PROGRESS"); assertThat(resumed.nextReviewAt()).isNull(); assertThat(resumed.resumeStatus()).isNull();
+        submit(ticket,request(resumed,"RESUME",null),409);
+        State verifying=apply(ticket,resumed,"REQUEST_VERIFICATION",null);
+        State customer=submit(ticket,waitRequest(verifying,"WAIT_CUSTOMER",Instant.now().plusSeconds(7200)),200);
+        assertThat(apply(ticket,customer,"RESUME",null).status()).isEqualTo("AWAITING_VERIFICATION");
+        assertThat(read(ticket).resolutionSummary()).isEqualTo("Replaced faulty cable");
+    }
+
+    @Test
+    void assignmentRequiresPermittedActiveUserAndCanExplicitlyUnassign() throws Exception {
+        UUID ticket=linked().ticket(); State initial=read(ticket);
+        UUID disabled=technicianId("Disabled "+UUID.randomUUID()), denied=technicianId("Denied "+UUID.randomUUID());
+        jdbc.update("update saas_admin_user set active=false where id=?",disabled);
+        jdbc.update("delete from saas_admin_user_role where user_id=?",denied);
+        for (UUID invalid:List.of(UUID.randomUUID(),disabled,denied)) {
+            submit(ticket,new Request(UUID.randomUUID(),0L,"ABIERTO","SAVE_DETAILS","Assign valid technician",null,null,null,null,null,null,invalid,null),400);
+        }
+        assertThat(read(ticket).assignees()).extracting(Assignee::id).doesNotContain(disabled,denied);
+        submit(ticket,new Request(UUID.randomUUID(),0L,"ABIERTO","SAVE_DETAILS","Legacy free name",null,"Unverified technician",null,null,null,null),400);
+        State planned=submit(ticket,planning(initial,"Technician Ana"),200);
+        State unassigned=submit(ticket,new Request(UUID.randomUUID(),planned.version(),planned.ticketStatus(),"SAVE_DETAILS","Remove assignment",null,null,null,null,null,null,null,null),200);
+        assertThat(unassigned.assigneeUserId()).isNull(); assertThat(unassigned.assignee()).isNull(); assertThat(unassigned.visitAt()).isNull();
+        assertThat(unassigned.events().getFirst().assigneeUserId()).isEqualTo(technicianId("Technician Ana"));
+        jdbc.update("update saas_support_intervention set assignee='Legacy Technician' where ticket_id=?",ticket);
+        assertThat(read(ticket).assignee()).isEqualTo("Legacy Technician"); assertThat(read(ticket).assigneeUserId()).isNull();
+    }
+
+    @Test
+    void urgentNotificationDisappearsAfterVerifiedClosureAndReturnsOnReopen() throws Exception {
+        UUID ticket=linked().ticket(); support.updateSupportTicket(ticket,new UpdateSupportTicketRequest(null,"URGENTE"));
+        String notification="ticket-urgent-"+ticket;
+        assertThat(support.notifications()).extracting(AdminNotificationResponse::id).contains(notification);
+        State closed=close(ticket,apply(ticket,read(ticket),"START_SAAS",null));
+        assertThat(support.notifications()).extracting(AdminNotificationResponse::id).doesNotContain(notification);
+        apply(ticket,closed,"REOPEN",null);
+        assertThat(support.notifications()).extracting(AdminNotificationResponse::id).contains(notification);
+        assertThat(support.status().expectedMigration()).isEqualTo("V74__support_diagnosis_waits_and_assignment");
+    }
+
+    @Test
+    void replayOfCommittedV73PlanningKeepsHistoricalNameAndDoesNotRequireNewAssignment() throws Exception {
+        UUID ticket=linked().ticket(); UUID key=UUID.fromString("d74629f5-648d-4a53-b46c-aabb11223344");
+        Instant visit=Instant.parse("2026-10-02T10:00:00Z");
+        jdbc.update("insert into saas_support_intervention(ticket_id,status,version,assignee,visit_at) values (?,'REMOTE_PENDING',1,'Legacy Ana',?)",ticket,Timestamp.from(visit));
+        jdbc.update("""
+                insert into saas_support_intervention_event(request_id,ticket_id,version,expected_ticket_status,action,status,note,actor,created_at,assignee,visit_at,request_fingerprint)
+                values (?,?,1,'ABIERTO','SAVE_DETAILS','REMOTE_PENDING','Legacy technician planned','admin',now(),'Legacy Ana',?,?)
+                """,key,ticket,Timestamp.from(visit),"cd60b396db9c8045be1ca102c44b873dc541e381c01e95061d049a00655aaef5");
+        Request legacy=new Request(key,0L,"ABIERTO","SAVE_DETAILS","Legacy technician planned",null,"Legacy Ana",visit,null,null,null);
+        State replay=submit(ticket,legacy,200);
+        assertThat(replay.version()).isEqualTo(1); assertThat(replay.assignee()).isEqualTo("Legacy Ana"); assertThat(replay.assigneeUserId()).isNull();
+        assertThat(replay.events()).hasSize(1); assertThat(audits(ticket)).isZero();
+    }
+
     private Linked linked() {
         Site site = site(); String failure = failure(site, "LOCAL_APPLICATION", "OPEN", "DANGER");
         UUID ticket = repairs.manual(failure, new StoreRepairModels.ManualRequest("Manual investigation required")).ticketId();
@@ -352,7 +476,27 @@ class SupportInterventionPostgreSqlTest {
     }
     private record Linked(Site site, String failure, UUID ticket) { }
     private Request request(State state, String action, String teamViewer) {
-        return new Request(UUID.randomUUID(), state.version(), state.ticketStatus(), action, "Investigation with controlled evidence", teamViewer);
+        return new Request(UUID.randomUUID(), state.version(), state.ticketStatus(), action, "Investigation with controlled evidence", teamViewer,
+                null, null, "REQUEST_VERIFICATION".equals(action) ? "Replaced faulty cable" : null,
+                "RESOLVE".equals(action) ? "Test sale and printing succeeded" : null, "RESOLVE".equals(action) ? "Store manager" : null);
+    }
+    private Request planning(State state, String assignee) {
+        return new Request(UUID.randomUUID(), state.version(), state.ticketStatus(), "SAVE_DETAILS", "Schedule technician visit", null,
+                null, Instant.parse("2026-10-02T10:00:00Z"), null, null, null, technicianId(assignee), null);
+    }
+    private UUID technicianId(String username) {
+        var existing=jdbc.query("select id from saas_admin_user where username=?",(rs,row)->rs.getObject(1,UUID.class),username);
+        if (!existing.isEmpty()) return existing.getFirst();
+        UUID id=UUID.randomUUID();
+        jdbc.update("insert into saas_admin_user(id,username,password_hash,active,created_at,must_change_password) values (?,?,?,true,now(),false)",id,username,"test-only-no-login");
+        jdbc.update("insert into saas_admin_user_role(user_id,role_id) select ?,role_id from saas_admin_role_permission where permission_code='MANAGE_SUPPORT_TICKETS' order by role_id limit 1",id);
+        return id;
+    }
+    private Request waitRequest(State state, String action, Instant review) {
+        return new Request(UUID.randomUUID(),state.version(),state.ticketStatus(),action,"Awaiting customer or spare part",null,null,null,null,null,null,null,review);
+    }
+    private State close(UUID ticket, State state) throws Exception {
+        return apply(ticket, apply(ticket, state, "REQUEST_VERIFICATION", null), "RESOLVE", null);
     }
     private State apply(UUID ticket, State state, String action, String teamViewer) throws Exception { return submit(ticket, request(state,action,teamViewer),200); }
     private State read(UUID ticket) throws Exception { return mapper.readValue(http(get(path(ticket)),null,200),State.class); }

@@ -1,101 +1,30 @@
-import { useEffect, useRef, useState } from "react";
-import { api, ApiError } from "../../lib/api";
-import type { Credentials, SupportTicket, SupportTicketComment } from "../../lib/types";
-import { useI18n } from "../../i18n";
-import { formatDate } from "../../shared/lib";
+import { useEffect, useState } from "react";
+import { api } from "../../lib/api";
+import type { Credentials, SupportTicket } from "../../lib/types";
 import { StatusPill } from "../../shared/ui";
 import { repairSession } from "./repair-session";
 import { TicketInterventionsPanel } from "./TicketInterventionsPanel";
+import { TicketCommentComposer } from "../support/TicketCommentComposer";
 import { useRepairLabels } from "./repair-labels";
-
-function validComment(value: SupportTicketComment | null | undefined, ticketId: string): value is SupportTicketComment {
-  return !!value && typeof value.id === "string" && !!value.id && value.ticketId === ticketId
-    && typeof value.author === "string" && typeof value.message === "string"
-    && typeof value.createdAt === "string" && Number.isFinite(Date.parse(value.createdAt))
-    && (value.requestId == null || typeof value.requestId === "string");
-}
 export function LinkedFailureTicket({ credentials, companyId, ticketId, canManage }: {
-  credentials: Credentials; companyId: string; ticketId: string; canManage: boolean;
+ credentials:Credentials;companyId:string;ticketId:string;canManage:boolean;
 }) {
-  const f = useRepairLabels(); const { t } = useI18n();
-  const writes = repairSession(credentials).tickets;
-  const scope = useRef({ credentials, companyId, ticketId });
-  scope.current = { credentials, companyId, ticketId };
-  const current = () => alive.current && scope.current.credentials === credentials && scope.current.companyId === companyId && scope.current.ticketId === ticketId;
-  const pendingWrite = writes.get(ticketId);
-  const [ticket, setTicket] = useState<SupportTicket | null>(null);
-  const [comments, setComments] = useState<SupportTicketComment[]>([]);
-  const [comment, setComment] = useState(() => { const pending = writes.get(ticketId); return pending?.kind === "comment" ? pending.value : ""; });
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false); const busyRef = useRef(false);
-  const [revision, setRevision] = useState(0);
-  const [mustRefresh, setMustRefresh] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [interventionBusy, setInterventionBusy] = useState(false);
-  useEffect(() => { setInterventionBusy(false); }, [credentials, ticketId, companyId]);
-  const alive = useRef(true); const generation = useRef(0);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
-  useEffect(() => {
-    const requestId = ++generation.current;
-    setLoading(true);
-    void Promise.all([api.supportTickets(credentials, companyId), api.supportTicketComments(credentials, ticketId)])
-      .then(([tickets, rows]) => {
-        if (!current() || requestId !== generation.current) return;
-        if (!Array.isArray(rows) || !rows.every(row => validComment(row, ticketId))) throw new Error("Invalid comments response");
-        const loadedTicket = tickets.find(item => item.id === ticketId && item.companyId === companyId) ?? null;
-        const pending = writes.get(ticketId);
-        const confirmed = pending && rows.some(row => row.requestId === pending.requestId && row.author === pending.username && row.message === pending.value);
-        if (confirmed) { writes.delete(ticketId); if (pending.kind === "comment") setComment(""); setSaved(true); }
-        setMustRefresh(false); setLoadError(!loadedTicket); setTicket(loadedTicket); setComments(rows); setError(loadedTicket ? null : f("ticketMissing"));
-      }).catch(() => { if (current() && requestId === generation.current) { setLoadError(true); setError(f("ticketUnavailable")); } })
-      .finally(() => { if (current() && requestId === generation.current) setLoading(false); });
-    return () => { generation.current++; };
-  }, [credentials.accessToken, companyId, ticketId, revision]);
-  async function write() {
-    if (!ticket || !canManage || busyRef.current || interventionBusy || loading || loadError || mustRefresh || !comment.trim()) return;
-    busyRef.current = true; setBusy(true); setSaved(false); setError(null); generation.current++;
-    const write = pendingWrite ?? { kind: "comment" as const, value: comment.trim(),
-      requestId: crypto.randomUUID(), username: credentials.username, uncertain: false };
-    writes.set(ticketId, write);
-    try {
-      const added = await api.createSupportTicketComment(credentials, ticketId, write.value, write.requestId);
-      if (!validComment(added, ticketId) || added.requestId !== write.requestId || added.author !== write.username || added.message !== write.value) throw new Error("Unconfirmed comment response");
-      if (!current()) return;
-      setComments(rows => rows.some(row => row.id === added.id) ? rows : [...rows, added]); setComment("");
-      if (writes.get(ticketId) === write) writes.delete(ticketId);
-      setSaved(true);
-    } catch (error) {
-      if (!current()) return;
-      const rejected = error instanceof ApiError && [400, 403, 404, 409, 422].includes(error.status);
-      if (rejected) { if (writes.get(ticketId) === write) writes.delete(ticketId); setMustRefresh(true); }
-      else write.uncertain = true;
-      setError(f(rejected ? "manualRejected" : "manualSaveFailed"));
-    }
-    finally { if (current()) { busyRef.current = false; setBusy(false); } }
-  }
-  return <section aria-label={f("ticket")} className="content-section linked-failure-ticket">
-    <p className="linked-ticket-scope">{f("ticketScope")}</p>
-    {loading && <p role="status">{f("loading")}</p>}
-    {error && <p role="alert">{error}</p>}
-    {pendingWrite && <p role="status">{f("ticketPending")}</p>}
-    {saved && <p role="status">{f("manualSaved")}</p>}
-    <button className="secondary-button linked-ticket-refresh" type="button" disabled={busy || interventionBusy || loading} onClick={() => setRevision(value => value + 1)}>{f("ticketReload")}</button>
-    {ticket && <>
-      <div className="linked-ticket-heading"><h5>{ticket.title}</h5> <StatusPill status={f(ticket.status === "RESUELTO" ? "ticketResolved" : ticket.status === "EN_CURSO" ? "ticketInProgress" : ticket.status === "ABIERTO" ? "ticketOpen" : "unknown")} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} /></div>
-      {ticket.description && <details className="linked-ticket-description"><summary>{f("ticketDetails")}</summary><p>{ticket.description}</p></details>}
-
-      <TicketInterventionsPanel key={`${repairSession(credentials).id}:${ticketId}`} credentials={credentials} ticketId={ticketId} companyId={companyId} ticketStatus={ticket.status} canManage={canManage}
-        blocked={loading || loadError || mustRefresh || busy || !!pendingWrite} refreshVersion={revision} onChanged={() => setRevision(value => value + 1)} onBusyChange={setInterventionBusy} />
-      <div className="linked-ticket-comments"><h6>{f("commentsTitle")}</h6>
-      {comments.map(item => <article className="linked-ticket-comment" key={item.id}><strong>{item.author}</strong> · {formatDate(item.createdAt)}<p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.message}</p></article>)}
-      {canManage && <>
-        <p className="linked-ticket-hint">{f("commentHelp")}</p>
-        <label className="linked-ticket-note">{f("manualComment")}<textarea rows={3} className="control-input" value={comment} maxLength={4000} disabled={busy || interventionBusy || !!pendingWrite} onChange={event => setComment(event.target.value)} /></label>
-        <button className="secondary-button" type="button" disabled={busy || interventionBusy || loading || loadError || mustRefresh || !comment.trim()} onClick={() => void write()}>{pendingWrite?.kind === "comment" ? f("retryComment") : t("addComment")}</button>
-      </>}
-      </div>
-    </>}
-  </section>;
+ const f=useRepairLabels();const session=repairSession(credentials);
+ const [ticket,setTicket]=useState<SupportTicket|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState(false);
+ const [commentsBlocked,setCommentsBlocked]=useState(canManage);
+ const [revision,setRevision]=useState(0);const [busy,setBusy]=useState(false);const [interventionBusy,setInterventionBusy]=useState(false);
+ useEffect(()=>{let active=true;setLoading(true);void api.supportTickets(credentials,companyId).then(rows=>{
+   if(!active)return;const found=rows.find(row=>row.id===ticketId&&row.companyId===companyId)??null;setTicket(found);setError(!found);
+ }).catch(()=>{if(active)setError(true);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[credentials,companyId,ticketId,revision]);
+ return <section aria-label={f("ticket")} className="content-section linked-failure-ticket">
+   <p className="linked-ticket-scope">{f("ticketScope")}</p>{loading&&<p role="status">{f("loading")}</p>}{error&&<p role="alert">{f("ticketUnavailable")}</p>}
+   <button className="secondary-button linked-ticket-refresh" type="button" disabled={busy||interventionBusy||loading} onClick={()=>setRevision(v=>v+1)}>{f("ticketReload")}</button>
+   {ticket&&<><div className="linked-ticket-heading"><h5>{ticket.title}</h5><StatusPill status={f(ticket.status==="RESUELTO"?"ticketResolved":ticket.status==="EN_CURSO"?"ticketInProgress":"ticketOpen")} tone={ticket.status==="RESUELTO"?"ok":"warning"}/></div>
+   {ticket.description&&<details className="linked-ticket-description"><summary>{f("ticketDetails")}</summary><p>{ticket.description}</p></details>}
+   <TicketInterventionsPanel key={session.id+":"+ticketId} credentials={credentials} ticketId={ticketId} companyId={companyId} ticketStatus={ticket.status} canManage={canManage}
+     blocked={loading||error||busy||commentsBlocked||session.tickets.has(ticketId)} refreshVersion={revision} onChanged={()=>setRevision(v=>v+1)} onBusyChange={setInterventionBusy}/>
+   {canManage&&<TicketCommentComposer key={session.id+":comment:"+ticketId} credentials={credentials} ticketId={ticketId} disabled={loading||error||interventionBusy}
+     onBusyChange={setBusy} onBlockedChange={setCommentsBlocked} refreshVersion={revision} onChanged={()=>setRevision(v=>v+1)}/>}
+   </>}
+ </section>;
 }

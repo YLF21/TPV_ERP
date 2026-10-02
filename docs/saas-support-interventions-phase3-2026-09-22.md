@@ -1,5 +1,35 @@
 # Fase 3: asistencia remota humana y atención presencial
 
+## Flujo vigente desde V73 (1 de octubre de 2026)
+
+Esta sección sustituye las reglas de cierre de V72 descritas más abajo como historial de la implementación.
+
+- **Soporte → Gestionar incidencia** abre el mismo seguimiento que el detalle del fallo. Incluye tickets generales y empresas sin licencia.
+- **Derivar a soporte manual** permite crear o recuperar el ticket aunque todavía exista un reintento automático disponible. Durante un comando activo se espera su resultado.
+- **Guardar planificación** registra responsable y, si procede, fecha y hora de visita. La pantalla usa la zona horaria del navegador y el servidor conserva el instante UTC. Iniciar una visita exige haber guardado su fecha.
+- La asistencia remota o presencial pasa primero a **Pendiente de comprobación**, con la solución aplicada. **Resolver intervención** exige comprobaciones realizadas y la persona que confirma. **No funciona: volver a diagnóstico** reabre el diagnóstico; también se puede derivar a visita desde la comprobación.
+- La API genérica de actualización de tickets permite prioridad y actualizaciones que conservan el estado. Rechaza cambios de estado: todos los cierres y reaperturas pasan por el seguimiento con versión y estado esperado.
+- Cerrar un ticket no cambia el fallo técnico. Se muestran por separado el último estado recibido del fallo y el estado de atención. Los cierres anteriores sin pruebas estructuradas se conservan y se identifican como tales.
+- **Reabrir intervención** conserva el historial, responsable y evidencias históricas; limpia fecha de visita y comprobaciones del ciclo anterior. Iniciar otra asistencia remota con ID vacío elimina el ID vigente.
+
+| Desde | Acción | Resultado |
+| --- | --- | --- |
+| Pendiente | Iniciar asistencia remota | Asistencia remota en curso |
+| Pendiente / remota / comprobación | Derivar a visita presencial | Requiere visita |
+| Requiere visita, con fecha guardada | Iniciar visita presencial | Visita en curso |
+| Remota / visita en curso | Solución + pasar a comprobación | Pendiente de comprobación |
+| Comprobación | Nota de fallo + volver a diagnóstico | Pendiente, ticket abierto |
+| Comprobación | Pruebas + confirmado por + resolver | Resuelto |
+| Resuelto | Motivo + reabrir | Pendiente, ticket abierto |
+
+V73 añade responsable, visita y evidencia al estado y a los eventos, así como una huella del contenido de cada petición para detectar reutilizaciones incompatibles de su clave. Los tickets generales usan las mismas transacciones, permisos y controles de concurrencia que los vinculados. Las notas internas no se publican como comentarios del cliente.
+
+Aplicar primero el backend y la migración **V73__complete_support_workflow.sql**, después el frontend. El backend de tienda no cambia. TeamViewer sigue siendo una herramienta externa; SaaS registra la actuación y la comprobación declarada por el técnico.
+
+Verificación de esta ampliación: 16 pruebas PostgreSQL/HTTP de intervenciones y 15 de reparación correctas; un fixture opcional entre módulos omitido por no estar configurado. Frontend: 90 pruebas unitarias, compilación y recorridos de reparaciones, intervenciones y notificaciones correctos. Se cubren cierre sin evidencia, visita sin fecha, comprobación fallida, reapertura, ticket sin fallo/licencia, derivación directa, reintento de planificación y conservación de cierres antiguos. La validación operativa con una tienda real sigue fuera de estas pruebas.
+
+## Historial de V72
+
 ## Alcance
 
 Completa el recorrido iniciado en las fases [de diagnóstico](saas-failure-reporting-phase1-2026-09-22.md) y [de reparación limitada](saas-remote-repair-phase2-2026-09-22.md): cuando una reparación automática no es compatible o no resuelve el caso, el técnico trabaja en el ticket vinculado al fallo, registra la asistencia remota y, si hace falta, deriva el trabajo a una intervención presencial.
@@ -115,3 +145,48 @@ Se revisó también la interacción con la pantalla general de soporte y las pet
 Informes: `backend-saas/target/phase3-deep-saas-test.log` y `backend-saas/target/phase3-deep-final-saas-test.log`; los XML finales de Surefire contienen el resultado actualizado por suite. Los logs incluyen los errores provocados deliberadamente por las pruebas negativas y de rollback.
 
 No se desplegó la entrega ni se realizó una conexión TeamViewer con clientes. El navegador usa API simulada y los tests HTTP del servidor usan MockMvc con PostgreSQL real; sigue pendiente la validación operativa en una tienda real.
+
+## Continuidad del trabajo y flujo realista — 02/10/2026 (V74)
+
+La revisión se implementó en tres fases coordinadas: continuidad de borradores y navegación, fases operativas y asignación, y seguimiento unificado. Las migraciones V73 y V74 se aplican en ese orden; V74 amplía las tablas existentes sin sustituir el historial.
+
+### Fase 1: conservar el contexto y el trabajo
+
+- Guardar responsable y visita modifica únicamente la planificación. Conserva las notas, solución y comprobaciones todavía sin enviar.
+- Los borradores se conservan en memoria durante la sesión y entre ambas pantallas del mismo ticket. Cerrar sesión o recargar completamente el navegador los descarta; no se almacenan notas privadas en almacenamiento persistente del navegador.
+- Abrir soporte desde un fallo selecciona empresa y ticket, abre su seguimiento y ofrece volver al fallo original.
+- Los comentarios usan el mismo componente en ambas pantallas. Un resultado incierto conserva el identificador y contenido originales; reintentar o actualizar permite confirmar el envío sin duplicarlo. Las respuestas tardías de otra pantalla o sesión no cambian el trabajo actual.
+
+### Fase 2: atención, esperas y técnicos
+
+1. Desde pendiente de diagnóstico, elegir **Trabajar desde SaaS** para revisar o ajustar la configuración. La acción registra el trabajo; el ajuste debe realizarse en el módulo correspondiente.
+2. Si hace falta acceder al equipo, iniciar asistencia remota. TeamViewer abre fuera del panel; registrar la fase no establece una conexión.
+3. Si hace falta una visita, derivar a presencial, elegir un técnico activo con permiso de soporte, guardar la fecha y registrar el inicio.
+4. En cualquier fase activa, esperar al cliente o al material requiere una nota y una próxima revisión futura. Retomar devuelve a la fase anterior, conservando la planificación y solución.
+5. Después de actuar, registrar la solución y pasar a comprobación. Para cerrar se exigen comprobaciones y la persona que confirma. Si la prueba falla, volver a diagnóstico o coordinar una visita.
+
+La asignación utiliza el identificador real del usuario. Los nombres antiguos siguen visibles como información histórica, pero una nueva asignación exige seleccionar un usuario autorizado. Las colas **Mis incidencias**, **Sin asignar**, **Visitas pendientes** y **Esperas por revisar** se aplican a la empresa seleccionada. Las fechas de revisión sirven para seguimiento en la cola; no envían recordatorios externos.
+
+### Fase 3: seguimiento y cierre claros
+
+El panel destaca la fase actual y la siguiente actuación. La cronología combina intentos automáticos, intervenciones internas y comentarios del ticket, indicando su distinta visibilidad. El cierre muestra **Atención cerrada · recuperación técnica pendiente** cuando el fallo técnico continúa abierto, junto con la fecha de la última información recibida. No se inventa recuperación de la tienda al cerrar el ticket. Los avisos de tickets urgentes dejan de mostrarse al resolver y pueden volver al reabrir.
+
+### Pruebas de esta entrega
+
+- PostgreSQL aislado: 21 pruebas de intervención correctas; 15 pruebas de reparación correctas y 1 omitida por no disponer del fixture opcional del trabajador local.
+- Frontend: 90 pruebas unitarias y compilación TypeScript/Vite correctas.
+- El nuevo recorrido `e2e/incident-realistic-flow-smoke.mjs` cubre resolución completa desde SaaS, preservación de borradores, técnicos reales, ambas esperas, retorno a la fase anterior, colas de trabajo, navegación al ticket correcto, vuelta al fallo y reintento idempotente de comentarios generales.
+- Pasaron los cuatro recorridos de navegador: `support-interventions-smoke.mjs`, `failure-repairs-smoke.mjs`, `support-notifications-smoke.mjs` e `incident-realistic-flow-smoke.mjs`. Se conservaron las comprobaciones de permisos, concurrencia, respuestas inválidas y cambios de sesión de los recorridos anteriores.
+- El servidor local se actualizó a V74; salud `UP`, acceso administrativo y seguimiento consultados contra el backend real. La comprobación visual no modificó incidencias locales.
+
+Las pruebas de navegador usan API simulada y no sustituyen una prueba operativa con una tienda real. El backend local y el frontend de desarrollo permiten continuar las pruebas manuales.
+
+## Correcciones del canal de tienda — 02/10/2026
+
+El portal de clientes tiene una entrada independiente: `http://127.0.0.1:5175/tienda.html`. El login interno enlaza a esta entrada, pero mantiene la autenticación administrativa. El portal admite únicamente usuarios de tienda; para conceder acceso, crear un usuario cliente con rol `MANAGER`, acceso a su empresa/tiendas y privilegio `SUPPORT` desde la administración. No reutilizar una cuenta ADMIN como gestor. La compilación genera `index.html` y `tienda.html` con sus respectivas entradas.
+
+Los comentarios de tienda utilizan una clave `requestId` estable: el servidor devuelve el mismo comentario en un reintento y rechaza reutilizar la clave con otro texto o autor. La interfaz conserva el mensaje pendiente por sesión, empresa y ticket, valida el recibo y permite reintentar o reconciliar con una consulta. El contador de abiertos excluye `RESUELTO` y el estado histórico `CERRADO`.
+
+La respuesta pública del ticket expone fase, próxima revisión y visita prevista. No incluye asignados, evidencias de intervención, identificadores técnicos ni la descripción interna generada al derivar un fallo. Los comentarios enviados expresamente al ticket continúan visibles para la tienda.
+
+Validación: 96 pruebas frontend, compilación de las dos entradas y 6 pruebas backend específicas correctas. Se repitió `tools/saas-manager-simulation.mjs` contra el backend y las interfaces reales, con la impresora considerada operativa. El gestor creó una consulta desde su portal; un comentario cuya respuesta se perdió se reintentó sin duplicarse; vio la fase de espera y revisión; el cierre exigió comprobaciones y el contador volvió de 2 a 1. El usuario temporal quedó desactivado. Caso de evidencia: `SIMULACIÓN GESTOR 9903bd77`, ticket `abbc53fd-8d24-4328-a3b8-feb1e76cdb1a` en la empresa DEMO. No se ejecutó ninguna conexión o reparación sobre una impresora real.

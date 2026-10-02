@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 const companyId = "10000000-0000-4000-8000-000000000001";
 const ticketId = "60000000-0000-4000-8000-000000000001";
+const assignees = [{ id: "80000000-0000-4000-8000-000000000001", username: "REPAIRS" }, { id: "80000000-0000-4000-8000-000000000002", username: "Ana García" }];
 const now = "2026-09-22T10:00:00Z";
 const sync = { id: "LOCAL_SYNC:40000000-0000-4000-8000-000000000001", source: "LOCAL_SYNC", sourceId: "40000000-0000-4000-8000-000000000001", companyId,
   companyName: "Empresa sin licencia", storeId: "20000000-0000-4000-8000-000000000001", storeName: "Tienda prueba", internalCode: "3500001",
@@ -13,7 +14,7 @@ export async function setup(browser, errors, base, permissions = allPermissions,
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.on("pageerror", error => errors.push(error.message));
   const state = { commands: [], manualTicketIds: new Map(), repairPosts: [], manualPosts: [], reads: 0, failNext: false, loseResponse: false, delayPost: null, delayPostResponse: null,
-    ticket: null, comments: [], commentPosts: [], loseCommentResponse: false, failRepairReads: false, failTicketReads: false, delayRepairGet: null, ticketMutations: [], interventionPosts: [], intervention: null, failInterventionReads: false, loseInterventionResponse: false, failInterventionPost: false, invalidInterventionResponse: false, conflictIntervention: false, delayIntervention: null, ticketReads: 0, interventionReads: 0, ticketDelayMs: 0, delayInterventionResponse: null, delayComment: null, delayCommentResponse: null, invalidCommentResponse: null, rejectComment: false, invalidCommentRead: false };
+    companies: [{ companyId, companyName: sync.companyName, taxId: "B00000001" }], ticket: null, comments: [], commentPosts: [], loseCommentResponse: false, failRepairReads: false, failTicketReads: false, delayRepairGet: null, ticketMutations: [], interventionPosts: [], intervention: null, failInterventionReads: false, loseInterventionResponse: false, failInterventionPost: false, invalidInterventionResponse: false, conflictIntervention: false, delayIntervention: null, ticketReads: 0, interventionReads: 0, ticketDelayMs: 0, delayInterventionResponse: null, delayComment: null, delayCommentResponse: null, invalidCommentResponse: null, rejectComment: false, invalidCommentRead: false };
   await page.route("**/api/**", async route => {
     const req = route.request(); const path = decodeURIComponent(new URL(req.url()).pathname); const method = req.method();
     const body = req.postData() ? JSON.parse(req.postData()) : null;
@@ -21,7 +22,7 @@ export async function setup(browser, errors, base, permissions = allPermissions,
     if (path === "/api/v1/auth/admin/login") return json({ username: "REPAIRS", accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
     if (path === "/api/v1/auth/logout") return route.fulfill({ status: 204 });
     if (path === "/api/v1/admin/me") return json({ username: "REPAIRS", permissions });
-    if (path === "/api/v1/admin/companies") return json([{ companyId, companyName: sync.companyName, taxId: "B00000001" }]);
+    if (path === "/api/v1/admin/companies") return json(state.companies);
     if (path === "/api/v1/admin/licenses") return json(includeLicenses ? [{ licenseReference: "LIC-SUPPORT", companyId, companyName: sync.companyName, taxId: "B00000001", taxpayerType: "SOCIEDAD", taxRegime: "IVA", commercialProfile: "MINORISTA", status: "VALIDA", validUntil: "2099-01-01T00:00:00Z", maxWindows: 1, maxPda: 0 }] : []);
     if (path === "/api/v1/admin/sync/sales-summary") return json({ documentCount: 0, total: "0.00" });
     if (path === "/api/v1/admin/reports/advanced") return json({ companies: 1, invoices: 0, invoicedTotal: "0.00", paidTotal: "0.00", salesDocuments: 0, salesTotal: "0.00", inventoryMovements: 0, integrations: 0, activeIntegrations: 0 });
@@ -48,9 +49,11 @@ export async function setup(browser, errors, base, permissions = allPermissions,
       state.ticket ??= { id: ticketId, companyId, companyName: sync.companyName, title: "Intervención manual del fallo", description: body.reason, priority: "NORMAL", status: "ABIERTO", interventionVersion: 0, createdBy: "REPAIRS", createdAt: now, updatedAt: now };
       return json({ ticketId });
     }
-    if (path === `/api/v1/admin/companies/${companyId}/tickets`) { state.ticketReads++; if (state.ticketDelayMs) await new Promise(resolve => setTimeout(resolve, state.ticketDelayMs)); return state.failTicketReads ? route.fulfill({ status: 503, body: "Synthetic ticket read failure" }) : json(state.ticket ? [state.ticket] : []); }
+    if (path === `/api/v1/admin/companies/${companyId}/tickets`) {
+      if (method === "POST") { state.ticket = { id: ticketId, companyId, companyName: sync.companyName, ...body, status: "ABIERTO", interventionVersion: 0, createdBy: "REPAIRS", createdAt: now, updatedAt: now }; return json(state.ticket); }
+      state.ticketReads++; if (state.ticketDelayMs) await new Promise(resolve => setTimeout(resolve, state.ticketDelayMs)); return state.failTicketReads ? route.fulfill({ status: 503, body: "Synthetic ticket read failure" }) : json(state.ticket ? [state.ticket] : []); }
     if (path === `/api/v1/admin/tickets/${ticketId}/interventions`) {
-      state.intervention ??= { ticketId, companyId, status: "REMOTE_PENDING", version: 0, ticketStatus: state.ticket.status, teamViewerId: null, events: [] };
+      state.intervention ??= { ticketId, companyId, status: "REMOTE_PENDING", version: 0, ticketStatus: state.ticket.status, teamViewerId: null, events: [], assignees, assigneeUserId: null, assignee: null, nextReviewAt: null, resumeStatus: null, failure: state.manualTicketIds.size ? (() => { const failure = state.manualTicketIds.has(sync.id) ? sync : app; return { key: failure.id, status: failure.status, code: failure.code, storeName: failure.storeName, receivedAt: now }; })() : null };
       if (method === "GET") { state.interventionReads++; return state.failInterventionReads ? route.fulfill({ status: 503, body: "Synthetic read failure" }) : json(state.intervention); }
       state.interventionPosts.push(body);
       if (state.delayIntervention) await state.delayIntervention;
@@ -59,17 +62,22 @@ export async function setup(browser, errors, base, permissions = allPermissions,
         if (state.conflictIntervention || body.expectedVersion !== state.intervention.version || body.expectedTicketStatus !== state.ticket.status) {
           state.conflictIntervention = false; return route.fulfill({ status: 409, body: "Synthetic concurrent update" });
         }
-        const next = { START_REMOTE: "REMOTE_IN_PROGRESS", REQUIRE_ONSITE: "ONSITE_REQUIRED", START_ONSITE: "ONSITE_IN_PROGRESS", RESOLVE: "RESOLVED", REOPEN: "REMOTE_PENDING" }[body.action];
-        const allowed = { REMOTE_PENDING: ["START_REMOTE", "REQUIRE_ONSITE"], REMOTE_IN_PROGRESS: ["REQUIRE_ONSITE", "RESOLVE"], ONSITE_REQUIRED: ["START_ONSITE"], ONSITE_IN_PROGRESS: ["RESOLVE"], RESOLVED: ["REOPEN"] };
-        assert.ok(allowed[state.intervention.status].includes(body.action));
+        const next = { START_SAAS: "SAAS_IN_PROGRESS", WAIT_CUSTOMER: "WAITING_CUSTOMER", WAIT_MATERIAL: "WAITING_MATERIAL", RESUME: state.intervention.resumeStatus, START_REMOTE: "REMOTE_IN_PROGRESS", REQUIRE_ONSITE: "ONSITE_REQUIRED", START_ONSITE: "ONSITE_IN_PROGRESS", RESOLVE: "RESOLVED", REOPEN: "REMOTE_PENDING", REQUEST_VERIFICATION: "AWAITING_VERIFICATION", VERIFICATION_FAILED: "REMOTE_PENDING", SAVE_DETAILS: state.intervention.status }[body.action];
+        const allowed = { REMOTE_PENDING: ["START_SAAS", "START_REMOTE", "REQUIRE_ONSITE", "WAIT_CUSTOMER", "WAIT_MATERIAL"], SAAS_IN_PROGRESS: ["START_REMOTE", "REQUIRE_ONSITE", "REQUEST_VERIFICATION", "WAIT_CUSTOMER", "WAIT_MATERIAL"], REMOTE_IN_PROGRESS: ["REQUIRE_ONSITE", "REQUEST_VERIFICATION", "WAIT_CUSTOMER", "WAIT_MATERIAL"], ONSITE_REQUIRED: ["START_ONSITE", "WAIT_CUSTOMER", "WAIT_MATERIAL"], ONSITE_IN_PROGRESS: ["REQUEST_VERIFICATION", "WAIT_CUSTOMER", "WAIT_MATERIAL"], AWAITING_VERIFICATION: ["RESOLVE", "VERIFICATION_FAILED", "REQUIRE_ONSITE", "WAIT_CUSTOMER", "WAIT_MATERIAL"], WAITING_CUSTOMER: ["RESUME", "WAIT_MATERIAL"], WAITING_MATERIAL: ["RESUME", "WAIT_CUSTOMER"], RESOLVED: ["REOPEN"] };
+        assert.ok(body.action === "SAVE_DETAILS" && state.intervention.status !== "RESOLVED" || allowed[state.intervention.status].includes(body.action));
+        if (body.action === "START_ONSITE") assert.ok(state.intervention.visitAt && state.intervention.assigneeUserId);
+        if (["WAIT_CUSTOMER", "WAIT_MATERIAL"].includes(body.action)) assert.ok(body.nextReviewAt && new Date(body.nextReviewAt) > new Date());
+        if (body.action === "REQUEST_VERIFICATION") assert.ok(body.resolutionSummary.length >= 5);
+        if (body.action === "RESOLVE") assert.ok(body.verificationNotes.length >= 5 && body.confirmedBy.length >= 2);
         assert.ok(Array.from(body.note.trim()).length >= 5 && Array.from(body.note.trim()).length <= 2000);
         assert.ok(body.teamViewerId == null || body.action === "START_REMOTE" && /^\d{6,15}$/.test(body.teamViewerId));
-        state.ticket.status = body.action === "RESOLVE" ? "RESUELTO" : body.action === "REOPEN" ? "ABIERTO" : "EN_CURSO";
-        state.intervention = { ...state.intervention, version: state.intervention.version + 1, status: next, ticketStatus: state.ticket.status,
+        state.ticket.status = body.action === "SAVE_DETAILS" ? state.ticket.status : body.action === "RESOLVE" ? "RESUELTO" : ["REOPEN", "VERIFICATION_FAILED"].includes(body.action) ? "ABIERTO" : "EN_CURSO";
+        const fields = body.action === "SAVE_DETAILS" ? { assigneeUserId: body.assigneeUserId, assignee: assignees.find(user => user.id === body.assigneeUserId)?.username ?? null, visitAt: body.visitAt } : ["WAIT_CUSTOMER", "WAIT_MATERIAL"].includes(body.action) ? { nextReviewAt: body.nextReviewAt, resumeStatus: state.intervention.resumeStatus ?? state.intervention.status } : body.action === "RESUME" ? { nextReviewAt: null, resumeStatus: null } : ["START_SAAS", "START_REMOTE", "START_ONSITE"].includes(body.action) && !state.intervention.assigneeUserId ? { assigneeUserId: assignees[0].id, assignee: assignees[0].username } : body.action === "REQUEST_VERIFICATION" ? { resolutionSummary: body.resolutionSummary } : body.action === "RESOLVE" ? { verificationNotes: body.verificationNotes, confirmedBy: body.confirmedBy } : ["REOPEN", "VERIFICATION_FAILED"].includes(body.action) ? { resolutionSummary: null, verificationNotes: null, confirmedBy: null, visitAt: null } : {};
+        state.intervention = { ...state.intervention, ...fields, version: state.intervention.version + 1, status: next, ticketStatus: state.ticket.status,
           teamViewerId: body.action === "START_REMOTE" ? body.teamViewerId : state.intervention.teamViewerId,
-          events: [...state.intervention.events, { requestId: body.requestId, version: state.intervention.version + 1, action: body.action, status: next, note: body.note, teamViewerId: body.teamViewerId, actor: "REPAIRS", createdAt: now }] };
+          events: [...state.intervention.events, { requestId: body.requestId, version: state.intervention.version + 1, action: body.action, status: next, note: body.note, teamViewerId: body.teamViewerId, actor: "REPAIRS", createdAt: now, ...fields }] };
       }
-      state.ticket.interventionVersion = state.intervention.version;
+      Object.assign(state.ticket, { interventionVersion: state.intervention.version, interventionStatus: state.intervention.status, assigneeUserId: state.intervention.assigneeUserId, assignee: state.intervention.assignee, visitAt: state.intervention.visitAt, nextReviewAt: state.intervention.nextReviewAt, failureKey: state.intervention.failure?.key, failureStatus: state.intervention.failure?.status, failureReceivedAt: state.intervention.failure?.receivedAt });
       const interventionResponse = structuredClone(state.intervention);
       if (state.delayInterventionResponse) await state.delayInterventionResponse;
       if (state.loseInterventionResponse) { state.loseInterventionResponse = false; return route.fulfill({ status: 503, body: "Synthetic committed response lost" }); }
@@ -98,6 +106,7 @@ export async function setup(browser, errors, base, permissions = allPermissions,
       const previousStatus = state.ticket.status;
       if (body.status != null && (body.expectedInterventionVersion !== state.ticket.interventionVersion || body.expectedTicketStatus !== previousStatus)) return route.fulfill({ status: 409, body: "Stale ticket status" });
       const changed = body.status != null && body.status !== previousStatus;
+      if (changed) return route.fulfill({ status: 409, body: "Use verified intervention workflow" });
       state.ticket = { ...state.ticket, ...(body.priority != null ? { priority: body.priority } : {}), status: body.status ?? previousStatus,
         interventionVersion: state.ticket.interventionVersion + (changed ? 1 : 0) };
       if (changed && state.intervention) state.intervention = { ...state.intervention, ticketStatus: body.status, version: state.ticket.interventionVersion,
@@ -128,4 +137,4 @@ export async function setup(browser, errors, base, permissions = allPermissions,
   return { page, state, panel, open };
 }
 
-export { companyId, ticketId, sync, app };
+export { companyId, ticketId, sync, app, assignees };

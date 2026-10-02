@@ -30,12 +30,17 @@ import { ReportsView } from "../features/reports/ReportsView";
 import { AuditView } from "../features/audit/AuditView";
 import { setActiveLocale } from "../i18n";
 
+import type { SupportTarget } from "../features/support/support-labels";
+
 export default function App() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [pendingPasswordChange, setPendingPasswordChange] = useState<{ credentials: Credentials; currentPassword: string } | null>(null);
   const [language, setLanguageState] = useState<Language>(() => readLanguage());
   setActiveLocale(localeFor(language));
   const [activeView, setActiveView] = useState<View>(() => readViewFromLocation());
+  const [supportTarget, setSupportTarget] = useState<SupportTarget | null>(null);
+  const [returnFailureKey, setReturnFailureKey] = useState<string | undefined>();
+  useEffect(() => { setSupportTarget(null); setReturnFailureKey(undefined); }, [credentials]);
   const [data, setData] = useState<DashboardData | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [session, setSession] = useState<AdminSession | null>(null);
@@ -86,7 +91,10 @@ export default function App() {
     if (group) setExpandedNavigationGroups(previous => previous.has(group) ? previous : new Set([...previous, group]));
   }
 
+  function openSupport(target: SupportTarget) { navigate("support"); setSupportTarget(target); }
+  function returnToFailure(key: string) { navigate("failures"); setReturnFailureKey(key); }
   function navigate(view: View) {
+    setSupportTarget(null); setReturnFailureKey(undefined);
     setActiveView(view);
     revealNavigationGroup(view);
     const nextHash = `#/${view}`;
@@ -459,7 +467,7 @@ export default function App() {
             {activeView === "stores" && <StoresView credentials={credentials} permissions={permissions} onNotice={setNotice} />}
             {activeView === "licenses" && <LicenseWorkspace credentials={credentials} installations={data!.installations} permissions={permissions} onChanged={() => refresh()} />}
             {activeView === "create-license" && <CreateLicenseView credentials={credentials} permissions={permissions} onChanged={() => refresh()} />}
-            {activeView === "failures" && <FailuresView credentials={credentials} licenses={data!.licenses} permissions={permissions} onNavigate={navigate} onNotice={setNotice} />}
+            {activeView === "failures" && <FailuresView credentials={credentials} licenses={data!.licenses} permissions={permissions} onNavigate={navigate} onNotice={setNotice} initialFailureKey={returnFailureKey} onOpenSupport={openSupport} />}
             {activeView === "access" && permissions.has("MANAGE_TENANT_USERS") && <TenantAccessEditor credentials={credentials} onNotice={setNotice} />}
             {activeView === "dashboard" && <Dashboard data={data!} onNavigate={navigate} />}
             {activeView === "companies" && (
@@ -491,7 +499,7 @@ export default function App() {
               />
             )}
             {activeView === "support" && (
-              <SupportView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+              <SupportView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} target={supportTarget} onReturnToFailure={returnToFailure} onClearTarget={() => setSupportTarget(null)} />
             )}
             {activeView === "health" && (
               <CustomerHealthView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />

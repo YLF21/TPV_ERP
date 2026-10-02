@@ -16,16 +16,20 @@ import { FailureRepairsPanel } from "./FailureRepairsPanel";
 import { FailureOverview, FailureTechnicalDetails } from "./FailureDetailContent";
 import { FAILURE_SOURCES, FAILURE_STATUSES, useFailureLabels } from "./failure-labels";
 
+import type { SupportTarget } from "../support/support-labels";
+
 const initialFilters = { companyId: "", storeId: "", installationId: "", source: "", status: "", from: "", to: "", q: "", activeStoresOnly: true };
 type Filters = typeof initialFilters;
 type Destination = "sync" | "outbox" | "support";
 
-export function FailuresView({ credentials, licenses, onNotice, onNavigate, permissions }: {
+export function FailuresView({ credentials, licenses, onNotice, onNavigate, permissions, initialFailureKey, onOpenSupport }: {
   credentials: Credentials;
   licenses: LicenseSummary[];
   onNotice: (notice: Notice) => void;
   onNavigate?: (view: Destination) => void;
   permissions?: Set<string>;
+  initialFailureKey?: string;
+  onOpenSupport?: (target: SupportTarget) => void;
 }) {
   const l = useWorkspaceLabels();
   const f = useFailureLabels();
@@ -34,7 +38,7 @@ export function FailuresView({ credentials, licenses, onNotice, onNavigate, perm
   const [storeSearch, setStoreSearch] = useState("");
   const [cursors, setCursors] = useState([""]);
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialFailureKey ?? null);
   const detailRef = useRef<HTMLElement>(null);
   const detailOpener = useRef<HTMLElement | null>(null);
   const detailButtons = useRef(new Map<string, HTMLButtonElement>());
@@ -152,14 +156,14 @@ export function FailuresView({ credentials, licenses, onNotice, onNavigate, perm
       <div className="failure-detail-heading"><h3>{l("detail")}</h3><button className="secondary-button" type="button" onClick={closeDetail}>{f("close")}</button></div><LoadState {...detail} />
       {detail.data && <>
         <FailureOverview failure={detail.data} />
-        <FailureRepairsPanel key={`${repairSession(credentials).id}:${detail.data.id}`} credentials={credentials} failureKey={detail.data.id} companyId={detail.data.companyId} permissions={permissions} onSupport={onNavigate ? () => onNavigate("support") : undefined} />
+        <FailureRepairsPanel key={`${repairSession(credentials).id}:${detail.data.id}`} credentials={credentials} failureKey={detail.data.id} companyId={detail.data.companyId} permissions={permissions} onSupport={onOpenSupport && detail.data.companyId ? ticketId => onOpenSupport({companyId: detail.data!.companyId!, ticketId, failureKey: detail.data!.id}) : onNavigate ? () => onNavigate("support") : undefined} />
         <FailureTechnicalDetails key={detail.data.id} failure={detail.data} onNotice={onNotice} />
         {onNavigate && <div className="failure-followup">
           <div className="failure-followup-copy"><h4>{f("supportArea")}</h4><p>{f("supportHint")}</p></div>
           <div className="failure-followup-actions">
             {detail.data.source === "SYNC_PROJECTION" && <button className="secondary-button" type="button" onClick={() => onNavigate("sync")}>{f("sync")}</button>}
             {["CENTRAL_SECURITY", "CENTRAL_INTEGRATION"].includes(detail.data.source) && permissions?.has("MANAGE_OPERATIONS") && <button className="secondary-button" type="button" onClick={() => onNavigate("outbox")}>{l("recovery")}</button>}
-            <button className="secondary-button failure-support-button" type="button" onClick={() => onNavigate("support")}>
+            <button className="secondary-button failure-support-button" type="button" onClick={() => onOpenSupport && detail.data!.companyId ? onOpenSupport({companyId: detail.data!.companyId!, failureKey: detail.data!.id}) : onNavigate("support")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M4 13v-1a8 8 0 0 1 16 0v1M4 12H3v7h4v-7H4Zm16 0h1v7h-4v-7h3ZM20 19a3 3 0 0 1-3 3h-4" /></svg>
               <span>{f("support")}</span><span className="failure-support-arrow" aria-hidden="true">→</span>
             </button>

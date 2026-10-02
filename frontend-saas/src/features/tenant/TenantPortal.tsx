@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 
-import type { Credentials, SupportTicket, TenantPortalData } from "../../lib/types";
+import type { Credentials, TenantSupportTicket, TenantPortalData } from "../../lib/types";
 import { Notice, MasterMode } from "../../shared/types";
 import { useI18n } from "../../i18n/index";
 import { errorMessage, formatDate, ticketStatusLabel, ticketPriorityLabel } from "../../shared/lib";
@@ -10,7 +10,7 @@ import { LicenseTable } from "../../shared/license-tables";
 import { InvoiceTable } from "../billing/BillingView";
 import { MasterTable } from "../masters/MastersView";
 import { canWriteTenantMasters } from "./access-selection.mjs";
-import { useTenantLabels } from "./labels";
+import { useTenantLabels, type TenantLabel } from "./labels";
 
 export function TenantPortal({
   credentials,
@@ -330,8 +330,10 @@ export function TenantMasterCreate({ credentials, onRefresh, onNotice }: { crede
   </form>;
 }
 
-export function TenantTicketList({ tickets }: { tickets: SupportTicket[] }) {
+export function TenantTicketList({ tickets }: { tickets: TenantSupportTicket[] }) {
   const { t } = useI18n();
+  const l = useTenantLabels();
+  const publicPhases = new Set(["REMOTE_PENDING", "SAAS_IN_PROGRESS", "REMOTE_IN_PROGRESS", "ONSITE_REQUIRED", "ONSITE_IN_PROGRESS", "AWAITING_VERIFICATION", "WAITING_CUSTOMER", "WAITING_MATERIAL", "RESOLVED"]);
   if (tickets.length === 0) return <EmptyState text={t("noTenantTickets")} />;
   return (
     <div className="ticket-list tenant-ticket-list">
@@ -346,6 +348,11 @@ export function TenantTicketList({ tickets }: { tickets: SupportTicket[] }) {
               <StatusPill status={ticketStatusLabel(ticket.status, t)} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} />
               <StatusPill status={ticketPriorityLabel(ticket.priority, t)} tone={ticket.priority === "URGENTE" ? "warning" : "muted"} />
             </div>
+          </div>
+          <div className="tenant-ticket-progress">
+            {ticket.interventionStatus && publicPhases.has(ticket.interventionStatus) && <p><strong>{l("publicPhase")}:</strong> {l(ticket.interventionStatus as TenantLabel)}</p>}
+            {ticket.nextReviewAt && Number.isFinite(Date.parse(ticket.nextReviewAt)) && <p><strong>{l("nextReview")}:</strong> {formatDate(ticket.nextReviewAt)}</p>}
+            {ticket.visitAt && Number.isFinite(Date.parse(ticket.visitAt)) && <p><strong>{l("plannedVisit")}:</strong> {formatDate(ticket.visitAt)}</p>}
           </div>
           {ticket.description && <p>{ticket.description}</p>}
         </article>

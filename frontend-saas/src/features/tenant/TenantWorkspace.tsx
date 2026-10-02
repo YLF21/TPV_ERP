@@ -92,5 +92,5 @@ export function TenantWorkspace({ credentials, onLogout, onNotice }: {
     onRefresh={refresh} onLogout={onLogout} onNotice={showNotice} contextSelector={selector}
     companyPrivileges={company.companyPrivileges}
     supervision={<TenantSupervision credentials={scopedCredentials} stores={company.stores} revision={access?.revision ?? 0} />}
-    supportConversation={<TenantSupportConversation credentials={scopedCredentials} tickets={data?.tickets ?? []} onNotice={showNotice} revision={access?.revision ?? 0} />} />;
+    supportConversation={<TenantSupportConversation credentials={scopedCredentials} sessionCredentials={credentials} tickets={data?.tickets ?? []} onNotice={showNotice} revision={access?.revision ?? 0} />} />;
 }

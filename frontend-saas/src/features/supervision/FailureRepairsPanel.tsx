@@ -10,7 +10,7 @@ import { useRepairLabels } from "./repair-labels";
 const active = (status: string) => status === "QUEUED" || status === "RUNNING";
 export function FailureRepairsPanel({ credentials, failureKey, companyId, permissions, onSupport }: {
   credentials: Credentials; failureKey: string; companyId: string | null; permissions?: Set<string>;
-  onSupport?: () => void;
+  onSupport?: (ticketId?: string) => void;
 }) {
   const r = useRepairLabels();
   const pendingRequests = repairSession(credentials).repairs;
@@ -35,7 +35,7 @@ export function FailureRepairsPanel({ credentials, failureKey, companyId, permis
   const unknownStatus = data?.commands.some(command => !["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "EXPIRED"].includes(command.status)) ?? false;
   const canRepair = permissions?.has("MANAGE_OPERATIONAL_INCIDENTS") ?? false;
   const canManual = permissions?.has("MANAGE_SUPPORT_TICKETS") ?? false;
-  const needsManual = companyId && data && !running && (!data.remoteEligible || unknownStatus || data.commands.some(command => command.status === "FAILED" || command.status === "EXPIRED"));
+  const needsManual = companyId && data && !running;
   useEffect(() => {
     alive.current = true;
     return () => { alive.current = false; generation.current++; };
@@ -125,10 +125,10 @@ export function FailureRepairsPanel({ credentials, failureKey, companyId, permis
       {data.manualTicketId && <div className="linked-ticket-toolbar">
         <div><strong>{r("ticket")}</strong><code>{data.manualTicketId}</code></div>
         <div className="linked-ticket-tools"><button className="secondary-button" type="button" onClick={() => void copyTicket(data.manualTicketId!)}>{r("copy")}</button>
-        {onSupport && <button className="secondary-button linked-ticket-support" type="button" onClick={onSupport}>{r("support")} <span aria-hidden="true">→</span></button>}</div>
+        {onSupport && <button className="secondary-button linked-ticket-support" type="button" onClick={() => onSupport(data.manualTicketId ?? undefined)}>{r("support")} <span aria-hidden="true">→</span></button>}</div>
       </div>}
       {data.manualTicketId && companyId && <LinkedFailureTicket key={data.manualTicketId} credentials={credentials} companyId={companyId} ticketId={data.manualTicketId} canManage={canManual} />}
-      <div className="failure-attempts"><h5>{r("history")}</h5>
+      {!data.manualTicketId && <div className="failure-attempts"><h5>{r("history")}</h5>
       {!data.commands.length && <p>{r("noCommands")}</p>}
       {data.commands.map(command => <article className="failure-attempt" key={command.commandId}>
         <StatusPill status={r(command.status)} tone={command.status === "SUCCEEDED" ? "ok" : command.status === "FAILED" || command.status === "EXPIRED" ? "warning" : "muted"} />
@@ -136,7 +136,7 @@ export function FailureRepairsPanel({ credentials, failureKey, companyId, permis
         <dl><dt>{r("created")}</dt><dd>{formatDate(command.createdAt)}</dd><dt>{r("expires")}</dt><dd>{formatDate(command.expiresAt)}</dd>
           <dt>{r("by")}</dt><dd>{command.requestedBy}</dd><dt>{r("reason")}</dt><dd style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{command.reason}</dd></dl>
       </article>)}
-      </div>
+      </div>}
     </>}
   </section>;
 }

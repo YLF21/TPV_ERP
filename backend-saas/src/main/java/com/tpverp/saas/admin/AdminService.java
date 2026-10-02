@@ -410,7 +410,7 @@ public class AdminService {
                 select t.id, t.company_id, c.name, t.title
                 from saas_support_ticket t
                 join saas_company c on c.id = t.company_id
-                where t.priority = 'URGENTE' and t.status <> 'CERRADO'
+                where t.priority = 'URGENTE' and t.status not in ('RESUELTO','CERRADO')
                 """, (rs, rowNum) -> new AdminNotificationResponse(
                 "ticket-urgent-" + rs.getObject("id", UUID.class),
                 rs.getObject("company_id", UUID.class), rs.getString("name"), "DANGER",
@@ -741,11 +741,16 @@ public class AdminService {
         return jdbc.query("""
                 select t.id, t.company_id, c.name as company_name, t.title, t.description,
                        t.status, t.priority, t.created_by, t.created_at, t.updated_at,
-                       case when exists(select 1 from saas_store_failure_manual m where m.ticket_id=t.id and m.company_id=t.company_id)
-                            then coalesce((select w.version from saas_support_intervention w where w.ticket_id=t.id),0)
-                            else null end as intervention_version
+                       coalesce(w.version,0) as intervention_version,
+                       case when t.status='RESUELTO' then 'RESOLVED' when w.status='RESOLVED' then 'REMOTE_PENDING'
+                            else coalesce(w.status,'REMOTE_PENDING') end as intervention_status,
+                       w.assignee_user_id,w.assignee,w.visit_at,w.next_review_at,
+                       m.failure_key,f.status as failure_status,f.received_at as failure_received_at
                 from saas_support_ticket t
                 join saas_company c on c.id = t.company_id
+                left join saas_support_intervention w on w.ticket_id=t.id
+                left join saas_store_failure_manual m on m.ticket_id=t.id and m.company_id=t.company_id
+                left join saas_store_failure f on m.failure_key=f.source||':'||f.id::text and f.company_id=t.company_id
                 where t.company_id = ?
                 order by t.updated_at desc
                 """, (rs, rowNum) -> supportTicket(rs), companyId);
@@ -785,6 +790,8 @@ public class AdminService {
         }
         String status = requireOneOf(request.status(), existing.status(),
                 Set.of("ABIERTO", "EN_CURSO", "RESUELTO"));
+        if (!status.equals(existing.status())) throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Cambie el estado desde el seguimiento de la incidencia; el cierre requiere comprobacion");
         String priority = requireOneOf(request.priority(), existing.priority(),
                 Set.of("NORMAL", "ALTA", "URGENTE"));
         jdbc.update("""
@@ -1728,11 +1735,16 @@ public class AdminService {
         return jdbc.query("""
                 select t.id, t.company_id, c.name as company_name, t.title, t.description,
                        t.status, t.priority, t.created_by, t.created_at, t.updated_at,
-                       case when exists(select 1 from saas_store_failure_manual m where m.ticket_id=t.id and m.company_id=t.company_id)
-                            then coalesce((select w.version from saas_support_intervention w where w.ticket_id=t.id),0)
-                            else null end as intervention_version
+                       coalesce(w.version,0) as intervention_version,
+                       case when t.status='RESUELTO' then 'RESOLVED' when w.status='RESOLVED' then 'REMOTE_PENDING'
+                            else coalesce(w.status,'REMOTE_PENDING') end as intervention_status,
+                       w.assignee_user_id,w.assignee,w.visit_at,w.next_review_at,
+                       m.failure_key,f.status as failure_status,f.received_at as failure_received_at
                 from saas_support_ticket t
                 join saas_company c on c.id = t.company_id
+                left join saas_support_intervention w on w.ticket_id=t.id
+                left join saas_store_failure_manual m on m.ticket_id=t.id and m.company_id=t.company_id
+                left join saas_store_failure f on m.failure_key=f.source||':'||f.id::text and f.company_id=t.company_id
                 where t.id = ?
                 """, (rs, rowNum) -> supportTicket(rs), ticketId).stream()
                 .findFirst()
@@ -1750,7 +1762,14 @@ public class AdminService {
                 rs.getString("priority"),
                 rs.getString("created_by"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant(), rs.getObject("intervention_version", Long.class));
+                rs.getTimestamp("updated_at").toInstant(), rs.getObject("intervention_version", Long.class),
+                rs.getString("intervention_status"),rs.getObject("assignee_user_id",UUID.class),rs.getString("assignee"),
+                supportInstant(rs,"visit_at"),supportInstant(rs,"next_review_at"),rs.getString("failure_key"),
+                rs.getString("failure_status"),supportInstant(rs,"failure_received_at"));
+    }
+
+    private static Instant supportInstant(ResultSet rs, String column) throws SQLException {
+        var value=rs.getTimestamp(column); return value==null?null:value.toInstant();
     }
 
     private SupportTicketCommentResponse supportTicketComment(UUID commentId) {

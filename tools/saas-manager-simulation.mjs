@@ -1,0 +1,157 @@
+// Local acceptance exercise: a real tenant reports, an admin handles, tenant verifies.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { chromium } from '../frontend-saas/node_modules/playwright/index.mjs';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const base = 'http://127.0.0.1:8090';
+const demo = JSON.parse(fs.readFileSync(path.join(root, '.codex-runtime/saas-incident-demo/state.json'), 'utf8'));
+assert.equal(demo.name, 'DEMO - Laboratorio de incidencias');
+const suffix = randomUUID().slice(0, 8);
+const username = `DEMO_GESTOR_${suffix}`;
+const password = randomBytes(24).toString('base64url');
+const title = `SIMULACIÓN GESTOR ${suffix} - Consulta de impresora operativa`;
+const report = { title, company: demo.name, companyId: demo.companyId, date: new Date().toISOString(), checks: [], findings: [] };
+const directory = path.join(root, 'output/playwright'); fs.mkdirSync(directory, { recursive: true });
+const reportPath = path.join(directory, `manager-simulation-${suffix}.json`);
+let admin, tenant, browser, createdUser = false;
+async function call(url, { token, companyId, method = 'GET', body, expected } = {}) {
+  const response = await fetch(base + url, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(companyId ? { 'X-TPV-Company-Id': companyId } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15000) });
+  if (expected) { assert.ok(expected.includes(response.status), `${url}: unexpected HTTP ${response.status}`); return response.status; }
+  assert.ok(response.ok, `${url}: HTTP ${response.status}`);
+  const content = await response.text();
+  return content ? JSON.parse(content) : null;
+}
+const a = (url, options = {}) => call(url, { token: admin.accessToken, ...options });
+const t = (url, options = {}) => call(url, { token: tenant.accessToken, companyId: demo.companyId, ...options });
+try {
+  admin = await call('/api/v1/auth/admin/login', { method: 'POST', body: { username: 'ADMIN', password: process.env.SAAS_LOCAL_ADMIN_PASSWORD ?? '0000' } });
+  const companies = await a('/api/v1/admin/companies');
+  assert.ok(companies.some(c => c.companyId === demo.companyId && c.companyName === demo.name));
+  await a(`/api/v1/admin/companies/${demo.companyId}/tenant-users`, { method: 'POST', body: { username, password, roleName: 'MANAGER', storeIds: [demo.scenarios[2].storeId], companyPrivileges: ['SUPPORT', 'READ_COMPANY'] } }); createdUser = true;
+  tenant = await call('/api/v1/auth/login', { method: 'POST', body: { username, password } });
+  assert.equal(tenant.mode, 'tenant');
+  report.checks.push({ case: 'Login real de gestor con rol MANAGER', result: 'PASS' });
+  await call('/api/v1/auth/admin/login', { method: 'POST', body: { username, password }, expected: [401, 403] });
+  report.checks.push({ case: 'Acceso de tienda separado del panel administrativo', result: 'PASS' });
+  await t('/api/v1/admin/me', { expected: [401, 403] });
+  const otherCompany = companies.find(c => c.companyId !== demo.companyId);
+  if (otherCompany) await t('/api/v1/tenant/tickets', { companyId: otherCompany.companyId, expected: [403, 404] });
+  report.checks.push({ case: 'Gestor no accede al panel administrativo ni a otra empresa', result: 'PASS' });
+  const before = await t('/api/v1/tenant/dashboard');
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH });
+  const tenantPage = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+  const tenantErrors = []; tenantPage.on('pageerror', error => tenantErrors.push(error.message));
+  await tenantPage.goto('http://127.0.0.1:5175/tienda.html#tenant-support');
+  await tenantPage.locator('input[autocomplete="username"]').fill('ADMIN');
+  await tenantPage.locator('input[autocomplete="current-password"]').fill(process.env.SAAS_LOCAL_ADMIN_PASSWORD ?? '0000');
+  await tenantPage.locator('form button[type="submit"]').click();
+  await tenantPage.getByRole('alert').waitFor();
+  assert.equal(await tenantPage.locator('.tenant-shell').count(), 0, 'Admin account cannot enter store workspace');
+  await tenantPage.locator('input[autocomplete="username"]').fill(username);
+  await tenantPage.locator('input[autocomplete="current-password"]').fill(password);
+  await tenantPage.locator('form button[type="submit"]').click();
+  const form = tenantPage.locator('.tenant-ticket-form');
+  await form.getByLabel('Titulo', { exact: true }).fill(title);
+  await form.locator('select').selectOption('URGENTE');
+  await form.getByLabel('Descripcion', { exact: true }).fill('SIMULACIÓN: la impresora funciona correctamente. Solicito comprobar el circuito de atención y confirmar su configuración. No intervenir en dispositivos reales.');
+  const createdResponse = tenantPage.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/v1/tenant/tickets'));
+  await form.getByRole('button', { name: 'Crear solicitud', exact: true }).click();
+  const ticket = await (await createdResponse).json();
+  await tenantPage.locator('.tenant-ticket-list').getByText(title, { exact: true }).waitFor();
+  report.ticketId = ticket.id;
+  assert.equal(ticket.status, 'ABIERTO'); assert.equal(ticket.companyId, demo.companyId);
+  assert.equal(ticket.createdBy, undefined, 'Public ticket omits internal author identity');
+  const afterCreate = await t('/api/v1/tenant/dashboard');
+  assert.equal(afterCreate.openTickets, before.openTickets + 1);
+  report.checks.push({ case: 'Solicitud creada por la tienda, prioridad urgente, contador aumenta', result: 'PASS' });
+  const duplicateBody = { message: `SIMULACIÓN ${suffix}: la impresora tiene papel y está encendida. Prueba de reenvío por pérdida de conexión.`, requestId: randomUUID() };
+  const first = await t(`/api/v1/tenant/tickets/${ticket.id}/comments`, { method: 'POST', body: duplicateBody });
+  const second = await t(`/api/v1/tenant/tickets/${ticket.id}/comments`, { method: 'POST', body: duplicateBody });
+  assert.equal(first.id, second.id, 'Same tenant request creates only one comment');
+  report.checks.push({ case: 'Reintento de comentario de tienda sin duplicados', result: 'PASS' });
+  const commentPath = '/api/v1/tenant/tickets/' + ticket.id + '/comments';
+  const commentWrites = []; let loseReply = true;
+  await tenantPage.route('**' + commentPath, async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    commentWrites.push(route.request().postDataJSON());
+    if (loseReply) { loseReply = false; const committed = await route.fetch(); assert.ok(committed.ok()); return route.fulfill({ status: 503, body: 'SIMULACIÓN: respuesta perdida después de guardar' }); }
+    return route.continue();
+  });
+  const replyText = 'SIMULACIÓN: confirmo que la impresora funciona. Solicito seguimiento de esta consulta.';
+  const conversation = tenantPage.locator('.tenant-conversation');
+  await conversation.getByLabel('Mensaje', { exact: true }).fill(replyText);
+  await conversation.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await conversation.getByRole('button', { name: 'Reintentar envío', exact: true }).click();
+  await conversation.locator('.tenant-comments').getByText(replyText, { exact: true }).waitFor();
+  assert.equal(commentWrites.length, 2); assert.deepEqual(commentWrites[0], commentWrites[1]);
+  assert.equal((await t(commentPath)).filter(row => row.message === replyText).length, 1);
+  report.checks.push({ case: 'Respuesta perdida: reintento desde la interfaz conserva requestId y crea un solo comentario', result: 'PASS' });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('http://127.0.0.1:5175/#/login');
+  await page.locator('input[autocomplete="username"]').fill('ADMIN');
+  await page.locator('input[autocomplete="current-password"]').fill(process.env.SAAS_LOCAL_ADMIN_PASSWORD ?? '0000');
+  await page.locator('form button[type="submit"]').click();
+  const nav = page.locator('.top-nav-list'); await nav.waitFor();
+  const supervision = nav.getByRole('button', { name: 'Supervisión', exact: true });
+  if (await supervision.getAttribute('aria-expanded') !== 'true') await supervision.click();
+  await nav.getByRole('button', { name: 'Soporte', exact: true }).click();
+  await page.locator('.company-ticket-selector select').selectOption(demo.companyId);
+  const card = page.locator(`#support-ticket-${ticket.id}`);
+  await card.getByRole('button', { name: 'Gestionar incidencia', exact: true }).click();
+  const panel = card.getByRole('region', { name: 'Seguimiento de la incidencia', exact: true });
+  async function ready(name) { await panel.getByRole('button', { name, exact: true }).waitFor(); await page.waitForFunction(({ id, name }) => [...document.querySelectorAll(`#support-ticket-${id} button`)].some(b => b.textContent === name && !b.disabled), { id: ticket.id, name }); }
+  async function act(name, note) { await ready(name); await panel.getByLabel('Nota interna de intervención (obligatoria)', { exact: true }).fill(note); await panel.getByRole('button', { name, exact: true }).click(); }
+  const privateMarker = `INTERNO-${suffix}`;
+  await act('Trabajar desde SaaS', `SIMULACIÓN ${privateMarker}: diagnóstico de configuración, no se realiza ajuste físico.`); await ready('Pasar a comprobación');
+  await card.getByLabel('Comentario', { exact: true }).fill('SIMULACIÓN: hemos recibido tu incidencia. Necesitamos que confirmes el estado de la impresora para continuar.');
+  await card.getByRole('button', { name: 'Añadir comentario', exact: true }).click(); await ready('Pasar a comprobación');
+  const future = new Date(Date.now() + 24 * 3600000); const localFuture = new Date(future.getTime() - future.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  await panel.getByLabel('Próxima revisión (para dejar en espera)').fill(localFuture);
+  await act('Esperar al cliente', 'SIMULACIÓN: el gestor atenderá la comprobación al finalizar la venta.'); await ready('Retomar trabajo');
+  const waiting = (await t('/api/v1/tenant/tickets')).find(row => row.id === ticket.id);
+  assert.equal(waiting.status, 'EN_CURSO');
+  assert.equal(waiting.interventionStatus, 'WAITING_CUSTOMER'); assert.ok(waiting.nextReviewAt);
+  await tenantPage.locator('.tenant-hero').getByRole('button', { name: 'Actualizar', exact: true }).click();
+  await tenantPage.locator('.tenant-ticket-list').getByText('Esperando respuesta del cliente', { exact: false }).waitFor();
+  report.checks.push({ case: 'Fase y próxima revisión visibles en portal de tienda', result: 'PASS' });
+  await tenantPage.locator('.tenant-conversation').evaluate(el => el.scrollIntoView({ block: 'start' }));
+  await tenantPage.screenshot({ path: path.join(directory, 'manager-waiting-' + suffix + '.png') });
+  const messages = await t(`/api/v1/tenant/tickets/${ticket.id}/comments`);
+  assert.ok(messages.some(row => row.message.includes('hemos recibido tu incidencia')));
+  assert.ok(!JSON.stringify(messages).includes(privateMarker));
+  report.checks.push({ case: 'Recepción en panel real, respuesta al cliente y notas internas privadas', result: 'PASS' });
+  await t(`/api/v1/tenant/tickets/${ticket.id}/comments`, { method: 'POST', body: { message: 'SIMULACIÓN: ya estoy disponible. Tras la comprobación simulada puedo imprimir correctamente el recibo de prueba.', requestId: randomUUID() } });
+  await act('Retomar trabajo', 'SIMULACIÓN: recibida confirmación del gestor; continuar diagnóstico.'); await ready('Pasar a comprobación');
+  await panel.getByLabel('Solución aplicada', { exact: true }).fill('SIMULACIÓN: revisión guiada de la configuración de impresora; no se modifica ningún equipo real.');
+  await act('Pasar a comprobación', 'SIMULACIÓN: verificar con el gestor que la impresión de prueba es correcta.'); await ready('Resolver intervención');
+  await act('Resolver intervención', 'SIMULACIÓN: intento de cierre sin pruebas, debe rechazarse.');
+  const notClosed = await a(`/api/v1/admin/tickets/${ticket.id}/interventions`); assert.equal(notClosed.status, 'AWAITING_VERIFICATION');
+  await panel.getByLabel('Comprobaciones realizadas').fill('SIMULACIÓN: el gestor confirma la impresión ficticia de un recibo y la continuidad de las ventas.');
+  await panel.getByLabel('Confirmado por (cliente o técnico)').fill('Gestor DEMO 03 (simulación)');
+  await act('Resolver intervención', 'SIMULACIÓN: comprobación registrada y confirmada por el gestor.'); await ready('Reabrir intervención');
+  const closed = (await t('/api/v1/tenant/tickets')).find(row => row.id === ticket.id); assert.equal(closed.status, 'RESUELTO');
+  report.checks.push({ case: 'Espera, respuesta del gestor, reanudación, comprobación obligatoria y cierre visible al cliente', result: 'PASS' });
+  const afterClose = await t('/api/v1/tenant/dashboard');
+  report.counts = { before: before.openTickets, afterCreate: afterCreate.openTickets, afterClose: afterClose.openTickets };
+  assert.equal(afterClose.openTickets, before.openTickets, 'Resolved ticket no longer counts as open');
+  await tenantPage.locator('.tenant-hero').getByRole('button', { name: 'Actualizar', exact: true }).click();
+  await tenantPage.locator('.tenant-ticket-list').getByText('Resuelto', { exact: true }).waitFor();
+  report.checks.push({ case: 'Contador vuelve al valor inicial y la tienda ve el cierre', result: 'PASS' });
+  assert.deepEqual(tenantErrors, []);
+  assert.deepEqual(errors, []);
+  await panel.locator('.intervention-heading').evaluate(el => el.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: path.join(directory, `manager-simulation-${suffix}.png`) });
+  report.screenshot = `output/playwright/manager-simulation-${suffix}.png`;
+} catch (e) { report.error = e.message; process.exitCode = 1; }
+finally {
+  await browser?.close();
+  if (createdUser) { try { await a(`/api/v1/admin/tenant-users/${username}`, { method: 'DELETE' }); report.testUserDeactivated = true; } catch { report.testUserDeactivated = false; } }
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  console.log(JSON.stringify(report, null, 2));
+  console.log(`Report: ${reportPath}`);
+}

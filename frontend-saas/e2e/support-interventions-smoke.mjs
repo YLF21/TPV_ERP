@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { setup as fixtureSetup, sync } from "./failure-workflow-fixture.mjs";
+import { setup as fixtureSetup, sync, assignees } from "./failure-workflow-fixture.mjs";
 const base = "http://127.0.0.1:5199/";
 const errors = []; let browser;
 const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5199", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), stdio: "ignore", windowsHide: true });
@@ -13,9 +13,9 @@ async function setup(includeLicenses = false) {
   await fixture.panel.getByLabel("Motivo de la intervención").fill("Se solicita asistencia manual para diagnóstico");
   await fixture.panel.getByRole("button", { name: "Derivar a soporte manual" }).click();
   const linked = fixture.panel.getByRole("region", { name: "Ticket de soporte vinculado", exact: true });
-  const workflow = linked.getByRole("region", { name: "Asistencia remota y presencial", exact: true });
+  const workflow = linked.getByRole("region", { name: "Seguimiento de la incidencia", exact: true });
   await workflow.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).waitFor();
-  const note = workflow.getByLabel("Nota de la intervención (obligatoria)");
+  const note = workflow.getByLabel("Nota interna de intervención (obligatoria)");
   const remoteId = workflow.getByLabel("ID de TeamViewer (opcional)");
   async function ready(name) {
     const button = workflow.getByRole("button", { name, exact: true });
@@ -24,7 +24,14 @@ async function setup(includeLicenses = false) {
     return button;
   }
   async function action(name, text) { await note.fill(text); await (await ready(name)).click(); }
-  return { ...fixture, linked, workflow, note, remoteId, ready, action };
+  async function verifyAndClose(text) {
+    await workflow.getByLabel("Solución aplicada", { exact: true }).fill("Sustituido el cable defectuoso");
+    await action("Pasar a comprobación", text); await ready("Resolver intervención");
+    await workflow.getByLabel("Comprobaciones realizadas").fill("Venta e impresión correctas en tienda");
+    await workflow.getByLabel("Confirmado por (cliente o técnico)").fill("Responsable de tienda");
+    await action("Resolver intervención", "Cliente confirma el funcionamiento correcto");
+  }
+  return { ...fixture, linked, workflow, note, remoteId, ready, action, verifyAndClose };
 }
 try {
   for (let i = 0; i < 100; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(resolve => setTimeout(resolve, 100)); }
@@ -52,16 +59,16 @@ try {
   assert.equal(await flow.note.inputValue(), "Cliente autoriza asistencia para diagnosticar");
   assert.equal(await flow.remoteId.inputValue(), "123456789");
   await (await flow.ready("Reintentar intervención pendiente")).evaluate(button => { button.click(); button.click(); });
-  await flow.ready("Resolver intervención");
+  await flow.ready("Pasar a comprobación");
   assert.equal(flow.state.interventionPosts.length, 2);
   assert.deepEqual(flow.state.interventionPosts[0], flow.state.interventionPosts[1], "Same UUID, expected version, status, note and ID survive module remount");
   assert.equal(flow.state.intervention.events.length, 1);
   flow.state.failInterventionReads = true;
   await flow.workflow.getByRole("button", { name: "Actualizar intervención" }).click();
   await flow.workflow.getByRole("alert").waitFor();
-  assert.equal(await flow.workflow.getByRole("button", { name: "Resolver intervención", exact: true }).isDisabled(), true);
+  assert.equal(await flow.workflow.getByRole("button", { name: "Pasar a comprobación", exact: true }).isDisabled(), true);
   flow.state.failInterventionReads = false;
-  await flow.workflow.getByRole("button", { name: "Actualizar intervención" }).click(); await flow.ready("Resolver intervención");
+  await flow.workflow.getByRole("button", { name: "Actualizar intervención" }).click(); await flow.ready("Pasar a comprobación");
   flow.state.conflictIntervention = true;
   await flow.action("Derivar a visita presencial", "No puede resolverse a distancia; requiere visita");
   await flow.workflow.getByText("La intervención o el ticket ha cambiado. Actualiza y revisa la fase antes de volver a solicitar la acción.", { exact: true }).waitFor();
@@ -80,16 +87,19 @@ try {
   assert.equal(flow.state.intervention.events.length, 2);
   assert.equal(flow.state.intervention.teamViewerId, "123456789", "On-site transition preserves previous remote ID");
   assert.equal(flow.state.interventionPosts.at(-1).teamViewerId, null);
+  await flow.workflow.getByLabel("Responsable asignado").selectOption(assignees[1].id);
+  await flow.workflow.getByLabel("Fecha y hora de visita").fill("2026-10-02T12:00");
+  await (await flow.ready("Guardar planificación")).click(); await flow.ready("Iniciar visita presencial");
   flow.state.invalidInterventionResponse = true;
   await flow.action("Iniciar visita presencial", "Técnico presente en la tienda para revisar");
   await flow.ready("Reintentar intervención pendiente");
   assert.equal(await flow.note.isDisabled(), true, "An empty successful HTTP response is not a confirmed receipt");
   await flow.workflow.getByRole("button", { name: "Actualizar intervención" }).click();
-  await flow.ready("Resolver intervención");
+  await flow.ready("Pasar a comprobación");
   assert.equal(await flow.workflow.getByRole("button", { name: "Reintentar intervención pendiente" }).count(), 0, "GET matches exact event requestId");
   const readsBefore = flow.state.ticketReads;
   flow.state.ticketDelayMs = 300;
-  await flow.action("Resolver intervención", "Se reemplazó el cable y se verificó el funcionamiento");
+  await flow.verifyAndClose("Se reemplazó el cable y se verificó el funcionamiento");
   await flow.linked.getByText("Resuelto", { exact: true }).waitFor();
   await flow.ready("Reabrir intervención");
   assert.ok(flow.state.ticketReads - readsBefore <= 2, "Slow parent GET cannot trigger infinite child refreshes");
@@ -97,7 +107,7 @@ try {
   await flow.action("Reabrir intervención", "Cliente reporta nueva incidencia para seguimiento");
   await flow.linked.getByText("Abierto", { exact: true }).waitFor(); await flow.ready("Iniciar asistencia remota");
   await flow.action("Derivar a visita presencial", "Revisión presencial necesaria desde el inicio"); await flow.ready("Iniciar visita presencial");
-  assert.equal(flow.state.intervention.events.length, 6);
+  assert.equal(flow.state.intervention.events.length, 8);
   const output = fileURLToPath(new URL("../../output/playwright/", import.meta.url)); await mkdir(output, { recursive: true });
   await flow.workflow.screenshot({ path: `${output}/saas-support-interventions.png` });
   await flow.page.close();
@@ -108,7 +118,7 @@ try {
   await stale.open("SYNC_DELIVERY_FAILED");
   const response = stale.page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/interventions"));
   release(); await response;
-  assert.equal(await stale.panel.getByRole("region", { name: "Asistencia remota y presencial" }).count(), 0, "Old response cannot add ticket to selected failure");
+  assert.equal(await stale.panel.getByRole("region", { name: "Seguimiento de la incidencia" }).count(), 0, "Old response cannot add ticket to selected failure");
   await stale.page.close();
 
   const session = await setup(); let releaseSession;
@@ -132,8 +142,8 @@ try {
   await session.page.locator('input[autocomplete="username"]').fill("REPAIRS"); await session.page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await session.page.locator('form button[type="submit"]').click(); await session.page.locator(".top-nav-list").waitFor();
   await session.page.locator(".top-nav-list").getByRole("button", { name: "Fallos de tiendas", exact: true }).click(); await session.open("APPLICATION_ERROR");
-  await session.workflow.getByRole("button", { name: "Resolver intervención", exact: true }).waitFor();
-  assert.equal(await session.workflow.getByRole("button", { name: "Resolver intervención", exact: true }).isDisabled(), true);
+  await session.workflow.getByRole("button", { name: "Pasar a comprobación", exact: true }).waitFor();
+  assert.equal(await session.workflow.getByRole("button", { name: "Pasar a comprobación", exact: true }).isDisabled(), true);
   assert.equal(await session.note.isDisabled(), true); await session.page.close();
   // An old component must not clear a pending key owned by a remounted component.
   const remount = await setup(); let commitOld;
@@ -143,7 +153,7 @@ try {
   await remount.ready("Reintentar intervención pendiente");
   const oldInterventionResponse = remount.page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/interventions"));
   commitOld(); await oldInterventionResponse; remount.state.delayIntervention = null;
-  await (await remount.ready("Reintentar intervención pendiente")).click(); await remount.ready("Resolver intervención");
+  await (await remount.ready("Reintentar intervención pendiente")).click(); await remount.ready("Pasar a comprobación");
   assert.deepEqual(remount.state.interventionPosts[0], remount.state.interventionPosts[1], "Unmounted success cannot delete current component's pending request");
   assert.equal(remount.state.intervention.events.length, 1);
   await remount.page.close();
@@ -155,7 +165,7 @@ try {
   for (let i = 0; i < 100 && !generations.state.intervention.events.length; i++) await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(generations.state.intervention.events.length, 1);
   await generations.page.getByRole("button", { name: "Cerrar detalle", exact: true }).click(); await generations.open("APPLICATION_ERROR");
-  await generations.ready("Resolver intervención");
+  await generations.ready("Pasar a comprobación");
   generations.state.delayInterventionResponse = null; generations.state.failInterventionPost = true;
   await generations.action("Derivar a visita presencial", "Segunda generación pendiente que debe conservarse"); await generations.ready("Reintentar intervención pendiente");
   const firstReceipt = generations.page.waitForResponse(response => response.request().method() === "POST" && response.request().postDataJSON()?.requestId === generations.state.interventionPosts[0].requestId);
@@ -166,14 +176,14 @@ try {
   assert.equal(generations.state.intervention.events.length, 2); await generations.page.close();
 
   const comments = await setup();
-  const composer = comments.linked.getByLabel("Resultado o nota de la intervención");
+  const composer = comments.linked.getByLabel("Comentario", { exact: true });
   const addComment = comments.linked.getByRole("button", { name: "Añadir comentario", exact: true });
   const commentRetry = comments.linked.getByRole("button", { name: "Reintentar comentario pendiente", exact: true });
   for (const kind of ["empty", "object", "wrong-ticket"]) {
     comments.state.invalidCommentResponse = kind;
     await composer.fill(`Comentario con respuesta inválida ${kind}`); await addComment.click(); await commentRetry.waitFor();
     assert.equal(await composer.isDisabled(), true); assert.equal(await comments.workflow.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).isDisabled(), true);
-    await commentRetry.click(); await comments.linked.locator("article").getByText(`Comentario con respuesta inválida ${kind}`, { exact: true }).waitFor();
+    await commentRetry.click(); await comments.linked.locator(".incident-timeline").getByText(`Comentario con respuesta inválida ${kind}`, { exact: true }).waitFor();
     assert.deepEqual(comments.state.commentPosts.at(-1), comments.state.commentPosts.at(-2));
   }
   assert.equal(comments.state.comments.length, 3, "Malformed 2xx receipts can be recovered without duplicate comments or rendering crashes");
@@ -183,9 +193,9 @@ try {
   assert.equal(await commentRetry.count(), 0); assert.equal(await addComment.isDisabled(), true);
   await comments.linked.getByRole("button", { name: "Actualizar ticket", exact: true }).click();
   await comments.ready("Iniciar asistencia remota"); await composer.fill("Comentario corregido después de actualizar"); await addComment.click();
-  await comments.linked.locator("article").getByText("Comentario corregido después de actualizar", { exact: true }).waitFor();
+  await comments.linked.locator(".incident-timeline").getByText("Comentario corregido después de actualizar", { exact: true }).waitFor();
   comments.state.invalidCommentRead = true;
-  await comments.linked.getByRole("button", { name: "Actualizar ticket", exact: true }).click(); await comments.linked.getByRole("alert").waitFor();
+  await comments.linked.getByRole("button", { name: "Actualizar ticket", exact: true }).click(); await comments.linked.locator(".support-comment-composer").getByRole("alert").waitFor();
   assert.equal(await comments.workflow.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).isDisabled(), true);
   comments.state.invalidCommentRead = false; await comments.linked.getByRole("button", { name: "Actualizar ticket", exact: true }).click(); await comments.ready("Iniciar asistencia remota");
   let commitComment; comments.state.delayComment = new Promise(resolve => { commitComment = resolve; });
@@ -193,39 +203,96 @@ try {
   await comments.page.getByRole("button", { name: "Cerrar detalle", exact: true }).click(); await comments.open("APPLICATION_ERROR"); await commentRetry.waitFor();
   const oldComment = comments.page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/comments"));
   commitComment(); await oldComment; comments.state.delayComment = null;
-  await commentRetry.click(); await comments.linked.locator("article").getByText("Comentario pendiente durante reapertura del detalle", { exact: true }).waitFor();
+  await commentRetry.click(); await comments.linked.locator(".incident-timeline").getByText("Comentario pendiente durante reapertura del detalle", { exact: true }).waitFor();
   assert.deepEqual(comments.state.commentPosts.at(-1), comments.state.commentPosts.at(-2), "Remounted comment reuses original receipt key");
   assert.equal(comments.state.comments.length, 5); await comments.page.close();
 
   const unicode = await setup(); await unicode.remoteId.fill("987654321");
-  await unicode.action("Iniciar asistencia remota", "😀".repeat(2000)); await unicode.ready("Resolver intervención");
+  await unicode.action("Iniciar asistencia remota", "😀".repeat(2000)); await unicode.ready("Pasar a comprobación");
   assert.equal(Array.from(unicode.state.interventionPosts[0].note).length, 2000);
-  await unicode.action("Resolver intervención", "Resolución comprobada de la asistencia anterior"); await unicode.ready("Reabrir intervención");
+  await unicode.verifyAndClose("Resolución comprobada de la asistencia anterior"); await unicode.ready("Reabrir intervención");
   await unicode.action("Reabrir intervención", "Comienza una nueva solicitud de asistencia"); await unicode.ready("Iniciar asistencia remota");
   assert.equal(await unicode.workflow.getByRole("button", { name: "Copiar ID de TeamViewer", exact: true }).count(), 0, "Previous remote ID is not presented as current after reopening");
   assert.equal(await unicode.remoteId.inputValue(), "");
-  await unicode.action("Iniciar asistencia remota", "Nueva asistencia sin reutilizar el dispositivo anterior"); await unicode.ready("Resolver intervención");
+  await unicode.action("Iniciar asistencia remota", "Nueva asistencia sin reutilizar el dispositivo anterior"); await unicode.ready("Pasar a comprobación");
   assert.equal(unicode.state.intervention.teamViewerId, null);
   assert.equal(await unicode.workflow.getByRole("button", { name: "Copiar ID de TeamViewer", exact: true }).count(), 0);
-  assert.equal(await unicode.workflow.locator("article").getByText("TeamViewer ID: 987654321", { exact: true }).count(), 1, "Historical remote ID remains in its original event only");
+  assert.equal(await unicode.workflow.locator(".incident-timeline").getByText("TeamViewer ID: 987654321", { exact: true }).count(), 1, "Historical remote ID remains in its original event only");
   await unicode.page.close();
 
   const support = await setup(true);
   await support.panel.getByRole("button", { name: "Abrir lista de soporte", exact: true }).click();
   const card = support.page.locator(".ticket-card").filter({ hasText: "Intervención manual del fallo" });
-  await card.getByRole("button", { name: "Resolver", exact: true }).waitFor();
-  // Another operator starts remote assistance then requires on-site work while this SupportView holds version zero.
-  support.state.ticket.status = "EN_CURSO"; support.state.ticket.priority = "URGENTE"; support.state.ticket.interventionVersion = 2;
-  support.state.intervention = { ...support.state.intervention, version: 2, status: "ONSITE_REQUIRED", ticketStatus: "EN_CURSO" };
-  await card.getByRole("button", { name: "Resolver", exact: true }).click();
-  await support.page.getByText("El ticket ha cambiado. Se ha vuelto a consultar; revisa su estado antes de actualizarlo.", { exact: true }).waitFor();
-  assert.equal(support.state.ticket.status, "EN_CURSO"); assert.equal(support.state.intervention.status, "ONSITE_REQUIRED");
-  assert.deepEqual(support.state.ticketMutations[0], { status: "RESUELTO", expectedInterventionVersion: 0, expectedTicketStatus: "ABIERTO" });
-  await card.getByRole("button", { name: "Resolver", exact: true }).click(); await card.getByRole("button", { name: "Resolver", exact: true }).waitFor({ state: "hidden" });
-  assert.equal(support.state.ticket.status, "RESUELTO");
-  assert.equal(support.state.ticket.priority, "URGENTE", "Generic support no longer overwrites concurrent priority changes");
-  assert.deepEqual(support.state.ticketMutations[1], { status: "RESUELTO", expectedInterventionVersion: 2, expectedTicketStatus: "EN_CURSO" });
+  assert.equal(await card.getByRole("button", { name: "Resolver", exact: true }).count(), 0, "List cannot bypass verification");
+  // Navigation opens the linked ticket automatically.
+  const shared = card.getByRole("region", { name: "Seguimiento de la incidencia", exact: true });
+  await shared.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).waitFor();
+  await shared.getByLabel("Nota interna de intervención (obligatoria)").fill("Diagnóstico desde la lista de soporte");
+  await shared.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).click();
+  await shared.getByRole("button", { name: "Pasar a comprobación", exact: true }).waitFor();
+  assert.equal(support.state.ticket.status, "EN_CURSO"); assert.equal(support.state.ticketMutations.length, 0);
   await support.page.close();
+  // General tickets, including companies with no licence, share the complete workflow.
+  const general = await fixtureSetup(browser, errors, base);
+  await general.page.locator(".top-nav-list").getByRole("button", { name: "Soporte", exact: true }).click();
+  await general.page.getByLabel("Titulo", { exact: true }).fill("Incidencia general sin fallo técnico");
+  await general.page.getByLabel("Descripcion", { exact: true }).fill("La caja requiere revisión manual");
+  await general.page.getByRole("button", { name: "Crear ticket", exact: true }).click();
+  const generalCard = general.page.locator(".ticket-card").filter({ hasText: "Incidencia general sin fallo técnico" });
+  await generalCard.getByRole("button", { name: "Gestionar incidencia", exact: true }).click();
+  const generalWorkflow = generalCard.getByRole("region", { name: "Seguimiento de la incidencia", exact: true });
+  const generalNote = generalWorkflow.getByLabel("Nota interna de intervención (obligatoria)");
+  async function generalAction(name, note) {
+    await general.page.waitForFunction(name => [...document.querySelectorAll("button")].some(b => b.textContent === name && !b.disabled), name);
+    await generalNote.fill(note); await generalWorkflow.getByRole("button", { name, exact: true }).click();
+  }
+  await generalWorkflow.getByText("Ticket general: sin fallo técnico vinculado.", { exact: true }).waitFor();
+  await generalAction("Iniciar asistencia remota", "Diagnóstico con el responsable de tienda");
+  await generalWorkflow.getByRole("button", { name: "Pasar a comprobación", exact: true }).waitFor();
+  assert.equal(await generalWorkflow.getByRole("button", { name: "Resolver intervención", exact: true }).count(), 0);
+  await generalAction("Pasar a comprobación", "Preparando pruebas de funcionamiento");
+  assert.equal(general.state.interventionPosts.length, 1, "Cannot request verification without a solution");
+  await generalWorkflow.getByLabel("Solución aplicada", { exact: true }).fill("Corregida la configuración de impresión");
+  await generalAction("Pasar a comprobación", "Preparando pruebas de funcionamiento");
+  await generalWorkflow.getByRole("button", { name: "Resolver intervención", exact: true }).waitFor();
+  await generalAction("Resolver intervención", "Comprobación todavía incompleta");
+  assert.equal(general.state.ticket.status, "EN_CURSO", "Cannot close without checks and confirmer");
+  await generalAction("No funciona: volver a diagnóstico", "La impresión continúa fallando durante la prueba");
+  await generalWorkflow.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).waitFor();
+  assert.equal(general.state.ticket.status, "ABIERTO");
+  await generalAction("Derivar a visita presencial", "Se requiere revisión física de la impresora");
+  await generalWorkflow.getByRole("button", { name: "Iniciar visita presencial", exact: true }).waitFor();
+  await generalAction("Iniciar visita presencial", "Técnico disponible para la visita");
+  assert.equal(general.state.intervention.status, "ONSITE_REQUIRED", "Visit needs a saved schedule");
+  await generalWorkflow.getByLabel("Responsable asignado").selectOption(assignees[1].id);
+  await generalWorkflow.getByLabel("Fecha y hora de visita").fill("2026-10-02T11:30");
+  general.state.loseInterventionResponse = true;
+  await generalWorkflow.getByRole("button", { name: "Guardar planificación", exact: true }).click();
+  await generalWorkflow.getByRole("button", { name: "Reintentar intervención pendiente", exact: true }).click();
+  await generalWorkflow.getByRole("button", { name: "Iniciar visita presencial", exact: true }).waitFor();
+  assert.deepEqual(general.state.interventionPosts.at(-1), general.state.interventionPosts.at(-2), "Scheduling retry preserves owner and date");
+  await generalAction("Iniciar visita presencial", "Técnico presente en tienda");
+  await generalWorkflow.getByLabel("Solución aplicada", { exact: true }).fill("Sustituido cable USB de la impresora");
+  await generalAction("Pasar a comprobación", "Se comprueba impresión tras sustitución");
+  await generalWorkflow.getByLabel("Comprobaciones realizadas").fill("Venta de prueba y dos impresiones correctas");
+  await generalWorkflow.getByLabel("Confirmado por (cliente o técnico)").fill("Ana y responsable de tienda");
+  await generalAction("Resolver intervención", "Cliente confirma la recuperación");
+  await generalWorkflow.getByRole("button", { name: "Reabrir intervención", exact: true }).waitFor();
+  assert.equal(general.state.ticket.status, "RESUELTO"); assert.equal(general.state.intervention.assignee, "Ana García");
+  await generalWorkflow.getByText("Venta de prueba y dos impresiones correctas", { exact: true }).waitFor();
+  await generalWorkflow.screenshot({ path: `${output}/saas-general-ticket-verified.png` });
+  await generalAction("Reabrir intervención", "Cliente comunica repetición del problema");
+  await generalWorkflow.getByRole("button", { name: "Iniciar asistencia remota", exact: true }).waitFor();
+  assert.equal(general.state.intervention.verificationNotes, null);
+  assert.equal(general.state.ticketMutations.length, 0);
+  await general.page.close();
+  const eligible = await fixtureSetup(browser, errors, base); await eligible.open();
+  assert.equal(await eligible.panel.getByRole("button", { name: "Reintentar sincronización", exact: true }).isEnabled(), true);
+  await eligible.panel.getByLabel("Motivo de la intervención").fill("Cliente necesita ayuda manual sin esperar un reintento");
+  await eligible.panel.getByRole("button", { name: "Derivar a soporte manual", exact: true }).click();
+  await eligible.panel.getByRole("region", { name: "Ticket de soporte vinculado", exact: true }).waitFor();
+  assert.equal(eligible.state.repairPosts.length, 0, "Manual escalation does not require attempting automatic repair first");
+  assert.equal(eligible.state.manualPosts.length, 1); await eligible.page.close();
   assert.deepEqual(errors, []);
   console.log("Support interventions E2E passed: remote/on-site/resolve/reopen, Unicode and ID validation, safe external link, idempotency, version gap, conflict recovery, malformed receipt, slow parent, stale selection/login and permissions.");
 } finally { await browser?.close(); server.kill(); }

@@ -22,7 +22,7 @@ export const tenantApi = {
     request<TenantPage<TenantStock>>(credentials, `/api/v1/tenant/stores/${encodeURIComponent(storeId)}/stock?size=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
   sync: (credentials: Credentials, storeId: string) => request<TenantSync>(credentials, `/api/v1/tenant/stores/${encodeURIComponent(storeId)}/sync-status`),
   comments: (credentials: Credentials, ticketId: string) => request<SupportTicketComment[]>(credentials, `/api/v1/tenant/tickets/${encodeURIComponent(ticketId)}/comments`),
-  comment: (credentials: Credentials, ticketId: string, message: string) => request<SupportTicketComment>(credentials, `/api/v1/tenant/tickets/${encodeURIComponent(ticketId)}/comments`, { method: "POST", body: { message } }),
+  comment: (credentials: Credentials, ticketId: string, message: string, requestId: string) => request<SupportTicketComment>(credentials, `/api/v1/tenant/tickets/${encodeURIComponent(ticketId)}/comments`, { method: "POST", body: { message, requestId } }),
 };
 
 export async function loadTenantPortal(credentials: Credentials, access: TenantCompanyAccess): Promise<TenantPortalData> {

@@ -300,6 +300,14 @@ export type SaasStatus = {
 };
 
 export type SupportTicket = {
+  interventionStatus?: string | null;
+  assigneeUserId?: string | null;
+  assignee?: string | null;
+  visitAt?: string | null;
+  nextReviewAt?: string | null;
+  failureKey?: string | null;
+  failureStatus?: string | null;
+  failureReceivedAt?: string | null;
   interventionVersion?: number | null;
   id: string;
   companyId: string;
@@ -312,6 +320,8 @@ export type SupportTicket = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type TenantSupportTicket = Pick<SupportTicket, "id" | "companyId" | "companyName" | "title" | "description" | "status" | "priority" | "createdAt" | "updatedAt" | "interventionStatus" | "nextReviewAt" | "visitAt">;
 
 export type SupportTicketComment = {
   id: string;
@@ -481,7 +491,7 @@ export type TenantPortalData = {
   dashboard: TenantDashboard;
   licenses: LicenseSummary[];
   stores: TenantStore[];
-  tickets: SupportTicket[];
+  tickets: TenantSupportTicket[];
   invoices: BillingInvoice[];
   customers: ErpCustomer[];
   products: ErpProduct[];

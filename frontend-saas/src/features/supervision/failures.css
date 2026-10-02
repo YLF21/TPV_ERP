@@ -172,3 +172,40 @@
   .linked-ticket-tools button, .intervention-actions button { flex: 1 1 auto; }
   .linked-ticket-refresh { float: none; margin: 0 0 12px; }
 }
+
+.intervention-context-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-bottom: 18px; }
+.intervention-failure-context, .intervention-planning, .intervention-verification-record { padding: 16px; border: 1px solid #c4d2df; border-radius: 6px; background: #fff; min-width: 0; font-size: 13px; }
+.intervention-failure-context p, .intervention-planning .field-hint { color: #536b83; line-height: 1.5; }
+.intervention-planning label { display: grid; gap: 6px; margin-bottom: 10px; }
+.intervention-planning input { min-height: 38px; width: 100%; }
+.intervention-verification-record { margin-bottom: 18px; background: #eef8f3; }
+.intervention-verification-record p, .intervention-solution p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.intervention-solution { padding: 12px; margin-bottom: 14px; background: #edf4fb; }
+.support-workflow { margin: 16px 0; border-top: 1px solid #c4d2df; padding-top: 14px; }
+.support-workflow .ticket-interventions { background: #fbfcfe; border: 1px solid #c4d2df; border-radius: 8px; padding: 18px; }
+.support-workflow > p { font-size: 12px; color: #536b83; }
+.support-workflow button { min-height: 38px; }
+@media(max-width: 900px) { .intervention-context-grid { grid-template-columns: minmax(0,1fr); } }
+.intervention-recovery-warning { margin: 14px 0; padding: 16px; border: 1px solid #efd2a7; border-left: 4px solid #b76b18; background: #fff8eb; color: #70410d; }
+.intervention-recovery-warning p { margin: 8px 0; }
+.intervention-wait-details { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: #fff8eb; border-left: 3px solid #b76b18; }
+.intervention-action-card .field-hint { display: block; font-weight: 400; margin: 6px 0; }
+.incident-timeline { margin-top: 20px; border-top: 1px solid #dce5ef; padding-top: 16px; }
+.incident-timeline > header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.incident-timeline > header h6 { margin: 0; font-size: 14px; }
+.incident-timeline > header span { border-radius: 12px; padding: 2px 8px; background: #edf3fa; font-size: 12px; }
+.incident-timeline ol { list-style: none; margin: 0 0 0 7px; padding: 0 0 0 22px; border-left: 2px solid #dbe5ef; }
+.incident-timeline-entry { position: relative; padding: 14px 16px; margin: 0 0 12px; border: 1px solid #dce5ef; border-radius: 5px; background: #fafcff; overflow-wrap: anywhere; }
+.incident-timeline-entry::before { content: ''; position: absolute; left: -29px; top: 20px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #577ca5; }
+.incident-timeline-entry--comment { background: #f6fbf9; }
+.incident-timeline-entry--comment::before { background: #36876b; }
+.incident-timeline-entry--automatic::before { background: #b18439; }
+.incident-timeline-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 12px; color: #60758d; margin-bottom: 9px; }
+.incident-timeline-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.incident-timeline-entry p { white-space: pre-wrap; margin: 8px 0; }
+.incident-timeline-entry small { color: #60758d; }
+@media (max-width: 640px) { .incident-timeline ol { padding-left: 14px; } .incident-timeline-entry { padding: 12px; } .incident-timeline-entry::before { left: -21px; } }
+.ticket-interventions input, .ticket-interventions select { min-width: 0; width: 100%; }
+.intervention-planning select { min-height: 40px; }
+.ticket-interventions button:focus-visible, .ticket-interventions input:focus-visible, .ticket-interventions select:focus-visible, .ticket-interventions textarea:focus-visible { outline: 3px solid #245ca5; outline-offset: 2px; }
+@media (pointer: coarse) { .ticket-interventions button, .ticket-interventions input, .ticket-interventions select, .intervention-external-link { min-height: 44px; } }

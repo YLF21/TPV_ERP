@@ -1,12 +1,14 @@
 import { useRefreshVersion } from "../../app/RefreshContext";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useId, useEffect, useMemo, useRef, useState } from "react";
+import { MagnifyingGlass, X } from "@phosphor-icons/react";
+import "./sync-filters.css";
 import { api, ApiError } from "../../lib/api";
 
 import type { Credentials, LicenseSummary, OperationalIncident, StockSnapshot, SyncEventView, SyncProjectionStatus } from "../../lib/types";
 import { Notice } from "../../shared/types";
 import { useI18n } from "../../i18n/index";
 import { uniqueCompanies, latestDate, errorMessage, isToday, formatDate, eventSummary, normalizeSearch } from "../../shared/lib";
-import { SectionHeader, Metric, ProjectionMetric, Segmented, usePagination, EmptyState, Input, PaginationControls, StatusPill } from "../../shared/ui";
+import { SectionHeader, Metric, ProjectionMetric, Segmented, usePagination, EmptyState, PaginationControls, StatusPill } from "../../shared/ui";
 
 export function SyncView({
   credentials,
@@ -132,6 +134,18 @@ export function SyncView({
     }
   }
 
+  const companyFilter = (
+    <label className="sync-company-filter">
+      <span>{t("company")}</span>
+      <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+        <option value="">{t("allCompanies")}</option>
+        {companyOptions.map((company) => (
+          <option key={company.companyId} value={company.companyId}>{company.companyName}</option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <section className="content-section">
       <SectionHeader
@@ -176,15 +190,8 @@ export function SyncView({
           ]}
           onChange={(value) => setMode(value as "events" | "sales" | "stock" | "cash" | "incidents")}
         />
-        <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
-          <option value="">{t("allCompanies")}</option>
-          {companyOptions.map((company) => (
-            <option key={company.companyId} value={company.companyId}>
-              {company.companyName}
-            </option>
-          ))}
-        </select>
       </div>
+      {(mode === "stock" || mode === "incidents") && <div className="sync-filters sync-filters--company-only">{companyFilter}</div>}
       {mode === "incidents" && !canViewIncidents && (
         <div className="permission-hint">{t("operationalIncidentPermission")}</div>
       )}
@@ -241,21 +248,41 @@ export function SyncView({
       ) : mode === "stock" ? (
         <StockTable rows={stock} />
       ) : (
-        <EventsTable events={events} />
+        <EventsTable events={events} companyFilter={companyFilter} />
       )}
     </section>
   );
 }
 
-export function EventsTable({ events }: { events: SyncEventView[] }) {
+export function EventsTable({ events, companyFilter }: { events: SyncEventView[]; companyFilter?: ReactNode }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
+  const searchId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
   const filtered = events.filter((event) => [event.entityType, event.entityId, event.operation, event.projectionStatus, eventSummary(event)].some((value) => normalizeSearch(value).includes(normalizeSearch(query))));
   const paging = usePagination(filtered);
-  if (events.length === 0) return <EmptyState text={t("noEventsForFilter")} />;
+
   return (
     <>
-      <div className="toolbar table-filter"><Input label={t("filterRecords")} value={query} onChange={setQuery} /></div>
+      <div className="sync-filters">
+        {companyFilter}
+        <div className="sync-search-filter">
+          <label htmlFor={searchId}>{t("syncSearchLabel")}</label>
+          <div className="sync-search-control">
+            <MagnifyingGlass size={20} aria-hidden="true" />
+            <input id={searchId} ref={searchRef} type="search" value={query} autoComplete="off"
+              placeholder={t("syncSearchPlaceholder")} aria-describedby={searchId + "-help"}
+              onChange={event => { setQuery(event.target.value); paging.setPage(1); }} />
+            {query && <button type="button" className="sync-search-clear" aria-label={t("clearSearch")} title={t("clearSearch")}
+              onClick={() => { setQuery(""); paging.setPage(1); searchRef.current?.focus(); }}><X size={18} aria-hidden="true" /></button>}
+          </div>
+        </div>
+        <div className="sync-filter-summary">
+          <span id={searchId + "-help"}>{t("syncSearchHelp")}</span>
+          <span role="status" aria-live="polite">{t("syncFilterCount").replace("{shown}", String(filtered.length)).replace("{total}", String(events.length))}</span>
+        </div>
+      </div>
+      {filtered.length === 0 && <EmptyState text={t(query.trim() ? "syncNoSearchResults" : "noEventsForFilter")} />}
       <div className="event-list">
       {paging.rows.map((event) => (
         <EventLine key={event.eventId} event={event} />

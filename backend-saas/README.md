@@ -10,6 +10,33 @@ La reparación remota de entregas agotadas, el traspaso a soporte y la activaci�
 
 La asistencia remota humana, el paso a intervención presencial y la migración V72 se describen en [Asistencia y atención presencial: fase 3](../docs/saas-support-interventions-phase3-2026-09-22.md).
 
+## Seguimiento de incidencias (V73/V74)
+
+Todos los tickets, incluidos los generales, usan el mismo seguimiento en
+`/api/v1/admin/tickets/{ticketId}/interventions`. Las acciones comparan versión
+y estado del ticket, registran un historial y admiten reintentos con el mismo
+`requestId` y contenido. El cierre requiere solución, comprobaciones y persona
+que confirma; cambiar únicamente el estado mediante el endpoint genérico no
+permite saltarse esta verificación.
+
+- `START_SAAS` permite diagnosticar y actuar desde el panel antes de solicitar
+  comprobación, o pasar a asistencia remota/presencial si hace falta.
+- `WAIT_CUSTOMER` y `WAIT_MATERIAL` requieren un motivo y `nextReviewAt` futuro.
+  `RESUME` recupera la fase anterior; la espera no permite cerrar directamente.
+- `SAVE_DETAILS` guarda `assigneeUserId` y `visitAt`. Solo admite técnicos
+  activos con `MANAGE_SUPPORT_TICKETS`; un identificador nulo desasigna el caso.
+  Una visita necesita técnico, y una visita en curso conserva ambos datos.
+- Los nombres históricos se conservan como texto hasta elegir un usuario real.
+  El estado del fallo técnico permanece independiente del cierre del ticket.
+
+El portal cliente recibe un contrato público de tickets: fase de intervención,
+próxima revisión y visita, sin asignados, identificadores técnicos ni evidencias
+internas. En tickets derivados se omite la descripción técnica autogenerada.
+Los comentarios compartidos aceptan `requestId` y devuelven esa clave tanto en
+POST como en GET; repetir la misma petición no añade otro comentario. Cambiar
+su autor o texto con la misma clave devuelve conflicto. El contador del cliente
+excluye los tickets resueltos y cerrados.
+
 ## Arranque local
 
 ```powershell

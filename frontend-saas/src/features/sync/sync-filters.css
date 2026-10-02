@@ -1,0 +1,29 @@
+.sync-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(300px, 2fr);
+  align-items: start;
+  gap: 12px 20px;
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid #d4dfeb;
+  border-radius: 8px;
+  background: #f6f9fd;
+}
+.sync-filters .sync-company-filter, .sync-search-filter { display: grid; gap: 7px; min-width: 0; }
+.sync-company-filter > span, .sync-search-filter > label { font-size: 13px; font-weight: 700; color: #173a60; }
+.sync-filters .sync-company-filter select { width: 100%; min-width: 0; min-height: 44px; background-color: #fff; }
+.sync-search-control { display: flex; align-items: center; min-height: 44px; min-width: 0; gap: 10px; padding-left: 12px; border: 1px solid #9cacc0; border-radius: 5px; background: #fff; color: #526983; }
+.sync-search-control:focus-within { border-color: #245ca5; outline: 3px solid #d4e5fb; outline-offset: 1px; }
+.sync-search-control > svg { flex-shrink: 0; pointer-events: none; }
+.sync-search-control input { flex: 1; min-width: 0; width: 100%; min-height: 42px; margin: 0; padding: 9px 10px 9px 0; border: 0; outline: none; box-shadow: none; background: transparent; color: #173a60; font: inherit; font-size: 14px; }
+.sync-search-control input::placeholder { color: #61738a; opacity: 1; }
+.sync-search-control input::-webkit-search-cancel-button { display: none; }
+.sync-search-control .sync-search-clear { display: grid; place-items: center; flex: 0 0 42px; align-self: stretch; min-height: 42px; margin: 0; padding: 0; border: 0; background: transparent; color: #355373; cursor: pointer; }
+.sync-search-clear:hover { background: #e7effa; }
+.sync-search-clear:focus-visible { outline: 2px solid #245ca5; outline-offset: -4px; }
+.sync-filter-summary { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; color: #526983; font-size: 12px; line-height: 1.5; }
+.sync-filter-summary [role="status"] { color: #173a60; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sync-filters--company-only { grid-template-columns: minmax(0, 420px); }
+@media (max-width: 800px) { .sync-filters { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; } }
+
+.sync-search-control input:focus { border: 0; outline: none; box-shadow: none; background: transparent; }

@@ -72,6 +72,7 @@ export function LoginScreen({
           </>}
           <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
         </form>
+        <p><a href="./tienda.html">{t("clientPortal")} →</a></p>
       </section>
     </main>
   );
