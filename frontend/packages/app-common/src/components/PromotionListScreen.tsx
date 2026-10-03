@@ -1,4 +1,4 @@
-import { AppLogo } from "./AppLogo";
+import { AppBrand } from "./AppBrand";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, DotsThree, MagnifyingGlass, Tag } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
@@ -187,8 +187,7 @@ export function PromotionListScreen({
         <header className="promotion-page-heading">
           <div>
             {!embedded && <button type="button" className="promotion-back" onClick={onBack}>
-              <AppLogo app={app} />
-              {t(app === "venta" ? "venta.title" : "gestion.title")}
+              <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
             </button>}
             <span className="promotion-eyebrow">{t("promotion.list.title")}</span>
             <h1>{t("promotion.list.heading")}</h1>

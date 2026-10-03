@@ -1,4 +1,4 @@
-import { AppLogo } from "./AppLogo";
+import { AppBrand } from "./AppBrand";
 /// <reference types="vite/client" />
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
@@ -5641,8 +5641,7 @@ export function SaleScreen({
       <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined}>
         <header className="work-topbar sale-command-topbar">
           <button type="button" className="report-brand-back" onClick={handleBack}>
-            <AppLogo app={app} />
-            {t(app === "venta" ? "venta.title" : "gestion.title")}
+            <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>
           <h1 className="sale-command-screen-title">{t("sale.main.screen")}</h1>
           <SaleCommandMenuBar

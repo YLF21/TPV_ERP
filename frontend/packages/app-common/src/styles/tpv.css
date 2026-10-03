@@ -11590,6 +11590,10 @@ textarea:disabled {
   --tpv-v3-focus: rgba(42, 114, 182, 0.24);
 }
 
+button:is(.selected, .active, [aria-selected="true"], [aria-pressed="true"]) {
+  --tpv-v3-blue: #0065FE;
+}
+
 body,
 .login-screen,
 .home-screen,
@@ -12195,7 +12199,7 @@ body,
   padding: 0 !important;
   border-color: #062249 !important;
   background:
-    linear-gradient(180deg, #07254f 0 168px, #2f7dbc 168px 100%) !important;
+    linear-gradient(180deg, #01153F 0 168px, #0065FE 168px 100%) !important;
   color: #ffffff !important;
   text-align: center !important;
 }
@@ -12329,6 +12333,10 @@ body,
 }
 
 @media (max-height: 760px) {
+  .home-main-brand {
+    --home-brand-launcher-offset: 179.4px;
+  }
+
   .home-screen .home-actions {
     --home-launcher-height: 460px;
     transform: translate(-50%, -39%) !important;
@@ -25587,4 +25595,27 @@ textarea:focus,
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;
   }
+}
+
+.app-brand-wordmark {
+  display: block;
+  box-sizing: border-box;
+  width: 94px;
+  height: 30px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  padding: 1px 3px;
+  border: 1px solid #9fb3c8;
+  border-radius: 6px;
+  background: #fff;
+}
+
+:is(.entry-topbar .app-brand-static, .report-brand-back, .promotion-back):has(.app-brand-wordmark) {
+  translate: 0 -1px;
+  min-width: 94px !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
