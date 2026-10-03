@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MarketingPage from "./MarketingPage";
 import type { MarketingLanguage } from "./marketingI18n";
+import { useMarketingSeo } from "./seo";
 
 function readLanguage(): MarketingLanguage {
   try {
@@ -13,6 +14,8 @@ function readLanguage(): MarketingLanguage {
 
 export default function App() {
   const [language, setLanguage] = useState<MarketingLanguage>(readLanguage);
+  useMarketingSeo(language);
+
   function changeLanguage(value: MarketingLanguage) {
     setLanguage(value);
     try {

@@ -5,6 +5,7 @@ import { createPackage } from "@electron/asar";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import desktopBuild from "../build/desktop-build-config.cjs";
 import { validateDirectory, verifyAuthenticode, verifyChecksum } from "./check-desktop-packages.mjs";
+import { createDesktopReleaseManifest } from "./create-desktop-release-manifest.mjs";
 
 const temporary = [];
 function fixture() {
@@ -58,6 +59,53 @@ describe("desktop release metadata", () => {
       expect(manifest.scripts[`package:installer:${app}`]).toContain("--win nsis --x64 --publish never --config.forceCodeSigning=true");
       expect(manifest.scripts[`package:installer:${app}`]).toContain(`--installer ${app}`);
     }
+  });
+
+  it("creates a release manifest with exact immutable asset URLs and checksums", async () => {
+    const root = fixture();
+    writeJson(path.join(root, "package.json"), { version: "1.0.0", devDependencies: { electron: "^44.2.0" } });
+    writeJson(path.join(root, "package-lock.json"), { packages: {
+      "": { version: "1.0.0", devDependencies: { electron: "^44.2.0" } },
+      "node_modules/electron": { version: "44.2.0" }
+    } });
+    for (const id of ["venta", "gestion"]) {
+      const fileName = `${desktopBuild.apps[id].artifactPrefix}-1.0.0-setup.exe`;
+      const artifact = path.join(root, "output", "desktop-production", id, fileName);
+      fs.mkdirSync(path.dirname(artifact), { recursive: true });
+      fs.writeFileSync(artifact, `signed ${id} fixture`);
+      await desktopBuild.writeArtifactChecksums({ artifactPaths: [artifact] });
+    }
+
+    const manifest = createDesktopReleaseManifest({
+      root,
+      repository: "YLF21/TPV_ERP",
+      tag: "desktop-v1.0.0",
+      commit: "abc123",
+      publishedAt: "2026-10-03T12:00:00.000Z"
+    });
+    expect(manifest.release).toEqual({
+      repository: "YLF21/TPV_ERP",
+      tag: "desktop-v1.0.0",
+      version: "1.0.0",
+      commit: "abc123",
+      publishedAt: "2026-10-03T12:00:00.000Z"
+    });
+    expect(manifest.artifacts.venta.url).toBe("https://github.com/YLF21/TPV_ERP/releases/download/desktop-v1.0.0/esPOS-VENTA-1.0.0-setup.exe");
+    expect(manifest.artifacts.gestion.checksumUrl).toBe("https://github.com/YLF21/TPV_ERP/releases/download/desktop-v1.0.0/esPOS-GESTION-1.0.0-setup.exe.sha256");
+    expect(manifest.artifacts.venta.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(manifest.artifacts.venta.signature).toEqual({ type: "authenticode", required: true, timestampRequired: true });
+  });
+
+  it("rejects a mutable or incomplete desktop release", async () => {
+    const root = fixture();
+    writeJson(path.join(root, "package.json"), { version: "1.0.0", devDependencies: { electron: "^44.2.0" } });
+    writeJson(path.join(root, "package-lock.json"), { packages: {
+      "": { version: "1.0.0", devDependencies: { electron: "^44.2.0" } },
+      "node_modules/electron": { version: "44.2.0" }
+    } });
+    expect(() => createDesktopReleaseManifest({ root, repository: "YLF21/TPV_ERP", tag: "latest" })).toThrow(/desktop-v1\.0\.0/);
+    expect(() => createDesktopReleaseManifest({ root, repository: "YLF21/TPV_ERP", tag: "desktop-v1.0.0" })).toThrow(/esPOS-VENTA/);
+    expect(() => createDesktopReleaseManifest({ root, repository: "invalid", tag: "desktop-v1.0.0" })).toThrow(/Repositorio/);
   });
 });
 

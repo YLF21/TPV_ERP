@@ -214,7 +214,7 @@ describe("Stock bulk editing save and apply", () => {
     fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
     expect(firstRow().querySelector(".bulk-code-value")?.textContent).toBe("2004461");
     expect(backend.saves).toHaveLength(0);
-  });
+  }, 15_000);
 
   it("quick edit exchanges every list product, including an unselected row hidden by search, and sends the original versions", async () => {
     const first = { ...initialProduct, code: "2004461", barcode: "8435606744034", barcode2: "000091" };

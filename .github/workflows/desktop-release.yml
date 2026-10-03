@@ -1,0 +1,146 @@
+name: Desktop Release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable tag to publish (for example desktop-v4.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  signed-windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CSC_LINK: ${{ secrets.TPV_DESKTOP_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.TPV_DESKTOP_CSC_KEY_PASSWORD }}
+      TPV_DESKTOP_SIGNER_THUMBPRINT: ${{ secrets.TPV_DESKTOP_SIGNER_THUMBPRINT }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
+      - name: Use the locked Node.js toolchain
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            frontend-product/package-lock.json
+
+      - name: Validate release identity and signing configuration
+        shell: pwsh
+        run: |
+          $releaseTag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.release_tag }}" } else { "${{ github.ref_name }}" }
+          $version = node -p "require('./frontend/package.json').version"
+          $expectedTag = "desktop-v$version"
+          if ($releaseTag -ne $expectedTag) {
+            throw "Release tag '$releaseTag' must exactly match '$expectedTag'."
+          }
+
+          foreach ($name in @("CSC_LINK", "CSC_KEY_PASSWORD", "TPV_DESKTOP_SIGNER_THUMBPRINT")) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required signing secret '$name' is not configured."
+            }
+          }
+
+          $tagCommit = (git rev-list -n 1 $releaseTag).Trim()
+          $headCommit = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $headCommit) {
+            throw "The checked-out commit does not match immutable tag '$releaseTag'."
+          }
+
+          gh release view $releaseTag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "GitHub Release '$releaseTag' already exists and will not be replaced."
+          }
+          $global:LASTEXITCODE = 0
+
+          $baseUrl = "https://github.com/${{ github.repository }}/releases/download/$releaseTag"
+          $ventaFile = "TPV-ERP-APP-VENTA-$version-setup.exe"
+          $gestionFile = "TPV-ERP-APP-GESTION-$version-setup.exe"
+          @(
+            "TPV_DESKTOP_RELEASE_TAG=$releaseTag"
+            "TPV_DESKTOP_RELEASE_VERSION=$version"
+            "TPV_DESKTOP_RELEASE_COMMIT=$headCommit"
+            "TPV_DESKTOP_RELEASED_AT=$([DateTime]::UtcNow.ToString('o'))"
+            "VITE_DOWNLOAD_RELEASE_VERSION=$version"
+            "VITE_DOWNLOAD_VENTA_URL=$baseUrl/$ventaFile"
+            "VITE_DOWNLOAD_VENTA_SHA256_URL=$baseUrl/$ventaFile.sha256"
+            "VITE_DOWNLOAD_GESTION_URL=$baseUrl/$gestionFile"
+            "VITE_DOWNLOAD_GESTION_SHA256_URL=$baseUrl/$gestionFile.sha256"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install desktop dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Test desktop release contracts
+        working-directory: frontend
+        run: npm test -- scripts/desktop-packaging.test.mjs
+
+      - name: Build and sign Venta and Gestión installers
+        working-directory: frontend
+        run: npm run package:installer
+
+      - name: Verify installers, checksums, signer and timestamp
+        working-directory: frontend
+        run: npm run check:desktop:installer
+
+      - name: Prepare immutable release assets and manifest
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path desktop-release -Force | Out-Null
+          node frontend/scripts/create-desktop-release-manifest.mjs `
+            --output desktop-release/desktop-release.json `
+            --repository "${{ github.repository }}" `
+            --tag $env:TPV_DESKTOP_RELEASE_TAG `
+            --commit $env:TPV_DESKTOP_RELEASE_COMMIT `
+            --published-at $env:TPV_DESKTOP_RELEASED_AT
+          $venta = "frontend/output/desktop-production/venta/TPV-ERP-APP-VENTA-$env:TPV_DESKTOP_RELEASE_VERSION-setup.exe"
+          $gestion = "frontend/output/desktop-production/gestion/TPV-ERP-APP-GESTION-$env:TPV_DESKTOP_RELEASE_VERSION-setup.exe"
+          Copy-Item $venta desktop-release/
+          Copy-Item "$venta.sha256" desktop-release/
+          Copy-Item $gestion desktop-release/
+          Copy-Item "$gestion.sha256" desktop-release/
+
+      - name: Install public website dependencies and browser
+        working-directory: frontend-product
+        run: |
+          npm ci
+          npx playwright install chromium
+
+      - name: Verify the public website with real release URLs
+        working-directory: frontend-product
+        run: npm run test:e2e
+
+      - name: Package the release-configured public website
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path frontend-product/dist/* `
+            -DestinationPath "desktop-release/TPV-ERP-PRODUCT-WEB-$env:TPV_DESKTOP_RELEASE_VERSION.zip"
+
+      - name: Publish immutable GitHub Release
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem -Path desktop-release -File | ForEach-Object { $_.FullName }
+          gh release create $env:TPV_DESKTOP_RELEASE_TAG $assets `
+            --verify-tag `
+            --latest=false `
+            --title "TPV ERP Desktop $env:TPV_DESKTOP_RELEASE_VERSION" `
+            --notes "Instaladores Windows x64 firmados de APP Venta y APP Gestión. Incluye checksums SHA-256, manifiesto verificable y el build de la web pública configurado con las URLs exactas de esta versión."
