@@ -7,7 +7,7 @@ import { ScreenContextFooter } from "./ScreenContextFooter";
 import { TopDateTime } from "./TopDateTime";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import languageIcon from "../assets/language.png";
-import { AppLogo } from "./AppLogo";
+import { AppBrand } from "./AppBrand";
 
 type LoginScreenProps = {
   app: AppKind;
@@ -146,7 +146,7 @@ export function LoginScreen({
       {desktopChrome && (
         <>
           <header className="entry-topbar">
-            <strong className="app-brand-static"><AppLogo app={app} />{screenHeading}</strong>
+            <strong className="app-brand-static"><AppBrand app={app} label={screenHeading} /></strong>
           </header>
           <TopDateTime locale={locale} />
           <div className="login-store-heading">

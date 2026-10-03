@@ -13,7 +13,7 @@
   height: 100dvh;
   min-height: 0;
   box-sizing: border-box;
-  padding: 34px 6px 28px !important;
+  padding: 34px 6px 34px !important;
   overflow: hidden;
   background: #f7f9fb;
   color: var(--sale-settings-text);
@@ -25,61 +25,14 @@
 
 .sale-settings-screen .sale-settings-shell {
   width: 100%;
-  height: calc(100dvh - 62px) !important;
+  height: calc(100dvh - 68px) !important;
   min-height: 0;
   position: relative;
   display: grid !important;
   grid-template-columns: 190px minmax(0, 1fr) !important;
-  grid-template-rows: 42px minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
   gap: 0 !important;
   padding: 0 !important;
-}
-
-.sale-settings-screen .sale-settings-topbar {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  display: grid !important;
-  grid-template-columns: 190px minmax(0, 1fr);
-  align-items: center;
-  border-bottom: 1px solid var(--sale-settings-line);
-  background: #fff;
-}
-
-.sale-settings-screen .report-brand-back {
-  position: static !important;
-  width: auto !important;
-  min-width: 0;
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #8ea7c0;
-  border-radius: 3px;
-  background: #fff;
-  color: #0a2c55;
-  margin: 0 6px;
-  padding: 0 12px;
-  font-size: 18px;
-  font-weight: 950;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-}
-
-.sale-settings-screen .report-brand-back:hover,
-.sale-settings-screen .report-brand-back:focus-visible {
-  border-color: var(--sale-settings-blue);
-  background: #edf5fc;
-  outline: 3px solid rgba(23, 105, 170, 0.17);
-}
-
-.sale-settings-screen .report-title {
-  position: static !important;
-  width: auto !important;
-  margin: 0;
-  padding: 0 16px;
-  color: var(--sale-settings-navy);
-  font-size: 18px;
-  text-align: left;
 }
 
 .sale-settings-screen .report-footer-context {
@@ -131,14 +84,14 @@
 
 .sale-settings-screen .sale-settings-nav {
   grid-column: 1 !important;
-  grid-row: 2 !important;
+  grid-row: 1 !important;
   min-height: 0;
   width: auto !important;
   height: auto !important;
   display: flex !important;
   flex-direction: column;
   overflow: auto;
-  padding: 8px 6px 10px !important;
+  padding: 58px 6px 10px !important;
   border: 0;
   border-right: 1px solid var(--sale-settings-line);
   background: var(--tpv-v3-surface);
@@ -217,7 +170,7 @@
 
 .sale-settings-screen .sale-settings-workspace {
   grid-column: 2 !important;
-  grid-row: 2 !important;
+  grid-row: 1 !important;
   min-width: 0;
   min-height: 0;
   width: auto !important;

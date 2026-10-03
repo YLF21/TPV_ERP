@@ -8,7 +8,8 @@ import { SessionTopControls } from "./SessionTopControls";
 import { DeferredCashSessionDialog as SaleCashSessionDialog } from "./DeferredCashSessionDialog";
 import { loadCashSessionReadiness } from "../sale/cashSessions";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
-import { AppLogo } from "./AppLogo";
+import { AppBrand } from "./AppBrand";
+import ventaWordmark from "../../../../branding/espos-wordmark.png";
 
 type SessionHomeScreenProps = {
   app: AppKind;
@@ -137,9 +138,31 @@ export function SessionHomeScreen({
 
   return (
     <main className="home-screen" data-app={app}>
-      <header className="entry-topbar">
-        <strong className="app-brand-static"><AppLogo app={app} />{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
-      </header>
+      {app === "venta" ? (
+        <header
+          className="home-main-brand"
+          style={{
+            position: "absolute",
+            inset: "34px 0 calc(50% + var(--home-brand-launcher-offset, 210px))",
+            display: "grid",
+            gridTemplateRows: "minmax(0, 1fr)",
+            placeItems: "center"
+          }}
+        >
+          <img
+            src={ventaWordmark}
+            alt={t("venta.title")}
+            draggable={false}
+            width={560}
+            height={179}
+            style={{ width: "min(560px, 60vw)", height: "calc(100% - 16px)", minHeight: 0, maxHeight: 179, objectFit: "contain" }}
+          />
+        </header>
+      ) : (
+        <header className="entry-topbar">
+          <strong className="app-brand-static"><AppBrand app={app} label={t("gestion.title")} /></strong>
+        </header>
+      )}
       <div className="login-store-heading">
         <strong>{terminalContext.storeName}</strong>
         <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>

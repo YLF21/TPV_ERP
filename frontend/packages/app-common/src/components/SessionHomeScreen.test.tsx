@@ -105,7 +105,7 @@ describe("SessionHomeScreen", () => {
     );
 
     expect(html).toContain('class="report-user-button"');
-    expect(html).toContain('class="entry-topbar"');
+    expect(html).toContain('class="home-main-brand"');
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain('class="home-action-shortcut"');
     for (const shortcut of ["F1", "F2", "F3", "F4", "F5"]) {
