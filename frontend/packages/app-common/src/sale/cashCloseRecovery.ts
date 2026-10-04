@@ -12,8 +12,11 @@ export type CashCloseRecoveryFlow = {
 };
 
 export type CashCloseRecoveryEnvelope = {
-  version: 1;
+  version: 1 | 2;
   terminalCode: string;
+  installationId?: string;
+  terminalId?: string;
+  bindingId?: string;
   flow: CashCloseRecoveryFlow;
   savedAt: string;
 };
@@ -26,51 +29,83 @@ export type CashCloseRecoveryLoadResult =
 const PREFIX = "tpverp.cash-close.v1";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function cashCloseRecoveryKey(terminalCode: string) {
-  return `${PREFIX}.${encodeURIComponent(terminalCode.trim())}`;
+export type CashCloseRecoveryIdentity = string | {
+  terminalCode: string; installationId: string; terminalId: string; bindingId: string;
+  legacyTerminalCode?: string;
+};
+
+export function cashCloseRecoveryKey(identity: CashCloseRecoveryIdentity) {
+  if (typeof identity === "string") return `${PREFIX}.${encodeURIComponent(identity.trim())}`;
+  if (![identity.installationId, identity.terminalId, identity.bindingId].every(value => UUID.test(value))) {
+    throw new Error("invalid_cash_close_identity");
+  }
+  return `tpverp.cash-close.v2.${identity.installationId}.${identity.terminalId}.${identity.bindingId}`;
 }
 
 export function saveCashCloseRecovery(
   storage: Storage,
-  terminalCode: string,
+  identity: CashCloseRecoveryIdentity,
   flow: CashCloseRecoveryFlow,
 ) {
   const envelope: CashCloseRecoveryEnvelope = {
-    version: 1,
-    terminalCode,
+    version: typeof identity === "string" ? 1 : 2,
+    terminalCode: typeof identity === "string" ? identity : identity.terminalCode,
+    ...(typeof identity === "string" ? {} : {
+      installationId: identity.installationId, terminalId: identity.terminalId, bindingId: identity.bindingId,
+    }),
     flow,
     savedAt: new Date().toISOString(),
   };
   if (!validEnvelope(envelope)) throw new Error("invalid_cash_close_recovery");
-  storage.setItem(cashCloseRecoveryKey(terminalCode), JSON.stringify(envelope));
+  storage.setItem(cashCloseRecoveryKey(identity), JSON.stringify(envelope));
 }
 
-export function clearCashCloseRecovery(storage: Storage, terminalCode: string) {
-  storage.removeItem(cashCloseRecoveryKey(terminalCode));
+export function clearCashCloseRecovery(storage: Storage, identity: CashCloseRecoveryIdentity) {
+  storage.removeItem(cashCloseRecoveryKey(identity));
 }
 
 export function loadCashCloseRecovery(
   storage: Storage,
-  terminalCode: string,
+  identity: CashCloseRecoveryIdentity,
 ): CashCloseRecoveryLoadResult {
-  const raw = storage.getItem(cashCloseRecoveryKey(terminalCode));
-  if (raw == null) return { status: "empty" };
+  const key = cashCloseRecoveryKey(identity);
+  const raw = storage.getItem(key);
+  if (raw == null) {
+    // Only a proven adoption of the same legacy credential supplies this marker.
+    // New bindings must never pick up a close draft merely because they reuse 002.
+    if (typeof identity !== "string" && identity.legacyTerminalCode && storage.getItem(`${key}.migrated`) !== "1") {
+      const legacy = loadCashCloseRecovery(storage, identity.legacyTerminalCode);
+      if (legacy.status === "blocked") return legacy;
+      if (legacy.status === "valid") {
+        saveCashCloseRecovery(storage, identity, legacy.envelope.flow);
+        storage.setItem(`${key}.migrated`, "1");
+        clearCashCloseRecovery(storage, identity.legacyTerminalCode);
+        return loadCashCloseRecovery(storage, identity);
+      }
+    }
+    return { status: "empty" };
+  }
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
     return { status: "blocked", raw };
   }
-  if (!validEnvelope(value) || value.terminalCode !== terminalCode) {
+  if (!validEnvelope(value) || (typeof identity === "string"
+    ? value.version !== 1 || value.terminalCode !== identity
+    : value.version !== 2 || value.installationId !== identity.installationId
+      || value.terminalId !== identity.terminalId || value.bindingId !== identity.bindingId)) {
     return { status: "blocked", raw };
   }
   return { status: "valid", envelope: value };
 }
 
 function validEnvelope(value: unknown): value is CashCloseRecoveryEnvelope {
-  if (!isRecord(value) || value.version !== 1 || typeof value.terminalCode !== "string"
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 2) || typeof value.terminalCode !== "string"
     || value.terminalCode.trim() === "" || typeof value.savedAt !== "string"
     || !Number.isFinite(Date.parse(value.savedAt)) || !isRecord(value.flow)) return false;
+  if (value.version === 2 && ![value.installationId, value.terminalId, value.bindingId]
+    .every(item => typeof item === "string" && UUID.test(item))) return false;
   const flow = value.flow;
   return typeof flow.closeOperationId === "string" && UUID.test(flow.closeOperationId)
     && typeof flow.reconciliationAttemptId === "string" && UUID.test(flow.reconciliationAttemptId)

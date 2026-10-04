@@ -11,6 +11,12 @@ import org.springframework.data.repository.query.Param;
 
 public interface TerminalRepository extends JpaRepository<Terminal, UUID> {
 
+    Optional<Terminal> findByTiendaIdAndWorkstationCode(UUID tiendaId, String workstationCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select terminal from Terminal terminal where terminal.id = :id")
+    Optional<Terminal> findForAuthentication(@Param("id") UUID id);
+
     Optional<Terminal> findByTiendaIdAndNombreIgnoreCase(UUID tiendaId, String nombre);
 
     Optional<Terminal> findByTiendaIdAndTipo(UUID tiendaId, TerminalType tipo);

@@ -6,8 +6,7 @@ import {
   apiRequest,
   checkBackendConnection,
   createTranslator,
-  type LocaleCode,
-  type TerminalContext
+  type LocaleCode
 } from "@tpverp/app-common";
 import { AppLogo } from "../../../packages/app-common/src/components/AppLogo";
 
@@ -16,23 +15,18 @@ type InstallationLoginResult = {
   mustChangePassword: boolean;
 };
 
-type ProvisioningResult = {
-  terminalId: string;
-  terminalCode: string;
-  storeName: string;
-  terminalCredential: string;
-};
-
 type InstallationStatus = {
   organizationProvisioned?: boolean;
 };
 
 export function ServerTerminalSetupScreen({
   locale,
-  onProvisioned
+  onOrganizationReady,
+  onConfigureConnection
 }: {
   locale: LocaleCode;
-  onProvisioned: (context: TerminalContext) => void;
+  onOrganizationReady: () => void;
+  onConfigureConnection: () => void;
 }) {
   const t = createTranslator(locale);
   const [username, setUsername] = useState("ADMIN");
@@ -52,6 +46,7 @@ export function ServerTerminalSetupScreen({
       if (!cancelled) {
         setBackendOnline(online);
         setOrganizationProvisioned(provisioned);
+        if (provisioned) onOrganizationReady();
       }
     });
     return () => { cancelled = true; };
@@ -64,6 +59,7 @@ export function ServerTerminalSetupScreen({
     const status = await loadBackendStatus();
     setBackendOnline(status.online);
     setOrganizationProvisioned(status.provisioned);
+    if (status.provisioned) onOrganizationReady();
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -109,21 +105,7 @@ export function ServerTerminalSetupScreen({
         organizationReady = true;
         setOrganizationProvisioned(true);
       }
-      const provisioned = await apiRequest<ProvisioningResult>("/terminals/server/provision", {
-        method: "POST",
-        token
-      });
-      const context: TerminalContext = {
-        storeName: provisioned.storeName,
-        terminalCode: provisioned.terminalCode,
-        terminalId: provisioned.terminalId,
-        terminalCredential: provisioned.terminalCredential
-      };
-      const saved = await window.tpvDesktop?.terminalIdentity?.save(context);
-      if (!saved?.ok) {
-        throw new Error(saved && "message" in saved ? saved.message : "secure_storage_unavailable");
-      }
-      onProvisioned(context);
+      onOrganizationReady();
     } catch (caught) {
       if (caught instanceof ApiConnectionError) setBackendOnline(false);
       setError(caught instanceof ApiConnectionError
@@ -168,6 +150,7 @@ export function ServerTerminalSetupScreen({
               {t("login.backendRetry")}
             </button>
           )}
+          <button type="button" disabled={busy} onClick={onConfigureConnection}>{t("terminalLink.title")}</button>
         </div>
         <label>
           <span>{t("gestion.serverSetup.admin")}</span>

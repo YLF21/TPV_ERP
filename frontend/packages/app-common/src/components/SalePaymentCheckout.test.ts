@@ -531,8 +531,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("No se pudo registrar la devolución"));
   expect(screen.getByRole("button",{name:/Efectivo/})).toBeEnabled();
   expect(amount).toBeEnabled();
+  expect(allocationCalls).toBe(1);
 
-  fireEvent.keyDown(amount,{key:"Enter"});
+  const retry=screen.getByRole("button",{name:"ACEPTAR"});
+  await waitFor(()=>expect(retry).toBeEnabled());
+  fireEvent.click(retry);
   await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
   expect(allocationIds).toHaveLength(2);
  expect(allocationIds[1]).toBe(allocationIds[0]);

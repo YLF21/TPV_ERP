@@ -76,4 +76,10 @@ export type TerminalContext = {
   terminalCode: string;
   terminalId?: string;
   terminalCredential?: string;
+  installationId?: string;
+  storeId?: string;
+  bindingId?: string;
+  terminalName?: string;
+  legacyTerminalCode?: string;
+  legacyBackendScope?: string;
 };

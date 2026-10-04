@@ -42,6 +42,7 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 							&& session.getTerminal().isActiva()
 							&& session.getTerminal().isAprobada())
 					.filter(session -> session.getUsuario().isActivo())
+					.filter(com.tpverp.backend.security.domain.UserSession::hasCurrentTerminalBinding)
 					.ifPresent(session -> {
 						var user = session.getUsuario();
 						var authorities = new ArrayList<SimpleGrantedAuthority>();

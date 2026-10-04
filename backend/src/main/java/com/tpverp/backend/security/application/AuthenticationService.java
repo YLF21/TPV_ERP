@@ -79,7 +79,7 @@ public class AuthenticationService {
 			String terminalCredential,
 			String userName,
 			String password) {
-		var terminal = terminalRepository.findById(terminalId)
+		var terminal = terminalRepository.findForAuthentication(terminalId)
 				.orElseThrow(AuthenticationFailedException::new);
 		if (!passwordEncoder.matches(
 						terminalCredential == null ? "" : terminalCredential,
@@ -172,7 +172,7 @@ public class AuthenticationService {
 		if (session.getTerminal() == null) {
 			return session.getUsuario().isProtegido() && session.getUsuario().getTienda() == null;
 		}
-		return session.getTerminal().isActiva() && session.getTerminal().isAprobada();
+		return session.getTerminal().isActiva() && session.getTerminal().isAprobada() && session.hasCurrentTerminalBinding();
 	}
 
 	private LoginResult createSession(

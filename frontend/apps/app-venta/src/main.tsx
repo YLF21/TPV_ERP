@@ -86,6 +86,9 @@ class LazyModuleErrorBoundary extends Component<{ children: ReactNode }, { faile
   }
 }
 
+const TerminalConnectionScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/TerminalConnectionScreen").then(({ TerminalConnectionScreen }) => ({ default: TerminalConnectionScreen }))
+);
 const SalesReportScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SalesReportScreen").then(({ SalesReportScreen }) => ({
     default: SalesReportScreen
@@ -336,7 +339,7 @@ export function SalesUtilityWindowApp() {
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
-  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings">("home");
+  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings" | "connection">("home");
   const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("visualization");
   const [saleExitBlocked, setSaleExitBlocked] = useState(false);
   const [receivablesOpen, setReceivablesOpen] = useState(false);
@@ -446,6 +449,10 @@ export function App() {
   function openSettingsDestination(destination: SaleSettingsDestination) {
     setAppNotice(null);
     const normalizedDestination = normalizeSaleSettingsDestination(destination);
+    if (normalizedDestination === "connection" && session && hasPermission(session, "CONFIGURACION_TERMINAL")) {
+      setScreen("connection");
+      return;
+    }
     if (normalizedDestination === "devices") {
       setScreen("hardwareSettings");
       return;
@@ -490,6 +497,9 @@ export function App() {
   }
 
   if (terminalContext === null) {
+    if (window.tpvDesktop?.backendConnection) {
+      return <TerminalConnectionScreen locale={locale} identity={null} onReady={setTerminalContext} />;
+    }
     const copy = locale === "en"
       ? {
           title: "Terminal not configured",
@@ -518,6 +528,12 @@ export function App() {
     );
   }
 
+  if (screen === "connection" && window.tpvDesktop?.backendConnection && terminalContext
+      && (!session || hasPermission(session, "CONFIGURACION_TERMINAL"))) {
+    return <TerminalConnectionScreen locale={locale} identity={terminalContext} onReady={setTerminalContext}
+      onBack={() => setScreen(session ? "settings" : "home")} />;
+  }
+
   if (!session) {
     return (
       <LoginScreen
@@ -526,6 +542,7 @@ export function App() {
         terminalContext={terminalContext}
         onLocaleChange={handleLocaleChange}
         onLogin={handleLogin}
+        onConfigureConnection={window.tpvDesktop?.backendConnection ? () => setScreen("connection") : undefined}
       />
     );
   }
@@ -753,6 +770,7 @@ export function App() {
           onOpenHardware={() => openSettingsDestination("devices")}
           onOpenDocumentPrinting={() => openSettingsDestination("printers")}
           onOpenDiagnostics={() => openSettingsDestination("diagnostics")}
+          onOpenConnection={() => openSettingsDestination("connection")}
           onOpenReports={canOpenSalesReport ? () => setScreen("salesReport") : undefined}
           onSaleInterfaceModeChange={setSaleInterfaceMode}
         />

@@ -28,6 +28,7 @@ import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gest
 import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
+import { TerminalConnectionScreen } from "../../../packages/app-common/src/components/TerminalConnectionScreen";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import { MemberCategoriesScreen } from "./MemberCategoriesScreen";
 import { FamiliesScreen } from "./FamiliesScreen";
@@ -188,6 +189,7 @@ function App() {
   const [salesReport, setSalesReport] = useState("salesReport.dailySales");
   const [stockSelection, setStockSelection] = useState<StockSelection>({ key: "stock.current", view: "stock.current" });
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
+  const [setupMode, setSetupMode] = useState<"organization" | "connection">("organization");
   const [logoutError, setLogoutError] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
 
@@ -209,7 +211,11 @@ function App() {
   }
 
   if (terminalContext === null) {
-    return <ServerTerminalSetupScreen locale={locale} onProvisioned={setTerminalContext} />;
+    return setupMode === "connection" && window.tpvDesktop?.backendConnection
+      ? <TerminalConnectionScreen locale={locale} identity={null} onReady={setTerminalContext}
+          onBack={() => setSetupMode("organization")} />
+      : <ServerTerminalSetupScreen locale={locale} onOrganizationReady={() => setSetupMode("connection")}
+          onConfigureConnection={() => setSetupMode("connection")} />;
   }
 
   if (!session) {

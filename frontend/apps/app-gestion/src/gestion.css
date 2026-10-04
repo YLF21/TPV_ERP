@@ -5691,6 +5691,12 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-terminal-pairing > strong { color: var(--gestion-navy); font-size: 32px; letter-spacing: .14em; }
 .gestion-terminal-pairing > p { margin: 0; color: #71480d; font-weight: 750; }
 .gestion-terminal-pairing > small { color: var(--gestion-muted); font-weight: 750; }
+.gestion-terminal-summary { grid-template-columns: repeat(4, minmax(140px, 1fr)); }
+.gestion-terminal-history { width: 100%; border-collapse: collapse; font-size: var(--gestion-font-label); }
+.gestion-terminal-history th, .gestion-terminal-history td { padding: 8px; border-bottom: 1px solid var(--gestion-border); text-align: left; }
+.gestion-terminal-assign { display: grid; max-width: 230px; gap: 6px; margin-top: 14px; font-weight: 800; }
+.gestion-terminal-assign select { min-height: 36px; border: 1px solid var(--gestion-border-dark); background: #fff; }
+@media (max-width: 800px) { .gestion-terminal-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Control alerts: chronological workspace and user view preferences. */
 .gestion-control-timeline {

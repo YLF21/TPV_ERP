@@ -74,6 +74,8 @@ function validateBackendUrl(value, { allowedHosts = [] } = {}) {
       throw new Error("El host del backend remoto no está en la allowlist configurada");
     }
   }
+  // A hosts-file entry must not turn an HTTP "localhost" credential route into a remote route.
+  if (parsed.hostname.toLowerCase() === "localhost") parsed.hostname = "127.0.0.1";
   parsed.pathname = "";
   return parsed.toString().replace(/\/$/, "");
 }

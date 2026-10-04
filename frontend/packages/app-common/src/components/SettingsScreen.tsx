@@ -46,6 +46,7 @@ type SettingsScreenProps = {
   onOpenHardware?: () => void;
   onOpenDocumentPrinting?: () => void;
   onOpenDiagnostics?: () => void;
+  onOpenConnection?: () => void;
   onOpenReports?: () => void;
   onSaleInterfaceModeChange?: (mode: SaleInterfaceMode) => void;
   request?: typeof apiRequest;
@@ -56,6 +57,7 @@ const protectedDestinations = new Set<CanonicalSaleSettingsDestination>([
   "printers",
   "cash",
   "diagnostics"
+  ,"connection"
 ]);
 
 const cashTabsCopy = {
@@ -84,6 +86,7 @@ export function SettingsScreen({
   onOpenHardware,
   onOpenDocumentPrinting,
   onOpenDiagnostics,
+  onOpenConnection,
   onOpenReports,
   onSaleInterfaceModeChange,
   request = apiRequest
@@ -194,6 +197,10 @@ export function SettingsScreen({
     const navigate = () => {
       if (destination === "devices") {
         onOpenHardware?.();
+        return;
+      }
+      if (destination === "connection" && onOpenConnection) {
+        onOpenConnection();
         return;
       }
       if (normalizedDestination === "printers") {
@@ -554,6 +561,7 @@ export function SettingsScreen({
             storeName={terminalContext.storeName}
             token={session.accessToken}
             terminalId={terminalContext.terminalId}
+            recoveryIdentity={terminalContext}
             request={request}
           />
           </div>

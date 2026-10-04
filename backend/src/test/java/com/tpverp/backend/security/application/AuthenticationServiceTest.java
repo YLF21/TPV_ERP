@@ -43,7 +43,7 @@ class AuthenticationServiceTest {
 		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
 		var role = new Role(store, "ADMIN");
 		var user = new UserAccount(store, "ADMIN", "password-hash", role);
-		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
@@ -67,7 +67,7 @@ class AuthenticationServiceTest {
 		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
 		var role = new Role(null, "ADMIN");
 		var user = new UserAccount(null, "ADMIN", "password-hash", role);
-		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.empty());
 		when(usuarioRepository.findGlobalByUserName("ADMIN")).thenReturn(Optional.of(user));
@@ -171,7 +171,7 @@ class AuthenticationServiceTest {
 		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
 		var role = new Role(store, "ADMIN");
 		var user = new UserAccount(store, "ADMIN", "password-hash", role);
-		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
@@ -185,7 +185,7 @@ class AuthenticationServiceTest {
 	void rejectsServerTerminalWithoutItsProvisionedCredential() {
 		var store = store();
 		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
-		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(passwordEncoder.matches("", "credential")).thenReturn(false);
 
 		assertThatThrownBy(() -> service().login(terminal.getId(), null, "ADMIN", "0000"))
@@ -197,7 +197,7 @@ class AuthenticationServiceTest {
 		var store = store();
 		var terminal = new Terminal(store, "PDA 1", TerminalType.PDA, "credential");
 		terminal.deactivate();
-		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(passwordEncoder.matches("device-secret", "credential")).thenReturn(true);
 
 		assertThatThrownBy(() -> service().login(terminal.getId(), "device-secret", "ADMIN", "0000"))
@@ -209,7 +209,7 @@ class AuthenticationServiceTest {
 		var store = store();
 		var terminal = new Terminal(store, "PDA 1", TerminalType.PDA, "credential");
 		terminal.deactivate();
-		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(passwordEncoder.matches("wrong", "credential")).thenReturn(false);
 
 		assertThatThrownBy(() -> service().login(terminal.getId(), "wrong", "ADMIN", "0000"))

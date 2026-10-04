@@ -21,6 +21,7 @@ type LoginScreenProps = {
   notice?: string;
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
+  onConfigureConnection?: () => void;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -41,6 +42,7 @@ export function LoginScreen({
   notice,
   secondaryActionLabel,
   onSecondaryAction
+  ,onConfigureConnection
 }: LoginScreenProps) {
   const t = createTranslator(locale);
   const desktopChrome = presentation === "desktop";
@@ -244,6 +246,8 @@ export function LoginScreen({
             {secondaryActionLabel}
           </button>
         )}
+        {app === "venta" && onConfigureConnection && <button type="button" className="login-secondary-action"
+          onClick={onConfigureConnection}>{t("terminalLink.title")}</button>}
       </form>
       {shutdownOpen && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">

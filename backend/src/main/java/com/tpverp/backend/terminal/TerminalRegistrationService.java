@@ -148,6 +148,9 @@ public class TerminalRegistrationService {
         String credential = newCredential();
         var terminal = terminalRepository.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR)
                 .map(existing -> {
+                    if (existing.getCurrentBindingId() != null) {
+                        throw new IllegalStateException("SERVER_BINDING_USE_EXPLICIT_ADOPTION");
+                    }
                     existing.rotateCredential(passwordEncoder.encode(credential));
                     existing.approve();
                     return existing;
@@ -163,7 +166,7 @@ public class TerminalRegistrationService {
                 AuditResult.EXITO,
                 Map.of("terminalId", terminal.getId(), "storeId", store.getId()));
         return new ServerProvisioningResult(
-                terminal.getId(), terminal.getNombre(), store.getNombreEfectivo(), credential);
+                terminal.getId(), terminal.getDisplayCode(), store.getNombreEfectivo(), credential);
     }
 
     @Transactional
@@ -179,6 +182,12 @@ public class TerminalRegistrationService {
                         "message.organization.store_not_found"));
         Terminal terminal = terminalRepository.findByIdAndTiendaId(terminalId, storeId)
                 .orElseThrow(() -> new IllegalArgumentException("message.terminal.not_found"));
+        if (terminal.getCurrentBindingId() != null || terminal.getTipo() == TerminalType.TERMINAL_VENTA && terminal.getWorkstationCode() != null) {
+            throw new IllegalStateException("WORKSTATION_EXPECTED_BINDING_REQUIRED");
+        }
+        if (terminal.getTipo() == TerminalType.TERMINAL_VENTA && terminal.getWorkstationCode() == null) {
+            throw new IllegalStateException("WORKSTATION_CODE_ASSIGNMENT_REQUIRED");
+        }
         if (!terminal.isAprobada()) {
             validateQuota(terminal);
             terminal.approve();
@@ -193,6 +202,9 @@ public class TerminalRegistrationService {
     @Transactional
     public void deactivate(UUID terminalId) {
         Terminal terminal = currentTerminal(terminalId);
+        if (terminal.getCurrentBindingId() != null || terminal.getWorkstationCode() != null && terminal.getTipo() == TerminalType.TERMINAL_VENTA) {
+            throw new IllegalStateException("WORKSTATION_EXPECTED_BINDING_REQUIRED");
+        }
         terminal.deactivate();
         Instant now = Instant.now(clock);
         sesionRepository.findByTerminalIdAndRevocadaEnIsNull(terminalId)

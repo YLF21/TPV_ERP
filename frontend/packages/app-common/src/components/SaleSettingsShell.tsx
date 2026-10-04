@@ -55,6 +55,7 @@ const personalDestinations: SaleSettingsNavigationItem[] = [
 ];
 
 const workstationDestinations: SaleSettingsNavigationItem[] = [
+  { destination: "connection", labelKey: "terminalLink.title", icon: Desktop },
   { destination: "printers", labelKey: "settings.printers", icon: Printer },
   { destination: "devices", labelKey: "settings.devices", icon: Desktop },
   { destination: "cash", labelKey: "settings.cash", icon: CashRegister }

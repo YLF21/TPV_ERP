@@ -32,6 +32,10 @@ public class TerminalController {
     @PostMapping("/request")
     public TerminalRegistrationService.RegistrationResult request(
             @Valid @RequestBody TerminalRequest request) {
+        if (request.type() == TerminalType.TERMINAL_VENTA) {
+            throw new TerminalLinkingException(org.springframework.http.HttpStatus.CONFLICT,
+                    "WINDOWS_USE_WORKSTATION_LINKING");
+        }
         return service.request(request.tiendaId(), request.name(), request.type());
     }
 

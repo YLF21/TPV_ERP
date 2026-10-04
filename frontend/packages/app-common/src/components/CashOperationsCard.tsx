@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import { clearCashCloseRecovery, loadCashCloseRecovery, saveCashCloseRecovery } from "../sale/cashCloseRecovery";
+import { clearCashCloseRecovery, loadCashCloseRecovery, saveCashCloseRecovery, type CashCloseRecoveryIdentity } from "../sale/cashCloseRecovery";
 import { printCashEntryReceipt, printCashWithdrawalReceipt } from "../sale/cashWithdrawal";
 import { createCashCloseWithdrawalIdempotencyKey, loadCashSessionReadiness, prepareCashSessionForSales, recoverCashCloseOperation, type CashSalesSessionReadiness, type CashSessionView } from "../sale/cashSessions";
 import type { TicketPrintOutcome } from "../sale/ticketPrinting";
 import { findSaleOperationAuthorization, loadSalesOperationSecurity, saleOperationAuthorizationComplete, saleOperationCredentials, type SaleOperationAuthorization } from "../sale/operationSecurity";
-import type { LocaleCode } from "../types";
+import type { LocaleCode, TerminalContext } from "../types";
 import { CashDenominationDialog, type CashDenominationCount } from "./CashDenominationDialog";
 import { SaleCashSessionDialog, createCashCloseUiFlow, type CashCloseUiFlow } from "./SaleCashSessionDialog";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
@@ -20,7 +20,7 @@ type Movement = "entry" | "withdrawal";
 type DraftKey = Movement | "betweenEntry" | "betweenWithdrawal";
 type MovementDraft = { amount: string; comment: string; denominations: CashDenominationCount[]; username: string; password: string };
 type PendingReceipt = { id: string; entry: boolean; technicalMessage?: string };
-type Props = { locale: LocaleCode; refreshContainer?: HTMLElement | null; interfaceMode?: SaleInterfaceMode; currentUsername?: string; permissions?: string[]; token?: string; terminalId?: string; terminalCode?: string; storeName?: string; request?: RequestFunction };
+type Props = { locale: LocaleCode; refreshContainer?: HTMLElement | null; interfaceMode?: SaleInterfaceMode; currentUsername?: string; permissions?: string[]; token?: string; terminalId?: string; terminalCode?: string; recoveryIdentity?: TerminalContext; storeName?: string; request?: RequestFunction };
 const blankDraft = (): MovementDraft => ({ amount: "", comment: "", denominations: [], username: "", password: "" });
 const fallbackAuthorization: SaleOperationAuthorization = { mode: "CURRENT_PASSWORD", requireUsername: false, requirePassword: true };
 const copy = {
@@ -52,7 +52,13 @@ function positiveAmount(value: string): number | null {
   const cents = Math.round(Number(value.trim().replace(",", ".")) * 100);
   return Number.isSafeInteger(cents) && cents > 0 ? cents / 100 : null;
 }
-export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "KEYBOARD", currentUsername = "", permissions = [], token, terminalId, terminalCode, storeName = "", request = apiRequest }: Props) {
+export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "KEYBOARD", currentUsername = "", permissions = [], token, terminalId, terminalCode, recoveryIdentity, storeName = "", request = apiRequest }: Props) {
+  const recoveryScope = useMemo<CashCloseRecoveryIdentity>(() => recoveryIdentity?.bindingId ? {
+    terminalCode: terminalCode ?? "", installationId: recoveryIdentity.installationId ?? "",
+    terminalId: recoveryIdentity.terminalId ?? "", bindingId: recoveryIdentity.bindingId,
+    legacyTerminalCode: recoveryIdentity.legacyTerminalCode,
+  } : terminalCode ?? "", [terminalCode, recoveryIdentity?.installationId, recoveryIdentity?.terminalId,
+    recoveryIdentity?.bindingId, recoveryIdentity?.legacyTerminalCode]);
   const t = copy[locale];
   const printLabels = createTranslator(locale);
   const [session, setSession] = useState<CashSessionView | null>(null);
@@ -90,14 +96,14 @@ export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "
     let recoveryFailed = false;
     if (terminalCode) {
       try {
-        const saved = loadCashCloseRecovery(localStorage, terminalCode);
+        const saved = loadCashCloseRecovery(localStorage, recoveryScope);
         if (saved.status === "blocked") recoveryFailed = true;
         else if (saved.status === "valid" && saved.envelope.flow.phase !== "READY") {
           const prior = saved.envelope.flow;
           try {
             const operation = await recoverCashCloseOperation(terminalId, prior.closeOperationId, token, request);
             if (operation.status === "CERRADA" || operation.result?.status === "CERRADA") {
-              clearCashCloseRecovery(localStorage, terminalCode);
+              clearCashCloseRecovery(localStorage, recoveryScope);
             } else {
               const flow: CashCloseUiFlow = {
                 ...prior,
@@ -113,7 +119,7 @@ export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "
             if (failure instanceof ApiError && failure.status === 404 && failure.problem?.code === "NOT_FOUND") {
               // The attempted request never created an operation; the draft can be edited again.
               recovered = { flow: { ...prior, phase: "READY" }, sessionId: "" };
-              clearCashCloseRecovery(localStorage, terminalCode);
+              clearCashCloseRecovery(localStorage, recoveryScope);
             } else recoveryFailed = true;
           }
         }
@@ -133,7 +139,7 @@ export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "
         flowSessionRef.current = current.id;
         setCloseFlow(flow); setFlowSessionId(current.id);
         if (recovered?.sessionId && terminalCode) {
-          try { saveCashCloseRecovery(localStorage, terminalCode, flow); }
+          try { saveCashCloseRecovery(localStorage, recoveryScope, flow); }
           catch { recoveryFailed = true; }
         }
       }
@@ -151,7 +157,7 @@ export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "
     setLoading(false);
   // permissionKey captures the permission contents without depending on the caller's array identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissionKey, request, t.error, terminalCode, terminalId, token]);
+  }, [permissionKey, request, t.error, terminalCode, terminalId, token, recoveryScope]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -159,10 +165,10 @@ export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "
     setCloseFlow(flow);
     if (!terminalCode) return;
     try {
-      if (flow.phase === "READY") clearCashCloseRecovery(localStorage, terminalCode);
-      else saveCashCloseRecovery(localStorage, terminalCode, flow);
+      if (flow.phase === "READY") clearCashCloseRecovery(localStorage, recoveryScope);
+      else saveCashCloseRecovery(localStorage, recoveryScope, flow);
     } catch { setRecoveryBlocked(true); }
-  }, [terminalCode]);
+  }, [terminalCode, recoveryScope]);
 
   const drafts = { entry: entryDraft, withdrawal: withdrawalDraft, betweenEntry: betweenEntryDraft, betweenWithdrawal: betweenWithdrawalDraft };
   const setters = { entry: setEntryDraft, withdrawal: setWithdrawalDraft, betweenEntry: setBetweenEntryDraft, betweenWithdrawal: setBetweenWithdrawalDraft };
@@ -301,7 +307,7 @@ export function CashOperationsCard({ locale, refreshContainer, interfaceMode = "
             requireWithdrawalBreakdown={Boolean(readiness?.requireWithdrawalBreakdown)}
             authorization={closeAuthorization} closeFlow={closeFlow} onCloseFlowChange={changeCloseFlow}
             onBusyChange={setCloseBusy} onClosed={() => {
-              if (terminalCode) { try { clearCashCloseRecovery(localStorage, terminalCode); } catch { /* Storage may be unavailable. */ } }
+              if (terminalCode) { try { clearCashCloseRecovery(localStorage, recoveryScope); } catch { /* Storage may be unavailable. */ } }
               flowSessionRef.current = null; setCloseBusy(false); setSession(null); setFlowSessionId(null); setCloseFlow(createCashCloseUiFlow()); setNotice(t.closed); void load();
             }} />}</div>
           {selectedOperation !== "close" && movementForm(false)}

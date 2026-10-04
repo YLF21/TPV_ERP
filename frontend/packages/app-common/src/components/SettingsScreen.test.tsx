@@ -63,8 +63,8 @@ describe("SettingsScreen", () => {
     expect(html).toContain('class="settings-screen sale-settings-screen"');
     expect(html).toContain('class="settings-shell sale-settings-shell"');
     expect(html).toContain('class="module-nav-back-icon"');
-    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(6);
-    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(6);
+    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(7);
+    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(7);
     expect(html).toContain('class="top-date-time"');
     expect(html).toContain('class="report-user-button"');
     expect(html).toContain('class="language-button"');
@@ -78,6 +78,7 @@ describe("SettingsScreen", () => {
     expect(html).toContain('aria-current="page"');
     expect(html).toContain("Interfaz de venta");
     expect(html).toContain("Dispositivos");
+    expect(html).toContain("CONFIGURAR CONEXIÓN");
     expect(html).toContain("Impresoras");
     expect(html).toContain("Diagnóstico y mantenimiento");
     expect(html).toContain("Entrada de cobro");
@@ -89,6 +90,7 @@ describe("SettingsScreen", () => {
     const onOpenHardware = vi.fn();
     const onOpenDocumentPrinting = vi.fn();
     const onOpenDiagnostics = vi.fn();
+    const onOpenConnection = vi.fn();
     render(
       <SettingsScreen
         app="venta"
@@ -100,16 +102,19 @@ describe("SettingsScreen", () => {
         onOpenHardware={onOpenHardware}
         onOpenDocumentPrinting={onOpenDocumentPrinting}
         onOpenDiagnostics={onOpenDiagnostics}
+        onOpenConnection={onOpenConnection}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Dispositivos" }));
     fireEvent.click(screen.getByRole("button", { name: "Impresoras" }));
     fireEvent.click(screen.getByRole("button", { name: "Diagnóstico y mantenimiento" }));
+    fireEvent.click(screen.getByRole("button", { name: "CONFIGURAR CONEXIÓN" }));
 
     expect(onOpenHardware).toHaveBeenCalledOnce();
     expect(onOpenDocumentPrinting).toHaveBeenCalledOnce();
     expect(onOpenDiagnostics).toHaveBeenCalledOnce();
+    expect(onOpenConnection).toHaveBeenCalledOnce();
   });
 
   it("opens the personal destination requested by another settings screen", () => {
@@ -306,6 +311,7 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("button", { name: "Visualización" })).toBeTruthy();
     expect(screen.queryByText("Interfaz de venta")).toBeNull();
     expect(screen.queryByRole("button", { name: "Dispositivos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "CONFIGURAR CONEXIÓN" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Impresoras" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Caja" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Diagnóstico y mantenimiento" })).toBeNull();
