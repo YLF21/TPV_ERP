@@ -52,6 +52,7 @@ function createDesktopConfig(appKey) {
     artifactName: `${app.artifactPrefix}-\${version}-\${arch}.\${ext}`,
     directories: { app: ".", output: `../../output/desktop-production/${appKey}` },
     files: ["**/*", "!**/*.map", "!**/.env*", "!node_modules/**"],
+    extraResources: [{ from: "../../tools/write-backend-config.ps1", to: "write-backend-config.ps1" }],
     extraMetadata: {
       name: `tpv-erp-app-${appKey}`,
       version: metadata.version,

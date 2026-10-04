@@ -1,0 +1,19 @@
+.terminal-link-screen { display: grid; place-items: center; padding: 22px; overflow: auto; }
+.terminal-link-panel { width: min(620px, 100%); display: grid; gap: 12px; padding: 20px; border: 1px solid #9fb3c8; border-radius: 5px; background: #fff; color: #173f67; }
+.terminal-link-panel header h1 { margin: 0 0 5px; font-size: 22px; }
+.terminal-link-panel header p, .terminal-link-panel p { margin: 0; }
+.terminal-link-panel label { display: grid; gap: 5px; font-weight: 700; }
+.terminal-link-panel input, .terminal-link-panel select { min-height: 36px; padding: 5px 8px; border: 1px solid #9fb3c8; border-radius: 4px; background: #fff; color: #173f67; font: inherit; }
+.terminal-link-panel button { min-height: 36px; padding: 6px 12px; border: 1px solid #173f67; border-radius: 4px; background: #173f67; color: #fff; font-weight: 700; cursor: pointer; }
+.terminal-link-panel button:disabled { opacity: .55; cursor: default; }
+.terminal-link-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.terminal-link-address { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 10px; }
+.terminal-link-server { display: grid; gap: 1px; border: 1px solid #cad4dd; background: #cad4dd; }
+.terminal-link-server > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px; background: #fff; }
+.terminal-link-pending { display: grid; gap: 10px; padding: 12px; border: 1px solid #9fb3c8; background: #edf6fc; }
+.terminal-link-panel fieldset { display: grid; gap: 10px; border: 1px solid #cad4dd; }
+.terminal-link-error { padding: 9px; color: #982d2d; background: #fff0ef; border: 1px solid #c97575; }
+.terminal-link-screen .terminal-link-panel label { min-width: 0; }
+.terminal-link-screen .terminal-link-panel input, .terminal-link-screen .terminal-link-panel select { box-sizing: border-box; min-width: 0; width: 100%; border-radius: 2px; }
+.terminal-link-screen .terminal-link-panel button { border-radius: 2px; min-height: 34px; padding: 6px 12px; background: #173f67; }
+@media (max-width: 500px) { .terminal-link-address { grid-template-columns: 1fr; } }

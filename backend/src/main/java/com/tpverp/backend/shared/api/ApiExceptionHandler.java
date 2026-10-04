@@ -66,6 +66,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler(com.tpverp.backend.terminal.TerminalLinkingException.class)
+    ProblemDetail terminalLinking(com.tpverp.backend.terminal.TerminalLinkingException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(exception.status(), exception.getMessage());
+        problem.setProperty("code", exception.getMessage());
+        problem.setType(URI.create("urn:tpv-erp:error:" + exception.getMessage()));
+        return problem;
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private final LocalizedMessages messages;
     private final AuditService audit;

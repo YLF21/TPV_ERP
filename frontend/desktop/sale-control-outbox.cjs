@@ -35,13 +35,24 @@ function sameContext(left, right) {
   return left.storeId === right.storeId && left.userId === right.userId && left.terminalId === right.terminalId;
 }
 
-function createSaleControlOutbox({ userDataPath, backendScope, fileSystem = fs }) {
+function createSaleControlOutbox({ userDataPath, backendScope, bindingIdentity, fileSystem = fs }) {
   if (!userDataPath || !backendScope) throw new Error("CONTROL_STORAGE_UNAVAILABLE");
+  if (bindingIdentity && ![bindingIdentity.installationId, bindingIdentity.bindingId,
+    bindingIdentity.storeId, bindingIdentity.terminalId].every(value => typeof value === "string" && UUID.test(value))) {
+    throw new Error("CONTROL_BINDING_INVALID");
+  }
+  const scope = bindingIdentity
+    ? `installation:${bindingIdentity.installationId.toLowerCase()}:binding:${bindingIdentity.bindingId.toLowerCase()}`
+    : backendScope;
   const base = path.resolve(userDataPath);
   const root = path.resolve(userDataPath, "control-events", "v1",
-    createHash("sha256").update(backendScope).digest("hex"));
+    createHash("sha256").update(scope).digest("hex"));
   const directory = context => {
     if (!validContext(context)) throw new Error("CONTROL_CONTEXT_INVALID");
+    if (bindingIdentity && (context.storeId.toLowerCase() !== bindingIdentity.storeId.toLowerCase()
+        || context.terminalId.toLowerCase() !== bindingIdentity.terminalId.toLowerCase())) {
+      throw new Error("CONTROL_CONTEXT_INVALID");
+    }
     const folder = path.join(root, context.storeId.toLowerCase(), context.terminalId.toLowerCase(), context.userId.toLowerCase());
     let current = folder;
     while (true) {
@@ -69,7 +80,7 @@ function createSaleControlOutbox({ userDataPath, backendScope, fileSystem = fs }
     }
     return value;
   };
-  return {
+  const storage = {
     list(context) {
       const folder = directory(context);
       if (!fileSystem.existsSync(folder)) return [];
@@ -108,6 +119,21 @@ function createSaleControlOutbox({ userDataPath, backendScope, fileSystem = fs }
       fileSystem.unlinkSync(filename);
     },
   };
+  // The main process supplies this marker only after proving the old credential.
+  // A replacement gets a new binding and never reads its predecessor's queue.
+  if (bindingIdentity?.legacyBackendScope) {
+    const legacy = createSaleControlOutbox({ userDataPath, backendScope: bindingIdentity.legacyBackendScope, fileSystem });
+    const listCurrent = storage.list;
+    storage.list = context => {
+      directory(context);
+      for (const event of legacy.list(context)) {
+        storage.put(event); // fsync and validate the durable copy before removing its source
+        legacy.remove(context, event.deletionOperationId);
+      }
+      return listCurrent(context);
+    };
+  }
+  return storage;
 }
 
 module.exports = { createSaleControlOutbox, validateEvent, validContext };

@@ -26,6 +26,7 @@ public class CurrentTerminal {
             throw new IllegalStateException("No hay una sesion autenticada con terminal");
         }
         return sessions.findByTokenHashAndRevocadaEnIsNull(authenticationService.hash(token))
+                .filter(com.tpverp.backend.security.domain.UserSession::hasCurrentTerminalBinding)
                 .map(session -> session.getTerminal())
                 .filter(terminal -> terminal.isActiva() && terminal.isAprobada())
                 .map(Terminal::getId)

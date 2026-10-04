@@ -26,11 +26,16 @@ const {
   unavailableTicketPrinterHealth
 } = require("./ticket-printer-health.cjs");
 const { getDesktopAppConfig, resolveDesktopDist, resolveDesktopIcon } = require("./app-config.cjs");
-const { productionBackendConfigPath, resolveBackendConfig } = require("./backend-config.cjs");
+const { productionBackendConfigPath, readBackendConfig, resolveBackendConfig } = require("./backend-config.cjs");
 const { createDesktopServer } = require("./loopback-server.cjs");
 const { resolveRendererAppUrl } = require("./renderer-runtime-config.cjs");
 const { createPrivilegedIpcRegistrar } = require("./electron-security.cjs");
 const { createSaleControlOutbox } = require("./sale-control-outbox.cjs");
+const { createTerminalLinking } = require("./terminal-linking.cjs");
+const { createLinkingStorage } = require("./linking-storage.cjs");
+const { createWindowsProfileCrypto } = require("./windows-profile-crypto.cjs");
+const { createLinkingConfig } = require("./linking-config.cjs");
+const { discoverBackends } = require("./linking-discovery.cjs");
 
 const desktopAppConfig = getDesktopAppConfig(process.env.TPV_DESKTOP_APP_KIND);
 const desktopAppIcon = resolveDesktopIcon(desktopAppConfig);
@@ -134,6 +139,10 @@ const salesUtilityBootstraps = new Map();
 let trustedAppOrigin;
 let desktopServer;
 let saleControlOutbox;
+let linkingStorage;
+let backendConnection;
+let runtimeBackendUrl;
+let runtimeBindingId;
 const registerPrivilegedHandler = createPrivilegedIpcRegistrar({
   ipcMain,
   getTrustedOrigin: () => trustedAppOrigin
@@ -237,7 +246,11 @@ function terminalIdentityPath() {
   return path.join(app.getPath("userData"), "server-terminal-identity.dpapi");
 }
 
-function readTerminalIdentity() {
+async function readTerminalIdentity() {
+  if (linkingStorage) {
+    try { return { ok: true, identity: (await backendConnection.load()).identity || null }; }
+    catch (error) { return structuredError("TERMINAL_IDENTITY_INVALID", error instanceof Error ? error.message : "No se pudo leer la identidad"); }
+  }
   const target = terminalIdentityPath();
   if (!fs.existsSync(target)) {
     return { ok: true, identity: null };
@@ -259,6 +272,17 @@ function writeTerminalIdentity(identity) {
   }
   if (!identity?.terminalId || !identity?.terminalCredential || !identity?.terminalCode || !identity?.storeName) {
     return structuredError("TERMINAL_IDENTITY_INVALID", "La identidad del terminal esta incompleta");
+  }
+  if (linkingStorage) {
+    try {
+      const existing = linkingStorage.read()?.identity;
+      if (existing && existing.terminalId === identity.terminalId
+          && existing.terminalCredential === identity.terminalCredential
+          && existing.terminalCode === identity.terminalCode) return { ok: true };
+      return structuredError("TERMINAL_IDENTITY_MANAGED", "La identidad del terminal se administra mediante backendConnection");
+    } catch (error) {
+      return structuredError("TERMINAL_IDENTITY_WRITE_FAILED", error instanceof Error ? error.message : "No se pudo guardar la identidad");
+    }
   }
   const target = terminalIdentityPath();
   const temporary = `${target}.tmp`;
@@ -1225,6 +1249,20 @@ registerIpc("tpv:sale-control:put", (_event, value) =>
 registerIpc("tpv:sale-control:remove", (_event, context, id) =>
   controlStorageCall(store => { store.remove(context, id); return {}; }));
 registerIpc("tpv:terminal-identity:save", (_event, identity) => writeTerminalIdentity(identity));
+const connectionCall = async (method, ...args) => {
+  try {
+    if (!backendConnection) throw new Error("Vinculación no disponible");
+    return { ok: true, ...await backendConnection[method](...args) };
+  } catch (error) {
+    return structuredError(error?.code || "BACKEND_CONNECTION_FAILED", error instanceof Error ? error.message : "Error de conexión");
+  }
+};
+for (const method of ["load", "discover", "refreshLink", "cancelLink", "restart"]) {
+  registerIpc(`tpv:backend-connection:${method}`, () => connectionCall(method));
+}
+for (const method of ["probe", "requestLink", "saveAddress"]) {
+  registerIpc(`tpv:backend-connection:${method}`, (_event, input) => connectionCall(method, input));
+}
 registerIpc("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
 registerIpc("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
 registerIpc("tpv:reports:export-table-pdf", (_event, report, defaultFileName) =>
@@ -1389,23 +1427,75 @@ registerIpc("tpv:sales-utility:close", (event) => {
 async function initializeDesktopRuntime() {
   const isPackaged = app.isPackaged === true;
   const configuredAppUrl = process.env.TPV_DESKTOP_APP_URL;
+  const configPath = isPackaged
+    ? productionBackendConfigPath()
+    : path.join(app.getPath("userData"), "backend-config.json");
+  const legacyName = desktopAppConfig.key === "venta" ? "esPOS GESTIÓN" : "esPOS VENTA";
+  const legacyPackageName = desktopAppConfig.key === "venta" ? "tpv-erp-app-gestion" : "tpv-erp-app-venta";
+  linkingStorage = createLinkingStorage({
+    safeStorage,
+    sharedCrypto: createWindowsProfileCrypto(),
+    legacyPaths: [
+      path.join(app.getPath("userData"), "server-terminal-identity.dpapi"),
+      path.join(app.getPath("appData"), legacyPackageName, "server-terminal-identity.dpapi"),
+      path.join(app.getPath("appData"), legacyName, "server-terminal-identity.dpapi")
+    ]
+  });
+  await linkingStorage.initialize();
+  const linkingConfig = createLinkingConfig({
+    configPath, packaged: isPackaged,
+    helperPath: isPackaged
+      ? path.join(process.resourcesPath, "write-backend-config.ps1")
+      : path.join(__dirname, "..", "tools", "write-backend-config.ps1")
+  });
+  backendConnection = createTerminalLinking({
+    storage: linkingStorage, config: linkingConfig,
+    discover: () => discoverBackends(),
+    getRuntimeBackendUrl: () => runtimeBackendUrl,
+    getRuntimeBindingId: () => runtimeBindingId,
+    getLegacyBackendScope: () => {
+      try {
+        const original = readBackendConfig(configPath).backendUrl;
+        return original ? new URL(original).toString().replace(/\/$/, "") : runtimeBackendUrl;
+      } catch { return runtimeBackendUrl; }
+    },
+    restart: () => {
+      if ((salesDocumentWindow && !salesDocumentWindow.isDestroyed())
+          || (salesUtilityWindow && !salesUtilityWindow.isDestroyed())) {
+        throw Object.assign(new Error("Cierre los documentos y herramientas de venta antes de reiniciar"),
+          { code: "UNSAFE_RESTART" });
+      }
+      app.relaunch(); app.quit();
+    }
+  });
   if (isPackaged || !configuredAppUrl) {
-    const configPath = isPackaged
-      ? productionBackendConfigPath()
-      : path.join(app.getPath("userData"), "backend-config.json");
-    const backendConfig = resolveBackendConfig({
-      envValue: isPackaged ? undefined : process.env.TPV_DESKTOP_BACKEND_URL,
-      envAllowedHosts: isPackaged ? undefined : process.env.TPV_DESKTOP_BACKEND_ALLOWED_HOSTS,
-      useEnvironment: !isPackaged,
-      configPath
-    });
+    let backendConfig;
+    try {
+      backendConfig = resolveBackendConfig({
+        envValue: isPackaged ? undefined : process.env.TPV_DESKTOP_BACKEND_URL,
+        envAllowedHosts: isPackaged ? undefined : process.env.TPV_DESKTOP_BACKEND_ALLOWED_HOSTS,
+        useEnvironment: !isPackaged,
+        configPath
+      });
+    } catch {
+      // Keep the static renderer available so the setup wizard can repair an invalid configuration.
+      backendConfig = resolveBackendConfig({ configPath: undefined, useEnvironment: false });
+    }
+    runtimeBackendUrl = backendConfig.backendUrl;
     desktopServer = createDesktopServer({
       staticRoot: resolveDesktopDist(desktopAppConfig),
       backendUrl: backendConfig.backendUrl,
       backendAllowedHosts: backendConfig.allowedHosts
     });
+    const storedIdentity = linkingStorage.read()?.identity;
+    const bindingIdentity = storedIdentity?.installationId && storedIdentity?.bindingId
+      ? { installationId: storedIdentity.installationId, bindingId: storedIdentity.bindingId,
+        storeId: storedIdentity.storeId, terminalId: storedIdentity.terminalId,
+        ...(storedIdentity.legacyBackendScope ? { legacyBackendScope: storedIdentity.legacyBackendScope } : {}) }
+      : undefined;
+    runtimeBindingId = bindingIdentity?.bindingId;
     saleControlOutbox = createSaleControlOutbox({
-      userDataPath: app.getPath("userData"), backendScope: backendConfig.backendUrl
+      userDataPath: app.getPath("userData"), backendScope: backendConfig.backendUrl, bindingIdentity
     });
     appUrl = await desktopServer.start();
   } else {
@@ -1415,8 +1505,16 @@ async function initializeDesktopRuntime() {
       allowRemoteDevelopment: process.env.TPV_DESKTOP_ALLOW_REMOTE_DEV_URL === "1"
     });
     // Development renderer URLs are stable; production always uses the configured backend above.
+    const storedIdentity = linkingStorage.read()?.identity;
+    const bindingIdentity = storedIdentity?.installationId && storedIdentity?.bindingId
+      ? { installationId: storedIdentity.installationId, bindingId: storedIdentity.bindingId,
+        storeId: storedIdentity.storeId, terminalId: storedIdentity.terminalId,
+        ...(storedIdentity.legacyBackendScope ? { legacyBackendScope: storedIdentity.legacyBackendScope } : {}) }
+      : undefined;
+    runtimeBindingId = bindingIdentity?.bindingId;
     saleControlOutbox = createSaleControlOutbox({
-      userDataPath: app.getPath("userData"), backendScope: process.env.TPV_DESKTOP_BACKEND_URL || appUrl
+      userDataPath: app.getPath("userData"), backendScope: process.env.TPV_DESKTOP_BACKEND_URL || appUrl,
+      bindingIdentity
     });
   }
   trustedAppOrigin = trustedOrigin(appUrl);

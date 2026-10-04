@@ -28,6 +28,9 @@ public class UserSession {
     @JoinColumn(name = "terminal_id")
     private Terminal terminal;
 
+    @Column(name = "terminal_binding_id")
+    private UUID terminalBindingId;
+
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;
 
@@ -54,6 +57,7 @@ public class UserSession {
         this.id = UUID.randomUUID();
         this.usuario = Objects.requireNonNull(usuario, "usuario");
         this.terminal = terminal;
+        this.terminalBindingId = terminal == null ? null : terminal.getCurrentBindingId();
         this.tokenHash = required(tokenHash, "tokenHash");
         this.creadaEn = Objects.requireNonNull(creadaEn, "creadaEn");
     }
@@ -85,6 +89,10 @@ public class UserSession {
 
     public boolean isActiva() {
         return revocadaEn == null;
+    }
+
+    public boolean hasCurrentTerminalBinding() {
+        return terminal == null || Objects.equals(terminalBindingId, terminal.getCurrentBindingId());
     }
 
     private static String required(String value, String field) {

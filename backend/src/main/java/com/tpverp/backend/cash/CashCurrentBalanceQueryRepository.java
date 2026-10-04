@@ -91,8 +91,9 @@ public class CashCurrentBalanceQueryRepository {
                       and movement.creado_en >= coalesce(last_closed.cerrada_en, '-infinity'::timestamptz)
                 ) between_movements on open_session.id is null
                 where terminal.tienda_id = :storeId
-                  and terminal.activa = true
-                  and terminal.aprobada = true
+                  and ((terminal.activa = true and terminal.aprobada = true)
+                       or open_session.id is not null
+                       or coalesce(last_closed.fondo_dejado, 0) + coalesce(between_movements.balance, 0) <> 0)
                 order by lower(terminal.nombre), terminal.id
                 """;
         return jdbc.query(

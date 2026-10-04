@@ -11,6 +11,16 @@ contextBridge.exposeInMainWorld("tpvDesktop", {
     load: () => ipcRenderer.invoke("tpv:terminal-identity:load"),
     save: (identity) => ipcRenderer.invoke("tpv:terminal-identity:save", identity)
   },
+  backendConnection: {
+    load: () => ipcRenderer.invoke("tpv:backend-connection:load"),
+    discover: () => ipcRenderer.invoke("tpv:backend-connection:discover"),
+    probe: (input) => ipcRenderer.invoke("tpv:backend-connection:probe", input),
+    requestLink: (input) => ipcRenderer.invoke("tpv:backend-connection:requestLink", input),
+    refreshLink: () => ipcRenderer.invoke("tpv:backend-connection:refreshLink"),
+    cancelLink: () => ipcRenderer.invoke("tpv:backend-connection:cancelLink"),
+    saveAddress: (input) => ipcRenderer.invoke("tpv:backend-connection:saveAddress", input),
+    restart: () => ipcRenderer.invoke("tpv:backend-connection:restart")
+  },
   salesDocuments: {
     open: (bootstrap) => ipcRenderer.invoke("tpv:sales-documents:open", bootstrap),
     consumeBootstrap: () => ipcRenderer.invoke("tpv:sales-documents:consume-bootstrap"),

@@ -43,6 +43,12 @@ public class Terminal {
     @Column(name = "credential_hash", nullable = false)
     private String credentialHash;
 
+    @Column(name = "workstation_code", length = 12)
+    private String workstationCode;
+
+    @Column(name = "current_binding_id")
+    private UUID currentBindingId;
+
     @Column(name = "last_ip", columnDefinition = "inet")
     private InetAddress lastIp;
 
@@ -60,6 +66,7 @@ public class Terminal {
         this.tienda = Objects.requireNonNull(tienda, "tienda");
         this.nombre = required(nombre, "nombre");
         this.tipo = Objects.requireNonNull(tipo, "tipo");
+        this.workstationCode = tipo == TerminalType.SERVIDOR ? "001" : null;
         this.credentialHash = required(credentialHash, "credentialHash");
     }
 
@@ -103,6 +110,25 @@ public class Terminal {
 
     public String getCredentialHash() {
         return credentialHash;
+    }
+
+    public String getWorkstationCode() { return workstationCode; }
+    public String getDisplayCode() { return workstationCode == null ? nombre : workstationCode; }
+    public UUID getCurrentBindingId() { return currentBindingId; }
+
+    void assignWorkstationCode(String code) {
+        if (workstationCode != null && !workstationCode.equals(code)) {
+            throw new IllegalStateException("WORKSTATION_ALREADY_ASSIGNED");
+        }
+        workstationCode = required(code, "code");
+    }
+
+    void bind(UUID bindingId) { currentBindingId = bindingId; }
+
+    void endBinding(String unusableCredentialHash) {
+        deactivate();
+        currentBindingId = null;
+        rotateCredential(unusableCredentialHash);
     }
 
     public void approve() {

@@ -26,6 +26,27 @@ afterEach(() => {
 });
 
 describe("desktop durable sale control storage", () => {
+  it("keeps a verified binding queue across IP changes and isolates replacement bindings", () => {
+    const value = fixture();
+    const bindingIdentity = { installationId: uuid(10), bindingId: uuid(11), ...context };
+    const linked = createSaleControlOutbox({ ...value, bindingIdentity });
+    linked.put(event());
+    const moved = createSaleControlOutbox({ ...value, backendScope: "https://new-address:8443", bindingIdentity });
+    expect(moved.list(context)).toEqual([event()]);
+    expect(createSaleControlOutbox({ ...value, bindingIdentity: { ...bindingIdentity, bindingId: uuid(12) } }).list(context)).toEqual([]);
+    expect(() => linked.list({ ...context, terminalId: uuid(20) })).toThrow("CONTROL_CONTEXT_INVALID");
+  });
+  it("moves a legacy queue only after proven adoption and preserves it when migration cannot be committed", () => {
+    const value = fixture(); value.store.put(event());
+    const bindingIdentity = { installationId: uuid(10), bindingId: uuid(11), ...context };
+    expect(createSaleControlOutbox({ ...value, bindingIdentity }).list(context)).toEqual([]);
+    const options = { ...value, bindingIdentity: { ...bindingIdentity, legacyBackendScope: value.backendScope } };
+    const faulty = createSaleControlOutbox({ ...options, fileSystem: { ...fs, fsyncSync: () => { throw new Error("disk full"); } } });
+    expect(() => faulty.list(context)).toThrow("disk full");
+    expect(value.store.list(context)).toEqual([event()]);
+    expect(createSaleControlOutbox(options).list(context)).toEqual([event()]);
+    expect(value.store.list(context)).toEqual([]);
+  });
   it("recovers committed events in a fresh instance, independent of the renderer origin", () => {
     const value = fixture(); value.store.put(event());
     const reopened = createSaleControlOutbox(value);

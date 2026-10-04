@@ -3,6 +3,7 @@ export type CanonicalSaleSettingsDestination =
   | "visualization"
   | "printers"
   | "devices"
+  | "connection"
   | "cash"
   | "diagnostics";
 
